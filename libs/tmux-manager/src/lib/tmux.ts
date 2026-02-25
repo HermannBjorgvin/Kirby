@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFile, execSync } from "node:child_process";
 
 export interface TmuxSession {
   name: string;
@@ -119,40 +119,26 @@ export function switchClient(name: string): boolean {
 export function capturePane(
   name: string,
   options: { ansi?: boolean } = {}
-): string {
+): Promise<string> {
   const safeName = escapeArg(name);
-  const flags = options.ansi ? "-p -e" : "-p";
-  try {
-    return execSync(`tmux capture-pane -t ${safeName} ${flags}`, {
-      encoding: "utf8",
+  const flags = options.ansi ? ["-p", "-e"] : ["-p"];
+  return new Promise((resolve) => {
+    execFile("tmux", ["capture-pane", "-t", safeName, ...flags], (err, stdout) => {
+      resolve(err ? "" : stdout);
     });
-  } catch {
-    return "";
-  }
+  });
 }
 
-/** Send keys to a tmux session */
-export function sendKeys(name: string, keys: string): boolean {
+/** Send keys to a tmux session (fire-and-forget, non-blocking) */
+export function sendKeys(name: string, keys: string): void {
   const safeName = escapeArg(name);
-  try {
-    execSync(`tmux send-keys -t ${safeName} ${keys}`);
-    return true;
-  } catch {
-    return false;
-  }
+  execFile("tmux", ["send-keys", "-t", safeName, keys], () => {});
 }
 
-/** Send literal text to a tmux session (no key name interpretation) */
-export function sendLiteral(name: string, text: string): boolean {
+/** Send literal text to a tmux session (fire-and-forget, non-blocking) */
+export function sendLiteral(name: string, text: string): void {
   const safeName = escapeArg(name);
-  try {
-    execSync(
-      `tmux send-keys -t ${safeName} -l -- ${JSON.stringify(text)}`
-    );
-    return true;
-  } catch {
-    return false;
-  }
+  execFile("tmux", ["send-keys", "-t", safeName, "-l", "--", text], () => {});
 }
 
 /** Escape a tmux argument to prevent injection */

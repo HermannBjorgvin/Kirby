@@ -11,13 +11,15 @@ import {
   sendLiteral,
   listSessions,
 } from "./tmux.js";
-import { execSync } from "node:child_process";
+import { execFile, execSync } from "node:child_process";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
+  execFile: vi.fn(),
 }));
 
 const mockExecSync = vi.mocked(execSync);
+const mockExecFile = vi.mocked(execFile);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -172,65 +174,76 @@ describe("killSession", () => {
 });
 
 describe("capturePane", () => {
-  it("should capture without ANSI by default", () => {
-    mockExecSync.mockReturnValueOnce("Hello World\n");
-    const result = capturePane("my-session");
-    expect(result).toBe("Hello World\n");
-    expect(mockExecSync).toHaveBeenCalledWith(
-      "tmux capture-pane -t my-session -p",
-      { encoding: "utf8" }
-    );
-  });
-
-  it("should capture with ANSI when requested", () => {
-    mockExecSync.mockReturnValueOnce("\x1b[31mRED\x1b[0m\n");
-    const result = capturePane("my-session", { ansi: true });
-    expect(result).toContain("\x1b[31m");
-    expect(mockExecSync).toHaveBeenCalledWith(
-      "tmux capture-pane -t my-session -p -e",
-      { encoding: "utf8" }
-    );
-  });
-
-  it("should return empty string on failure", () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error("session not found");
+  it("should capture without ANSI by default", async () => {
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
+      cb(null, "Hello World\n", "");
+      return undefined as any;
     });
-    expect(capturePane("nonexistent")).toBe("");
+    const result = await capturePane("my-session");
+    expect(result).toBe("Hello World\n");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "tmux",
+      ["capture-pane", "-t", "my-session", "-p"],
+      expect.any(Function)
+    );
+  });
+
+  it("should capture with ANSI when requested", async () => {
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
+      cb(null, "\x1b[31mRED\x1b[0m\n", "");
+      return undefined as any;
+    });
+    const result = await capturePane("my-session", { ansi: true });
+    expect(result).toContain("\x1b[31m");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "tmux",
+      ["capture-pane", "-t", "my-session", "-p", "-e"],
+      expect.any(Function)
+    );
+  });
+
+  it("should return empty string on failure", async () => {
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
+      cb(new Error("session not found"), "", "");
+      return undefined as any;
+    });
+    expect(await capturePane("nonexistent")).toBe("");
   });
 });
 
 describe("sendKeys", () => {
-  it("should send keys to session", () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(""));
-    expect(sendKeys("my-session", "Enter")).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
-      "tmux send-keys -t my-session Enter"
+  it("should send keys to session via execFile", () => {
+    sendKeys("my-session", "Enter");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "tmux",
+      ["send-keys", "-t", "my-session", "Enter"],
+      expect.any(Function)
     );
   });
 
-  it("should return false on failure", () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error("session not found");
-    });
-    expect(sendKeys("nonexistent", "Enter")).toBe(false);
+  it("should reject invalid session names", () => {
+    expect(() => sendKeys("foo; rm -rf /", "Enter")).toThrow(
+      "Invalid tmux session name"
+    );
   });
 });
 
 describe("sendLiteral", () => {
-  it("should send literal text with -l flag", () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(""));
-    expect(sendLiteral("my-session", "hello")).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'tmux send-keys -t my-session -l -- "hello"'
+  it("should send literal text with -l flag via execFile", () => {
+    sendLiteral("my-session", "hello");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "tmux",
+      ["send-keys", "-t", "my-session", "-l", "--", "hello"],
+      expect.any(Function)
     );
   });
 
-  it("should escape special characters in text", () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(""));
+  it("should pass text as-is (no shell escaping needed)", () => {
     sendLiteral("my-session", 'say "hi"');
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'tmux send-keys -t my-session -l -- "say \\"hi\\""'
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "tmux",
+      ["send-keys", "-t", "my-session", "-l", "--", 'say "hi"'],
+      expect.any(Function)
     );
   });
 });

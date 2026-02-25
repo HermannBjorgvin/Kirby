@@ -150,11 +150,18 @@ function App() {
       );
       return;
     }
-    const capture = () =>
-      setPaneContent(capturePane(selectedSession.name, { ansi: true }));
+    let active = true;
+    const capture = () => {
+      capturePane(selectedSession.name, { ansi: true }).then((content) => {
+        if (active) setPaneContent(content);
+      });
+    };
     capture();
     const interval = setInterval(capture, 500);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [hasTmux, selectedSession?.name]);
 
   useInput((input, key) => {
