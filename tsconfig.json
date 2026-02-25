@@ -11,6 +11,9 @@
     },
     {
       "path": "./libs/shared-types"
+    },
+    {
+      "path": "./libs/tmux-control"
     }
   ]
 }
