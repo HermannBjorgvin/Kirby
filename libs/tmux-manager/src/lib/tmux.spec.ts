@@ -221,6 +221,14 @@ describe("sendKeys", () => {
     );
   });
 
+  it("should not throw when tmux command fails", () => {
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
+      cb(new Error("session not found"), "", "");
+      return undefined as any;
+    });
+    expect(() => sendKeys("my-session", "Enter")).not.toThrow();
+  });
+
   it("should reject invalid session names", () => {
     expect(() => sendKeys("foo; rm -rf /", "Enter")).toThrow(
       "Invalid tmux session name"
@@ -238,7 +246,7 @@ describe("sendLiteral", () => {
     );
   });
 
-  it("should pass text as-is (no shell escaping needed)", () => {
+  it("should preserve special characters in text without escaping", () => {
     sendLiteral("my-session", 'say "hi"');
     expect(mockExecFile).toHaveBeenCalledWith(
       "tmux",
@@ -246,9 +254,17 @@ describe("sendLiteral", () => {
       expect.any(Function)
     );
   });
+
+  it("should not throw when tmux command fails", () => {
+    mockExecFile.mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
+      cb(new Error("session not found"), "", "");
+      return undefined as any;
+    });
+    expect(() => sendLiteral("my-session", "hello")).not.toThrow();
+  });
 });
 
-describe("escapeArg (via hasSession)", () => {
+describe("validateSessionName (via hasSession)", () => {
   it("should allow valid session names", () => {
     mockExecSync.mockReturnValue(Buffer.from(""));
     expect(() => hasSession("my-session")).not.toThrow();

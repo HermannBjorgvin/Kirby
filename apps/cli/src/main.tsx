@@ -125,6 +125,7 @@ function App() {
   const [newName, setNewName] = useState("");
 
   const selectedSession = sessions[selectedIndex];
+  const selectedName = selectedSession?.name ?? null;
 
   // Check tmux availability and load sessions on mount
   useEffect(() => {
@@ -144,25 +145,24 @@ function App() {
 
   // Poll pane content for selected session
   useEffect(() => {
-    if (!hasTmux || !selectedSession) {
+    if (!hasTmux || !selectedName) {
       setPaneContent(
         sessions.length === 0 ? "(no sessions)" : "(no session selected)"
       );
       return;
     }
     let active = true;
-    const capture = () => {
-      capturePane(selectedSession.name, { ansi: true }).then((content) => {
-        if (active) setPaneContent(content);
+    const poll = () => {
+      capturePane(selectedName, { ansi: true }).then((content) => {
+        if (active) {
+          setPaneContent(content);
+          setTimeout(poll, 500);
+        }
       });
     };
-    capture();
-    const interval = setInterval(capture, 500);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [hasTmux, selectedSession?.name]);
+    poll();
+    return () => { active = false; };
+  }, [hasTmux, selectedName]);
 
   useInput((input, key) => {
     // Creating mode — capture name input

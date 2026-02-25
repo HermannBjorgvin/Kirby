@@ -1,3 +1,11 @@
+/**
+ * Tmux command wrappers.
+ *
+ * Hot-path functions (capturePane, sendKeys, sendLiteral) use async execFile
+ * to avoid blocking the event loop during interactive use.
+ * Infrequent operations (createSession, killSession, etc.) remain synchronous
+ * for simpler calling code.
+ */
 import { execFile, execSync } from "node:child_process";
 
 export interface TmuxSession {
@@ -66,7 +74,7 @@ export function parseSessions(output: string): TmuxSession[] {
 
 /** Check if a session with the given name exists */
 export function hasSession(name: string): boolean {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   try {
     execSync(`tmux has-session -t ${safeName}`, { stdio: "ignore" });
     return true;
@@ -81,7 +89,7 @@ export function createSession(
   cols?: number,
   rows?: number
 ): boolean {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   let cmd = `tmux new-session -d -s ${safeName}`;
   if (cols !== undefined) cmd += ` -x ${cols}`;
   if (rows !== undefined) cmd += ` -y ${rows}`;
@@ -95,7 +103,7 @@ export function createSession(
 
 /** Kill a tmux session */
 export function killSession(name: string): boolean {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   try {
     execSync(`tmux kill-session -t ${safeName}`, { stdio: "ignore" });
     return true;
@@ -106,7 +114,7 @@ export function killSession(name: string): boolean {
 
 /** Switch the current tmux client to a different session */
 export function switchClient(name: string): boolean {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   try {
     execSync(`tmux switch-client -t ${safeName}`, { stdio: "ignore" });
     return true;
@@ -120,7 +128,7 @@ export function capturePane(
   name: string,
   options: { ansi?: boolean } = {}
 ): Promise<string> {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   const flags = options.ansi ? ["-p", "-e"] : ["-p"];
   return new Promise((resolve) => {
     execFile("tmux", ["capture-pane", "-t", safeName, ...flags], (err, stdout) => {
@@ -131,21 +139,20 @@ export function capturePane(
 
 /** Send keys to a tmux session (fire-and-forget, non-blocking) */
 export function sendKeys(name: string, keys: string): void {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   execFile("tmux", ["send-keys", "-t", safeName, keys], () => {});
 }
 
 /** Send literal text to a tmux session (fire-and-forget, non-blocking) */
 export function sendLiteral(name: string, text: string): void {
-  const safeName = escapeArg(name);
+  const safeName = validateSessionName(name);
   execFile("tmux", ["send-keys", "-t", safeName, "-l", "--", text], () => {});
 }
 
-/** Escape a tmux argument to prevent injection */
-function escapeArg(arg: string): string {
-  // Only allow alphanumeric, hyphens, underscores, dots
-  if (/^[a-zA-Z0-9._-]+$/.test(arg)) {
-    return arg;
+/** Validate a tmux session name (alphanumeric, hyphens, underscores, dots) */
+function validateSessionName(name: string): string {
+  if (/^[a-zA-Z0-9._-]+$/.test(name)) {
+    return name;
   }
-  throw new Error(`Invalid tmux session name: ${arg}`);
+  throw new Error(`Invalid tmux session name: ${name}`);
 }

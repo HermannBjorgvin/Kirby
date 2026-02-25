@@ -55,7 +55,7 @@
 - **Ink components:** Use `ink-testing-library` to verify text content + keyboard navigation. No real TTY needed.
 - **Manual testing for:** ANSI/visual rendering, tmux input forwarding, anything involving real terminal interaction.
 - **Run tests via NX:** `npx nx test tmux-manager`
-- **Dev run:** `npx tsx apps/cli/src/main.tsx`
+- **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
 
 ## Project Structure
 
@@ -63,7 +63,7 @@
 apps/cli/           — Ink TUI application (ESM, React 19)
   src/main.tsx      — Entry point, root component
 libs/tmux-manager/  — tmux command wrapper + session persistence
-  src/lib/tmux.ts   — Raw tmux commands (23 unit tests)
+  src/lib/tmux.ts   — Raw tmux commands (29 unit tests)
   src/lib/session-store.ts — JSON persistence + reconciliation (16 tests)
 libs/shared-types/  — TypeScript interfaces (Session, Config)
 ```
@@ -75,3 +75,4 @@ libs/shared-types/  — TypeScript interfaces (Session, Config)
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
 - **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. tmux-manager importing shared-types).
 - **Claude session status detection is NOT yet implemented.** Patterns need to be observed from real Claude tmux sessions before coding — don't guess.
+- **`TSX_TSCONFIG_PATH`:** The serve target sets this env var so tsx picks up `jsx: "react-jsx"` from `tsconfig.app.json`. Without it, tsx defaults to classic JSX transform and requires `import React`.
