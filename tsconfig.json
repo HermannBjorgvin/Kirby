@@ -8,6 +8,9 @@
     },
     {
       "path": "./libs/tmux-manager"
+    },
+    {
+      "path": "./libs/shared-types"
     }
   ]
 }
