@@ -24,22 +24,54 @@
 
 ---
 
+# Workflow Manager Development Guide
+
+## Core Process
+
+1. **One feature at a time.** Implement the smallest possible increment that can be visually verified or tested. Never batch multiple features into a single pass.
+2. **Visual first for TUI work.** Get something on screen before building supporting infrastructure. Mock data is fine — proving the rendering/interaction works is the priority.
+3. **Check in at every milestone.** After each feature, stop and tell the user:
+   - What was implemented
+   - How to test it manually (exact commands)
+   - Wait for their feedback before continuing
+4. **Don't build what you can't verify.** If behavior depends on real-world interaction (e.g. Claude session status patterns), don't guess — build a testable mock first, observe the real thing, then implement.
+5. **Commit after every code-generating or install command.** NX generators, `npm install`, `npm uninstall` — commit immediately before making manual changes.
+6. **Iterate with the user, not ahead of the user.** The user is part of the development loop. Their manual QA testing is essential. Don't race ahead building layers of code they haven't seen yet.
+
+## Ink.js / TUI Patterns
+
+- **Use the `cli-design:inkjs-design` skill** for component patterns, layout, input handling, testing, and gotchas. Check it before guessing at Ink APIs.
+  - `cli-design:inkjs-cli layout` — responsive layout, `useStdout` for terminal dimensions
+  - `cli-design:inkjs-cli testing` — `ink-testing-library` patterns
+  - `cli-design:inkjs-cli input` — keyboard input, `useInput` patterns
+  - `cli-design:inkjs-cli gotchas` — emoji width, Ctrl+C, useInput conflicts
+- **Full-screen layout:** Use `useStdout()` to get `rows`/`columns`, set `height={rows}` on root `<Box>`.
+- **tmux pane sizing:** Resize the tmux session to match the terminal dimensions minus UI chrome (sidebar width, borders, status bar).
+- **ESM required:** Ink v6 + yoga-layout use top-level await. All packages must have `"type": "module"` in package.json.
+
 ## Testing Strategy
 
-- **TDD for libraries:** `tmux-manager` (tmux.ts, session-store.ts, claude-session.ts) — write tests first, then implement.
-- **TDD for Ink components:** Use `ink-testing-library` to verify text content + keyboard navigation. No real TTY needed.
-- **Manual testing only for:** ANSI/visual rendering, real tmux input forwarding.
-- **Run tests via NX:** `npx nx test tmux-manager`, `npx nx test cli`.
+- **TDD for libraries:** `tmux-manager` (tmux.ts, session-store.ts) — mock `execSync`, test parsing and CRUD logic.
+- **Ink components:** Use `ink-testing-library` to verify text content + keyboard navigation. No real TTY needed.
+- **Manual testing for:** ANSI/visual rendering, tmux input forwarding, anything involving real terminal interaction.
+- **Run tests via NX:** `npx nx test tmux-manager`
+- **Dev run:** `npx tsx apps/cli/src/main.tsx`
 
-## Milestone Checkins
+## Project Structure
 
-At each major milestone, stop and check in with the user:
-- List what was implemented
-- Provide manual test commands the user can run
-- Wait for confirmation before continuing
+```
+apps/cli/           — Ink TUI application (ESM, React 19)
+  src/main.tsx      — Entry point, root component
+libs/tmux-manager/  — tmux command wrapper + session persistence
+  src/lib/tmux.ts   — Raw tmux commands (23 unit tests)
+  src/lib/session-store.ts — JSON persistence + reconciliation (16 tests)
+libs/shared-types/  — TypeScript interfaces (Session, Config)
+```
 
-## Development Approach
+## Known Decisions & Learnings
 
-- **Don't build what you can't verify.** If behavior depends on real-world interaction (e.g. Claude session patterns), don't guess — build a testable mock first, verify with the real thing later.
-- **Visual first for TUI work.** Get something on screen the user can see and interact with. Mock data is fine — proving the rendering/interaction works is the priority.
-- **Smallest verifiable increment.** One feature at a time, confirm it works, then layer on the next.
+- **ANSI passthrough works:** Ink `<Text>` passes raw ANSI from `tmux capture-pane -e` directly to the terminal. Colors, bold, underline all render correctly.
+- **Input forwarding works:** `useInput` → `tmux send-keys` round-trip is responsive enough for interactive use.
+- **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
+- **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. tmux-manager importing shared-types).
+- **Claude session status detection is NOT yet implemented.** Patterns need to be observed from real Claude tmux sessions before coding — don't guess.
