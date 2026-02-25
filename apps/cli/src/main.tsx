@@ -1,60 +1,15 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { render, Text, Box, useInput, useApp, useStdout } from "ink";
-import { execSync } from "node:child_process";
-
-// --- Mock data ---
-const MOCK_SESSIONS = [
-  { name: "feat-auth", status: "running" as const },
-  { name: "fix-123", status: "idle" as const },
-  { name: "refactor-api", status: "waiting" as const },
-  { name: "chore-deps", status: "stopped" as const },
-];
-
-const STATUS_ICONS: Record<string, string> = {
-  running: "●",
-  idle: "○",
-  waiting: "◐",
-  stopped: "✕",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  running: "green",
-  idle: "gray",
-  waiting: "yellow",
-  stopped: "red",
-};
-
-// --- tmux pane capture ---
-const DEMO_SESSION = "wm-demo";
-
-function ensureDemoSession(cols: number, rows: number): boolean {
-  try {
-    execSync(`tmux has-session -t ${DEMO_SESSION}`, { stdio: "ignore" });
-    // Resize existing session to match terminal
-    execSync(`tmux resize-window -t ${DEMO_SESSION} -x ${cols} -y ${rows}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    try {
-      execSync(
-        `tmux new-session -d -s ${DEMO_SESSION} -x ${cols} -y ${rows}`,
-        { stdio: "ignore" }
-      );
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-function captureDemo(): string {
-  try {
-    return execSync(`tmux capture-pane -t ${DEMO_SESSION} -p -e`, {
-      encoding: "utf8",
-    });
-  } catch {
-    return "(no tmux session)";
-  }
-}
+import {
+  isAvailable,
+  listSessions,
+  capturePane,
+  sendKeys,
+  sendLiteral,
+  killSession,
+  createSession,
+} from "@workflow-manager/tmux-manager";
+import type { TmuxSession } from "@workflow-manager/tmux-manager";
 
 // --- Components ---
 
@@ -65,7 +20,7 @@ function Sidebar({
   selectedIndex,
   focused,
 }: {
-  sessions: typeof MOCK_SESSIONS;
+  sessions: TmuxSession[];
   selectedIndex: number;
   focused: boolean;
 }) {
@@ -81,22 +36,26 @@ function Sidebar({
         Sessions
       </Text>
       <Text dimColor>{"─".repeat(20)}</Text>
-      {sessions.map((s, i) => {
-        const selected = i === selectedIndex;
-        const icon = STATUS_ICONS[s.status] ?? "?";
-        const color = STATUS_COLORS[s.status] ?? "white";
-        return (
-          <Text key={s.name}>
-            <Text color={selected ? "cyan" : undefined}>
-              {selected ? "› " : "  "}
+      {sessions.length === 0 ? (
+        <Text dimColor>(no sessions)</Text>
+      ) : (
+        sessions.map((s, i) => {
+          const selected = i === selectedIndex;
+          const icon = s.attached ? "●" : "○";
+          const color = s.attached ? "green" : "gray";
+          return (
+            <Text key={s.name}>
+              <Text color={selected ? "cyan" : undefined}>
+                {selected ? "› " : "  "}
+              </Text>
+              <Text color={color}>{icon} </Text>
+              <Text bold={selected}>{s.name}</Text>
             </Text>
-            <Text color={color}>{icon} </Text>
-            <Text bold={selected}>{s.name}</Text>
-          </Text>
-        );
-      })}
+          );
+        })
+      )}
       <Box marginTop={1}>
-        <Text dimColor>j/k nav · Tab focus · q quit</Text>
+        <Text dimColor>n new · d kill · j/k nav · Tab focus · q quit</Text>
       </Box>
     </Box>
   );
@@ -127,29 +86,25 @@ function TerminalView({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sendToDemo(input: string, key: any): void {
-  try {
-    if (key.return) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} Enter`);
-    } else if (key.backspace || key.delete) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} BSpace`);
-    } else if (key.upArrow) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} Up`);
-    } else if (key.downArrow) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} Down`);
-    } else if (key.leftArrow) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} Left`);
-    } else if (key.rightArrow) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} Right`);
-    } else if (key.tab) {
-      // Tab is reserved for focus switching, don't forward
-    } else if (key.ctrl && input === "c") {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} C-c`);
-    } else if (input) {
-      execSync(`tmux send-keys -t ${DEMO_SESSION} -l -- ${JSON.stringify(input)}`);
-    }
-  } catch {
-    // ignore send failures
+function sendToSession(sessionName: string, input: string, key: any): void {
+  if (key.return) {
+    sendKeys(sessionName, "Enter");
+  } else if (key.backspace || key.delete) {
+    sendKeys(sessionName, "BSpace");
+  } else if (key.upArrow) {
+    sendKeys(sessionName, "Up");
+  } else if (key.downArrow) {
+    sendKeys(sessionName, "Down");
+  } else if (key.leftArrow) {
+    sendKeys(sessionName, "Left");
+  } else if (key.rightArrow) {
+    sendKeys(sessionName, "Right");
+  } else if (key.tab) {
+    // Tab is reserved for focus switching, don't forward
+  } else if (key.ctrl && input === "c") {
+    sendKeys(sessionName, "C-c");
+  } else if (input) {
+    sendLiteral(sessionName, input);
   }
 }
 
@@ -159,27 +114,80 @@ function App() {
   const termRows = stdout?.rows ?? 24;
   const termCols = stdout?.columns ?? 80;
   const sidebarWidth = 26; // 24 content + 2 border
-  const paneRows = Math.max(5, termRows - 4); // borders + status bar
-  const paneCols = Math.max(20, termCols - sidebarWidth - 4); // borders + padding
+  const paneCols = Math.max(20, termCols - sidebarWidth - 4);
+  const paneRows = Math.max(5, termRows - 4);
   const [focus, setFocus] = useState<Focus>("sidebar");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [sessions, setSessions] = useState<TmuxSession[]>([]);
   const [paneContent, setPaneContent] = useState("(loading...)");
   const [hasTmux, setHasTmux] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
 
+  const selectedSession = sessions[selectedIndex];
+
+  // Check tmux availability and load sessions on mount
   useEffect(() => {
-    const ok = ensureDemoSession(paneCols, paneRows);
+    const ok = isAvailable();
     setHasTmux(ok);
     if (ok) {
-      setPaneContent(captureDemo());
-      const interval = setInterval(() => {
-        setPaneContent(captureDemo());
-      }, 500);
-      return () => clearInterval(interval);
+      setSessions(listSessions());
     }
-    return undefined;
   }, []);
 
+  // Refresh function used after create/kill
+  const refreshSessions = () => {
+    const updated = listSessions();
+    setSessions(updated);
+    return updated;
+  };
+
+  // Poll pane content for selected session
+  useEffect(() => {
+    if (!hasTmux || !selectedSession) {
+      setPaneContent(
+        sessions.length === 0 ? "(no sessions)" : "(no session selected)"
+      );
+      return;
+    }
+    const capture = () =>
+      setPaneContent(capturePane(selectedSession.name, { ansi: true }));
+    capture();
+    const interval = setInterval(capture, 500);
+    return () => clearInterval(interval);
+  }, [hasTmux, selectedSession?.name]);
+
   useInput((input, key) => {
+    // Creating mode — capture name input
+    if (creating) {
+      if (key.escape) {
+        setCreating(false);
+        setNewName("");
+        return;
+      }
+      if (key.return) {
+        const name = newName.trim();
+        if (name) {
+          createSession(name, paneCols, paneRows);
+          const updated = refreshSessions();
+          // Select the newly created session
+          const idx = updated.findIndex((s) => s.name === name);
+          if (idx >= 0) setSelectedIndex(idx);
+        }
+        setCreating(false);
+        setNewName("");
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setNewName((n) => n.slice(0, -1));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setNewName((n) => n + input);
+      }
+      return;
+    }
+
     // Tab switches focus
     if (key.tab) {
       setFocus((f) => (f === "sidebar" ? "terminal" : "sidebar"));
@@ -199,15 +207,30 @@ function App() {
         exit();
         return;
       }
+      if (input === "n") {
+        setCreating(true);
+        setNewName("");
+        return;
+      }
+      if (input === "d" && selectedSession) {
+        killSession(selectedSession.name);
+        const updated = refreshSessions();
+        if (selectedIndex >= updated.length) {
+          setSelectedIndex(Math.max(0, updated.length - 1));
+        }
+        return;
+      }
       if (input === "j" || key.downArrow) {
-        setSelectedIndex((i) => Math.min(i + 1, MOCK_SESSIONS.length - 1));
+        setSelectedIndex((i) => Math.min(i + 1, sessions.length - 1));
       }
       if (input === "k" || key.upArrow) {
         setSelectedIndex((i) => Math.max(i - 1, 0));
       }
     } else {
-      // Terminal focused — forward input to tmux
-      sendToDemo(input, key);
+      // Terminal focused — forward input to selected session
+      if (selectedSession) {
+        sendToSession(selectedSession.name, input, key);
+      }
     }
   });
 
@@ -215,7 +238,7 @@ function App() {
     <Box flexDirection="column" height={termRows}>
       <Box flexGrow={1}>
         <Sidebar
-          sessions={MOCK_SESSIONS}
+          sessions={sessions}
           selectedIndex={selectedIndex}
           focused={focus === "sidebar"}
         />
@@ -225,11 +248,18 @@ function App() {
         />
       </Box>
       <Box paddingX={1}>
-        <Text dimColor>
-          workflow-manager · {MOCK_SESSIONS.length} sessions ·{" "}
-          focus: <Text color="cyan">{focus}</Text> · tmux:{" "}
-          {hasTmux ? "✓" : "✕"}
-        </Text>
+        {creating ? (
+          <Text>
+            New session name: <Text color="cyan">{newName}</Text>
+            <Text dimColor>_</Text>
+          </Text>
+        ) : (
+          <Text dimColor>
+            workflow-manager · {sessions.length} sessions ·{" "}
+            focus: <Text color="cyan">{focus}</Text> · tmux:{" "}
+            {hasTmux ? "✓" : "✕"}
+          </Text>
+        )}
       </Box>
     </Box>
   );
