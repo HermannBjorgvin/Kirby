@@ -10,6 +10,9 @@
   "exclude": [],
   "references": [
     {
+      "path": "../../libs/tmux-control/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/tmux-manager/tsconfig.lib.json"
     }
   ]

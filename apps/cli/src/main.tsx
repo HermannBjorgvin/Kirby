@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { render, Text, Box, useInput, useApp, useStdout } from "ink";
 import {
   isAvailable,
   listSessions,
-  capturePane,
-  sendKeys,
-  sendLiteral,
   killSession,
   createSession,
 } from "@workflow-manager/tmux-manager";
 import type { TmuxSession } from "@workflow-manager/tmux-manager";
+import {
+  ControlConnection,
+  ScreenBuffer,
+} from "@workflow-manager/tmux-control";
 
 // --- Components ---
 
@@ -85,28 +86,114 @@ function TerminalView({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sendToSession(sessionName: string, input: string, key: any): void {
-  if (key.return) {
-    sendKeys(sessionName, "Enter");
-  } else if (key.backspace || key.delete) {
-    sendKeys(sessionName, "BSpace");
-  } else if (key.upArrow) {
-    sendKeys(sessionName, "Up");
-  } else if (key.downArrow) {
-    sendKeys(sessionName, "Down");
-  } else if (key.leftArrow) {
-    sendKeys(sessionName, "Left");
-  } else if (key.rightArrow) {
-    sendKeys(sessionName, "Right");
-  } else if (key.tab) {
-    // Tab is reserved for focus switching, don't forward
-  } else if (key.ctrl && input === "c") {
-    sendKeys(sessionName, "C-c");
-  } else if (input) {
-    sendLiteral(sessionName, input);
-  }
+// --- Control Mode Hook ---
+
+interface ControlState {
+  conn: ControlConnection | null;
+  screen: ScreenBuffer | null;
 }
+
+function useControlMode(
+  sessionName: string | null,
+  paneCols: number,
+  paneRows: number,
+  setPaneContent: (content: string) => void
+) {
+  const stateRef = useRef<ControlState>({ conn: null, screen: null });
+  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Schedule a debounced render of the screen buffer
+  const scheduleRender = useCallback(() => {
+    if (renderTimer.current) return; // already scheduled
+    renderTimer.current = setTimeout(() => {
+      renderTimer.current = null;
+      const { screen } = stateRef.current;
+      if (screen) {
+        setPaneContent(screen.serialize());
+      }
+    }, 16); // ~60fps
+  }, [setPaneContent]);
+
+  // Connect to session
+  useEffect(() => {
+    if (!sessionName) return;
+
+    const conn = new ControlConnection(sessionName);
+    const screen = new ScreenBuffer(paneCols, paneRows);
+    stateRef.current = { conn, screen };
+
+    conn.on("output", ({ data }) => {
+      screen.write(data);
+      scheduleRender();
+    });
+
+    conn.on("exit", () => {
+      setPaneContent("(session disconnected)");
+    });
+
+    conn.on("error", () => {
+      setPaneContent("(connection error)");
+    });
+
+    conn
+      .connect(paneCols, paneRows)
+      .then(async () => {
+        // Get initial screen snapshot
+        const snapshot = await conn.capturePane();
+        if (snapshot) {
+          await screen.writeSync(snapshot);
+          setPaneContent(screen.serialize());
+        }
+      })
+      .catch(() => {
+        setPaneContent("(failed to connect)");
+      });
+
+    return () => {
+      if (renderTimer.current) {
+        clearTimeout(renderTimer.current);
+        renderTimer.current = null;
+      }
+      conn.disconnect();
+      screen.dispose();
+      stateRef.current = { conn: null, screen: null };
+    };
+  }, [sessionName, paneCols, paneRows, scheduleRender, setPaneContent]);
+
+  // Send input through the control connection
+  const sendInput = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (input: string, key: any) => {
+      const { conn } = stateRef.current;
+      if (!conn || conn.state !== "ready") return;
+
+      if (key.return) {
+        conn.sendKeys("Enter");
+      } else if (key.backspace || key.delete) {
+        conn.sendKeys("BSpace");
+      } else if (key.upArrow) {
+        conn.sendKeys("Up");
+      } else if (key.downArrow) {
+        conn.sendKeys("Down");
+      } else if (key.leftArrow) {
+        conn.sendKeys("Left");
+      } else if (key.rightArrow) {
+        conn.sendKeys("Right");
+      } else if (key.tab) {
+        // Tab is reserved for focus switching, don't forward
+      } else if (key.ctrl && input === "c") {
+        conn.sendKeys("C-c");
+      } else if (input) {
+        conn.sendLiteral(input);
+      }
+    },
+    []
+  );
+
+  return { sendInput };
+}
+
+// --- App ---
 
 function App() {
   const { exit } = useApp();
@@ -143,26 +230,13 @@ function App() {
     return updated;
   };
 
-  // Poll pane content for selected session
-  useEffect(() => {
-    if (!hasTmux || !selectedName) {
-      setPaneContent(
-        sessions.length === 0 ? "(no sessions)" : "(no session selected)"
-      );
-      return;
-    }
-    let active = true;
-    const poll = () => {
-      capturePane(selectedName, { ansi: true }).then((content) => {
-        if (active) {
-          setPaneContent(content);
-          setTimeout(poll, 500);
-        }
-      });
-    };
-    poll();
-    return () => { active = false; };
-  }, [hasTmux, selectedName]);
+  // Control mode connection for selected session
+  const { sendInput } = useControlMode(
+    hasTmux ? selectedName : null,
+    paneCols,
+    paneRows,
+    setPaneContent
+  );
 
   useInput((input, key) => {
     // Creating mode — capture name input
@@ -234,10 +308,8 @@ function App() {
         setSelectedIndex((i) => Math.max(i - 1, 0));
       }
     } else {
-      // Terminal focused — forward input to selected session
-      if (selectedSession) {
-        sendToSession(selectedSession.name, input, key);
-      }
+      // Terminal focused — forward input via control mode
+      sendInput(input, key);
     }
   });
 
