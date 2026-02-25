@@ -75,6 +75,24 @@ export function hasSession(name: string): boolean {
   }
 }
 
+/** Create a new detached tmux session */
+export function createSession(
+  name: string,
+  cols?: number,
+  rows?: number
+): boolean {
+  const safeName = escapeArg(name);
+  let cmd = `tmux new-session -d -s ${safeName}`;
+  if (cols !== undefined) cmd += ` -x ${cols}`;
+  if (rows !== undefined) cmd += ` -y ${rows}`;
+  try {
+    execSync(cmd, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Kill a tmux session */
 export function killSession(name: string): boolean {
   const safeName = escapeArg(name);
@@ -131,25 +149,6 @@ export function sendLiteral(name: string, text: string): boolean {
     execSync(
       `tmux send-keys -t ${safeName} -l -- ${JSON.stringify(text)}`
     );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Create a new detached tmux session */
-export function createSession(
-  name: string,
-  cols?: number,
-  rows?: number
-): boolean {
-  const safeName = escapeArg(name);
-  const sizeFlags =
-    cols !== undefined && rows !== undefined ? ` -x ${cols} -y ${rows}` : "";
-  try {
-    execSync(`tmux new-session -d -s ${safeName}${sizeFlags}`, {
-      stdio: "ignore",
-    });
     return true;
   } catch {
     return false;

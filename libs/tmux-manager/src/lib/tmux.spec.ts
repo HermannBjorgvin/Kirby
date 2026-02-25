@@ -124,22 +124,8 @@ describe("hasSession", () => {
   });
 });
 
-describe("killSession", () => {
-  it("should return true on success", () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(""));
-    expect(killSession("my-session")).toBe(true);
-  });
-
-  it("should return false on failure", () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error("session not found");
-    });
-    expect(killSession("nonexistent")).toBe(false);
-  });
-});
-
 describe("createSession", () => {
-  it("should create a session without dimensions", () => {
+  it("should create a detached session", () => {
     mockExecSync.mockReturnValueOnce(Buffer.from(""));
     expect(createSession("my-session")).toBe(true);
     expect(mockExecSync).toHaveBeenCalledWith(
@@ -148,7 +134,7 @@ describe("createSession", () => {
     );
   });
 
-  it("should create a session with dimensions", () => {
+  it("should pass dimensions when provided", () => {
     mockExecSync.mockReturnValueOnce(Buffer.from(""));
     expect(createSession("my-session", 120, 40)).toBe(true);
     expect(mockExecSync).toHaveBeenCalledWith(
@@ -168,6 +154,20 @@ describe("createSession", () => {
     expect(() => createSession("foo; rm -rf /")).toThrow(
       "Invalid tmux session name"
     );
+  });
+});
+
+describe("killSession", () => {
+  it("should return true on success", () => {
+    mockExecSync.mockReturnValueOnce(Buffer.from(""));
+    expect(killSession("my-session")).toBe(true);
+  });
+
+  it("should return false on failure", () => {
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error("session not found");
+    });
+    expect(killSession("nonexistent")).toBe(false);
   });
 });
 
