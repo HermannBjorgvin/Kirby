@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { render, Text, Box, useInput, useApp, useStdout } from "ink";
 import {
   isAvailable,
