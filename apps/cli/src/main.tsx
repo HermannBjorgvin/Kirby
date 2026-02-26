@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { render, Text, Box, useInput, useApp, useStdout } from "ink";
+import { render, Text, Box, useInput, useApp, useStdout, type Key } from "ink";
 import {
   isAvailable,
   listSessions,
@@ -113,14 +113,22 @@ function useControlMode(
       renderTimer.current = null;
       const conn = connRef.current;
       if (conn && conn.state === "ready") {
-        conn.capturePane().then((content) => {
-          setPaneContent(clampContent(content));
-        });
+        conn.capturePane().then(
+          (content) => {
+            // Only update if this connection is still the active one
+            if (connRef.current === conn) {
+              setPaneContent(clampContent(content));
+            }
+          },
+          () => {
+            // Connection died between check and capture — ignore
+          }
+        );
       }
     }, 16); // ~60fps
   }, [setPaneContent, clampContent]);
 
-  // Connect to session
+  // Connect/disconnect only when session changes
   useEffect(() => {
     if (!sessionName) return;
 
@@ -143,7 +151,9 @@ function useControlMode(
       .connect(paneCols, paneRows)
       .then(async () => {
         const content = await conn.capturePane();
-        setPaneContent(clampContent(content));
+        if (connRef.current === conn) {
+          setPaneContent(clampContent(content));
+        }
       })
       .catch(() => {
         setPaneContent("(failed to connect)");
@@ -157,12 +167,22 @@ function useControlMode(
       conn.disconnect();
       connRef.current = null;
     };
-  }, [sessionName, paneCols, paneRows, scheduleRender, setPaneContent, clampContent]);
+    // Only reconnect when the session changes — resize is handled separately
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionName]);
+
+  // Resize the pane without reconnecting
+  useEffect(() => {
+    const conn = connRef.current;
+    if (conn && conn.state === "ready") {
+      conn.resize(paneCols, paneRows);
+      scheduleRender();
+    }
+  }, [paneCols, paneRows, scheduleRender]);
 
   // Send input through the control connection
   const sendInput = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (input: string, key: any) => {
+    (input: string, key: Key) => {
       const conn = connRef.current;
       if (!conn || conn.state !== "ready") return;
 
