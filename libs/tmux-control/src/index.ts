@@ -6,4 +6,3 @@ export {
   type CommandResponse,
   type ControlConnectionEvents,
 } from "./lib/control-connection.js";
-export { ScreenBuffer } from "./lib/screen-buffer.js";

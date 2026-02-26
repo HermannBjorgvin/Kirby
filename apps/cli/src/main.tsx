@@ -7,10 +7,7 @@ import {
   createSession,
 } from "@workflow-manager/tmux-manager";
 import type { TmuxSession } from "@workflow-manager/tmux-manager";
-import {
-  ControlConnection,
-  ScreenBuffer,
-} from "@workflow-manager/tmux-control";
+import { ControlConnection } from "@workflow-manager/tmux-control";
 
 // --- Components ---
 
@@ -76,22 +73,18 @@ function TerminalView({
       borderStyle="round"
       borderColor={focused ? "green" : "gray"}
       paddingX={1}
+      overflow="hidden"
     >
       <Text bold color={focused ? "green" : "gray"}>
         Terminal {focused ? "(typing)" : "(view only)"}
       </Text>
       <Text dimColor>{"─".repeat(40)}</Text>
-      <Text>{content}</Text>
+      <Text wrap="truncate">{content}</Text>
     </Box>
   );
 }
 
 // --- Control Mode Hook ---
-
-interface ControlState {
-  conn: ControlConnection | null;
-  screen: ScreenBuffer | null;
-}
 
 function useControlMode(
   sessionName: string | null,
@@ -99,31 +92,42 @@ function useControlMode(
   paneRows: number,
   setPaneContent: (content: string) => void
 ) {
-  const stateRef = useRef<ControlState>({ conn: null, screen: null });
+  const connRef = useRef<ControlConnection | null>(null);
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Schedule a debounced render of the screen buffer
+  // Clamp capture-pane output to paneRows lines to prevent overflow
+  const clampContent = useCallback(
+    (raw: string) => {
+      const lines = raw.split("\n");
+      return lines.length > paneRows
+        ? lines.slice(0, paneRows).join("\n")
+        : raw;
+    },
+    [paneRows]
+  );
+
+  // Schedule a debounced capture-pane render
   const scheduleRender = useCallback(() => {
     if (renderTimer.current) return; // already scheduled
     renderTimer.current = setTimeout(() => {
       renderTimer.current = null;
-      const { screen } = stateRef.current;
-      if (screen) {
-        setPaneContent(screen.serialize());
+      const conn = connRef.current;
+      if (conn && conn.state === "ready") {
+        conn.capturePane().then((content) => {
+          setPaneContent(clampContent(content));
+        });
       }
     }, 16); // ~60fps
-  }, [setPaneContent]);
+  }, [setPaneContent, clampContent]);
 
   // Connect to session
   useEffect(() => {
     if (!sessionName) return;
 
     const conn = new ControlConnection(sessionName);
-    const screen = new ScreenBuffer(paneCols, paneRows);
-    stateRef.current = { conn, screen };
+    connRef.current = conn;
 
-    conn.on("output", ({ data }) => {
-      screen.write(data);
+    conn.on("output", () => {
       scheduleRender();
     });
 
@@ -138,12 +142,8 @@ function useControlMode(
     conn
       .connect(paneCols, paneRows)
       .then(async () => {
-        // Get initial screen snapshot
-        const snapshot = await conn.capturePane();
-        if (snapshot) {
-          await screen.writeSync(snapshot);
-          setPaneContent(screen.serialize());
-        }
+        const content = await conn.capturePane();
+        setPaneContent(clampContent(content));
       })
       .catch(() => {
         setPaneContent("(failed to connect)");
@@ -155,16 +155,15 @@ function useControlMode(
         renderTimer.current = null;
       }
       conn.disconnect();
-      screen.dispose();
-      stateRef.current = { conn: null, screen: null };
+      connRef.current = null;
     };
-  }, [sessionName, paneCols, paneRows, scheduleRender, setPaneContent]);
+  }, [sessionName, paneCols, paneRows, scheduleRender, setPaneContent, clampContent]);
 
   // Send input through the control connection
   const sendInput = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (input: string, key: any) => {
-      const { conn } = stateRef.current;
+      const conn = connRef.current;
       if (!conn || conn.state !== "ready") return;
 
       if (key.return) {
@@ -200,9 +199,9 @@ function App() {
   const { stdout } = useStdout();
   const termRows = stdout?.rows ?? 24;
   const termCols = stdout?.columns ?? 80;
-  const sidebarWidth = 26; // 24 content + 2 border
+  const sidebarWidth = 24; // Ink width includes border
   const paneCols = Math.max(20, termCols - sidebarWidth - 4);
-  const paneRows = Math.max(5, termRows - 4);
+  const paneRows = Math.max(5, termRows - 5); // 2 border + 1 heading + 1 separator + 1 status bar
   const [focus, setFocus] = useState<Focus>("sidebar");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessions, setSessions] = useState<TmuxSession[]>([]);
