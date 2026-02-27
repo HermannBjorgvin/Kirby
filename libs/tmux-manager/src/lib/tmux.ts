@@ -1,12 +1,11 @@
 /**
  * Tmux command wrappers.
  *
- * Hot-path functions (capturePane, sendKeys, sendLiteral) use async execFile
- * to avoid blocking the event loop during interactive use.
- * Infrequent operations (createSession, killSession, etc.) remain synchronous
- * for simpler calling code.
+ * All operations are synchronous for simpler calling code.
+ * Hot-path I/O (capturePane, sendKeys, sendLiteral) lives in
+ * ControlConnection (tmux-control library) instead.
  */
-import { execFile, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -30,23 +29,6 @@ export function isAvailable(): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-/** Check if we're running inside a tmux session */
-export function isInsideTmux(): boolean {
-  return process.env["TMUX"] !== undefined;
-}
-
-/** Get the current tmux session name (if inside tmux) */
-export function getCurrentSession(): string | null {
-  if (!isInsideTmux()) return null;
-  try {
-    return execSync("tmux display-message -p '#S'", {
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return null;
   }
 }
 
@@ -122,43 +104,6 @@ export function killSession(name: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Switch the current tmux client to a different session */
-export function switchClient(name: string): boolean {
-  const safeName = validateSessionName(name);
-  try {
-    execSync(`tmux switch-client -t ${safeName}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Capture the content of a tmux pane */
-export function capturePane(
-  name: string,
-  options: { ansi?: boolean } = {}
-): Promise<string> {
-  const safeName = validateSessionName(name);
-  const flags = options.ansi ? ["-p", "-e"] : ["-p"];
-  return new Promise((resolve) => {
-    execFile("tmux", ["capture-pane", "-t", safeName, ...flags], (err, stdout) => {
-      resolve(err ? "" : stdout);
-    });
-  });
-}
-
-/** Send keys to a tmux session (fire-and-forget, non-blocking) */
-export function sendKeys(name: string, keys: string): void {
-  const safeName = validateSessionName(name);
-  execFile("tmux", ["send-keys", "-t", safeName, keys], () => {});
-}
-
-/** Send literal text to a tmux session (fire-and-forget, non-blocking) */
-export function sendLiteral(name: string, text: string): void {
-  const safeName = validateSessionName(name);
-  execFile("tmux", ["send-keys", "-t", safeName, "-l", "--", text], () => {});
 }
 
 /** Convert a git branch name to a valid tmux session name (replace / with -) */
