@@ -28,6 +28,7 @@ import { TerminalView } from './components/TerminalView.js';
 import { BranchPicker } from './components/BranchPicker.js';
 import { SettingsPanel } from './components/SettingsPanel.js';
 import { ReviewsSidebar } from './components/ReviewsSidebar.js';
+import { ReviewDetailPane } from './components/ReviewDetailPane.js';
 import { usePrData } from './hooks/usePrData.js';
 import { useControlMode } from './hooks/useControlMode.js';
 import {
@@ -214,6 +215,17 @@ function App() {
       : undefined;
   const selectedName = selectedSession?.name ?? null;
 
+  // Flatten categorized reviews and pick the selected one
+  const allReviewPrs = useMemo(
+    () => [
+      ...categorizedReviews.needsReview,
+      ...categorizedReviews.changesRequested,
+      ...categorizedReviews.approvedByYou,
+    ],
+    [categorizedReviews]
+  );
+  const selectedReviewPr = allReviewPrs[reviewSelectedIndex];
+
   // Clamp selectedIndex when total items shrinks
   useEffect(() => {
     if (totalItems > 0 && selectedIndex >= totalItems) {
@@ -392,11 +404,14 @@ function App() {
           </>
         )}
         {activeTab === 'reviews' && (
-          <ReviewsSidebar
-            categorized={categorizedReviews}
-            selectedIndex={reviewSelectedIndex}
-            sidebarWidth={sidebarWidth}
-          />
+          <>
+            <ReviewsSidebar
+              categorized={categorizedReviews}
+              selectedIndex={reviewSelectedIndex}
+              sidebarWidth={sidebarWidth}
+            />
+            <ReviewDetailPane pr={selectedReviewPr} />
+          </>
         )}
       </Box>
       <Box paddingX={1} justifyContent="space-between">
