@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import { render, Text, Box, useInput, useApp, useStdout, type Key } from "ink";
@@ -16,9 +16,7 @@ import {
   branchToSessionName,
 } from "@workflow-manager/tmux-manager";
 import type { TmuxSession } from "@workflow-manager/tmux-manager";
-import { ControlConnection } from "@workflow-manager/tmux-control";
 import {
-  fetchPullRequestsWithComments,
   readConfig,
   readGlobalConfig,
   writeGlobalConfig,
@@ -27,198 +25,15 @@ import {
   isAdoConfigured,
   autoDetectProjectConfig,
 } from "@workflow-manager/azure-devops";
-import type { AdoConfig } from "@workflow-manager/azure-devops";
 import type { BranchPrMap, PullRequestInfo, Config } from "@workflow-manager/shared-types";
 import { Sidebar } from "./components/Sidebar.js";
 import { TerminalView } from "./components/TerminalView.js";
 import { BranchPicker } from "./components/BranchPicker.js";
 import { SettingsPanel, SETTINGS_FIELDS } from "./components/SettingsPanel.js";
+import { usePrData } from "./hooks/usePrData.js";
+import { useControlMode } from "./hooks/useControlMode.js";
 
 type Focus = "sidebar" | "terminal";
-
-// --- PR Data Hook ---
-
-function usePrData(config: Config, refreshInterval = 60000) {
-  const [prMap, setPrMap] = useState<BranchPrMap>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
-
-  const refresh = useCallback(() => {
-    if (!isAdoConfigured(config)) return;
-    const adoConfig: AdoConfig = {
-      org: config.org!,
-      project: config.project!,
-      repo: config.repo!,
-      pat: config.pat!,
-    };
-    setLoading(true);
-    fetchPullRequestsWithComments(adoConfig)
-      .then((map) => {
-        if (mountedRef.current) {
-          setPrMap(map);
-          setError(null);
-        }
-      })
-      .catch((err: Error) => {
-        if (mountedRef.current) {
-          setError(err.message);
-        }
-      })
-      .finally(() => {
-        if (mountedRef.current) setLoading(false);
-      });
-  }, [config]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    if (!isAdoConfigured(config)) return;
-    refresh();
-    const interval = setInterval(refresh, config.prPollInterval ?? refreshInterval);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, [config, refresh, refreshInterval]);
-
-  return { prMap, loading, error, refresh };
-}
-
-// --- Control Mode Hook ---
-
-function useControlMode(
-  sessionName: string | null,
-  paneCols: number,
-  paneRows: number,
-  setPaneContent: (content: string) => void,
-  reconnectKey: number
-) {
-  const connRef = useRef<ControlConnection | null>(null);
-  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Clamp capture-pane output to paneRows lines to prevent overflow
-  const clampContent = useCallback(
-    (raw: string) => {
-      const lines = raw.split("\n");
-      return lines.length > paneRows
-        ? lines.slice(0, paneRows).join("\n")
-        : raw;
-    },
-    [paneRows]
-  );
-
-  // Schedule a debounced capture-pane render
-  const scheduleRender = useCallback(() => {
-    if (renderTimer.current) return; // already scheduled
-    renderTimer.current = setTimeout(() => {
-      renderTimer.current = null;
-      const conn = connRef.current;
-      if (conn && conn.state === "ready") {
-        conn.capturePane().then(
-          (content) => {
-            // Only update if this connection is still the active one
-            if (connRef.current === conn) {
-              setPaneContent(clampContent(content));
-            }
-          },
-          () => {
-            // Connection died between check and capture — ignore
-          }
-        );
-      }
-    }, 16); // ~60fps
-  }, [setPaneContent, clampContent]);
-
-  // Connect/disconnect only when session changes
-  useEffect(() => {
-    if (!sessionName) return;
-
-    // Don't connect if the tmux session doesn't exist yet —
-    // it will be auto-created when the user tabs into the terminal pane
-    if (!hasSession(sessionName)) {
-      setPaneContent("(press Tab to start session)");
-      return;
-    }
-
-    const conn = new ControlConnection(sessionName);
-    connRef.current = conn;
-
-    conn.on("output", () => {
-      scheduleRender();
-    });
-
-    conn.on("exit", () => {
-      setPaneContent("(session disconnected)");
-    });
-
-    conn.on("error", () => {
-      setPaneContent("(connection error)");
-    });
-
-    conn
-      .connect(paneCols, paneRows)
-      .then(async () => {
-        const content = await conn.capturePane();
-        if (connRef.current === conn) {
-          setPaneContent(clampContent(content));
-        }
-      })
-      .catch(() => {
-        setPaneContent("(failed to connect)");
-      });
-
-    return () => {
-      if (renderTimer.current) {
-        clearTimeout(renderTimer.current);
-        renderTimer.current = null;
-      }
-      conn.disconnect();
-      connRef.current = null;
-    };
-    // Only reconnect when the session changes (or reconnectKey bumps after auto-create)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionName, reconnectKey]);
-
-  // Resize the pane without reconnecting
-  useEffect(() => {
-    const conn = connRef.current;
-    if (conn && conn.state === "ready") {
-      conn.resize(paneCols, paneRows);
-      scheduleRender();
-    }
-  }, [paneCols, paneRows, scheduleRender]);
-
-  // Send input through the control connection
-  const sendInput = useCallback(
-    (input: string, key: Key) => {
-      const conn = connRef.current;
-      if (!conn || conn.state !== "ready") return;
-
-      if (key.return) {
-        conn.sendKeys("Enter");
-      } else if (key.backspace || key.delete) {
-        conn.sendKeys("BSpace");
-      } else if (key.upArrow) {
-        conn.sendKeys("Up");
-      } else if (key.downArrow) {
-        conn.sendKeys("Down");
-      } else if (key.leftArrow) {
-        conn.sendKeys("Left");
-      } else if (key.rightArrow) {
-        conn.sendKeys("Right");
-      } else if (key.tab) {
-        // Tab is reserved for focus switching, don't forward
-      } else if (key.ctrl && input === "c") {
-        conn.sendKeys("C-c");
-      } else if (input) {
-        conn.sendLiteral(input);
-      }
-    },
-    []
-  );
-
-  return { sendInput };
-}
 
 // --- App ---
 
