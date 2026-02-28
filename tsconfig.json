@@ -20,6 +20,9 @@
     },
     {
       "path": "./libs/vcs/core"
+    },
+    {
+      "path": "./libs/vcs/azure-devops"
     }
   ]
 }
