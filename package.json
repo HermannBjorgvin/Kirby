@@ -29,7 +29,8 @@
   },
   "workspaces": [
     "apps/*",
-    "libs/*"
+    "libs/*",
+    "libs/vcs/*"
   ],
   "lint-staged": {
     "*": "npx nx format:write --files"
