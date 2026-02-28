@@ -14,20 +14,15 @@ import type {
 
 const execFile = promisify(execFileCb);
 
-function extractStderr(err: unknown): string {
-  if (err != null && typeof err === 'object' && 'stderr' in err) {
-    return String((err as { stderr: unknown }).stderr).trim();
-  }
+function extractErrorMessage(err: unknown): string {
+  if (err == null || typeof err !== 'object') return String(err);
+  const e = err as Record<string, unknown>;
+  const stderr = typeof e.stderr === 'string' ? e.stderr.trim() : '';
+  if (stderr) return stderr;
+  const stdout = typeof e.stdout === 'string' ? e.stdout.trim() : '';
+  if (stdout) return stdout;
+  if (e.message) return String(e.message);
   return String(err);
-}
-
-export async function ghApi(endpoint: string): Promise<unknown> {
-  try {
-    const { stdout } = await execFile('gh', ['api', endpoint]);
-    return JSON.parse(stdout);
-  } catch (err: unknown) {
-    throw new Error(`gh api error: ${extractStderr(err)}`);
-  }
 }
 
 export async function ghGraphQL(
@@ -37,12 +32,16 @@ export async function ghGraphQL(
   try {
     const args = ['api', 'graphql', '-f', `query=${query}`];
     for (const [key, val] of Object.entries(variables)) {
-      args.push('-F', `${key}=${val}`);
+      if (typeof val === 'number') {
+        args.push('-F', `${key}=${val}`);
+      } else {
+        args.push('-f', `${key}=${val}`);
+      }
     }
     const { stdout } = await execFile('gh', args);
     return JSON.parse(stdout);
   } catch (err: unknown) {
-    throw new Error(`gh graphql error: ${extractStderr(err)}`);
+    throw new Error(`gh graphql error: ${extractErrorMessage(err)}`);
   }
 }
 
@@ -100,124 +99,127 @@ export function latestReviewPerUser(
   }));
 }
 
-export function deriveCheckRunStatus(
-  checkRuns: Array<{ status: string; conclusion: string | null }>
-): BuildStatusState {
-  if (checkRuns.length === 0) return 'none';
+// ── GraphQL search ────────────────────────────────────────────────
 
-  let hasFailed = false;
-  let hasPending = false;
-  let hasSucceeded = false;
-
-  for (const cr of checkRuns) {
-    if (cr.status === 'completed') {
-      if (cr.conclusion === 'success') {
-        hasSucceeded = true;
-      } else if (
-        cr.conclusion === 'failure' ||
-        cr.conclusion === 'timed_out' ||
-        cr.conclusion === 'cancelled' ||
-        cr.conclusion === 'action_required'
-      ) {
-        hasFailed = true;
+const SEARCH_PRS_QUERY = `
+  query($searchQuery: String!, $cursor: String) {
+    search(query: $searchQuery, type: ISSUE, first: 100, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
       }
-    } else {
-      // queued, in_progress, pending
-      hasPending = true;
-    }
-  }
-
-  if (hasFailed) return 'failed';
-  if (hasPending) return 'pending';
-  if (hasSucceeded) return 'succeeded';
-  return 'none';
-}
-
-// ── API helpers ────────────────────────────────────────────────────
-
-interface GitHubPrRaw {
-  number: number;
-  title: string;
-  head: { ref: string };
-  base: { ref: string };
-  html_url: string;
-  user: { login: string };
-  draft: boolean;
-}
-
-export async function fetchOpenPrs(
-  gh: GitHubProject
-): Promise<PullRequestInfo[]> {
-  const data = (await ghApi(
-    `repos/${gh.owner}/${gh.repo}/pulls?state=open&per_page=100`
-  )) as GitHubPrRaw[];
-  return data.map((pr) => ({
-    id: pr.number,
-    title: pr.title,
-    sourceBranch: pr.head.ref,
-    targetBranch: pr.base.ref,
-    url: pr.html_url,
-    createdByIdentifier: pr.user.login,
-    createdByDisplayName: pr.user.login,
-    isDraft: pr.draft,
-  }));
-}
-
-export async function fetchReviews(
-  gh: GitHubProject,
-  prNumber: number
-): Promise<PullRequestReviewer[]> {
-  const data = (await ghApi(
-    `repos/${gh.owner}/${gh.repo}/pulls/${prNumber}/reviews`
-  )) as Array<{ user: { login: string }; state: string }>;
-  return latestReviewPerUser(data);
-}
-
-export async function fetchCheckRuns(
-  gh: GitHubProject,
-  ref: string
-): Promise<BuildStatusState> {
-  const data = (await ghApi(
-    `repos/${gh.owner}/${gh.repo}/commits/${ref}/check-runs?per_page=100`
-  )) as { check_runs: Array<{ status: string; conclusion: string | null }> };
-  return deriveCheckRunStatus(data.check_runs ?? []);
-}
-
-const UNRESOLVED_THREADS_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $number) {
-        reviewThreads(first: 100) {
-          nodes { isResolved }
+      nodes {
+        ... on PullRequest {
+          number
+          title
+          headRefName
+          baseRefName
+          url
+          author { login }
+          isDraft
+          reviews(last: 100) {
+            nodes {
+              author { login }
+              state
+            }
+          }
+          reviewThreads(first: 100) {
+            nodes { isResolved }
+          }
+          commits(last: 1) {
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                }
+              }
+            }
+          }
         }
       }
     }
   }
 `;
 
-interface UnresolvedThreadsResponse {
-  data: {
-    repository: {
-      pullRequest: {
-        reviewThreads: {
-          nodes: Array<{ isResolved: boolean }>;
-        };
+interface SearchPrNode {
+  number: number;
+  title: string;
+  headRefName: string;
+  baseRefName: string;
+  url: string;
+  author: { login: string };
+  isDraft: boolean;
+  reviews: {
+    nodes: Array<{ author: { login: string }; state: string }>;
+  };
+  reviewThreads: {
+    nodes: Array<{ isResolved: boolean }>;
+  };
+  commits: {
+    nodes: Array<{
+      commit: {
+        statusCheckRollup: { state: string } | null;
       };
+    }>;
+  };
+}
+
+interface SearchPrsResponse {
+  data: {
+    search: {
+      pageInfo: {
+        hasNextPage: boolean;
+        endCursor: string | null;
+      };
+      nodes: SearchPrNode[];
     };
   };
 }
 
-export async function fetchUnresolvedThreadCount(
-  gh: GitHubProject,
-  prNumber: number
-): Promise<number> {
-  const result = (await ghGraphQL(UNRESOLVED_THREADS_QUERY, {
-    owner: gh.owner,
-    repo: gh.repo,
-    number: prNumber,
-  })) as UnresolvedThreadsResponse;
-  const threads = result.data.repository.pullRequest.reviewThreads.nodes;
-  return threads.filter((t) => !t.isResolved).length;
+export function mapRollupState(
+  state: string | null | undefined
+): BuildStatusState {
+  switch (state) {
+    case 'SUCCESS':
+      return 'succeeded';
+    case 'FAILURE':
+    case 'ERROR':
+      return 'failed';
+    case 'PENDING':
+    case 'EXPECTED':
+      return 'pending';
+    default:
+      return 'none';
+  }
+}
+
+function transformSearchNode(node: SearchPrNode): PullRequestInfo {
+  const reviews = node.reviews.nodes.map((r) => ({
+    user: { login: r.author.login },
+    state: r.state,
+  }));
+  const reviewers = latestReviewPerUser(reviews);
+
+  const unresolvedCount = node.reviewThreads.nodes.filter(
+    (t) => !t.isResolved
+  ).length;
+
+  const rollup = node.commits.nodes[0]?.commit.statusCheckRollup;
+  const buildStatus = mapRollupState(rollup?.state);
+
+  return {
+    id: node.number,
+    title: node.title,
+    sourceBranch: node.headRefName,
+    targetBranch: node.baseRefName,
+    url: node.url,
+    createdByIdentifier: node.author.login,
+    createdByDisplayName: node.author.login,
+    isDraft: node.isDraft,
+    reviewers,
+    buildStatus,
+    activeCommentCount: unresolvedCount,
+  };
 }
 
 // ── VcsProvider implementation ──────────────────────────────────────
@@ -255,27 +257,35 @@ export const githubProvider: VcsProvider = {
     _auth: Record<string, string>,
     project: Record<string, string>
   ): Promise<BranchPrMap> {
+    const username = project.username;
+    if (!username) return {};
+
     const gh = toGitHubProject(project);
-    const prs = await fetchOpenPrs(gh);
-    const withDetails = await Promise.all(
-      prs.map(async (pr) => {
-        const [reviewers, buildStatus, activeCommentCount] = await Promise.all([
-          fetchReviews(gh, pr.id),
-          fetchCheckRuns(gh, pr.sourceBranch),
-          fetchUnresolvedThreadCount(gh, pr.id),
-        ]);
-        return {
-          ...pr,
-          reviewers,
-          buildStatus,
-          activeCommentCount,
-        } satisfies PullRequestInfo;
-      })
-    );
+    const searchQuery = `repo:${gh.owner}/${gh.repo} is:pr is:open involves:${username}`;
+
     const map: BranchPrMap = {};
-    for (const pr of withDetails) {
-      map[pr.sourceBranch] = pr;
-    }
+    let cursor: string | undefined;
+
+    do {
+      const variables: Record<string, string> = { searchQuery };
+      if (cursor) variables.cursor = cursor;
+
+      const result = (await ghGraphQL(
+        SEARCH_PRS_QUERY,
+        variables
+      )) as SearchPrsResponse;
+
+      const { nodes, pageInfo } = result.data.search;
+      for (const node of nodes) {
+        const pr = transformSearchNode(node);
+        map[pr.sourceBranch] = pr;
+      }
+
+      cursor = pageInfo.hasNextPage
+        ? pageInfo.endCursor ?? undefined
+        : undefined;
+    } while (cursor);
+
     return map;
   },
 

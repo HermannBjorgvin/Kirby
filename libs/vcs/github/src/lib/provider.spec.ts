@@ -3,12 +3,7 @@ import {
   parseGitHubRemoteUrl,
   mapReviewState,
   latestReviewPerUser,
-  deriveCheckRunStatus,
-  fetchOpenPrs,
-  fetchReviews,
-  fetchCheckRuns,
-  fetchUnresolvedThreadCount,
-  ghApi,
+  mapRollupState,
   ghGraphQL,
   githubProvider,
 } from './provider.js';
@@ -38,8 +33,6 @@ function ghError(message: string) {
     }
   );
 }
-
-const testProject = { owner: 'octocat', repo: 'hello-world' };
 
 // ── URL parsing ────────────────────────────────────────────────────
 
@@ -139,270 +132,74 @@ describe('latestReviewPerUser', () => {
   });
 });
 
-// ── Check run aggregation ──────────────────────────────────────────
+// ── Rollup state mapping ──────────────────────────────────────────
 
-describe('deriveCheckRunStatus', () => {
-  it('returns none for empty array', () => {
-    expect(deriveCheckRunStatus([])).toBe('none');
+describe('mapRollupState', () => {
+  it('maps SUCCESS to succeeded', () => {
+    expect(mapRollupState('SUCCESS')).toBe('succeeded');
   });
 
-  it('returns succeeded when all pass', () => {
-    expect(
-      deriveCheckRunStatus([
-        { status: 'completed', conclusion: 'success' },
-        { status: 'completed', conclusion: 'success' },
-      ])
-    ).toBe('succeeded');
+  it('maps FAILURE to failed', () => {
+    expect(mapRollupState('FAILURE')).toBe('failed');
   });
 
-  it('returns failed when any fails', () => {
-    expect(
-      deriveCheckRunStatus([
-        { status: 'completed', conclusion: 'success' },
-        { status: 'completed', conclusion: 'failure' },
-      ])
-    ).toBe('failed');
+  it('maps ERROR to failed', () => {
+    expect(mapRollupState('ERROR')).toBe('failed');
   });
 
-  it('returns failed for timed_out conclusion', () => {
-    expect(
-      deriveCheckRunStatus([{ status: 'completed', conclusion: 'timed_out' }])
-    ).toBe('failed');
+  it('maps PENDING to pending', () => {
+    expect(mapRollupState('PENDING')).toBe('pending');
   });
 
-  it('returns failed for cancelled conclusion', () => {
-    expect(
-      deriveCheckRunStatus([{ status: 'completed', conclusion: 'cancelled' }])
-    ).toBe('failed');
+  it('maps EXPECTED to pending', () => {
+    expect(mapRollupState('EXPECTED')).toBe('pending');
   });
 
-  it('returns failed for action_required conclusion', () => {
-    expect(
-      deriveCheckRunStatus([
-        { status: 'completed', conclusion: 'action_required' },
-      ])
-    ).toBe('failed');
+  it('maps null to none', () => {
+    expect(mapRollupState(null)).toBe('none');
   });
 
-  it('returns pending when any in_progress', () => {
-    expect(
-      deriveCheckRunStatus([
-        { status: 'completed', conclusion: 'success' },
-        { status: 'in_progress', conclusion: null },
-      ])
-    ).toBe('pending');
+  it('maps undefined to none', () => {
+    expect(mapRollupState(undefined)).toBe('none');
   });
 
-  it('returns pending for queued status', () => {
-    expect(deriveCheckRunStatus([{ status: 'queued', conclusion: null }])).toBe(
-      'pending'
-    );
-  });
-
-  it('failed takes priority over pending', () => {
-    expect(
-      deriveCheckRunStatus([
-        { status: 'completed', conclusion: 'failure' },
-        { status: 'in_progress', conclusion: null },
-      ])
-    ).toBe('failed');
+  it('maps unknown string to none', () => {
+    expect(mapRollupState('SOMETHING_ELSE')).toBe('none');
   });
 });
 
-// ── ghApi transport ────────────────────────────────────────────────
-
-describe('ghApi', () => {
-  beforeEach(() => mockExecFile.mockReset());
-
-  it('calls gh with correct args and parses JSON', async () => {
-    ghSuccess({ hello: 'world' });
-    const result = await ghApi('repos/o/r/pulls');
-    expect(mockExecFile).toHaveBeenCalledOnce();
-    expect(mockExecFile.mock.calls[0]![0]).toBe('gh');
-    expect(mockExecFile.mock.calls[0]![1]).toEqual(['api', 'repos/o/r/pulls']);
-    expect(result).toEqual({ hello: 'world' });
-  });
-
-  it('throws with stderr on failure', async () => {
-    ghError('Not Found (HTTP 404)');
-    await expect(ghApi('repos/o/r/pulls')).rejects.toThrow(
-      'gh api error: Not Found (HTTP 404)'
-    );
-  });
-});
+// ── ghGraphQL transport ─────────────────────────────────────────
 
 describe('ghGraphQL', () => {
   beforeEach(() => mockExecFile.mockReset());
 
-  it('calls gh with graphql args and parses JSON', async () => {
-    ghSuccess({ data: { repository: { name: 'test' } } });
-    const result = await ghGraphQL(
-      'query($owner: String!) { repository(owner: $owner) { name } }',
-      { owner: 'octocat' }
-    );
-    expect(mockExecFile).toHaveBeenCalledOnce();
+  it('uses -f for string variables and -F for numeric variables', async () => {
+    ghSuccess({ data: {} });
+    await ghGraphQL('query { test }', { name: 'alice', count: 42 });
     const args = mockExecFile.mock.calls[0]![1] as string[];
+    // query always uses -f
     expect(args[0]).toBe('api');
     expect(args[1]).toBe('graphql');
     expect(args[2]).toBe('-f');
-    expect(args[3]).toContain('query($owner');
-    expect(args[4]).toBe('-F');
-    expect(args[5]).toBe('owner=octocat');
-    expect(result).toEqual({ data: { repository: { name: 'test' } } });
+    expect(args[3]).toContain('query=');
+    // string var uses -f
+    expect(args[4]).toBe('-f');
+    expect(args[5]).toBe('name=alice');
+    // numeric var uses -F
+    expect(args[6]).toBe('-F');
+    expect(args[7]).toBe('count=42');
+  });
+
+  it('parses JSON response', async () => {
+    ghSuccess({ data: { viewer: { login: 'test' } } });
+    const result = await ghGraphQL('{ viewer { login } }', {});
+    expect(result).toEqual({ data: { viewer: { login: 'test' } } });
   });
 
   it('throws with stderr on failure', async () => {
     ghError('GraphQL error');
     await expect(ghGraphQL('{ viewer { login } }', {})).rejects.toThrow(
       'gh graphql error: GraphQL error'
-    );
-  });
-});
-
-describe('fetchUnresolvedThreadCount', () => {
-  beforeEach(() => mockExecFile.mockReset());
-
-  it('counts unresolved threads from nodes', async () => {
-    ghSuccess({
-      data: {
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: [
-                { isResolved: false },
-                { isResolved: true },
-                { isResolved: false },
-                { isResolved: true },
-                { isResolved: false },
-              ],
-            },
-          },
-        },
-      },
-    });
-    const count = await fetchUnresolvedThreadCount(testProject, 42);
-    expect(count).toBe(3);
-    const args = mockExecFile.mock.calls[0]![1] as string[];
-    expect(args).toContain('-F');
-    expect(args).toContain('number=42');
-  });
-
-  it('returns 0 when all threads resolved', async () => {
-    ghSuccess({
-      data: {
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: [{ isResolved: true }, { isResolved: true }],
-            },
-          },
-        },
-      },
-    });
-    expect(await fetchUnresolvedThreadCount(testProject, 1)).toBe(0);
-  });
-
-  it('returns 0 when no threads exist', async () => {
-    ghSuccess({
-      data: {
-        repository: {
-          pullRequest: {
-            reviewThreads: { nodes: [] },
-          },
-        },
-      },
-    });
-    expect(await fetchUnresolvedThreadCount(testProject, 1)).toBe(0);
-  });
-});
-
-// ── API helpers ────────────────────────────────────────────────────
-
-describe('fetchOpenPrs', () => {
-  beforeEach(() => mockExecFile.mockReset());
-
-  it('returns parsed PRs', async () => {
-    ghSuccess([
-      {
-        number: 42,
-        title: 'Add feature X',
-        head: { ref: 'feat/x' },
-        base: { ref: 'main' },
-        html_url: 'https://github.com/octocat/hello-world/pull/42',
-        user: { login: 'octocat' },
-        draft: false,
-      },
-    ]);
-
-    const result = await fetchOpenPrs(testProject);
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      id: 42,
-      title: 'Add feature X',
-      sourceBranch: 'feat/x',
-      targetBranch: 'main',
-      url: 'https://github.com/octocat/hello-world/pull/42',
-      createdByIdentifier: 'octocat',
-      createdByDisplayName: 'octocat',
-      isDraft: false,
-    });
-
-    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
-    expect(endpoint).toContain('repos/octocat/hello-world/pulls');
-    expect(endpoint).toContain('state=open');
-  });
-
-  it('throws on gh error', async () => {
-    ghError('HTTP 401');
-    await expect(fetchOpenPrs(testProject)).rejects.toThrow('gh api error');
-  });
-});
-
-describe('fetchReviews', () => {
-  beforeEach(() => mockExecFile.mockReset());
-
-  it('returns deduplicated reviewers', async () => {
-    ghSuccess([
-      { user: { login: 'alice' }, state: 'COMMENTED' },
-      { user: { login: 'alice' }, state: 'APPROVED' },
-    ]);
-
-    const result = await fetchReviews(testProject, 42);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.decision).toBe('approved');
-
-    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
-    expect(endpoint).toContain('/pulls/42/reviews');
-  });
-
-  it('throws on gh error', async () => {
-    ghError('HTTP 403');
-    await expect(fetchReviews(testProject, 42)).rejects.toThrow('gh api error');
-  });
-});
-
-describe('fetchCheckRuns', () => {
-  beforeEach(() => mockExecFile.mockReset());
-
-  it('returns derived status', async () => {
-    ghSuccess({
-      check_runs: [
-        { status: 'completed', conclusion: 'success' },
-        { status: 'in_progress', conclusion: null },
-      ],
-    });
-
-    const result = await fetchCheckRuns(testProject, 'feat/x');
-    expect(result).toBe('pending');
-
-    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
-    expect(endpoint).toContain('/commits/feat/x/check-runs');
-  });
-
-  it('throws on gh error', async () => {
-    ghError('HTTP 500');
-    await expect(fetchCheckRuns(testProject, 'main')).rejects.toThrow(
-      'gh api error'
     );
   });
 });
@@ -474,66 +271,78 @@ describe('githubProvider', () => {
   describe('fetchPullRequests', () => {
     beforeEach(() => mockExecFile.mockReset());
 
-    it('returns a map of branch to PR info with reviews and build status', async () => {
-      // list PRs
-      ghSuccess([
-        {
-          number: 10,
-          title: 'Feature A',
-          head: { ref: 'feat-a' },
-          base: { ref: 'main' },
-          html_url: 'https://github.com/octocat/hello-world/pull/10',
-          user: { login: 'octocat' },
-          draft: false,
-        },
-        {
-          number: 11,
-          title: 'Feature B',
-          head: { ref: 'feat-b' },
-          base: { ref: 'main' },
-          html_url: 'https://github.com/octocat/hello-world/pull/11',
-          user: { login: 'alice' },
-          draft: true,
-        },
-      ]);
-      // PR 10: reviews, check-runs, unresolved threads
-      ghSuccess([{ user: { login: 'bob' }, state: 'APPROVED' }]);
-      ghSuccess({
-        check_runs: [{ status: 'completed', conclusion: 'success' }],
-      });
+    it('returns empty map when no username configured', async () => {
+      const result = await githubProvider.fetchPullRequests(
+        {},
+        { owner: 'octocat', repo: 'hello-world' }
+      );
+      expect(result).toEqual({});
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it('transforms GraphQL search response to BranchPrMap', async () => {
       ghSuccess({
         data: {
-          repository: {
-            pullRequest: {
-              reviewThreads: {
-                nodes: [
-                  { isResolved: false },
-                  { isResolved: true },
-                  { isResolved: true },
-                  { isResolved: true },
-                  { isResolved: false },
-                ],
+          search: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [
+              {
+                number: 10,
+                title: 'Feature A',
+                headRefName: 'feat-a',
+                baseRefName: 'main',
+                url: 'https://github.com/octocat/hello-world/pull/10',
+                author: { login: 'octocat' },
+                isDraft: false,
+                reviews: {
+                  nodes: [{ author: { login: 'bob' }, state: 'APPROVED' }],
+                },
+                reviewThreads: {
+                  nodes: [
+                    { isResolved: false },
+                    { isResolved: true },
+                    { isResolved: false },
+                  ],
+                },
+                commits: {
+                  nodes: [
+                    {
+                      commit: {
+                        statusCheckRollup: { state: 'SUCCESS' },
+                      },
+                    },
+                  ],
+                },
               },
-            },
-          },
-        },
-      });
-      // PR 11: reviews, check-runs, unresolved threads
-      ghSuccess([]);
-      ghSuccess({
-        check_runs: [{ status: 'completed', conclusion: 'failure' }],
-      });
-      ghSuccess({
-        data: {
-          repository: {
-            pullRequest: {
-              reviewThreads: { nodes: [] },
-            },
+              {
+                number: 11,
+                title: 'Feature B',
+                headRefName: 'feat-b',
+                baseRefName: 'main',
+                url: 'https://github.com/octocat/hello-world/pull/11',
+                author: { login: 'alice' },
+                isDraft: true,
+                reviews: { nodes: [] },
+                reviewThreads: { nodes: [] },
+                commits: {
+                  nodes: [
+                    {
+                      commit: {
+                        statusCheckRollup: { state: 'FAILURE' },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
           },
         },
       });
 
-      const result = await githubProvider.fetchPullRequests({}, testProject);
+      const result = await githubProvider.fetchPullRequests(
+        {},
+        { owner: 'octocat', repo: 'hello-world', username: 'octocat' }
+      );
 
       expect(result['feat-a']).toEqual({
         id: 10,
@@ -554,6 +363,7 @@ describe('githubProvider', () => {
         buildStatus: 'succeeded',
         activeCommentCount: 2,
       });
+
       expect(result['feat-b']).toEqual({
         id: 11,
         title: 'Feature B',
@@ -567,6 +377,86 @@ describe('githubProvider', () => {
         buildStatus: 'failed',
         activeCommentCount: 0,
       });
+
+      // Verify the search query contains involves:username
+      const args = mockExecFile.mock.calls[0]![1] as string[];
+      const searchQueryArg = args.find((a: string) =>
+        a.startsWith('searchQuery=')
+      );
+      expect(searchQueryArg).toContain('involves:octocat');
+      expect(searchQueryArg).toContain('repo:octocat/hello-world');
+      expect(searchQueryArg).toContain('is:pr');
+      expect(searchQueryArg).toContain('is:open');
+    });
+
+    it('paginates when hasNextPage is true', async () => {
+      // Page 1
+      ghSuccess({
+        data: {
+          search: {
+            pageInfo: { hasNextPage: true, endCursor: 'cursor-abc' },
+            nodes: [
+              {
+                number: 1,
+                title: 'PR 1',
+                headRefName: 'branch-1',
+                baseRefName: 'main',
+                url: 'https://github.com/o/r/pull/1',
+                author: { login: 'user' },
+                isDraft: false,
+                reviews: { nodes: [] },
+                reviewThreads: { nodes: [] },
+                commits: {
+                  nodes: [{ commit: { statusCheckRollup: null } }],
+                },
+              },
+            ],
+          },
+        },
+      });
+      // Page 2
+      ghSuccess({
+        data: {
+          search: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [
+              {
+                number: 2,
+                title: 'PR 2',
+                headRefName: 'branch-2',
+                baseRefName: 'main',
+                url: 'https://github.com/o/r/pull/2',
+                author: { login: 'user' },
+                isDraft: false,
+                reviews: { nodes: [] },
+                reviewThreads: { nodes: [] },
+                commits: {
+                  nodes: [
+                    { commit: { statusCheckRollup: { state: 'PENDING' } } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      const result = await githubProvider.fetchPullRequests(
+        {},
+        { owner: 'o', repo: 'r', username: 'user' }
+      );
+
+      expect(Object.keys(result)).toHaveLength(2);
+      expect(result['branch-1']?.id).toBe(1);
+      expect(result['branch-1']?.buildStatus).toBe('none');
+      expect(result['branch-2']?.id).toBe(2);
+      expect(result['branch-2']?.buildStatus).toBe('pending');
+
+      // Second call should include cursor
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const secondArgs = mockExecFile.mock.calls[1]![1] as string[];
+      const cursorArg = secondArgs.find((a: string) => a.startsWith('cursor='));
+      expect(cursorArg).toBe('cursor=cursor-abc');
     });
   });
 });
