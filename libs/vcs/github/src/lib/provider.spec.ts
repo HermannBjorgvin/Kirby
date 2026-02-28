@@ -7,7 +7,9 @@ import {
   fetchOpenPrs,
   fetchReviews,
   fetchCheckRuns,
+  fetchUnresolvedThreadCount,
   ghApi,
+  ghGraphQL,
   githubProvider,
 } from './provider.js';
 
@@ -229,6 +231,70 @@ describe('ghApi', () => {
   });
 });
 
+describe('ghGraphQL', () => {
+  beforeEach(() => mockExecFile.mockReset());
+
+  it('calls gh with graphql args and parses JSON', async () => {
+    ghSuccess({ data: { repository: { name: 'test' } } });
+    const result = await ghGraphQL(
+      'query($owner: String!) { repository(owner: $owner) { name } }',
+      { owner: 'octocat' }
+    );
+    expect(mockExecFile).toHaveBeenCalledOnce();
+    const args = mockExecFile.mock.calls[0]![1] as string[];
+    expect(args[0]).toBe('api');
+    expect(args[1]).toBe('graphql');
+    expect(args[2]).toBe('-f');
+    expect(args[3]).toContain('query($owner');
+    expect(args[4]).toBe('-F');
+    expect(args[5]).toBe('owner=octocat');
+    expect(result).toEqual({ data: { repository: { name: 'test' } } });
+  });
+
+  it('throws with stderr on failure', async () => {
+    ghError('GraphQL error');
+    await expect(ghGraphQL('{ viewer { login } }', {})).rejects.toThrow(
+      'gh graphql error: GraphQL error'
+    );
+  });
+});
+
+describe('fetchUnresolvedThreadCount', () => {
+  beforeEach(() => mockExecFile.mockReset());
+
+  it('returns unresolved thread count (total minus resolved)', async () => {
+    ghSuccess({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: { totalCount: 5 },
+            resolvedThreads: { totalCount: 2 },
+          },
+        },
+      },
+    });
+    const count = await fetchUnresolvedThreadCount(testProject, 42);
+    expect(count).toBe(3);
+    const args = mockExecFile.mock.calls[0]![1] as string[];
+    expect(args).toContain('-F');
+    expect(args).toContain('number=42');
+  });
+
+  it('returns 0 when all threads resolved', async () => {
+    ghSuccess({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: { totalCount: 4 },
+            resolvedThreads: { totalCount: 4 },
+          },
+        },
+      },
+    });
+    expect(await fetchUnresolvedThreadCount(testProject, 1)).toBe(0);
+  });
+});
+
 // ── API helpers ────────────────────────────────────────────────────
 
 describe('fetchOpenPrs', () => {
@@ -409,15 +475,35 @@ describe('githubProvider', () => {
           draft: true,
         },
       ]);
-      // PR 10: reviews then check-runs
+      // PR 10: reviews, check-runs, unresolved threads
       ghSuccess([{ user: { login: 'bob' }, state: 'APPROVED' }]);
       ghSuccess({
         check_runs: [{ status: 'completed', conclusion: 'success' }],
       });
-      // PR 11: reviews then check-runs
+      ghSuccess({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: { totalCount: 5 },
+              resolvedThreads: { totalCount: 3 },
+            },
+          },
+        },
+      });
+      // PR 11: reviews, check-runs, unresolved threads
       ghSuccess([]);
       ghSuccess({
         check_runs: [{ status: 'completed', conclusion: 'failure' }],
+      });
+      ghSuccess({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: { totalCount: 0 },
+              resolvedThreads: { totalCount: 0 },
+            },
+          },
+        },
       });
 
       const result = await githubProvider.fetchPullRequests({}, testProject);
@@ -439,6 +525,7 @@ describe('githubProvider', () => {
           },
         ],
         buildStatus: 'succeeded',
+        activeCommentCount: 2,
       });
       expect(result['feat-b']).toEqual({
         id: 11,
@@ -451,6 +538,7 @@ describe('githubProvider', () => {
         isDraft: true,
         reviewers: [],
         buildStatus: 'failed',
+        activeCommentCount: 0,
       });
     });
   });

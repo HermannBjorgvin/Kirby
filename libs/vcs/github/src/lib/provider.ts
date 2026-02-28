@@ -14,16 +14,35 @@ import type {
 
 const execFile = promisify(execFileCb);
 
+function extractStderr(err: unknown): string {
+  if (err != null && typeof err === 'object' && 'stderr' in err) {
+    return String((err as { stderr: unknown }).stderr).trim();
+  }
+  return String(err);
+}
+
 export async function ghApi(endpoint: string): Promise<unknown> {
   try {
     const { stdout } = await execFile('gh', ['api', endpoint]);
     return JSON.parse(stdout);
   } catch (err: unknown) {
-    const stderr =
-      err != null && typeof err === 'object' && 'stderr' in err
-        ? String((err as { stderr: unknown }).stderr).trim()
-        : String(err);
-    throw new Error(`gh api error: ${stderr}`);
+    throw new Error(`gh api error: ${extractStderr(err)}`);
+  }
+}
+
+export async function ghGraphQL(
+  query: string,
+  variables: Record<string, string | number>
+): Promise<unknown> {
+  try {
+    const args = ['api', 'graphql', '-f', `query=${query}`];
+    for (const [key, val] of Object.entries(variables)) {
+      args.push('-F', `${key}=${val}`);
+    }
+    const { stdout } = await execFile('gh', args);
+    return JSON.parse(stdout);
+  } catch (err: unknown) {
+    throw new Error(`gh graphql error: ${extractStderr(err)}`);
   }
 }
 
@@ -164,6 +183,45 @@ export async function fetchCheckRuns(
   return deriveCheckRunStatus(data.check_runs ?? []);
 }
 
+const UNRESOLVED_THREADS_QUERY = `
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 0) {
+          totalCount
+        }
+        resolvedThreads: reviewThreads(first: 0, filterBy: {resolved: true}) {
+          totalCount
+        }
+      }
+    }
+  }
+`;
+
+interface UnresolvedThreadsResponse {
+  data: {
+    repository: {
+      pullRequest: {
+        reviewThreads: { totalCount: number };
+        resolvedThreads: { totalCount: number };
+      };
+    };
+  };
+}
+
+export async function fetchUnresolvedThreadCount(
+  gh: GitHubProject,
+  prNumber: number
+): Promise<number> {
+  const result = (await ghGraphQL(UNRESOLVED_THREADS_QUERY, {
+    owner: gh.owner,
+    repo: gh.repo,
+    number: prNumber,
+  })) as UnresolvedThreadsResponse;
+  const pr = result.data.repository.pullRequest;
+  return pr.reviewThreads.totalCount - pr.resolvedThreads.totalCount;
+}
+
 // ── VcsProvider implementation ──────────────────────────────────────
 
 export const githubProvider: VcsProvider = {
@@ -201,15 +259,19 @@ export const githubProvider: VcsProvider = {
   ): Promise<BranchPrMap> {
     const gh = toGitHubProject(project);
     const prs = await fetchOpenPrs(gh);
-    // Note: activeCommentCount is not fetched — GitHub has no direct
-    // equivalent to ADO's active thread count. The UI handles undefined.
     const withDetails = await Promise.all(
       prs.map(async (pr) => {
-        const [reviewers, buildStatus] = await Promise.all([
+        const [reviewers, buildStatus, activeCommentCount] = await Promise.all([
           fetchReviews(gh, pr.id),
           fetchCheckRuns(gh, pr.sourceBranch),
+          fetchUnresolvedThreadCount(gh, pr.id),
         ]);
-        return { ...pr, reviewers, buildStatus } satisfies PullRequestInfo;
+        return {
+          ...pr,
+          reviewers,
+          buildStatus,
+          activeCommentCount,
+        } satisfies PullRequestInfo;
       })
     );
     const map: BranchPrMap = {};
