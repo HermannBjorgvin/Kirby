@@ -24,8 +24,6 @@ function baseUrl(config: AdoConfig): string {
   return `https://dev.azure.com/${config.org}/${config.project}/_apis/git/repositories/${config.repo}`;
 }
 
-// --- Pure parsers (exported for testing) ---
-
 export function parseReviewer(raw: {
   displayName?: string;
   uniqueName?: string;
@@ -123,8 +121,6 @@ export function deriveBuildStatus(
   if (hasSucceeded) return 'succeeded';
   return 'none';
 }
-
-// --- API functions ---
 
 export async function fetchActivePullRequests(
   config: AdoConfig

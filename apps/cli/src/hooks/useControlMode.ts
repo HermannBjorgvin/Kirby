@@ -13,7 +13,6 @@ export function useControlMode(
   const connRef = useRef<ControlConnection | null>(null);
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Clamp capture-pane output to paneRows lines to prevent overflow
   const clampContent = useCallback(
     (raw: string) => {
       const lines = raw.split('\n');
@@ -24,9 +23,8 @@ export function useControlMode(
     [paneRows]
   );
 
-  // Schedule a debounced capture-pane render
   const scheduleRender = useCallback(() => {
-    if (renderTimer.current) return; // already scheduled
+    if (renderTimer.current) return;
     renderTimer.current = setTimeout(() => {
       renderTimer.current = null;
       const conn = connRef.current;
@@ -46,7 +44,6 @@ export function useControlMode(
     }, 16); // ~60fps
   }, [setPaneContent, clampContent]);
 
-  // Connect/disconnect only when session changes
   useEffect(() => {
     if (!sessionName) return;
 
@@ -96,7 +93,6 @@ export function useControlMode(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionName, reconnectKey]);
 
-  // Resize the pane without reconnecting
   useEffect(() => {
     const conn = connRef.current;
     if (conn && conn.state === 'ready') {
@@ -105,7 +101,6 @@ export function useControlMode(
     }
   }, [paneCols, paneRows, scheduleRender]);
 
-  // Send input through the control connection
   const sendInput = useCallback((input: string, key: Key) => {
     const conn = connRef.current;
     if (!conn || conn.state !== 'ready') return;

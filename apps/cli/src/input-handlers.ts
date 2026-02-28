@@ -51,6 +51,8 @@ function persistConfigField(
   }
 }
 
+export type Focus = 'sidebar' | 'terminal';
+
 export interface AppContext {
   // State
   config: Config;
@@ -65,7 +67,7 @@ export interface AppContext {
   settingsFieldIndex: number;
   editBuffer: string;
   activeTab: ActiveTab;
-  focus: 'sidebar' | 'terminal';
+  focus: Focus;
   selectedName: string | null;
   selectedSession: TmuxSession | undefined;
   selectedIndex: number;
@@ -112,12 +114,7 @@ export interface AppContext {
   setActiveTab: (v: ActiveTab) => void;
   setReviewSelectedIndex: (v: number | ((prev: number) => number)) => void;
   setConfig: (v: Config | ((prev: Config) => Config)) => void;
-  setFocus: (
-    v:
-      | 'sidebar'
-      | 'terminal'
-      | ((prev: 'sidebar' | 'terminal') => 'sidebar' | 'terminal')
-  ) => void;
+  setFocus: (v: Focus | ((prev: Focus) => Focus)) => void;
   setReconnectKey: (v: (prev: number) => number) => void;
   setBranches: (v: string[]) => void;
   flashStatus: (msg: string) => void;
@@ -258,13 +255,11 @@ export function handleReviewConfirmInput(
 
   if (key.return) {
     if (opt === 0) {
-      // Start review
       if (!hasSession(ctx.reviewSessionName!)) startReviewSession(ctx);
       ctx.setFocus('terminal');
       ctx.setReviewReconnectKey((k) => k + 1);
       ctx.setReviewConfirm(null);
     } else if (opt === 2) {
-      // Cancel
       ctx.setReviewConfirm(null);
       ctx.setReviewInstruction('');
     }
@@ -283,7 +278,6 @@ export function handleBranchPickerInput(
     return;
   }
 
-  // Ctrl+f to fetch remotes and refresh branch list
   if (key.ctrl && input === 'f') {
     ctx.flashStatus('Fetching remotes...');
     fetchRemote();
@@ -531,14 +525,12 @@ export function handleSidebarInput(
       return;
     }
     ctx.flashStatus('Updating from master...');
-    const result = rebaseOntoMaster(wt.path);
-    if (result === 'success') {
-      ctx.flashStatus('Rebased onto master successfully');
-    } else if (result === 'conflict') {
-      ctx.flashStatus('Conflicts detected — rebase aborted');
-    } else {
-      ctx.flashStatus('Failed to fetch origin/master');
-    }
+    const rebaseMessages = {
+      success: 'Rebased onto master successfully',
+      conflict: 'Conflicts detected — rebase aborted',
+      error: 'Failed to fetch origin/master',
+    } as const;
+    ctx.flashStatus(rebaseMessages[rebaseOntoMaster(wt.path)]);
     return;
   }
   if (input === 'j' || key.downArrow) {
@@ -620,7 +612,6 @@ export function handleGlobalInput(
   key: Key,
   ctx: AppContext
 ): void {
-  // Number keys switch tabs (only when sidebar focused)
   if (ctx.focus === 'sidebar') {
     if (input === '1' && ctx.activeTab !== 'sessions') {
       ctx.setActiveTab('sessions');
@@ -634,7 +625,6 @@ export function handleGlobalInput(
     }
   }
 
-  // Tab switches focus
   if (key.tab && ctx.activeTab === 'sessions') {
     if (
       ctx.focus === 'sidebar' &&
@@ -678,7 +668,6 @@ export function handleGlobalInput(
     return;
   }
 
-  // Escape returns to sidebar
   if (key.escape) {
     if (ctx.focus === 'terminal') {
       ctx.setFocus('sidebar');

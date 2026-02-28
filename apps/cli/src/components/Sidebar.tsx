@@ -54,7 +54,6 @@ function OrphanPrSection({
               pr={pr}
               url={prUrl(prBaseUrl, pr.pullRequestId)}
               sidebarWidth={sidebarWidth}
-              selected={selected}
             />
           </Box>
         );
@@ -117,7 +116,6 @@ export function Sidebar({
                   pr={pr}
                   url={pr ? prUrl(prBaseUrl, pr.pullRequestId) : undefined}
                   sidebarWidth={sidebarWidth}
-                  selected={selected}
                 />
               ) : null}
             </Box>

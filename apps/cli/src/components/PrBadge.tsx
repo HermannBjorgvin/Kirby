@@ -33,20 +33,27 @@ export function PrBadge({
   const reviewText =
     totalReviewers > 0 ? `${approvedCount}/${totalReviewers} approved` : '';
 
-  const allApproved = totalReviewers > 0 && approvedCount === totalReviewers;
   const needsAttention = pr.activeCommentCount > 0 || hasWaiting;
 
   let statusEmoji = '';
-  if (allApproved && !needsAttention) {
+  if (reviewColor === 'green' && !needsAttention) {
     statusEmoji = '⭐';
   } else if (needsAttention && !pr.isDraft) {
     statusEmoji = '🔔';
   }
 
   let buildEmoji = '';
-  if (pr.buildStatus === 'failed') buildEmoji = '🔥';
-  else if (pr.buildStatus === 'succeeded') buildEmoji = '✅';
-  else if (pr.buildStatus === 'pending') buildEmoji = '⏳';
+  switch (pr.buildStatus) {
+    case 'failed':
+      buildEmoji = '🔥';
+      break;
+    case 'succeeded':
+      buildEmoji = '✅';
+      break;
+    case 'pending':
+      buildEmoji = '⏳';
+      break;
+  }
 
   const innerWidth = Math.max(10, sidebarWidth - 2);
 

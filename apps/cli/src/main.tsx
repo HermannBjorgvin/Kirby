@@ -39,9 +39,7 @@ import {
   handleGlobalInput,
   handleReviewConfirmInput,
 } from './input-handlers.js';
-import type { AppContext } from './input-handlers.js';
-
-type Focus = 'sidebar' | 'terminal';
+import type { AppContext, Focus } from './input-handlers.js';
 
 function StatusBar({
   confirmDelete,
@@ -103,8 +101,6 @@ function StatusBar({
     </Text>
   );
 }
-
-// --- App ---
 
 function App() {
   const { exit } = useApp();
@@ -199,7 +195,6 @@ function App() {
     categorizedReviews.waitingForAuthor.length +
     categorizedReviews.approvedByYou.length;
 
-  // Clamp reviewSelectedIndex when review items shrink
   useEffect(() => {
     if (reviewTotalItems > 0 && reviewSelectedIndex >= reviewTotalItems) {
       setReviewSelectedIndex(reviewTotalItems - 1);
@@ -242,7 +237,6 @@ function App() {
     ? `review-pr-${selectedReviewPr.pullRequestId}`
     : null;
 
-  // Clamp selectedIndex when total items shrinks
   useEffect(() => {
     if (totalItems > 0 && selectedIndex >= totalItems) {
       setSelectedIndex(totalItems - 1);
@@ -289,7 +283,6 @@ function App() {
     return nonReview;
   };
 
-  // Show a temporary status message for 3 seconds
   const flashStatus = (msg: string) => {
     if (statusTimer.current) clearTimeout(statusTimer.current);
     setStatusMessage(msg);
@@ -311,7 +304,6 @@ function App() {
     );
   };
 
-  // Control mode connection for selected session
   const { sendInput } = useControlMode(
     hasTmux ? selectedName : null,
     paneCols,
@@ -320,7 +312,6 @@ function App() {
     reconnectKey
   );
 
-  // Control mode connection for review terminal
   const { sendInput: sendReviewInput } = useControlMode(
     hasTmux && activeTab === 'reviews' ? reviewSessionName : null,
     paneCols,
@@ -329,7 +320,6 @@ function App() {
     reviewReconnectKey
   );
 
-  // Build context object for input handlers
   const ctx: AppContext = {
     config,
     branches,
@@ -467,21 +457,29 @@ function App() {
               sidebarWidth={sidebarWidth}
               focused={focus === 'sidebar' && !reviewConfirm}
             />
-            {reviewConfirm ? (
-              <ReviewConfirmPane
-                pr={reviewConfirm.pr}
-                selectedOption={reviewConfirm.selectedOption}
-                instruction={reviewInstruction}
-              />
-            ) : selectedReviewPr &&
-              reviewSessionStarted.has(selectedReviewPr.pullRequestId) ? (
-              <TerminalView
-                content={reviewPaneContent}
-                focused={focus === 'terminal'}
-              />
-            ) : (
-              <ReviewDetailPane pr={selectedReviewPr} />
-            )}
+            {(() => {
+              if (reviewConfirm) {
+                return (
+                  <ReviewConfirmPane
+                    pr={reviewConfirm.pr}
+                    selectedOption={reviewConfirm.selectedOption}
+                    instruction={reviewInstruction}
+                  />
+                );
+              }
+              if (
+                selectedReviewPr &&
+                reviewSessionStarted.has(selectedReviewPr.pullRequestId)
+              ) {
+                return (
+                  <TerminalView
+                    content={reviewPaneContent}
+                    focused={focus === 'terminal'}
+                  />
+                );
+              }
+              return <ReviewDetailPane pr={selectedReviewPr} />;
+            })()}
           </>
         )}
       </Box>
