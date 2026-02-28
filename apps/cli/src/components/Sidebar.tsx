@@ -54,6 +54,7 @@ function OrphanPrSection({
               pr={pr}
               url={prUrl(prBaseUrl, pr.pullRequestId)}
               sidebarWidth={sidebarWidth}
+              selected={selected}
             />
           </Box>
         );
@@ -88,7 +89,7 @@ export function Sidebar({
   return (
     <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
       <Text bold color={focused ? 'blue' : 'gray'}>
-        Worktree Sessions
+        🌴 Worktree Sessions
       </Text>
       <Text dimColor>{'─'.repeat(innerWidth)}</Text>
       {sessions.length === 0 ? (
@@ -116,6 +117,7 @@ export function Sidebar({
                   pr={pr}
                   url={pr ? prUrl(prBaseUrl, pr.pullRequestId) : undefined}
                   sidebarWidth={sidebarWidth}
+                  selected={selected}
                 />
               ) : null}
             </Box>
@@ -123,7 +125,7 @@ export function Sidebar({
         })
       )}
       <OrphanPrSection
-        title="Pull Requests"
+        title="🎪 Pull Requests"
         prs={activeOrphanPrs}
         startIndex={sessions.length}
         selectedIndex={selectedIndex}
@@ -133,7 +135,7 @@ export function Sidebar({
         sidebarWidth={sidebarWidth}
       />
       <OrphanPrSection
-        title="Draft Pull Requests"
+        title="✍️ Draft Pull Requests"
         prs={draftOrphanPrs}
         startIndex={sessions.length + activeOrphanPrs.length}
         selectedIndex={selectedIndex}
@@ -151,6 +153,9 @@ export function Sidebar({
         </Text>
         <Text dimColor>
           <Text color="cyan">shift+k</Text> kill tmux session
+        </Text>
+        <Text dimColor>
+          <Text color="cyan">u</Text> rebase onto master
         </Text>
         <Text dimColor>
           <Text color="cyan">tab</Text> switch focus

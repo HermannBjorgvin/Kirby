@@ -7,7 +7,11 @@ import {
   createWorktree,
   canRemoveBranch,
   listBranches,
+  listAllBranches,
+  listWorktrees,
+  fetchRemote,
   branchToSessionName,
+  rebaseOntoMaster,
 } from '@kirby/tmux-manager';
 import type { TmuxSession } from '@kirby/tmux-manager';
 import {
@@ -71,6 +75,27 @@ export interface AppContext {
   reviewSelectedIndex: number;
   reviewTotalItems: number;
 
+  // Review terminal
+  reviewSessionName: string | null;
+  selectedReviewPr: PullRequestInfo | undefined;
+  sendReviewInput: (input: string, key: Key) => void;
+  setReviewReconnectKey: (v: (prev: number) => number) => void;
+  reviewSessionStarted: Set<number>;
+  setReviewSessionStarted: (
+    v: Set<number> | ((prev: Set<number>) => Set<number>)
+  ) => void;
+
+  // Review confirmation
+  reviewConfirm: {
+    pr: PullRequestInfo;
+    selectedOption: number;
+  } | null;
+  setReviewConfirm: (
+    v: { pr: PullRequestInfo; selectedOption: number } | null
+  ) => void;
+  reviewInstruction: string;
+  setReviewInstruction: (v: string | ((prev: string) => string)) => void;
+
   // Actions
   setCreating: (v: boolean) => void;
   setBranchFilter: (v: string | ((prev: string) => string)) => void;
@@ -116,6 +141,136 @@ function startAiSession(
   createSession(name, cols, rows, cmd, cwd);
 }
 
+function startReviewSession(
+  ctx: AppContext,
+  additionalInstruction?: string
+): void {
+  if (!ctx.reviewSessionName || !ctx.selectedReviewPr) return;
+  const pr = ctx.selectedReviewPr;
+  const org = ctx.config.org ?? '';
+  const project = ctx.config.project ?? '';
+  const repo = ctx.config.repo ?? '';
+
+  let prompt =
+    `You are reviewing Azure DevOps Pull Request #${pr.pullRequestId} ` +
+    `titled ${pr.title || pr.sourceBranch} ` +
+    `in the ${org}/${project}/${repo} repository. ` +
+    `The PR merges ${pr.sourceBranch} into ${pr.targetBranch}, ` +
+    `authored by ${pr.createdByDisplayName ?? 'unknown'}. ` +
+    `Review the pull request thoroughly. For each issue you find: ` +
+    `1) Show the file path and line numbers, ` +
+    `2) Include a relevant code snippet, ` +
+    `3) Write a suggested review comment below the snippet. ` +
+    `After reviewing all changes, present a numbered list of all your suggested comments ` +
+    `and ask me which ones I want to post to the pull request.`;
+
+  if (additionalInstruction) {
+    prompt +=
+      ` ADDITIONAL USER INSTRUCTION (overrides previous where applicable): ` +
+      additionalInstruction;
+  }
+
+  // Checkout the PR's source branch so Claude can see the code
+  const worktreePath = createWorktree(pr.sourceBranch);
+  if (!worktreePath) {
+    ctx.flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
+    return;
+  }
+
+  // Strip quotes for shell safety — createSession wraps the command in double quotes
+  const safePrompt = prompt.replace(/['"]/g, '');
+  const command = `claude --continue || claude '${safePrompt}'`;
+
+  createSession(
+    ctx.reviewSessionName,
+    ctx.paneCols,
+    ctx.paneRows,
+    command,
+    worktreePath
+  );
+  ctx.setReviewSessionStarted((prev) => new Set([...prev, pr.pullRequestId]));
+}
+
+const REVIEW_CONFIRM_OPTIONS = 3; // 0: Start, 1: Instructions, 2: Cancel
+
+export function handleReviewConfirmInput(
+  input: string,
+  key: Key,
+  ctx: AppContext
+): void {
+  const confirm = ctx.reviewConfirm!;
+  const opt = confirm.selectedOption;
+
+  if (key.escape) {
+    ctx.setReviewConfirm(null);
+    ctx.setReviewInstruction('');
+    return;
+  }
+
+  // Option 1 (instructions) captures text input when selected
+  if (opt === 1) {
+    if (key.return) {
+      // Enter on the instruction field starts the review with the instruction
+      if (!hasSession(ctx.reviewSessionName!)) {
+        startReviewSession(ctx, ctx.reviewInstruction || undefined);
+      }
+      ctx.setFocus('terminal');
+      ctx.setReviewReconnectKey((k) => k + 1);
+      ctx.setReviewConfirm(null);
+      ctx.setReviewInstruction('');
+      return;
+    }
+    if (key.backspace || key.delete) {
+      ctx.setReviewInstruction((v) => v.slice(0, -1));
+      return;
+    }
+    // Arrow keys navigate away from the text field
+    if (key.upArrow || (input === 'k' && key.ctrl)) {
+      ctx.setReviewConfirm({ ...confirm, selectedOption: 0 });
+      return;
+    }
+    if (key.downArrow || (input === 'j' && key.ctrl)) {
+      ctx.setReviewConfirm({ ...confirm, selectedOption: 2 });
+      return;
+    }
+    // All other input goes into the text field
+    if (input && !key.ctrl && !key.meta) {
+      ctx.setReviewInstruction((v) => v + input);
+    }
+    return;
+  }
+
+  // Options 0 and 2: navigate with arrows/j/k, Enter to select
+  if (input === 'j' || key.downArrow) {
+    ctx.setReviewConfirm({
+      ...confirm,
+      selectedOption: Math.min(opt + 1, REVIEW_CONFIRM_OPTIONS - 1),
+    });
+    return;
+  }
+  if (input === 'k' || key.upArrow) {
+    ctx.setReviewConfirm({
+      ...confirm,
+      selectedOption: Math.max(opt - 1, 0),
+    });
+    return;
+  }
+
+  if (key.return) {
+    if (opt === 0) {
+      // Start review
+      if (!hasSession(ctx.reviewSessionName!)) startReviewSession(ctx);
+      ctx.setFocus('terminal');
+      ctx.setReviewReconnectKey((k) => k + 1);
+      ctx.setReviewConfirm(null);
+    } else if (opt === 2) {
+      // Cancel
+      ctx.setReviewConfirm(null);
+      ctx.setReviewInstruction('');
+    }
+  }
+}
+
 export function handleBranchPickerInput(
   input: string,
   key: Key,
@@ -125,6 +280,16 @@ export function handleBranchPickerInput(
     ctx.setCreating(false);
     ctx.setBranchFilter('');
     ctx.setBranchIndex(0);
+    return;
+  }
+
+  // Ctrl+f to fetch remotes and refresh branch list
+  if (key.ctrl && input === 'f') {
+    ctx.flashStatus('Fetching remotes...');
+    fetchRemote();
+    ctx.setBranches(listAllBranches());
+    ctx.setBranchIndex(0);
+    ctx.flashStatus('Fetched remotes');
     return;
   }
 
@@ -304,7 +469,7 @@ export function handleSidebarInput(
     return;
   }
   if (input === 'c') {
-    ctx.setBranches(listBranches());
+    ctx.setBranches(listAllBranches());
     ctx.setCreating(true);
     ctx.setBranchFilter('');
     ctx.setBranchIndex(0);
@@ -353,6 +518,27 @@ export function handleSidebarInput(
   if (input === 'r') {
     ctx.refreshPr();
     ctx.flashStatus('Refreshing PR data...');
+    return;
+  }
+  if (input === 'u' && ctx.selectedSession) {
+    const sessionName = ctx.selectedSession.name;
+    const worktrees = listWorktrees();
+    const wt = worktrees.find(
+      (w) => branchToSessionName(w.branch) === sessionName
+    );
+    if (!wt) {
+      ctx.flashStatus('No worktree found for selected session');
+      return;
+    }
+    ctx.flashStatus('Updating from master...');
+    const result = rebaseOntoMaster(wt.path);
+    if (result === 'success') {
+      ctx.flashStatus('Rebased onto master successfully');
+    } else if (result === 'conflict') {
+      ctx.flashStatus('Conflicts detected — rebase aborted');
+    } else {
+      ctx.flashStatus('Failed to fetch origin/master');
+    }
     return;
   }
   if (input === 'j' || key.downArrow) {
@@ -406,6 +592,17 @@ export function handleReviewsSidebarInput(
     ctx.setSettingsFieldIndex(0);
     return;
   }
+  if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
+    // If session already running, just connect
+    if (hasSession(ctx.reviewSessionName)) {
+      ctx.setFocus('terminal');
+      ctx.setReviewReconnectKey((k) => k + 1);
+      return;
+    }
+    // Show confirmation in right pane
+    ctx.setReviewConfirm({ pr: ctx.selectedReviewPr, selectedOption: 0 });
+    return;
+  }
   if (input === 'j' || key.downArrow) {
     ctx.setReviewSelectedIndex((i) =>
       Math.min(i + 1, ctx.reviewTotalItems - 1)
@@ -437,7 +634,7 @@ export function handleGlobalInput(
     }
   }
 
-  // Tab switches focus — only in sessions tab
+  // Tab switches focus
   if (key.tab && ctx.activeTab === 'sessions') {
     if (
       ctx.focus === 'sidebar' &&
@@ -461,6 +658,25 @@ export function handleGlobalInput(
     ctx.setFocus((f) => (f === 'sidebar' ? 'terminal' : 'sidebar'));
     return;
   }
+  if (key.tab && ctx.activeTab === 'reviews') {
+    if (
+      ctx.focus === 'sidebar' &&
+      ctx.reviewSessionName &&
+      ctx.selectedReviewPr
+    ) {
+      if (hasSession(ctx.reviewSessionName)) {
+        // Session exists — connect and focus terminal
+        ctx.setReviewReconnectKey((k) => k + 1);
+        ctx.setFocus('terminal');
+      } else {
+        // No session yet — show confirmation
+        ctx.setReviewConfirm({ pr: ctx.selectedReviewPr, selectedOption: 0 });
+      }
+    } else if (ctx.focus === 'terminal') {
+      ctx.setFocus('sidebar');
+    }
+    return;
+  }
 
   // Escape returns to sidebar
   if (key.escape) {
@@ -477,6 +693,10 @@ export function handleGlobalInput(
       handleReviewsSidebarInput(input, key, ctx);
     }
   } else {
-    ctx.sendInput(input, key);
+    if (ctx.activeTab === 'reviews') {
+      ctx.sendReviewInput(input, key);
+    } else {
+      ctx.sendInput(input, key);
+    }
   }
 }

@@ -6,6 +6,7 @@ import {
   listBranches,
   parseWorktrees,
   listWorktrees,
+  rebaseOntoMaster,
 } from './worktree.js';
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -281,5 +282,57 @@ describe('listWorktrees', () => {
     );
 
     expect(listWorktrees()).toEqual([]);
+  });
+});
+
+describe('rebaseOntoMaster', () => {
+  it('should return success when fetch and rebase both succeed', () => {
+    mockExecSync.mockReturnValueOnce('').mockReturnValueOnce('');
+    expect(rebaseOntoMaster('/path/to/worktree')).toBe('success');
+    expect(mockExecSync).toHaveBeenCalledTimes(2);
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'git -C "/path/to/worktree" fetch origin master',
+      { encoding: 'utf8', stdio: 'pipe' }
+    );
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'git -C "/path/to/worktree" rebase origin/master',
+      { encoding: 'utf8', stdio: 'pipe' }
+    );
+  });
+
+  it('should return error when fetch fails', () => {
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('fetch failed');
+    });
+    expect(rebaseOntoMaster('/path/to/worktree')).toBe('error');
+    expect(mockExecSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return conflict and abort when rebase fails', () => {
+    mockExecSync
+      .mockReturnValueOnce('') // fetch succeeds
+      .mockImplementationOnce(() => {
+        throw new Error('conflict');
+      }) // rebase fails
+      .mockReturnValueOnce(''); // abort succeeds
+    expect(rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
+    expect(mockExecSync).toHaveBeenCalledTimes(3);
+    expect(mockExecSync).toHaveBeenLastCalledWith(
+      'git -C "/path/to/worktree" rebase --abort',
+      { encoding: 'utf8', stdio: 'pipe' }
+    );
+  });
+
+  it('should return conflict even when abort also fails', () => {
+    mockExecSync
+      .mockReturnValueOnce('') // fetch succeeds
+      .mockImplementationOnce(() => {
+        throw new Error('conflict');
+      }) // rebase fails
+      .mockImplementationOnce(() => {
+        throw new Error('abort failed');
+      }); // abort fails
+    expect(rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
+    expect(mockExecSync).toHaveBeenCalledTimes(3);
   });
 });

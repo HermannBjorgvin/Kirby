@@ -133,6 +133,40 @@ export function listBranches(): string[] {
   }
 }
 
+/** Fetch from all remotes and prune stale tracking branches */
+export function fetchRemote(): boolean {
+  try {
+    execSync('git fetch --all --prune', { encoding: 'utf8', stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** List local + remote git branches (remote branches stripped of origin/ prefix, deduplicated) */
+export function listAllBranches(): string[] {
+  try {
+    const output = execSync("git branch -a --format='%(refname:short)'", {
+      encoding: 'utf8',
+    });
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of output.trim().split('\n')) {
+      if (!raw) continue;
+      // Strip "origin/" prefix from remote branches, skip HEAD pointer
+      const branch = raw.startsWith('origin/')
+        ? raw.slice('origin/'.length)
+        : raw;
+      if (branch === 'HEAD' || seen.has(branch)) continue;
+      seen.add(branch);
+      result.push(branch);
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
 /** Parse `git worktree list --porcelain` output into WorktreeInfo[] */
 export function parseWorktrees(output: string): WorktreeInfo[] {
   const results: WorktreeInfo[] = [];
@@ -176,5 +210,39 @@ export function listWorktrees(): WorktreeInfo[] {
     );
   } catch {
     return [];
+  }
+}
+
+/**
+ * Fetch origin/master and rebase the worktree's branch onto it.
+ * If conflicts arise, the rebase is automatically aborted.
+ */
+export function rebaseOntoMaster(
+  worktreePath: string
+): 'success' | 'conflict' | 'error' {
+  try {
+    execSync(`git -C "${worktreePath}" fetch origin master`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch {
+    return 'error';
+  }
+  try {
+    execSync(`git -C "${worktreePath}" rebase origin/master`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    return 'success';
+  } catch {
+    try {
+      execSync(`git -C "${worktreePath}" rebase --abort`, {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+    } catch {
+      /* abort failed — nothing more to do */
+    }
+    return 'conflict';
   }
 }
