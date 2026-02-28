@@ -10,13 +10,7 @@
       "path": "./libs/tmux-manager"
     },
     {
-      "path": "./libs/shared-types"
-    },
-    {
       "path": "./libs/tmux-control"
-    },
-    {
-      "path": "./libs/azure-devops"
     },
     {
       "path": "./libs/vcs/core"
