@@ -23,6 +23,7 @@ import type {
   CategorizedReviews,
 } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
+import { githubProvider } from '@kirby/vcs-github';
 import type { ActiveTab } from './types.js';
 import { TabBar } from './components/TabBar.js';
 import { Sidebar } from './components/Sidebar.js';
@@ -45,7 +46,7 @@ import type { AppContext, Focus } from './input-handlers.js';
 
 // ── Provider registry ──────────────────────────────────────────────
 
-const providers: VcsProvider[] = [azureDevOpsProvider];
+const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 
 // ── Status bar ─────────────────────────────────────────────────────
 
