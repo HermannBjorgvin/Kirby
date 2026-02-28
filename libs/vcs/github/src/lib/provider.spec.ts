@@ -7,20 +7,34 @@ import {
   fetchOpenPrs,
   fetchReviews,
   fetchCheckRuns,
+  ghApi,
   githubProvider,
 } from './provider.js';
 
-// Mock global fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+// Mock child_process.execFile
+const mockExecFile = vi.fn();
+vi.mock('node:child_process', () => ({
+  execFile: (...args: unknown[]) => mockExecFile(...args),
+}));
 
-function jsonResponse(data: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? 'OK' : 'Error',
-    json: () => Promise.resolve(data),
-  } as Response;
+function ghSuccess(data: unknown) {
+  mockExecFile.mockImplementationOnce(
+    (
+      _cmd: string,
+      _args: string[],
+      cb: (err: null, result: { stdout: string }) => void
+    ) => {
+      cb(null, { stdout: JSON.stringify(data) });
+    }
+  );
+}
+
+function ghError(message: string) {
+  mockExecFile.mockImplementationOnce(
+    (_cmd: string, _args: string[], cb: (err: { stderr: string }) => void) => {
+      cb({ stderr: message });
+    }
+  );
 }
 
 const testProject = { owner: 'octocat', repo: 'hello-world' };
@@ -193,32 +207,47 @@ describe('deriveCheckRunStatus', () => {
   });
 });
 
+// ── ghApi transport ────────────────────────────────────────────────
+
+describe('ghApi', () => {
+  beforeEach(() => mockExecFile.mockReset());
+
+  it('calls gh with correct args and parses JSON', async () => {
+    ghSuccess({ hello: 'world' });
+    const result = await ghApi('repos/o/r/pulls');
+    expect(mockExecFile).toHaveBeenCalledOnce();
+    expect(mockExecFile.mock.calls[0]![0]).toBe('gh');
+    expect(mockExecFile.mock.calls[0]![1]).toEqual(['api', 'repos/o/r/pulls']);
+    expect(result).toEqual({ hello: 'world' });
+  });
+
+  it('throws with stderr on failure', async () => {
+    ghError('Not Found (HTTP 404)');
+    await expect(ghApi('repos/o/r/pulls')).rejects.toThrow(
+      'gh api error: Not Found (HTTP 404)'
+    );
+  });
+});
+
 // ── API helpers ────────────────────────────────────────────────────
 
 describe('fetchOpenPrs', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => mockExecFile.mockReset());
 
-  it('calls correct URL and returns parsed PRs', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse([
-        {
-          number: 42,
-          title: 'Add feature X',
-          head: { ref: 'feat/x' },
-          base: { ref: 'main' },
-          html_url: 'https://github.com/octocat/hello-world/pull/42',
-          user: { login: 'octocat' },
-          draft: false,
-        },
-      ])
-    );
+  it('returns parsed PRs', async () => {
+    ghSuccess([
+      {
+        number: 42,
+        title: 'Add feature X',
+        head: { ref: 'feat/x' },
+        base: { ref: 'main' },
+        html_url: 'https://github.com/octocat/hello-world/pull/42',
+        user: { login: 'octocat' },
+        draft: false,
+      },
+    ]);
 
-    const result = await fetchOpenPrs('ghp_test', testProject);
-
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const calledUrl = mockFetch.mock.calls[0]![0] as string;
-    expect(calledUrl).toContain('/repos/octocat/hello-world/pulls');
-    expect(calledUrl).toContain('state=open');
+    const result = await fetchOpenPrs(testProject);
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
       id: 42,
@@ -230,80 +259,64 @@ describe('fetchOpenPrs', () => {
       createdByDisplayName: 'octocat',
       isDraft: false,
     });
+
+    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
+    expect(endpoint).toContain('repos/octocat/hello-world/pulls');
+    expect(endpoint).toContain('state=open');
   });
 
-  it('throws on non-ok response', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({}, 401));
-    await expect(fetchOpenPrs('bad-token', testProject)).rejects.toThrow(
-      'GitHub API error 401'
-    );
-  });
-
-  it('sends Bearer auth header', async () => {
-    mockFetch.mockResolvedValue(jsonResponse([]));
-    await fetchOpenPrs('ghp_test', testProject);
-
-    const headers = mockFetch.mock.calls[0]![1]?.headers as Record<
-      string,
-      string
-    >;
-    expect(headers.Authorization).toBe('Bearer ghp_test');
-    expect(headers['X-GitHub-Api-Version']).toBe('2022-11-28');
+  it('throws on gh error', async () => {
+    ghError('HTTP 401');
+    await expect(fetchOpenPrs(testProject)).rejects.toThrow('gh api error');
   });
 });
 
 describe('fetchReviews', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => mockExecFile.mockReset());
 
   it('returns deduplicated reviewers', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse([
-        { user: { login: 'alice' }, state: 'COMMENTED' },
-        { user: { login: 'alice' }, state: 'APPROVED' },
-      ])
-    );
+    ghSuccess([
+      { user: { login: 'alice' }, state: 'COMMENTED' },
+      { user: { login: 'alice' }, state: 'APPROVED' },
+    ]);
 
-    const result = await fetchReviews('ghp_test', testProject, 42);
+    const result = await fetchReviews(testProject, 42);
     expect(result).toHaveLength(1);
     expect(result[0]!.decision).toBe('approved');
 
-    const calledUrl = mockFetch.mock.calls[0]![0] as string;
-    expect(calledUrl).toContain('/pulls/42/reviews');
+    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
+    expect(endpoint).toContain('/pulls/42/reviews');
   });
 
-  it('throws on non-ok response', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({}, 403));
-    await expect(fetchReviews('ghp_test', testProject, 42)).rejects.toThrow(
-      'GitHub API error 403'
-    );
+  it('throws on gh error', async () => {
+    ghError('HTTP 403');
+    await expect(fetchReviews(testProject, 42)).rejects.toThrow('gh api error');
   });
 });
 
 describe('fetchCheckRuns', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => mockExecFile.mockReset());
 
-  it('calls correct URL and returns derived status', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({
-        check_runs: [
-          { status: 'completed', conclusion: 'success' },
-          { status: 'in_progress', conclusion: null },
-        ],
-      })
-    );
+  it('returns derived status', async () => {
+    ghSuccess({
+      check_runs: [
+        { status: 'completed', conclusion: 'success' },
+        { status: 'in_progress', conclusion: null },
+      ],
+    });
 
-    const result = await fetchCheckRuns('ghp_test', testProject, 'feat/x');
+    const result = await fetchCheckRuns(testProject, 'feat/x');
     expect(result).toBe('pending');
 
-    const calledUrl = mockFetch.mock.calls[0]![0] as string;
-    expect(calledUrl).toContain('/commits/feat/x/check-runs');
+    const endpoint = mockExecFile.mock.calls[0]![1]![1] as string;
+    expect(endpoint).toContain('/commits/feat/x/check-runs');
   });
 
-  it('throws on non-ok response', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({}, 500));
-    await expect(
-      fetchCheckRuns('ghp_test', testProject, 'main')
-    ).rejects.toThrow('GitHub API error 500');
+  it('throws on gh error', async () => {
+    ghError('HTTP 500');
+    await expect(fetchCheckRuns(testProject, 'main')).rejects.toThrow(
+      'gh api error'
+    );
   });
 });
 
@@ -315,34 +328,22 @@ describe('githubProvider', () => {
     expect(githubProvider.displayName).toBe('GitHub');
   });
 
-  it('isConfigured returns true when token, owner, and repo set', () => {
-    expect(
-      githubProvider.isConfigured(
-        { token: 'ghp_test' },
-        { owner: 'o', repo: 'r' }
-      )
-    ).toBe(true);
+  it('has no authFields', () => {
+    expect(githubProvider.authFields).toEqual([]);
   });
 
-  it('isConfigured returns false when token missing', () => {
+  it('isConfigured returns true when owner and repo set', () => {
     expect(githubProvider.isConfigured({}, { owner: 'o', repo: 'r' })).toBe(
-      false
+      true
     );
   });
 
   it('isConfigured returns false when owner missing', () => {
-    expect(
-      githubProvider.isConfigured({ token: 'ghp_test' }, { repo: 'r' })
-    ).toBe(false);
+    expect(githubProvider.isConfigured({}, { repo: 'r' })).toBe(false);
   });
 
-  it('isConfigured returns true even without username', () => {
-    expect(
-      githubProvider.isConfigured(
-        { token: 'ghp_test' },
-        { owner: 'o', repo: 'r' }
-      )
-    ).toBe(true);
+  it('isConfigured returns false when repo missing', () => {
+    expect(githubProvider.isConfigured({}, { owner: 'o' })).toBe(false);
   });
 
   it('matchesUser matches by username from vendorProject', () => {
@@ -393,53 +394,42 @@ describe('githubProvider', () => {
   });
 
   describe('fetchPullRequests', () => {
-    beforeEach(() => mockFetch.mockReset());
+    beforeEach(() => mockExecFile.mockReset());
 
     it('returns a map of branch to PR info with reviews and build status', async () => {
-      // First call: list PRs
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse([
-          {
-            number: 10,
-            title: 'Feature A',
-            head: { ref: 'feat-a' },
-            base: { ref: 'main' },
-            html_url: 'https://github.com/octocat/hello-world/pull/10',
-            user: { login: 'octocat' },
-            draft: false,
-          },
-          {
-            number: 11,
-            title: 'Feature B',
-            head: { ref: 'feat-b' },
-            base: { ref: 'main' },
-            html_url: 'https://github.com/octocat/hello-world/pull/11',
-            user: { login: 'alice' },
-            draft: true,
-          },
-        ])
-      );
+      // list PRs
+      ghSuccess([
+        {
+          number: 10,
+          title: 'Feature A',
+          head: { ref: 'feat-a' },
+          base: { ref: 'main' },
+          html_url: 'https://github.com/octocat/hello-world/pull/10',
+          user: { login: 'octocat' },
+          draft: false,
+        },
+        {
+          number: 11,
+          title: 'Feature B',
+          head: { ref: 'feat-b' },
+          base: { ref: 'main' },
+          html_url: 'https://github.com/octocat/hello-world/pull/11',
+          user: { login: 'alice' },
+          draft: true,
+        },
+      ]);
       // PR 10: reviews then check-runs
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse([{ user: { login: 'bob' }, state: 'APPROVED' }])
-      );
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          check_runs: [{ status: 'completed', conclusion: 'success' }],
-        })
-      );
+      ghSuccess([{ user: { login: 'bob' }, state: 'APPROVED' }]);
+      ghSuccess({
+        check_runs: [{ status: 'completed', conclusion: 'success' }],
+      });
       // PR 11: reviews then check-runs
-      mockFetch.mockResolvedValueOnce(jsonResponse([]));
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          check_runs: [{ status: 'completed', conclusion: 'failure' }],
-        })
-      );
+      ghSuccess([]);
+      ghSuccess({
+        check_runs: [{ status: 'completed', conclusion: 'failure' }],
+      });
 
-      const result = await githubProvider.fetchPullRequests(
-        { token: 'ghp_test' },
-        testProject
-      );
+      const result = await githubProvider.fetchPullRequests({}, testProject);
 
       expect(result['feat-a']).toEqual({
         id: 10,

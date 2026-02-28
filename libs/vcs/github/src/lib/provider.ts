@@ -1,3 +1,5 @@
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
 import type {
   VcsProvider,
   AppConfig,
@@ -8,15 +10,24 @@ import type {
   BuildStatusState,
 } from '@kirby/vcs-core';
 
-// ── Internal helpers ───────────────────────────────────────────────
+// ── gh CLI transport ──────────────────────────────────────────────
 
-function githubHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
+const execFile = promisify(execFileCb);
+
+export async function ghApi(endpoint: string): Promise<unknown> {
+  try {
+    const { stdout } = await execFile('gh', ['api', endpoint]);
+    return JSON.parse(stdout);
+  } catch (err: unknown) {
+    const stderr =
+      err != null && typeof err === 'object' && 'stderr' in err
+        ? String((err as { stderr: unknown }).stderr).trim()
+        : String(err);
+    throw new Error(`gh api error: ${stderr}`);
+  }
 }
+
+// ── Internal helpers ───────────────────────────────────────────────
 
 export function parseGitHubRemoteUrl(
   url: string
@@ -105,16 +116,12 @@ interface GitHubPrRaw {
 }
 
 export async function fetchOpenPrs(
-  token: string,
   project: Record<string, string>
 ): Promise<PullRequestInfo[]> {
-  const url = `https://api.github.com/repos/${project.owner}/${project.repo}/pulls?state=open&per_page=100`;
-  const res = await fetch(url, { headers: githubHeaders(token) });
-  if (!res.ok) {
-    throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
-  }
-  const prs = (await res.json()) as GitHubPrRaw[];
-  return prs.map((pr) => ({
+  const data = (await ghApi(
+    `repos/${project.owner}/${project.repo}/pulls?state=open&per_page=100`
+  )) as GitHubPrRaw[];
+  return data.map((pr) => ({
     id: pr.number,
     title: pr.title,
     sourceBranch: pr.head.ref,
@@ -127,35 +134,22 @@ export async function fetchOpenPrs(
 }
 
 export async function fetchReviews(
-  token: string,
   project: Record<string, string>,
   prNumber: number
 ): Promise<PullRequestReviewer[]> {
-  const url = `https://api.github.com/repos/${project.owner}/${project.repo}/pulls/${prNumber}/reviews`;
-  const res = await fetch(url, { headers: githubHeaders(token) });
-  if (!res.ok) {
-    throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
-  }
-  const reviews = (await res.json()) as Array<{
-    user: { login: string };
-    state: string;
-  }>;
-  return latestReviewPerUser(reviews);
+  const data = (await ghApi(
+    `repos/${project.owner}/${project.repo}/pulls/${prNumber}/reviews`
+  )) as Array<{ user: { login: string }; state: string }>;
+  return latestReviewPerUser(data);
 }
 
 export async function fetchCheckRuns(
-  token: string,
   project: Record<string, string>,
   ref: string
 ): Promise<BuildStatusState> {
-  const url = `https://api.github.com/repos/${project.owner}/${project.repo}/commits/${ref}/check-runs?per_page=100`;
-  const res = await fetch(url, { headers: githubHeaders(token) });
-  if (!res.ok) {
-    throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as {
-    check_runs: Array<{ status: string; conclusion: string | null }>;
-  };
+  const data = (await ghApi(
+    `repos/${project.owner}/${project.repo}/commits/${ref}/check-runs?per_page=100`
+  )) as { check_runs: Array<{ status: string; conclusion: string | null }> };
   return deriveCheckRunStatus(data.check_runs ?? []);
 }
 
@@ -165,7 +159,7 @@ export const githubProvider: VcsProvider = {
   id: 'github',
   displayName: 'GitHub',
 
-  authFields: [{ key: 'token', label: 'Personal Access Token', masked: true }],
+  authFields: [],
 
   projectFields: [
     { key: 'owner', label: 'Owner' },
@@ -178,10 +172,10 @@ export const githubProvider: VcsProvider = {
   },
 
   isConfigured(
-    auth: Record<string, string>,
+    _auth: Record<string, string>,
     project: Record<string, string>
   ): boolean {
-    return !!(auth.token && project.owner && project.repo);
+    return !!(project.owner && project.repo);
   },
 
   matchesUser(identifier: string, config: AppConfig): boolean {
@@ -193,15 +187,15 @@ export const githubProvider: VcsProvider = {
   },
 
   async fetchPullRequests(
-    auth: Record<string, string>,
+    _auth: Record<string, string>,
     project: Record<string, string>
   ): Promise<BranchPrMap> {
-    const prs = await fetchOpenPrs(auth.token!, project);
+    const prs = await fetchOpenPrs(project);
     const withDetails = await Promise.all(
       prs.map(async (pr) => {
         const [reviewers, buildStatus] = await Promise.all([
-          fetchReviews(auth.token!, project, pr.id),
-          fetchCheckRuns(auth.token!, project, pr.sourceBranch),
+          fetchReviews(project, pr.id),
+          fetchCheckRuns(project, pr.sourceBranch),
         ]);
         return { ...pr, reviewers, buildStatus } satisfies PullRequestInfo;
       })
