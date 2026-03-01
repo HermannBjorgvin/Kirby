@@ -34,6 +34,7 @@ import { useRemoteSync } from './hooks/useRemoteSync.js';
 import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
 import { useControlMode } from './hooks/useControlMode.js';
+import { useConflictCounts } from './hooks/useConflictCounts.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
@@ -196,6 +197,14 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     }
   );
 
+  // Batch conflict checking — only check non-merged branches
+  const conflictBranches = useMemo(
+    () => worktreeBranches.filter((b) => !mergedBranches.has(b)),
+    [worktreeBranches, mergedBranches]
+  );
+  const { counts: conflictCounts, loading: conflictsLoading } =
+    useConflictCounts(conflictBranches, lastSynced);
+
   // Orphan PRs: user's PRs that don't have a matching worktree session
   const orphanPrs = useMemo(() => {
     if (!provider) return [];
@@ -247,20 +256,26 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     }
   }, [reviewTotalItems, reviewSelectedIndex]);
 
+  // Pre-compute session-name → branch and session-name → PR lookup maps
+  const { sessionBranchMap, sessionPrMap } = useMemo(() => {
+    const branchMap = new Map<string, string>();
+    const prLookup = new Map<string, PullRequestInfo>();
+    for (const [branch, pr] of Object.entries(prMap)) {
+      const name = branchToSessionName(branch);
+      branchMap.set(name, branch);
+      if (pr) prLookup.set(name, pr);
+    }
+    return { sessionBranchMap: branchMap, sessionPrMap: prLookup };
+  }, [prMap]);
+
   // Sort sessions by associated PR number (newest first)
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((a, b) => {
-      const prA = Object.values(prMap).find(
-        (pr) => pr && branchToSessionName(pr.sourceBranch) === a.name
-      );
-      const prB = Object.values(prMap).find(
-        (pr) => pr && branchToSessionName(pr.sourceBranch) === b.name
-      );
-      const idA = prA?.id ?? -Infinity;
-      const idB = prB?.id ?? -Infinity;
+      const idA = sessionPrMap.get(a.name)?.id ?? -Infinity;
+      const idB = sessionPrMap.get(b.name)?.id ?? -Infinity;
       return idB - idA;
     });
-  }, [sessions, prMap]);
+  }, [sessions, sessionPrMap]);
 
   const totalItems = sortedSessions.length + orphanPrs.length;
   const selectedSession =
@@ -480,10 +495,14 @@ function App({ forceSetup }: { forceSetup: boolean }) {
               selectedIndex={selectedIndex}
               focused={focus === 'sidebar' && !creating && !settingsOpen}
               prMap={prMap}
+              sessionBranchMap={sessionBranchMap}
+              sessionPrMap={sessionPrMap}
               sidebarWidth={sidebarWidth}
               orphanPrs={orphanPrs}
               mergedBranches={mergedBranches}
               lastSynced={lastSynced}
+              conflictCounts={conflictCounts}
+              conflictsLoading={conflictsLoading}
             />
             {settingsOpen && (
               <SettingsPanel

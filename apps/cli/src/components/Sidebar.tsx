@@ -1,38 +1,32 @@
 import { Text, Box } from 'ink';
-import { branchToSessionName } from '@kirby/tmux-manager';
 import type { TmuxSession } from '@kirby/tmux-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
-import { useConflictCount } from '../hooks/useConflictCount.js';
 import { truncate } from '../utils/truncate.js';
 import { useConfig } from '../context/ConfigContext.js';
 
 function SessionItem({
   session,
   selected,
-  prMap,
+  branch,
+  pr,
   sidebarWidth,
   isMerged,
-  lastSynced,
+  conflictCount,
+  conflictsLoading,
 }: {
   session: TmuxSession;
   selected: boolean;
-  prMap: BranchPrMap;
+  branch: string | undefined;
+  pr: PullRequestInfo | undefined;
   sidebarWidth: number;
   isMerged: boolean;
-  lastSynced: number;
+  conflictCount: number | undefined;
+  conflictsLoading: boolean;
 }) {
   const { vcsConfigured } = useConfig();
   const icon = session.windows > 0 ? '●' : '○';
   const color = session.windows > 0 ? 'green' : 'gray';
-  const branch = Object.keys(prMap).find(
-    (b) => branchToSessionName(b) === session.name
-  );
-  const pr = branch ? prMap[branch] : undefined;
-  const { count: conflicts, loading: conflictsLoading } = useConflictCount(
-    branch ?? '',
-    isMerged ? 0 : lastSynced
-  );
 
   return (
     <Box key={session.name} flexDirection="column">
@@ -49,10 +43,10 @@ function SessionItem({
           </Text>
         ) : null}
       </Text>
-      {conflicts != null && conflicts > 0 ? (
+      {conflictCount != null && conflictCount > 0 ? (
         <Text dimColor color="yellow">
           {'    '}
-          {conflicts} conflict{conflicts !== 1 ? 's' : ''}
+          {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
         </Text>
       ) : null}
       {conflictsLoading ? <Text dimColor>{'    '}checking...</Text> : null}
@@ -109,19 +103,27 @@ export function Sidebar({
   selectedIndex,
   focused,
   prMap,
+  sessionBranchMap,
+  sessionPrMap,
   sidebarWidth,
   orphanPrs,
   mergedBranches,
   lastSynced,
+  conflictCounts,
+  conflictsLoading,
 }: {
   sessions: TmuxSession[];
   selectedIndex: number;
   focused: boolean;
   prMap: BranchPrMap;
+  sessionBranchMap: Map<string, string>;
+  sessionPrMap: Map<string, PullRequestInfo>;
   sidebarWidth: number;
   orphanPrs: PullRequestInfo[];
   mergedBranches: Set<string>;
   lastSynced: number;
+  conflictCounts?: Map<string, number>;
+  conflictsLoading?: boolean;
 }) {
   const { vcsConfigured } = useConfig();
   const innerWidth = Math.max(10, sidebarWidth - 2);
@@ -138,19 +140,19 @@ export function Sidebar({
         <Text dimColor>(no sessions)</Text>
       ) : (
         sessions.map((s, i) => {
-          const branch = Object.keys(prMap).find(
-            (b) => branchToSessionName(b) === s.name
-          );
+          const branch = sessionBranchMap.get(s.name);
           const isMerged = branch ? mergedBranches.has(branch) : false;
           return (
             <SessionItem
               key={s.name}
               session={s}
               selected={i === selectedIndex}
-              prMap={prMap}
+              branch={branch}
+              pr={sessionPrMap.get(s.name)}
               sidebarWidth={sidebarWidth}
               isMerged={isMerged}
-              lastSynced={lastSynced}
+              conflictCount={branch ? conflictCounts?.get(branch) : undefined}
+              conflictsLoading={!!conflictsLoading && !isMerged && !!branch}
             />
           );
         })
