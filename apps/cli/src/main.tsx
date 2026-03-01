@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { execSync } from 'node:child_process';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
 import {
   isAvailable,
   listSessions,
   killSession,
   removeWorktree,
+  deleteBranch,
   listAllBranches,
   listWorktrees,
   branchToSessionName,
@@ -34,7 +34,9 @@ import { ReviewsSidebar } from './components/ReviewsSidebar.js';
 import { ReviewDetailPane } from './components/ReviewDetailPane.js';
 import { ReviewConfirmPane } from './components/ReviewConfirmPane.js';
 import { usePrData } from './hooks/usePrData.js';
-import { useBranchSync } from './hooks/useBranchSync.js';
+import { useRemoteSync } from './hooks/useRemoteSync.js';
+import { useMergedBranches } from './hooks/useMergedBranches.js';
+import { useAsyncOperation } from './hooks/useAsyncOperation.js';
 import { useControlMode } from './hooks/useControlMode.js';
 import {
   handleBranchPickerInput,
@@ -62,6 +64,7 @@ function StatusBar({
   focus,
   hasTmux,
   vcsConfigured,
+  inFlight,
 }: {
   confirmDelete: {
     branch: string;
@@ -77,6 +80,7 @@ function StatusBar({
   focus: Focus;
   hasTmux: boolean;
   vcsConfigured: boolean;
+  inFlight: Set<string>;
 }) {
   if (confirmDelete) {
     return (
@@ -107,11 +111,15 @@ function StatusBar({
   if (prError) {
     return <Text color="red">PR error: {prError}</Text>;
   }
+
+  const ops = inFlight.size > 0 ? ` · ${[...inFlight].join(', ')}...` : '';
+
   return (
     <Text dimColor>
       {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text> · tmux:{' '}
       {hasTmux ? '✓' : '✕'}
       {!vcsConfigured ? ' · (s to configure VCS)' : ''}
+      {ops ? <Text color="yellow">{ops}</Text> : null}
     </Text>
   );
 }
@@ -175,16 +183,20 @@ function App() {
     refresh: refreshPr,
   } = usePrData(config, provider);
 
-  // Extract worktree branch names for branch sync
-  const worktreeBranches = useMemo(() => {
-    const worktrees = listWorktrees();
-    return worktrees.map((wt) => wt.branch);
-  }, [sessions]);
+  // Worktree branch names tracked in state (updated by refreshSessions)
+  const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
 
-  const { mergedBranches, conflictCounts, triggerSync } = useBranchSync(
-    config,
+  // Async operation tracker
+  const { run: runOp, isRunning, inFlight } = useAsyncOperation();
+
+  // Event-driven sync chain
+  const { lastSynced, triggerSync } = useRemoteSync(config, provider);
+
+  const { mergedBranches } = useMergedBranches(
     provider,
+    config,
     worktreeBranches,
+    lastSynced,
     (sessionName, branch) => {
       performDelete(sessionName, branch);
       flashStatus(`Auto-deleted merged branch: ${branch}`);
@@ -286,12 +298,18 @@ function App() {
 
   // Check tmux availability, load sessions and branches on mount
   useEffect(() => {
-    const ok = isAvailable();
-    setHasTmux(ok);
-    if (ok) {
-      refreshSessions();
-    }
-    setBranches(listAllBranches());
+    let cancelled = false;
+
+    (async () => {
+      const ok = await isAvailable();
+      if (cancelled) return;
+      setHasTmux(ok);
+      if (ok) {
+        await refreshSessions();
+      }
+      const allBranches = await listAllBranches();
+      if (!cancelled) setBranches(allBranches);
+    })();
 
     // Auto-detect per-project fields on first launch
     const { updated } = autoDetectProjectConfig(process.cwd(), providers);
@@ -300,14 +318,15 @@ function App() {
     }
 
     return () => {
+      cancelled = true;
       if (statusTimer.current) clearTimeout(statusTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refreshSessions = () => {
-    const worktrees = listWorktrees();
-    const allTmux = listSessions();
+  const refreshSessions = async () => {
+    const worktrees = await listWorktrees();
+    const allTmux = await listSessions();
     const filtered: TmuxSession[] = [];
     for (const wt of worktrees) {
       const name = branchToSessionName(wt.branch);
@@ -320,6 +339,7 @@ function App() {
     }
     const nonReview = filtered.filter((s) => !s.name.startsWith('review-pr-'));
     setSessions(nonReview);
+    setWorktreeBranches(worktrees.map((wt) => wt.branch));
     return nonReview;
   };
 
@@ -329,15 +349,11 @@ function App() {
     statusTimer.current = setTimeout(() => setStatusMessage(null), 3000);
   };
 
-  const performDelete = (sessionName: string, branch: string) => {
-    killSession(sessionName);
-    removeWorktree(branch);
-    try {
-      execSync(`git branch -d "${branch}"`, { stdio: 'pipe' });
-    } catch {
-      // Branch delete may fail if not fully merged
-    }
-    const updated = refreshSessions();
+  const performDelete = async (sessionName: string, branch: string) => {
+    await killSession(sessionName);
+    await removeWorktree(branch);
+    await deleteBranch(branch);
+    const updated = await refreshSessions();
     setSelectedIndex((prev) =>
       prev >= updated.length ? Math.max(0, updated.length - 1) : prev
     );
@@ -417,6 +433,8 @@ function App() {
     performDelete,
     sendInput,
     exit,
+    runOp,
+    isRunning,
   };
 
   useInput((input, key) => {
@@ -448,6 +466,7 @@ function App() {
             focus={focus}
             hasTmux={hasTmux}
             vcsConfigured={vcsConfigured}
+            inFlight={inFlight}
           />
         </Box>
         <Text dimColor>{process.cwd()}</Text>
@@ -464,7 +483,7 @@ function App() {
               sidebarWidth={sidebarWidth}
               orphanPrs={orphanPrs}
               mergedBranches={mergedBranches}
-              conflictCounts={conflictCounts}
+              lastSynced={lastSynced}
             />
             {settingsOpen && (
               <SettingsPanel

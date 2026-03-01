@@ -6,7 +6,6 @@ import {
   createSession,
   createWorktree,
   canRemoveBranch,
-  listBranches,
   listAllBranches,
   listWorktrees,
   fetchRemote,
@@ -29,6 +28,7 @@ import {
   resolveValue,
   type SettingsField,
 } from './components/SettingsPanel.js';
+import type { OperationName } from './hooks/useAsyncOperation.js';
 
 /** Coerce a string value to the correct type for known config keys */
 function coerceConfigValue(
@@ -193,16 +193,20 @@ export interface AppContext {
   setBranches: (v: string[]) => void;
   flashStatus: (msg: string) => void;
   triggerSync: () => void;
-  refreshSessions: () => TmuxSession[];
+  refreshSessions: () => Promise<TmuxSession[]>;
   refreshPr: () => void;
-  performDelete: (sessionName: string, branch: string) => void;
+  performDelete: (sessionName: string, branch: string) => Promise<void>;
   sendInput: (input: string, key: Key) => void;
   exit: () => void;
+
+  // Async operations
+  runOp: (name: OperationName, fn: () => Promise<void>) => Promise<void>;
+  isRunning: (name: OperationName) => boolean;
 }
 
 const DEFAULT_AI_COMMAND = 'claude --continue || claude';
 
-function startAiSession(
+async function startAiSession(
   name: string,
   cols: number,
   rows: number,
@@ -210,13 +214,13 @@ function startAiSession(
   config: AppConfig
 ) {
   const cmd = config.aiCommand || DEFAULT_AI_COMMAND;
-  createSession(name, cols, rows, cmd, cwd);
+  await createSession(name, cols, rows, cmd, cwd);
 }
 
-function startReviewSession(
+async function startReviewSession(
   ctx: AppContext,
   additionalInstruction?: string
-): void {
+): Promise<void> {
   if (!ctx.reviewSessionName || !ctx.selectedReviewPr) return;
   const pr = ctx.selectedReviewPr;
 
@@ -238,7 +242,7 @@ function startReviewSession(
       additionalInstruction;
   }
 
-  const worktreePath = createWorktree(pr.sourceBranch);
+  const worktreePath = await createWorktree(pr.sourceBranch);
   if (!worktreePath) {
     ctx.flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
     return;
@@ -247,7 +251,7 @@ function startReviewSession(
   const safePrompt = prompt.replace(/['"]/g, '');
   const command = `claude --continue || claude '${safePrompt}'`;
 
-  createSession(
+  await createSession(
     ctx.reviewSessionName,
     ctx.paneCols,
     ctx.paneRows,
@@ -275,13 +279,15 @@ export function handleReviewConfirmInput(
 
   if (opt === 1) {
     if (key.return) {
-      if (!hasSession(ctx.reviewSessionName!)) {
-        startReviewSession(ctx, ctx.reviewInstruction || undefined);
-      }
-      ctx.setFocus('terminal');
-      ctx.setReviewReconnectKey((k) => k + 1);
-      ctx.setReviewConfirm(null);
-      ctx.setReviewInstruction('');
+      ctx.runOp('start-session', async () => {
+        if (!(await hasSession(ctx.reviewSessionName!))) {
+          await startReviewSession(ctx, ctx.reviewInstruction || undefined);
+        }
+        ctx.setFocus('terminal');
+        ctx.setReviewReconnectKey((k) => k + 1);
+        ctx.setReviewConfirm(null);
+        ctx.setReviewInstruction('');
+      });
       return;
     }
     if (key.backspace || key.delete) {
@@ -319,10 +325,14 @@ export function handleReviewConfirmInput(
 
   if (key.return) {
     if (opt === 0) {
-      if (!hasSession(ctx.reviewSessionName!)) startReviewSession(ctx);
-      ctx.setFocus('terminal');
-      ctx.setReviewReconnectKey((k) => k + 1);
-      ctx.setReviewConfirm(null);
+      ctx.runOp('start-session', async () => {
+        if (!(await hasSession(ctx.reviewSessionName!))) {
+          await startReviewSession(ctx);
+        }
+        ctx.setFocus('terminal');
+        ctx.setReviewReconnectKey((k) => k + 1);
+        ctx.setReviewConfirm(null);
+      });
     } else if (opt === 2) {
       ctx.setReviewConfirm(null);
       ctx.setReviewInstruction('');
@@ -343,11 +353,14 @@ export function handleBranchPickerInput(
   }
 
   if (key.ctrl && input === 'f') {
-    ctx.flashStatus('Fetching remotes...');
-    fetchRemote();
-    ctx.setBranches(listAllBranches());
-    ctx.setBranchIndex(0);
-    ctx.flashStatus('Fetched remotes');
+    ctx.runOp('fetch-branches', async () => {
+      ctx.flashStatus('Fetching remotes...');
+      await fetchRemote();
+      const allBranches = await listAllBranches();
+      ctx.setBranches(allBranches);
+      ctx.setBranchIndex(0);
+      ctx.flashStatus('Fetched remotes');
+    });
     return;
   }
 
@@ -370,20 +383,22 @@ export function handleBranchPickerInput(
         ? filtered[ctx.branchIndex]!
         : ctx.branchFilter.trim();
     if (branch) {
-      const worktreePath = createWorktree(branch);
-      if (worktreePath) {
-        const sessionName = branchToSessionName(branch);
-        startAiSession(
-          sessionName,
-          ctx.paneCols,
-          ctx.paneRows,
-          worktreePath,
-          ctx.config
-        );
-        const updated = ctx.refreshSessions();
-        const idx = updated.findIndex((s) => s.name === sessionName);
-        if (idx >= 0) ctx.setSelectedIndex(idx);
-      }
+      ctx.runOp('create-worktree', async () => {
+        const worktreePath = await createWorktree(branch);
+        if (worktreePath) {
+          const sessionName = branchToSessionName(branch);
+          await startAiSession(
+            sessionName,
+            ctx.paneCols,
+            ctx.paneRows,
+            worktreePath,
+            ctx.config
+          );
+          const updated = await ctx.refreshSessions();
+          const idx = updated.findIndex((s) => s.name === sessionName);
+          if (idx >= 0) ctx.setSelectedIndex(idx);
+        }
+      });
     }
     ctx.setCreating(false);
     ctx.setBranchFilter('');
@@ -414,10 +429,12 @@ export function handleConfirmDeleteInput(
   }
   if (key.return) {
     if (ctx.confirmInput === ctx.confirmDelete!.branch) {
-      ctx.performDelete(
-        ctx.confirmDelete!.sessionName,
-        ctx.confirmDelete!.branch
-      );
+      ctx.runOp('delete', async () => {
+        await ctx.performDelete(
+          ctx.confirmDelete!.sessionName,
+          ctx.confirmDelete!.branch
+        );
+      });
     } else {
       ctx.flashStatus('Branch name did not match — delete cancelled');
     }
@@ -534,45 +551,53 @@ export function handleSidebarInput(
     return;
   }
   if (input === 'c') {
-    ctx.setBranches(listAllBranches());
-    ctx.setCreating(true);
-    ctx.setBranchFilter('');
-    ctx.setBranchIndex(0);
+    ctx.runOp('fetch-branches', async () => {
+      const allBranches = await listAllBranches();
+      ctx.setBranches(allBranches);
+      ctx.setCreating(true);
+      ctx.setBranchFilter('');
+      ctx.setBranchIndex(0);
+    });
     return;
   }
   if (input === 'd' && ctx.selectedSession) {
     const sessionName = ctx.selectedSession.name;
-    const currentBranches = listBranches();
-    const branch = currentBranches.find(
-      (b) => branchToSessionName(b) === sessionName
-    );
-    if (branch) {
-      const check = canRemoveBranch(branch);
-      if (!check.safe) {
-        if (
-          check.reason === 'not pushed to upstream' ||
-          check.reason === 'uncommitted changes'
-        ) {
-          ctx.setConfirmDelete({ branch, sessionName, reason: check.reason });
-          ctx.setConfirmInput('');
-        } else {
-          ctx.flashStatus(`Cannot delete: ${check.reason}`);
+    ctx.runOp('check-delete', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      const branch = wt?.branch;
+      if (branch) {
+        const check = await canRemoveBranch(branch);
+        if (!check.safe) {
+          if (
+            check.reason === 'not pushed to upstream' ||
+            check.reason === 'uncommitted changes'
+          ) {
+            ctx.setConfirmDelete({ branch, sessionName, reason: check.reason });
+            ctx.setConfirmInput('');
+          } else {
+            ctx.flashStatus(`Cannot delete: ${check.reason}`);
+          }
+          return;
         }
-        return;
+        await ctx.performDelete(sessionName, branch);
+      } else {
+        await killSession(sessionName);
+        const updated = await ctx.refreshSessions();
+        if (ctx.selectedIndex >= updated.length) {
+          ctx.setSelectedIndex(Math.max(0, updated.length - 1));
+        }
       }
-      ctx.performDelete(sessionName, branch);
-    } else {
-      killSession(sessionName);
-      const updated = ctx.refreshSessions();
-      if (ctx.selectedIndex >= updated.length) {
-        ctx.setSelectedIndex(Math.max(0, updated.length - 1));
-      }
-    }
+    });
     return;
   }
   if (input === 'K' && ctx.selectedSession) {
-    killSession(ctx.selectedSession.name);
-    ctx.refreshSessions();
+    ctx.runOp('delete', async () => {
+      await killSession(ctx.selectedSession!.name);
+      await ctx.refreshSessions();
+    });
     return;
   }
   if (input === 's') {
@@ -587,21 +612,23 @@ export function handleSidebarInput(
   }
   if (input === 'u' && ctx.selectedSession) {
     const sessionName = ctx.selectedSession.name;
-    const worktrees = listWorktrees();
-    const wt = worktrees.find(
-      (w) => branchToSessionName(w.branch) === sessionName
-    );
-    if (!wt) {
-      ctx.flashStatus('No worktree found for selected session');
-      return;
-    }
-    ctx.flashStatus('Updating from master...');
-    const rebaseMessages = {
-      success: 'Rebased onto master successfully',
-      conflict: 'Conflicts detected — rebase aborted',
-      error: 'Failed to fetch origin/master',
-    } as const;
-    ctx.flashStatus(rebaseMessages[rebaseOntoMaster(wt.path)]);
+    ctx.runOp('rebase', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      if (!wt) {
+        ctx.flashStatus('No worktree found for selected session');
+        return;
+      }
+      ctx.flashStatus('Updating from master...');
+      const rebaseMessages = {
+        success: 'Rebased onto master successfully',
+        conflict: 'Conflicts detected — rebase aborted',
+        error: 'Failed to fetch origin/master',
+      } as const;
+      ctx.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
+    });
     return;
   }
   if (input === 'g') {
@@ -623,20 +650,22 @@ export function handleSidebarInput(
     const prIndex = ctx.selectedIndex - ctx.sessions.length;
     const pr = ctx.orphanPrs[prIndex];
     if (pr) {
-      const worktreePath = createWorktree(pr.sourceBranch);
-      if (worktreePath) {
-        const sessionName = branchToSessionName(pr.sourceBranch);
-        startAiSession(
-          sessionName,
-          ctx.paneCols,
-          ctx.paneRows,
-          worktreePath,
-          ctx.config
-        );
-        const updated = ctx.refreshSessions();
-        const idx = updated.findIndex((s) => s.name === sessionName);
-        if (idx >= 0) ctx.setSelectedIndex(idx);
-      }
+      ctx.runOp('create-worktree', async () => {
+        const worktreePath = await createWorktree(pr.sourceBranch);
+        if (worktreePath) {
+          const sessionName = branchToSessionName(pr.sourceBranch);
+          await startAiSession(
+            sessionName,
+            ctx.paneCols,
+            ctx.paneRows,
+            worktreePath,
+            ctx.config
+          );
+          const updated = await ctx.refreshSessions();
+          const idx = updated.findIndex((s) => s.name === sessionName);
+          if (idx >= 0) ctx.setSelectedIndex(idx);
+        }
+      });
     }
   }
 }
@@ -661,12 +690,14 @@ export function handleReviewsSidebarInput(
     return;
   }
   if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
-    if (hasSession(ctx.reviewSessionName)) {
-      ctx.setFocus('terminal');
-      ctx.setReviewReconnectKey((k) => k + 1);
-      return;
-    }
-    ctx.setReviewConfirm({ pr: ctx.selectedReviewPr, selectedOption: 0 });
+    ctx.runOp('start-session', async () => {
+      if (await hasSession(ctx.reviewSessionName!)) {
+        ctx.setFocus('terminal');
+        ctx.setReviewReconnectKey((k) => k + 1);
+        return;
+      }
+      ctx.setReviewConfirm({ pr: ctx.selectedReviewPr!, selectedOption: 0 });
+    });
     return;
   }
   if (input === 'j' || key.downArrow) {
@@ -700,26 +731,28 @@ export function handleGlobalInput(
   }
 
   if (key.tab && ctx.activeTab === 'sessions') {
-    if (
-      ctx.focus === 'sidebar' &&
-      ctx.selectedName &&
-      !hasSession(ctx.selectedName)
-    ) {
-      const worktreePath = resolve(
-        process.cwd(),
-        '.tui/worktrees/' + ctx.selectedName
-      );
-      startAiSession(
-        ctx.selectedName,
-        ctx.paneCols,
-        ctx.paneRows,
-        worktreePath,
-        ctx.config
-      );
-      ctx.refreshSessions();
-      ctx.setReconnectKey((k) => k + 1);
+    if (ctx.focus === 'sidebar' && ctx.selectedName) {
+      ctx.runOp('start-session', async () => {
+        if (!(await hasSession(ctx.selectedName!))) {
+          const worktreePath = resolve(
+            process.cwd(),
+            '.tui/worktrees/' + ctx.selectedName
+          );
+          await startAiSession(
+            ctx.selectedName!,
+            ctx.paneCols,
+            ctx.paneRows,
+            worktreePath,
+            ctx.config
+          );
+          await ctx.refreshSessions();
+          ctx.setReconnectKey((k) => k + 1);
+        }
+        ctx.setFocus('terminal');
+      });
+    } else {
+      ctx.setFocus((f) => (f === 'sidebar' ? 'terminal' : 'sidebar'));
     }
-    ctx.setFocus((f) => (f === 'sidebar' ? 'terminal' : 'sidebar'));
     return;
   }
   if (key.tab && ctx.activeTab === 'reviews') {
@@ -728,12 +761,17 @@ export function handleGlobalInput(
       ctx.reviewSessionName &&
       ctx.selectedReviewPr
     ) {
-      if (hasSession(ctx.reviewSessionName)) {
-        ctx.setReviewReconnectKey((k) => k + 1);
-        ctx.setFocus('terminal');
-      } else {
-        ctx.setReviewConfirm({ pr: ctx.selectedReviewPr, selectedOption: 0 });
-      }
+      ctx.runOp('start-session', async () => {
+        if (await hasSession(ctx.reviewSessionName!)) {
+          ctx.setReviewReconnectKey((k) => k + 1);
+          ctx.setFocus('terminal');
+        } else {
+          ctx.setReviewConfirm({
+            pr: ctx.selectedReviewPr!,
+            selectedOption: 0,
+          });
+        }
+      });
     } else if (ctx.focus === 'terminal') {
       ctx.setFocus('sidebar');
     }

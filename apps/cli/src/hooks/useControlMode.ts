@@ -47,47 +47,56 @@ export function useControlMode(
   useEffect(() => {
     if (!sessionName) return;
 
-    // Don't connect if the tmux session doesn't exist yet —
-    // it will be auto-created when the user tabs into the terminal pane
-    if (!hasSession(sessionName)) {
-      setPaneContent('(press Tab to start session)');
-      return;
-    }
+    let cancelled = false;
 
-    const conn = new ControlConnection(sessionName);
-    connRef.current = conn;
+    (async () => {
+      // Don't connect if the tmux session doesn't exist yet —
+      // it will be auto-created when the user tabs into the terminal pane
+      if (!(await hasSession(sessionName))) {
+        if (!cancelled) setPaneContent('(press Tab to start session)');
+        return;
+      }
+      if (cancelled) return;
 
-    conn.on('output', () => {
-      scheduleRender();
-    });
+      const conn = new ControlConnection(sessionName);
+      connRef.current = conn;
 
-    conn.on('exit', () => {
-      setPaneContent('(session disconnected)');
-    });
-
-    conn.on('error', () => {
-      setPaneContent('(connection error)');
-    });
-
-    conn
-      .connect(paneCols, paneRows)
-      .then(async () => {
-        const content = await conn.capturePane();
-        if (connRef.current === conn) {
-          setPaneContent(clampContent(content));
-        }
-      })
-      .catch(() => {
-        setPaneContent('(failed to connect)');
+      conn.on('output', () => {
+        scheduleRender();
       });
 
+      conn.on('exit', () => {
+        setPaneContent('(session disconnected)');
+      });
+
+      conn.on('error', () => {
+        setPaneContent('(connection error)');
+      });
+
+      conn
+        .connect(paneCols, paneRows)
+        .then(async () => {
+          const content = await conn.capturePane();
+          if (connRef.current === conn) {
+            setPaneContent(clampContent(content));
+          }
+        })
+        .catch(() => {
+          setPaneContent('(failed to connect)');
+        });
+    })();
+
     return () => {
+      cancelled = true;
       if (renderTimer.current) {
         clearTimeout(renderTimer.current);
         renderTimer.current = null;
       }
-      conn.disconnect();
-      connRef.current = null;
+      const conn = connRef.current;
+      if (conn) {
+        conn.disconnect();
+        connRef.current = null;
+      }
     };
     // Only reconnect when the session changes (or reconnectKey bumps after auto-create)
     // eslint-disable-next-line react-hooks/exhaustive-deps

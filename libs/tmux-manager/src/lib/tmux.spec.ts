@@ -8,13 +8,18 @@ import {
   listSessions,
   branchToSessionName,
 } from './tmux.js';
-import { execSync } from 'node:child_process';
 
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
+vi.mock('./exec.js', () => ({
+  exec: vi.fn(),
 }));
 
-const mockExecSync = vi.mocked(execSync);
+import { exec } from './exec.js';
+
+const mockExec = vi.mocked(exec);
+
+function resolve(stdout = '') {
+  return { stdout, stderr: '' };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,125 +51,114 @@ describe('parseSessions', () => {
 });
 
 describe('isAvailable', () => {
-  it('should return true when tmux is installed', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from('tmux 3.4'));
-    expect(isAvailable()).toBe(true);
+  it('should return true when tmux is installed', async () => {
+    mockExec.mockResolvedValueOnce(resolve('tmux 3.4'));
+    expect(await isAvailable()).toBe(true);
   });
 
-  it('should return false when tmux is not installed', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('command not found');
-    });
-    expect(isAvailable()).toBe(false);
+  it('should return false when tmux is not installed', async () => {
+    mockExec.mockRejectedValueOnce(new Error('command not found'));
+    expect(await isAvailable()).toBe(false);
   });
 });
 
 describe('listSessions', () => {
-  it('should parse tmux output into sessions', () => {
-    mockExecSync.mockReturnValueOnce(
-      'work|2|1708900000|1\ntest|1|1708900100|0\n'
+  it('should parse tmux output into sessions', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve('work|2|1708900000|1\ntest|1|1708900100|0\n')
     );
-    const sessions = listSessions();
+    const sessions = await listSessions();
     expect(sessions).toHaveLength(2);
     expect(sessions[0]!.name).toBe('work');
     expect(sessions[1]!.name).toBe('test');
   });
 
-  it('should return empty array when tmux fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('no server running');
-    });
-    expect(listSessions()).toEqual([]);
+  it('should return empty array when tmux fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('no server running'));
+    expect(await listSessions()).toEqual([]);
   });
 });
 
 describe('hasSession', () => {
-  it('should return true when session exists', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(hasSession('my-session')).toBe(true);
+  it('should return true when session exists', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await hasSession('my-session')).toBe(true);
   });
 
-  it("should return false when session doesn't exist", () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('session not found');
-    });
-    expect(hasSession('nonexistent')).toBe(false);
+  it("should return false when session doesn't exist", async () => {
+    mockExec.mockRejectedValueOnce(new Error('session not found'));
+    expect(await hasSession('nonexistent')).toBe(false);
   });
 
-  it('should reject invalid session names', () => {
-    expect(() => hasSession('foo; rm -rf /')).toThrow(
+  it('should reject invalid session names', async () => {
+    await expect(hasSession('foo; rm -rf /')).rejects.toThrow(
       'Invalid tmux session name'
     );
   });
 });
 
 describe('createSession', () => {
-  it('should create a detached session', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(createSession('my-session')).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'tmux new-session -d -s my-session',
-      { stdio: 'ignore' }
-    );
-  });
-
-  it('should pass dimensions when provided', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(createSession('my-session', 120, 40)).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
-      'tmux new-session -d -s my-session -x 120 -y 40',
-      { stdio: 'ignore' }
-    );
-  });
-
-  it('should return false on failure', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('duplicate session');
+  it('should create a detached session', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await createSession('my-session')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('tmux new-session -d -s my-session', {
+      encoding: 'utf8',
     });
-    expect(createSession('existing')).toBe(false);
   });
 
-  it('should reject invalid session names', () => {
-    expect(() => createSession('foo; rm -rf /')).toThrow(
+  it('should pass dimensions when provided', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await createSession('my-session', 120, 40)).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      'tmux new-session -d -s my-session -x 120 -y 40',
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should return false on failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('duplicate session'));
+    expect(await createSession('existing')).toBe(false);
+  });
+
+  it('should reject invalid session names', async () => {
+    await expect(createSession('foo; rm -rf /')).rejects.toThrow(
       'Invalid tmux session name'
     );
   });
 });
 
 describe('killSession', () => {
-  it('should return true on success', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(killSession('my-session')).toBe(true);
+  it('should return true on success', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await killSession('my-session')).toBe(true);
   });
 
-  it('should return false on failure', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('session not found');
-    });
-    expect(killSession('nonexistent')).toBe(false);
+  it('should return false on failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('session not found'));
+    expect(await killSession('nonexistent')).toBe(false);
   });
 });
 
 describe('createSession with command', () => {
-  it('should append command to tmux new-session', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(createSession('my-session', 120, 40, 'claude --worktree main')).toBe(
-      true
-    );
-    expect(mockExecSync).toHaveBeenCalledWith(
+  it('should append command to tmux new-session', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(
+      await createSession('my-session', 120, 40, 'claude --worktree main')
+    ).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
       'tmux new-session -d -s my-session -x 120 -y 40 "claude --worktree main"',
-      { stdio: 'ignore' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should work with command but no dimensions', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
-    expect(createSession('my-session', undefined, undefined, 'bash')).toBe(
-      true
-    );
-    expect(mockExecSync).toHaveBeenCalledWith(
+  it('should work with command but no dimensions', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(
+      await createSession('my-session', undefined, undefined, 'bash')
+    ).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
       'tmux new-session -d -s my-session "bash"',
-      { stdio: 'ignore' }
+      { encoding: 'utf8' }
     );
   });
 });
@@ -188,32 +182,44 @@ describe('branchToSessionName', () => {
 });
 
 describe('createSession with cwd', () => {
-  it('should include -c flag when cwd is provided', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
+  it('should include -c flag when cwd is provided', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
     expect(
-      createSession('my-session', 120, 40, 'claude', '/home/user/worktree')
+      await createSession(
+        'my-session',
+        120,
+        40,
+        'claude',
+        '/home/user/worktree'
+      )
     ).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'tmux new-session -d -s my-session -x 120 -y 40 -c "/home/user/worktree" "claude"',
-      { stdio: 'ignore' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should work with cwd but no command', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
+  it('should work with cwd but no command', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
     expect(
-      createSession('my-session', 120, 40, undefined, '/home/user/worktree')
+      await createSession(
+        'my-session',
+        120,
+        40,
+        undefined,
+        '/home/user/worktree'
+      )
     ).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'tmux new-session -d -s my-session -x 120 -y 40 -c "/home/user/worktree"',
-      { stdio: 'ignore' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should handle paths with spaces in cwd', () => {
-    mockExecSync.mockReturnValueOnce(Buffer.from(''));
+  it('should handle paths with spaces in cwd', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
     expect(
-      createSession(
+      await createSession(
         'my-session',
         120,
         40,
@@ -221,26 +227,26 @@ describe('createSession with cwd', () => {
         '/home/user/JBT Marel/worktree'
       )
     ).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'tmux new-session -d -s my-session -x 120 -y 40 -c "/home/user/JBT Marel/worktree" "claude"',
-      { stdio: 'ignore' }
+      { encoding: 'utf8' }
     );
   });
 });
 
 describe('validateSessionName (via hasSession)', () => {
-  it('should allow valid session names', () => {
-    mockExecSync.mockReturnValue(Buffer.from(''));
-    expect(() => hasSession('my-session')).not.toThrow();
-    expect(() => hasSession('feat_auth')).not.toThrow();
-    expect(() => hasSession('session.1')).not.toThrow();
+  it('should allow valid session names', async () => {
+    mockExec.mockResolvedValue(resolve());
+    await expect(hasSession('my-session')).resolves.not.toThrow();
+    await expect(hasSession('feat_auth')).resolves.not.toThrow();
+    await expect(hasSession('session.1')).resolves.not.toThrow();
   });
 
-  it('should reject names with shell metacharacters', () => {
-    expect(() => hasSession('foo; rm -rf /')).toThrow();
-    expect(() => hasSession('foo$(whoami)')).toThrow();
-    expect(() => hasSession('foo`id`')).toThrow();
-    expect(() => hasSession('foo|bar')).toThrow();
-    expect(() => hasSession('foo & bar')).toThrow();
+  it('should reject names with shell metacharacters', async () => {
+    await expect(hasSession('foo; rm -rf /')).rejects.toThrow();
+    await expect(hasSession('foo$(whoami)')).rejects.toThrow();
+    await expect(hasSession('foo`id`')).rejects.toThrow();
+    await expect(hasSession('foo|bar')).rejects.toThrow();
+    await expect(hasSession('foo & bar')).rejects.toThrow();
   });
 });

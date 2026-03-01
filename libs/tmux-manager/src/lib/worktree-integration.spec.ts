@@ -116,70 +116,70 @@ afterAll(() => {
 });
 
 describe('integration: listBranches', () => {
-  it('should list real branches', () => {
+  it('should list real branches', async () => {
     const { repoDir } = setupGitRepo();
     process.chdir(repoDir);
 
     execSync('git checkout -b feature-a', { stdio: 'pipe' });
     execSync('git checkout -b feature-b', { stdio: 'pipe' });
 
-    const branches = listBranches();
+    const branches = await listBranches();
     expect(branches).toContain('feature-a');
     expect(branches).toContain('feature-b');
   });
 });
 
 describe('integration: createWorktree / removeWorktree', () => {
-  it('should create a worktree directory and remove it', () => {
+  it('should create a worktree directory and remove it', async () => {
     const { repoDir } = setupGitRepo();
     process.chdir(repoDir);
 
     execSync('git checkout -b test-wt', { stdio: 'pipe' });
     execSync('git checkout -', { stdio: 'pipe' }); // back to default branch
 
-    const path = createWorktree('test-wt');
+    const path = await createWorktree('test-wt');
     expect(path).not.toBeNull();
     expect(existsSync(path!)).toBe(true);
 
-    const removed = removeWorktree('test-wt');
+    const removed = await removeWorktree('test-wt');
     expect(removed).toBe(true);
     expect(existsSync(path!)).toBe(false);
   });
 
-  it('should create a new branch when branch does not exist', () => {
+  it('should create a new branch when branch does not exist', async () => {
     const { repoDir } = setupGitRepo();
     process.chdir(repoDir);
 
-    const path = createWorktree('brand-new-branch');
+    const path = await createWorktree('brand-new-branch');
     expect(path).not.toBeNull();
     expect(existsSync(path!)).toBe(true);
 
     // Verify branch was created
-    const branches = listBranches();
+    const branches = await listBranches();
     expect(branches).toContain('brand-new-branch');
 
-    removeWorktree('brand-new-branch');
+    await removeWorktree('brand-new-branch');
   });
 });
 
 describe('integration: canRemoveBranch', () => {
-  it('should detect uncommitted changes in worktree', () => {
+  it('should detect uncommitted changes in worktree', async () => {
     const { repoDir } = setupGitRepo();
     process.chdir(repoDir);
 
-    const path = createWorktree('dirty-branch');
+    const path = await createWorktree('dirty-branch');
     expect(path).not.toBeNull();
 
     // Create a dirty file in the worktree
     writeFileSync(join(path!, 'dirty.txt'), 'uncommitted content');
 
-    const result = canRemoveBranch('dirty-branch');
+    const result = await canRemoveBranch('dirty-branch');
     expect(result).toEqual({ safe: false, reason: 'uncommitted changes' });
 
-    removeWorktree('dirty-branch');
+    await removeWorktree('dirty-branch');
   });
 
-  it('should allow removal of clean branch that is pushed', () => {
+  it('should allow removal of clean branch that is pushed', async () => {
     const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
@@ -188,42 +188,42 @@ describe('integration: canRemoveBranch', () => {
     execSync('git push -u origin clean-branch', { stdio: 'pipe' });
     execSync('git checkout master', { stdio: 'pipe' });
 
-    const path = createWorktree('clean-branch');
+    const path = await createWorktree('clean-branch');
     expect(path).not.toBeNull();
 
-    const result = canRemoveBranch('clean-branch');
+    const result = await canRemoveBranch('clean-branch');
     expect(result).toEqual({ safe: true });
 
-    removeWorktree('clean-branch');
+    await removeWorktree('clean-branch');
   });
 });
 
 describe('integration: listAllBranches', () => {
-  it('should list local branches in a repo without remotes', () => {
+  it('should list local branches in a repo without remotes', async () => {
     const { repoDir } = setupGitRepo();
     process.chdir(repoDir);
 
     execSync('git checkout -b alpha', { stdio: 'pipe' });
     execSync('git checkout -b beta', { stdio: 'pipe' });
 
-    const branches = listAllBranches();
+    const branches = await listAllBranches();
     expect(branches).toContain('alpha');
     expect(branches).toContain('beta');
   });
 
-  it('should deduplicate remote branches', () => {
+  it('should deduplicate remote branches', async () => {
     const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // 'master' exists both locally and as origin/master
-    const branches = listAllBranches();
+    const branches = await listAllBranches();
     const masterCount = branches.filter((b) => b === 'master').length;
     expect(masterCount).toBe(1);
   });
 });
 
 describe('integration: fastForwardMaster', () => {
-  it('should fast-forward local master to match remote', () => {
+  it('should fast-forward local master to match remote', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
@@ -256,7 +256,7 @@ describe('integration: fastForwardMaster', () => {
       encoding: 'utf8',
     }).trim();
 
-    const result = fastForwardMaster();
+    const result = await fastForwardMaster();
     expect(result).toBe(true);
 
     // Local master should now be ahead of where it was
@@ -269,7 +269,7 @@ describe('integration: fastForwardMaster', () => {
 });
 
 describe('integration: countConflicts', () => {
-  it('should return 0 for non-conflicting branches', () => {
+  it('should return 0 for non-conflicting branches', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
@@ -283,11 +283,11 @@ describe('integration: countConflicts', () => {
     });
     execSync('git checkout master', { cwd: cloneDir, stdio: 'pipe' });
 
-    const conflicts = countConflicts('feature-clean');
+    const conflicts = await countConflicts('feature-clean');
     expect(conflicts).toBe(0);
   });
 
-  it('should count conflicting files', () => {
+  it('should count conflicting files', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
@@ -313,18 +313,18 @@ describe('integration: countConflicts', () => {
     });
     execSync('git checkout master', { cwd: cloneDir, stdio: 'pipe' });
 
-    const conflicts = countConflicts('feature-conflict');
+    const conflicts = await countConflicts('feature-conflict');
     expect(conflicts).toBe(1);
   });
 });
 
 describe('integration: rebaseOntoMaster', () => {
-  it('should successfully rebase a clean branch', () => {
+  it('should successfully rebase a clean branch', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // Create worktree with a feature branch
-    const wtPath = createWorktree('feature-rebase');
+    const wtPath = await createWorktree('feature-rebase');
     expect(wtPath).not.toBeNull();
 
     // Add a non-conflicting commit in the worktree
@@ -332,13 +332,13 @@ describe('integration: rebaseOntoMaster', () => {
     execSync('git add .', { cwd: wtPath!, stdio: 'pipe' });
     execSync('git commit -m "feature work"', { cwd: wtPath!, stdio: 'pipe' });
 
-    const result = rebaseOntoMaster(wtPath!);
+    const result = await rebaseOntoMaster(wtPath!);
     expect(result).toBe('success');
 
-    removeWorktree('feature-rebase');
+    await removeWorktree('feature-rebase');
   });
 
-  it('should detect conflict and abort rebase', () => {
+  it('should detect conflict and abort rebase', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
@@ -358,7 +358,7 @@ describe('integration: rebaseOntoMaster', () => {
     });
     execSync('git checkout master', { cwd: cloneDir, stdio: 'pipe' });
 
-    const wtPath = createWorktree('feature-rebase-conflict');
+    const wtPath = await createWorktree('feature-rebase-conflict');
     expect(wtPath).not.toBeNull();
 
     // Add a conflicting commit in the worktree
@@ -369,9 +369,9 @@ describe('integration: rebaseOntoMaster', () => {
       stdio: 'pipe',
     });
 
-    const result = rebaseOntoMaster(wtPath!);
+    const result = await rebaseOntoMaster(wtPath!);
     expect(result).toBe('conflict');
 
-    removeWorktree('feature-rebase-conflict');
+    await removeWorktree('feature-rebase-conflict');
   });
 });

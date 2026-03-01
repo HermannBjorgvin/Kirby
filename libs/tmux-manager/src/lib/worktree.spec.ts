@@ -12,167 +12,157 @@ import {
   countConflicts,
   rebaseOntoMaster,
 } from './worktree.js';
-import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
+vi.mock('./exec.js', () => ({
+  exec: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-const mockExecSync = vi.mocked(execSync);
+import { exec } from './exec.js';
+
+const mockExec = vi.mocked(exec);
 const mockExistsSync = vi.mocked(existsSync);
+
+function resolve(stdout = '') {
+  return { stdout, stderr: '' };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe('listBranches', () => {
-  it('should parse git branch output into array', () => {
-    mockExecSync.mockReturnValueOnce('main\nfeature/auth\nfix/bug-123\n');
-    const branches = listBranches();
+  it('should parse git branch output into array', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve('main\nfeature/auth\nfix/bug-123\n')
+    );
+    const branches = await listBranches();
     expect(branches).toEqual(['main', 'feature/auth', 'fix/bug-123']);
   });
 
-  it('should return empty array when git fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('not a git repository');
-    });
-    expect(listBranches()).toEqual([]);
+  it('should return empty array when git fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    expect(await listBranches()).toEqual([]);
   });
 
-  it('should filter out empty lines', () => {
-    mockExecSync.mockReturnValueOnce('main\n\ndev\n');
-    expect(listBranches()).toEqual(['main', 'dev']);
+  it('should filter out empty lines', async () => {
+    mockExec.mockResolvedValueOnce(resolve('main\n\ndev\n'));
+    expect(await listBranches()).toEqual(['main', 'dev']);
   });
 });
 
 describe('createWorktree', () => {
-  it('should return absolute path for existing branch', () => {
-    mockExecSync.mockReturnValueOnce('');
-    const result = createWorktree('feature/auth');
+  it('should return absolute path for existing branch', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    const result = await createWorktree('feature/auth');
     expect(result).toContain('.tui/worktrees/feature-auth');
     expect(result).toMatch(/^\//); // absolute path
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'git worktree add ".tui/worktrees/feature-auth" "feature/auth"',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should fall back to -b for new branch', () => {
-    mockExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('branch not found');
-      })
-      .mockReturnValueOnce('');
-    const result = createWorktree('new-branch');
+  it('should fall back to -b for new branch', async () => {
+    mockExec
+      .mockRejectedValueOnce(new Error('branch not found'))
+      .mockResolvedValueOnce(resolve());
+    const result = await createWorktree('new-branch');
     expect(result).toContain('.tui/worktrees/new-branch');
-    expect(mockExecSync).toHaveBeenCalledTimes(2);
-    expect(mockExecSync).toHaveBeenLastCalledWith(
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).toHaveBeenLastCalledWith(
       'git worktree add -b "new-branch" ".tui/worktrees/new-branch"',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should return null when both attempts fail', () => {
-    mockExecSync
-      .mockImplementationOnce(() => {
-        throw new Error('fail');
-      })
-      .mockImplementationOnce(() => {
-        throw new Error('fail');
-      });
-    expect(createWorktree('bad-branch')).toBeNull();
+  it('should return null when both attempts fail', async () => {
+    mockExec
+      .mockRejectedValueOnce(new Error('fail'))
+      .mockRejectedValueOnce(new Error('fail'));
+    expect(await createWorktree('bad-branch')).toBeNull();
   });
 
-  it('should return existing path without calling git when worktree already exists', () => {
+  it('should return existing path without calling git when worktree already exists', async () => {
     mockExistsSync.mockReturnValueOnce(true);
-    const result = createWorktree('feature/auth');
+    const result = await createWorktree('feature/auth');
     expect(result).toContain('.tui/worktrees/feature-auth');
     expect(result).toMatch(/^\//);
-    expect(mockExecSync).not.toHaveBeenCalled();
+    expect(mockExec).not.toHaveBeenCalled();
   });
 });
 
 describe('removeWorktree', () => {
-  it('should return true on success', () => {
-    mockExecSync.mockReturnValueOnce('');
-    expect(removeWorktree('feature/auth')).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith(
+  it('should return true on success', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await removeWorktree('feature/auth')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
       'git worktree remove ".tui/worktrees/feature-auth"',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should return false on failure', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('not found');
-    });
-    expect(removeWorktree('nonexistent')).toBe(false);
+  it('should return false on failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('not found'));
+    expect(await removeWorktree('nonexistent')).toBe(false);
   });
 });
 
 describe('canRemoveBranch', () => {
-  it('should reject main as protected', () => {
-    expect(canRemoveBranch('main')).toEqual({
+  it('should reject main as protected', async () => {
+    expect(await canRemoveBranch('main')).toEqual({
       safe: false,
       reason: 'protected branch',
     });
   });
 
-  it('should reject master as protected', () => {
-    expect(canRemoveBranch('master')).toEqual({
+  it('should reject master as protected', async () => {
+    expect(await canRemoveBranch('master')).toEqual({
       safe: false,
       reason: 'protected branch',
     });
   });
 
-  it('should reject gitbutler branches as protected', () => {
-    expect(canRemoveBranch('gitbutler/integration')).toEqual({
+  it('should reject gitbutler branches as protected', async () => {
+    expect(await canRemoveBranch('gitbutler/integration')).toEqual({
       safe: false,
       reason: 'protected branch',
     });
   });
 
-  it('should reject branches with uncommitted changes', () => {
-    // git -C status --porcelain returns dirty files
-    mockExecSync.mockReturnValueOnce(' M src/file.ts\n');
-    expect(canRemoveBranch('feature/dirty')).toEqual({
+  it('should reject branches with uncommitted changes', async () => {
+    mockExec.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
+    expect(await canRemoveBranch('feature/dirty')).toEqual({
       safe: false,
       reason: 'uncommitted changes',
     });
   });
 
-  it('should reject branches not pushed to upstream', () => {
-    // git -C status --porcelain returns clean
-    mockExecSync.mockReturnValueOnce('');
-    // git log --not --remotes returns unpushed commit
-    mockExecSync.mockReturnValueOnce('abc1234 some commit\n');
-    expect(canRemoveBranch('feature/unpushed')).toEqual({
+  it('should reject branches not pushed to upstream', async () => {
+    mockExec.mockResolvedValueOnce(resolve(''));
+    mockExec.mockResolvedValueOnce(resolve('abc1234 some commit\n'));
+    expect(await canRemoveBranch('feature/unpushed')).toEqual({
       safe: false,
       reason: 'not pushed to upstream',
     });
   });
 
-  it('should return safe for clean, pushed branches', () => {
-    // git -C status --porcelain returns clean
-    mockExecSync.mockReturnValueOnce('');
-    // git log --not --remotes returns empty
-    mockExecSync.mockReturnValueOnce('');
-    expect(canRemoveBranch('feature/done')).toEqual({ safe: true });
+  it('should return safe for clean, pushed branches', async () => {
+    mockExec.mockResolvedValueOnce(resolve(''));
+    mockExec.mockResolvedValueOnce(resolve(''));
+    expect(await canRemoveBranch('feature/done')).toEqual({ safe: true });
   });
 
-  it('should skip checks gracefully when worktree does not exist', () => {
-    // git -C status fails (no worktree)
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('not a directory');
+  it('should skip checks gracefully when worktree does not exist', async () => {
+    mockExec.mockRejectedValueOnce(new Error('not a directory'));
+    mockExec.mockResolvedValueOnce(resolve(''));
+    expect(await canRemoveBranch('feature/no-worktree')).toEqual({
+      safe: true,
     });
-    // git log --not --remotes returns empty
-    mockExecSync.mockReturnValueOnce('');
-    expect(canRemoveBranch('feature/no-worktree')).toEqual({ safe: true });
   });
 });
 
@@ -230,237 +220,221 @@ describe('parseWorktrees', () => {
 });
 
 describe('listWorktrees', () => {
-  it('should return only .tui/worktrees/ entries, excluding main worktree', () => {
-    mockExecSync.mockReturnValueOnce(
-      [
-        'worktree /home/user/repo',
-        'HEAD abc123',
-        'branch refs/heads/main',
-        '',
-        'worktree /home/user/repo/.tui/worktrees/feature-auth',
-        'HEAD def456',
-        'branch refs/heads/feature/auth',
-        '',
-      ].join('\n')
+  it('should return only .tui/worktrees/ entries, excluding main worktree', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          'worktree /home/user/repo',
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+          'worktree /home/user/repo/.tui/worktrees/feature-auth',
+          'HEAD def456',
+          'branch refs/heads/feature/auth',
+          '',
+        ].join('\n')
+      )
     );
 
-    const result = listWorktrees();
+    const result = await listWorktrees();
     expect(result).toHaveLength(1);
     expect(result[0]!.branch).toBe('feature/auth');
   });
 
-  it('should filter out bare worktrees', () => {
-    mockExecSync.mockReturnValueOnce(
-      [
-        'worktree /home/user/repo',
-        'HEAD abc123',
-        'bare',
-        '',
-        'worktree /home/user/repo/.tui/worktrees/feature-auth',
-        'HEAD def456',
-        'branch refs/heads/feature/auth',
-        '',
-      ].join('\n')
+  it('should filter out bare worktrees', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          'worktree /home/user/repo',
+          'HEAD abc123',
+          'bare',
+          '',
+          'worktree /home/user/repo/.tui/worktrees/feature-auth',
+          'HEAD def456',
+          'branch refs/heads/feature/auth',
+          '',
+        ].join('\n')
+      )
     );
 
-    const result = listWorktrees();
+    const result = await listWorktrees();
     expect(result).toHaveLength(1);
     expect(result[0]!.branch).toBe('feature/auth');
   });
 
-  it('should return empty array when git fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('not a git repository');
-    });
-    expect(listWorktrees()).toEqual([]);
+  it('should return empty array when git fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    expect(await listWorktrees()).toEqual([]);
   });
 
-  it('should return empty array when no worktrees exist', () => {
-    mockExecSync.mockReturnValueOnce(
-      [
-        'worktree /home/user/repo',
-        'HEAD abc123',
-        'branch refs/heads/main',
-        '',
-      ].join('\n')
+  it('should return empty array when no worktrees exist', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          'worktree /home/user/repo',
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+        ].join('\n')
+      )
     );
 
-    expect(listWorktrees()).toEqual([]);
+    expect(await listWorktrees()).toEqual([]);
   });
 });
 
 describe('rebaseOntoMaster', () => {
-  it('should return success when fetch and rebase both succeed', () => {
-    mockExecSync.mockReturnValueOnce('').mockReturnValueOnce('');
-    expect(rebaseOntoMaster('/path/to/worktree')).toBe('success');
-    expect(mockExecSync).toHaveBeenCalledTimes(2);
-    expect(mockExecSync).toHaveBeenCalledWith(
+  it('should return success when fetch and rebase both succeed', async () => {
+    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+    expect(await rebaseOntoMaster('/path/to/worktree')).toBe('success');
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).toHaveBeenCalledWith(
       'git -C "/path/to/worktree" fetch origin master',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'git -C "/path/to/worktree" rebase origin/master',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should return error when fetch fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('fetch failed');
-    });
-    expect(rebaseOntoMaster('/path/to/worktree')).toBe('error');
-    expect(mockExecSync).toHaveBeenCalledTimes(1);
+  it('should return error when fetch fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    expect(await rebaseOntoMaster('/path/to/worktree')).toBe('error');
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
-  it('should return conflict and abort when rebase fails', () => {
-    mockExecSync
-      .mockReturnValueOnce('') // fetch succeeds
-      .mockImplementationOnce(() => {
-        throw new Error('conflict');
-      }) // rebase fails
-      .mockReturnValueOnce(''); // abort succeeds
-    expect(rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExecSync).toHaveBeenCalledTimes(3);
-    expect(mockExecSync).toHaveBeenLastCalledWith(
+  it('should return conflict and abort when rebase fails', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve()) // fetch succeeds
+      .mockRejectedValueOnce(new Error('conflict')) // rebase fails
+      .mockResolvedValueOnce(resolve()); // abort succeeds
+    expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
+    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExec).toHaveBeenLastCalledWith(
       'git -C "/path/to/worktree" rebase --abort',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should return conflict even when abort also fails', () => {
-    mockExecSync
-      .mockReturnValueOnce('') // fetch succeeds
-      .mockImplementationOnce(() => {
-        throw new Error('conflict');
-      }) // rebase fails
-      .mockImplementationOnce(() => {
-        throw new Error('abort failed');
-      }); // abort fails
-    expect(rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExecSync).toHaveBeenCalledTimes(3);
+  it('should return conflict even when abort also fails', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve()) // fetch succeeds
+      .mockRejectedValueOnce(new Error('conflict')) // rebase fails
+      .mockRejectedValueOnce(new Error('abort failed')); // abort fails
+    expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
+    expect(mockExec).toHaveBeenCalledTimes(3);
   });
 });
 
 describe('fetchRemote', () => {
-  it('should return true on success', () => {
-    mockExecSync.mockReturnValueOnce('');
-    expect(fetchRemote()).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith('git fetch --all --prune', {
+  it('should return true on success', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await fetchRemote()).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git fetch --all --prune', {
       encoding: 'utf8',
-      stdio: 'pipe',
     });
   });
 
-  it('should return false when git fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('network error');
-    });
-    expect(fetchRemote()).toBe(false);
+  it('should return false when git fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('network error'));
+    expect(await fetchRemote()).toBe(false);
   });
 });
 
 describe('listAllBranches', () => {
-  it('should return deduplicated local and remote branches', () => {
-    mockExecSync.mockReturnValueOnce(
-      'main\nfeature/auth\norigin/main\norigin/feature/auth\norigin/deploy\n'
+  it('should return deduplicated local and remote branches', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        'main\nfeature/auth\norigin/main\norigin/feature/auth\norigin/deploy\n'
+      )
     );
-    const branches = listAllBranches();
+    const branches = await listAllBranches();
     expect(branches).toEqual(['main', 'feature/auth', 'deploy']);
   });
 
-  it('should filter out HEAD pointer', () => {
-    mockExecSync.mockReturnValueOnce('main\norigin/HEAD\norigin/main\n');
-    expect(listAllBranches()).toEqual(['main']);
+  it('should filter out HEAD pointer', async () => {
+    mockExec.mockResolvedValueOnce(resolve('main\norigin/HEAD\norigin/main\n'));
+    expect(await listAllBranches()).toEqual(['main']);
   });
 
-  it('should handle empty output', () => {
-    mockExecSync.mockReturnValueOnce('');
-    expect(listAllBranches()).toEqual([]);
+  it('should handle empty output', async () => {
+    mockExec.mockResolvedValueOnce(resolve(''));
+    expect(await listAllBranches()).toEqual([]);
   });
 
-  it('should return empty array when git fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('not a git repository');
-    });
-    expect(listAllBranches()).toEqual([]);
+  it('should return empty array when git fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    expect(await listAllBranches()).toEqual([]);
   });
 });
 
 describe('fastForwardMaster', () => {
-  it('should return true when fetch and branch update both succeed', () => {
-    mockExecSync.mockReturnValueOnce('').mockReturnValueOnce('');
-    expect(fastForwardMaster()).toBe(true);
-    expect(mockExecSync).toHaveBeenCalledWith('git fetch origin master', {
+  it('should return true when fetch and branch update both succeed', async () => {
+    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+    expect(await fastForwardMaster()).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
       encoding: 'utf8',
-      stdio: 'pipe',
     });
-    expect(mockExecSync).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledWith(
       'git branch -f master origin/master',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should return false when fetch fails', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('fetch failed');
-    });
-    expect(fastForwardMaster()).toBe(false);
-    expect(mockExecSync).toHaveBeenCalledTimes(1);
+  it('should return false when fetch fails', async () => {
+    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    expect(await fastForwardMaster()).toBe(false);
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
-  it('should return false when branch update fails', () => {
-    mockExecSync.mockReturnValueOnce('').mockImplementationOnce(() => {
-      throw new Error('branch update failed');
-    });
-    expect(fastForwardMaster()).toBe(false);
+  it('should return false when branch update fails', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve())
+      .mockRejectedValueOnce(new Error('branch update failed'));
+    expect(await fastForwardMaster()).toBe(false);
   });
 });
 
 describe('countConflicts', () => {
-  it('should return 0 for clean merge', () => {
-    mockExecSync.mockReturnValueOnce('abc123');
-    expect(countConflicts('feature/clean')).toBe(0);
-    expect(mockExecSync).toHaveBeenCalledWith(
+  it('should return 0 for clean merge', async () => {
+    mockExec.mockResolvedValueOnce(resolve('abc123'));
+    expect(await countConflicts('feature/clean')).toBe(0);
+    expect(mockExec).toHaveBeenCalledWith(
       'git merge-tree --write-tree origin/master "feature/clean"',
-      { encoding: 'utf8', stdio: 'pipe' }
+      { encoding: 'utf8' }
     );
   });
 
-  it('should count CONFLICT lines from exit code 1', () => {
+  it('should count CONFLICT lines from exit code 1', async () => {
     const err = new Error('merge conflict') as Error & {
-      status: number;
+      code: number;
       stdout: string;
     };
-    err.status = 1;
+    err.code = 1;
     err.stdout = [
       'abc123',
       'CONFLICT (content): Merge conflict in src/file1.ts',
       'CONFLICT (content): Merge conflict in src/file2.ts',
       '',
     ].join('\n');
-    mockExecSync.mockImplementationOnce(() => {
-      throw err;
-    });
-    expect(countConflicts('feature/conflicts')).toBe(2);
+    mockExec.mockRejectedValueOnce(err);
+    expect(await countConflicts('feature/conflicts')).toBe(2);
   });
 
-  it('should return 0 for non-conflict errors', () => {
-    mockExecSync.mockImplementationOnce(() => {
-      throw new Error('unknown error');
-    });
-    expect(countConflicts('feature/broken')).toBe(0);
+  it('should return 0 for non-conflict errors', async () => {
+    mockExec.mockRejectedValueOnce(new Error('unknown error'));
+    expect(await countConflicts('feature/broken')).toBe(0);
   });
 
-  it('should return 0 when exit code is 1 but no CONFLICT lines', () => {
+  it('should return 0 when exit code is 1 but no CONFLICT lines', async () => {
     const err = new Error('merge issue') as Error & {
-      status: number;
+      code: number;
       stdout: string;
     };
-    err.status = 1;
+    err.code = 1;
     err.stdout = 'abc123\n';
-    mockExecSync.mockImplementationOnce(() => {
-      throw err;
-    });
-    expect(countConflicts('feature/weird')).toBe(0);
+    mockExec.mockRejectedValueOnce(err);
+    expect(await countConflicts('feature/weird')).toBe(0);
   });
 });

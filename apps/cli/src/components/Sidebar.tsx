@@ -3,9 +3,65 @@ import { branchToSessionName } from '@kirby/tmux-manager';
 import type { TmuxSession } from '@kirby/tmux-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
+import { useConflictCount } from '../hooks/useConflictCount.js';
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max - 3) + '...' : text;
+}
+
+function SessionItem({
+  session,
+  selected,
+  prMap,
+  vcsConfigured,
+  sidebarWidth,
+  isMerged,
+  lastSynced,
+}: {
+  session: TmuxSession;
+  selected: boolean;
+  prMap: BranchPrMap;
+  vcsConfigured: boolean;
+  sidebarWidth: number;
+  isMerged: boolean;
+  lastSynced: number;
+}) {
+  const icon = session.windows > 0 ? '●' : '○';
+  const color = session.windows > 0 ? 'green' : 'gray';
+  const branch = Object.keys(prMap).find(
+    (b) => branchToSessionName(b) === session.name
+  );
+  const pr = branch ? prMap[branch] : undefined;
+  const { count: conflicts, loading: conflictsLoading } = useConflictCount(
+    branch ?? '',
+    isMerged ? 0 : lastSynced
+  );
+
+  return (
+    <Box key={session.name} flexDirection="column">
+      <Text>
+        <Text color={selected ? 'cyan' : undefined}>
+          {selected ? '› ' : '  '}
+        </Text>
+        <Text color={color}>{icon} </Text>
+        <Text bold={selected}>{truncate(session.name, 42)}</Text>
+        {isMerged ? (
+          <Text dimColor color="green">
+            {' '}
+            merged
+          </Text>
+        ) : null}
+      </Text>
+      {conflicts != null && conflicts > 0 ? (
+        <Text dimColor color="yellow">
+          {'    '}
+          {conflicts} conflict{conflicts !== 1 ? 's' : ''}
+        </Text>
+      ) : null}
+      {conflictsLoading ? <Text dimColor>{'    '}checking...</Text> : null}
+      {vcsConfigured ? <PrBadge pr={pr} sidebarWidth={sidebarWidth} /> : null}
+    </Box>
+  );
 }
 
 function OrphanPrSection({
@@ -61,7 +117,7 @@ export function Sidebar({
   sidebarWidth,
   orphanPrs,
   mergedBranches,
-  conflictCounts,
+  lastSynced,
 }: {
   sessions: TmuxSession[];
   selectedIndex: number;
@@ -71,7 +127,7 @@ export function Sidebar({
   sidebarWidth: number;
   orphanPrs: PullRequestInfo[];
   mergedBranches: Set<string>;
-  conflictCounts: Map<string, number>;
+  lastSynced: number;
 }) {
   const innerWidth = Math.max(10, sidebarWidth - 2);
   const activeOrphanPrs = orphanPrs.filter((pr) => pr.isDraft !== true);
@@ -87,40 +143,21 @@ export function Sidebar({
         <Text dimColor>(no sessions)</Text>
       ) : (
         sessions.map((s, i) => {
-          const selected = i === selectedIndex;
-          const icon = s.windows > 0 ? '●' : '○';
-          const color = s.windows > 0 ? 'green' : 'gray';
           const branch = Object.keys(prMap).find(
             (b) => branchToSessionName(b) === s.name
           );
-          const pr = branch ? prMap[branch] : undefined;
           const isMerged = branch ? mergedBranches.has(branch) : false;
-          const conflicts = branch ? conflictCounts.get(branch) : undefined;
           return (
-            <Box key={s.name} flexDirection="column">
-              <Text>
-                <Text color={selected ? 'cyan' : undefined}>
-                  {selected ? '› ' : '  '}
-                </Text>
-                <Text color={color}>{icon} </Text>
-                <Text bold={selected}>{truncate(s.name, 42)}</Text>
-                {isMerged ? (
-                  <Text dimColor color="green">
-                    {' '}
-                    merged
-                  </Text>
-                ) : null}
-              </Text>
-              {conflicts != null && conflicts > 0 ? (
-                <Text dimColor color="yellow">
-                  {'    '}
-                  {conflicts} conflict{conflicts !== 1 ? 's' : ''}
-                </Text>
-              ) : null}
-              {vcsConfigured ? (
-                <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
-              ) : null}
-            </Box>
+            <SessionItem
+              key={s.name}
+              session={s}
+              selected={i === selectedIndex}
+              prMap={prMap}
+              vcsConfigured={vcsConfigured}
+              sidebarWidth={sidebarWidth}
+              isMerged={isMerged}
+              lastSynced={lastSynced}
+            />
           );
         })
       )}
