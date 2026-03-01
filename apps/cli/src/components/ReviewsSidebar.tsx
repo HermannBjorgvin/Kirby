@@ -1,36 +1,22 @@
 import { Text, Box } from 'ink';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max - 3) + '...' : text;
-}
-
-function buildEmoji(status: string | undefined): string {
-  switch (status) {
-    case 'failed':
-      return ' 🔧🔥';
-    case 'succeeded':
-      return ' 🔧✅';
-    case 'pending':
-      return ' 🔧⏳';
-    default:
-      return '';
-  }
-}
+import { PrBadge } from './PrBadge.js';
+import { truncate } from '../utils/truncate.js';
 
 function ReviewSection({
   title,
   titleColor,
   prs,
   selectedPrId,
-  innerWidth,
+  sidebarWidth,
 }: {
   title: string;
   titleColor: string;
   prs: PullRequestInfo[];
   selectedPrId: number | undefined;
-  innerWidth: number;
+  sidebarWidth: number;
 }) {
+  const innerWidth = Math.max(10, sidebarWidth - 2);
   if (prs.length === 0) return null;
   return (
     <>
@@ -50,17 +36,11 @@ function ReviewSection({
               </Text>
               <Text bold={selected}>
                 {truncate(pr.title || pr.sourceBranch, innerWidth - 4)}
-                {buildEmoji(pr.buildStatus)}
               </Text>
             </Text>
+            <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
             <Text dimColor>
-              {'    '}#{pr.id} · {truncate(pr.sourceBranch, 20)} →{' '}
-              {pr.targetBranch}
-            </Text>
-            <Text dimColor>
-              {'    '}by {pr.createdByDisplayName || 'unknown'} ·{' '}
-              {pr.activeCommentCount ?? 0} comments ·{' '}
-              {(pr.reviewers ?? []).length} reviewers
+              {'  '}by {pr.createdByDisplayName || 'unknown'}
             </Text>
           </Box>
         );
@@ -101,21 +81,21 @@ export function ReviewsSidebar({
             titleColor="red"
             prs={categorized.needsReview}
             selectedPrId={selectedPrId}
-            innerWidth={innerWidth}
+            sidebarWidth={sidebarWidth}
           />
           <ReviewSection
             title="Waiting for Author"
             titleColor="yellow"
             prs={categorized.waitingForAuthor}
             selectedPrId={selectedPrId}
-            innerWidth={innerWidth}
+            sidebarWidth={sidebarWidth}
           />
           <ReviewSection
             title="Approved by You"
             titleColor="green"
             prs={categorized.approvedByYou}
             selectedPrId={selectedPrId}
-            innerWidth={innerWidth}
+            sidebarWidth={sidebarWidth}
           />
         </>
       )}
@@ -140,7 +120,7 @@ export function ReviewsSidebar({
         </Text>
       </Box>
       <Box marginTop={1} flexDirection="column">
-        <Text dimColor>🔧✅ passed 🔧🔥 failed 🔧⏳ pending</Text>
+        <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
       </Box>
     </Box>
   );

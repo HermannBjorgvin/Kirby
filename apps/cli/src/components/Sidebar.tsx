@@ -4,10 +4,7 @@ import type { TmuxSession } from '@kirby/tmux-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { useConflictCount } from '../hooks/useConflictCount.js';
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max - 3) + '...' : text;
-}
+import { truncate } from '../utils/truncate.js';
 
 function SessionItem({
   session,
@@ -70,7 +67,6 @@ function OrphanPrSection({
   startIndex,
   selectedIndex,
   focused,
-  innerWidth,
   sidebarWidth,
 }: {
   title: string;
@@ -78,9 +74,9 @@ function OrphanPrSection({
   startIndex: number;
   selectedIndex: number;
   focused: boolean;
-  innerWidth: number;
   sidebarWidth: number;
 }) {
+  const innerWidth = Math.max(10, sidebarWidth - 2);
   if (prs.length === 0) return null;
   return (
     <>
@@ -169,7 +165,6 @@ export function Sidebar({
             startIndex={sessions.length}
             selectedIndex={selectedIndex}
             focused={focused}
-            innerWidth={innerWidth}
             sidebarWidth={sidebarWidth}
           />
           <OrphanPrSection
@@ -178,7 +173,6 @@ export function Sidebar({
             startIndex={sessions.length + activeOrphanPrs.length}
             selectedIndex={selectedIndex}
             focused={focused}
-            innerWidth={innerWidth}
             sidebarWidth={sidebarWidth}
           />
         </>
