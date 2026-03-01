@@ -13,15 +13,19 @@ export function useControlMode(
   const connRef = useRef<ControlConnection | null>(null);
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clampContent = useCallback(
-    (raw: string) => {
-      const lines = raw.split('\n');
-      return lines.length > paneRows
-        ? lines.slice(0, paneRows).join('\n')
-        : raw;
-    },
-    [paneRows]
-  );
+  // Stable refs so the connection effect can read latest values
+  // without needing them in its dependency array
+  const setPaneContentRef = useRef(setPaneContent);
+  setPaneContentRef.current = setPaneContent;
+
+  const paneRowsRef = useRef(paneRows);
+  paneRowsRef.current = paneRows;
+
+  const clampContent = useCallback((raw: string) => {
+    const rows = paneRowsRef.current;
+    const lines = raw.split('\n');
+    return lines.length > rows ? lines.slice(0, rows).join('\n') : raw;
+  }, []);
 
   const scheduleRender = useCallback(() => {
     if (renderTimer.current) return;
@@ -33,7 +37,7 @@ export function useControlMode(
           (content) => {
             // Only update if this connection is still the active one
             if (connRef.current === conn) {
-              setPaneContent(clampContent(content));
+              setPaneContentRef.current(clampContent(content));
             }
           },
           () => {
@@ -42,7 +46,7 @@ export function useControlMode(
         );
       }
     }, 16); // ~60fps
-  }, [setPaneContent, clampContent]);
+  }, [clampContent]);
 
   useEffect(() => {
     if (!sessionName) return;
@@ -53,7 +57,8 @@ export function useControlMode(
       // Don't connect if the tmux session doesn't exist yet —
       // it will be auto-created when the user tabs into the terminal pane
       if (!(await hasSession(sessionName))) {
-        if (!cancelled) setPaneContent('(press Tab to start session)');
+        if (!cancelled)
+          setPaneContentRef.current('(press Tab to start session)');
         return;
       }
       if (cancelled) return;
@@ -66,11 +71,11 @@ export function useControlMode(
       });
 
       conn.on('exit', () => {
-        setPaneContent('(session disconnected)');
+        setPaneContentRef.current('(session disconnected)');
       });
 
       conn.on('error', () => {
-        setPaneContent('(connection error)');
+        setPaneContentRef.current('(connection error)');
       });
 
       conn
@@ -78,11 +83,11 @@ export function useControlMode(
         .then(async () => {
           const content = await conn.capturePane();
           if (connRef.current === conn) {
-            setPaneContent(clampContent(content));
+            setPaneContentRef.current(clampContent(content));
           }
         })
         .catch(() => {
-          setPaneContent('(failed to connect)');
+          setPaneContentRef.current('(failed to connect)');
         });
     })();
 
@@ -98,9 +103,14 @@ export function useControlMode(
         connRef.current = null;
       }
     };
-    // Only reconnect when the session changes (or reconnectKey bumps after auto-create)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionName, reconnectKey]);
+  }, [
+    sessionName,
+    reconnectKey,
+    paneCols,
+    paneRows,
+    clampContent,
+    scheduleRender,
+  ]);
 
   useEffect(() => {
     const conn = connRef.current;
