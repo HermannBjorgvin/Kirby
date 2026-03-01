@@ -1,17 +1,6 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
-import {
-  isAvailable,
-  listSessions,
-  killSession,
-  removeWorktree,
-  deleteBranch,
-  listAllBranches,
-  listWorktrees,
-  branchToSessionName,
-} from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
-import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
+import { branchToSessionName } from '@kirby/tmux-manager';
 import type {
   VcsProvider,
   PullRequestInfo,
@@ -19,7 +8,6 @@ import type {
 } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
-import type { ActiveTab } from './types.js';
 import { TabBar } from './components/TabBar.js';
 import { Sidebar } from './components/Sidebar.js';
 import { TerminalView } from './components/TerminalView.js';
@@ -35,6 +23,12 @@ import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
 import { useControlMode } from './hooks/useControlMode.js';
 import { useConflictCounts } from './hooks/useConflictCounts.js';
+import { useNavigation } from './hooks/useNavigation.js';
+import { useBranchPicker } from './hooks/useBranchPicker.js';
+import { useDeleteConfirmation } from './hooks/useDeleteConfirmation.js';
+import { useSettings } from './hooks/useSettings.js';
+import { useSessionManager } from './hooks/useSessionManager.js';
+import { useReviewManager } from './hooks/useReviewManager.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
@@ -143,44 +137,23 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   const sidebarWidth = 48;
   const paneCols = Math.max(20, termCols - sidebarWidth - 2);
   const paneRows = Math.max(5, termRows - 5); // top bar (3) + TerminalView header (2)
-  const [activeTab, setActiveTab] = useState<ActiveTab>('sessions');
-  const [focus, setFocus] = useState<Focus>('sidebar');
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [sessions, setSessions] = useState<TmuxSession[]>([]);
-  const [paneContent, setPaneContent] = useState('(loading...)');
-  const [hasTmux, setHasTmux] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [branchFilter, setBranchFilter] = useState('');
-  const [branchIndex, setBranchIndex] = useState(0);
-  const [branches, setBranches] = useState<string[]>([]);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{
-    branch: string;
-    sessionName: string;
-    reason: string;
-  } | null>(null);
-  const [confirmInput, setConfirmInput] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsFieldIndex, setSettingsFieldIndex] = useState(0);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editBuffer, setEditBuffer] = useState('');
-  const [reconnectKey, setReconnectKey] = useState(0);
-  const [reviewSelectedIndex, setReviewSelectedIndex] = useState(0);
-  const [reviewPaneContent, setReviewPaneContent] = useState('');
-  const [reviewReconnectKey, setReviewReconnectKey] = useState(0);
-  const [reviewSessionStarted, setReviewSessionStarted] = useState<Set<number>>(
-    new Set()
-  );
-  const [reviewConfirm, setReviewConfirm] = useState<{
-    pr: PullRequestInfo;
-    selectedOption: number;
-  } | null>(null);
-  const [reviewInstruction, setReviewInstruction] = useState('');
-  const { prMap, error: prError, refresh: refreshPr } = usePrData();
 
-  // Worktree branch names tracked in state (updated by refreshSessions)
-  const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
+  // ── Domain hooks ──────────────────────────────────────────────────
+  const nav = useNavigation();
+  const branchPicker = useBranchPicker();
+  const deleteConfirm = useDeleteConfirmation();
+  const settings = useSettings();
+  const review = useReviewManager();
+
+  const sessionMgr = useSessionManager(
+    providers,
+    setConfig,
+    branchPicker.setBranches
+  );
+
+  const [paneContent, setPaneContent] = useState('(loading...)');
+  const [reconnectKey, setReconnectKey] = useState(0);
+  const { prMap, error: prError, refresh: refreshPr } = usePrData();
 
   // Async operation tracker
   const { run: runOp, isRunning, inFlight } = useAsyncOperation();
@@ -189,18 +162,18 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   const { lastSynced, triggerSync } = useRemoteSync();
 
   const { mergedBranches } = useMergedBranches(
-    worktreeBranches,
+    sessionMgr.worktreeBranches,
     lastSynced,
     (sessionName, branch) => {
-      performDelete(sessionName, branch);
-      flashStatus(`Auto-deleted merged branch: ${branch}`);
+      sessionMgr.performDelete(sessionName, branch);
+      sessionMgr.flashStatus(`Auto-deleted merged branch: ${branch}`);
     }
   );
 
   // Batch conflict checking — only check non-merged branches
   const conflictBranches = useMemo(
-    () => worktreeBranches.filter((b) => !mergedBranches.has(b)),
-    [worktreeBranches, mergedBranches]
+    () => sessionMgr.worktreeBranches.filter((b) => !mergedBranches.has(b)),
+    [sessionMgr.worktreeBranches, mergedBranches]
   );
   const { counts: conflictCounts, loading: conflictsLoading } =
     useConflictCounts(conflictBranches, lastSynced);
@@ -208,7 +181,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   // Orphan PRs: user's PRs that don't have a matching worktree session
   const orphanPrs = useMemo(() => {
     if (!provider) return [];
-    const sessionNames = new Set(sessions.map((s) => s.name));
+    const sessionNames = new Set(sessionMgr.sessions.map((s) => s.name));
     return Object.values(prMap)
       .filter(
         (pr): pr is PullRequestInfo =>
@@ -217,7 +190,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
           !sessionNames.has(branchToSessionName(pr.sourceBranch))
       )
       .sort((a, b) => b.id - a.id);
-  }, [prMap, sessions, config, provider]);
+  }, [prMap, sessionMgr.sessions, config, provider]);
 
   // Categorize PRs where the user is a reviewer
   const categorizedReviews = useMemo((): CategorizedReviews => {
@@ -251,10 +224,13 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     categorizedReviews.approvedByYou.length;
 
   useEffect(() => {
-    if (reviewTotalItems > 0 && reviewSelectedIndex >= reviewTotalItems) {
-      setReviewSelectedIndex(reviewTotalItems - 1);
+    if (
+      reviewTotalItems > 0 &&
+      review.reviewSelectedIndex >= reviewTotalItems
+    ) {
+      review.setReviewSelectedIndex(reviewTotalItems - 1);
     }
-  }, [reviewTotalItems, reviewSelectedIndex]);
+  }, [reviewTotalItems, review.reviewSelectedIndex]);
 
   // Pre-compute session-name → branch and session-name → PR lookup maps
   const { sessionBranchMap, sessionPrMap } = useMemo(() => {
@@ -270,17 +246,17 @@ function App({ forceSetup }: { forceSetup: boolean }) {
 
   // Sort sessions by associated PR number (newest first)
   const sortedSessions = useMemo(() => {
-    return [...sessions].sort((a, b) => {
+    return [...sessionMgr.sessions].sort((a, b) => {
       const idA = sessionPrMap.get(a.name)?.id ?? -Infinity;
       const idB = sessionPrMap.get(b.name)?.id ?? -Infinity;
       return idB - idA;
     });
-  }, [sessions, sessionPrMap]);
+  }, [sessionMgr.sessions, sessionPrMap]);
 
   const totalItems = sortedSessions.length + orphanPrs.length;
   const selectedSession =
-    selectedIndex < sortedSessions.length
-      ? sortedSessions[selectedIndex]
+    sessionMgr.selectedIndex < sortedSessions.length
+      ? sortedSessions[sessionMgr.selectedIndex]
       : undefined;
   const selectedName = selectedSession?.name ?? null;
 
@@ -293,82 +269,19 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     ],
     [categorizedReviews]
   );
-  const selectedReviewPr = allReviewPrs[reviewSelectedIndex];
+  const selectedReviewPr = allReviewPrs[review.reviewSelectedIndex];
   const reviewSessionName = selectedReviewPr
     ? `review-pr-${selectedReviewPr.id}`
     : null;
 
   useEffect(() => {
-    if (totalItems > 0 && selectedIndex >= totalItems) {
-      setSelectedIndex(totalItems - 1);
+    if (totalItems > 0 && sessionMgr.selectedIndex >= totalItems) {
+      sessionMgr.setSelectedIndex(totalItems - 1);
     }
-  }, [totalItems, selectedIndex]);
-
-  // Check tmux availability, load sessions and branches on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const ok = await isAvailable();
-      if (cancelled) return;
-      setHasTmux(ok);
-      if (ok) {
-        await refreshSessions();
-      }
-      const allBranches = await listAllBranches();
-      if (!cancelled) setBranches(allBranches);
-    })();
-
-    // Auto-detect per-project fields on first launch
-    const { updated } = autoDetectProjectConfig(process.cwd(), providers);
-    if (updated) {
-      setConfig(readConfig());
-    }
-
-    return () => {
-      cancelled = true;
-      if (statusTimer.current) clearTimeout(statusTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const refreshSessions = async () => {
-    const worktrees = await listWorktrees();
-    const allTmux = await listSessions();
-    const filtered: TmuxSession[] = [];
-    for (const wt of worktrees) {
-      const name = branchToSessionName(wt.branch);
-      const live = allTmux.find((s) => s.name === name);
-      if (live) {
-        filtered.push(live);
-      } else {
-        filtered.push({ name, windows: 0, created: 0, attached: false });
-      }
-    }
-    const nonReview = filtered.filter((s) => !s.name.startsWith('review-pr-'));
-    setSessions(nonReview);
-    setWorktreeBranches(worktrees.map((wt) => wt.branch));
-    return nonReview;
-  };
-
-  const flashStatus = (msg: string) => {
-    if (statusTimer.current) clearTimeout(statusTimer.current);
-    setStatusMessage(msg);
-    statusTimer.current = setTimeout(() => setStatusMessage(null), 3000);
-  };
-
-  const performDelete = async (sessionName: string, branch: string) => {
-    await killSession(sessionName);
-    await removeWorktree(branch);
-    await deleteBranch(branch);
-    const updated = await refreshSessions();
-    setSelectedIndex((prev) =>
-      prev >= updated.length ? Math.max(0, updated.length - 1) : prev
-    );
-  };
+  }, [totalItems, sessionMgr.selectedIndex]);
 
   const { sendInput } = useControlMode(
-    hasTmux ? selectedName : null,
+    sessionMgr.hasTmux ? selectedName : null,
     paneCols,
     paneRows,
     setPaneContent,
@@ -376,69 +289,72 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   );
 
   const { sendInput: sendReviewInput } = useControlMode(
-    hasTmux && activeTab === 'reviews' ? reviewSessionName : null,
+    sessionMgr.hasTmux && nav.activeTab === 'reviews'
+      ? reviewSessionName
+      : null,
     paneCols,
     paneRows,
-    setReviewPaneContent,
-    reviewReconnectKey
+    review.setReviewPaneContent,
+    review.reviewReconnectKey
   );
 
+  // ── Assemble AppContext for input handlers ────────────────────────
   const ctx: AppContext = {
     config,
     provider,
     providers,
     vcsConfigured,
-    branches,
-    branchFilter,
-    branchIndex,
+    branches: branchPicker.branches,
+    branchFilter: branchPicker.branchFilter,
+    branchIndex: branchPicker.branchIndex,
     paneCols,
     paneRows,
-    confirmDelete,
-    confirmInput,
-    editingField,
-    settingsFieldIndex,
-    editBuffer,
-    activeTab,
-    focus,
+    confirmDelete: deleteConfirm.confirmDelete,
+    confirmInput: deleteConfirm.confirmInput,
+    editingField: settings.editingField,
+    settingsFieldIndex: settings.settingsFieldIndex,
+    editBuffer: settings.editBuffer,
+    activeTab: nav.activeTab,
+    focus: nav.focus,
     selectedName,
     selectedSession,
-    selectedIndex,
+    selectedIndex: sessionMgr.selectedIndex,
     sessions: sortedSessions,
     orphanPrs,
     totalItems,
-    reviewSelectedIndex,
+    reviewSelectedIndex: review.reviewSelectedIndex,
     reviewTotalItems,
     reviewSessionName,
     selectedReviewPr,
     sendReviewInput,
-    setReviewReconnectKey,
-    reviewSessionStarted,
-    setReviewSessionStarted,
-    reviewConfirm,
-    setReviewConfirm,
-    reviewInstruction,
-    setReviewInstruction,
-    setCreating,
-    setBranchFilter,
-    setBranchIndex,
-    setSelectedIndex,
-    setConfirmDelete,
-    setConfirmInput,
-    setSettingsOpen,
-    setSettingsFieldIndex,
-    setEditingField,
-    setEditBuffer,
-    setActiveTab,
-    setReviewSelectedIndex,
+    setReviewReconnectKey: review.setReviewReconnectKey,
+    reviewSessionStarted: review.reviewSessionStarted,
+    setReviewSessionStarted: review.setReviewSessionStarted,
+    reviewConfirm: review.reviewConfirm,
+    setReviewConfirm: review.setReviewConfirm,
+    reviewInstruction: review.reviewInstruction,
+    setReviewInstruction: review.setReviewInstruction,
+    setCreating: branchPicker.setCreating,
+    setBranchFilter: branchPicker.setBranchFilter,
+    setBranchIndex: branchPicker.setBranchIndex,
+    setSelectedIndex: sessionMgr.setSelectedIndex,
+    setConfirmDelete: deleteConfirm.setConfirmDelete,
+    setConfirmInput: deleteConfirm.setConfirmInput,
+    setSettingsOpen: settings.setSettingsOpen,
+    setSettingsFieldIndex: settings.setSettingsFieldIndex,
+    setEditingField: settings.setEditingField,
+    setEditBuffer: settings.setEditBuffer,
+    setActiveTab: nav.setActiveTab,
+    setReviewSelectedIndex: review.setReviewSelectedIndex,
     setConfig,
-    setFocus,
+    setFocus: nav.setFocus,
     setReconnectKey,
-    setBranches,
-    flashStatus,
+    setBranches: branchPicker.setBranches,
+    flashStatus: sessionMgr.flashStatus,
     triggerSync,
-    refreshSessions,
+    refreshSessions: sessionMgr.refreshSessions,
     refreshPr,
-    performDelete,
+    performDelete: sessionMgr.performDelete,
     sendInput,
     exit,
     updateField,
@@ -448,10 +364,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
 
   useInput((input, key) => {
     if (showOnboarding) return;
-    if (creating) return handleBranchPickerInput(input, key, ctx);
-    if (confirmDelete) return handleConfirmDeleteInput(input, key, ctx);
-    if (settingsOpen) return handleSettingsInput(input, key, ctx);
-    if (reviewConfirm) return handleReviewConfirmInput(input, key, ctx);
+    if (branchPicker.creating) return handleBranchPickerInput(input, key, ctx);
+    if (deleteConfirm.confirmDelete)
+      return handleConfirmDeleteInput(input, key, ctx);
+    if (settings.settingsOpen) return handleSettingsInput(input, key, ctx);
+    if (review.reviewConfirm) return handleReviewConfirmInput(input, key, ctx);
     handleGlobalInput(input, key, ctx);
   });
 
@@ -469,31 +386,35 @@ function App({ forceSetup }: { forceSetup: boolean }) {
         <Box gap={2}>
           <Text bold>😸 Kirby</Text>
           <TabBar
-            activeTab={activeTab}
+            activeTab={nav.activeTab}
             reviewCount={categorizedReviews.needsReview.length}
           />
           <StatusBar
-            confirmDelete={confirmDelete}
-            confirmInput={confirmInput}
-            creating={creating}
-            branchFilter={branchFilter}
-            statusMessage={statusMessage}
+            confirmDelete={deleteConfirm.confirmDelete}
+            confirmInput={deleteConfirm.confirmInput}
+            creating={branchPicker.creating}
+            branchFilter={branchPicker.branchFilter}
+            statusMessage={sessionMgr.statusMessage}
             prError={prError}
             sessionCount={sortedSessions.length}
-            focus={focus}
-            hasTmux={hasTmux}
+            focus={nav.focus}
+            hasTmux={sessionMgr.hasTmux}
             inFlight={inFlight}
           />
         </Box>
         <Text dimColor>{process.cwd()}</Text>
       </Box>
       <Box flexGrow={1}>
-        {activeTab === 'sessions' && (
+        {nav.activeTab === 'sessions' && (
           <>
             <Sidebar
               sessions={sortedSessions}
-              selectedIndex={selectedIndex}
-              focused={focus === 'sidebar' && !creating && !settingsOpen}
+              selectedIndex={sessionMgr.selectedIndex}
+              focused={
+                nav.focus === 'sidebar' &&
+                !branchPicker.creating &&
+                !settings.settingsOpen
+              }
               prMap={prMap}
               sessionBranchMap={sessionBranchMap}
               sessionPrMap={sessionPrMap}
@@ -504,55 +425,57 @@ function App({ forceSetup }: { forceSetup: boolean }) {
               conflictCounts={conflictCounts}
               conflictsLoading={conflictsLoading}
             />
-            {settingsOpen && (
+            {settings.settingsOpen && (
               <SettingsPanel
-                fieldIndex={settingsFieldIndex}
-                editingField={editingField}
-                editBuffer={editBuffer}
+                fieldIndex={settings.settingsFieldIndex}
+                editingField={settings.editingField}
+                editBuffer={settings.editBuffer}
               />
             )}
-            {!settingsOpen && creating && (
+            {!settings.settingsOpen && branchPicker.creating && (
               <BranchPicker
-                filter={branchFilter}
-                branches={branches}
-                selectedIndex={branchIndex}
+                filter={branchPicker.branchFilter}
+                branches={branchPicker.branches}
+                selectedIndex={branchPicker.branchIndex}
                 paneRows={paneRows}
               />
             )}
-            {!settingsOpen && !creating && (
+            {!settings.settingsOpen && !branchPicker.creating && (
               <TerminalView
-                content={hasTmux ? paneContent : '(tmux not available)'}
-                focused={focus === 'terminal'}
+                content={
+                  sessionMgr.hasTmux ? paneContent : '(tmux not available)'
+                }
+                focused={nav.focus === 'terminal'}
               />
             )}
           </>
         )}
-        {activeTab === 'reviews' && vcsConfigured && (
+        {nav.activeTab === 'reviews' && vcsConfigured && (
           <>
             <ReviewsSidebar
               categorized={categorizedReviews}
               selectedPrId={selectedReviewPr?.id}
               sidebarWidth={sidebarWidth}
-              focused={focus === 'sidebar' && !reviewConfirm}
+              focused={nav.focus === 'sidebar' && !review.reviewConfirm}
             />
             {(() => {
-              if (reviewConfirm) {
+              if (review.reviewConfirm) {
                 return (
                   <ReviewConfirmPane
-                    pr={reviewConfirm.pr}
-                    selectedOption={reviewConfirm.selectedOption}
-                    instruction={reviewInstruction}
+                    pr={review.reviewConfirm.pr}
+                    selectedOption={review.reviewConfirm.selectedOption}
+                    instruction={review.reviewInstruction}
                   />
                 );
               }
               if (
                 selectedReviewPr &&
-                reviewSessionStarted.has(selectedReviewPr.id)
+                review.reviewSessionStarted.has(selectedReviewPr.id)
               ) {
                 return (
                   <TerminalView
-                    content={reviewPaneContent}
-                    focused={focus === 'terminal'}
+                    content={review.reviewPaneContent}
+                    focused={nav.focus === 'terminal'}
                   />
                 );
               }
