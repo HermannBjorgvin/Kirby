@@ -143,8 +143,13 @@ export function ConfigProvider({
         updated = updateConfigField(prev, field, value);
         return updated;
       });
-      // React runs the updater synchronously, so `updated` is assigned here
-      persistConfigField(field, value, updated);
+      // Defer sync disk I/O off the React render call stack
+      const capturedField = field;
+      const capturedValue = value;
+      const capturedConfig = updated;
+      queueMicrotask(() => {
+        persistConfigField(capturedField, capturedValue, capturedConfig);
+      });
     },
     []
   );
