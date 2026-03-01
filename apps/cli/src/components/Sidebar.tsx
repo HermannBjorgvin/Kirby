@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { TmuxSession } from '@kirby/tmux-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
@@ -5,7 +6,7 @@ import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';
 import { useConfig } from '../context/ConfigContext.js';
 
-function SessionItem({
+const SessionItem = memo(function SessionItem({
   session,
   selected,
   branch,
@@ -53,7 +54,7 @@ function SessionItem({
       {vcsConfigured ? <PrBadge pr={pr} sidebarWidth={sidebarWidth} /> : null}
     </Box>
   );
-}
+});
 
 function OrphanPrSection({
   title,

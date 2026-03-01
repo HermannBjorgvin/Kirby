@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 
-export function TerminalView({
+export const TerminalView = memo(function TerminalView({
   content,
   focused,
 }: {
@@ -16,4 +17,4 @@ export function TerminalView({
       <Text wrap="truncate">{content}</Text>
     </Box>
   );
-}
+});

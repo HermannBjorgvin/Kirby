@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 
@@ -12,7 +13,7 @@ function Option({ label, selected }: { label: string; selected: boolean }) {
   );
 }
 
-export function ReviewConfirmPane({
+export const ReviewConfirmPane = memo(function ReviewConfirmPane({
   pr,
   selectedOption,
   instruction,
@@ -60,4 +61,4 @@ export function ReviewConfirmPane({
       </Box>
     </Box>
   );
-}
+});

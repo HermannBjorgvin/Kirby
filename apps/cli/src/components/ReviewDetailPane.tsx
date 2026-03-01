@@ -1,7 +1,12 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 
-export function ReviewDetailPane({ pr }: { pr: PullRequestInfo | undefined }) {
+export const ReviewDetailPane = memo(function ReviewDetailPane({
+  pr,
+}: {
+  pr: PullRequestInfo | undefined;
+}) {
   if (!pr) {
     return (
       <Box flexDirection="column" flexGrow={1} paddingX={1}>
@@ -25,4 +30,4 @@ export function ReviewDetailPane({ pr }: { pr: PullRequestInfo | undefined }) {
       </Box>
     </Box>
   );
-}
+});

@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 
-export function PrBadge({
+export const PrBadge = memo(function PrBadge({
   pr,
   sidebarWidth,
 }: {
@@ -85,4 +86,4 @@ export function PrBadge({
       ) : null}
     </Box>
   );
-}
+});

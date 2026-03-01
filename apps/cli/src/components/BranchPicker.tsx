@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 
-export function BranchPicker({
+export const BranchPicker = memo(function BranchPicker({
   filter,
   branches,
   selectedIndex,
@@ -94,4 +95,4 @@ export function BranchPicker({
       )}
     </Box>
   );
-}
+});

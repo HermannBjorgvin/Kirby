@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
@@ -49,7 +50,7 @@ function ReviewSection({
   );
 }
 
-export function ReviewsSidebar({
+export const ReviewsSidebar = memo(function ReviewsSidebar({
   categorized,
   selectedPrId,
   sidebarWidth,
@@ -124,4 +125,4 @@ export function ReviewsSidebar({
       </Box>
     </Box>
   );
-}
+});

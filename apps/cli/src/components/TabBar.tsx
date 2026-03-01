@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { ActiveTab } from '../types.js';
 import { useConfig } from '../context/ConfigContext.js';
 
-export function TabBar({
+export const TabBar = memo(function TabBar({
   activeTab,
   reviewCount,
 }: {
@@ -30,4 +31,4 @@ export function TabBar({
       ) : null}
     </Box>
   );
-}
+});
