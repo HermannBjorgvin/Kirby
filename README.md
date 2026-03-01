@@ -31,7 +31,7 @@ npx nx serve cli
 Pass a target directory to manage a different project:
 
 ```sh
-npx nx serve cli -- /path/to/project
+npx nx serve cli --no-tui -- /path/to/project
 ```
 
 ## Project Structure
