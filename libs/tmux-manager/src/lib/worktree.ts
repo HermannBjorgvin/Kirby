@@ -6,7 +6,9 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { exec } from './exec.js';
+import { execFile } from './exec.js';
+import type { WorktreeResolver } from './worktree-resolver.js';
+import { sanitizeBranch } from './worktree-resolver.js';
 
 export interface WorktreeInfo {
   path: string;
@@ -24,25 +26,28 @@ function worktreeDir(branch: string): string {
  * If the branch exists, checks it out. If not, creates a new branch from HEAD.
  * Returns the worktree path on success, null on failure.
  */
-export async function createWorktree(branch: string): Promise<string | null> {
-  const relativeDir = worktreeDir(branch);
-  const absoluteDir = resolve(process.cwd(), relativeDir);
+export async function createWorktree(
+  branch: string,
+  resolver?: WorktreeResolver
+): Promise<string | null> {
+  const dir = resolver ? resolver.pathFor(branch) : worktreeDir(branch);
+  const absoluteDir = resolver ? dir : resolve(process.cwd(), dir);
 
   // Worktree already exists — just return the path
-  if (existsSync(relativeDir)) {
+  if (existsSync(absoluteDir)) {
     return absoluteDir;
   }
 
   try {
     // Try existing branch first
-    await exec(`git worktree add "${relativeDir}" "${branch}"`, {
+    await execFile('git', ['worktree', 'add', dir, branch], {
       encoding: 'utf8',
     });
     return absoluteDir;
   } catch {
     try {
       // Branch doesn't exist — create new branch from HEAD
-      await exec(`git worktree add -b "${branch}" "${relativeDir}"`, {
+      await execFile('git', ['worktree', 'add', '-b', branch, dir], {
         encoding: 'utf8',
       });
       return absoluteDir;
@@ -56,10 +61,13 @@ export async function createWorktree(branch: string): Promise<string | null> {
  * Remove a git worktree for a branch.
  * Returns true on success, false on failure.
  */
-export async function removeWorktree(branch: string): Promise<boolean> {
-  const relativeDir = worktreeDir(branch);
+export async function removeWorktree(
+  branch: string,
+  resolver?: WorktreeResolver
+): Promise<boolean> {
+  const dir = resolver ? resolver.pathFor(branch) : worktreeDir(branch);
   try {
-    await exec(`git worktree remove "${relativeDir}"`, {
+    await execFile('git', ['worktree', 'remove', dir], {
       encoding: 'utf8',
     });
     return true;
@@ -73,7 +81,8 @@ export async function removeWorktree(branch: string): Promise<boolean> {
  * Returns { safe: true } or { safe: false, reason: string }.
  */
 export async function canRemoveBranch(
-  branch: string
+  branch: string,
+  resolver?: WorktreeResolver
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
   // Protected branch guard
   if (
@@ -84,12 +93,13 @@ export async function canRemoveBranch(
     return { safe: false, reason: 'protected branch' };
   }
 
-  const dir = worktreeDir(branch);
+  const dir = resolver ? resolver.pathFor(branch) : worktreeDir(branch);
 
   // Uncommitted changes
   try {
-    const { stdout: status } = await exec(
-      `git -C "${dir}" status --porcelain`,
+    const { stdout: status } = await execFile(
+      'git',
+      ['-C', dir, 'status', '--porcelain'],
       { encoding: 'utf8' }
     );
     if (status.trim().length > 0) {
@@ -101,8 +111,9 @@ export async function canRemoveBranch(
 
   // Not pushed to upstream
   try {
-    const { stdout: unpushed } = await exec(
-      `git log "${branch}" --not --remotes -1`,
+    const { stdout: unpushed } = await execFile(
+      'git',
+      ['log', branch, '--not', '--remotes', '-1'],
       { encoding: 'utf8' }
     );
     if (unpushed.trim().length > 0) {
@@ -118,9 +129,11 @@ export async function canRemoveBranch(
 /** List local git branches */
 export async function listBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch --format='%(refname:short)'", {
-      encoding: 'utf8',
-    });
+    const { stdout } = await execFile(
+      'git',
+      ['branch', '--format=%(refname:short)'],
+      { encoding: 'utf8' }
+    );
     return stdout
       .trim()
       .split('\n')
@@ -133,7 +146,7 @@ export async function listBranches(): Promise<string[]> {
 /** Fetch from all remotes and prune stale tracking branches */
 export async function fetchRemote(): Promise<boolean> {
   try {
-    await exec('git fetch --all --prune', { encoding: 'utf8' });
+    await execFile('git', ['fetch', '--all', '--prune'], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -143,9 +156,11 @@ export async function fetchRemote(): Promise<boolean> {
 /** List local + remote git branches (remote branches stripped of origin/ prefix, deduplicated) */
 export async function listAllBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch -a --format='%(refname:short)'", {
-      encoding: 'utf8',
-    });
+    const { stdout } = await execFile(
+      'git',
+      ['branch', '-a', '--format=%(refname:short)'],
+      { encoding: 'utf8' }
+    );
     const seen = new Set<string>();
     const result: string[] = [];
     for (const raw of stdout.trim().split('\n')) {
@@ -194,17 +209,29 @@ export function parseWorktrees(output: string): WorktreeInfo[] {
 }
 
 /**
- * List git worktrees under .claude/worktrees/ for the current repo.
- * Skips the main worktree and bare entries.
+ * List git worktrees for the current repo.
+ * Skips bare entries and the main worktree.
+ * When a resolver is provided, uses resolver.owns() to filter;
+ * otherwise falls back to the .claude/worktrees/ path check.
  */
-export async function listWorktrees(): Promise<WorktreeInfo[]> {
+export async function listWorktrees(
+  resolver?: WorktreeResolver
+): Promise<WorktreeInfo[]> {
   try {
-    const { stdout } = await exec('git worktree list --porcelain', {
-      encoding: 'utf8',
-    });
-    return parseWorktrees(stdout).filter(
-      (w) => !w.bare && w.path.includes('.claude/worktrees/')
+    const { stdout } = await execFile(
+      'git',
+      ['worktree', 'list', '--porcelain'],
+      { encoding: 'utf8' }
     );
+    const all = parseWorktrees(stdout).filter((w) => !w.bare);
+
+    if (resolver) {
+      // Skip the first non-bare entry (main worktree), filter rest by resolver
+      const [, ...rest] = all;
+      return rest.filter((w) => resolver.owns(w.path));
+    }
+
+    return all.filter((w) => w.path.includes('.claude/worktrees/'));
   } catch {
     return [];
   }
@@ -213,8 +240,10 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
 /** Fast-forward local master to origin/master. Returns true on success. */
 export async function fastForwardMaster(): Promise<boolean> {
   try {
-    await exec('git fetch origin master', { encoding: 'utf8' });
-    await exec('git branch -f master origin/master', { encoding: 'utf8' });
+    await execFile('git', ['fetch', 'origin', 'master'], { encoding: 'utf8' });
+    await execFile('git', ['branch', '-f', 'master', 'origin/master'], {
+      encoding: 'utf8',
+    });
     return true;
   } catch {
     return false;
@@ -228,9 +257,11 @@ export async function fastForwardMaster(): Promise<boolean> {
  */
 export async function countConflicts(branch: string): Promise<number> {
   try {
-    await exec(`git merge-tree --write-tree origin/master "${branch}"`, {
-      encoding: 'utf8',
-    });
+    await execFile(
+      'git',
+      ['merge-tree', '--write-tree', 'origin/master', branch],
+      { encoding: 'utf8' }
+    );
     return 0; // clean merge — no conflicts
   } catch (err: unknown) {
     // Exit code 1 = conflicts; stdout lists conflicted files
@@ -251,7 +282,7 @@ export async function deleteBranch(
 ): Promise<boolean> {
   const flag = force ? '-D' : '-d';
   try {
-    await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
+    await execFile('git', ['branch', flag, branch], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -266,20 +297,20 @@ export async function rebaseOntoMaster(
   worktreePath: string
 ): Promise<'success' | 'conflict' | 'error'> {
   try {
-    await exec(`git -C "${worktreePath}" fetch origin master`, {
+    await execFile('git', ['-C', worktreePath, 'fetch', 'origin', 'master'], {
       encoding: 'utf8',
     });
   } catch {
     return 'error';
   }
   try {
-    await exec(`git -C "${worktreePath}" rebase origin/master`, {
+    await execFile('git', ['-C', worktreePath, 'rebase', 'origin/master'], {
       encoding: 'utf8',
     });
     return 'success';
   } catch {
     try {
-      await exec(`git -C "${worktreePath}" rebase --abort`, {
+      await execFile('git', ['-C', worktreePath, 'rebase', '--abort'], {
         encoding: 'utf8',
       });
     } catch {

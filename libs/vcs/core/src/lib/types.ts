@@ -78,6 +78,7 @@ export interface AppConfig {
   email?: string;
   prPollInterval?: number;
   aiCommand?: string;
+  worktreePath?: string;
   vendor?: string;
   vendorAuth: Record<string, string>;
   vendorProject: Record<string, string>;

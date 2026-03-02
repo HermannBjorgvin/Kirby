@@ -152,6 +152,7 @@ describe('readConfig', () => {
       email: 'user@example.com',
       prPollInterval: 30000,
       aiCommand: 'claude',
+      worktreePath: undefined,
       vendor: 'azure-devops',
       vendorAuth: { pat: 'token123' },
       vendorProject: { org: 'myorg', project: 'myproj', repo: 'myrepo' },
@@ -171,6 +172,16 @@ describe('readConfig', () => {
 
     const config = readConfig('/tmp/test');
     expect(config.vendorAuth).toEqual({});
+  });
+
+  it('should read worktreePath from global config', () => {
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ worktreePath: '../{branch}' })
+    );
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.worktreePath).toBe('../{branch}');
   });
 
   it('should return empty vendorAuth when no vendor is set', () => {

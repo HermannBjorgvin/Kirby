@@ -45,6 +45,13 @@ export function buildSettingsFields(
       presets: AI_PRESETS,
       configBag: 'global',
     },
+    {
+      label: 'Worktree Path',
+      key: 'worktreePath',
+      description:
+        'Template for worktree placement. {branch} is replaced with the sanitized branch name. Auto-detected from repo layout if not set.',
+      configBag: 'global',
+    },
     { label: 'Email', key: 'email', configBag: 'project' },
   ];
 

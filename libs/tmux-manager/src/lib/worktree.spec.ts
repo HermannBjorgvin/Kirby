@@ -11,20 +11,22 @@ import {
   fastForwardMaster,
   countConflicts,
   rebaseOntoMaster,
+  deleteBranch,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
 vi.mock('./exec.js', () => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-import { exec } from './exec.js';
+import { execFile } from './exec.js';
 
-const mockExec = vi.mocked(exec);
+const mockExecFile = vi.mocked(execFile);
 const mockExistsSync = vi.mocked(existsSync);
 
 function resolve(stdout = '') {
@@ -37,7 +39,7 @@ beforeEach(() => {
 
 describe('listBranches', () => {
   it('should parse git branch output into array', async () => {
-    mockExec.mockResolvedValueOnce(
+    mockExecFile.mockResolvedValueOnce(
       resolve('main\nfeature/auth\nfix/bug-123\n')
     );
     const branches = await listBranches();
@@ -45,43 +47,45 @@ describe('listBranches', () => {
   });
 
   it('should return empty array when git fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    mockExecFile.mockRejectedValueOnce(new Error('not a git repository'));
     expect(await listBranches()).toEqual([]);
   });
 
   it('should filter out empty lines', async () => {
-    mockExec.mockResolvedValueOnce(resolve('main\n\ndev\n'));
+    mockExecFile.mockResolvedValueOnce(resolve('main\n\ndev\n'));
     expect(await listBranches()).toEqual(['main', 'dev']);
   });
 });
 
 describe('createWorktree', () => {
   it('should return absolute path for existing branch', async () => {
-    mockExec.mockResolvedValueOnce(resolve());
+    mockExecFile.mockResolvedValueOnce(resolve());
     const result = await createWorktree('feature/auth');
     expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//); // absolute path
-    expect(mockExec).toHaveBeenCalledWith(
-      'git worktree add ".claude/worktrees/feature-auth" "feature/auth"',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['worktree', 'add', '.claude/worktrees/feature-auth', 'feature/auth'],
       { encoding: 'utf8' }
     );
   });
 
   it('should fall back to -b for new branch', async () => {
-    mockExec
+    mockExecFile
       .mockRejectedValueOnce(new Error('branch not found'))
       .mockResolvedValueOnce(resolve());
     const result = await createWorktree('new-branch');
     expect(result).toContain('.claude/worktrees/new-branch');
-    expect(mockExec).toHaveBeenCalledTimes(2);
-    expect(mockExec).toHaveBeenLastCalledWith(
-      'git worktree add -b "new-branch" ".claude/worktrees/new-branch"',
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    expect(mockExecFile).toHaveBeenLastCalledWith(
+      'git',
+      ['worktree', 'add', '-b', 'new-branch', '.claude/worktrees/new-branch'],
       { encoding: 'utf8' }
     );
   });
 
   it('should return null when both attempts fail', async () => {
-    mockExec
+    mockExecFile
       .mockRejectedValueOnce(new Error('fail'))
       .mockRejectedValueOnce(new Error('fail'));
     expect(await createWorktree('bad-branch')).toBeNull();
@@ -92,22 +96,23 @@ describe('createWorktree', () => {
     const result = await createWorktree('feature/auth');
     expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//);
-    expect(mockExec).not.toHaveBeenCalled();
+    expect(mockExecFile).not.toHaveBeenCalled();
   });
 });
 
 describe('removeWorktree', () => {
   it('should return true on success', async () => {
-    mockExec.mockResolvedValueOnce(resolve());
+    mockExecFile.mockResolvedValueOnce(resolve());
     expect(await removeWorktree('feature/auth')).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith(
-      'git worktree remove ".claude/worktrees/feature-auth"',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['worktree', 'remove', '.claude/worktrees/feature-auth'],
       { encoding: 'utf8' }
     );
   });
 
   it('should return false on failure', async () => {
-    mockExec.mockRejectedValueOnce(new Error('not found'));
+    mockExecFile.mockRejectedValueOnce(new Error('not found'));
     expect(await removeWorktree('nonexistent')).toBe(false);
   });
 });
@@ -135,7 +140,7 @@ describe('canRemoveBranch', () => {
   });
 
   it('should reject branches with uncommitted changes', async () => {
-    mockExec.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
+    mockExecFile.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
     expect(await canRemoveBranch('feature/dirty')).toEqual({
       safe: false,
       reason: 'uncommitted changes',
@@ -143,8 +148,8 @@ describe('canRemoveBranch', () => {
   });
 
   it('should reject branches not pushed to upstream', async () => {
-    mockExec.mockResolvedValueOnce(resolve(''));
-    mockExec.mockResolvedValueOnce(resolve('abc1234 some commit\n'));
+    mockExecFile.mockResolvedValueOnce(resolve(''));
+    mockExecFile.mockResolvedValueOnce(resolve('abc1234 some commit\n'));
     expect(await canRemoveBranch('feature/unpushed')).toEqual({
       safe: false,
       reason: 'not pushed to upstream',
@@ -152,14 +157,14 @@ describe('canRemoveBranch', () => {
   });
 
   it('should return safe for clean, pushed branches', async () => {
-    mockExec.mockResolvedValueOnce(resolve(''));
-    mockExec.mockResolvedValueOnce(resolve(''));
+    mockExecFile.mockResolvedValueOnce(resolve(''));
+    mockExecFile.mockResolvedValueOnce(resolve(''));
     expect(await canRemoveBranch('feature/done')).toEqual({ safe: true });
   });
 
   it('should skip checks gracefully when worktree does not exist', async () => {
-    mockExec.mockRejectedValueOnce(new Error('not a directory'));
-    mockExec.mockResolvedValueOnce(resolve(''));
+    mockExecFile.mockRejectedValueOnce(new Error('not a directory'));
+    mockExecFile.mockResolvedValueOnce(resolve(''));
     expect(await canRemoveBranch('feature/no-worktree')).toEqual({
       safe: true,
     });
@@ -221,7 +226,7 @@ describe('parseWorktrees', () => {
 
 describe('listWorktrees', () => {
   it('should return only .claude/worktrees/ entries, excluding main worktree', async () => {
-    mockExec.mockResolvedValueOnce(
+    mockExecFile.mockResolvedValueOnce(
       resolve(
         [
           'worktree /home/user/repo',
@@ -242,7 +247,7 @@ describe('listWorktrees', () => {
   });
 
   it('should filter out bare worktrees', async () => {
-    mockExec.mockResolvedValueOnce(
+    mockExecFile.mockResolvedValueOnce(
       resolve(
         [
           'worktree /home/user/repo',
@@ -263,12 +268,12 @@ describe('listWorktrees', () => {
   });
 
   it('should return empty array when git fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    mockExecFile.mockRejectedValueOnce(new Error('not a git repository'));
     expect(await listWorktrees()).toEqual([]);
   });
 
   it('should return empty array when no worktrees exist', async () => {
-    mockExec.mockResolvedValueOnce(
+    mockExecFile.mockResolvedValueOnce(
       resolve(
         [
           'worktree /home/user/repo',
@@ -283,68 +288,108 @@ describe('listWorktrees', () => {
   });
 });
 
+describe('listWorktrees with resolver', () => {
+  it('should use resolver.owns() to filter worktrees', async () => {
+    mockExecFile.mockResolvedValueOnce(
+      resolve(
+        [
+          'worktree /home/user/repo.git',
+          'HEAD abc123',
+          'bare',
+          '',
+          'worktree /home/user/repo.git/main',
+          'HEAD def456',
+          'branch refs/heads/main',
+          '',
+          'worktree /home/user/repo.git/feature-auth',
+          'HEAD 789abc',
+          'branch refs/heads/feature/auth',
+          '',
+        ].join('\n')
+      )
+    );
+
+    const resolver = {
+      pathFor: (b: string) => `/home/user/repo.git/${b.replace(/\//g, '-')}`,
+      owns: (p: string) =>
+        p.startsWith('/home/user/repo.git/') && p !== '/home/user/repo.git/',
+    };
+
+    const result = await listWorktrees(resolver);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.branch).toBe('feature/auth');
+  });
+});
+
 describe('rebaseOntoMaster', () => {
   it('should return success when fetch and rebase both succeed', async () => {
-    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+    mockExecFile
+      .mockResolvedValueOnce(resolve())
+      .mockResolvedValueOnce(resolve());
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('success');
-    expect(mockExec).toHaveBeenCalledTimes(2);
-    expect(mockExec).toHaveBeenCalledWith(
-      'git -C "/path/to/worktree" fetch origin master',
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['-C', '/path/to/worktree', 'fetch', 'origin', 'master'],
       { encoding: 'utf8' }
     );
-    expect(mockExec).toHaveBeenCalledWith(
-      'git -C "/path/to/worktree" rebase origin/master',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['-C', '/path/to/worktree', 'rebase', 'origin/master'],
       { encoding: 'utf8' }
     );
   });
 
   it('should return error when fetch fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    mockExecFile.mockRejectedValueOnce(new Error('fetch failed'));
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('error');
-    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 
   it('should return conflict and abort when rebase fails', async () => {
-    mockExec
+    mockExecFile
       .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockResolvedValueOnce(resolve()); // abort succeeds
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(3);
-    expect(mockExec).toHaveBeenLastCalledWith(
-      'git -C "/path/to/worktree" rebase --abort',
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
+    expect(mockExecFile).toHaveBeenLastCalledWith(
+      'git',
+      ['-C', '/path/to/worktree', 'rebase', '--abort'],
       { encoding: 'utf8' }
     );
   });
 
   it('should return conflict even when abort also fails', async () => {
-    mockExec
+    mockExecFile
       .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockRejectedValueOnce(new Error('abort failed')); // abort fails
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
   });
 });
 
 describe('fetchRemote', () => {
   it('should return true on success', async () => {
-    mockExec.mockResolvedValueOnce(resolve());
+    mockExecFile.mockResolvedValueOnce(resolve());
     expect(await fetchRemote()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith('git fetch --all --prune', {
-      encoding: 'utf8',
-    });
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--all', '--prune'],
+      { encoding: 'utf8' }
+    );
   });
 
   it('should return false when git fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('network error'));
+    mockExecFile.mockRejectedValueOnce(new Error('network error'));
     expect(await fetchRemote()).toBe(false);
   });
 });
 
 describe('listAllBranches', () => {
   it('should return deduplicated local and remote branches', async () => {
-    mockExec.mockResolvedValueOnce(
+    mockExecFile.mockResolvedValueOnce(
       resolve(
         'main\nfeature/auth\norigin/main\norigin/feature/auth\norigin/deploy\n'
       )
@@ -354,42 +399,49 @@ describe('listAllBranches', () => {
   });
 
   it('should filter out HEAD pointer', async () => {
-    mockExec.mockResolvedValueOnce(resolve('main\norigin/HEAD\norigin/main\n'));
+    mockExecFile.mockResolvedValueOnce(
+      resolve('main\norigin/HEAD\norigin/main\n')
+    );
     expect(await listAllBranches()).toEqual(['main']);
   });
 
   it('should handle empty output', async () => {
-    mockExec.mockResolvedValueOnce(resolve(''));
+    mockExecFile.mockResolvedValueOnce(resolve(''));
     expect(await listAllBranches()).toEqual([]);
   });
 
   it('should return empty array when git fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('not a git repository'));
+    mockExecFile.mockRejectedValueOnce(new Error('not a git repository'));
     expect(await listAllBranches()).toEqual([]);
   });
 });
 
 describe('fastForwardMaster', () => {
   it('should return true when fetch and branch update both succeed', async () => {
-    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+    mockExecFile
+      .mockResolvedValueOnce(resolve())
+      .mockResolvedValueOnce(resolve());
     expect(await fastForwardMaster()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
-      encoding: 'utf8',
-    });
-    expect(mockExec).toHaveBeenCalledWith(
-      'git branch -f master origin/master',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['fetch', 'origin', 'master'],
+      { encoding: 'utf8' }
+    );
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-f', 'master', 'origin/master'],
       { encoding: 'utf8' }
     );
   });
 
   it('should return false when fetch fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    mockExecFile.mockRejectedValueOnce(new Error('fetch failed'));
     expect(await fastForwardMaster()).toBe(false);
-    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 
   it('should return false when branch update fails', async () => {
-    mockExec
+    mockExecFile
       .mockResolvedValueOnce(resolve())
       .mockRejectedValueOnce(new Error('branch update failed'));
     expect(await fastForwardMaster()).toBe(false);
@@ -398,10 +450,11 @@ describe('fastForwardMaster', () => {
 
 describe('countConflicts', () => {
   it('should return 0 for clean merge', async () => {
-    mockExec.mockResolvedValueOnce(resolve('abc123'));
+    mockExecFile.mockResolvedValueOnce(resolve('abc123'));
     expect(await countConflicts('feature/clean')).toBe(0);
-    expect(mockExec).toHaveBeenCalledWith(
-      'git merge-tree --write-tree origin/master "feature/clean"',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['merge-tree', '--write-tree', 'origin/master', 'feature/clean'],
       { encoding: 'utf8' }
     );
   });
@@ -418,12 +471,12 @@ describe('countConflicts', () => {
       'CONFLICT (content): Merge conflict in src/file2.ts',
       '',
     ].join('\n');
-    mockExec.mockRejectedValueOnce(err);
+    mockExecFile.mockRejectedValueOnce(err);
     expect(await countConflicts('feature/conflicts')).toBe(2);
   });
 
   it('should return 0 for non-conflict errors', async () => {
-    mockExec.mockRejectedValueOnce(new Error('unknown error'));
+    mockExecFile.mockRejectedValueOnce(new Error('unknown error'));
     expect(await countConflicts('feature/broken')).toBe(0);
   });
 
@@ -434,7 +487,34 @@ describe('countConflicts', () => {
     };
     err.code = 1;
     err.stdout = 'abc123\n';
-    mockExec.mockRejectedValueOnce(err);
+    mockExecFile.mockRejectedValueOnce(err);
     expect(await countConflicts('feature/weird')).toBe(0);
+  });
+});
+
+describe('deleteBranch', () => {
+  it('should return true on success', async () => {
+    mockExecFile.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/done')).toBe(true);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-d', 'feature/done'],
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should use -D flag when force is true', async () => {
+    mockExecFile.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/done', true)).toBe(true);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-D', 'feature/done'],
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should return false on failure', async () => {
+    mockExecFile.mockRejectedValueOnce(new Error('not fully merged'));
+    expect(await deleteBranch('feature/wip')).toBe(false);
   });
 });
