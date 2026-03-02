@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import {
   projectKey,
@@ -24,7 +24,6 @@ vi.mock('node:child_process', () => ({
 
 const mockReadFileSync = vi.mocked(readFileSync);
 const mockWriteFileSync = vi.mocked(writeFileSync);
-const mockExistsSync = vi.mocked(existsSync);
 const mockExecSync = vi.mocked(execSync);
 
 beforeEach(() => {

@@ -624,7 +624,7 @@ export function handleGlobalInput(
         if (!(await hasSession(ctx.selectedName!))) {
           const worktreePath = resolve(
             process.cwd(),
-            '.kirby/worktrees/' + ctx.selectedName
+            '.claude/worktrees/' + ctx.selectedName
           );
           await startAiSession(
             ctx.selectedName!,

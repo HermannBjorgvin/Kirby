@@ -44,5 +44,6 @@ Thumbs.db
 .github/instructions/nx.instructions.md
 .tmp/
 .kirby/
+.claude/worktrees/
 
 vitest.config.*.timestamp*

@@ -1,7 +1,7 @@
 /**
  * Git worktree and branch operations.
  *
- * Manages .kirby/worktrees/ directory for per-branch worktrees
+ * Manages .claude/worktrees/ directory for per-branch worktrees
  * used by the TUI to give each Claude session its own checkout.
  */
 import { existsSync } from 'node:fs';
@@ -14,9 +14,9 @@ export interface WorktreeInfo {
   bare: boolean;
 }
 
-/** Convert a branch name to its .kirby/worktrees/ relative directory */
+/** Convert a branch name to its .claude/worktrees/ relative directory */
 function worktreeDir(branch: string): string {
-  return '.kirby/worktrees/' + branch.replace(/\//g, '-');
+  return '.claude/worktrees/' + branch.replace(/\//g, '-');
 }
 
 /**
@@ -194,7 +194,7 @@ export function parseWorktrees(output: string): WorktreeInfo[] {
 }
 
 /**
- * List git worktrees under .kirby/worktrees/ for the current repo.
+ * List git worktrees under .claude/worktrees/ for the current repo.
  * Skips the main worktree and bare entries.
  */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
@@ -203,7 +203,7 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
       encoding: 'utf8',
     });
     return parseWorktrees(stdout).filter(
-      (w) => !w.bare && w.path.includes('.kirby/worktrees/')
+      (w) => !w.bare && w.path.includes('.claude/worktrees/')
     );
   } catch {
     return [];

@@ -270,7 +270,7 @@ describe('integration: fastForwardMaster', () => {
 
 describe('integration: countConflicts', () => {
   it('should return 0 for non-conflicting branches', async () => {
-    const { remoteDir, cloneDir } = setupRemoteAndClone();
+    const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // Create a feature branch with a non-conflicting change
@@ -288,7 +288,7 @@ describe('integration: countConflicts', () => {
   });
 
   it('should count conflicting files', async () => {
-    const { remoteDir, cloneDir } = setupRemoteAndClone();
+    const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // Create a file on master and push it
@@ -320,7 +320,7 @@ describe('integration: countConflicts', () => {
 
 describe('integration: rebaseOntoMaster', () => {
   it('should successfully rebase a clean branch', async () => {
-    const { remoteDir, cloneDir } = setupRemoteAndClone();
+    const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // Create worktree with a feature branch
@@ -339,7 +339,7 @@ describe('integration: rebaseOntoMaster', () => {
   });
 
   it('should detect conflict and abort rebase', async () => {
-    const { remoteDir, cloneDir } = setupRemoteAndClone();
+    const { cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
 
     // Add a commit to master and push

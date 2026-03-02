@@ -59,10 +59,10 @@ describe('createWorktree', () => {
   it('should return absolute path for existing branch', async () => {
     mockExec.mockResolvedValueOnce(resolve());
     const result = await createWorktree('feature/auth');
-    expect(result).toContain('.kirby/worktrees/feature-auth');
+    expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//); // absolute path
     expect(mockExec).toHaveBeenCalledWith(
-      'git worktree add ".kirby/worktrees/feature-auth" "feature/auth"',
+      'git worktree add ".claude/worktrees/feature-auth" "feature/auth"',
       { encoding: 'utf8' }
     );
   });
@@ -72,10 +72,10 @@ describe('createWorktree', () => {
       .mockRejectedValueOnce(new Error('branch not found'))
       .mockResolvedValueOnce(resolve());
     const result = await createWorktree('new-branch');
-    expect(result).toContain('.kirby/worktrees/new-branch');
+    expect(result).toContain('.claude/worktrees/new-branch');
     expect(mockExec).toHaveBeenCalledTimes(2);
     expect(mockExec).toHaveBeenLastCalledWith(
-      'git worktree add -b "new-branch" ".kirby/worktrees/new-branch"',
+      'git worktree add -b "new-branch" ".claude/worktrees/new-branch"',
       { encoding: 'utf8' }
     );
   });
@@ -90,7 +90,7 @@ describe('createWorktree', () => {
   it('should return existing path without calling git when worktree already exists', async () => {
     mockExistsSync.mockReturnValueOnce(true);
     const result = await createWorktree('feature/auth');
-    expect(result).toContain('.kirby/worktrees/feature-auth');
+    expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//);
     expect(mockExec).not.toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe('removeWorktree', () => {
     mockExec.mockResolvedValueOnce(resolve());
     expect(await removeWorktree('feature/auth')).toBe(true);
     expect(mockExec).toHaveBeenCalledWith(
-      'git worktree remove ".kirby/worktrees/feature-auth"',
+      'git worktree remove ".claude/worktrees/feature-auth"',
       { encoding: 'utf8' }
     );
   });
@@ -173,11 +173,11 @@ describe('parseWorktrees', () => {
       'HEAD abc123',
       'branch refs/heads/main',
       '',
-      'worktree /home/user/repo/.kirby/worktrees/feature-auth',
+      'worktree /home/user/repo/.claude/worktrees/feature-auth',
       'HEAD def456',
       'branch refs/heads/feature/auth',
       '',
-      'worktree /home/user/repo/.kirby/worktrees/fix-bug',
+      'worktree /home/user/repo/.claude/worktrees/fix-bug',
       'HEAD 789abc',
       'branch refs/heads/fix/bug',
       '',
@@ -191,12 +191,12 @@ describe('parseWorktrees', () => {
       bare: false,
     });
     expect(result[1]).toEqual({
-      path: '/home/user/repo/.kirby/worktrees/feature-auth',
+      path: '/home/user/repo/.claude/worktrees/feature-auth',
       branch: 'feature/auth',
       bare: false,
     });
     expect(result[2]).toEqual({
-      path: '/home/user/repo/.kirby/worktrees/fix-bug',
+      path: '/home/user/repo/.claude/worktrees/fix-bug',
       branch: 'fix/bug',
       bare: false,
     });
@@ -220,7 +220,7 @@ describe('parseWorktrees', () => {
 });
 
 describe('listWorktrees', () => {
-  it('should return only .kirby/worktrees/ entries, excluding main worktree', async () => {
+  it('should return only .claude/worktrees/ entries, excluding main worktree', async () => {
     mockExec.mockResolvedValueOnce(
       resolve(
         [
@@ -228,7 +228,7 @@ describe('listWorktrees', () => {
           'HEAD abc123',
           'branch refs/heads/main',
           '',
-          'worktree /home/user/repo/.kirby/worktrees/feature-auth',
+          'worktree /home/user/repo/.claude/worktrees/feature-auth',
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
@@ -249,7 +249,7 @@ describe('listWorktrees', () => {
           'HEAD abc123',
           'bare',
           '',
-          'worktree /home/user/repo/.kirby/worktrees/feature-auth',
+          'worktree /home/user/repo/.claude/worktrees/feature-auth',
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',

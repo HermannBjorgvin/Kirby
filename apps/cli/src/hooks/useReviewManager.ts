@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
+import { useState } from 'react';
+import type { PullRequestInfo } from '@kirby/vcs-core';
 
 export function useReviewManager() {
   const [reviewSelectedIndex, setReviewSelectedIndex] = useState(0);
