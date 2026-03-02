@@ -157,8 +157,7 @@ async function startReviewSession(
     return;
   }
 
-  const safePrompt = prompt.replace(/['"]/g, '');
-  const command = `claude --continue || claude '${safePrompt}'`;
+  const command = `claude --continue || claude ${JSON.stringify(prompt)}`;
 
   await createSession(
     ctx.reviewSessionName,
