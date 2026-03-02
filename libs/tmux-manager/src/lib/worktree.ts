@@ -245,9 +245,13 @@ export async function countConflicts(branch: string): Promise<number> {
 }
 
 /** Delete a local git branch. Returns true on success, false on failure. */
-export async function deleteBranch(branch: string): Promise<boolean> {
+export async function deleteBranch(
+  branch: string,
+  force = false
+): Promise<boolean> {
+  const flag = force ? '-D' : '-d';
   try {
-    await exec(`git branch -d "${branch}"`, { encoding: 'utf8' });
+    await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
     return true;
   } catch {
     return false;
