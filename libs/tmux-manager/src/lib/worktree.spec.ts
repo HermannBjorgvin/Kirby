@@ -11,6 +11,7 @@ import {
   fastForwardMaster,
   countConflicts,
   rebaseOntoMaster,
+  deleteBranch,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
@@ -455,5 +456,32 @@ describe('countConflicts', () => {
     err.stdout = 'abc123\n';
     mockExecFile.mockRejectedValueOnce(err);
     expect(await countConflicts('feature/weird')).toBe(0);
+  });
+});
+
+describe('deleteBranch', () => {
+  it('should return true on success', async () => {
+    mockExecFile.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/done')).toBe(true);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-d', 'feature/done'],
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should use -D flag when force is true', async () => {
+    mockExecFile.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/done', true)).toBe(true);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'git',
+      ['branch', '-D', 'feature/done'],
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should return false on failure', async () => {
+    mockExecFile.mockRejectedValueOnce(new Error('not fully merged'));
+    expect(await deleteBranch('feature/wip')).toBe(false);
   });
 });

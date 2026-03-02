@@ -84,6 +84,8 @@ export async function createSession(
   if (cols !== undefined) args.push('-x', String(cols));
   if (rows !== undefined) args.push('-y', String(rows));
   if (cwd !== undefined) args.push('-c', cwd);
+  // command is passed to sh -c because it may contain shell operators (||, &&).
+  // Callers must sanitize any user-provided portions (e.g. via JSON.stringify).
   if (command !== undefined) args.push('sh', '-c', command);
   try {
     await execFile('tmux', args, { encoding: 'utf8' });
