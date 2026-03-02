@@ -116,8 +116,24 @@ describe('latestReviewPerUser', () => {
     expect(bob?.decision).toBe('changes-requested');
   });
 
-  it('returns empty array for no reviews', () => {
+  it('returns empty array for no reviews and no requested reviewers', () => {
     expect(latestReviewPerUser([])).toEqual([]);
+  });
+
+  it('includes requested reviewers with no-response decision', () => {
+    const result = latestReviewPerUser([], [{ login: 'dana' }]);
+    expect(result).toEqual([
+      { displayName: 'dana', identifier: 'dana', decision: 'no-response' },
+    ]);
+  });
+
+  it('actual review overrides requested reviewer pending state', () => {
+    const result = latestReviewPerUser(
+      [{ author: { login: 'dana' }, state: 'APPROVED' }],
+      [{ login: 'dana' }]
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.decision).toBe('approved');
   });
 
   it('sets displayName and identifier to login', () => {
@@ -294,6 +310,7 @@ describe('githubProvider', () => {
                 url: 'https://github.com/octocat/hello-world/pull/10',
                 author: { login: 'octocat' },
                 isDraft: false,
+                reviewRequests: { nodes: [] },
                 reviews: {
                   nodes: [{ author: { login: 'bob' }, state: 'APPROVED' }],
                 },
@@ -322,6 +339,7 @@ describe('githubProvider', () => {
                 url: 'https://github.com/octocat/hello-world/pull/11',
                 author: { login: 'alice' },
                 isDraft: true,
+                reviewRequests: { nodes: [] },
                 reviews: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {
@@ -404,6 +422,7 @@ describe('githubProvider', () => {
                 url: 'https://github.com/o/r/pull/1',
                 author: { login: 'user' },
                 isDraft: false,
+                reviewRequests: { nodes: [] },
                 reviews: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {
@@ -428,6 +447,7 @@ describe('githubProvider', () => {
                 url: 'https://github.com/o/r/pull/2',
                 author: { login: 'user' },
                 isDraft: false,
+                reviewRequests: { nodes: [] },
                 reviews: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {

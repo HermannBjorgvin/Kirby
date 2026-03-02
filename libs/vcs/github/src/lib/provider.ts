@@ -75,9 +75,13 @@ export function mapReviewState(state: string): ReviewDecision {
 }
 
 export function latestReviewPerUser(
-  reviews: Array<{ author: { login: string }; state: string }>
+  reviews: Array<{ author: { login: string }; state: string }>,
+  requestedReviewers: Array<{ login: string }> = []
 ): PullRequestReviewer[] {
   const byUser = new Map<string, { login: string; state: string }>();
+  for (const r of requestedReviewers) {
+    byUser.set(r.login, { login: r.login, state: 'PENDING' });
+  }
   for (const r of reviews) {
     byUser.set(r.author.login, { login: r.author.login, state: r.state });
   }
@@ -131,6 +135,13 @@ const SEARCH_PRS_QUERY = `
           url
           author { login }
           isDraft
+          reviewRequests(first: 20) {
+            nodes {
+              requestedReviewer {
+                ... on User { login }
+              }
+            }
+          }
           reviews(last: 100) {
             nodes {
               author { login }
@@ -163,6 +174,9 @@ interface SearchPrNode {
   url: string;
   author: { login: string };
   isDraft: boolean;
+  reviewRequests: {
+    nodes: Array<{ requestedReviewer: { login?: string } }>;
+  };
   reviews: {
     nodes: Array<{ author: { login: string }; state: string }>;
   };
@@ -208,7 +222,13 @@ export function mapRollupState(
 }
 
 function transformSearchNode(node: SearchPrNode): PullRequestInfo {
-  const reviewers = latestReviewPerUser(node.reviews.nodes);
+  const requestedReviewers = node.reviewRequests.nodes
+    .filter((n) => n.requestedReviewer.login)
+    .map((n) => ({ login: n.requestedReviewer.login! }));
+  const reviewers = latestReviewPerUser(
+    node.reviews.nodes,
+    requestedReviewers
+  );
 
   const unresolvedCount = node.reviewThreads.nodes.filter(
     (t) => !t.isResolved
