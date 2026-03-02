@@ -509,11 +509,11 @@ export function handleSidebarInput(
         ctx.flashStatus('No worktree found for selected session');
         return;
       }
-      ctx.flashStatus('Updating from master...');
+      ctx.flashStatus('Updating from origin...');
       const rebaseMessages = {
-        success: 'Rebased onto master successfully',
+        success: 'Rebased onto origin successfully',
         conflict: 'Conflicts detected — rebase aborted',
-        error: 'Failed to fetch origin/master',
+        error: 'Failed to fetch from origin',
       } as const;
       ctx.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
     });
