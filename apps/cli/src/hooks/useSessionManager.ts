@@ -8,8 +8,9 @@ import {
   listAllBranches,
   listWorktrees,
   branchToSessionName,
+  createResolver,
 } from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+import type { TmuxSession, WorktreeResolver } from '@kirby/tmux-manager';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
 
@@ -24,9 +25,11 @@ export function useSessionManager(
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolverRef = useRef<WorktreeResolver | null>(null);
 
   const refreshSessions = useCallback(async () => {
-    const worktrees = await listWorktrees();
+    const resolver = resolverRef.current ?? undefined;
+    const worktrees = await listWorktrees(resolver);
     const allTmux = await listSessions();
     const filtered: TmuxSession[] = [];
     for (const wt of worktrees) {
@@ -52,8 +55,9 @@ export function useSessionManager(
 
   const performDelete = useCallback(
     async (sessionName: string, branch: string) => {
+      const resolver = resolverRef.current ?? undefined;
       await killSession(sessionName);
-      await removeWorktree(branch);
+      await removeWorktree(branch, resolver);
       await deleteBranch(branch, true);
       const updated = await refreshSessions();
       setSelectedIndex((prev) =>
@@ -72,6 +76,8 @@ export function useSessionManager(
       if (cancelled) return;
       setHasTmux(ok);
       if (ok) {
+        const resolver = await createResolver(readConfig().worktreePath);
+        resolverRef.current = resolver;
         await refreshSessions();
       }
       const allBranches = await listAllBranches();
@@ -102,5 +108,6 @@ export function useSessionManager(
     flashStatus,
     refreshSessions,
     performDelete,
+    resolverRef,
   };
 }

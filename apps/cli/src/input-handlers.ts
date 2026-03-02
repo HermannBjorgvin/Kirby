@@ -12,7 +12,7 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+import type { TmuxSession, WorktreeResolver } from '@kirby/tmux-manager';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
 import type { ActiveTab } from './types.js';
@@ -29,6 +29,7 @@ export type Focus = 'sidebar' | 'terminal';
 export interface AppContext {
   // State
   config: AppConfig;
+  resolver: WorktreeResolver | null;
   provider: VcsProvider | null;
   providers: VcsProvider[];
   vcsConfigured: boolean;
@@ -151,7 +152,10 @@ async function startReviewSession(
       additionalInstruction;
   }
 
-  const worktreePath = await createWorktree(pr.sourceBranch);
+  const worktreePath = await createWorktree(
+    pr.sourceBranch,
+    ctx.resolver ?? undefined
+  );
   if (!worktreePath) {
     ctx.flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
     return;
