@@ -297,6 +297,7 @@ describe('githubProvider', () => {
                 reviews: {
                   nodes: [{ author: { login: 'bob' }, state: 'APPROVED' }],
                 },
+                reviewRequests: { nodes: [] },
                 reviewThreads: {
                   nodes: [
                     { isResolved: false },
@@ -323,6 +324,7 @@ describe('githubProvider', () => {
                 author: { login: 'alice' },
                 isDraft: true,
                 reviews: { nodes: [] },
+                reviewRequests: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {
                   nodes: [
@@ -405,6 +407,7 @@ describe('githubProvider', () => {
                 author: { login: 'user' },
                 isDraft: false,
                 reviews: { nodes: [] },
+                reviewRequests: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {
                   nodes: [{ commit: { statusCheckRollup: null } }],
@@ -429,6 +432,7 @@ describe('githubProvider', () => {
                 author: { login: 'user' },
                 isDraft: false,
                 reviews: { nodes: [] },
+                reviewRequests: { nodes: [] },
                 reviewThreads: { nodes: [] },
                 commits: {
                   nodes: [
