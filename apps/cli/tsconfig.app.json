@@ -8,21 +8,5 @@
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [],
-  "references": [
-    {
-      "path": "../../libs/vcs/core/tsconfig.lib.json"
-    },
-    {
-      "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
-    },
-    {
-      "path": "../../libs/vcs/github/tsconfig.lib.json"
-    },
-    {
-      "path": "../../libs/tmux-control/tsconfig.lib.json"
-    },
-    {
-      "path": "../../libs/tmux-manager/tsconfig.lib.json"
-    }
-  ]
+  "references": []
 }
