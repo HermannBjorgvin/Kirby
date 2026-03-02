@@ -17,6 +17,7 @@ import {
   fastForwardMaster,
   countConflicts,
   rebaseOntoMaster,
+  resetMainBranchCache,
 } from './worktree.js';
 
 // Collect temp dirs for cleanup
@@ -99,6 +100,7 @@ function setupRemoteAndClone(): {
 
 beforeEach(() => {
   originalCwd = process.cwd();
+  resetMainBranchCache();
 });
 
 afterEach(() => {
@@ -251,6 +253,47 @@ describe('integration: fastForwardMaster', () => {
     execSync('git checkout -b temp-branch', { cwd: cloneDir, stdio: 'pipe' });
 
     // Record local master before fast-forward
+    const localBefore = execSync('git rev-parse master', {
+      cwd: cloneDir,
+      encoding: 'utf8',
+    }).trim();
+
+    const result = await fastForwardMaster();
+    expect(result).toBe(true);
+
+    // Local master should now be ahead of where it was
+    const localAfter = execSync('git rev-parse master', {
+      cwd: cloneDir,
+      encoding: 'utf8',
+    }).trim();
+    expect(localAfter).not.toBe(localBefore);
+  });
+
+  it('should fast-forward when HEAD IS on master (the bug case)', async () => {
+    const { remoteDir, cloneDir } = setupRemoteAndClone();
+    process.chdir(cloneDir);
+
+    // Add a commit to the remote via a separate working copy
+    const pushDir = mkdtempSync(join(tmpdir(), 'worktree-push-'));
+    tempDirs.push(pushDir);
+    execSync(`git clone "${remoteDir}" "${pushDir}"`, { stdio: 'pipe' });
+    execSync('git config user.email "other@example.com"', {
+      cwd: pushDir,
+      stdio: 'pipe',
+    });
+    execSync('git config user.name "Other User"', {
+      cwd: pushDir,
+      stdio: 'pipe',
+    });
+    writeFileSync(join(pushDir, 'new-file.txt'), 'content');
+    execSync('git add .', { cwd: pushDir, stdio: 'pipe' });
+    execSync('git commit -m "remote commit"', {
+      cwd: pushDir,
+      stdio: 'pipe',
+    });
+    execSync('git push', { cwd: pushDir, stdio: 'pipe' });
+
+    // Stay on master — do NOT switch away (this is the bug scenario)
     const localBefore = execSync('git rev-parse master', {
       cwd: cloneDir,
       encoding: 'utf8',

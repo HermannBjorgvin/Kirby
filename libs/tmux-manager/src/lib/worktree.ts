@@ -8,6 +8,38 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { exec } from './exec.js';
 
+let cachedMainBranch: string | null = null;
+
+/** Auto-detect the main branch name (master or main) and cache it. */
+export async function getMainBranch(): Promise<string> {
+  if (cachedMainBranch) return cachedMainBranch;
+  try {
+    // git symbolic-ref refs/remotes/origin/HEAD → "refs/remotes/origin/master"
+    const { stdout } = await exec('git symbolic-ref refs/remotes/origin/HEAD', {
+      encoding: 'utf8',
+    });
+    cachedMainBranch = stdout.trim().split('/').pop()!;
+    return cachedMainBranch;
+  } catch {
+    // Fallback: check which remote branch exists
+    try {
+      await exec('git rev-parse --verify --quiet origin/master', {
+        encoding: 'utf8',
+      });
+      cachedMainBranch = 'master';
+      return cachedMainBranch;
+    } catch {
+      cachedMainBranch = 'main';
+      return cachedMainBranch;
+    }
+  }
+}
+
+/** Reset the cached main branch name (for testing). */
+export function resetMainBranchCache(): void {
+  cachedMainBranch = null;
+}
+
 export interface WorktreeInfo {
   path: string;
   branch: string; // short branch name (no refs/heads/)
@@ -210,25 +242,42 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
   }
 }
 
-/** Fast-forward local master to origin/master. Returns true on success. */
-export async function fastForwardMaster(): Promise<boolean> {
+/** Fast-forward local main branch to match origin. Returns true on success. */
+export async function fastForwardMainBranch(): Promise<boolean> {
+  const main = await getMainBranch();
   try {
-    await exec('git fetch origin master', { encoding: 'utf8' });
-    await exec('git branch -f master origin/master', { encoding: 'utf8' });
+    await exec(`git fetch origin ${main}`, { encoding: 'utf8' });
+  } catch {
+    return false;
+  }
+  try {
+    const { stdout } = await exec('git symbolic-ref --short HEAD', {
+      encoding: 'utf8',
+    });
+    if (stdout.trim() === main) {
+      // HEAD is on the main branch — use merge --ff-only instead
+      await exec(`git merge --ff-only origin/${main}`, { encoding: 'utf8' });
+    } else {
+      await exec(`git branch -f ${main} origin/${main}`, { encoding: 'utf8' });
+    }
     return true;
   } catch {
     return false;
   }
 }
 
+/** @deprecated Use fastForwardMainBranch instead */
+export const fastForwardMaster = fastForwardMainBranch;
+
 /**
- * Count conflicting files between a branch and origin/master.
+ * Count conflicting files between a branch and origin's main branch.
  * Uses `git merge-tree --write-tree` (Git 2.38+).
  * Returns 0 if no conflicts.
  */
 export async function countConflicts(branch: string): Promise<number> {
+  const main = await getMainBranch();
   try {
-    await exec(`git merge-tree --write-tree origin/master "${branch}"`, {
+    await exec(`git merge-tree --write-tree origin/${main} "${branch}"`, {
       encoding: 'utf8',
     });
     return 0; // clean merge — no conflicts
@@ -259,21 +308,22 @@ export async function deleteBranch(
 }
 
 /**
- * Fetch origin/master and rebase the worktree's branch onto it.
+ * Fetch origin's main branch and rebase the worktree's branch onto it.
  * If conflicts arise, the rebase is automatically aborted.
  */
 export async function rebaseOntoMaster(
   worktreePath: string
 ): Promise<'success' | 'conflict' | 'error'> {
+  const main = await getMainBranch();
   try {
-    await exec(`git -C "${worktreePath}" fetch origin master`, {
+    await exec(`git -C "${worktreePath}" fetch origin ${main}`, {
       encoding: 'utf8',
     });
   } catch {
     return 'error';
   }
   try {
-    await exec(`git -C "${worktreePath}" rebase origin/master`, {
+    await exec(`git -C "${worktreePath}" rebase origin/${main}`, {
       encoding: 'utf8',
     });
     return 'success';

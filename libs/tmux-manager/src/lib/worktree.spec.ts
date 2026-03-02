@@ -11,6 +11,8 @@ import {
   fastForwardMaster,
   countConflicts,
   rebaseOntoMaster,
+  getMainBranch,
+  resetMainBranchCache,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
@@ -33,6 +35,7 @@ function resolve(stdout = '') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetMainBranchCache();
 });
 
 describe('listBranches', () => {
@@ -285,9 +288,12 @@ describe('listWorktrees', () => {
 
 describe('rebaseOntoMaster', () => {
   it('should return success when fetch and rebase both succeed', async () => {
-    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve()) // fetch
+      .mockResolvedValueOnce(resolve()); // rebase
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('success');
-    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).toHaveBeenCalledWith(
       'git -C "/path/to/worktree" fetch origin master',
       { encoding: 'utf8' }
@@ -299,18 +305,21 @@ describe('rebaseOntoMaster', () => {
   });
 
   it('should return error when fetch fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockRejectedValueOnce(new Error('fetch failed'));
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('error');
-    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
   });
 
   it('should return conflict and abort when rebase fails', async () => {
     mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockResolvedValueOnce(resolve()); // abort succeeds
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExec).toHaveBeenCalledTimes(4);
     expect(mockExec).toHaveBeenLastCalledWith(
       'git -C "/path/to/worktree" rebase --abort',
       { encoding: 'utf8' }
@@ -319,11 +328,12 @@ describe('rebaseOntoMaster', () => {
 
   it('should return conflict even when abort also fails', async () => {
     mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockRejectedValueOnce(new Error('abort failed')); // abort fails
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExec).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -369,11 +379,60 @@ describe('listAllBranches', () => {
   });
 });
 
+describe('getMainBranch', () => {
+  it('should detect main branch from symbolic-ref', async () => {
+    mockExec.mockResolvedValueOnce(resolve('refs/remotes/origin/master'));
+    expect(await getMainBranch()).toBe('master');
+    expect(mockExec).toHaveBeenCalledWith(
+      'git symbolic-ref refs/remotes/origin/HEAD',
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should detect "main" from symbolic-ref', async () => {
+    mockExec.mockResolvedValueOnce(resolve('refs/remotes/origin/main'));
+    expect(await getMainBranch()).toBe('main');
+  });
+
+  it('should fall back to rev-parse when symbolic-ref fails', async () => {
+    mockExec
+      .mockRejectedValueOnce(new Error('no symbolic-ref'))
+      .mockResolvedValueOnce(resolve());
+    expect(await getMainBranch()).toBe('master');
+    expect(mockExec).toHaveBeenCalledWith(
+      'git rev-parse --verify --quiet origin/master',
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should default to "main" when both symbolic-ref and rev-parse fail', async () => {
+    mockExec
+      .mockRejectedValueOnce(new Error('no symbolic-ref'))
+      .mockRejectedValueOnce(new Error('no origin/master'));
+    expect(await getMainBranch()).toBe('main');
+  });
+
+  it('should return cached value on subsequent calls', async () => {
+    mockExec.mockResolvedValueOnce(resolve('refs/remotes/origin/master'));
+    await getMainBranch();
+    // Second call should not invoke exec again
+    expect(await getMainBranch()).toBe('master');
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('fastForwardMaster', () => {
-  it('should return true when fetch and branch update both succeed', async () => {
-    mockExec.mockResolvedValueOnce(resolve()).mockResolvedValueOnce(resolve());
+  it('should use branch -f when HEAD is not on main branch', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve()) // fetch
+      .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
+      .mockResolvedValueOnce(resolve()); // branch -f
     expect(await fastForwardMaster()).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
+      encoding: 'utf8',
+    });
+    expect(mockExec).toHaveBeenCalledWith('git symbolic-ref --short HEAD', {
       encoding: 'utf8',
     });
     expect(mockExec).toHaveBeenCalledWith(
@@ -382,23 +441,50 @@ describe('fastForwardMaster', () => {
     );
   });
 
+  it('should use merge --ff-only when HEAD IS on main branch', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve()) // fetch
+      .mockResolvedValueOnce(resolve('master\n')) // symbolic-ref HEAD
+      .mockResolvedValueOnce(resolve()); // merge --ff-only
+    expect(await fastForwardMaster()).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      'git merge --ff-only origin/master',
+      { encoding: 'utf8' }
+    );
+  });
+
   it('should return false when fetch fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('fetch failed'));
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockRejectedValueOnce(new Error('fetch failed'));
     expect(await fastForwardMaster()).toBe(false);
-    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
   });
 
   it('should return false when branch update fails', async () => {
     mockExec
-      .mockResolvedValueOnce(resolve())
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve()) // fetch
+      .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockRejectedValueOnce(new Error('branch update failed'));
+    expect(await fastForwardMaster()).toBe(false);
+  });
+
+  it('should return false when HEAD is detached and branch -f fails', async () => {
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve()) // fetch
+      .mockRejectedValueOnce(new Error('not a symbolic ref')); // symbolic-ref HEAD fails (detached)
     expect(await fastForwardMaster()).toBe(false);
   });
 });
 
 describe('countConflicts', () => {
   it('should return 0 for clean merge', async () => {
-    mockExec.mockResolvedValueOnce(resolve('abc123'));
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockResolvedValueOnce(resolve('abc123'));
     expect(await countConflicts('feature/clean')).toBe(0);
     expect(mockExec).toHaveBeenCalledWith(
       'git merge-tree --write-tree origin/master "feature/clean"',
@@ -418,12 +504,16 @@ describe('countConflicts', () => {
       'CONFLICT (content): Merge conflict in src/file2.ts',
       '',
     ].join('\n');
-    mockExec.mockRejectedValueOnce(err);
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockRejectedValueOnce(err);
     expect(await countConflicts('feature/conflicts')).toBe(2);
   });
 
   it('should return 0 for non-conflict errors', async () => {
-    mockExec.mockRejectedValueOnce(new Error('unknown error'));
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockRejectedValueOnce(new Error('unknown error'));
     expect(await countConflicts('feature/broken')).toBe(0);
   });
 
@@ -434,7 +524,9 @@ describe('countConflicts', () => {
     };
     err.code = 1;
     err.stdout = 'abc123\n';
-    mockExec.mockRejectedValueOnce(err);
+    mockExec
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
+      .mockRejectedValueOnce(err);
     expect(await countConflicts('feature/weird')).toBe(0);
   });
 });
