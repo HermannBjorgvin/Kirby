@@ -137,6 +137,14 @@ const SEARCH_PRS_QUERY = `
               state
             }
           }
+          reviewRequests(first: 20) {
+            nodes {
+              requestedReviewer {
+                ... on User { login }
+                ... on Team { name }
+              }
+            }
+          }
           reviewThreads(first: 100) {
             nodes { isResolved }
           }
@@ -165,6 +173,11 @@ interface SearchPrNode {
   isDraft: boolean;
   reviews: {
     nodes: Array<{ author: { login: string }; state: string }>;
+  };
+  reviewRequests: {
+    nodes: Array<{
+      requestedReviewer: { login?: string; name?: string };
+    }>;
   };
   reviewThreads: {
     nodes: Array<{ isResolved: boolean }>;
@@ -209,6 +222,21 @@ export function mapRollupState(
 
 function transformSearchNode(node: SearchPrNode): PullRequestInfo {
   const reviewers = latestReviewPerUser(node.reviews.nodes);
+
+  // Merge requested reviewers who haven't submitted a review yet
+  const reviewedLogins = new Set(
+    reviewers.map((r) => r.identifier.toLowerCase())
+  );
+  for (const req of node.reviewRequests.nodes) {
+    const login = req.requestedReviewer.login;
+    if (login && !reviewedLogins.has(login.toLowerCase())) {
+      reviewers.push({
+        displayName: login,
+        identifier: login,
+        decision: 'no-response',
+      });
+    }
+  }
 
   const unresolvedCount = node.reviewThreads.nodes.filter(
     (t) => !t.isResolved
