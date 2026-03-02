@@ -54,7 +54,7 @@ export function useSessionManager(
     async (sessionName: string, branch: string) => {
       await killSession(sessionName);
       await removeWorktree(branch);
-      await deleteBranch(branch);
+      await deleteBranch(branch, true);
       const updated = await refreshSessions();
       setSelectedIndex((prev) =>
         prev >= updated.length ? Math.max(0, updated.length - 1) : prev
