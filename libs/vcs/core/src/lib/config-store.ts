@@ -42,6 +42,7 @@ interface RawGlobalConfig {
   pat?: string;
   prPollInterval?: number;
   aiCommand?: string;
+  worktreePath?: string;
   vendorAuth?: Record<string, Record<string, string>>;
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
@@ -125,6 +126,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     email: project.email,
     prPollInterval: global.prPollInterval,
     aiCommand: global.aiCommand,
+    worktreePath: global.worktreePath,
     vendor,
     vendorAuth,
     vendorProject,
