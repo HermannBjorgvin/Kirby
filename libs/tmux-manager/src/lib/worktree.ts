@@ -6,7 +6,7 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { exec } from './exec.js';
+import { execFile } from './exec.js';
 
 export interface WorktreeInfo {
   path: string;
@@ -35,14 +35,14 @@ export async function createWorktree(branch: string): Promise<string | null> {
 
   try {
     // Try existing branch first
-    await exec(`git worktree add "${relativeDir}" "${branch}"`, {
+    await execFile('git', ['worktree', 'add', relativeDir, branch], {
       encoding: 'utf8',
     });
     return absoluteDir;
   } catch {
     try {
       // Branch doesn't exist — create new branch from HEAD
-      await exec(`git worktree add -b "${branch}" "${relativeDir}"`, {
+      await execFile('git', ['worktree', 'add', '-b', branch, relativeDir], {
         encoding: 'utf8',
       });
       return absoluteDir;
@@ -59,7 +59,7 @@ export async function createWorktree(branch: string): Promise<string | null> {
 export async function removeWorktree(branch: string): Promise<boolean> {
   const relativeDir = worktreeDir(branch);
   try {
-    await exec(`git worktree remove "${relativeDir}"`, {
+    await execFile('git', ['worktree', 'remove', relativeDir], {
       encoding: 'utf8',
     });
     return true;
@@ -88,8 +88,9 @@ export async function canRemoveBranch(
 
   // Uncommitted changes
   try {
-    const { stdout: status } = await exec(
-      `git -C "${dir}" status --porcelain`,
+    const { stdout: status } = await execFile(
+      'git',
+      ['-C', dir, 'status', '--porcelain'],
       { encoding: 'utf8' }
     );
     if (status.trim().length > 0) {
@@ -101,8 +102,9 @@ export async function canRemoveBranch(
 
   // Not pushed to upstream
   try {
-    const { stdout: unpushed } = await exec(
-      `git log "${branch}" --not --remotes -1`,
+    const { stdout: unpushed } = await execFile(
+      'git',
+      ['log', branch, '--not', '--remotes', '-1'],
       { encoding: 'utf8' }
     );
     if (unpushed.trim().length > 0) {
@@ -118,9 +120,11 @@ export async function canRemoveBranch(
 /** List local git branches */
 export async function listBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch --format='%(refname:short)'", {
-      encoding: 'utf8',
-    });
+    const { stdout } = await execFile(
+      'git',
+      ['branch', '--format=%(refname:short)'],
+      { encoding: 'utf8' }
+    );
     return stdout
       .trim()
       .split('\n')
@@ -133,7 +137,7 @@ export async function listBranches(): Promise<string[]> {
 /** Fetch from all remotes and prune stale tracking branches */
 export async function fetchRemote(): Promise<boolean> {
   try {
-    await exec('git fetch --all --prune', { encoding: 'utf8' });
+    await execFile('git', ['fetch', '--all', '--prune'], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -143,9 +147,11 @@ export async function fetchRemote(): Promise<boolean> {
 /** List local + remote git branches (remote branches stripped of origin/ prefix, deduplicated) */
 export async function listAllBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch -a --format='%(refname:short)'", {
-      encoding: 'utf8',
-    });
+    const { stdout } = await execFile(
+      'git',
+      ['branch', '-a', '--format=%(refname:short)'],
+      { encoding: 'utf8' }
+    );
     const seen = new Set<string>();
     const result: string[] = [];
     for (const raw of stdout.trim().split('\n')) {
@@ -199,9 +205,11 @@ export function parseWorktrees(output: string): WorktreeInfo[] {
  */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
   try {
-    const { stdout } = await exec('git worktree list --porcelain', {
-      encoding: 'utf8',
-    });
+    const { stdout } = await execFile(
+      'git',
+      ['worktree', 'list', '--porcelain'],
+      { encoding: 'utf8' }
+    );
     return parseWorktrees(stdout).filter(
       (w) => !w.bare && w.path.includes('.claude/worktrees/')
     );
@@ -213,8 +221,10 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
 /** Fast-forward local master to origin/master. Returns true on success. */
 export async function fastForwardMaster(): Promise<boolean> {
   try {
-    await exec('git fetch origin master', { encoding: 'utf8' });
-    await exec('git branch -f master origin/master', { encoding: 'utf8' });
+    await execFile('git', ['fetch', 'origin', 'master'], { encoding: 'utf8' });
+    await execFile('git', ['branch', '-f', 'master', 'origin/master'], {
+      encoding: 'utf8',
+    });
     return true;
   } catch {
     return false;
@@ -228,9 +238,11 @@ export async function fastForwardMaster(): Promise<boolean> {
  */
 export async function countConflicts(branch: string): Promise<number> {
   try {
-    await exec(`git merge-tree --write-tree origin/master "${branch}"`, {
-      encoding: 'utf8',
-    });
+    await execFile(
+      'git',
+      ['merge-tree', '--write-tree', 'origin/master', branch],
+      { encoding: 'utf8' }
+    );
     return 0; // clean merge — no conflicts
   } catch (err: unknown) {
     // Exit code 1 = conflicts; stdout lists conflicted files
@@ -251,7 +263,7 @@ export async function deleteBranch(
 ): Promise<boolean> {
   const flag = force ? '-D' : '-d';
   try {
-    await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
+    await execFile('git', ['branch', flag, branch], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -266,20 +278,20 @@ export async function rebaseOntoMaster(
   worktreePath: string
 ): Promise<'success' | 'conflict' | 'error'> {
   try {
-    await exec(`git -C "${worktreePath}" fetch origin master`, {
+    await execFile('git', ['-C', worktreePath, 'fetch', 'origin', 'master'], {
       encoding: 'utf8',
     });
   } catch {
     return 'error';
   }
   try {
-    await exec(`git -C "${worktreePath}" rebase origin/master`, {
+    await execFile('git', ['-C', worktreePath, 'rebase', 'origin/master'], {
       encoding: 'utf8',
     });
     return 'success';
   } catch {
     try {
-      await exec(`git -C "${worktreePath}" rebase --abort`, {
+      await execFile('git', ['-C', worktreePath, 'rebase', '--abort'], {
         encoding: 'utf8',
       });
     } catch {
