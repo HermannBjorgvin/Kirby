@@ -4,7 +4,7 @@
  * Hot-path I/O (capturePane, sendKeys, sendLiteral) lives in
  * ControlConnection (tmux-control library) instead.
  */
-import { exec } from './exec.js';
+import { execFile } from './exec.js';
 
 export interface TmuxSession {
   name: string;
@@ -16,7 +16,7 @@ export interface TmuxSession {
 /** Check if tmux is installed and available */
 export async function isAvailable(): Promise<boolean> {
   try {
-    await exec('tmux -V', { encoding: 'utf8' });
+    await execFile('tmux', ['-V'], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -26,8 +26,13 @@ export async function isAvailable(): Promise<boolean> {
 /** List all tmux sessions */
 export async function listSessions(): Promise<TmuxSession[]> {
   try {
-    const { stdout } = await exec(
-      "tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}'",
+    const { stdout } = await execFile(
+      'tmux',
+      [
+        'list-sessions',
+        '-F',
+        '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}',
+      ],
       { encoding: 'utf8' }
     );
     return parseSessions(stdout);
@@ -57,7 +62,9 @@ export function parseSessions(output: string): TmuxSession[] {
 export async function hasSession(name: string): Promise<boolean> {
   const safeName = validateSessionName(name);
   try {
-    await exec(`tmux has-session -t ${safeName}`, { encoding: 'utf8' });
+    await execFile('tmux', ['has-session', '-t', safeName], {
+      encoding: 'utf8',
+    });
     return true;
   } catch {
     return false;
@@ -73,13 +80,13 @@ export async function createSession(
   cwd?: string
 ): Promise<boolean> {
   const safeName = validateSessionName(name);
-  let cmd = `tmux new-session -d -s ${safeName}`;
-  if (cols !== undefined) cmd += ` -x ${cols}`;
-  if (rows !== undefined) cmd += ` -y ${rows}`;
-  if (cwd !== undefined) cmd += ` -c "${cwd}"`;
-  if (command !== undefined) cmd += ` "${command}"`;
+  const args = ['new-session', '-d', '-s', safeName];
+  if (cols !== undefined) args.push('-x', String(cols));
+  if (rows !== undefined) args.push('-y', String(rows));
+  if (cwd !== undefined) args.push('-c', cwd);
+  if (command !== undefined) args.push('sh', '-c', command);
   try {
-    await exec(cmd, { encoding: 'utf8' });
+    await execFile('tmux', args, { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -90,7 +97,9 @@ export async function createSession(
 export async function killSession(name: string): Promise<boolean> {
   const safeName = validateSessionName(name);
   try {
-    await exec(`tmux kill-session -t ${safeName}`, { encoding: 'utf8' });
+    await execFile('tmux', ['kill-session', '-t', safeName], {
+      encoding: 'utf8',
+    });
     return true;
   } catch {
     return false;
