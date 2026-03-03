@@ -1,10 +1,16 @@
-import { defineConfig } from 'vitest/config';
+/// <reference types='vitest' />
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => ({
-  root: __dirname,
-  cacheDir: '../../node_modules/.vite/libs/tmux-manager',
+  root: import.meta.dirname,
+  cacheDir: '../../node_modules/.vite/libs/worktree-manager',
+  plugins: [],
+  // Uncomment this if you are using workers.
+  // worker: {
+  //  plugins: [],
+  // },
   test: {
-    name: 'tmux-manager',
+    name: 'worktree-manager',
     watch: false,
     globals: true,
     environment: 'node',

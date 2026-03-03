@@ -8,8 +8,8 @@ import {
   fetchRemote,
   branchToSessionName,
   rebaseOntoMaster,
-} from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+} from '@kirby/worktree-manager';
+import type { TmuxSession } from '@kirby/worktree-manager';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';

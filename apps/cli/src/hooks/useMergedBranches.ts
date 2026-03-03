@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { canRemoveBranch, branchToSessionName } from '@kirby/tmux-manager';
+import { canRemoveBranch, branchToSessionName } from '@kirby/worktree-manager';
 import { useConfig } from '../context/ConfigContext.js';
 import { logError } from '../log.js';
 

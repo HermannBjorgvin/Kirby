@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { TmuxSession } from '@kirby/tmux-manager';
+import type { TmuxSession } from '@kirby/worktree-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';

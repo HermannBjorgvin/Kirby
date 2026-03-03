@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { countConflicts } from '@kirby/tmux-manager';
+import { countConflicts } from '@kirby/worktree-manager';
 
 /**
  * Batch conflict checking for all branches at once.

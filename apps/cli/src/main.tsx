@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
-import { branchToSessionName } from '@kirby/tmux-manager';
+import { branchToSessionName } from '@kirby/worktree-manager';
 import type {
   VcsProvider,
   PullRequestInfo,

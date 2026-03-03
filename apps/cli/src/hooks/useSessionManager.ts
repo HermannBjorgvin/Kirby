@@ -5,8 +5,8 @@ import {
   listAllBranches,
   listWorktrees,
   branchToSessionName,
-} from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+} from '@kirby/worktree-manager';
+import type { TmuxSession } from '@kirby/worktree-manager';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
 import { killSession, hasSession as hasPtySession } from '../pty-registry.js';

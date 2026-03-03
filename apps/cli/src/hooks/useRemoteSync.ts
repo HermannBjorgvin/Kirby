@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { fetchRemote, fastForwardMaster } from '@kirby/tmux-manager';
+import { fetchRemote, fastForwardMaster } from '@kirby/worktree-manager';
 import { useConfig } from '../context/ConfigContext.js';
 import { logError } from '../log.js';
 

@@ -7,7 +7,7 @@
       "path": "./apps/cli"
     },
     {
-      "path": "./libs/tmux-manager"
+      "path": "./libs/worktree-manager"
     },
     {
       "path": "./libs/terminal"
