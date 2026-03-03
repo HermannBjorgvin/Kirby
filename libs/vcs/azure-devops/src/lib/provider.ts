@@ -76,12 +76,12 @@ export function parsePullRequest(
     sourceRefName?: string;
     targetRefName?: string;
     isDraft?: boolean;
-    reviewers?: Array<{
+    reviewers?: {
       displayName?: string;
       uniqueName?: string;
       vote?: number;
       hasDeclined?: boolean;
-    }>;
+    }[];
     createdBy?: { uniqueName?: string; displayName?: string };
   },
   project: Record<string, string>
@@ -103,10 +103,10 @@ export function parsePullRequest(
 }
 
 export function countActiveThreads(
-  threads: Array<{
+  threads: {
     status?: string;
-    comments?: Array<{ commentType?: string }>;
-  }>
+    comments?: { commentType?: string }[];
+  }[]
 ): number {
   return threads.filter((t) => {
     if (t.status !== 'active') return false;
@@ -133,7 +133,7 @@ function mapRawState(raw: string | undefined): BuildStatusState {
 }
 
 export function deriveBuildStatus(
-  statuses: Array<{ state?: string }>
+  statuses: { state?: string }[]
 ): BuildStatusState {
   let hasFailed = false;
   let hasPending = false;
@@ -156,7 +156,7 @@ export function deriveBuildStatus(
 export async function fetchActivePullRequests(
   config: AdoConfig,
   project: Record<string, string>
-): Promise<Array<Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'>>> {
+): Promise<Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'>[]> {
   const url = `${baseUrl(
     config
   )}/pullrequests?searchCriteria.status=active&api-version=7.1`;
@@ -165,7 +165,7 @@ export async function fetchActivePullRequests(
     throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
   }
   const data = (await res.json()) as { value?: unknown[] };
-  return ((data.value ?? []) as Array<Record<string, unknown>>).map((raw) =>
+  return ((data.value ?? []) as Record<string, unknown>[]).map((raw) =>
     parsePullRequest(raw, project)
   );
 }
@@ -181,10 +181,10 @@ export async function fetchActiveCommentCount(
   }
   const data = (await res.json()) as { value?: unknown[] };
   return countActiveThreads(
-    (data.value ?? []) as Array<{
+    (data.value ?? []) as {
       status?: string;
-      comments?: Array<{ commentType?: string }>;
-    }>
+      comments?: { commentType?: string }[];
+    }[]
   );
 }
 
@@ -200,7 +200,7 @@ export async function fetchPrBuildStatus(
     throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
   }
   const data = (await res.json()) as { value?: unknown[] };
-  return deriveBuildStatus((data.value ?? []) as Array<{ state?: string }>);
+  return deriveBuildStatus((data.value ?? []) as { state?: string }[]);
 }
 
 /**
@@ -310,7 +310,7 @@ export const azureDevOpsProvider: VcsProvider = {
     if (!res.ok) return new Set();
 
     const data = (await res.json()) as {
-      value?: Array<{ sourceRefName?: string }>;
+      value?: { sourceRefName?: string }[];
     };
     const branchSet = new Set(branches);
     const matched = new Set<string>();

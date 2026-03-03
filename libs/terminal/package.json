@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/tmux-control",
+  "name": "@kirby/terminal",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,5 +13,11 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0"
+  },
+  "nx": {
+    "name": "@kirby/terminal"
+  }
 }

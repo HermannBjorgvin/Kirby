@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { fetchRemote, fastForwardMaster } from '@kirby/tmux-manager';
+import { fetchRemote, fastForwardMainBranch } from '@kirby/worktree-manager';
 import { useConfig } from '../context/ConfigContext.js';
 import { logError } from '../log.js';
 
@@ -18,7 +18,7 @@ export function useRemoteSync() {
     setIsSyncing(true);
     try {
       await fetchRemote();
-      await fastForwardMaster();
+      await fastForwardMainBranch();
       if (mountedRef.current) setLastSynced(Date.now());
     } catch (err: unknown) {
       logError('useRemoteSync', err);

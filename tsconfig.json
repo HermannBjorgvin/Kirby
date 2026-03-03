@@ -7,10 +7,10 @@
       "path": "./apps/cli"
     },
     {
-      "path": "./libs/tmux-manager"
+      "path": "./libs/worktree-manager"
     },
     {
-      "path": "./libs/tmux-control"
+      "path": "./libs/terminal"
     },
     {
       "path": "./libs/vcs/core"

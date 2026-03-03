@@ -9,6 +9,8 @@
   "private": true,
   "devDependencies": {
     "@nx/esbuild": "22.5.2",
+    "@nx/eslint": "22.5.2",
+    "@nx/eslint-plugin": "^22.5.3",
     "@nx/js": "22.5.2",
     "@nx/node": "^22.5.2",
     "@nx/vitest": "22.5.2",
@@ -18,12 +20,15 @@
     "@types/node": "20.19.9",
     "@vitest/coverage-v8": "^4.0.0",
     "esbuild": "^0.19.2",
+    "eslint": "^9.39.3",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "nx": "22.5.1",
     "prettier": "^2.6.2",
     "tslib": "^2.3.0",
     "typescript": "~5.9.2",
+    "typescript-eslint": "^8.56.1",
     "vite": "^7.0.0",
     "vitest": "^4.0.8"
   },
@@ -33,6 +38,11 @@
     "libs/vcs/*"
   ],
   "lint-staged": {
-    "*": "npx nx format:write --files"
+    "*": "npx nx format:write --files",
+    "*.{ts,tsx}": "eslint --fix"
+  },
+  "dependencies": {
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0"
   }
 }

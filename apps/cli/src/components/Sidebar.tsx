@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { TmuxSession } from '@kirby/tmux-manager';
-import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
+import type { AgentSession } from '../types.js';
+import type { PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';
 import { useConfig } from '../context/ConfigContext.js';
@@ -9,16 +9,14 @@ import { useConfig } from '../context/ConfigContext.js';
 const SessionItem = memo(function SessionItem({
   session,
   selected,
-  branch,
   pr,
   sidebarWidth,
   isMerged,
   conflictCount,
   conflictsLoading,
 }: {
-  session: TmuxSession;
+  session: AgentSession;
   selected: boolean;
-  branch: string | undefined;
   pr: PullRequestInfo | undefined;
   sidebarWidth: number;
   isMerged: boolean;
@@ -26,8 +24,8 @@ const SessionItem = memo(function SessionItem({
   conflictsLoading: boolean;
 }) {
   const { vcsConfigured } = useConfig();
-  const icon = session.windows > 0 ? '●' : '○';
-  const color = session.windows > 0 ? 'green' : 'gray';
+  const icon = session.running ? '●' : '○';
+  const color = session.running ? 'green' : 'gray';
 
   return (
     <Box key={session.name} flexDirection="column">
@@ -103,26 +101,22 @@ export function Sidebar({
   sessions,
   selectedIndex,
   focused,
-  prMap,
   sessionBranchMap,
   sessionPrMap,
   sidebarWidth,
   orphanPrs,
   mergedBranches,
-  lastSynced,
   conflictCounts,
   conflictsLoading,
 }: {
-  sessions: TmuxSession[];
+  sessions: AgentSession[];
   selectedIndex: number;
   focused: boolean;
-  prMap: BranchPrMap;
   sessionBranchMap: Map<string, string>;
   sessionPrMap: Map<string, PullRequestInfo>;
   sidebarWidth: number;
   orphanPrs: PullRequestInfo[];
   mergedBranches: Set<string>;
-  lastSynced: number;
   conflictCounts?: Map<string, number>;
   conflictsLoading?: boolean;
 }) {
@@ -148,7 +142,6 @@ export function Sidebar({
               key={s.name}
               session={s}
               selected={i === selectedIndex}
-              branch={branch}
               pr={sessionPrMap.get(s.name)}
               sidebarWidth={sidebarWidth}
               isMerged={isMerged}
@@ -186,7 +179,7 @@ export function Sidebar({
           <Text color="cyan">d</Text> delete branch
         </Text>
         <Text dimColor>
-          <Text color="cyan">shift+k</Text> kill tmux session
+          <Text color="cyan">shift+k</Text> kill agent
         </Text>
         <Text dimColor>
           <Text color="cyan">u</Text> rebase onto master
@@ -202,7 +195,8 @@ export function Sidebar({
           </>
         ) : null}
         <Text dimColor>
-          <Text color="cyan">tab</Text> switch focus
+          <Text color="cyan">tab</Text> / <Text color="cyan">ctrl+space</Text>{' '}
+          switch focus
         </Text>
         <Text dimColor>
           <Text color="cyan">s</Text> settings

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { canRemoveBranch, branchToSessionName } from '@kirby/tmux-manager';
+import { canRemoveBranch, branchToSessionName } from '@kirby/worktree-manager';
 import { useConfig } from '../context/ConfigContext.js';
 import { logError } from '../log.js';
 
@@ -14,6 +14,7 @@ export function useMergedBranches(
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
   const onAutoDeleteRef = useRef(onAutoDelete);
+  // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
   onAutoDeleteRef.current = onAutoDelete;
 
   useEffect(() => {

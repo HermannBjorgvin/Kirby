@@ -1,42 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  isAvailable,
-  listSessions,
-  killSession,
   removeWorktree,
   deleteBranch,
   listAllBranches,
   listWorktrees,
   branchToSessionName,
-} from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+} from '@kirby/worktree-manager';
+import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
+import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
   setConfig: (v: AppConfig | ((prev: AppConfig) => AppConfig)) => void,
   setBranches: (v: string[]) => void
 ) {
-  const [sessions, setSessions] = useState<TmuxSession[]>([]);
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [hasTmux, setHasTmux] = useState(false);
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshSessions = useCallback(async () => {
     const worktrees = await listWorktrees();
-    const allTmux = await listSessions();
-    const filtered: TmuxSession[] = [];
+    const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
       const name = branchToSessionName(wt.branch);
-      const live = allTmux.find((s) => s.name === name);
-      if (live) {
-        filtered.push(live);
-      } else {
-        filtered.push({ name, windows: 0, created: 0, attached: false });
-      }
+      filtered.push({
+        name,
+        running: hasPtySession(name),
+      });
     }
     const nonReview = filtered.filter((s) => !s.name.startsWith('review-pr-'));
     setSessions(nonReview);
@@ -52,7 +46,7 @@ export function useSessionManager(
 
   const performDelete = useCallback(
     async (sessionName: string, branch: string) => {
-      await killSession(sessionName);
+      killSession(sessionName);
       await removeWorktree(branch);
       await deleteBranch(branch, true);
       const updated = await refreshSessions();
@@ -63,17 +57,13 @@ export function useSessionManager(
     [refreshSessions]
   );
 
-  // Check tmux availability, load sessions and branches on mount
+  // Load sessions and branches on mount
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      const ok = await isAvailable();
       if (cancelled) return;
-      setHasTmux(ok);
-      if (ok) {
-        await refreshSessions();
-      }
+      await refreshSessions();
       const allBranches = await listAllBranches();
       if (!cancelled) setBranches(allBranches);
     })();
@@ -93,10 +83,8 @@ export function useSessionManager(
 
   return {
     sessions,
-    setSessions,
     selectedIndex,
     setSelectedIndex,
-    hasTmux,
     worktreeBranches,
     statusMessage,
     flashStatus,

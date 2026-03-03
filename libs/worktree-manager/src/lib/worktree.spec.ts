@@ -2,17 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createWorktree,
   removeWorktree,
+  deleteBranch,
   canRemoveBranch,
   listBranches,
   fetchRemote,
   listAllBranches,
   parseWorktrees,
   listWorktrees,
-  fastForwardMaster,
+  fastForwardMainBranch,
   countConflicts,
   rebaseOntoMaster,
   getMainBranch,
   resetMainBranchCache,
+  branchToSessionName,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
@@ -112,6 +114,37 @@ describe('removeWorktree', () => {
   it('should return false on failure', async () => {
     mockExec.mockRejectedValueOnce(new Error('not found'));
     expect(await removeWorktree('nonexistent')).toBe(false);
+  });
+});
+
+describe('deleteBranch', () => {
+  it('should return true on success and call git branch -d', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/auth')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git branch -d "feature/auth"', {
+      encoding: 'utf8',
+    });
+  });
+
+  it('should return false on failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('branch not found'));
+    expect(await deleteBranch('nonexistent')).toBe(false);
+  });
+
+  it('should use -D flag when force is true', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/auth', true)).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git branch -D "feature/auth"', {
+      encoding: 'utf8',
+    });
+  });
+
+  it('should properly quote the branch name', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    await deleteBranch('feat/ui/sidebar');
+    expect(mockExec).toHaveBeenCalledWith('git branch -d "feat/ui/sidebar"', {
+      encoding: 'utf8',
+    });
   });
 });
 
@@ -421,14 +454,14 @@ describe('getMainBranch', () => {
   });
 });
 
-describe('fastForwardMaster', () => {
+describe('fastForwardMainBranch', () => {
   it('should use branch -f when HEAD is not on main branch', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // branch -f
-    expect(await fastForwardMaster()).toBe(true);
+    expect(await fastForwardMainBranch()).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
       encoding: 'utf8',
     });
@@ -447,18 +480,17 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('master\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // merge --ff-only
-    expect(await fastForwardMaster()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith(
-      'git merge --ff-only origin/master',
-      { encoding: 'utf8' }
-    );
+    expect(await fastForwardMainBranch()).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git merge --ff-only origin/master', {
+      encoding: 'utf8',
+    });
   });
 
   it('should return false when fetch fails', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockRejectedValueOnce(new Error('fetch failed'));
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
     expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
   });
 
@@ -468,7 +500,7 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockRejectedValueOnce(new Error('branch update failed'));
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
   });
 
   it('should return false when HEAD is detached and branch -f fails', async () => {
@@ -476,7 +508,7 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch
       .mockRejectedValueOnce(new Error('not a symbolic ref')); // symbolic-ref HEAD fails (detached)
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
   });
 });
 
@@ -528,5 +560,23 @@ describe('countConflicts', () => {
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockRejectedValueOnce(err);
     expect(await countConflicts('feature/weird')).toBe(0);
+  });
+});
+
+describe('branchToSessionName', () => {
+  it('should replace slashes with hyphens', () => {
+    expect(branchToSessionName('feature/auth')).toBe('feature-auth');
+  });
+
+  it('should handle multiple slashes', () => {
+    expect(branchToSessionName('feat/ui/sidebar')).toBe('feat-ui-sidebar');
+  });
+
+  it('should return names without slashes unchanged', () => {
+    expect(branchToSessionName('main')).toBe('main');
+  });
+
+  it('should handle empty string', () => {
+    expect(branchToSessionName('')).toBe('');
   });
 });

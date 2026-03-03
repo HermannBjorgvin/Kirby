@@ -8,13 +8,13 @@ A terminal UI for managing multiple AI coding sessions across git worktrees, wit
 - **PR tracking** — view open, draft, and merged pull requests alongside your active sessions
 - **Code reviews tab** — see PRs where you're a reviewer, grouped by status (needs review, waiting for author, approved)
 - **Branch sync** — automatic merge detection, conflict counting, auto-delete of merged branches, one-key rebase
-- **Terminal integration** — full ANSI passthrough and input forwarding to tmux sessions
+- **Terminal integration** — full ANSI passthrough and input forwarding via embedded PTY sessions
 - **Configurable AI tool** — switch between Claude, Codex, Gemini, Copilot, or a custom command
 - **Settings panel** — auto-detect VCS provider, configure sync intervals, and set project preferences
 
 ## Example
 
-The worktree session tab shows active PR's and lets you press enter to create a new agent session via tmux and creates a worktree based on the branch.
+The worktree session tab shows active PR's and lets you press enter to create a new agent session and worktree based on the branch.
 ![screenshot of session tab](sessions-example.png)
 
 The reviews tab works similarly showing you pull requests you are assigned to review and lets you start a new session with an automatic review as the initial prompt.
@@ -23,7 +23,6 @@ The reviews tab works similarly showing you pull requests you are assigned to re
 ## Prerequisites
 
 - Node.js 20+
-- tmux
 - git
 - `gh` CLI (for GitHub provider)
 
@@ -44,8 +43,8 @@ npx nx serve cli --no-tui -- /path/to/project
 
 ```
 apps/cli/              Ink TUI application (React 19, ESM)
-libs/tmux-manager/     Worktree session lifecycle and persistence
-libs/tmux-control/     tmux command execution primitives
+libs/worktree-manager/ Worktree and branch lifecycle operations
+libs/terminal/         PTY session and terminal emulation (node-pty + @xterm/headless)
 libs/vcs/core/         VCS abstraction and config management
 libs/vcs/azure-devops/ Azure DevOps provider
 libs/vcs/github/       GitHub provider (via gh cli)

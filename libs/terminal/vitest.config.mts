@@ -2,9 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig(() => ({
   root: __dirname,
-  cacheDir: '../../node_modules/.vite/libs/tmux-control',
+  cacheDir: '../../node_modules/.vite/libs/terminal',
   test: {
-    name: '@kirby/tmux-control',
+    name: '@kirby/terminal',
     watch: false,
     globals: true,
     environment: 'node',

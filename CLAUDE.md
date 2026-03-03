@@ -46,33 +46,34 @@
   - `cli-design:inkjs-cli input` — keyboard input, `useInput` patterns
   - `cli-design:inkjs-cli gotchas` — emoji width, Ctrl+C, useInput conflicts
 - **Full-screen layout:** Use `useStdout()` to get `rows`/`columns`, set `height={rows}` on root `<Box>`.
-- **tmux pane sizing:** Resize the tmux session to match the terminal dimensions minus UI chrome (sidebar width, borders, status bar).
+- **PTY sizing:** The PTY session is sized to match the terminal dimensions minus UI chrome (sidebar width, borders, status bar).
 - **ESM required:** Ink v6 + yoga-layout use top-level await. All packages must have `"type": "module"` in package.json.
 
 ## Testing Strategy
 
-- **TDD for libraries:** `tmux-manager` (tmux.ts, session-store.ts) — mock `execSync`, test parsing and CRUD logic.
+- **TDD for libraries:** `worktree-manager` (worktree.ts) — mock `exec`, test parsing and CRUD logic.
 - **Ink components:** Use `ink-testing-library` to verify text content + keyboard navigation. No real TTY needed.
-- **Manual testing for:** ANSI/visual rendering, tmux input forwarding, anything involving real terminal interaction.
-- **Run tests via NX:** `npx nx test tmux-manager`
+- **Manual testing for:** ANSI/visual rendering, PTY input forwarding, anything involving real terminal interaction.
+- **Run tests via NX:** `npx nx test worktree-manager`
 - **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
 
 ## Project Structure
 
 ```
-apps/cli/           — Ink TUI application (ESM, React 19)
-  src/main.tsx      — Entry point, root component
-libs/tmux-manager/  — tmux command wrapper + session persistence
-  src/lib/tmux.ts   — Raw tmux commands (29 unit tests)
-  src/lib/session-store.ts — JSON persistence + reconciliation (16 tests)
-libs/shared-types/  — TypeScript interfaces (Session, Config)
+apps/cli/              — Ink TUI application (ESM, React 19)
+  src/main.tsx         — Entry point, root component
+  src/pty-registry.ts  — PTY session lifecycle (spawn, get, kill)
+libs/worktree-manager/ — Git worktree and branch operations
+  src/lib/worktree.ts  — Worktree CRUD, branch utils, conflict checks
+libs/terminal/         — PTY session + terminal emulation (node-pty + @xterm/headless)
+  src/lib/pty-session.ts       — node-pty wrapper
+  src/lib/terminal-emulator.ts — @xterm/headless wrapper with ANSI rendering
 ```
 
 ## Known Decisions & Learnings
 
-- **ANSI passthrough works:** Ink `<Text>` passes raw ANSI from `tmux capture-pane -e` directly to the terminal. Colors, bold, underline all render correctly.
-- **Input forwarding works:** `useInput` → `tmux send-keys` round-trip is responsive enough for interactive use.
+- **ANSI passthrough works:** TerminalEmulator (@xterm/headless) renders ANSI output which Ink `<Text>` passes directly to the terminal. Colors, bold, underline all render correctly.
+- **Input forwarding works:** Raw stdin → PTY write round-trip is responsive enough for interactive use. Mouse tracking and scrollback navigation are supported.
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
-- **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. tmux-manager importing shared-types).
-- **Claude session status detection is NOT yet implemented.** Patterns need to be observed from real Claude tmux sessions before coding — don't guess.
+- **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. worktree-manager importing terminal).
 - **`TSX_TSCONFIG_PATH`:** The serve target sets this env var so tsx picks up `jsx: "react-jsx"` from `tsconfig.app.json`. Without it, tsx defaults to classic JSX transform and requires `import React`.

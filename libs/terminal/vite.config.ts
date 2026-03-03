@@ -3,14 +3,14 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => ({
   root: import.meta.dirname,
-  cacheDir: '../../node_modules/.vite/libs/tmux-control',
+  cacheDir: '../../node_modules/.vite/libs/terminal',
   plugins: [],
   // Uncomment this if you are using workers.
   // worker: {
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/tmux-control',
+    name: '@kirby/terminal',
     watch: false,
     globals: true,
     environment: 'node',

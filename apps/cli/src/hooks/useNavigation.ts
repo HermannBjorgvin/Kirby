@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import type { ActiveTab } from '../types.js';
-import type { Focus } from '../input-handlers.js';
+import type { ActiveTab, Focus } from '../types.js';
 
 export function useNavigation() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('sessions');

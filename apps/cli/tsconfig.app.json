@@ -8,5 +8,21 @@
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [],
-  "references": []
+  "references": [
+    {
+      "path": "../../libs/terminal/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/worktree-manager/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/github/tsconfig.lib.json"
+    }
+  ]
 }

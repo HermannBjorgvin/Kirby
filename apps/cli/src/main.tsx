@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
-import { branchToSessionName } from '@kirby/tmux-manager';
+import { branchToSessionName } from '@kirby/worktree-manager';
 import type {
   VcsProvider,
   PullRequestInfo,
@@ -21,7 +21,7 @@ import { usePrData } from './hooks/usePrData.js';
 import { useRemoteSync } from './hooks/useRemoteSync.js';
 import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
-import { useControlMode } from './hooks/useControlMode.js';
+import { useTerminal } from './hooks/useTerminal.js';
 import { useConflictCounts } from './hooks/useConflictCounts.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useBranchPicker } from './hooks/useBranchPicker.js';
@@ -36,7 +36,9 @@ import {
   handleGlobalInput,
   handleReviewConfirmInput,
 } from './input-handlers.js';
-import type { AppContext, Focus } from './input-handlers.js';
+import type { AppContext } from './input-handlers.js';
+import type { Focus } from './types.js';
+import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 
 // ── Provider registry ──────────────────────────────────────────────
@@ -54,7 +56,6 @@ function StatusBar({
   prError,
   sessionCount,
   focus,
-  hasTmux,
   inFlight,
 }: {
   confirmDelete: {
@@ -69,7 +70,6 @@ function StatusBar({
   prError: string | null;
   sessionCount: number;
   focus: Focus;
-  hasTmux: boolean;
   inFlight: Set<string>;
 }) {
   const { vcsConfigured } = useConfig();
@@ -107,8 +107,7 @@ function StatusBar({
 
   return (
     <Text dimColor>
-      {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text> · tmux:{' '}
-      {hasTmux ? '✓' : '✕'}
+      {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text>
       {!vcsConfigured ? ' · (s to configure VCS)' : ''}
       {ops ? <Text color="yellow">{ops}</Text> : null}
     </Text>
@@ -151,7 +150,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     branchPicker.setBranches
   );
 
-  const [paneContent, setPaneContent] = useState('(loading...)');
   const [reconnectKey, setReconnectKey] = useState(0);
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
 
@@ -230,6 +228,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     ) {
       review.setReviewSelectedIndex(reviewTotalItems - 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
   }, [reviewTotalItems, review.reviewSelectedIndex]);
 
   // Pre-compute session-name → branch and session-name → PR lookup maps
@@ -278,24 +277,28 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     if (totalItems > 0 && sessionMgr.selectedIndex >= totalItems) {
       sessionMgr.setSelectedIndex(totalItems - 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
   }, [totalItems, sessionMgr.selectedIndex]);
 
-  const { sendInput } = useControlMode(
-    sessionMgr.hasTmux ? selectedName : null,
-    paneCols,
-    paneRows,
-    setPaneContent,
-    reconnectKey
-  );
+  // ── Terminal hooks (PTY session + raw stdin forwarding) ─────────
+  const terminalFocused = nav.focus === 'terminal';
+  const escapeTerminal = () => nav.setFocus('sidebar');
 
-  const { sendInput: sendReviewInput } = useControlMode(
-    sessionMgr.hasTmux && nav.activeTab === 'reviews'
-      ? reviewSessionName
-      : null,
+  const sessionsTerminal = useTerminal(
+    selectedName,
     paneCols,
     paneRows,
-    review.setReviewPaneContent,
-    review.reviewReconnectKey
+    reconnectKey,
+    terminalFocused && nav.activeTab === 'sessions',
+    escapeTerminal
+  );
+  const reviewsTerminal = useTerminal(
+    nav.activeTab === 'reviews' ? reviewSessionName : null,
+    paneCols,
+    paneRows,
+    review.reviewReconnectKey,
+    terminalFocused && nav.activeTab === 'reviews',
+    escapeTerminal
   );
 
   // ── Assemble AppContext for input handlers ────────────────────────
@@ -326,7 +329,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     reviewTotalItems,
     reviewSessionName,
     selectedReviewPr,
-    sendReviewInput,
     setReviewReconnectKey: review.setReviewReconnectKey,
     reviewSessionStarted: review.reviewSessionStarted,
     setReviewSessionStarted: review.setReviewSessionStarted,
@@ -355,7 +357,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     refreshSessions: sessionMgr.refreshSessions,
     refreshPr,
     performDelete: sessionMgr.performDelete,
-    sendInput,
     exit,
     updateField,
     runOp,
@@ -363,6 +364,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   };
 
   useInput((input, key) => {
+    if (terminalFocused) return; // raw stdin handler forwards to PTY
     if (showOnboarding) return;
     if (branchPicker.creating) return handleBranchPickerInput(input, key, ctx);
     if (deleteConfirm.confirmDelete)
@@ -398,7 +400,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             prError={prError}
             sessionCount={sortedSessions.length}
             focus={nav.focus}
-            hasTmux={sessionMgr.hasTmux}
             inFlight={inFlight}
           />
         </Box>
@@ -415,13 +416,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
                 !branchPicker.creating &&
                 !settings.settingsOpen
               }
-              prMap={prMap}
               sessionBranchMap={sessionBranchMap}
               sessionPrMap={sessionPrMap}
               sidebarWidth={sidebarWidth}
               orphanPrs={orphanPrs}
               mergedBranches={mergedBranches}
-              lastSynced={lastSynced}
               conflictCounts={conflictCounts}
               conflictsLoading={conflictsLoading}
             />
@@ -442,9 +441,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             )}
             {!settings.settingsOpen && !branchPicker.creating && (
               <TerminalView
-                content={
-                  sessionMgr.hasTmux ? paneContent : '(tmux not available)'
-                }
+                content={sessionsTerminal.content}
                 focused={nav.focus === 'terminal'}
               />
             )}
@@ -474,7 +471,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
               ) {
                 return (
                   <TerminalView
-                    content={review.reviewPaneContent}
+                    content={reviewsTerminal.content}
                     focused={nav.focus === 'terminal'}
                   />
                 );
@@ -494,6 +491,17 @@ const targetDir = args.find((a) => !a.startsWith('--'));
 if (targetDir) {
   process.chdir(targetDir);
 }
+
+// Kill all PTY child processes on exit to prevent orphans
+process.on('exit', killAll);
+process.on('SIGINT', () => {
+  killAll();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  killAll();
+  process.exit(0);
+});
 
 render(
   <ConfigProvider providers={providers}>

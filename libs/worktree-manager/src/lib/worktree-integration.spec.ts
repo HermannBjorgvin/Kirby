@@ -14,7 +14,7 @@ import {
   removeWorktree,
   canRemoveBranch,
   listAllBranches,
-  fastForwardMaster,
+  fastForwardMainBranch,
   countConflicts,
   rebaseOntoMaster,
   resetMainBranchCache,
@@ -224,7 +224,7 @@ describe('integration: listAllBranches', () => {
   });
 });
 
-describe('integration: fastForwardMaster', () => {
+describe('integration: fastForwardMainBranch', () => {
   it('should fast-forward local master to match remote', async () => {
     const { remoteDir, cloneDir } = setupRemoteAndClone();
     process.chdir(cloneDir);
@@ -258,7 +258,7 @@ describe('integration: fastForwardMaster', () => {
       encoding: 'utf8',
     }).trim();
 
-    const result = await fastForwardMaster();
+    const result = await fastForwardMainBranch();
     expect(result).toBe(true);
 
     // Local master should now be ahead of where it was
@@ -299,7 +299,7 @@ describe('integration: fastForwardMaster', () => {
       encoding: 'utf8',
     }).trim();
 
-    const result = await fastForwardMaster();
+    const result = await fastForwardMainBranch();
     expect(result).toBe(true);
 
     // Local master should now be ahead of where it was

@@ -1,9 +1,6 @@
 import { resolve } from 'node:path';
 import type { Key } from 'ink';
 import {
-  hasSession,
-  killSession,
-  createSession,
   createWorktree,
   canRemoveBranch,
   listAllBranches,
@@ -11,11 +8,11 @@ import {
   fetchRemote,
   branchToSessionName,
   rebaseOntoMaster,
-} from '@kirby/tmux-manager';
-import type { TmuxSession } from '@kirby/tmux-manager';
+} from '@kirby/worktree-manager';
+import type { AgentSession, ActiveTab, Focus } from './types.js';
+import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
-import type { ActiveTab } from './types.js';
 import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
@@ -23,8 +20,6 @@ import {
   type SettingsField,
 } from './components/SettingsPanel.js';
 import type { OperationName } from './hooks/useAsyncOperation.js';
-
-export type Focus = 'sidebar' | 'terminal';
 
 export interface AppContext {
   // State
@@ -49,9 +44,9 @@ export interface AppContext {
   activeTab: ActiveTab;
   focus: Focus;
   selectedName: string | null;
-  selectedSession: TmuxSession | undefined;
+  selectedSession: AgentSession | undefined;
   selectedIndex: number;
-  sessions: TmuxSession[];
+  sessions: AgentSession[];
   orphanPrs: PullRequestInfo[];
   totalItems: number;
   reviewSelectedIndex: number;
@@ -60,7 +55,6 @@ export interface AppContext {
   // Review terminal
   reviewSessionName: string | null;
   selectedReviewPr: PullRequestInfo | undefined;
-  sendReviewInput: (input: string, key: Key) => void;
   setReviewReconnectKey: (v: (prev: number) => number) => void;
   reviewSessionStarted: Set<number>;
   setReviewSessionStarted: (
@@ -99,10 +93,9 @@ export interface AppContext {
   setBranches: (v: string[]) => void;
   flashStatus: (msg: string) => void;
   triggerSync: () => void;
-  refreshSessions: () => Promise<TmuxSession[]>;
+  refreshSessions: () => Promise<AgentSession[]>;
   refreshPr: () => void;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
-  sendInput: (input: string, key: Key) => void;
   exit: () => void;
 
   // Config
@@ -115,7 +108,7 @@ export interface AppContext {
 
 const DEFAULT_AI_COMMAND = 'claude --continue || claude';
 
-async function startAiSession(
+function startAiSession(
   name: string,
   cols: number,
   rows: number,
@@ -123,7 +116,7 @@ async function startAiSession(
   config: AppConfig
 ) {
   const cmd = config.aiCommand || DEFAULT_AI_COMMAND;
-  await createSession(name, cols, rows, cmd, cwd);
+  spawnSession(name, '/bin/sh', ['-c', cmd], cols, rows, cwd);
 }
 
 async function startReviewSession(
@@ -160,11 +153,12 @@ async function startReviewSession(
   const safePrompt = prompt.replace(/['"]/g, '');
   const command = `claude --continue || claude '${safePrompt}'`;
 
-  await createSession(
+  spawnSession(
     ctx.reviewSessionName,
+    '/bin/sh',
+    ['-c', command],
     ctx.paneCols,
     ctx.paneRows,
-    command,
     worktreePath
   );
   ctx.setReviewSessionStarted((prev) => new Set([...prev, pr.id]));
@@ -189,7 +183,7 @@ export function handleReviewConfirmInput(
   if (opt === 1) {
     if (key.return) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.reviewSessionName!))) {
+        if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx, ctx.reviewInstruction || undefined);
         }
         ctx.setFocus('terminal');
@@ -229,7 +223,7 @@ export function handleReviewConfirmInput(
   if (key.return) {
     if (opt === 0) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.reviewSessionName!))) {
+        if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx);
         }
         ctx.setFocus('terminal');
@@ -290,7 +284,7 @@ export function handleBranchPickerInput(
         const worktreePath = await createWorktree(branch);
         if (worktreePath) {
           const sessionName = branchToSessionName(branch);
-          await startAiSession(
+          startAiSession(
             sessionName,
             ctx.paneCols,
             ctx.paneRows,
@@ -472,7 +466,7 @@ export function handleSidebarInput(
         }
         await ctx.performDelete(sessionName, branch);
       } else {
-        await killSession(sessionName);
+        killSession(sessionName);
         const updated = await ctx.refreshSessions();
         if (ctx.selectedIndex >= updated.length) {
           ctx.setSelectedIndex(Math.max(0, updated.length - 1));
@@ -483,7 +477,7 @@ export function handleSidebarInput(
   }
   if (input === 'K' && ctx.selectedSession) {
     ctx.runOp('delete', async () => {
-      await killSession(ctx.selectedSession!.name);
+      killSession(ctx.selectedSession!.name);
       await ctx.refreshSessions();
     });
     return;
@@ -542,7 +536,7 @@ export function handleSidebarInput(
         const worktreePath = await createWorktree(pr.sourceBranch);
         if (worktreePath) {
           const sessionName = branchToSessionName(pr.sourceBranch);
-          await startAiSession(
+          startAiSession(
             sessionName,
             ctx.paneCols,
             ctx.paneRows,
@@ -579,7 +573,7 @@ export function handleReviewsSidebarInput(
   }
   if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
     ctx.runOp('start-session', async () => {
-      if (await hasSession(ctx.reviewSessionName!)) {
+      if (hasSession(ctx.reviewSessionName!)) {
         ctx.setFocus('terminal');
         ctx.setReviewReconnectKey((k) => k + 1);
         return;
@@ -621,12 +615,12 @@ export function handleGlobalInput(
   if (key.tab && ctx.activeTab === 'sessions') {
     if (ctx.focus === 'sidebar' && ctx.selectedName) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.selectedName!))) {
+        if (!hasSession(ctx.selectedName!)) {
           const worktreePath = resolve(
             process.cwd(),
             '.claude/worktrees/' + ctx.selectedName
           );
-          await startAiSession(
+          startAiSession(
             ctx.selectedName!,
             ctx.paneCols,
             ctx.paneRows,
@@ -650,7 +644,7 @@ export function handleGlobalInput(
       ctx.selectedReviewPr
     ) {
       ctx.runOp('start-session', async () => {
-        if (await hasSession(ctx.reviewSessionName!)) {
+        if (hasSession(ctx.reviewSessionName!)) {
           ctx.setReviewReconnectKey((k) => k + 1);
           ctx.setFocus('terminal');
         } else {
@@ -666,24 +660,11 @@ export function handleGlobalInput(
     return;
   }
 
-  if (key.escape) {
-    if (ctx.focus === 'terminal') {
-      ctx.setFocus('sidebar');
-      return;
-    }
-  }
-
-  if (ctx.focus === 'sidebar') {
-    if (ctx.activeTab === 'sessions') {
-      handleSidebarInput(input, key, ctx);
-    } else if (ctx.activeTab === 'reviews') {
-      handleReviewsSidebarInput(input, key, ctx);
-    }
-  } else {
-    if (ctx.activeTab === 'reviews') {
-      ctx.sendReviewInput(input, key);
-    } else {
-      ctx.sendInput(input, key);
-    }
+  // When terminal is focused, useInput is disabled and raw stdin handles input.
+  // This function only runs when focus === 'sidebar'.
+  if (ctx.activeTab === 'sessions') {
+    handleSidebarInput(input, key, ctx);
+  } else if (ctx.activeTab === 'reviews') {
+    handleReviewsSidebarInput(input, key, ctx);
   }
 }
