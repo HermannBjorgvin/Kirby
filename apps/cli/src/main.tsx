@@ -283,7 +283,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     mouseMode,
     scrollUp,
     scrollDown,
-    isScrolledBack,
   } = usePtySession(
     selectedName,
     paneCols,
@@ -297,7 +296,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     mouseMode: reviewMouseMode,
     scrollUp: reviewScrollUp,
     scrollDown: reviewScrollDown,
-    isScrolledBack: reviewIsScrolledBack,
   } = usePtySession(
     nav.activeTab === 'reviews' ? reviewSessionName : null,
     paneCols,
