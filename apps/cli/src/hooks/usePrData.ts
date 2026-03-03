@@ -36,6 +36,7 @@ export function usePrData(refreshInterval = 60000) {
   useEffect(() => {
     mountedRef.current = true;
     if (!provider || !provider.isConfigured(vendorAuth, vendorProject)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch must trigger on mount
     refresh();
     const interval = setInterval(refresh, prPollInterval ?? refreshInterval);
     return () => {

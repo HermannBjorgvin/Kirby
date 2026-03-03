@@ -13,6 +13,7 @@ export function usePtySession(
   const entryRef = useRef<PtyEntry | null>(null);
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setPaneContentRef = useRef(setPaneContent);
+  // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
   setPaneContentRef.current = setPaneContent;
   const [mouseMode, setMouseMode] = useState<MouseTrackingMode>('none');
   const scrollOffsetRef = useRef(0);

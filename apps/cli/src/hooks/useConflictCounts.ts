@@ -21,6 +21,7 @@ export function useConflictCounts(branches: string[], lastSynced: number) {
     if (!lastSynced || branches.length === 0) return;
 
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading state must sync with the async fetch lifecycle
     setLoading(true);
 
     (async () => {

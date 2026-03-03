@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { AgentSession } from '../types.js';
-import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';
 import { useConfig } from '../context/ConfigContext.js';
@@ -9,7 +9,6 @@ import { useConfig } from '../context/ConfigContext.js';
 const SessionItem = memo(function SessionItem({
   session,
   selected,
-  branch,
   pr,
   sidebarWidth,
   isMerged,
@@ -18,7 +17,6 @@ const SessionItem = memo(function SessionItem({
 }: {
   session: AgentSession;
   selected: boolean;
-  branch: string | undefined;
   pr: PullRequestInfo | undefined;
   sidebarWidth: number;
   isMerged: boolean;
@@ -103,26 +101,22 @@ export function Sidebar({
   sessions,
   selectedIndex,
   focused,
-  prMap,
   sessionBranchMap,
   sessionPrMap,
   sidebarWidth,
   orphanPrs,
   mergedBranches,
-  lastSynced,
   conflictCounts,
   conflictsLoading,
 }: {
   sessions: AgentSession[];
   selectedIndex: number;
   focused: boolean;
-  prMap: BranchPrMap;
   sessionBranchMap: Map<string, string>;
   sessionPrMap: Map<string, PullRequestInfo>;
   sidebarWidth: number;
   orphanPrs: PullRequestInfo[];
   mergedBranches: Set<string>;
-  lastSynced: number;
   conflictCounts?: Map<string, number>;
   conflictsLoading?: boolean;
 }) {
@@ -148,7 +142,6 @@ export function Sidebar({
               key={s.name}
               session={s}
               selected={i === selectedIndex}
-              branch={branch}
               pr={sessionPrMap.get(s.name)}
               sidebarWidth={sidebarWidth}
               isMerged={isMerged}

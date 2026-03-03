@@ -228,6 +228,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     ) {
       review.setReviewSelectedIndex(reviewTotalItems - 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
   }, [reviewTotalItems, review.reviewSelectedIndex]);
 
   // Pre-compute session-name → branch and session-name → PR lookup maps
@@ -276,6 +277,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     if (totalItems > 0 && sessionMgr.selectedIndex >= totalItems) {
       sessionMgr.setSelectedIndex(totalItems - 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
   }, [totalItems, sessionMgr.selectedIndex]);
 
   // ── Terminal hooks (PTY session + raw stdin forwarding) ─────────
@@ -414,13 +416,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
                 !branchPicker.creating &&
                 !settings.settingsOpen
               }
-              prMap={prMap}
               sessionBranchMap={sessionBranchMap}
               sessionPrMap={sessionPrMap}
               sidebarWidth={sidebarWidth}
               orphanPrs={orphanPrs}
               mergedBranches={mergedBranches}
-              lastSynced={lastSynced}
               conflictCounts={conflictCounts}
               conflictsLoading={conflictsLoading}
             />

@@ -7,6 +7,7 @@ const MOUSE_DISABLE_ALL =
   '\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?9l';
 
 // SGR mouse sequence: \x1b[<btn;x;yM (press) or \x1b[<btn;x;ym (release)
+// eslint-disable-next-line no-control-regex
 const SGR_MOUSE_RE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
 
 export function useRawStdinForward(

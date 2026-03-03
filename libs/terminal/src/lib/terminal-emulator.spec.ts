@@ -59,6 +59,7 @@ describe('TerminalEmulator', () => {
     expect(rendered).toContain('bold');
     expect(rendered).toContain('italic');
     // Bold SGR code 1 should appear
+    // eslint-disable-next-line no-control-regex
     expect(rendered).toMatch(/\x1b\[\d*1\d*m/);
     emu.dispose();
   });
