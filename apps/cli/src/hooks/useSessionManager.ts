@@ -83,7 +83,6 @@ export function useSessionManager(
 
   return {
     sessions,
-    setSessions,
     selectedIndex,
     setSelectedIndex,
     worktreeBranches,

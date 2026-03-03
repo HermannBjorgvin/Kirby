@@ -82,4 +82,39 @@ describe('PtySession', () => {
     session.dispose();
     expect(() => session.write('data')).not.toThrow();
   });
+
+  it('offData removes a data listener', async () => {
+    const session = new PtySession('echo', ['hello']);
+    const chunks: string[] = [];
+    const listener = (data: string) => chunks.push(data);
+
+    session.onData(listener);
+    session.offData(listener);
+
+    await new Promise<void>((resolve) => {
+      session.onExit(() => resolve());
+    });
+
+    expect(chunks).toHaveLength(0);
+    session.dispose();
+  });
+
+  it('offExit removes an exit listener', async () => {
+    const session = new PtySession('true', []);
+    let called = false;
+    const listener = () => {
+      called = true;
+    };
+
+    session.onExit(listener);
+    session.offExit(listener);
+
+    // Wait for process to exit via a second listener
+    await new Promise<void>((resolve) => {
+      session.onExit(() => resolve());
+    });
+
+    expect(called).toBe(false);
+    session.dispose();
+  });
 });

@@ -3,7 +3,6 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 
 export function useReviewManager() {
   const [reviewSelectedIndex, setReviewSelectedIndex] = useState(0);
-  const [reviewPaneContent, setReviewPaneContent] = useState('');
   const [reviewReconnectKey, setReviewReconnectKey] = useState(0);
   const [reviewSessionStarted, setReviewSessionStarted] = useState<Set<number>>(
     new Set()
@@ -17,8 +16,6 @@ export function useReviewManager() {
   return {
     reviewSelectedIndex,
     setReviewSelectedIndex,
-    reviewPaneContent,
-    setReviewPaneContent,
     reviewReconnectKey,
     setReviewReconnectKey,
     reviewSessionStarted,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import type { MouseTrackingMode } from '@kirby/terminal';
 import { getSession } from '../pty-registry.js';
 import type { PtyEntry } from '../pty-registry.js';
 
@@ -13,9 +14,7 @@ export function usePtySession(
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setPaneContentRef = useRef(setPaneContent);
   setPaneContentRef.current = setPaneContent;
-  const [mouseMode, setMouseMode] = useState<
-    'none' | 'x10' | 'vt200' | 'drag' | 'any'
-  >('none');
+  const [mouseMode, setMouseMode] = useState<MouseTrackingMode>('none');
   const scrollOffsetRef = useRef(0);
 
   const scheduleRender = useCallback(() => {

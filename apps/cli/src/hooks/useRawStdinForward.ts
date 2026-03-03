@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-
-type MouseMode = 'none' | 'x10' | 'vt200' | 'drag' | 'any';
+import type { MouseTrackingMode } from '@kirby/terminal';
 
 // Always use "any" tracking + SGR encoding so we receive all mouse events
 const MOUSE_ENABLE = '\x1b[?1003h\x1b[?1006h';
@@ -14,7 +13,7 @@ export function useRawStdinForward(
   active: boolean,
   write: (data: string) => void,
   onEscape: () => void,
-  mouseMode: MouseMode,
+  mouseMode: MouseTrackingMode,
   onScrollUp: () => void,
   onScrollDown: () => void
 ) {

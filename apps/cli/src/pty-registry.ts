@@ -59,6 +59,11 @@ export function killSession(name: string): void {
   }
 }
 
-export function listSessionNames(): string[] {
-  return [...registry.keys()];
+/** Kill all PTY sessions. Called on process exit to prevent orphaned children. */
+export function killAll(): void {
+  for (const entry of registry.values()) {
+    entry.pty.dispose();
+    entry.emu.dispose();
+  }
+  registry.clear();
 }

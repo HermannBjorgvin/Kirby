@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import type {
@@ -21,8 +21,7 @@ import { usePrData } from './hooks/usePrData.js';
 import { useRemoteSync } from './hooks/useRemoteSync.js';
 import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
-import { usePtySession } from './hooks/usePtySession.js';
-import { useRawStdinForward } from './hooks/useRawStdinForward.js';
+import { useTerminal } from './hooks/useTerminal.js';
 import { useConflictCounts } from './hooks/useConflictCounts.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useBranchPicker } from './hooks/useBranchPicker.js';
@@ -37,7 +36,9 @@ import {
   handleGlobalInput,
   handleReviewConfirmInput,
 } from './input-handlers.js';
-import type { AppContext, Focus } from './input-handlers.js';
+import type { AppContext } from './input-handlers.js';
+import type { Focus } from './types.js';
+import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 
 // ── Provider registry ──────────────────────────────────────────────
@@ -149,7 +150,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     branchPicker.setBranches
   );
 
-  const [paneContent, setPaneContent] = useState('(loading...)');
   const [reconnectKey, setReconnectKey] = useState(0);
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
 
@@ -278,53 +278,25 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     }
   }, [totalItems, sessionMgr.selectedIndex]);
 
-  const {
-    write: ptyWrite,
-    mouseMode,
-    scrollUp,
-    scrollDown,
-  } = usePtySession(
+  // ── Terminal hooks (PTY session + raw stdin forwarding) ─────────
+  const terminalFocused = nav.focus === 'terminal';
+  const escapeTerminal = () => nav.setFocus('sidebar');
+
+  const sessionsTerminal = useTerminal(
     selectedName,
     paneCols,
     paneRows,
-    setPaneContent,
-    reconnectKey
+    reconnectKey,
+    terminalFocused && nav.activeTab === 'sessions',
+    escapeTerminal
   );
-
-  const {
-    write: ptyWriteReview,
-    mouseMode: reviewMouseMode,
-    scrollUp: reviewScrollUp,
-    scrollDown: reviewScrollDown,
-  } = usePtySession(
+  const reviewsTerminal = useTerminal(
     nav.activeTab === 'reviews' ? reviewSessionName : null,
     paneCols,
     paneRows,
-    review.setReviewPaneContent,
-    review.reviewReconnectKey
-  );
-
-  // ── Raw stdin forwarding (bypasses Ink's useInput) ─────────────
-  const terminalFocused = nav.focus === 'terminal';
-  const escapeTerminal = useCallback(() => {
-    nav.setFocus('sidebar');
-  }, [nav.setFocus]);
-
-  useRawStdinForward(
-    terminalFocused && nav.activeTab === 'sessions',
-    ptyWrite,
-    escapeTerminal,
-    mouseMode,
-    scrollUp,
-    scrollDown
-  );
-  useRawStdinForward(
+    review.reviewReconnectKey,
     terminalFocused && nav.activeTab === 'reviews',
-    ptyWriteReview,
-    escapeTerminal,
-    reviewMouseMode,
-    reviewScrollUp,
-    reviewScrollDown
+    escapeTerminal
   );
 
   // ── Assemble AppContext for input handlers ────────────────────────
@@ -469,7 +441,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             )}
             {!settings.settingsOpen && !branchPicker.creating && (
               <TerminalView
-                content={paneContent}
+                content={sessionsTerminal.content}
                 focused={nav.focus === 'terminal'}
               />
             )}
@@ -499,7 +471,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
               ) {
                 return (
                   <TerminalView
-                    content={review.reviewPaneContent}
+                    content={reviewsTerminal.content}
                     focused={nav.focus === 'terminal'}
                   />
                 );
@@ -519,6 +491,17 @@ const targetDir = args.find((a) => !a.startsWith('--'));
 if (targetDir) {
   process.chdir(targetDir);
 }
+
+// Kill all PTY child processes on exit to prevent orphans
+process.on('exit', killAll);
+process.on('SIGINT', () => {
+  killAll();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  killAll();
+  process.exit(0);
+});
 
 render(
   <ConfigProvider providers={providers}>

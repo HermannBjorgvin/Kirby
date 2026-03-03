@@ -9,11 +9,10 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from './types.js';
+import type { AgentSession, ActiveTab, Focus } from './types.js';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
-import type { ActiveTab } from './types.js';
 import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
@@ -21,8 +20,6 @@ import {
   type SettingsField,
 } from './components/SettingsPanel.js';
 import type { OperationName } from './hooks/useAsyncOperation.js';
-
-export type Focus = 'sidebar' | 'terminal';
 
 export interface AppContext {
   // State

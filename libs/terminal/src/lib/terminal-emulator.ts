@@ -7,6 +7,8 @@ type XtermBuffer = InstanceType<typeof Terminal>['buffer']['active'];
 type XtermLine = NonNullable<ReturnType<XtermBuffer['getLine']>>;
 type XtermCell = ReturnType<XtermBuffer['getNullCell']>;
 
+export type MouseTrackingMode = 'none' | 'x10' | 'vt200' | 'drag' | 'any';
+
 export class TerminalEmulator {
   private terminal: InstanceType<typeof Terminal>;
   private renderDisposables = new Map<() => void, IDisposable>();
@@ -134,7 +136,7 @@ export class TerminalEmulator {
     return this.terminal.buffer.active.baseY;
   }
 
-  get mouseTrackingMode(): 'none' | 'x10' | 'vt200' | 'drag' | 'any' {
+  get mouseTrackingMode(): MouseTrackingMode {
     return this.terminal.modes.mouseTrackingMode;
   }
 

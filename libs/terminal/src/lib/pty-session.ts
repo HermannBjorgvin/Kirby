@@ -51,8 +51,18 @@ export class PtySession {
     this.dataListeners.push(cb);
   }
 
+  offData(cb: (data: string) => void): void {
+    const idx = this.dataListeners.indexOf(cb);
+    if (idx >= 0) this.dataListeners.splice(idx, 1);
+  }
+
   onExit(cb: (code: number, signal?: number) => void): void {
     this.exitListeners.push(cb);
+  }
+
+  offExit(cb: (code: number, signal?: number) => void): void {
+    const idx = this.exitListeners.indexOf(cb);
+    if (idx >= 0) this.exitListeners.splice(idx, 1);
   }
 
   write(data: string): void {
