@@ -77,3 +77,62 @@ libs/terminal/         — PTY session + terminal emulation (node-pty + @xterm/h
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
 - **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. worktree-manager importing terminal).
 - **`TSX_TSCONFIG_PATH`:** The serve target sets this env var so tsx picks up `jsx: "react-jsx"` from `tsconfig.app.json`. Without it, tsx defaults to classic JSX transform and requires `import React`.
+
+## PR Reviews via CLI
+
+When reviewing a pull request, use `gh` CLI — not the workflow-manager agent.
+
+### Gathering info
+
+- `gh pr view <number> --json title,body,files,headRefOid,headRepositoryOwner,headRepository` — get metadata and the commit SHA needed for the review API
+- `gh pr diff <number>` — get the full diff (pipe to a file or read tool if large)
+- `gh repo view --json nameWithOwner` — get the `owner/repo` for API calls
+
+### Posting inline review comments
+
+Use the GitHub API directly to post a review with inline comments:
+
+```bash
+cat <<'EOF' | gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input -
+{
+  "commit_id": "<head SHA from gh pr view>",
+  "body": "Overall review summary here.",
+  "event": "COMMENT",
+  "comments": [
+    {
+      "path": "relative/file/path.ts",
+      "line": 42,
+      "side": "RIGHT",
+      "body": "Comment on the new code at this line."
+    }
+  ]
+}
+EOF
+```
+
+- `line` is the line number in the **new version** of the file (right side of the diff)
+- `side: "RIGHT"` targets the new code; use `"LEFT"` to comment on removed lines
+- `event` can be `"COMMENT"`, `"APPROVE"`, or `"REQUEST_CHANGES"`
+
+### Changing review status without duplicating comments
+
+To set "Changes requested" after already posting inline comments, submit a **separate review with no `comments` array** — just `body` and `event`:
+
+```bash
+cat <<'EOF' | gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input -
+{
+  "commit_id": "<head SHA>",
+  "body": "Requesting changes — see inline comments.",
+  "event": "REQUEST_CHANGES"
+}
+EOF
+```
+
+This adds the blocking status without duplicating any inline comments.
+
+### Things to watch out for
+
+- **Always prefix AI-generated comments** with "AI generated:" so it's clear they don't come directly from the repo owner
+- **Don't use `gh pr review`** for inline comments — it only supports a single body comment, not per-line annotations
+- **Line numbers come from the new file**, not diff positions — count from the `@@` hunk headers to get them right
+- **Heredoc quoting matters** — use `<<'EOF'` (quoted) to prevent shell expansion inside the JSON body
