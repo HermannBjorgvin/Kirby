@@ -120,6 +120,16 @@ describe('latestReviewPerUser', () => {
     expect(latestReviewPerUser([])).toEqual([]);
   });
 
+  it('skips reviews with null author', () => {
+    const reviews = [
+      { author: null, state: 'APPROVED' },
+      { author: { login: 'alice' }, state: 'CHANGES_REQUESTED' },
+    ];
+    const result = latestReviewPerUser(reviews);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.identifier).toBe('alice');
+  });
+
   it('sets displayName and identifier to login', () => {
     const result = latestReviewPerUser([
       { author: { login: 'charlie' }, state: 'APPROVED' },
@@ -389,6 +399,56 @@ describe('githubProvider', () => {
       expect(searchQueryArg).toContain('repo:octocat/hello-world');
       expect(searchQueryArg).toContain('is:pr');
       expect(searchQueryArg).toContain('is:open');
+    });
+
+    it('handles null author, null review author, and null requestedReviewer', async () => {
+      ghSuccess({
+        data: {
+          search: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [
+              {
+                number: 99,
+                title: 'Ghost PR',
+                headRefName: 'ghost-branch',
+                baseRefName: 'main',
+                url: 'https://github.com/o/r/pull/99',
+                author: null,
+                isDraft: false,
+                reviews: {
+                  nodes: [{ author: null, state: 'APPROVED' }],
+                },
+                reviewRequests: {
+                  nodes: [{ requestedReviewer: null }],
+                },
+                reviewThreads: { nodes: [] },
+                commits: {
+                  nodes: [{ commit: { statusCheckRollup: null } }],
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      const result = await githubProvider.fetchPullRequests(
+        {},
+        { owner: 'o', repo: 'r', username: 'user' }
+      );
+
+      expect(result['ghost-branch']).toEqual({
+        id: 99,
+        title: 'Ghost PR',
+        sourceBranch: 'ghost-branch',
+        targetBranch: 'main',
+        url: 'https://github.com/o/r/pull/99',
+        createdByIdentifier: '',
+        createdByDisplayName: '',
+        isDraft: false,
+        reviewers: [],
+        buildStatus: 'none',
+        activeCommentCount: 0,
+      });
     });
 
     it('paginates when hasNextPage is true', async () => {
