@@ -8,7 +8,7 @@ import {
   listAllBranches,
   parseWorktrees,
   listWorktrees,
-  fastForwardMaster,
+  fastForwardMainBranch,
   countConflicts,
   rebaseOntoMaster,
   getMainBranch,
@@ -422,14 +422,14 @@ describe('getMainBranch', () => {
   });
 });
 
-describe('fastForwardMaster', () => {
+describe('fastForwardMainBranch', () => {
   it('should use branch -f when HEAD is not on main branch', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // branch -f
-    expect(await fastForwardMaster()).toBe(true);
+    expect(await fastForwardMainBranch()).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
       encoding: 'utf8',
     });
@@ -448,7 +448,7 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('master\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // merge --ff-only
-    expect(await fastForwardMaster()).toBe(true);
+    expect(await fastForwardMainBranch()).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git merge --ff-only origin/master', {
       encoding: 'utf8',
     });
@@ -458,7 +458,7 @@ describe('fastForwardMaster', () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockRejectedValueOnce(new Error('fetch failed'));
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
     expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
   });
 
@@ -468,7 +468,7 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockRejectedValueOnce(new Error('branch update failed'));
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
   });
 
   it('should return false when HEAD is detached and branch -f fails', async () => {
@@ -476,7 +476,7 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockResolvedValueOnce(resolve()) // fetch
       .mockRejectedValueOnce(new Error('not a symbolic ref')); // symbolic-ref HEAD fails (detached)
-    expect(await fastForwardMaster()).toBe(false);
+    expect(await fastForwardMainBranch()).toBe(false);
   });
 });
 

@@ -48,16 +48,15 @@ export function useRawStdinForward(
       }
 
       // Child hasn't enabled mouse — handle scroll ourselves, drop other mouse events
-      let remaining = str;
       let match: RegExpExecArray | null;
       const parts: string[] = [];
       let lastIndex = 0;
 
       SGR_MOUSE_RE.lastIndex = 0;
-      while ((match = SGR_MOUSE_RE.exec(remaining)) !== null) {
+      while ((match = SGR_MOUSE_RE.exec(str)) !== null) {
         // Collect any non-mouse data before this match
         if (match.index > lastIndex) {
-          parts.push(remaining.slice(lastIndex, match.index));
+          parts.push(str.slice(lastIndex, match.index));
         }
         lastIndex = match.index + match[0].length;
 
@@ -71,8 +70,8 @@ export function useRawStdinForward(
       }
 
       // Collect any remaining non-mouse data after last match
-      if (lastIndex < remaining.length) {
-        parts.push(remaining.slice(lastIndex));
+      if (lastIndex < str.length) {
+        parts.push(str.slice(lastIndex));
       }
 
       // Forward non-mouse data to PTY

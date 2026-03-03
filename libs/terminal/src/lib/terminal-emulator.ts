@@ -1,4 +1,5 @@
 import xtermHeadless from '@xterm/headless';
+import type { IDisposable } from '@xterm/headless';
 
 const { Terminal } = xtermHeadless;
 
@@ -8,7 +9,7 @@ type XtermCell = ReturnType<XtermBuffer['getNullCell']>;
 
 export class TerminalEmulator {
   private terminal: InstanceType<typeof Terminal>;
-  private renderListeners: Array<() => void> = [];
+  private renderDisposables = new Map<() => void, IDisposable>();
   private disposed = false;
 
   constructor(cols = 80, rows = 24) {
@@ -144,14 +145,25 @@ export class TerminalEmulator {
   }
 
   onRender(cb: () => void): void {
-    this.renderListeners.push(cb);
-    this.terminal.onWriteParsed(cb);
+    const disposable = this.terminal.onWriteParsed(cb);
+    this.renderDisposables.set(cb, disposable);
+  }
+
+  offRender(cb: () => void): void {
+    const disposable = this.renderDisposables.get(cb);
+    if (disposable) {
+      disposable.dispose();
+      this.renderDisposables.delete(cb);
+    }
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const disposable of this.renderDisposables.values()) {
+      disposable.dispose();
+    }
+    this.renderDisposables.clear();
     this.terminal.dispose();
-    this.renderListeners = [];
   }
 }

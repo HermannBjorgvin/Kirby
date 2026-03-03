@@ -16,7 +16,6 @@ export function usePtySession(
   const [mouseMode, setMouseMode] = useState<
     'none' | 'x10' | 'vt200' | 'drag' | 'any'
   >('none');
-  const [scrollOffset, setScrollOffset] = useState(0);
   const scrollOffsetRef = useRef(0);
 
   const scheduleRender = useCallback(() => {
@@ -52,14 +51,14 @@ export function usePtySession(
     entryRef.current = entry;
 
     // Subscribe to render events
-    entry.emu.onRender(() => {
-      scheduleRender();
-    });
+    const onRender = () => scheduleRender();
+    entry.emu.onRender(onRender);
 
     // Initial render
     scheduleRender();
 
     return () => {
+      entry.emu.offRender(onRender);
       if (renderTimer.current) {
         clearTimeout(renderTimer.current);
         renderTimer.current = null;
@@ -83,7 +82,6 @@ export function usePtySession(
     if (entry && !entry.exited) {
       // Reset scroll position on user input
       scrollOffsetRef.current = 0;
-      setScrollOffset(0);
       entry.pty.write(data);
     }
   }, []);
@@ -94,14 +92,12 @@ export function usePtySession(
     const max = entry.emu.maxScrollback;
     const next = Math.min(scrollOffsetRef.current + 3, max);
     scrollOffsetRef.current = next;
-    setScrollOffset(next);
     scheduleRender();
   }, [scheduleRender]);
 
   const scrollDown = useCallback(() => {
     const next = Math.max(scrollOffsetRef.current - 3, 0);
     scrollOffsetRef.current = next;
-    setScrollOffset(next);
     scheduleRender();
   }, [scheduleRender]);
 
@@ -110,6 +106,5 @@ export function usePtySession(
     mouseMode,
     scrollUp,
     scrollDown,
-    isScrolledBack: scrollOffset > 0,
   };
 }

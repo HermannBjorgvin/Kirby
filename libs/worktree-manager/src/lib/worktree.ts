@@ -51,9 +51,14 @@ export interface WorktreeInfo {
   bare: boolean;
 }
 
+/** Convert a git branch name to a safe session identifier (replace / with -) */
+export function branchToSessionName(branch: string): string {
+  return branch.replace(/\//g, '-');
+}
+
 /** Convert a branch name to its .claude/worktrees/ relative directory */
 function worktreeDir(branch: string): string {
-  return '.claude/worktrees/' + branch.replace(/\//g, '-');
+  return '.claude/worktrees/' + branchToSessionName(branch);
 }
 
 /**
@@ -270,14 +275,6 @@ export async function fastForwardMainBranch(): Promise<boolean> {
     return false;
   }
 }
-
-/** Convert a git branch name to a safe session identifier (replace / with -) */
-export function branchToSessionName(branch: string): string {
-  return branch.replace(/\//g, '-');
-}
-
-/** @deprecated Use fastForwardMainBranch instead */
-export const fastForwardMaster = fastForwardMainBranch;
 
 /**
  * Count conflicting files between a branch and origin's main branch.
