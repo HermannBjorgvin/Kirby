@@ -37,7 +37,6 @@ import {
   handleReviewConfirmInput,
 } from './input-handlers.js';
 import type { AppContext } from './input-handlers.js';
-import type { Focus } from './types.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 
@@ -54,8 +53,6 @@ function StatusBar({
   branchFilter,
   statusMessage,
   prError,
-  sessionCount,
-  focus,
   inFlight,
 }: {
   confirmDelete: {
@@ -68,8 +65,6 @@ function StatusBar({
   branchFilter: string;
   statusMessage: string | null;
   prError: string | null;
-  sessionCount: number;
-  focus: Focus;
   inFlight: Set<string>;
 }) {
   const { vcsConfigured } = useConfig();
@@ -107,7 +102,6 @@ function StatusBar({
 
   return (
     <Text dimColor>
-      {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text>
       {!vcsConfigured ? ' · (s to configure VCS)' : ''}
       {ops ? <Text color="yellow">{ops}</Text> : null}
     </Text>
@@ -398,8 +392,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             branchFilter={branchPicker.branchFilter}
             statusMessage={sessionMgr.statusMessage}
             prError={prError}
-            sessionCount={sortedSessions.length}
-            focus={nav.focus}
             inFlight={inFlight}
           />
         </Box>
