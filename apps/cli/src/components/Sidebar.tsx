@@ -195,7 +195,8 @@ export function Sidebar({
           </>
         ) : null}
         <Text dimColor>
-          <Text color="cyan">tab</Text> switch focus
+          <Text color="cyan">tab</Text> / <Text color="cyan">ctrl+space</Text>{' '}
+          switch focus
         </Text>
         <Text dimColor>
           <Text color="cyan">s</Text> settings

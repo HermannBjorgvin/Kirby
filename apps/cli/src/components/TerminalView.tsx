@@ -12,6 +12,7 @@ export const TerminalView = memo(function TerminalView({
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
       <Text bold color={focused ? 'green' : 'gray'}>
         🤖 Agent
+        {focused ? <Text color="green"> (ctrl+space to exit)</Text> : null}
       </Text>
       <Text dimColor>{'─'.repeat(40)}</Text>
       <Text wrap="truncate">{content}</Text>
