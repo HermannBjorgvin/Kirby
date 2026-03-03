@@ -186,7 +186,7 @@ export function Sidebar({
           <Text color="cyan">d</Text> delete branch
         </Text>
         <Text dimColor>
-          <Text color="cyan">shift+k</Text> kill tmux session
+          <Text color="cyan">shift+k</Text> kill agent
         </Text>
         <Text dimColor>
           <Text color="cyan">u</Text> rebase onto master
