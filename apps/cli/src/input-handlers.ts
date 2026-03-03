@@ -1,9 +1,6 @@
 import { resolve } from 'node:path';
 import type { Key } from 'ink';
 import {
-  hasSession,
-  killSession,
-  createSession,
   createWorktree,
   canRemoveBranch,
   listAllBranches,
@@ -13,6 +10,7 @@ import {
   rebaseOntoMaster,
 } from '@kirby/tmux-manager';
 import type { TmuxSession } from '@kirby/tmux-manager';
+import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
 import type { ActiveTab } from './types.js';
@@ -115,7 +113,7 @@ export interface AppContext {
 
 const DEFAULT_AI_COMMAND = 'claude --continue || claude';
 
-async function startAiSession(
+function startAiSession(
   name: string,
   cols: number,
   rows: number,
@@ -123,7 +121,7 @@ async function startAiSession(
   config: AppConfig
 ) {
   const cmd = config.aiCommand || DEFAULT_AI_COMMAND;
-  await createSession(name, cols, rows, cmd, cwd);
+  spawnSession(name, '/bin/sh', ['-c', cmd], cols, rows, cwd);
 }
 
 async function startReviewSession(
@@ -160,11 +158,12 @@ async function startReviewSession(
   const safePrompt = prompt.replace(/['"]/g, '');
   const command = `claude --continue || claude '${safePrompt}'`;
 
-  await createSession(
+  spawnSession(
     ctx.reviewSessionName,
+    '/bin/sh',
+    ['-c', command],
     ctx.paneCols,
     ctx.paneRows,
-    command,
     worktreePath
   );
   ctx.setReviewSessionStarted((prev) => new Set([...prev, pr.id]));
@@ -189,7 +188,7 @@ export function handleReviewConfirmInput(
   if (opt === 1) {
     if (key.return) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.reviewSessionName!))) {
+        if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx, ctx.reviewInstruction || undefined);
         }
         ctx.setFocus('terminal');
@@ -229,7 +228,7 @@ export function handleReviewConfirmInput(
   if (key.return) {
     if (opt === 0) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.reviewSessionName!))) {
+        if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx);
         }
         ctx.setFocus('terminal');
@@ -290,7 +289,7 @@ export function handleBranchPickerInput(
         const worktreePath = await createWorktree(branch);
         if (worktreePath) {
           const sessionName = branchToSessionName(branch);
-          await startAiSession(
+          startAiSession(
             sessionName,
             ctx.paneCols,
             ctx.paneRows,
@@ -472,7 +471,7 @@ export function handleSidebarInput(
         }
         await ctx.performDelete(sessionName, branch);
       } else {
-        await killSession(sessionName);
+        killSession(sessionName);
         const updated = await ctx.refreshSessions();
         if (ctx.selectedIndex >= updated.length) {
           ctx.setSelectedIndex(Math.max(0, updated.length - 1));
@@ -483,7 +482,7 @@ export function handleSidebarInput(
   }
   if (input === 'K' && ctx.selectedSession) {
     ctx.runOp('delete', async () => {
-      await killSession(ctx.selectedSession!.name);
+      killSession(ctx.selectedSession!.name);
       await ctx.refreshSessions();
     });
     return;
@@ -542,7 +541,7 @@ export function handleSidebarInput(
         const worktreePath = await createWorktree(pr.sourceBranch);
         if (worktreePath) {
           const sessionName = branchToSessionName(pr.sourceBranch);
-          await startAiSession(
+          startAiSession(
             sessionName,
             ctx.paneCols,
             ctx.paneRows,
@@ -579,7 +578,7 @@ export function handleReviewsSidebarInput(
   }
   if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
     ctx.runOp('start-session', async () => {
-      if (await hasSession(ctx.reviewSessionName!)) {
+      if (hasSession(ctx.reviewSessionName!)) {
         ctx.setFocus('terminal');
         ctx.setReviewReconnectKey((k) => k + 1);
         return;
@@ -621,12 +620,12 @@ export function handleGlobalInput(
   if (key.tab && ctx.activeTab === 'sessions') {
     if (ctx.focus === 'sidebar' && ctx.selectedName) {
       ctx.runOp('start-session', async () => {
-        if (!(await hasSession(ctx.selectedName!))) {
+        if (!hasSession(ctx.selectedName!)) {
           const worktreePath = resolve(
             process.cwd(),
             '.claude/worktrees/' + ctx.selectedName
           );
-          await startAiSession(
+          startAiSession(
             ctx.selectedName!,
             ctx.paneCols,
             ctx.paneRows,
@@ -650,7 +649,7 @@ export function handleGlobalInput(
       ctx.selectedReviewPr
     ) {
       ctx.runOp('start-session', async () => {
-        if (await hasSession(ctx.reviewSessionName!)) {
+        if (hasSession(ctx.reviewSessionName!)) {
           ctx.setReviewReconnectKey((k) => k + 1);
           ctx.setFocus('terminal');
         } else {

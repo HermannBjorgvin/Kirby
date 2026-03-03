@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
+import type { Key } from 'ink';
 import { branchToSessionName } from '@kirby/tmux-manager';
 import type {
   VcsProvider,
@@ -21,7 +22,7 @@ import { usePrData } from './hooks/usePrData.js';
 import { useRemoteSync } from './hooks/useRemoteSync.js';
 import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
-import { useControlMode } from './hooks/useControlMode.js';
+import { usePtySession } from './hooks/usePtySession.js';
 import { useConflictCounts } from './hooks/useConflictCounts.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useBranchPicker } from './hooks/useBranchPicker.js';
@@ -54,7 +55,6 @@ function StatusBar({
   prError,
   sessionCount,
   focus,
-  hasTmux,
   inFlight,
 }: {
   confirmDelete: {
@@ -69,7 +69,6 @@ function StatusBar({
   prError: string | null;
   sessionCount: number;
   focus: Focus;
-  hasTmux: boolean;
   inFlight: Set<string>;
 }) {
   const { vcsConfigured } = useConfig();
@@ -107,8 +106,7 @@ function StatusBar({
 
   return (
     <Text dimColor>
-      {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text> · tmux:{' '}
-      {hasTmux ? '✓' : '✕'}
+      {sessionCount} sessions · focus: <Text color="cyan">{focus}</Text>
       {!vcsConfigured ? ' · (s to configure VCS)' : ''}
       {ops ? <Text color="yellow">{ops}</Text> : null}
     </Text>
@@ -280,22 +278,53 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     }
   }, [totalItems, sessionMgr.selectedIndex]);
 
-  const { sendInput } = useControlMode(
-    sessionMgr.hasTmux ? selectedName : null,
+  const { write: ptyWrite } = usePtySession(
+    selectedName,
     paneCols,
     paneRows,
     setPaneContent,
     reconnectKey
   );
 
-  const { sendInput: sendReviewInput } = useControlMode(
-    sessionMgr.hasTmux && nav.activeTab === 'reviews'
-      ? reviewSessionName
-      : null,
+  const { write: ptyWriteReview } = usePtySession(
+    nav.activeTab === 'reviews' ? reviewSessionName : null,
     paneCols,
     paneRows,
     review.setReviewPaneContent,
     review.reviewReconnectKey
+  );
+
+  const keyToAnsi = useCallback((input: string, key: Key): string | null => {
+    if (key.return) return '\r';
+    if (key.backspace || key.delete) return '\x7f';
+    if (key.upArrow) return '\x1b[A';
+    if (key.downArrow) return '\x1b[B';
+    if (key.rightArrow) return '\x1b[C';
+    if (key.leftArrow) return '\x1b[D';
+    if (key.tab) return null; // reserved for focus switching
+    if (key.escape) return '\x1b';
+    if (key.ctrl && input === 'c') return '\x03';
+    if (key.ctrl && input === 'd') return '\x04';
+    if (key.ctrl && input === 'z') return '\x1a';
+    if (key.ctrl && input === 'l') return '\x0c';
+    if (input) return input;
+    return null;
+  }, []);
+
+  const sendInput = useCallback(
+    (input: string, key: Key) => {
+      const data = keyToAnsi(input, key);
+      if (data) ptyWrite(data);
+    },
+    [ptyWrite, keyToAnsi]
+  );
+
+  const sendReviewInput = useCallback(
+    (input: string, key: Key) => {
+      const data = keyToAnsi(input, key);
+      if (data) ptyWriteReview(data);
+    },
+    [ptyWriteReview, keyToAnsi]
   );
 
   // ── Assemble AppContext for input handlers ────────────────────────
@@ -398,7 +427,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             prError={prError}
             sessionCount={sortedSessions.length}
             focus={nav.focus}
-            hasTmux={sessionMgr.hasTmux}
             inFlight={inFlight}
           />
         </Box>
@@ -442,9 +470,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
             )}
             {!settings.settingsOpen && !branchPicker.creating && (
               <TerminalView
-                content={
-                  sessionMgr.hasTmux ? paneContent : '(tmux not available)'
-                }
+                content={paneContent}
                 focused={nav.focus === 'terminal'}
               />
             )}
