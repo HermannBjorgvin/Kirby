@@ -1,4 +1,4 @@
-import { PtySession, TerminalEmulator } from '@kirby/tmux-control';
+import { PtySession, TerminalEmulator } from '@kirby/terminal';
 
 export interface PtyEntry {
   pty: PtySession;

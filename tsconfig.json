@@ -10,7 +10,7 @@
       "path": "./libs/tmux-manager"
     },
     {
-      "path": "./libs/tmux-control"
+      "path": "./libs/terminal"
     },
     {
       "path": "./libs/vcs/core"
