@@ -34,5 +34,8 @@
   ],
   "lint-staged": {
     "*": "npx nx format:write --files"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
   }
 }
