@@ -6,7 +6,7 @@ import {
   listWorktrees,
   branchToSessionName,
 } from '@kirby/worktree-manager';
-import type { TmuxSession } from '@kirby/worktree-manager';
+import type { AgentSession } from '@kirby/worktree-manager';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
 import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
@@ -16,7 +16,7 @@ export function useSessionManager(
   setConfig: (v: AppConfig | ((prev: AppConfig) => AppConfig)) => void,
   setBranches: (v: string[]) => void
 ) {
-  const [sessions, setSessions] = useState<TmuxSession[]>([]);
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -24,14 +24,12 @@ export function useSessionManager(
 
   const refreshSessions = useCallback(async () => {
     const worktrees = await listWorktrees();
-    const filtered: TmuxSession[] = [];
+    const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
       const name = branchToSessionName(wt.branch);
       filtered.push({
         name,
-        windows: hasPtySession(name) ? 1 : 0,
-        created: 0,
-        attached: false,
+        running: hasPtySession(name),
       });
     }
     const nonReview = filtered.filter((s) => !s.name.startsWith('review-pr-'));

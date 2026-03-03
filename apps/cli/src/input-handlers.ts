@@ -9,7 +9,7 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { TmuxSession } from '@kirby/worktree-manager';
+import type { AgentSession } from '@kirby/worktree-manager';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
@@ -47,9 +47,9 @@ export interface AppContext {
   activeTab: ActiveTab;
   focus: Focus;
   selectedName: string | null;
-  selectedSession: TmuxSession | undefined;
+  selectedSession: AgentSession | undefined;
   selectedIndex: number;
-  sessions: TmuxSession[];
+  sessions: AgentSession[];
   orphanPrs: PullRequestInfo[];
   totalItems: number;
   reviewSelectedIndex: number;
@@ -96,7 +96,7 @@ export interface AppContext {
   setBranches: (v: string[]) => void;
   flashStatus: (msg: string) => void;
   triggerSync: () => void;
-  refreshSessions: () => Promise<TmuxSession[]>;
+  refreshSessions: () => Promise<AgentSession[]>;
   refreshPr: () => void;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
   exit: () => void;

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { TmuxSession } from '@kirby/worktree-manager';
+import type { AgentSession } from '@kirby/worktree-manager';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';
@@ -16,7 +16,7 @@ const SessionItem = memo(function SessionItem({
   conflictCount,
   conflictsLoading,
 }: {
-  session: TmuxSession;
+  session: AgentSession;
   selected: boolean;
   branch: string | undefined;
   pr: PullRequestInfo | undefined;
@@ -26,8 +26,8 @@ const SessionItem = memo(function SessionItem({
   conflictsLoading: boolean;
 }) {
   const { vcsConfigured } = useConfig();
-  const icon = session.windows > 0 ? '●' : '○';
-  const color = session.windows > 0 ? 'green' : 'gray';
+  const icon = session.running ? '●' : '○';
+  const color = session.running ? 'green' : 'gray';
 
   return (
     <Box key={session.name} flexDirection="column">
@@ -113,7 +113,7 @@ export function Sidebar({
   conflictCounts,
   conflictsLoading,
 }: {
-  sessions: TmuxSession[];
+  sessions: AgentSession[];
   selectedIndex: number;
   focused: boolean;
   prMap: BranchPrMap;
