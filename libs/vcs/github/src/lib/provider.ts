@@ -51,11 +51,16 @@ export function parseGitHubRemoteUrl(
   url: string
 ): { owner: string; repo: string } | null {
   // HTTPS: https://github.com/{owner}/{repo}[.git]
-  const https = url.match(/github\.com\/([^/]+)\/([^/\s]+?)(?:\.git)?$/);
-  if (https) return { owner: https[1]!, repo: https[2]! };
+  const https = url.match(
+    /github\.com\/(?<owner>[^/]+)\/(?<repo>[^/\s]+?)(?:\.git)?$/
+  );
+  if (https?.groups)
+    return { owner: https.groups.owner, repo: https.groups.repo };
   // SSH: git@github.com:{owner}/{repo}[.git]
-  const ssh = url.match(/github\.com:([^/]+)\/([^/\s]+?)(?:\.git)?$/);
-  if (ssh) return { owner: ssh[1]!, repo: ssh[2]! };
+  const ssh = url.match(
+    /github\.com:(?<owner>[^/]+)\/(?<repo>[^/\s]+?)(?:\.git)?$/
+  );
+  if (ssh?.groups) return { owner: ssh.groups.owner, repo: ssh.groups.repo };
   return null;
 }
 
@@ -75,7 +80,7 @@ export function mapReviewState(state: string): ReviewDecision {
 }
 
 export function latestReviewPerUser(
-  reviews: Array<{ author: { login: string }; state: string }>
+  reviews: { author: { login: string }; state: string }[]
 ): PullRequestReviewer[] {
   const byUser = new Map<string, { login: string; state: string }>();
   for (const r of reviews) {
@@ -172,22 +177,22 @@ interface SearchPrNode {
   author: { login: string };
   isDraft: boolean;
   reviews: {
-    nodes: Array<{ author: { login: string }; state: string }>;
+    nodes: { author: { login: string }; state: string }[];
   };
   reviewRequests: {
-    nodes: Array<{
+    nodes: {
       requestedReviewer: { login?: string; name?: string };
-    }>;
+    }[];
   };
   reviewThreads: {
-    nodes: Array<{ isResolved: boolean }>;
+    nodes: { isResolved: boolean }[];
   };
   commits: {
-    nodes: Array<{
+    nodes: {
       commit: {
         statusCheckRollup: { state: string } | null;
       };
-    }>;
+    }[];
   };
 }
 

@@ -10,8 +10,8 @@ export interface PtySessionOptions {
 export class PtySession {
   private process: pty.IPty;
   private disposed = false;
-  private dataListeners: Array<(data: string) => void> = [];
-  private exitListeners: Array<(code: number, signal?: number) => void> = [];
+  private dataListeners: ((data: string) => void)[] = [];
+  private exitListeners: ((code: number, signal?: number) => void)[] = [];
 
   constructor(cmd: string, args: string[], opts: PtySessionOptions = {}) {
     this.process = pty.spawn(cmd, args, {

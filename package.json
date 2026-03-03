@@ -38,7 +38,8 @@
     "libs/vcs/*"
   ],
   "lint-staged": {
-    "*": "npx nx format:write --files"
+    "*": "npx nx format:write --files",
+    "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",
