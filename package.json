@@ -36,6 +36,7 @@
     "*": "npx nx format:write --files"
   },
   "dependencies": {
+    "@xterm/headless": "^6.0.0",
     "node-pty": "^1.1.0"
   }
 }
