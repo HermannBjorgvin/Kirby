@@ -7,6 +7,9 @@
     "prepare": "husky"
   },
   "private": true,
+  "bin": {
+    "kirby": "./bin/kirby.js"
+  },
   "devDependencies": {
     "@nx/esbuild": "22.5.2",
     "@nx/eslint": "22.5.2",
@@ -43,6 +46,7 @@
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "tsx": "^4.21.0"
   }
 }

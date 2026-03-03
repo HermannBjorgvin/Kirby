@@ -28,6 +28,14 @@ The reviews tab works similarly showing you pull requests you are assigned to re
 
 ## Quick Start
 
+Run directly without cloning:
+
+```sh
+npx github:HermannBjorgvin/kirby
+```
+
+Or clone the repo and run locally:
+
 ```sh
 npm install
 npx nx serve cli
@@ -36,6 +44,8 @@ npx nx serve cli
 Pass a target directory to manage a different project:
 
 ```sh
+npx github:HermannBjorgvin/kirby /path/to/project
+# or locally:
 npx nx serve cli --no-tui -- /path/to/project
 ```
 
