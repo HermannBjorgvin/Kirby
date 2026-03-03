@@ -9,6 +9,7 @@
   "private": true,
   "devDependencies": {
     "@nx/esbuild": "22.5.2",
+    "@nx/eslint": "22.5.2",
     "@nx/js": "22.5.2",
     "@nx/node": "^22.5.2",
     "@nx/vitest": "22.5.2",
@@ -18,6 +19,7 @@
     "@types/node": "20.19.9",
     "@vitest/coverage-v8": "^4.0.0",
     "esbuild": "^0.19.2",
+    "eslint": "~8.57.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "nx": "22.5.1",
