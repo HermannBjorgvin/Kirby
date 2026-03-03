@@ -30,7 +30,7 @@ export function spawnSession(
   const entry: PtyEntry = { pty, emu, exited: false };
 
   pty.onData((data) => {
-    emu.write(data);
+    void emu.write(data);
   });
 
   pty.onExit((code) => {

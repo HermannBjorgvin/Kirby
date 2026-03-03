@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { AgentSession } from '@kirby/worktree-manager';
+import type { AgentSession } from '../types.js';
 import type { BranchPrMap, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from './PrBadge.js';
 import { truncate } from '../utils/truncate.js';

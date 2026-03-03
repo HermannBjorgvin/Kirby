@@ -8,11 +8,6 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { exec } from './exec.js';
 
-export interface AgentSession {
-  name: string;
-  running: boolean;
-}
-
 let cachedMainBranch: string | null = null;
 
 /** Auto-detect the main branch name (master or main) and cache it. */

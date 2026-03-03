@@ -9,7 +9,7 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from '@kirby/worktree-manager';
+import type { AgentSession } from './types.js';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';

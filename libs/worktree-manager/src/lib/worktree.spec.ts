@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createWorktree,
   removeWorktree,
+  deleteBranch,
   canRemoveBranch,
   listBranches,
   fetchRemote,
@@ -113,6 +114,37 @@ describe('removeWorktree', () => {
   it('should return false on failure', async () => {
     mockExec.mockRejectedValueOnce(new Error('not found'));
     expect(await removeWorktree('nonexistent')).toBe(false);
+  });
+});
+
+describe('deleteBranch', () => {
+  it('should return true on success and call git branch -d', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/auth')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git branch -d "feature/auth"', {
+      encoding: 'utf8',
+    });
+  });
+
+  it('should return false on failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('branch not found'));
+    expect(await deleteBranch('nonexistent')).toBe(false);
+  });
+
+  it('should use -D flag when force is true', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await deleteBranch('feature/auth', true)).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git branch -D "feature/auth"', {
+      encoding: 'utf8',
+    });
+  });
+
+  it('should properly quote the branch name', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    await deleteBranch('feat/ui/sidebar');
+    expect(mockExec).toHaveBeenCalledWith('git branch -d "feat/ui/sidebar"', {
+      encoding: 'utf8',
+    });
   });
 });
 

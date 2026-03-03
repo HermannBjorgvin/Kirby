@@ -6,7 +6,7 @@ import {
   listWorktrees,
   branchToSessionName,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from '@kirby/worktree-manager';
+import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
 import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
