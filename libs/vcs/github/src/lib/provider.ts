@@ -80,10 +80,11 @@ export function mapReviewState(state: string): ReviewDecision {
 }
 
 export function latestReviewPerUser(
-  reviews: { author: { login: string }; state: string }[]
+  reviews: { author: { login: string } | null; state: string }[]
 ): PullRequestReviewer[] {
   const byUser = new Map<string, { login: string; state: string }>();
   for (const r of reviews) {
+    if (!r.author) continue;
     byUser.set(r.author.login, { login: r.author.login, state: r.state });
   }
   return [...byUser.values()].map((r) => ({
@@ -174,14 +175,14 @@ interface SearchPrNode {
   headRefName: string;
   baseRefName: string;
   url: string;
-  author: { login: string };
+  author: { login: string } | null;
   isDraft: boolean;
   reviews: {
-    nodes: { author: { login: string }; state: string }[];
+    nodes: { author: { login: string } | null; state: string }[];
   };
   reviewRequests: {
     nodes: {
-      requestedReviewer: { login?: string; name?: string };
+      requestedReviewer: { login?: string; name?: string } | null;
     }[];
   };
   reviewThreads: {
@@ -233,7 +234,7 @@ function transformSearchNode(node: SearchPrNode): PullRequestInfo {
     reviewers.map((r) => r.identifier.toLowerCase())
   );
   for (const req of node.reviewRequests.nodes) {
-    const login = req.requestedReviewer.login;
+    const login = req.requestedReviewer?.login;
     if (login && !reviewedLogins.has(login.toLowerCase())) {
       reviewers.push({
         displayName: login,
@@ -256,8 +257,8 @@ function transformSearchNode(node: SearchPrNode): PullRequestInfo {
     sourceBranch: node.headRefName,
     targetBranch: node.baseRefName,
     url: node.url,
-    createdByIdentifier: node.author.login,
-    createdByDisplayName: node.author.login,
+    createdByIdentifier: node.author?.login ?? '',
+    createdByDisplayName: node.author?.login ?? '',
     isDraft: node.isDraft,
     reviewers,
     buildStatus,
