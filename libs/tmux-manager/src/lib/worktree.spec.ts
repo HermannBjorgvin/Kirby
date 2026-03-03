@@ -13,6 +13,7 @@ import {
   rebaseOntoMaster,
   getMainBranch,
   resetMainBranchCache,
+  branchToSessionName,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
@@ -448,10 +449,9 @@ describe('fastForwardMaster', () => {
       .mockResolvedValueOnce(resolve('master\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // merge --ff-only
     expect(await fastForwardMaster()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith(
-      'git merge --ff-only origin/master',
-      { encoding: 'utf8' }
-    );
+    expect(mockExec).toHaveBeenCalledWith('git merge --ff-only origin/master', {
+      encoding: 'utf8',
+    });
   });
 
   it('should return false when fetch fails', async () => {
@@ -528,5 +528,23 @@ describe('countConflicts', () => {
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
       .mockRejectedValueOnce(err);
     expect(await countConflicts('feature/weird')).toBe(0);
+  });
+});
+
+describe('branchToSessionName', () => {
+  it('should replace slashes with hyphens', () => {
+    expect(branchToSessionName('feature/auth')).toBe('feature-auth');
+  });
+
+  it('should handle multiple slashes', () => {
+    expect(branchToSessionName('feat/ui/sidebar')).toBe('feat-ui-sidebar');
+  });
+
+  it('should return names without slashes unchanged', () => {
+    expect(branchToSessionName('main')).toBe('main');
+  });
+
+  it('should handle empty string', () => {
+    expect(branchToSessionName('')).toBe('');
   });
 });
