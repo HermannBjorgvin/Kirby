@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
-import type { Key } from 'ink';
 import { branchToSessionName } from '@kirby/tmux-manager';
 import type {
   VcsProvider,
@@ -23,6 +22,7 @@ import { useRemoteSync } from './hooks/useRemoteSync.js';
 import { useMergedBranches } from './hooks/useMergedBranches.js';
 import { useAsyncOperation } from './hooks/useAsyncOperation.js';
 import { usePtySession } from './hooks/usePtySession.js';
+import { useRawStdinForward } from './hooks/useRawStdinForward.js';
 import { useConflictCounts } from './hooks/useConflictCounts.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useBranchPicker } from './hooks/useBranchPicker.js';
@@ -278,7 +278,13 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     }
   }, [totalItems, sessionMgr.selectedIndex]);
 
-  const { write: ptyWrite } = usePtySession(
+  const {
+    write: ptyWrite,
+    mouseMode,
+    scrollUp,
+    scrollDown,
+    isScrolledBack,
+  } = usePtySession(
     selectedName,
     paneCols,
     paneRows,
@@ -286,7 +292,13 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     reconnectKey
   );
 
-  const { write: ptyWriteReview } = usePtySession(
+  const {
+    write: ptyWriteReview,
+    mouseMode: reviewMouseMode,
+    scrollUp: reviewScrollUp,
+    scrollDown: reviewScrollDown,
+    isScrolledBack: reviewIsScrolledBack,
+  } = usePtySession(
     nav.activeTab === 'reviews' ? reviewSessionName : null,
     paneCols,
     paneRows,
@@ -294,37 +306,27 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     review.reviewReconnectKey
   );
 
-  const keyToAnsi = useCallback((input: string, key: Key): string | null => {
-    if (key.return) return '\r';
-    if (key.backspace || key.delete) return '\x7f';
-    if (key.upArrow) return '\x1b[A';
-    if (key.downArrow) return '\x1b[B';
-    if (key.rightArrow) return '\x1b[C';
-    if (key.leftArrow) return '\x1b[D';
-    if (key.tab) return null; // reserved for focus switching
-    if (key.escape) return '\x1b';
-    if (key.ctrl && input === 'c') return '\x03';
-    if (key.ctrl && input === 'd') return '\x04';
-    if (key.ctrl && input === 'z') return '\x1a';
-    if (key.ctrl && input === 'l') return '\x0c';
-    if (input) return input;
-    return null;
-  }, []);
+  // ── Raw stdin forwarding (bypasses Ink's useInput) ─────────────
+  const terminalFocused = nav.focus === 'terminal';
+  const escapeTerminal = useCallback(() => {
+    nav.setFocus('sidebar');
+  }, [nav.setFocus]);
 
-  const sendInput = useCallback(
-    (input: string, key: Key) => {
-      const data = keyToAnsi(input, key);
-      if (data) ptyWrite(data);
-    },
-    [ptyWrite, keyToAnsi]
+  useRawStdinForward(
+    terminalFocused && nav.activeTab === 'sessions',
+    ptyWrite,
+    escapeTerminal,
+    mouseMode,
+    scrollUp,
+    scrollDown
   );
-
-  const sendReviewInput = useCallback(
-    (input: string, key: Key) => {
-      const data = keyToAnsi(input, key);
-      if (data) ptyWriteReview(data);
-    },
-    [ptyWriteReview, keyToAnsi]
+  useRawStdinForward(
+    terminalFocused && nav.activeTab === 'reviews',
+    ptyWriteReview,
+    escapeTerminal,
+    reviewMouseMode,
+    reviewScrollUp,
+    reviewScrollDown
   );
 
   // ── Assemble AppContext for input handlers ────────────────────────
@@ -355,7 +357,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     reviewTotalItems,
     reviewSessionName,
     selectedReviewPr,
-    sendReviewInput,
     setReviewReconnectKey: review.setReviewReconnectKey,
     reviewSessionStarted: review.reviewSessionStarted,
     setReviewSessionStarted: review.setReviewSessionStarted,
@@ -384,7 +385,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     refreshSessions: sessionMgr.refreshSessions,
     refreshPr,
     performDelete: sessionMgr.performDelete,
-    sendInput,
     exit,
     updateField,
     runOp,
@@ -392,6 +392,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   };
 
   useInput((input, key) => {
+    if (terminalFocused) return; // raw stdin handler forwards to PTY
     if (showOnboarding) return;
     if (branchPicker.creating) return handleBranchPickerInput(input, key, ctx);
     if (deleteConfirm.confirmDelete)

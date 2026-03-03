@@ -58,7 +58,6 @@ export interface AppContext {
   // Review terminal
   reviewSessionName: string | null;
   selectedReviewPr: PullRequestInfo | undefined;
-  sendReviewInput: (input: string, key: Key) => void;
   setReviewReconnectKey: (v: (prev: number) => number) => void;
   reviewSessionStarted: Set<number>;
   setReviewSessionStarted: (
@@ -100,7 +99,6 @@ export interface AppContext {
   refreshSessions: () => Promise<TmuxSession[]>;
   refreshPr: () => void;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
-  sendInput: (input: string, key: Key) => void;
   exit: () => void;
 
   // Config
@@ -665,24 +663,11 @@ export function handleGlobalInput(
     return;
   }
 
-  if (key.escape) {
-    if (ctx.focus === 'terminal') {
-      ctx.setFocus('sidebar');
-      return;
-    }
-  }
-
-  if (ctx.focus === 'sidebar') {
-    if (ctx.activeTab === 'sessions') {
-      handleSidebarInput(input, key, ctx);
-    } else if (ctx.activeTab === 'reviews') {
-      handleReviewsSidebarInput(input, key, ctx);
-    }
-  } else {
-    if (ctx.activeTab === 'reviews') {
-      ctx.sendReviewInput(input, key);
-    } else {
-      ctx.sendInput(input, key);
-    }
+  // When terminal is focused, useInput is disabled and raw stdin handles input.
+  // This function only runs when focus === 'sidebar'.
+  if (ctx.activeTab === 'sessions') {
+    handleSidebarInput(input, key, ctx);
+  } else if (ctx.activeTab === 'reviews') {
+    handleReviewsSidebarInput(input, key, ctx);
   }
 }

@@ -21,11 +21,12 @@ export class TerminalEmulator {
     });
   }
 
-  render(): string {
+  render(scrollOffset = 0): string {
     const buffer = this.terminal.buffer.active;
     const lines: string[] = [];
+    const start = Math.max(0, buffer.baseY - scrollOffset);
 
-    for (let i = 0; i < buffer.length; i++) {
+    for (let i = start; i < start + this.terminal.rows; i++) {
       const line = buffer.getLine(i);
       if (line) {
         lines.push(line.translateToString(true));
@@ -38,6 +39,14 @@ export class TerminalEmulator {
     }
 
     return lines.join('\n');
+  }
+
+  get maxScrollback(): number {
+    return this.terminal.buffer.active.baseY;
+  }
+
+  get mouseTrackingMode(): 'none' | 'x10' | 'vt200' | 'drag' | 'any' {
+    return this.terminal.modes.mouseTrackingMode;
   }
 
   resize(cols: number, rows: number): void {

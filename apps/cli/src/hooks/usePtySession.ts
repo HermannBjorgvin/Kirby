@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { getSession } from '../pty-registry.js';
 import type { PtyEntry } from '../pty-registry.js';
 
@@ -13,6 +13,11 @@ export function usePtySession(
   const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setPaneContentRef = useRef(setPaneContent);
   setPaneContentRef.current = setPaneContent;
+  const [mouseMode, setMouseMode] = useState<
+    'none' | 'x10' | 'vt200' | 'drag' | 'any'
+  >('none');
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const scrollOffsetRef = useRef(0);
 
   const scheduleRender = useCallback(() => {
     if (renderTimer.current) return;
@@ -20,7 +25,7 @@ export function usePtySession(
       renderTimer.current = null;
       const entry = entryRef.current;
       if (entry) {
-        const rendered = entry.emu.render();
+        const rendered = entry.emu.render(scrollOffsetRef.current);
         if (entry.exited) {
           setPaneContentRef.current(
             rendered + `\n\n(process exited with code ${entry.exitCode ?? '?'})`
@@ -28,6 +33,9 @@ export function usePtySession(
         } else {
           setPaneContentRef.current(rendered);
         }
+        // Mirror child's mouse tracking mode
+        const mode = entry.emu.mouseTrackingMode;
+        setMouseMode((prev) => (prev !== mode ? mode : prev));
       }
     }, 16); // ~60fps
   }, []);
@@ -73,9 +81,35 @@ export function usePtySession(
   const write = useCallback((data: string) => {
     const entry = entryRef.current;
     if (entry && !entry.exited) {
+      // Reset scroll position on user input
+      scrollOffsetRef.current = 0;
+      setScrollOffset(0);
       entry.pty.write(data);
     }
   }, []);
 
-  return { write };
+  const scrollUp = useCallback(() => {
+    const entry = entryRef.current;
+    if (!entry) return;
+    const max = entry.emu.maxScrollback;
+    const next = Math.min(scrollOffsetRef.current + 3, max);
+    scrollOffsetRef.current = next;
+    setScrollOffset(next);
+    scheduleRender();
+  }, [scheduleRender]);
+
+  const scrollDown = useCallback(() => {
+    const next = Math.max(scrollOffsetRef.current - 3, 0);
+    scrollOffsetRef.current = next;
+    setScrollOffset(next);
+    scheduleRender();
+  }, [scheduleRender]);
+
+  return {
+    write,
+    mouseMode,
+    scrollUp,
+    scrollDown,
+    isScrolledBack: scrollOffset > 0,
+  };
 }
