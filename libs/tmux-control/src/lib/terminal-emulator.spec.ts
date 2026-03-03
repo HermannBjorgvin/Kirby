@@ -20,11 +20,46 @@ describe('TerminalEmulator', () => {
     emu.dispose();
   });
 
-  it('handles ANSI color codes without corrupting text', async () => {
+  it('preserves ANSI color codes in rendered output', async () => {
     const emu = new TerminalEmulator(80, 24);
     await emu.write('\x1b[32mgreen\x1b[0m normal');
-    // translateToString strips ANSI — just the text
-    expect(emu.render()).toContain('green normal');
+    const rendered = emu.render();
+    // Text content is present
+    expect(rendered).toContain('green');
+    expect(rendered).toContain('normal');
+    // SGR for green (palette color 2 → code 32) is present
+    expect(rendered).toContain('\x1b[32m');
+    // Reset is present
+    expect(rendered).toContain('\x1b[0m');
+    emu.dispose();
+  });
+
+  it('renders 256-color palette codes', async () => {
+    const emu = new TerminalEmulator(80, 24);
+    await emu.write('\x1b[38;5;208morange\x1b[0m');
+    const rendered = emu.render();
+    expect(rendered).toContain('orange');
+    expect(rendered).toContain('38;5;208');
+    emu.dispose();
+  });
+
+  it('renders RGB true color codes', async () => {
+    const emu = new TerminalEmulator(80, 24);
+    await emu.write('\x1b[38;2;255;128;0mtrue\x1b[0m');
+    const rendered = emu.render();
+    expect(rendered).toContain('true');
+    expect(rendered).toContain('38;2;255;128;0');
+    emu.dispose();
+  });
+
+  it('renders bold and other text styles', async () => {
+    const emu = new TerminalEmulator(80, 24);
+    await emu.write('\x1b[1mbold\x1b[0m \x1b[3mitalic\x1b[0m');
+    const rendered = emu.render();
+    expect(rendered).toContain('bold');
+    expect(rendered).toContain('italic');
+    // Bold SGR code 1 should appear
+    expect(rendered).toMatch(/\x1b\[\d*1\d*m/);
     emu.dispose();
   });
 
