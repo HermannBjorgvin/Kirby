@@ -1,4 +1,4 @@
-import { execFile as execFileCb } from 'node:child_process';
+import { execFile as execFileCb, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import type {
   VcsProvider,
@@ -316,6 +316,20 @@ export const githubProvider: VcsProvider = {
 
   parseRemoteUrl(url: string): Record<string, string> | null {
     return parseGitHubRemoteUrl(url);
+  },
+
+  autoDetectFields(): Record<string, string> | null {
+    try {
+      const out = execSync('gh api /user', {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+      const { login } = JSON.parse(out);
+      if (login) return { username: login };
+    } catch {
+      // gh not installed or not authenticated
+    }
+    return null;
   },
 
   isConfigured(

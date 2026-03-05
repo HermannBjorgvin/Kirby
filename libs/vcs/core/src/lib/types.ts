@@ -48,6 +48,9 @@ export interface VcsProvider {
   /** Return vendor project config if URL matches, null otherwise */
   parseRemoteUrl(url: string): Record<string, string> | null;
 
+  /** Auto-detect additional user/project fields (e.g., username from CLI auth) */
+  autoDetectFields?(): Record<string, string> | null;
+
   /** True when auth + project config have all required fields */
   isConfigured(
     auth: Record<string, string>,
