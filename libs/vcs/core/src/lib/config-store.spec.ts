@@ -380,6 +380,41 @@ describe('autoDetectProjectConfig', () => {
     expect(mockProvider.autoDetectFields).toHaveBeenCalled();
   });
 
+  it('should handle autoDetectFields returning null gracefully', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+    // git remote get-url origin
+    mockExecSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+    // git config user.email
+    mockExecSync.mockReturnValueOnce('user@example.com\n');
+
+    const mockProvider: VcsProvider = {
+      id: 'github',
+      displayName: 'GitHub',
+      authFields: [],
+      projectFields: [],
+      parseRemoteUrl: vi.fn((url: string) => {
+        if (url.includes('github.com')) {
+          return { owner: 'owner', repo: 'repo' };
+        }
+        return null;
+      }),
+      autoDetectFields: vi.fn(() => null),
+      isConfigured: () => false,
+      matchesUser: () => false,
+      fetchPullRequests: async () => ({}),
+      getPullRequestUrl: () => '',
+    };
+
+    const { updated, detected } = autoDetectProjectConfig('/tmp/test', [
+      mockProvider,
+    ]);
+
+    expect(updated).toBe(true);
+    expect(detected.vendor).toBe('github');
+    expect(detected.username).toBeUndefined();
+    expect(mockProvider.autoDetectFields).toHaveBeenCalled();
+  });
+
   it('should not overwrite existing vendorProject fields from autoDetectFields', () => {
     // Project already has vendor + vendorProject with username set
     mockReadFileSync.mockReturnValueOnce(

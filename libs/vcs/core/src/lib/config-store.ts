@@ -186,15 +186,19 @@ export function autoDetectProjectConfig(
   // Auto-detect provider-specific fields (e.g., GitHub username)
   const matchedProvider = providers.find((p) => p.id === cfg.vendor);
   if (matchedProvider?.autoDetectFields) {
-    const extra = matchedProvider.autoDetectFields();
-    if (extra) {
-      cfg.vendorProject ??= {};
-      for (const [k, v] of Object.entries(extra)) {
-        if (!cfg.vendorProject[k]) {
-          cfg.vendorProject[k] = v;
-          detected[k] = v;
+    try {
+      const extra = matchedProvider.autoDetectFields();
+      if (extra) {
+        cfg.vendorProject ??= {};
+        for (const [k, v] of Object.entries(extra)) {
+          if (!cfg.vendorProject[k]) {
+            cfg.vendorProject[k] = v;
+            detected[k] = v;
+          }
         }
       }
+    } catch {
+      // autoDetectFields may fail — not critical
     }
   }
 
