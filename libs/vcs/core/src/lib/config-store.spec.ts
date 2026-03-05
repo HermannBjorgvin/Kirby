@@ -341,4 +341,74 @@ describe('autoDetectProjectConfig', () => {
     expect(detected).toEqual({ email: 'test@test.com' });
     expect(detected.vendor).toBeUndefined();
   });
+
+  it('should call autoDetectFields on matched provider and merge results', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+    // git remote get-url origin
+    mockExecSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+    // git config user.email
+    mockExecSync.mockReturnValueOnce('user@example.com\n');
+
+    const mockProvider: VcsProvider = {
+      id: 'github',
+      displayName: 'GitHub',
+      authFields: [],
+      projectFields: [],
+      parseRemoteUrl: vi.fn((url: string) => {
+        if (url.includes('github.com')) {
+          return { owner: 'owner', repo: 'repo' };
+        }
+        return null;
+      }),
+      autoDetectFields: vi.fn(() => ({ username: 'myuser' })),
+      isConfigured: () => false,
+      matchesUser: () => false,
+      fetchPullRequests: async () => ({}),
+      getPullRequestUrl: () => '',
+    };
+
+    const { updated, detected } = autoDetectProjectConfig('/tmp/test', [
+      mockProvider,
+    ]);
+
+    expect(updated).toBe(true);
+    expect(detected.vendor).toBe('github');
+    expect(detected.owner).toBe('owner');
+    expect(detected.repo).toBe('repo');
+    expect(detected.username).toBe('myuser');
+    expect(detected.email).toBe('user@example.com');
+    expect(mockProvider.autoDetectFields).toHaveBeenCalled();
+  });
+
+  it('should not overwrite existing vendorProject fields from autoDetectFields', () => {
+    // Project already has vendor + vendorProject with username set
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({
+        vendor: 'github',
+        vendorProject: { owner: 'me', repo: 'my-repo', username: 'existing' },
+        email: 'existing@example.com',
+      })
+    );
+
+    const mockProvider: VcsProvider = {
+      id: 'github',
+      displayName: 'GitHub',
+      authFields: [],
+      projectFields: [],
+      parseRemoteUrl: vi.fn(() => null),
+      autoDetectFields: vi.fn(() => ({ username: 'detected-user' })),
+      isConfigured: () => false,
+      matchesUser: () => false,
+      fetchPullRequests: async () => ({}),
+      getPullRequestUrl: () => '',
+    };
+
+    const { updated, detected } = autoDetectProjectConfig('/tmp/test', [
+      mockProvider,
+    ]);
+
+    expect(updated).toBe(false);
+    expect(detected.username).toBeUndefined();
+    expect(mockProvider.autoDetectFields).toHaveBeenCalled();
+  });
 });
