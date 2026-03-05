@@ -9,6 +9,9 @@ import {
   fetchPrBuildStatus,
   parseAdoRemoteUrl,
   azureDevOpsProvider,
+  fetchAuthenticatedUserEmail,
+  fetchMyTeamIds,
+  enrichReviewersWithTeamMembership,
 } from './provider.js';
 
 // Mock global fetch
@@ -385,6 +388,150 @@ describe('parseAdoRemoteUrl', () => {
   });
 });
 
+describe('enrichReviewersWithTeamMembership', () => {
+  const userEmail = 'alice@example.com';
+  const teamId = 'team-guid-123';
+  const myTeamIds = new Set([teamId]);
+
+  it('adds synthetic reviewer when team matches', () => {
+    const reviewers = [
+      {
+        displayName: 'My Team',
+        uniqueName: 'vstfs:///Classification/TeamProject/team-guid-123',
+        id: teamId,
+        vote: 0,
+        isContainer: true,
+      },
+    ];
+    const result = enrichReviewersWithTeamMembership(
+      reviewers,
+      myTeamIds,
+      userEmail
+    );
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({
+      displayName: 'My Team',
+      uniqueName: userEmail,
+      vote: 0,
+      hasDeclined: undefined,
+      isContainer: false,
+    });
+  });
+
+  it('skips when user is already an explicit reviewer', () => {
+    const reviewers = [
+      {
+        displayName: 'My Team',
+        id: teamId,
+        vote: 0,
+        isContainer: true,
+      },
+      {
+        displayName: 'Alice',
+        uniqueName: 'alice@example.com',
+        vote: 5,
+        isContainer: false,
+      },
+    ];
+    const result = enrichReviewersWithTeamMembership(
+      reviewers,
+      myTeamIds,
+      userEmail
+    );
+    expect(result).toEqual(reviewers);
+  });
+
+  it('skips when team id does not match', () => {
+    const reviewers = [
+      {
+        displayName: 'Other Team',
+        id: 'other-team-guid',
+        vote: 0,
+        isContainer: true,
+      },
+    ];
+    const result = enrichReviewersWithTeamMembership(
+      reviewers,
+      myTeamIds,
+      userEmail
+    );
+    expect(result).toHaveLength(1);
+  });
+
+  it('returns original array when myTeamIds is empty', () => {
+    const reviewers = [
+      { displayName: 'Team', id: teamId, vote: 0, isContainer: true },
+    ];
+    const result = enrichReviewersWithTeamMembership(
+      reviewers,
+      new Set(),
+      userEmail
+    );
+    expect(result).toBe(reviewers);
+  });
+
+  it('returns original array when userEmail is empty', () => {
+    const reviewers = [
+      { displayName: 'Team', id: teamId, vote: 0, isContainer: true },
+    ];
+    const result = enrichReviewersWithTeamMembership(reviewers, myTeamIds, '');
+    expect(result).toBe(reviewers);
+  });
+});
+
+describe('fetchAuthenticatedUserEmail', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  it('returns user email on success', async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        authenticatedUser: {
+          properties: { Account: { $value: 'alice@example.com' } },
+        },
+      })
+    );
+    const email = await fetchAuthenticatedUserEmail(testAdoConfig);
+    expect(email).toBe('alice@example.com');
+    const calledUrl = mockFetch.mock.calls[0]![0] as string;
+    expect(calledUrl).toContain('/_apis/connectiondata');
+  });
+
+  it('throws on non-ok response', async () => {
+    mockFetch.mockResolvedValue(jsonResponse({}, 401));
+    await expect(fetchAuthenticatedUserEmail(testAdoConfig)).rejects.toThrow(
+      'ADO API error 401'
+    );
+  });
+});
+
+describe('fetchMyTeamIds', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  it('returns team IDs on success', async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        value: [{ id: 'team-1' }, { id: 'team-2' }],
+      })
+    );
+    const ids = await fetchMyTeamIds(testAdoConfig);
+    expect(ids).toEqual(new Set(['team-1', 'team-2']));
+    const calledUrl = mockFetch.mock.calls[0]![0] as string;
+    expect(calledUrl).toContain('$mine=true');
+  });
+
+  it('returns empty set on error response', async () => {
+    mockFetch.mockResolvedValue(jsonResponse({}, 403));
+    const ids = await fetchMyTeamIds(testAdoConfig);
+    expect(ids).toEqual(new Set());
+  });
+
+  it('returns empty set on network error', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('network error'));
+    const ids = await fetchMyTeamIds(testAdoConfig);
+    expect(ids).toEqual(new Set());
+  });
+});
+
 describe('azureDevOpsProvider', () => {
   it('has correct id and displayName', () => {
     expect(azureDevOpsProvider.id).toBe('azure-devops');
@@ -456,7 +603,17 @@ describe('azureDevOpsProvider', () => {
     beforeEach(() => mockFetch.mockReset());
 
     it('returns a map of branch to PR info with comment counts', async () => {
-      // First call: list PRs
+      // connectiondata call (fetchAuthenticatedUserEmail)
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          authenticatedUser: {
+            properties: { Account: { $value: 'me@example.com' } },
+          },
+        })
+      );
+      // teams call (fetchMyTeamIds) — no teams
+      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
+      // list PRs
       mockFetch.mockResolvedValueOnce(
         jsonResponse({
           value: [
