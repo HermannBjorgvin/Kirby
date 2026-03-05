@@ -19,6 +19,15 @@ interface AdoConfig {
   pat: string;
 }
 
+interface RawReviewer {
+  displayName?: string;
+  uniqueName?: string;
+  id?: string;
+  vote?: number;
+  hasDeclined?: boolean;
+  isContainer?: boolean;
+}
+
 // ── Internal helpers ───────────────────────────────────────────────
 
 function authHeaders(pat: string): Record<string, string> {
@@ -51,12 +60,7 @@ function voteToDecision(vote: number, hasDeclined: boolean): ReviewDecision {
   return 'no-response';
 }
 
-export function parseReviewer(raw: {
-  displayName?: string;
-  uniqueName?: string;
-  vote?: number;
-  hasDeclined?: boolean;
-}): PullRequestReviewer {
+export function parseReviewer(raw: RawReviewer): PullRequestReviewer {
   const vote = raw.vote ?? 0;
   const validVotes: ReviewerVote[] = [10, 5, 0, -5, -10];
   const normalizedVote = validVotes.includes(vote as ReviewerVote)
@@ -76,12 +80,7 @@ export function parsePullRequest(
     sourceRefName?: string;
     targetRefName?: string;
     isDraft?: boolean;
-    reviewers?: {
-      displayName?: string;
-      uniqueName?: string;
-      vote?: number;
-      hasDeclined?: boolean;
-    }[];
+    reviewers?: RawReviewer[];
     createdBy?: { uniqueName?: string; displayName?: string };
   },
   project: Record<string, string>
@@ -153,9 +152,69 @@ export function deriveBuildStatus(
   return 'none';
 }
 
+export async function fetchAuthenticatedUserEmail(
+  config: AdoConfig
+): Promise<string> {
+  const url = `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`;
+  const res = await fetch(url, { headers: authHeaders(config.pat) });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as {
+    authenticatedUser?: {
+      properties?: { Account?: { $value?: string } };
+    };
+  };
+  return data.authenticatedUser?.properties?.Account?.$value ?? '';
+}
+
+export async function fetchMyTeamIds(config: AdoConfig): Promise<Set<string>> {
+  const url = `https://dev.azure.com/${config.org}/_apis/projects/${config.project}/teams?$mine=true&api-version=7.1`;
+  try {
+    const res = await fetch(url, { headers: authHeaders(config.pat) });
+    if (!res.ok) return new Set();
+    const data = (await res.json()) as { value?: { id?: string }[] };
+    return new Set(
+      (data.value ?? []).map((t) => t.id).filter((id): id is string => !!id)
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+export function enrichReviewersWithTeamMembership(
+  rawReviewers: RawReviewer[],
+  myTeamIds: Set<string>,
+  userEmail: string
+): RawReviewer[] {
+  if (myTeamIds.size === 0 || !userEmail) return rawReviewers;
+
+  const hasExplicitUser = rawReviewers.some(
+    (r) =>
+      !r.isContainer && r.uniqueName?.toLowerCase() === userEmail.toLowerCase()
+  );
+  if (hasExplicitUser) return rawReviewers;
+
+  const result = [...rawReviewers];
+  for (const r of rawReviewers) {
+    if (r.isContainer && r.id && myTeamIds.has(r.id)) {
+      result.push({
+        displayName: r.displayName ?? 'Unknown',
+        uniqueName: userEmail,
+        vote: r.vote,
+        hasDeclined: r.hasDeclined,
+        isContainer: false,
+      });
+      break; // only add one synthetic entry
+    }
+  }
+  return result;
+}
+
 export async function fetchActivePullRequests(
   config: AdoConfig,
-  project: Record<string, string>
+  project: Record<string, string>,
+  teamContext?: { myTeamIds: Set<string>; userEmail: string }
 ): Promise<Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'>[]> {
   const url = `${baseUrl(
     config
@@ -165,9 +224,19 @@ export async function fetchActivePullRequests(
     throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
   }
   const data = (await res.json()) as { value?: unknown[] };
-  return ((data.value ?? []) as Record<string, unknown>[]).map((raw) =>
-    parsePullRequest(raw, project)
-  );
+  return ((data.value ?? []) as Record<string, unknown>[]).map((raw) => {
+    if (teamContext) {
+      const rawWithReviewers = raw as { reviewers?: RawReviewer[] };
+      if (rawWithReviewers.reviewers) {
+        rawWithReviewers.reviewers = enrichReviewersWithTeamMembership(
+          rawWithReviewers.reviewers,
+          teamContext.myTeamIds,
+          teamContext.userEmail
+        );
+      }
+    }
+    return parsePullRequest(raw, project);
+  });
 }
 
 export async function fetchActiveCommentCount(
@@ -235,6 +304,30 @@ export function parseAdoRemoteUrl(
   return null;
 }
 
+// ── Identity cache (avoids redundant API calls per poll) ────────────
+
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+let identityCache: {
+  userEmail: string;
+  myTeamIds: Set<string>;
+  fetchedAt: number;
+} | null = null;
+
+async function getCachedIdentity(
+  config: AdoConfig
+): Promise<{ userEmail: string; myTeamIds: Set<string> }> {
+  if (identityCache && Date.now() - identityCache.fetchedAt < CACHE_TTL_MS) {
+    return identityCache;
+  }
+  const [userEmail, myTeamIds] = await Promise.all([
+    fetchAuthenticatedUserEmail(config).catch(() => ''),
+    fetchMyTeamIds(config),
+  ]);
+  identityCache = { userEmail, myTeamIds, fetchedAt: Date.now() };
+  return identityCache;
+}
+
 // ── VcsProvider implementation ──────────────────────────────────────
 
 export const azureDevOpsProvider: VcsProvider = {
@@ -269,7 +362,12 @@ export const azureDevOpsProvider: VcsProvider = {
     project: Record<string, string>
   ): Promise<BranchPrMap> {
     const config = toAdoConfig(auth, project);
-    const prs = await fetchActivePullRequests(config, project);
+
+    const { userEmail, myTeamIds } = await getCachedIdentity(config);
+    const teamContext =
+      userEmail && myTeamIds.size > 0 ? { myTeamIds, userEmail } : undefined;
+
+    const prs = await fetchActivePullRequests(config, project, teamContext);
 
     const withDetails = await Promise.all(
       prs.map(async (pr) => {
