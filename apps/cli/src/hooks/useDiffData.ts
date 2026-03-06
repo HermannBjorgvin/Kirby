@@ -1,0 +1,207 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { DiffFile } from '../types.js';
+
+const execFile = promisify(execFileCb);
+
+function mapNameStatus(letter: string): DiffFile['status'] {
+  const code = letter.charAt(0);
+  switch (code) {
+    case 'A':
+      return 'added';
+    case 'D':
+      return 'removed';
+    case 'R':
+      return 'renamed';
+    case 'C':
+      return 'copied';
+    case 'T':
+      return 'changed';
+    default:
+      return 'modified';
+  }
+}
+
+async function fetchAllFiles(
+  sourceBranch: string,
+  targetBranch: string
+): Promise<DiffFile[]> {
+  const sourceRef = `origin/${sourceBranch}`;
+  const targetRef = `origin/${targetBranch}`;
+
+  // Ensure we have both refs locally
+  await execFile('git', ['fetch', 'origin', sourceBranch, targetBranch], {
+    timeout: 30_000,
+  });
+
+  // Get additions/deletions per file (binary files show - - for stats)
+  const { stdout: numstatOut } = await execFile(
+    'git',
+    ['diff', '--numstat', `${targetRef}...${sourceRef}`],
+    { maxBuffer: 10 * 1024 * 1024 }
+  );
+
+  // Get status letter per file
+  const { stdout: nameStatusOut } = await execFile(
+    'git',
+    ['diff', '--name-status', `${targetRef}...${sourceRef}`],
+    { maxBuffer: 10 * 1024 * 1024 }
+  );
+
+  // Parse --numstat: "<added>\t<deleted>\t<file>" or "-\t-\t<file>" for binary
+  const numstatMap = new Map<
+    string,
+    { additions: number; deletions: number; binary: boolean }
+  >();
+  for (const line of numstatOut.trim().split('\n')) {
+    if (!line) continue;
+    const parts = line.split('\t');
+    const isBinary = parts[0] === '-' && parts[1] === '-';
+    // For renames: "old => new" or "{old => new}" path
+    const filename = parts.slice(2).join('\t');
+    numstatMap.set(filename, {
+      additions: isBinary ? 0 : Number(parts[0]),
+      deletions: isBinary ? 0 : Number(parts[1]),
+      binary: isBinary,
+    });
+  }
+
+  // Parse --name-status: "<status>\t<file>" or "<status>\t<old>\t<new>" for renames
+  const files: DiffFile[] = [];
+  for (const line of nameStatusOut.trim().split('\n')) {
+    if (!line) continue;
+    const parts = line.split('\t');
+    const statusLetter = parts[0];
+    const status = mapNameStatus(statusLetter);
+
+    let filename: string;
+    let previousFilename: string | undefined;
+
+    if (statusLetter.startsWith('R') || statusLetter.startsWith('C')) {
+      // Rename/copy: status\told\tnew
+      previousFilename = parts[1];
+      filename = parts[2];
+    } else {
+      filename = parts[1];
+    }
+
+    // Look up numstat by filename (for renames, numstat uses "old => new" format)
+    // Try exact match first, then search for a line containing the filename
+    let stats = numstatMap.get(filename);
+    if (!stats) {
+      for (const [key, val] of numstatMap) {
+        if (key.includes(filename) || (previousFilename && key.includes(previousFilename))) {
+          stats = val;
+          break;
+        }
+      }
+    }
+
+    files.push({
+      filename,
+      status,
+      additions: stats?.additions ?? 0,
+      deletions: stats?.deletions ?? 0,
+      binary: stats?.binary ?? false,
+      previousFilename,
+    });
+  }
+
+  return files;
+}
+
+async function fetchDiffText(
+  sourceBranch: string,
+  targetBranch: string
+): Promise<string> {
+  const sourceRef = `origin/${sourceBranch}`;
+  const targetRef = `origin/${targetBranch}`;
+
+  const { stdout } = await execFile(
+    'git',
+    ['diff', `${targetRef}...${sourceRef}`],
+    { maxBuffer: 50 * 1024 * 1024 }
+  );
+  return stdout;
+}
+
+export function useDiffData(
+  prNumber: number | null,
+  sourceBranch: string,
+  targetBranch: string
+) {
+  const [files, setFiles] = useState<DiffFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [diffText, setDiffText] = useState<string | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const cacheRef = useRef<Map<number, DiffFile[]>>(new Map());
+  const diffCacheRef = useRef<Map<number, string>>(new Map());
+
+  const loadFiles = useCallback(async () => {
+    if (!prNumber || !sourceBranch || !targetBranch) return;
+
+    const cached = cacheRef.current.get(prNumber);
+    if (cached) {
+      setFiles(cached);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fetchAllFiles(sourceBranch, targetBranch);
+      cacheRef.current.set(prNumber, result);
+      setFiles(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [prNumber, sourceBranch, targetBranch]);
+
+  const loadDiffText = useCallback(async () => {
+    if (!prNumber || !sourceBranch || !targetBranch) return;
+
+    const cached = diffCacheRef.current.get(prNumber);
+    if (cached) {
+      setDiffText(cached);
+      return;
+    }
+
+    setDiffLoading(true);
+    try {
+      const text = await fetchDiffText(sourceBranch, targetBranch);
+      diffCacheRef.current.set(prNumber, text);
+      setDiffText(text);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+    } finally {
+      setDiffLoading(false);
+    }
+  }, [prNumber, sourceBranch, targetBranch]);
+
+  // Auto-load files when prNumber changes
+  useEffect(() => {
+    if (prNumber) {
+      loadFiles();
+    } else {
+      setFiles([]);
+      setDiffText(null);
+    }
+  }, [prNumber, loadFiles]);
+
+  return {
+    files,
+    loading,
+    error,
+    diffText,
+    diffLoading,
+    loadDiffText,
+    loadFiles,
+  };
+}
