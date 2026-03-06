@@ -26,7 +26,10 @@ export const ReviewDetailPane = memo(function ReviewDetailPane({
         comments · {(pr.reviewers ?? []).length} reviewers
       </Text>
       <Box marginTop={1}>
-        <Text dimColor>(detail view coming soon)</Text>
+        <Text dimColor>
+          press <Text color="cyan">d</Text> to view diff ·{' '}
+          <Text color="cyan">enter</Text> to review with Claude
+        </Text>
       </Box>
     </Box>
   );

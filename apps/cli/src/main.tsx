@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import type {
@@ -16,6 +16,8 @@ import { SettingsPanel } from './components/SettingsPanel.js';
 import { ReviewsSidebar } from './components/ReviewsSidebar.js';
 import { ReviewDetailPane } from './components/ReviewDetailPane.js';
 import { ReviewConfirmPane } from './components/ReviewConfirmPane.js';
+import { DiffFileList } from './components/DiffFileList.js';
+import { DiffViewer } from './components/DiffViewer.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { usePrData } from './hooks/usePrData.js';
 import { useRemoteSync } from './hooks/useRemoteSync.js';
@@ -29,15 +31,21 @@ import { useDeleteConfirmation } from './hooks/useDeleteConfirmation.js';
 import { useSettings } from './hooks/useSettings.js';
 import { useSessionManager } from './hooks/useSessionManager.js';
 import { useReviewManager } from './hooks/useReviewManager.js';
+import { useDiffData } from './hooks/useDiffData.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
   handleSettingsInput,
   handleGlobalInput,
   handleReviewConfirmInput,
+  handleDiffFileListInput,
+  handleDiffViewerInput,
 } from './input-handlers.js';
 import type { AppContext } from './input-handlers.js';
 import { killAll } from './pty-registry.js';
+import { partitionFiles } from './utils/file-classifier.js';
+import { parseUnifiedDiff } from './utils/diff-parser.js';
+import { renderDiffLines } from './utils/diff-renderer.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 
 // ── Provider registry ──────────────────────────────────────────────
@@ -215,6 +223,46 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     categorizedReviews.waitingForAuthor.length +
     categorizedReviews.approvedByYou.length;
 
+  // Flatten categorized reviews and pick the selected one
+  const allReviewPrs = useMemo(
+    () => [
+      ...categorizedReviews.needsReview,
+      ...categorizedReviews.waitingForAuthor,
+      ...categorizedReviews.approvedByYou,
+    ],
+    [categorizedReviews]
+  );
+  const selectedReviewPr = allReviewPrs[review.reviewSelectedIndex];
+  const reviewSessionName = selectedReviewPr
+    ? `review-pr-${selectedReviewPr.id}`
+    : null;
+
+  // ── Diff data for review pane ───────────────────────────────────
+  const diffPrNumber = selectedReviewPr?.id ?? null;
+  const diffData = useDiffData(
+    review.reviewPane === 'diff' || review.reviewPane === 'diff-file'
+      ? diffPrNumber
+      : null,
+    selectedReviewPr?.sourceBranch ?? '',
+    selectedReviewPr?.targetBranch ?? ''
+  );
+  const { normal: diffNormalFiles, skipped: diffSkippedFiles } = useMemo(
+    () => partitionFiles(diffData.files),
+    [diffData.files]
+  );
+  const diffDisplayCount = review.showSkipped
+    ? diffNormalFiles.length + diffSkippedFiles.length
+    : diffNormalFiles.length;
+
+  // Compute total rendered lines for the currently viewed file (for scroll bounds)
+  const diffTotalLines = useMemo(() => {
+    if (!review.diffViewFile || !diffData.diffText) return 0;
+    const allDiffs = parseUnifiedDiff(diffData.diffText);
+    const fileDiffLines = allDiffs.get(review.diffViewFile);
+    if (!fileDiffLines) return 0;
+    return renderDiffLines(fileDiffLines, paneCols).length;
+  }, [review.diffViewFile, diffData.diffText, paneCols]);
+
   useEffect(() => {
     if (
       reviewTotalItems > 0 &&
@@ -253,19 +301,21 @@ function App({ forceSetup }: { forceSetup: boolean }) {
       : undefined;
   const selectedName = selectedSession?.name ?? null;
 
-  // Flatten categorized reviews and pick the selected one
-  const allReviewPrs = useMemo(
-    () => [
-      ...categorizedReviews.needsReview,
-      ...categorizedReviews.waitingForAuthor,
-      ...categorizedReviews.approvedByYou,
-    ],
-    [categorizedReviews]
-  );
-  const selectedReviewPr = allReviewPrs[review.reviewSelectedIndex];
-  const reviewSessionName = selectedReviewPr
-    ? `review-pr-${selectedReviewPr.id}`
-    : null;
+  // Reset review pane when selected PR changes (unless session is active)
+  const prevReviewPrId = useRef(selectedReviewPr?.id);
+  useEffect(() => {
+    if (selectedReviewPr?.id !== prevReviewPrId.current) {
+      prevReviewPrId.current = selectedReviewPr?.id;
+      if (
+        selectedReviewPr &&
+        review.reviewSessionStarted.has(selectedReviewPr.id)
+      ) {
+        review.setReviewPane('terminal');
+      } else {
+        review.setReviewPane('detail');
+      }
+    }
+  }, [selectedReviewPr?.id, review.reviewSessionStarted]);
 
   useEffect(() => {
     if (totalItems > 0 && sessionMgr.selectedIndex >= totalItems) {
@@ -330,6 +380,20 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     setReviewConfirm: review.setReviewConfirm,
     reviewInstruction: review.reviewInstruction,
     setReviewInstruction: review.setReviewInstruction,
+    reviewPane: review.reviewPane,
+    setReviewPane: review.setReviewPane,
+    diffFileIndex: review.diffFileIndex,
+    setDiffFileIndex: review.setDiffFileIndex,
+    diffFiles: diffData.files,
+    diffDisplayCount,
+    showSkipped: review.showSkipped,
+    setShowSkipped: review.setShowSkipped,
+    diffViewFile: review.diffViewFile,
+    setDiffViewFile: review.setDiffViewFile,
+    diffScrollOffset: review.diffScrollOffset,
+    setDiffScrollOffset: review.setDiffScrollOffset,
+    diffTotalLines,
+    loadDiffText: diffData.loadDiffText,
     setCreating: branchPicker.setCreating,
     setBranchFilter: branchPicker.setBranchFilter,
     setBranchIndex: branchPicker.setBranchIndex,
@@ -365,6 +429,10 @@ function App({ forceSetup }: { forceSetup: boolean }) {
       return handleConfirmDeleteInput(input, key, ctx);
     if (settings.settingsOpen) return handleSettingsInput(input, key, ctx);
     if (review.reviewConfirm) return handleReviewConfirmInput(input, key, ctx);
+    if (nav.activeTab === 'reviews' && review.reviewPane === 'diff')
+      return handleDiffFileListInput(input, key, ctx);
+    if (nav.activeTab === 'reviews' && review.reviewPane === 'diff-file')
+      return handleDiffViewerInput(input, key, ctx);
     handleGlobalInput(input, key, ctx);
   });
 
@@ -457,9 +525,35 @@ function App({ forceSetup }: { forceSetup: boolean }) {
                   />
                 );
               }
+              if (review.reviewPane === 'diff') {
+                return (
+                  <DiffFileList
+                    files={diffData.files}
+                    selectedIndex={review.diffFileIndex}
+                    paneRows={paneRows}
+                    paneCols={paneCols}
+                    loading={diffData.loading}
+                    error={diffData.error}
+                    showSkipped={review.showSkipped}
+                  />
+                );
+              }
+              if (review.reviewPane === 'diff-file' && review.diffViewFile) {
+                return (
+                  <DiffViewer
+                    filename={review.diffViewFile}
+                    diffText={diffData.diffText}
+                    scrollOffset={review.diffScrollOffset}
+                    paneRows={paneRows}
+                    paneCols={paneCols}
+                    loading={diffData.diffLoading}
+                  />
+                );
+              }
               if (
-                selectedReviewPr &&
-                review.reviewSessionStarted.has(selectedReviewPr.id)
+                review.reviewPane === 'terminal' ||
+                (selectedReviewPr &&
+                  review.reviewSessionStarted.has(selectedReviewPr.id))
               ) {
                 return (
                   <TerminalView

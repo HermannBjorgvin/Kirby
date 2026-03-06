@@ -9,7 +9,7 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { AgentSession, ActiveTab, Focus } from './types.js';
+import type { AgentSession, ActiveTab, Focus, ReviewPane, DiffFile } from './types.js';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
@@ -20,6 +20,7 @@ import {
   type SettingsField,
 } from './components/SettingsPanel.js';
 import type { OperationName } from './hooks/useAsyncOperation.js';
+import { partitionFiles } from './utils/file-classifier.js';
 
 export interface AppContext {
   // State
@@ -71,6 +72,22 @@ export interface AppContext {
   ) => void;
   reviewInstruction: string;
   setReviewInstruction: (v: string | ((prev: string) => string)) => void;
+
+  // Diff viewer state
+  reviewPane: ReviewPane;
+  setReviewPane: (v: ReviewPane) => void;
+  diffFileIndex: number;
+  setDiffFileIndex: (v: number | ((prev: number) => number)) => void;
+  diffFiles: DiffFile[];
+  diffDisplayCount: number;
+  showSkipped: boolean;
+  setShowSkipped: (v: boolean | ((prev: boolean) => boolean)) => void;
+  diffViewFile: string | null;
+  setDiffViewFile: (v: string | null) => void;
+  diffScrollOffset: number;
+  setDiffScrollOffset: (v: number | ((prev: number) => number)) => void;
+  diffTotalLines: number;
+  loadDiffText: () => Promise<void>;
 
   // Actions
   setCreating: (v: boolean) => void;
@@ -177,6 +194,7 @@ export function handleReviewConfirmInput(
   if (key.escape) {
     ctx.setReviewConfirm(null);
     ctx.setReviewInstruction('');
+    ctx.setReviewPane('detail');
     return;
   }
 
@@ -186,6 +204,7 @@ export function handleReviewConfirmInput(
         if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx, ctx.reviewInstruction || undefined);
         }
+        ctx.setReviewPane('terminal');
         ctx.setFocus('terminal');
         ctx.setReviewReconnectKey((k) => k + 1);
         ctx.setReviewConfirm(null);
@@ -226,6 +245,7 @@ export function handleReviewConfirmInput(
         if (!hasSession(ctx.reviewSessionName!)) {
           await startReviewSession(ctx);
         }
+        ctx.setReviewPane('terminal');
         ctx.setFocus('terminal');
         ctx.setReviewReconnectKey((k) => k + 1);
         ctx.setReviewConfirm(null);
@@ -571,13 +591,20 @@ export function handleReviewsSidebarInput(
     ctx.setSettingsFieldIndex(0);
     return;
   }
+  if (input === 'd' && ctx.selectedReviewPr) {
+    ctx.setReviewPane('diff');
+    ctx.setDiffFileIndex(0);
+    return;
+  }
   if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
     ctx.runOp('start-session', async () => {
       if (hasSession(ctx.reviewSessionName!)) {
+        ctx.setReviewPane('terminal');
         ctx.setFocus('terminal');
         ctx.setReviewReconnectKey((k) => k + 1);
         return;
       }
+      ctx.setReviewPane('confirm');
       ctx.setReviewConfirm({ pr: ctx.selectedReviewPr!, selectedOption: 0 });
     });
     return;
@@ -590,6 +617,123 @@ export function handleReviewsSidebarInput(
   }
   if (input === 'k' || key.upArrow) {
     ctx.setReviewSelectedIndex((i) => Math.max(i - 1, 0));
+    return;
+  }
+}
+
+export function handleDiffFileListInput(
+  input: string,
+  key: Key,
+  ctx: AppContext
+): void {
+  if (key.escape) {
+    ctx.setReviewPane('detail');
+    return;
+  }
+
+  if (input === 's') {
+    ctx.setShowSkipped((v) => !v);
+    ctx.setDiffFileIndex(0);
+    return;
+  }
+
+  if (input === 'j' || key.downArrow) {
+    ctx.setDiffFileIndex((i) => Math.min(i + 1, ctx.diffDisplayCount - 1));
+    return;
+  }
+  if (input === 'k' || key.upArrow) {
+    ctx.setDiffFileIndex((i) => Math.max(i - 1, 0));
+    return;
+  }
+
+  if (key.return && ctx.diffDisplayCount > 0) {
+    const { normal, skipped } = partitionFiles(ctx.diffFiles);
+    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
+    const file = displayFiles[ctx.diffFileIndex];
+    if (file) {
+      ctx.setDiffViewFile(file.filename);
+      ctx.setDiffScrollOffset(0);
+      ctx.setReviewPane('diff-file');
+      ctx.loadDiffText();
+    }
+    return;
+  }
+}
+
+export function handleDiffViewerInput(
+  input: string,
+  key: Key,
+  ctx: AppContext
+): void {
+  if (key.escape) {
+    ctx.setReviewPane('diff');
+    ctx.setDiffViewFile(null);
+    return;
+  }
+
+  const viewportHeight = Math.max(1, ctx.paneRows - 3);
+  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+
+  // Scroll down
+  if (input === 'j' || key.downArrow) {
+    ctx.setDiffScrollOffset((o) => Math.min(o + 1, maxScroll));
+    return;
+  }
+  // Scroll up
+  if (input === 'k' || key.upArrow) {
+    ctx.setDiffScrollOffset((o) => Math.max(o - 1, 0));
+    return;
+  }
+  // Half-page down
+  if (input === 'd') {
+    const half = Math.floor(viewportHeight / 2);
+    ctx.setDiffScrollOffset((o) => Math.min(o + half, maxScroll));
+    return;
+  }
+  // Half-page up
+  if (input === 'u') {
+    const half = Math.floor(viewportHeight / 2);
+    ctx.setDiffScrollOffset((o) => Math.max(o - half, 0));
+    return;
+  }
+  // Top
+  if (input === 'g') {
+    ctx.setDiffScrollOffset(0);
+    return;
+  }
+  // Bottom
+  if (input === 'G') {
+    ctx.setDiffScrollOffset(maxScroll);
+    return;
+  }
+  // Next file
+  if (input === 'n') {
+    const { normal, skipped } = partitionFiles(ctx.diffFiles);
+    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
+    const currentIdx = displayFiles.findIndex(
+      (f) => f.filename === ctx.diffViewFile
+    );
+    if (currentIdx >= 0 && currentIdx < displayFiles.length - 1) {
+      const nextFile = displayFiles[currentIdx + 1]!;
+      ctx.setDiffViewFile(nextFile.filename);
+      ctx.setDiffFileIndex(currentIdx + 1);
+      ctx.setDiffScrollOffset(0);
+    }
+    return;
+  }
+  // Previous file
+  if (input === 'N') {
+    const { normal, skipped } = partitionFiles(ctx.diffFiles);
+    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
+    const currentIdx = displayFiles.findIndex(
+      (f) => f.filename === ctx.diffViewFile
+    );
+    if (currentIdx > 0) {
+      const prevFile = displayFiles[currentIdx - 1]!;
+      ctx.setDiffViewFile(prevFile.filename);
+      ctx.setDiffFileIndex(currentIdx - 1);
+      ctx.setDiffScrollOffset(0);
+    }
     return;
   }
 }
@@ -645,9 +789,11 @@ export function handleGlobalInput(
     ) {
       ctx.runOp('start-session', async () => {
         if (hasSession(ctx.reviewSessionName!)) {
+          ctx.setReviewPane('terminal');
           ctx.setReviewReconnectKey((k) => k + 1);
           ctx.setFocus('terminal');
         } else {
+          ctx.setReviewPane('confirm');
           ctx.setReviewConfirm({
             pr: ctx.selectedReviewPr!,
             selectedOption: 0,
@@ -656,6 +802,7 @@ export function handleGlobalInput(
       });
     } else if (ctx.focus === 'terminal') {
       ctx.setFocus('sidebar');
+      ctx.setReviewPane('detail');
     }
     return;
   }

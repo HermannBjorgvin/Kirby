@@ -105,6 +105,9 @@ export const ReviewsSidebar = memo(function ReviewsSidebar({
           <Text color="cyan">j/k</Text> navigate
         </Text>
         <Text dimColor>
+          <Text color="cyan">d</Text> view diff
+        </Text>
+        <Text dimColor>
           <Text color="cyan">enter</Text> review with Claude
         </Text>
         <Text dimColor>
