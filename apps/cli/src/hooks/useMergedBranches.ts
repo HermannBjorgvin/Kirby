@@ -48,10 +48,12 @@ export function useMergedBranches(
       // Auto-delete merged branches
       if (autoDeleteOnMerge) {
         for (const branch of merged) {
-          const check = await canRemoveBranch(branch);
+          const check = await canRemoveBranch(branch, true);
           if (cancelled || !mountedRef.current) return;
           if (check.safe) {
             onAutoDeleteRef.current(branchToSessionName(branch), branch);
+          } else {
+            logError('useMergedBranches', `Skipping auto-delete of ${branch}: ${check.reason}`);
           }
         }
       }

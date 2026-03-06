@@ -200,6 +200,30 @@ describe('canRemoveBranch', () => {
       safe: true,
     });
   });
+
+  it('should skip unpushed check when confirmedMerged is true', async () => {
+    // Only the status check runs (returns clean), no git log call
+    mockExec.mockResolvedValueOnce(resolve(''));
+    expect(await canRemoveBranch('feature/squash-merged', true)).toEqual({
+      safe: true,
+    });
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
+  it('should still reject uncommitted changes when confirmedMerged is true', async () => {
+    mockExec.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
+    expect(await canRemoveBranch('feature/dirty-merged', true)).toEqual({
+      safe: false,
+      reason: 'uncommitted changes',
+    });
+  });
+
+  it('should still reject protected branches when confirmedMerged is true', async () => {
+    expect(await canRemoveBranch('master', true)).toEqual({
+      safe: false,
+      reason: 'protected branch',
+    });
+  });
 });
 
 describe('parseWorktrees', () => {

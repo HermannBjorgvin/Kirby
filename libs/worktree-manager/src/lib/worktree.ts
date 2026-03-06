@@ -110,7 +110,8 @@ export async function removeWorktree(branch: string): Promise<boolean> {
  * Returns { safe: true } or { safe: false, reason: string }.
  */
 export async function canRemoveBranch(
-  branch: string
+  branch: string,
+  confirmedMerged = false
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
   // Protected branch guard
   if (
@@ -136,17 +137,19 @@ export async function canRemoveBranch(
     // Worktree may not exist — skip this check
   }
 
-  // Not pushed to upstream
-  try {
-    const { stdout: unpushed } = await exec(
-      `git log "${branch}" --not --remotes -1`,
-      { encoding: 'utf8' }
-    );
-    if (unpushed.trim().length > 0) {
-      return { safe: false, reason: 'not pushed to upstream' };
+  // Not pushed to upstream — skip when the VCS provider already confirmed merge
+  if (!confirmedMerged) {
+    try {
+      const { stdout: unpushed } = await exec(
+        `git log "${branch}" --not --remotes -1`,
+        { encoding: 'utf8' }
+      );
+      if (unpushed.trim().length > 0) {
+        return { safe: false, reason: 'not pushed to upstream' };
+      }
+    } catch {
+      // Branch may not have remote tracking — skip
     }
-  } catch {
-    // Branch may not have remote tracking — skip
   }
 
   return { safe: true };
