@@ -26,6 +26,13 @@ export const BOOL_PRESETS: { name: string; value: string | null }[] = [
   { name: 'On', value: 'true' },
 ];
 
+export const EDITOR_PRESETS: { name: string; value: string | null }[] = [
+  { name: 'VS Code', value: 'code' },
+  { name: 'VS Code Insiders', value: 'code-insiders' },
+  { name: 'Sublime Text', value: 'subl' },
+  { name: 'Custom', value: null },
+];
+
 export const SYNC_INTERVAL_PRESETS: { name: string; value: string | null }[] = [
   { name: '1 hour', value: '3600000' },
   { name: '5 min', value: '300000' },
@@ -44,6 +51,20 @@ export function buildSettingsFields(
       key: 'aiCommand',
       presets: AI_PRESETS,
       configBag: 'global',
+    },
+    {
+      label: 'Editor',
+      key: 'editor',
+      presets: EDITOR_PRESETS,
+      configBag: 'global',
+    },
+    {
+      label: 'Editor (project)',
+      key: 'editor',
+      description:
+        'Override editor for this project (leave empty to inherit global)',
+      presets: EDITOR_PRESETS,
+      configBag: 'project',
     },
     { label: 'Email', key: 'email', configBag: 'project' },
   ];

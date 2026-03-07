@@ -7,7 +7,8 @@ export type OperationName =
   | 'create-worktree'
   | 'delete'
   | 'check-delete'
-  | 'start-session';
+  | 'start-session'
+  | 'open-editor';
 
 export function useAsyncOperation() {
   const [inFlight, setInFlight] = useState<Set<OperationName>>(new Set());
