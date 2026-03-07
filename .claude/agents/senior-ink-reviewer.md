@@ -111,8 +111,15 @@ For each issue, provide:
 This is an NX monorepo with:
 
 - `apps/cli/` — Ink TUI application (ESM, React 19)
-- `libs/tmux-manager/` — tmux command wrapper + session persistence
-- `libs/shared-types/` — TypeScript interfaces
+  - `src/components/` — Shared components (SidebarLayout, TerminalView, TabBar, etc.)
+  - `src/screens/sessions/` — Sessions tab (SessionsTab, Sidebar, BranchPicker, sessions-input)
+  - `src/screens/reviews/` — Reviews tab (ReviewsTab, ReviewsSidebar, ReviewPane, reviews-input)
+  - `src/context/` — React contexts (AppState, Session, Review, Config)
+  - `src/hooks/` — Custom hooks (useTerminal, useDiffData)
+- `libs/worktree-manager/` — Git worktree and branch operations
+- `libs/terminal/` — PTY session + terminal emulation (node-pty + @xterm/headless)
+- `libs/vcs-core/` — VCS provider abstraction (config, PR types)
+- `libs/vcs-github/`, `libs/vcs-azure-devops/` — VCS provider implementations
 
 The project uses Ink v6 with React 19, ESM-only. Keep this in mind — some patterns from older Ink versions or CJS-era React don't apply.
 
@@ -133,7 +140,7 @@ Examples of what to record:
 
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `/home/hermann/Documents/Code/JBT Marel/workflow-manager/.claude/agent-memory/senior-ink-reviewer/`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/senior-ink-reviewer/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 

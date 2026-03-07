@@ -60,14 +60,20 @@
 ## Project Structure
 
 ```
-apps/cli/              — Ink TUI application (ESM, React 19)
-  src/main.tsx         — Entry point, root component
-  src/pty-registry.ts  — PTY session lifecycle (spawn, get, kill)
-libs/worktree-manager/ — Git worktree and branch operations
-  src/lib/worktree.ts  — Worktree CRUD, branch utils, conflict checks
-libs/terminal/         — PTY session + terminal emulation (node-pty + @xterm/headless)
-  src/lib/pty-session.ts       — node-pty wrapper
-  src/lib/terminal-emulator.ts — @xterm/headless wrapper with ANSI rendering
+apps/cli/                        — Ink TUI application (ESM, React 19)
+  src/main.tsx                   — Entry point, root component
+  src/pty-registry.ts            — PTY session lifecycle (spawn, get, kill)
+  src/input-handlers.ts          — Shared input types (NavValue, etc.) + helpers (handleTabSwitchInput)
+  src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
+  src/screens/sessions/          — Sessions tab (SessionsTab, Sidebar, BranchPicker, sessions-input)
+  src/screens/reviews/           — Reviews tab (ReviewsTab, ReviewsSidebar, ReviewPane, reviews-input)
+  src/context/                   — React contexts (AppState, Session, Review, Config)
+  src/hooks/                     — Custom hooks (useTerminal, useDiffData)
+libs/worktree-manager/           — Git worktree and branch operations
+  src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
+libs/terminal/                   — PTY session + terminal emulation (node-pty + @xterm/headless)
+  src/lib/pty-session.ts         — node-pty wrapper
+  src/lib/terminal-emulator.ts   — @xterm/headless wrapper with ANSI rendering
 ```
 
 ## Known Decisions & Learnings
