@@ -1,13 +1,16 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import { truncate } from '../utils/truncate.js';
 
 export const PrBadge = memo(function PrBadge({
   pr,
   sidebarWidth,
+  author,
 }: {
   pr: PullRequestInfo | null | undefined;
   sidebarWidth: number;
+  author?: string;
 }) {
   if (pr == null) {
     return <Text dimColor>{'  (no PR)'}</Text>;
@@ -60,27 +63,38 @@ export const PrBadge = memo(function PrBadge({
   const innerWidth = Math.max(10, sidebarWidth - 2);
 
   return (
-    <Box width={innerWidth}>
-      <Text>
-        <Text dimColor>{'  '}</Text>
-        <Text color="blue">
-          {pr.url ? `\x1b]8;;${pr.url}\x07#${pr.id}\x1b]8;;\x07` : `#${pr.id}`}
+    <Box flexDirection="column" width={innerWidth}>
+      <Box height={1}>
+        <Text>
+          <Text dimColor>{'  '}</Text>
+          <Text color="blue">
+            {pr.url
+              ? `\x1b]8;;${pr.url}\x07#${pr.id}\x1b]8;;\x07`
+              : `#${pr.id}`}
+          </Text>
+          {reviewText ? (
+            <Text color={reviewColor}>{`  ${reviewText}`}</Text>
+          ) : null}
+          {activeComments > 0 ? (
+            <Text color="yellow">{`  ${activeComments} comment${
+              activeComments !== 1 ? 's' : ''
+            }`}</Text>
+          ) : null}
         </Text>
-        {reviewText ? (
-          <Text color={reviewColor}>{`  ${reviewText}`}</Text>
+        {statusEmoji || buildEmoji ? (
+          <Box flexGrow={1} justifyContent="flex-end">
+            <Text>
+              {buildEmoji ? `🔧${buildEmoji}` : ''}
+              {buildEmoji && statusEmoji ? ' ' : ''}
+              {statusEmoji}
+            </Text>
+          </Box>
         ) : null}
-        {activeComments > 0 ? (
-          <Text color="yellow">{`  ${activeComments} comment${
-            activeComments !== 1 ? 's' : ''
-          }`}</Text>
-        ) : null}
-      </Text>
-      {statusEmoji || buildEmoji ? (
-        <Box flexGrow={1} justifyContent="flex-end">
-          <Text>
-            {buildEmoji ? `🔧${buildEmoji}` : ''}
-            {buildEmoji && statusEmoji ? ' ' : ''}
-            {statusEmoji}
+      </Box>
+      {author ? (
+        <Box>
+          <Text dimColor>
+            {'  '}by {truncate(author, innerWidth - 5)}
           </Text>
         </Box>
       ) : null}
