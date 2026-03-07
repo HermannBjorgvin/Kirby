@@ -1,0 +1,150 @@
+import { useMemo } from 'react';
+import { useInput } from 'ink';
+import { Sidebar } from '../components/Sidebar.js';
+import { TerminalView } from '../components/TerminalView.js';
+import { BranchPicker } from '../components/BranchPicker.js';
+import { SettingsPanel } from '../components/SettingsPanel.js';
+import { useAppState } from '../context/AppStateContext.js';
+import { useSessionContext } from '../context/SessionContext.js';
+import { useConfig } from '../context/ConfigContext.js';
+import {
+  handleBranchPickerInput,
+  handleConfirmDeleteInput,
+  handleSettingsInput,
+  handleGlobalInput,
+} from '../input-handlers.js';
+interface SessionsTabProps {
+  reconnectKey: number;
+  setReconnectKey: (v: (prev: number) => number) => void;
+  terminalContent: string;
+  terminalFocused: boolean;
+  showOnboarding: boolean;
+  exit: () => void;
+}
+
+export function SessionsTab({
+  reconnectKey,
+  setReconnectKey,
+  terminalContent,
+  terminalFocused,
+  showOnboarding,
+  exit,
+}: SessionsTabProps) {
+  const appState = useAppState();
+  const { nav, asyncOps, branchPicker, deleteConfirm, settings, terminal } =
+    appState;
+  const sessionCtx = useSessionContext();
+  const configCtx = useConfig();
+
+  const globalCtx = useMemo(
+    () => ({
+      nav,
+      config: configCtx,
+      sessions: sessionCtx,
+      branchPicker,
+      deleteConfirm,
+      settings,
+      review: null as never,
+      asyncOps,
+      terminal,
+      selectedName: sessionCtx.selectedName,
+      selectedSession: sessionCtx.selectedSession,
+      selectedIndex: sessionCtx.clampedSelectedIndex,
+      totalItems: sessionCtx.totalItems,
+      orphanPrs: sessionCtx.orphanPrs,
+      reviewSelectedIndex: 0,
+      reviewTotalItems: 0,
+      reviewSessionName: null,
+      selectedReviewPr: undefined,
+      reconnectKey,
+      setReconnectKey,
+      triggerSync: sessionCtx.triggerSync,
+      refreshPr: sessionCtx.refreshPr,
+      exit,
+    }),
+    [
+      nav,
+      configCtx,
+      sessionCtx,
+      branchPicker,
+      deleteConfirm,
+      settings,
+      asyncOps,
+      terminal,
+      reconnectKey,
+      setReconnectKey,
+      exit,
+    ]
+  );
+
+  useInput(
+    (input, key) => {
+      if (terminalFocused) return;
+      if (showOnboarding) return;
+      if (branchPicker.creating)
+        return handleBranchPickerInput(input, key, {
+          branchPicker,
+          sessions: sessionCtx,
+          asyncOps,
+          terminal,
+          config: configCtx,
+        });
+      if (deleteConfirm.confirmDelete)
+        return handleConfirmDeleteInput(input, key, {
+          deleteConfirm,
+          sessions: sessionCtx,
+          asyncOps,
+        });
+      if (settings.settingsOpen)
+        return handleSettingsInput(input, key, {
+          settings,
+          config: configCtx,
+          sessions: sessionCtx,
+        });
+      handleGlobalInput(input, key, globalCtx);
+    },
+    { isActive: nav.activeTab === 'sessions' }
+  );
+
+  return (
+    <>
+      <Sidebar
+        sessions={sessionCtx.sortedSessions}
+        selectedIndex={sessionCtx.clampedSelectedIndex}
+        focused={
+          nav.focus === 'sidebar' &&
+          !branchPicker.creating &&
+          !settings.settingsOpen
+        }
+        sessionBranchMap={sessionCtx.sessionBranchMap}
+        sessionPrMap={sessionCtx.sessionPrMap}
+        sidebarWidth={appState.sidebarWidth}
+        orphanPrs={sessionCtx.orphanPrs}
+        mergedBranches={sessionCtx.mergedBranches}
+        conflictCounts={sessionCtx.conflictCounts}
+        conflictsLoading={sessionCtx.conflictsLoading}
+      />
+      {settings.settingsOpen && (
+        <SettingsPanel
+          fieldIndex={settings.settingsFieldIndex}
+          editingField={settings.editingField}
+          editBuffer={settings.editBuffer}
+        />
+      )}
+      {!settings.settingsOpen && branchPicker.creating && (
+        <BranchPicker
+          filter={branchPicker.branchFilter}
+          branches={branchPicker.branches}
+          selectedIndex={branchPicker.branchIndex}
+          paneRows={terminal.paneRows}
+        />
+      )}
+      {!settings.settingsOpen && !branchPicker.creating && (
+        <TerminalView
+          content={terminalContent}
+          focused={nav.focus === 'terminal'}
+        />
+      )}
+    </>
+  );
+}
