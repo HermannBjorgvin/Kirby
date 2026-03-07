@@ -46,6 +46,7 @@ interface RawGlobalConfig {
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
   mergePollInterval?: number;
+  editor?: string;
 }
 
 interface RawProjectConfig {
@@ -55,6 +56,7 @@ interface RawProjectConfig {
   email?: string;
   vendor?: string;
   vendorProject?: Record<string, string>;
+  editor?: string;
 }
 
 // ── Migration from old flat format ─────────────────────────────────
@@ -131,6 +133,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     autoDeleteOnMerge: global.autoDeleteOnMerge,
     autoRebase: global.autoRebase,
     mergePollInterval: global.mergePollInterval,
+    editor: project.editor ?? global.editor,
   };
 }
 

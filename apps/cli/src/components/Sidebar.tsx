@@ -184,6 +184,9 @@ export function Sidebar({
         <Text dimColor>
           <Text color="cyan">u</Text> rebase onto master
         </Text>
+        <Text dimColor>
+          <Text color="cyan">.</Text> open in editor
+        </Text>
         {vcsConfigured ? (
           <>
             <Text dimColor>

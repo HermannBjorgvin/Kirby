@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import {
   createWorktree,
@@ -9,7 +10,13 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { AgentSession, ActiveTab, Focus, ReviewPane, DiffFile } from './types.js';
+import type {
+  AgentSession,
+  ActiveTab,
+  Focus,
+  ReviewPane,
+  DiffFile,
+} from './types.js';
 import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
@@ -530,6 +537,28 @@ export function handleSidebarInput(
         error: 'Failed to fetch from origin',
       } as const;
       ctx.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
+    });
+    return;
+  }
+  if (input === '.' && ctx.selectedSession) {
+    const sessionName = ctx.selectedSession.name;
+    ctx.runOp('open-editor', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      if (!wt) {
+        ctx.flashStatus('No worktree found for selected session');
+        return;
+      }
+      const editor =
+        ctx.config.editor || process.env.VISUAL || process.env.EDITOR;
+      if (!editor) {
+        ctx.flashStatus('No editor configured — set one in settings (s)');
+        return;
+      }
+      spawn(editor, [wt.path], { detached: true, stdio: 'ignore' }).unref();
+      ctx.flashStatus(`Opened in ${editor}`);
     });
     return;
   }
