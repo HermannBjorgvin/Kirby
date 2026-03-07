@@ -181,6 +181,32 @@ describe('readConfig', () => {
     expect(config.vendorAuth).toEqual({});
     expect(config.vendorProject).toEqual({});
   });
+
+  it('should resolve editor from global config', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({ editor: 'code' }));
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.editor).toBe('code');
+  });
+
+  it('should let project editor override global editor', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({ editor: 'code' }));
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({ editor: 'subl' }));
+
+    const config = readConfig('/tmp/test');
+    expect(config.editor).toBe('subl');
+  });
+
+  it('should fall back to global editor when project editor is not set', () => {
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ editor: 'code-insiders' })
+    );
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.editor).toBe('code-insiders');
+  });
 });
 
 describe('isVcsConfigured', () => {
