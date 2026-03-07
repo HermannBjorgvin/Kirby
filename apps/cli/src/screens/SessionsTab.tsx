@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../components/Sidebar.js';
 import { TerminalView } from '../components/TerminalView.js';
@@ -7,12 +6,12 @@ import { SettingsPanel } from '../components/SettingsPanel.js';
 import { useAppState } from '../context/AppStateContext.js';
 import { useSessionContext } from '../context/SessionContext.js';
 import { useConfig } from '../context/ConfigContext.js';
+import { handleSettingsInput } from '../input-handlers.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
-  handleSettingsInput,
-  handleGlobalInput,
-} from '../input-handlers.js';
+  handleSessionsSidebarInput,
+} from './sessions-input.js';
 interface SessionsTabProps {
   reconnectKey: number;
   setReconnectKey: (v: (prev: number) => number) => void;
@@ -35,47 +34,6 @@ export function SessionsTab({
     appState;
   const sessionCtx = useSessionContext();
   const configCtx = useConfig();
-
-  const globalCtx = useMemo(
-    () => ({
-      nav,
-      config: configCtx,
-      sessions: sessionCtx,
-      branchPicker,
-      deleteConfirm,
-      settings,
-      review: null as never,
-      asyncOps,
-      terminal,
-      selectedName: sessionCtx.selectedName,
-      selectedSession: sessionCtx.selectedSession,
-      selectedIndex: sessionCtx.clampedSelectedIndex,
-      totalItems: sessionCtx.totalItems,
-      orphanPrs: sessionCtx.orphanPrs,
-      reviewSelectedIndex: 0,
-      reviewTotalItems: 0,
-      reviewSessionName: null,
-      selectedReviewPr: undefined,
-      reconnectKey,
-      setReconnectKey,
-      triggerSync: sessionCtx.triggerSync,
-      refreshPr: sessionCtx.refreshPr,
-      exit,
-    }),
-    [
-      nav,
-      configCtx,
-      sessionCtx,
-      branchPicker,
-      deleteConfirm,
-      settings,
-      asyncOps,
-      terminal,
-      reconnectKey,
-      setReconnectKey,
-      exit,
-    ]
-  );
 
   useInput(
     (input, key) => {
@@ -101,7 +59,26 @@ export function SessionsTab({
           config: configCtx,
           sessions: sessionCtx,
         });
-      handleGlobalInput(input, key, globalCtx);
+      handleSessionsSidebarInput(input, key, {
+        nav,
+        config: configCtx,
+        sessions: sessionCtx,
+        branchPicker,
+        deleteConfirm,
+        settings,
+        asyncOps,
+        terminal,
+        selectedName: sessionCtx.selectedName,
+        selectedSession: sessionCtx.selectedSession,
+        selectedIndex: sessionCtx.clampedSelectedIndex,
+        totalItems: sessionCtx.totalItems,
+        orphanPrs: sessionCtx.orphanPrs,
+        reconnectKey,
+        setReconnectKey,
+        triggerSync: sessionCtx.triggerSync,
+        refreshPr: sessionCtx.refreshPr,
+        exit,
+      });
     },
     { isActive: nav.activeTab === 'sessions' }
   );

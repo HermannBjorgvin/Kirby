@@ -1,6 +1,5 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { useInput } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
 import { ReviewsSidebar } from '../components/ReviewsSidebar.js';
 import { ReviewPane } from '../components/ReviewPane.js';
 import { SettingsPanel } from '../components/SettingsPanel.js';
@@ -12,13 +11,13 @@ import { useDiffData } from '../hooks/useDiffData.js';
 import { partitionFiles } from '../utils/file-classifier.js';
 import { parseUnifiedDiff } from '../utils/diff-parser.js';
 import { renderDiffLines } from '../utils/diff-renderer.js';
+import { handleSettingsInput } from '../input-handlers.js';
 import {
-  handleSettingsInput,
   handleReviewConfirmInput,
   handleDiffFileListInput,
   handleDiffViewerInput,
-  handleGlobalInput,
-} from '../input-handlers.js';
+  handleReviewsSidebarInput,
+} from './reviews-input.js';
 
 interface ReviewsTabProps {
   terminalFocused: boolean;
@@ -86,50 +85,6 @@ export function ReviewsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to PR id changes
   }, [selectedReviewPr?.id, review.reviewSessionStarted]);
 
-  const globalCtx = useMemo(
-    () => ({
-      nav,
-      config: configCtx,
-      sessions: sessionCtx,
-      branchPicker: null as never,
-      deleteConfirm: null as never,
-      settings,
-      review,
-      asyncOps,
-      terminal,
-      selectedName: null,
-      selectedSession: undefined,
-      selectedIndex: 0,
-      totalItems: 0,
-      orphanPrs: [] as PullRequestInfo[],
-      reviewSelectedIndex: clampedReviewIndex,
-      reviewTotalItems,
-      reviewSessionName,
-      selectedReviewPr,
-      reconnectKey: 0,
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      setReconnectKey: (() => {}) as (v: (prev: number) => number) => void,
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      triggerSync: () => {},
-      refreshPr: sessionCtx.refreshPr,
-      exit,
-    }),
-    [
-      nav,
-      configCtx,
-      sessionCtx,
-      settings,
-      review,
-      asyncOps,
-      terminal,
-      clampedReviewIndex,
-      reviewTotalItems,
-      reviewSessionName,
-      selectedReviewPr,
-      exit,
-    ]
-  );
-
   useInput(
     (input, key) => {
       if (terminalFocused) return;
@@ -164,7 +119,21 @@ export function ReviewsTab({
           terminal,
           diffTotalLines,
         });
-      handleGlobalInput(input, key, globalCtx);
+      handleReviewsSidebarInput(input, key, {
+        nav,
+        config: configCtx,
+        sessions: sessionCtx,
+        settings,
+        review,
+        asyncOps,
+        terminal,
+        reviewSelectedIndex: clampedReviewIndex,
+        reviewTotalItems,
+        reviewSessionName,
+        selectedReviewPr,
+        refreshPr: sessionCtx.refreshPr,
+        exit,
+      });
     },
     { isActive: nav.activeTab === 'reviews' }
   );
