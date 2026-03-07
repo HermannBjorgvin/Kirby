@@ -1,21 +1,23 @@
 import type { Key } from 'ink';
 import { createWorktree } from '@kirby/worktree-manager';
-import type { DiffFile } from '../types.js';
-import { spawnSession, hasSession } from '../pty-registry.js';
+import type { DiffFile } from '../../types.js';
+import { spawnSession, hasSession } from '../../pty-registry.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { handleTextInput } from '../utils/handle-text-input.js';
-import { partitionFiles } from '../utils/file-classifier.js';
-import type { AppStateContextValue } from '../context/AppStateContext.js';
-import type { SessionContextValue } from '../context/SessionContext.js';
-import type { ReviewContextValue } from '../context/ReviewContext.js';
-import type { ConfigContextValue } from '../context/ConfigContext.js';
+import { handleTextInput } from '../../utils/handle-text-input.js';
+import { getDisplayFiles } from '../../utils/file-classifier.js';
+import type { SessionContextValue } from '../../context/SessionContext.js';
+import type { ReviewContextValue } from '../../context/ReviewContext.js';
+import type { ConfigContextValue } from '../../context/ConfigContext.js';
+import type {
+  NavValue,
+  AsyncOpsValue,
+  SettingsValue,
+  TerminalLayout,
+} from '../../input-handlers.js';
+import { handleTabSwitchInput } from '../../input-handlers.js';
 
 // ── Context slice types ──────────────────────────────────────────
 
-type NavValue = AppStateContextValue['nav'];
-type AsyncOpsValue = AppStateContextValue['asyncOps'];
-type SettingsValue = AppStateContextValue['settings'];
-type TerminalLayout = AppStateContextValue['terminal'];
 type ReviewValue = ReviewContextValue['review'];
 
 export interface ReviewConfirmHandlerCtx {
@@ -55,7 +57,6 @@ export interface ReviewsSidebarCtx {
   reviewTotalItems: number;
   reviewSessionName: string | null;
   selectedReviewPr: PullRequestInfo | undefined;
-  refreshPr: () => void;
   exit: () => void;
 }
 
@@ -217,10 +218,7 @@ export function handleDiffFileListInput(
   }
 
   if (key.return && ctx.diffDisplayCount > 0) {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.review.showSkipped
-      ? [...normal, ...skipped]
-      : normal;
+    const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.review.showSkipped);
     const file = displayFiles[ctx.review.diffFileIndex];
     if (file) {
       ctx.review.setDiffViewFile(file.filename);
@@ -273,10 +271,7 @@ export function handleDiffViewerInput(
     return;
   }
   if (input === 'n') {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.review.showSkipped
-      ? [...normal, ...skipped]
-      : normal;
+    const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.review.showSkipped);
     const currentIdx = displayFiles.findIndex(
       (f) => f.filename === ctx.review.diffViewFile
     );
@@ -289,10 +284,7 @@ export function handleDiffViewerInput(
     return;
   }
   if (input === 'N') {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.review.showSkipped
-      ? [...normal, ...skipped]
-      : normal;
+    const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.review.showSkipped);
     const currentIdx = displayFiles.findIndex(
       (f) => f.filename === ctx.review.diffViewFile
     );
@@ -311,23 +303,7 @@ export function handleReviewsSidebarInput(
   key: Key,
   ctx: ReviewsSidebarCtx
 ): void {
-  // Tab switching (1/2 keys)
-  if (ctx.nav.focus === 'sidebar') {
-    if (input === '1' && ctx.nav.activeTab !== 'sessions') {
-      ctx.nav.setActiveTab('sessions');
-      ctx.nav.setFocus('sidebar');
-      return;
-    }
-    if (
-      input === '2' &&
-      ctx.nav.activeTab !== 'reviews' &&
-      ctx.config.vcsConfigured
-    ) {
-      ctx.nav.setActiveTab('reviews');
-      ctx.nav.setFocus('sidebar');
-      return;
-    }
-  }
+  if (handleTabSwitchInput(input, ctx.nav, ctx.config.vcsConfigured)) return;
 
   // Tab focus toggle
   if (key.tab) {
@@ -362,7 +338,7 @@ export function handleReviewsSidebarInput(
     return;
   }
   if (input === 'r') {
-    ctx.refreshPr();
+    ctx.sessions.refreshPr();
     ctx.sessions.flashStatus('Refreshing PR data...');
     return;
   }

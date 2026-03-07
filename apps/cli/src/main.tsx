@@ -15,8 +15,8 @@ import {
   useSessionContext,
 } from './context/SessionContext.js';
 import { ReviewProvider, useReviewContext } from './context/ReviewContext.js';
-import { SessionsTab } from './screens/SessionsTab.js';
-import { ReviewsTab } from './screens/ReviewsTab.js';
+import { SessionsTab } from './screens/sessions/SessionsTab.js';
+import { ReviewsTab } from './screens/reviews/ReviewsTab.js';
 
 // ── Provider registry ──────────────────────────────────────────────
 

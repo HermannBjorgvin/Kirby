@@ -1,12 +1,12 @@
 import { useInput } from 'ink';
-import { Sidebar } from '../components/Sidebar.js';
-import { TerminalView } from '../components/TerminalView.js';
-import { BranchPicker } from '../components/BranchPicker.js';
-import { SettingsPanel } from '../components/SettingsPanel.js';
-import { useAppState } from '../context/AppStateContext.js';
-import { useSessionContext } from '../context/SessionContext.js';
-import { useConfig } from '../context/ConfigContext.js';
-import { handleSettingsInput } from '../input-handlers.js';
+import { Sidebar } from './Sidebar.js';
+import { TerminalView } from '../../components/TerminalView.js';
+import { BranchPicker } from './BranchPicker.js';
+import { SettingsPanel } from '../../components/SettingsPanel.js';
+import { useAppState } from '../../context/AppStateContext.js';
+import { useSessionContext } from '../../context/SessionContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
+import { handleSettingsInput } from '../../input-handlers.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
@@ -68,15 +68,8 @@ export function SessionsTab({
         settings,
         asyncOps,
         terminal,
-        selectedName: sessionCtx.selectedName,
-        selectedSession: sessionCtx.selectedSession,
-        selectedIndex: sessionCtx.clampedSelectedIndex,
-        totalItems: sessionCtx.totalItems,
-        orphanPrs: sessionCtx.orphanPrs,
         reconnectKey,
         setReconnectKey,
-        triggerSync: sessionCtx.triggerSync,
-        refreshPr: sessionCtx.refreshPr,
         exit,
       });
     },

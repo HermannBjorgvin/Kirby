@@ -23,17 +23,42 @@ function mapNameStatus(letter: string): DiffFile['status'] {
   }
 }
 
+async function resolveRef(branch: string): Promise<string> {
+  // Prefer remote tracking ref, fall back to local branch
+  for (const candidate of [`origin/${branch}`, branch]) {
+    try {
+      await execFile('git', ['rev-parse', '--verify', candidate]);
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`Cannot resolve ref for branch: ${branch}`);
+}
+
 async function fetchAllFiles(
   sourceBranch: string,
   targetBranch: string
 ): Promise<DiffFile[]> {
-  const sourceRef = `origin/${sourceBranch}`;
-  const targetRef = `origin/${targetBranch}`;
+  // Try to fetch latest from remote (tolerate failures for branches
+  // that already exist locally, e.g. via worktrees)
+  await Promise.all([
+    execFile('git', ['fetch', 'origin', sourceBranch], {
+      timeout: 30_000,
+    }).catch(() => {
+      /* branch may already exist locally */
+    }),
+    execFile('git', ['fetch', 'origin', targetBranch], {
+      timeout: 30_000,
+    }).catch(() => {
+      /* branch may already exist locally */
+    }),
+  ]);
 
-  // Ensure we have both refs locally
-  await execFile('git', ['fetch', 'origin', sourceBranch, targetBranch], {
-    timeout: 30_000,
-  });
+  const [sourceRef, targetRef] = await Promise.all([
+    resolveRef(sourceBranch),
+    resolveRef(targetBranch),
+  ]);
 
   // Get additions/deletions per file (binary files show - - for stats)
   const { stdout: numstatOut } = await execFile(
@@ -91,7 +116,10 @@ async function fetchAllFiles(
     let stats = numstatMap.get(filename);
     if (!stats) {
       for (const [key, val] of numstatMap) {
-        if (key.includes(filename) || (previousFilename && key.includes(previousFilename))) {
+        if (
+          key.includes(filename) ||
+          (previousFilename && key.includes(previousFilename))
+        ) {
           stats = val;
           break;
         }
@@ -115,8 +143,10 @@ async function fetchDiffText(
   sourceBranch: string,
   targetBranch: string
 ): Promise<string> {
-  const sourceRef = `origin/${sourceBranch}`;
-  const targetRef = `origin/${targetBranch}`;
+  const [sourceRef, targetRef] = await Promise.all([
+    resolveRef(sourceBranch),
+    resolveRef(targetBranch),
+  ]);
 
   const { stdout } = await execFile(
     'git',

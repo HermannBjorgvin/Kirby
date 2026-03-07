@@ -1,17 +1,17 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { useInput } from 'ink';
-import { ReviewsSidebar } from '../components/ReviewsSidebar.js';
-import { ReviewPane } from '../components/ReviewPane.js';
-import { SettingsPanel } from '../components/SettingsPanel.js';
-import { useAppState } from '../context/AppStateContext.js';
-import { useSessionContext } from '../context/SessionContext.js';
-import { useReviewContext } from '../context/ReviewContext.js';
-import { useConfig } from '../context/ConfigContext.js';
-import { useDiffData } from '../hooks/useDiffData.js';
-import { partitionFiles } from '../utils/file-classifier.js';
-import { parseUnifiedDiff } from '../utils/diff-parser.js';
-import { renderDiffLines } from '../utils/diff-renderer.js';
-import { handleSettingsInput } from '../input-handlers.js';
+import { ReviewsSidebar } from './ReviewsSidebar.js';
+import { ReviewPane } from './ReviewPane.js';
+import { SettingsPanel } from '../../components/SettingsPanel.js';
+import { useAppState } from '../../context/AppStateContext.js';
+import { useSessionContext } from '../../context/SessionContext.js';
+import { useReviewContext } from '../../context/ReviewContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
+import { useDiffData } from '../../hooks/useDiffData.js';
+import { partitionFiles } from '../../utils/file-classifier.js';
+import { parseUnifiedDiff } from '../../utils/diff-parser.js';
+import { renderDiffLines } from '../../utils/diff-renderer.js';
+import { handleSettingsInput } from '../../input-handlers.js';
 import {
   handleReviewConfirmInput,
   handleDiffFileListInput,
@@ -131,7 +131,6 @@ export function ReviewsTab({
         reviewTotalItems,
         reviewSessionName,
         selectedReviewPr,
-        refreshPr: sessionCtx.refreshPr,
         exit,
       });
     },

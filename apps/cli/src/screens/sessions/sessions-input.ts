@@ -10,22 +10,24 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from '../types.js';
-import { spawnSession, hasSession, killSession } from '../pty-registry.js';
-import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
-import { handleTextInput } from '../utils/handle-text-input.js';
-import type { AppStateContextValue } from '../context/AppStateContext.js';
-import type { SessionContextValue } from '../context/SessionContext.js';
-import type { ConfigContextValue } from '../context/ConfigContext.js';
+import { spawnSession, hasSession, killSession } from '../../pty-registry.js';
+import type { AppConfig } from '@kirby/vcs-core';
+import { handleTextInput } from '../../utils/handle-text-input.js';
+import type { AppStateContextValue } from '../../context/AppStateContext.js';
+import type { SessionContextValue } from '../../context/SessionContext.js';
+import type { ConfigContextValue } from '../../context/ConfigContext.js';
+import type {
+  NavValue,
+  AsyncOpsValue,
+  SettingsValue,
+  TerminalLayout,
+} from '../../input-handlers.js';
+import { handleTabSwitchInput } from '../../input-handlers.js';
 
 // ── Context slice types ──────────────────────────────────────────
 
-type NavValue = AppStateContextValue['nav'];
-type AsyncOpsValue = AppStateContextValue['asyncOps'];
 type BranchPickerValue = AppStateContextValue['branchPicker'];
 type DeleteConfirmValue = AppStateContextValue['deleteConfirm'];
-type SettingsValue = AppStateContextValue['settings'];
-type TerminalLayout = AppStateContextValue['terminal'];
 
 export interface BranchPickerHandlerCtx {
   branchPicker: BranchPickerValue;
@@ -50,15 +52,8 @@ export interface SessionsSidebarCtx {
   settings: SettingsValue;
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
-  selectedName: string | null;
-  selectedSession: AgentSession | undefined;
-  selectedIndex: number;
-  totalItems: number;
-  orphanPrs: PullRequestInfo[];
   reconnectKey: number;
   setReconnectKey: (v: (prev: number) => number) => void;
-  triggerSync: () => void;
-  refreshPr: () => void;
   exit: () => void;
 }
 
@@ -187,35 +182,19 @@ export function handleSessionsSidebarInput(
   key: Key,
   ctx: SessionsSidebarCtx
 ): void {
-  // Tab switching (1/2 keys)
-  if (ctx.nav.focus === 'sidebar') {
-    if (input === '1' && ctx.nav.activeTab !== 'sessions') {
-      ctx.nav.setActiveTab('sessions');
-      ctx.nav.setFocus('sidebar');
-      return;
-    }
-    if (
-      input === '2' &&
-      ctx.nav.activeTab !== 'reviews' &&
-      ctx.config.vcsConfigured
-    ) {
-      ctx.nav.setActiveTab('reviews');
-      ctx.nav.setFocus('sidebar');
-      return;
-    }
-  }
+  if (handleTabSwitchInput(input, ctx.nav, ctx.config.vcsConfigured)) return;
 
   // Tab focus toggle
   if (key.tab) {
-    if (ctx.nav.focus === 'sidebar' && ctx.selectedName) {
+    if (ctx.nav.focus === 'sidebar' && ctx.sessions.selectedName) {
       ctx.asyncOps.run('start-session', async () => {
-        if (!hasSession(ctx.selectedName!)) {
+        if (!hasSession(ctx.sessions.selectedName!)) {
           const worktreePath = resolve(
             process.cwd(),
-            '.claude/worktrees/' + ctx.selectedName
+            '.claude/worktrees/' + ctx.sessions.selectedName
           );
           startAiSession(
-            ctx.selectedName!,
+            ctx.sessions.selectedName!,
             ctx.terminal.paneCols,
             ctx.terminal.paneRows,
             worktreePath,
@@ -247,8 +226,8 @@ export function handleSessionsSidebarInput(
     });
     return;
   }
-  if (input === 'd' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
+  if (input === 'd' && ctx.sessions.selectedSession) {
+    const sessionName = ctx.sessions.selectedSession.name;
     ctx.asyncOps.run('check-delete', async () => {
       const worktrees = await listWorktrees();
       const wt = worktrees.find(
@@ -277,16 +256,16 @@ export function handleSessionsSidebarInput(
       } else {
         killSession(sessionName);
         const updated = await ctx.sessions.refreshSessions();
-        if (ctx.selectedIndex >= updated.length) {
+        if (ctx.sessions.clampedSelectedIndex >= updated.length) {
           ctx.sessions.setSelectedIndex(Math.max(0, updated.length - 1));
         }
       }
     });
     return;
   }
-  if (input === 'K' && ctx.selectedSession) {
+  if (input === 'K' && ctx.sessions.selectedSession) {
     ctx.asyncOps.run('delete', async () => {
-      killSession(ctx.selectedSession!.name);
+      killSession(ctx.sessions.selectedSession!.name);
       await ctx.sessions.refreshSessions();
     });
     return;
@@ -297,12 +276,12 @@ export function handleSessionsSidebarInput(
     return;
   }
   if (input === 'r') {
-    ctx.refreshPr();
+    ctx.sessions.refreshPr();
     ctx.sessions.flashStatus('Refreshing PR data...');
     return;
   }
-  if (input === 'u' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
+  if (input === 'u' && ctx.sessions.selectedSession) {
+    const sessionName = ctx.sessions.selectedSession.name;
     ctx.asyncOps.run('rebase', async () => {
       const worktrees = await listWorktrees();
       const wt = worktrees.find(
@@ -322,8 +301,8 @@ export function handleSessionsSidebarInput(
     });
     return;
   }
-  if (input === '.' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
+  if (input === '.' && ctx.sessions.selectedSession) {
+    const sessionName = ctx.sessions.selectedSession.name;
     ctx.asyncOps.run('open-editor', async () => {
       const worktrees = await listWorktrees();
       const wt = worktrees.find(
@@ -348,22 +327,25 @@ export function handleSessionsSidebarInput(
   }
   if (input === 'g') {
     ctx.sessions.flashStatus('Syncing with origin...');
-    ctx.triggerSync();
+    ctx.sessions.triggerSync();
     return;
   }
   if (input === 'j' || key.downArrow) {
-    ctx.sessions.setSelectedIndex((i) => Math.min(i + 1, ctx.totalItems - 1));
+    ctx.sessions.setSelectedIndex((i) =>
+      Math.min(i + 1, ctx.sessions.totalItems - 1)
+    );
   }
   if (input === 'k' || key.upArrow) {
     ctx.sessions.setSelectedIndex((i) => Math.max(i - 1, 0));
   }
   if (
     key.return &&
-    ctx.selectedIndex >= ctx.sessions.sessions.length &&
-    ctx.orphanPrs.length > 0
+    ctx.sessions.clampedSelectedIndex >= ctx.sessions.sessions.length &&
+    ctx.sessions.orphanPrs.length > 0
   ) {
-    const prIndex = ctx.selectedIndex - ctx.sessions.sessions.length;
-    const pr = ctx.orphanPrs[prIndex];
+    const prIndex =
+      ctx.sessions.clampedSelectedIndex - ctx.sessions.sessions.length;
+    const pr = ctx.sessions.orphanPrs[prIndex];
     if (pr) {
       ctx.asyncOps.run('create-worktree', async () => {
         const worktreePath = await createWorktree(pr.sourceBranch);

@@ -1,10 +1,13 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { DiffFile } from '../types.js';
-import { partitionFiles } from '../utils/file-classifier.js';
-import { truncate } from '../utils/truncate.js';
+import type { DiffFile } from '../../types.js';
+import { partitionFiles } from '../../utils/file-classifier.js';
+import { truncate } from '../../utils/truncate.js';
 
-function statusBadge(status: DiffFile['status']): { char: string; color: string } {
+function statusBadge(status: DiffFile['status']): {
+  char: string;
+  color: string;
+} {
   switch (status) {
     case 'added':
       return { char: 'A', color: 'green' };
@@ -34,16 +37,21 @@ function FileRow({
   // "› A filename.ts  +10 -5"
   const prefix = selected ? '› ' : '  ';
   const stats = ` +${file.additions} -${file.deletions}`;
-  const nameWidth = Math.max(10, maxWidth - prefix.length - 2 - stats.length - 1);
+  const nameWidth = Math.max(
+    10,
+    maxWidth - prefix.length - 2 - stats.length - 1
+  );
   const name = file.previousFilename
-    ? `${truncate(file.previousFilename, Math.floor(nameWidth / 2))} → ${truncate(file.filename, Math.ceil(nameWidth / 2))}`
+    ? `${truncate(
+        file.previousFilename,
+        Math.floor(nameWidth / 2)
+      )} → ${truncate(file.filename, Math.ceil(nameWidth / 2))}`
     : truncate(file.filename, nameWidth);
 
   return (
     <Text>
       <Text color={selected ? 'cyan' : undefined}>{prefix}</Text>
-      <Text color={badge.color}>{badge.char}</Text>
-      {' '}
+      <Text color={badge.color}>{badge.char}</Text>{' '}
       <Text bold={selected}>{name}</Text>
       <Text color="green"> +{file.additions}</Text>
       <Text color="red"> -{file.deletions}</Text>
@@ -131,7 +139,8 @@ export const DiffFileList = memo(function DiffFileList({
 
       {skipped.length > 0 && !showSkipped && (
         <Text dimColor>
-          {skipped.length} skipped (binary/lock/generated) · <Text color="cyan">s</Text> to show
+          {skipped.length} skipped (binary/lock/generated) ·{' '}
+          <Text color="cyan">s</Text> to show
         </Text>
       )}
       {skipped.length > 0 && showSkipped && (
@@ -142,7 +151,9 @@ export const DiffFileList = memo(function DiffFileList({
 
       <Box marginTop={1}>
         <Text dimColor>
-          <Text color="cyan">j/k</Text> navigate · <Text color="cyan">enter</Text> view diff · <Text color="cyan">esc</Text> back
+          <Text color="cyan">j/k</Text> navigate ·{' '}
+          <Text color="cyan">enter</Text> view diff ·{' '}
+          <Text color="cyan">esc</Text> back
         </Text>
       </Box>
     </Box>

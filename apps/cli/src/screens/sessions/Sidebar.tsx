@@ -1,10 +1,11 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { AgentSession } from '../types.js';
+import type { AgentSession } from '../../types.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { PrBadge } from './PrBadge.js';
-import { truncate } from '../utils/truncate.js';
-import { useConfig } from '../context/ConfigContext.js';
+import { PrBadge } from '../../components/PrBadge.js';
+import { SidebarLayout } from '../../components/SidebarLayout.js';
+import { truncate } from '../../utils/truncate.js';
+import { useConfig } from '../../context/ConfigContext.js';
 
 const SessionItem = memo(function SessionItem({
   session,
@@ -121,36 +122,80 @@ export function Sidebar({
   conflictsLoading?: boolean;
 }) {
   const { vcsConfigured } = useConfig();
-  const innerWidth = Math.max(10, sidebarWidth - 2);
   const activeOrphanPrs = orphanPrs.filter((pr) => pr.isDraft !== true);
   const draftOrphanPrs = orphanPrs.filter((pr) => pr.isDraft === true);
 
   return (
-    <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
-      <Text bold color={focused ? 'blue' : 'gray'}>
-        🌴 Worktree Sessions
-      </Text>
-      <Text dimColor>{'─'.repeat(innerWidth)}</Text>
-      {sessions.length === 0 ? (
-        <Text dimColor>(no sessions)</Text>
-      ) : (
-        sessions.map((s, i) => {
-          const branch = sessionBranchMap.get(s.name);
-          const isMerged = branch ? mergedBranches.has(branch) : false;
-          return (
-            <SessionItem
-              key={s.name}
-              session={s}
-              selected={i === selectedIndex}
-              pr={sessionPrMap.get(s.name)}
-              sidebarWidth={sidebarWidth}
-              isMerged={isMerged}
-              conflictCount={branch ? conflictCounts?.get(branch) : undefined}
-              conflictsLoading={!!conflictsLoading && !isMerged && !!branch}
-            />
-          );
-        })
-      )}
+    <SidebarLayout
+      title="🌴 Worktree Sessions"
+      focused={focused}
+      sidebarWidth={sidebarWidth}
+      emptyText="(no sessions)"
+      isEmpty={sessions.length === 0}
+      keybinds={
+        <>
+          <Text dimColor>
+            <Text color="cyan">c</Text> checkout branch
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">d</Text> delete branch
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">shift+k</Text> kill agent
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">u</Text> rebase onto master
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">.</Text> open in editor
+          </Text>
+          {vcsConfigured ? (
+            <>
+              <Text dimColor>
+                <Text color="cyan">r</Text> refresh PR data
+              </Text>
+              <Text dimColor>
+                <Text color="cyan">g</Text> sync with origin
+              </Text>
+            </>
+          ) : null}
+          <Text dimColor>
+            <Text color="cyan">tab</Text> / <Text color="cyan">ctrl+space</Text>{' '}
+            switch focus
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">s</Text> settings
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">q</Text> quit
+          </Text>
+        </>
+      }
+      legend={
+        vcsConfigured ? (
+          <>
+            <Text dimColor>🔧✅ passed 🔧🔥 failed 🔧⏳ pending</Text>
+            <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
+          </>
+        ) : undefined
+      }
+    >
+      {sessions.map((s, i) => {
+        const branch = sessionBranchMap.get(s.name);
+        const isMerged = branch ? mergedBranches.has(branch) : false;
+        return (
+          <SessionItem
+            key={s.name}
+            session={s}
+            selected={i === selectedIndex}
+            pr={sessionPrMap.get(s.name)}
+            sidebarWidth={sidebarWidth}
+            isMerged={isMerged}
+            conflictCount={branch ? conflictCounts?.get(branch) : undefined}
+            conflictsLoading={!!conflictsLoading && !isMerged && !!branch}
+          />
+        );
+      })}
       {vcsConfigured ? (
         <>
           <OrphanPrSection
@@ -171,49 +216,6 @@ export function Sidebar({
           />
         </>
       ) : null}
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>
-          <Text color="cyan">c</Text> checkout branch
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">d</Text> delete branch
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">shift+k</Text> kill agent
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">u</Text> rebase onto master
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">.</Text> open in editor
-        </Text>
-        {vcsConfigured ? (
-          <>
-            <Text dimColor>
-              <Text color="cyan">r</Text> refresh PR data
-            </Text>
-            <Text dimColor>
-              <Text color="cyan">g</Text> sync with origin
-            </Text>
-          </>
-        ) : null}
-        <Text dimColor>
-          <Text color="cyan">tab</Text> / <Text color="cyan">ctrl+space</Text>{' '}
-          switch focus
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">s</Text> settings
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">q</Text> quit
-        </Text>
-      </Box>
-      {vcsConfigured ? (
-        <Box marginTop={1} flexDirection="column">
-          <Text dimColor>🔧✅ passed 🔧🔥 failed 🔧⏳ pending</Text>
-          <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
-        </Box>
-      ) : null}
-    </Box>
+    </SidebarLayout>
   );
 }

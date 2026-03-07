@@ -9,9 +9,33 @@ import type { AppStateContextValue } from './context/AppStateContext.js';
 import type { SessionContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
 
-// ── Context slice types for input handlers ────────────────────────
+// ── Shared context slice types ────────────────────────────────────
 
-type SettingsValue = AppStateContextValue['settings'];
+export type NavValue = AppStateContextValue['nav'];
+export type AsyncOpsValue = AppStateContextValue['asyncOps'];
+export type SettingsValue = AppStateContextValue['settings'];
+export type TerminalLayout = AppStateContextValue['terminal'];
+
+// ── Shared input helpers ──────────────────────────────────────────
+
+export function handleTabSwitchInput(
+  input: string,
+  nav: NavValue,
+  vcsConfigured: boolean
+): boolean {
+  if (nav.focus !== 'sidebar') return false;
+  if (input === '1' && nav.activeTab !== 'sessions') {
+    nav.setActiveTab('sessions');
+    nav.setFocus('sidebar');
+    return true;
+  }
+  if (input === '2' && nav.activeTab !== 'reviews' && vcsConfigured) {
+    nav.setActiveTab('reviews');
+    nav.setFocus('sidebar');
+    return true;
+  }
+  return false;
+}
 
 export interface SettingsHandlerCtx {
   settings: SettingsValue;

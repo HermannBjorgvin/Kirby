@@ -1,8 +1,9 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
-import { PrBadge } from './PrBadge.js';
-import { truncate } from '../utils/truncate.js';
+import { PrBadge } from '../../components/PrBadge.js';
+import { SidebarLayout } from '../../components/SidebarLayout.js';
+import { truncate } from '../../utils/truncate.js';
 
 type SidebarRow =
   | { kind: 'section-header'; title: string; titleColor: string; count: number }
@@ -134,85 +135,78 @@ export const ReviewsSidebar = memo(function ReviewsSidebar({
   );
 
   return (
-    <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
-      <Text bold color={focused ? 'blue' : 'gray'}>
-        Reviews
-      </Text>
-      <Text dimColor>{'─'.repeat(innerWidth)}</Text>
-      {totalItems === 0 ? (
-        <Text dimColor>(no reviews assigned to you)</Text>
-      ) : (
+    <SidebarLayout
+      title="Reviews"
+      focused={focused}
+      sidebarWidth={sidebarWidth}
+      emptyText="(no reviews assigned to you)"
+      isEmpty={totalItems === 0}
+      keybinds={
         <>
-          {aboveLines > 0 && (
-            <Text dimColor>↑ {aboveLines / LINES_PER_ROW} more</Text>
-          )}
-          {visibleRows.map((row, index) => {
-            if (row.kind === 'section-header') {
-              return (
-                <Box key={`section-${row.title}`} flexDirection="column">
-                  <Box marginTop={index === 0 ? 0 : 1}>
-                    <Text bold color={row.titleColor}>
-                      {' '}
-                      {row.title} ({row.count})
-                    </Text>
-                  </Box>
-                  <Text dimColor> {'─'.repeat(innerWidth - 1)}</Text>
-                </Box>
-              );
-            }
-            const selected = row.pr.id === selectedPrId;
-            return (
-              <Box key={row.pr.id} flexDirection="column">
-                <Text>
-                  <Text color={selected ? 'cyan' : undefined}>
-                    {selected ? '› ' : '  '}
-                  </Text>
-                  <Text bold={selected}>
-                    {truncate(
-                      row.pr.title || row.pr.sourceBranch,
-                      innerWidth - 4
-                    )}
-                  </Text>
-                </Text>
-                <PrBadge
-                  pr={row.pr}
-                  sidebarWidth={sidebarWidth}
-                  author={row.pr.createdByDisplayName || 'unknown'}
-                />
-              </Box>
-            );
-          })}
-          {belowLines > 0 && (
-            <Text dimColor>↓ {belowLines / LINES_PER_ROW} more</Text>
-          )}
+          <Text dimColor>
+            <Text color="cyan">j/k</Text> navigate
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">d</Text> view diff
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">enter</Text> review with Claude
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">esc</Text> back to sidebar
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">1</Text> sessions tab
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">r</Text> refresh
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">q</Text> quit
+          </Text>
         </>
+      }
+      legend={<Text dimColor>🔔 needs attention ⭐ fully approved</Text>}
+    >
+      {aboveLines > 0 && (
+        <Text dimColor>↑ {aboveLines / LINES_PER_ROW} more</Text>
       )}
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>
-          <Text color="cyan">j/k</Text> navigate
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">d</Text> view diff
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">enter</Text> review with Claude
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">esc</Text> back to sidebar
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">1</Text> sessions tab
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">r</Text> refresh
-        </Text>
-        <Text dimColor>
-          <Text color="cyan">q</Text> quit
-        </Text>
-      </Box>
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
-      </Box>
-    </Box>
+      {visibleRows.map((row, index) => {
+        if (row.kind === 'section-header') {
+          return (
+            <Box key={`section-${row.title}`} flexDirection="column">
+              <Box marginTop={index === 0 ? 0 : 1}>
+                <Text bold color={row.titleColor}>
+                  {' '}
+                  {row.title} ({row.count})
+                </Text>
+              </Box>
+              <Text dimColor> {'─'.repeat(innerWidth - 1)}</Text>
+            </Box>
+          );
+        }
+        const selected = row.pr.id === selectedPrId;
+        return (
+          <Box key={row.pr.id} flexDirection="column">
+            <Text>
+              <Text color={selected ? 'cyan' : undefined}>
+                {selected ? '› ' : '  '}
+              </Text>
+              <Text bold={selected}>
+                {truncate(row.pr.title || row.pr.sourceBranch, innerWidth - 4)}
+              </Text>
+            </Text>
+            <PrBadge
+              pr={row.pr}
+              sidebarWidth={sidebarWidth}
+              author={row.pr.createdByDisplayName || 'unknown'}
+            />
+          </Box>
+        );
+      })}
+      {belowLines > 0 && (
+        <Text dimColor>↓ {belowLines / LINES_PER_ROW} more</Text>
+      )}
+    </SidebarLayout>
   );
 });
