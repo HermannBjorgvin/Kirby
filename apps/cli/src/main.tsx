@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { render, Text, Box, useInput, useApp, useStdout } from 'ink';
-import { branchToSessionName } from '@kirby/worktree-manager';
-import type {
-  VcsProvider,
-  PullRequestInfo,
-  CategorizedReviews,
-} from '@kirby/vcs-core';
+import type { VcsProvider, CategorizedReviews } from '@kirby/vcs-core';
+import {
+  findOrphanPrs,
+  categorizeReviews as categorizePrReviews,
+  buildSessionLookups,
+} from './utils/pr-utils.js';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
 import { TabBar } from './components/TabBar.js';
@@ -14,10 +14,7 @@ import { TerminalView } from './components/TerminalView.js';
 import { BranchPicker } from './components/BranchPicker.js';
 import { SettingsPanel } from './components/SettingsPanel.js';
 import { ReviewsSidebar } from './components/ReviewsSidebar.js';
-import { ReviewDetailPane } from './components/ReviewDetailPane.js';
-import { ReviewConfirmPane } from './components/ReviewConfirmPane.js';
-import { DiffFileList } from './components/DiffFileList.js';
-import { DiffViewer } from './components/DiffViewer.js';
+import { ReviewPane } from './components/ReviewPane.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { usePrData } from './hooks/usePrData.js';
 import { useRemoteSync } from './hooks/useRemoteSync.js';
@@ -161,13 +158,18 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   // Event-driven sync chain
   const { lastSynced, triggerSync } = useRemoteSync();
 
+  const onMergedDelete = useCallback(
+    (sessionName: string, branch: string) => {
+      sessionMgr.performDelete(sessionName, branch);
+      sessionMgr.flashStatus(`Auto-deleted merged branch: ${branch}`);
+    },
+    [sessionMgr]
+  );
+
   const { mergedBranches } = useMergedBranches(
     sessionMgr.worktreeBranches,
     lastSynced,
-    (sessionName, branch) => {
-      sessionMgr.performDelete(sessionName, branch);
-      sessionMgr.flashStatus(`Auto-deleted merged branch: ${branch}`);
-    }
+    onMergedDelete
   );
 
   // Batch conflict checking — only check non-merged branches
@@ -182,46 +184,25 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   const orphanPrs = useMemo(() => {
     if (!provider) return [];
     const sessionNames = new Set(sessionMgr.sessions.map((s) => s.name));
-    return Object.values(prMap)
-      .filter(
-        (pr): pr is PullRequestInfo =>
-          pr != null &&
-          provider.matchesUser(pr.createdByIdentifier, config) &&
-          !sessionNames.has(branchToSessionName(pr.sourceBranch))
-      )
-      .sort((a, b) => b.id - a.id);
+    return findOrphanPrs(prMap, sessionNames, config, provider);
   }, [prMap, sessionMgr.sessions, config, provider]);
 
   // Categorize PRs where the user is a reviewer
   const categorizedReviews = useMemo((): CategorizedReviews => {
     if (!provider)
       return { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
-    const needsReview: PullRequestInfo[] = [];
-    const waitingForAuthor: PullRequestInfo[] = [];
-    const approvedByYou: PullRequestInfo[] = [];
-
-    for (const pr of Object.values(prMap)) {
-      if (!pr || !pr.reviewers) continue;
-      const reviewer = pr.reviewers.find((r) =>
-        provider.matchesUser(r.identifier, config)
-      );
-      if (!reviewer) continue;
-      if (reviewer.decision === 'declined') continue;
-      if (reviewer.decision === 'approved') {
-        approvedByYou.push(pr);
-      } else if (reviewer.decision === 'changes-requested') {
-        waitingForAuthor.push(pr);
-      } else {
-        needsReview.push(pr);
-      }
-    }
-    return { needsReview, waitingForAuthor, approvedByYou };
+    return categorizePrReviews(prMap, config, provider);
   }, [prMap, config, provider]);
 
   const reviewTotalItems =
     categorizedReviews.needsReview.length +
     categorizedReviews.waitingForAuthor.length +
     categorizedReviews.approvedByYou.length;
+
+  const clampedReviewIndex =
+    reviewTotalItems > 0
+      ? Math.min(review.reviewSelectedIndex, reviewTotalItems - 1)
+      : 0;
 
   // Flatten categorized reviews and pick the selected one
   const allReviewPrs = useMemo(
@@ -232,7 +213,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     ],
     [categorizedReviews]
   );
-  const selectedReviewPr = allReviewPrs[review.reviewSelectedIndex];
+  const selectedReviewPr = allReviewPrs[clampedReviewIndex];
   const reviewSessionName = selectedReviewPr
     ? `review-pr-${selectedReviewPr.id}`
     : null;
@@ -263,27 +244,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     return renderDiffLines(fileDiffLines, paneCols).length;
   }, [review.diffViewFile, diffData.diffText, paneCols]);
 
-  useEffect(() => {
-    if (
-      reviewTotalItems > 0 &&
-      review.reviewSelectedIndex >= reviewTotalItems
-    ) {
-      review.setReviewSelectedIndex(reviewTotalItems - 1);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
-  }, [reviewTotalItems, review.reviewSelectedIndex]);
-
   // Pre-compute session-name → branch and session-name → PR lookup maps
-  const { sessionBranchMap, sessionPrMap } = useMemo(() => {
-    const branchMap = new Map<string, string>();
-    const prLookup = new Map<string, PullRequestInfo>();
-    for (const [branch, pr] of Object.entries(prMap)) {
-      const name = branchToSessionName(branch);
-      branchMap.set(name, branch);
-      if (pr) prLookup.set(name, pr);
-    }
-    return { sessionBranchMap: branchMap, sessionPrMap: prLookup };
-  }, [prMap]);
+  const { sessionBranchMap, sessionPrMap } = useMemo(
+    () => buildSessionLookups(prMap),
+    [prMap]
+  );
 
   // Sort sessions by associated PR number (newest first)
   const sortedSessions = useMemo(() => {
@@ -295,9 +260,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   }, [sessionMgr.sessions, sessionPrMap]);
 
   const totalItems = sortedSessions.length + orphanPrs.length;
+  const clampedSelectedIndex =
+    totalItems > 0 ? Math.min(sessionMgr.selectedIndex, totalItems - 1) : 0;
   const selectedSession =
-    sessionMgr.selectedIndex < sortedSessions.length
-      ? sortedSessions[sessionMgr.selectedIndex]
+    clampedSelectedIndex < sortedSessions.length
+      ? sortedSessions[clampedSelectedIndex]
       : undefined;
   const selectedName = selectedSession?.name ?? null;
 
@@ -316,13 +283,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
       }
     }
   }, [selectedReviewPr?.id, review.reviewSessionStarted]);
-
-  useEffect(() => {
-    if (totalItems > 0 && sessionMgr.selectedIndex >= totalItems) {
-      sessionMgr.setSelectedIndex(totalItems - 1);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only reacting to count changes
-  }, [totalItems, sessionMgr.selectedIndex]);
 
   // ── Terminal hooks (PTY session + raw stdin forwarding) ─────────
   const terminalFocused = nav.focus === 'terminal';
@@ -365,11 +325,11 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     focus: nav.focus,
     selectedName,
     selectedSession,
-    selectedIndex: sessionMgr.selectedIndex,
+    selectedIndex: clampedSelectedIndex,
     sessions: sortedSessions,
     orphanPrs,
     totalItems,
-    reviewSelectedIndex: review.reviewSelectedIndex,
+    reviewSelectedIndex: clampedReviewIndex,
     reviewTotalItems,
     reviewSessionName,
     selectedReviewPr,
@@ -470,7 +430,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
           <>
             <Sidebar
               sessions={sortedSessions}
-              selectedIndex={sessionMgr.selectedIndex}
+              selectedIndex={clampedSelectedIndex}
               focused={
                 nav.focus === 'sidebar' &&
                 !branchPicker.creating &&
@@ -513,57 +473,29 @@ function App({ forceSetup }: { forceSetup: boolean }) {
               categorized={categorizedReviews}
               selectedPrId={selectedReviewPr?.id}
               sidebarWidth={sidebarWidth}
+              paneRows={paneRows}
               focused={nav.focus === 'sidebar' && !review.reviewConfirm}
             />
-            {(() => {
-              if (review.reviewConfirm) {
-                return (
-                  <ReviewConfirmPane
-                    pr={review.reviewConfirm.pr}
-                    selectedOption={review.reviewConfirm.selectedOption}
-                    instruction={review.reviewInstruction}
-                  />
-                );
-              }
-              if (review.reviewPane === 'diff') {
-                return (
-                  <DiffFileList
-                    files={diffData.files}
-                    selectedIndex={review.diffFileIndex}
-                    paneRows={paneRows}
-                    paneCols={paneCols}
-                    loading={diffData.loading}
-                    error={diffData.error}
-                    showSkipped={review.showSkipped}
-                  />
-                );
-              }
-              if (review.reviewPane === 'diff-file' && review.diffViewFile) {
-                return (
-                  <DiffViewer
-                    filename={review.diffViewFile}
-                    diffText={diffData.diffText}
-                    scrollOffset={review.diffScrollOffset}
-                    paneRows={paneRows}
-                    paneCols={paneCols}
-                    loading={diffData.diffLoading}
-                  />
-                );
-              }
-              if (
-                review.reviewPane === 'terminal' ||
-                (selectedReviewPr &&
-                  review.reviewSessionStarted.has(selectedReviewPr.id))
-              ) {
-                return (
-                  <TerminalView
-                    content={reviewsTerminal.content}
-                    focused={nav.focus === 'terminal'}
-                  />
-                );
-              }
-              return <ReviewDetailPane pr={selectedReviewPr} />;
-            })()}
+            <ReviewPane
+              reviewConfirm={review.reviewConfirm}
+              reviewPane={review.reviewPane}
+              selectedReviewPr={selectedReviewPr}
+              reviewSessionStarted={review.reviewSessionStarted}
+              terminalContent={reviewsTerminal.content}
+              reviewInstruction={review.reviewInstruction}
+              focused={nav.focus === 'terminal'}
+              diffFiles={diffData.files}
+              diffFileIndex={review.diffFileIndex}
+              diffViewFile={review.diffViewFile}
+              diffText={diffData.diffText}
+              diffScrollOffset={review.diffScrollOffset}
+              diffLoading={diffData.loading}
+              diffTextLoading={diffData.diffLoading}
+              diffError={diffData.error}
+              showSkipped={review.showSkipped}
+              paneRows={paneRows}
+              paneCols={paneCols}
+            />
           </>
         )}
       </Box>
