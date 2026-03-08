@@ -43,3 +43,11 @@ export function partitionFiles(files: DiffFile[]) {
   }
   return { normal, skipped };
 }
+
+export function getDisplayFiles(
+  files: DiffFile[],
+  showSkipped: boolean
+): DiffFile[] {
+  const { normal, skipped } = partitionFiles(files);
+  return showSkipped ? [...normal, ...skipped] : normal;
+}

@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import { parseUnifiedDiff } from '../utils/diff-parser.js';
-import { renderDiffLines } from '../utils/diff-renderer.js';
+import { parseUnifiedDiff } from '../../utils/diff-parser.js';
+import { renderDiffLines } from '../../utils/diff-renderer.js';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,
@@ -73,9 +73,8 @@ export const DiffViewer = memo(function DiffViewer({
 
       <Box marginTop={1}>
         <Text dimColor>
-          <Text color="cyan">j/k</Text> scroll ·{' '}
-          <Text color="cyan">d/u</Text> half-page ·{' '}
-          <Text color="cyan">g/G</Text> top/bottom ·{' '}
+          <Text color="cyan">j/k</Text> scroll · <Text color="cyan">d/u</Text>{' '}
+          half-page · <Text color="cyan">g/G</Text> top/bottom ·{' '}
           <Text color="cyan">n/N</Text> next/prev file ·{' '}
           <Text color="cyan">esc</Text> back
         </Text>

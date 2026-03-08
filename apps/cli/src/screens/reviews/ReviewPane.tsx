@@ -1,11 +1,11 @@
 import { memo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { DiffFile } from '../types.js';
+import type { DiffFile } from '../../types.js';
 import { ReviewConfirmPane } from './ReviewConfirmPane.js';
 import { ReviewDetailPane } from './ReviewDetailPane.js';
 import { DiffFileList } from './DiffFileList.js';
 import { DiffViewer } from './DiffViewer.js';
-import { TerminalView } from './TerminalView.js';
+import { TerminalView } from '../../components/TerminalView.js';
 
 export const ReviewPane = memo(function ReviewPane({
   reviewConfirm,

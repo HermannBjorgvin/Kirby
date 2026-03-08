@@ -1,410 +1,94 @@
-import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
-import {
-  createWorktree,
-  canRemoveBranch,
-  listAllBranches,
-  listWorktrees,
-  fetchRemote,
-  branchToSessionName,
-  rebaseOntoMaster,
-} from '@kirby/worktree-manager';
-import type {
-  AgentSession,
-  ActiveTab,
-  Focus,
-  ReviewPane,
-  DiffFile,
-} from './types.js';
-import { spawnSession, hasSession, killSession } from './pty-registry.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
-import type { AppConfig, VcsProvider, PullRequestInfo } from '@kirby/vcs-core';
 import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
   resolveValue,
-  type SettingsField,
 } from './components/SettingsPanel.js';
-import type { OperationName } from './hooks/useAsyncOperation.js';
-import { partitionFiles } from './utils/file-classifier.js';
+import type { AppStateContextValue } from './context/AppStateContext.js';
+import type { SessionContextValue } from './context/SessionContext.js';
+import type { ConfigContextValue } from './context/ConfigContext.js';
 
-export interface AppContext {
-  // State
-  config: AppConfig;
-  provider: VcsProvider | null;
-  providers: VcsProvider[];
-  vcsConfigured: boolean;
-  branches: string[];
-  branchFilter: string;
-  branchIndex: number;
-  paneCols: number;
-  paneRows: number;
-  confirmDelete: {
-    branch: string;
-    sessionName: string;
-    reason: string;
-  } | null;
-  confirmInput: string;
-  editingField: string | null;
-  settingsFieldIndex: number;
-  editBuffer: string;
-  activeTab: ActiveTab;
-  focus: Focus;
-  selectedName: string | null;
-  selectedSession: AgentSession | undefined;
-  selectedIndex: number;
-  sessions: AgentSession[];
-  orphanPrs: PullRequestInfo[];
-  totalItems: number;
-  reviewSelectedIndex: number;
-  reviewTotalItems: number;
+// ── Shared context slice types ────────────────────────────────────
 
-  // Review terminal
-  reviewSessionName: string | null;
-  selectedReviewPr: PullRequestInfo | undefined;
-  setReviewReconnectKey: (v: (prev: number) => number) => void;
-  reviewSessionStarted: Set<number>;
-  setReviewSessionStarted: (
-    v: Set<number> | ((prev: Set<number>) => Set<number>)
-  ) => void;
+export type NavValue = AppStateContextValue['nav'];
+export type AsyncOpsValue = AppStateContextValue['asyncOps'];
+export type SettingsValue = AppStateContextValue['settings'];
+export type TerminalLayout = AppStateContextValue['terminal'];
 
-  // Review confirmation
-  reviewConfirm: {
-    pr: PullRequestInfo;
-    selectedOption: number;
-  } | null;
-  setReviewConfirm: (
-    v: { pr: PullRequestInfo; selectedOption: number } | null
-  ) => void;
-  reviewInstruction: string;
-  setReviewInstruction: (v: string | ((prev: string) => string)) => void;
+// ── Shared input helpers ──────────────────────────────────────────
 
-  // Diff viewer state
-  reviewPane: ReviewPane;
-  setReviewPane: (v: ReviewPane) => void;
-  diffFileIndex: number;
-  setDiffFileIndex: (v: number | ((prev: number) => number)) => void;
-  diffFiles: DiffFile[];
-  diffDisplayCount: number;
-  showSkipped: boolean;
-  setShowSkipped: (v: boolean | ((prev: boolean) => boolean)) => void;
-  diffViewFile: string | null;
-  setDiffViewFile: (v: string | null) => void;
-  diffScrollOffset: number;
-  setDiffScrollOffset: (v: number | ((prev: number) => number)) => void;
-  diffTotalLines: number;
-  loadDiffText: () => Promise<void>;
-
-  // Actions
-  setCreating: (v: boolean) => void;
-  setBranchFilter: (v: string | ((prev: string) => string)) => void;
-  setBranchIndex: (v: number | ((prev: number) => number)) => void;
-  setSelectedIndex: (v: number | ((prev: number) => number)) => void;
-  setConfirmDelete: (
-    v: { branch: string; sessionName: string; reason: string } | null
-  ) => void;
-  setConfirmInput: (v: string | ((prev: string) => string)) => void;
-  setSettingsOpen: (v: boolean) => void;
-  setSettingsFieldIndex: (v: number | ((prev: number) => number)) => void;
-  setEditingField: (v: string | null) => void;
-  setEditBuffer: (v: string | ((prev: string) => string)) => void;
-  setActiveTab: (v: ActiveTab) => void;
-  setReviewSelectedIndex: (v: number | ((prev: number) => number)) => void;
-  setConfig: (v: AppConfig | ((prev: AppConfig) => AppConfig)) => void;
-  setFocus: (v: Focus | ((prev: Focus) => Focus)) => void;
-  setReconnectKey: (v: (prev: number) => number) => void;
-  setBranches: (v: string[]) => void;
-  flashStatus: (msg: string) => void;
-  triggerSync: () => void;
-  refreshSessions: () => Promise<AgentSession[]>;
-  refreshPr: () => void;
-  performDelete: (sessionName: string, branch: string) => Promise<void>;
-  exit: () => void;
-
-  // Config
-  updateField: (field: SettingsField, value: string | undefined) => void;
-
-  // Async operations
-  runOp: (name: OperationName, fn: () => Promise<void>) => Promise<void>;
-  isRunning: (name: OperationName) => boolean;
-}
-
-const DEFAULT_AI_COMMAND = 'claude --continue || claude';
-
-function startAiSession(
-  name: string,
-  cols: number,
-  rows: number,
-  cwd: string,
-  config: AppConfig
-) {
-  const cmd = config.aiCommand || DEFAULT_AI_COMMAND;
-  spawnSession(name, '/bin/sh', ['-c', cmd], cols, rows, cwd);
-}
-
-async function startReviewSession(
-  ctx: AppContext,
-  additionalInstruction?: string
-): Promise<void> {
-  if (!ctx.reviewSessionName || !ctx.selectedReviewPr) return;
-  const pr = ctx.selectedReviewPr;
-
-  let prompt =
-    `You are reviewing Pull Request #${pr.id} ` +
-    `titled ${pr.title || pr.sourceBranch}. ` +
-    `The PR merges ${pr.sourceBranch} into ${pr.targetBranch}, ` +
-    `authored by ${pr.createdByDisplayName || 'unknown'}. ` +
-    `Review the pull request thoroughly. For each issue you find: ` +
-    `1) Show the file path and line numbers, ` +
-    `2) Include a relevant code snippet, ` +
-    `3) Write a suggested review comment below the snippet. ` +
-    `After reviewing all changes, present a numbered list of all your suggested comments ` +
-    `and ask me which ones I want to post to the pull request.`;
-
-  if (additionalInstruction) {
-    prompt +=
-      ` ADDITIONAL USER INSTRUCTION (overrides previous where applicable): ` +
-      additionalInstruction;
-  }
-
-  const worktreePath = await createWorktree(pr.sourceBranch);
-  if (!worktreePath) {
-    ctx.flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
-    return;
-  }
-
-  const safePrompt = prompt.replace(/['"]/g, '');
-  const command = `claude --continue || claude '${safePrompt}'`;
-
-  spawnSession(
-    ctx.reviewSessionName,
-    '/bin/sh',
-    ['-c', command],
-    ctx.paneCols,
-    ctx.paneRows,
-    worktreePath
-  );
-  ctx.setReviewSessionStarted((prev) => new Set([...prev, pr.id]));
-}
-
-const REVIEW_CONFIRM_OPTIONS = 3;
-
-export function handleReviewConfirmInput(
+export function handleTabSwitchInput(
   input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  const confirm = ctx.reviewConfirm!;
-  const opt = confirm.selectedOption;
-
-  if (key.escape) {
-    ctx.setReviewConfirm(null);
-    ctx.setReviewInstruction('');
-    ctx.setReviewPane('detail');
-    return;
+  nav: NavValue,
+  vcsConfigured: boolean
+): boolean {
+  if (nav.focus !== 'sidebar') return false;
+  if (input === '1' && nav.activeTab !== 'sessions') {
+    nav.setActiveTab('sessions');
+    nav.setFocus('sidebar');
+    return true;
   }
-
-  if (opt === 1) {
-    if (key.return) {
-      ctx.runOp('start-session', async () => {
-        if (!hasSession(ctx.reviewSessionName!)) {
-          await startReviewSession(ctx, ctx.reviewInstruction || undefined);
-        }
-        ctx.setReviewPane('terminal');
-        ctx.setFocus('terminal');
-        ctx.setReviewReconnectKey((k) => k + 1);
-        ctx.setReviewConfirm(null);
-        ctx.setReviewInstruction('');
-      });
-      return;
-    }
-    if (key.upArrow || (input === 'k' && key.ctrl)) {
-      ctx.setReviewConfirm({ ...confirm, selectedOption: 0 });
-      return;
-    }
-    if (key.downArrow || (input === 'j' && key.ctrl)) {
-      ctx.setReviewConfirm({ ...confirm, selectedOption: 2 });
-      return;
-    }
-    handleTextInput(input, key, ctx.setReviewInstruction);
-    return;
+  if (input === '2' && nav.activeTab !== 'reviews' && vcsConfigured) {
+    nav.setActiveTab('reviews');
+    nav.setFocus('sidebar');
+    return true;
   }
-
-  if (input === 'j' || key.downArrow) {
-    ctx.setReviewConfirm({
-      ...confirm,
-      selectedOption: Math.min(opt + 1, REVIEW_CONFIRM_OPTIONS - 1),
-    });
-    return;
-  }
-  if (input === 'k' || key.upArrow) {
-    ctx.setReviewConfirm({
-      ...confirm,
-      selectedOption: Math.max(opt - 1, 0),
-    });
-    return;
-  }
-
-  if (key.return) {
-    if (opt === 0) {
-      ctx.runOp('start-session', async () => {
-        if (!hasSession(ctx.reviewSessionName!)) {
-          await startReviewSession(ctx);
-        }
-        ctx.setReviewPane('terminal');
-        ctx.setFocus('terminal');
-        ctx.setReviewReconnectKey((k) => k + 1);
-        ctx.setReviewConfirm(null);
-      });
-    } else if (opt === 2) {
-      ctx.setReviewConfirm(null);
-      ctx.setReviewInstruction('');
-    }
-  }
+  return false;
 }
 
-export function handleBranchPickerInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (key.escape) {
-    ctx.setCreating(false);
-    ctx.setBranchFilter('');
-    ctx.setBranchIndex(0);
-    return;
-  }
-
-  if (key.ctrl && input === 'f') {
-    ctx.runOp('fetch-branches', async () => {
-      ctx.flashStatus('Fetching remotes...');
-      await fetchRemote();
-      const allBranches = await listAllBranches();
-      ctx.setBranches(allBranches);
-      ctx.setBranchIndex(0);
-      ctx.flashStatus('Fetched remotes');
-    });
-    return;
-  }
-
-  const filtered = ctx.branches.filter((b) =>
-    b.toLowerCase().includes(ctx.branchFilter.toLowerCase())
-  );
-
-  if (key.upArrow) {
-    ctx.setBranchIndex((i) => Math.max(i - 1, 0));
-    return;
-  }
-  if (key.downArrow) {
-    ctx.setBranchIndex((i) => Math.min(i + 1, filtered.length - 1));
-    return;
-  }
-
-  if (key.return) {
-    const branch =
-      filtered.length > 0
-        ? filtered[ctx.branchIndex]!
-        : ctx.branchFilter.trim();
-    if (branch) {
-      ctx.runOp('create-worktree', async () => {
-        const worktreePath = await createWorktree(branch);
-        if (worktreePath) {
-          const sessionName = branchToSessionName(branch);
-          startAiSession(
-            sessionName,
-            ctx.paneCols,
-            ctx.paneRows,
-            worktreePath,
-            ctx.config
-          );
-          const updated = await ctx.refreshSessions();
-          const idx = updated.findIndex((s) => s.name === sessionName);
-          if (idx >= 0) ctx.setSelectedIndex(idx);
-        }
-      });
-    }
-    ctx.setCreating(false);
-    ctx.setBranchFilter('');
-    ctx.setBranchIndex(0);
-    return;
-  }
-
-  if (handleTextInput(input, key, ctx.setBranchFilter)) {
-    ctx.setBranchIndex(0);
-  }
+export interface SettingsHandlerCtx {
+  settings: SettingsValue;
+  config: ConfigContextValue;
+  sessions: SessionContextValue;
 }
 
-export function handleConfirmDeleteInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (key.escape) {
-    ctx.setConfirmDelete(null);
-    ctx.setConfirmInput('');
-    return;
-  }
-  if (key.return) {
-    if (ctx.confirmInput === ctx.confirmDelete!.branch) {
-      ctx.runOp('delete', async () => {
-        await ctx.performDelete(
-          ctx.confirmDelete!.sessionName,
-          ctx.confirmDelete!.branch
-        );
-      });
-    } else {
-      ctx.flashStatus('Branch name did not match — delete cancelled');
-    }
-    ctx.setConfirmDelete(null);
-    ctx.setConfirmInput('');
-    return;
-  }
-  handleTextInput(input, key, ctx.setConfirmInput);
-}
+// ── Settings input handler ────────────────────────────────────────
 
 export function handleSettingsInput(
   input: string,
   key: Key,
-  ctx: AppContext
+  ctx: SettingsHandlerCtx
 ): void {
-  const fields = buildSettingsFields(ctx.provider);
+  const fields = buildSettingsFields(ctx.config.provider);
 
-  if (ctx.editingField) {
+  if (ctx.settings.editingField) {
     if (key.escape) {
-      ctx.setEditingField(null);
-      ctx.setEditBuffer('');
+      ctx.settings.setEditingField(null);
+      ctx.settings.setEditBuffer('');
       return;
     }
     if (key.return) {
-      const field = fields[ctx.settingsFieldIndex]!;
-      const value = ctx.editBuffer || undefined;
-      ctx.updateField(field, value);
-      ctx.setEditingField(null);
-      ctx.setEditBuffer('');
+      const field = fields[ctx.settings.settingsFieldIndex]!;
+      const value = ctx.settings.editBuffer || undefined;
+      ctx.config.updateField(field, value);
+      ctx.settings.setEditingField(null);
+      ctx.settings.setEditBuffer('');
       return;
     }
-    handleTextInput(input, key, ctx.setEditBuffer);
+    handleTextInput(input, key, ctx.settings.setEditBuffer);
     return;
   }
 
   if (key.escape) {
-    ctx.setSettingsOpen(false);
+    ctx.settings.setSettingsOpen(false);
     return;
   }
   if (input === 'j' || key.downArrow) {
-    ctx.setSettingsFieldIndex((i) => Math.min(i + 1, fields.length - 1));
+    ctx.settings.setSettingsFieldIndex((i) =>
+      Math.min(i + 1, fields.length - 1)
+    );
     return;
   }
   if (input === 'k' || key.upArrow) {
-    ctx.setSettingsFieldIndex((i) => Math.max(i - 1, 0));
+    ctx.settings.setSettingsFieldIndex((i) => Math.max(i - 1, 0));
     return;
   }
   if (key.leftArrow || key.rightArrow) {
-    const field = fields[ctx.settingsFieldIndex]!;
+    const field = fields[ctx.settings.settingsFieldIndex]!;
     if (field.presets) {
       const namedPresets = field.presets.filter((p) => p.value !== null);
-      const currentValue = resolveValue(ctx.config, field) || undefined;
+      const currentValue = resolveValue(ctx.config.config, field) || undefined;
       const effectiveValue = currentValue || namedPresets[0]!.value;
       let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
       if (idx === -1) idx = 0;
@@ -414,433 +98,39 @@ export function handleSettingsInput(
         idx = (idx - 1 + namedPresets.length) % namedPresets.length;
       }
       const preset = namedPresets[idx]!;
-      ctx.updateField(field, preset.value ?? undefined);
+      ctx.config.updateField(field, preset.value ?? undefined);
     }
     return;
   }
   if (key.return) {
-    const field = fields[ctx.settingsFieldIndex]!;
-    // Fields with only named presets (no Custom/null entry): toggle instead of edit
+    const field = fields[ctx.settings.settingsFieldIndex]!;
     if (field.presets && field.presets.every((p) => p.value !== null)) {
       const namedPresets = field.presets;
-      const currentValue = resolveValue(ctx.config, field) || undefined;
+      const currentValue = resolveValue(ctx.config.config, field) || undefined;
       const effectiveValue = currentValue || namedPresets[0]!.value;
       let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
       idx = (idx + 1) % namedPresets.length;
-      ctx.updateField(field, namedPresets[idx]!.value ?? undefined);
+      ctx.config.updateField(field, namedPresets[idx]!.value ?? undefined);
       return;
     }
-    ctx.setEditingField(field.key);
-    ctx.setEditBuffer(resolveValue(ctx.config, field));
+    ctx.settings.setEditingField(field.key);
+    ctx.settings.setEditBuffer(resolveValue(ctx.config.config, field));
     return;
   }
   if (input === 'a') {
     const { updated, detected } = autoDetectProjectConfig(
       process.cwd(),
-      ctx.providers
+      ctx.config.providers
     );
     if (updated) {
-      ctx.setConfig(readConfig());
+      ctx.config.setConfig(readConfig());
       const fields = Object.keys(detected).join(', ');
-      ctx.flashStatus(`Auto-detected: ${fields}`);
+      ctx.sessions.flashStatus(`Auto-detected: ${fields}`);
     } else {
-      ctx.flashStatus('Nothing new to detect (all fields already set)');
-    }
-    return;
-  }
-}
-
-export function handleSidebarInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (input === 'q') {
-    ctx.exit();
-    return;
-  }
-  if (input === 'c') {
-    ctx.runOp('fetch-branches', async () => {
-      const allBranches = await listAllBranches();
-      ctx.setBranches(allBranches);
-      ctx.setCreating(true);
-      ctx.setBranchFilter('');
-      ctx.setBranchIndex(0);
-    });
-    return;
-  }
-  if (input === 'd' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
-    ctx.runOp('check-delete', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
+      ctx.sessions.flashStatus(
+        'Nothing new to detect (all fields already set)'
       );
-      const branch = wt?.branch;
-      if (branch) {
-        const check = await canRemoveBranch(branch);
-        if (!check.safe) {
-          if (
-            check.reason === 'not pushed to upstream' ||
-            check.reason === 'uncommitted changes'
-          ) {
-            ctx.setConfirmDelete({ branch, sessionName, reason: check.reason });
-            ctx.setConfirmInput('');
-          } else {
-            ctx.flashStatus(`Cannot delete: ${check.reason}`);
-          }
-          return;
-        }
-        await ctx.performDelete(sessionName, branch);
-      } else {
-        killSession(sessionName);
-        const updated = await ctx.refreshSessions();
-        if (ctx.selectedIndex >= updated.length) {
-          ctx.setSelectedIndex(Math.max(0, updated.length - 1));
-        }
-      }
-    });
-    return;
-  }
-  if (input === 'K' && ctx.selectedSession) {
-    ctx.runOp('delete', async () => {
-      killSession(ctx.selectedSession!.name);
-      await ctx.refreshSessions();
-    });
-    return;
-  }
-  if (input === 's') {
-    ctx.setSettingsOpen(true);
-    ctx.setSettingsFieldIndex(0);
-    return;
-  }
-  if (input === 'r') {
-    ctx.refreshPr();
-    ctx.flashStatus('Refreshing PR data...');
-    return;
-  }
-  if (input === 'u' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
-    ctx.runOp('rebase', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
-      if (!wt) {
-        ctx.flashStatus('No worktree found for selected session');
-        return;
-      }
-      ctx.flashStatus('Updating from origin...');
-      const rebaseMessages = {
-        success: 'Rebased onto origin successfully',
-        conflict: 'Conflicts detected — rebase aborted',
-        error: 'Failed to fetch from origin',
-      } as const;
-      ctx.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
-    });
-    return;
-  }
-  if (input === '.' && ctx.selectedSession) {
-    const sessionName = ctx.selectedSession.name;
-    ctx.runOp('open-editor', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
-      if (!wt) {
-        ctx.flashStatus('No worktree found for selected session');
-        return;
-      }
-      const editor =
-        ctx.config.editor || process.env.VISUAL || process.env.EDITOR;
-      if (!editor) {
-        ctx.flashStatus('No editor configured — set one in settings (s)');
-        return;
-      }
-      spawn(editor, [wt.path], { detached: true, stdio: 'ignore' }).unref();
-      ctx.flashStatus(`Opened in ${editor}`);
-    });
-    return;
-  }
-  if (input === 'g') {
-    ctx.flashStatus('Syncing with origin...');
-    ctx.triggerSync();
-    return;
-  }
-  if (input === 'j' || key.downArrow) {
-    ctx.setSelectedIndex((i) => Math.min(i + 1, ctx.totalItems - 1));
-  }
-  if (input === 'k' || key.upArrow) {
-    ctx.setSelectedIndex((i) => Math.max(i - 1, 0));
-  }
-  if (
-    key.return &&
-    ctx.selectedIndex >= ctx.sessions.length &&
-    ctx.orphanPrs.length > 0
-  ) {
-    const prIndex = ctx.selectedIndex - ctx.sessions.length;
-    const pr = ctx.orphanPrs[prIndex];
-    if (pr) {
-      ctx.runOp('create-worktree', async () => {
-        const worktreePath = await createWorktree(pr.sourceBranch);
-        if (worktreePath) {
-          const sessionName = branchToSessionName(pr.sourceBranch);
-          startAiSession(
-            sessionName,
-            ctx.paneCols,
-            ctx.paneRows,
-            worktreePath,
-            ctx.config
-          );
-          const updated = await ctx.refreshSessions();
-          const idx = updated.findIndex((s) => s.name === sessionName);
-          if (idx >= 0) ctx.setSelectedIndex(idx);
-        }
-      });
-    }
-  }
-}
-
-export function handleReviewsSidebarInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (input === 'q') {
-    ctx.exit();
-    return;
-  }
-  if (input === 'r') {
-    ctx.refreshPr();
-    ctx.flashStatus('Refreshing PR data...');
-    return;
-  }
-  if (input === 's') {
-    ctx.setSettingsOpen(true);
-    ctx.setSettingsFieldIndex(0);
-    return;
-  }
-  if (input === 'd' && ctx.selectedReviewPr) {
-    ctx.setReviewPane('diff');
-    ctx.setDiffFileIndex(0);
-    return;
-  }
-  if (key.return && ctx.reviewSessionName && ctx.selectedReviewPr) {
-    ctx.runOp('start-session', async () => {
-      if (hasSession(ctx.reviewSessionName!)) {
-        ctx.setReviewPane('terminal');
-        ctx.setFocus('terminal');
-        ctx.setReviewReconnectKey((k) => k + 1);
-        return;
-      }
-      ctx.setReviewPane('confirm');
-      ctx.setReviewConfirm({ pr: ctx.selectedReviewPr!, selectedOption: 0 });
-    });
-    return;
-  }
-  if (input === 'j' || key.downArrow) {
-    ctx.setReviewSelectedIndex((i) =>
-      Math.min(i + 1, ctx.reviewTotalItems - 1)
-    );
-    return;
-  }
-  if (input === 'k' || key.upArrow) {
-    ctx.setReviewSelectedIndex((i) => Math.max(i - 1, 0));
-    return;
-  }
-}
-
-export function handleDiffFileListInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (key.escape) {
-    ctx.setReviewPane('detail');
-    return;
-  }
-
-  if (input === 's') {
-    ctx.setShowSkipped((v) => !v);
-    ctx.setDiffFileIndex(0);
-    return;
-  }
-
-  if (input === 'j' || key.downArrow) {
-    ctx.setDiffFileIndex((i) => Math.min(i + 1, ctx.diffDisplayCount - 1));
-    return;
-  }
-  if (input === 'k' || key.upArrow) {
-    ctx.setDiffFileIndex((i) => Math.max(i - 1, 0));
-    return;
-  }
-
-  if (key.return && ctx.diffDisplayCount > 0) {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
-    const file = displayFiles[ctx.diffFileIndex];
-    if (file) {
-      ctx.setDiffViewFile(file.filename);
-      ctx.setDiffScrollOffset(0);
-      ctx.setReviewPane('diff-file');
-      ctx.loadDiffText();
     }
     return;
-  }
-}
-
-export function handleDiffViewerInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (key.escape) {
-    ctx.setReviewPane('diff');
-    ctx.setDiffViewFile(null);
-    return;
-  }
-
-  const viewportHeight = Math.max(1, ctx.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
-
-  // Scroll down
-  if (input === 'j' || key.downArrow) {
-    ctx.setDiffScrollOffset((o) => Math.min(o + 1, maxScroll));
-    return;
-  }
-  // Scroll up
-  if (input === 'k' || key.upArrow) {
-    ctx.setDiffScrollOffset((o) => Math.max(o - 1, 0));
-    return;
-  }
-  // Half-page down
-  if (input === 'd') {
-    const half = Math.floor(viewportHeight / 2);
-    ctx.setDiffScrollOffset((o) => Math.min(o + half, maxScroll));
-    return;
-  }
-  // Half-page up
-  if (input === 'u') {
-    const half = Math.floor(viewportHeight / 2);
-    ctx.setDiffScrollOffset((o) => Math.max(o - half, 0));
-    return;
-  }
-  // Top
-  if (input === 'g') {
-    ctx.setDiffScrollOffset(0);
-    return;
-  }
-  // Bottom
-  if (input === 'G') {
-    ctx.setDiffScrollOffset(maxScroll);
-    return;
-  }
-  // Next file
-  if (input === 'n') {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
-    const currentIdx = displayFiles.findIndex(
-      (f) => f.filename === ctx.diffViewFile
-    );
-    if (currentIdx >= 0 && currentIdx < displayFiles.length - 1) {
-      const nextFile = displayFiles[currentIdx + 1]!;
-      ctx.setDiffViewFile(nextFile.filename);
-      ctx.setDiffFileIndex(currentIdx + 1);
-      ctx.setDiffScrollOffset(0);
-    }
-    return;
-  }
-  // Previous file
-  if (input === 'N') {
-    const { normal, skipped } = partitionFiles(ctx.diffFiles);
-    const displayFiles = ctx.showSkipped ? [...normal, ...skipped] : normal;
-    const currentIdx = displayFiles.findIndex(
-      (f) => f.filename === ctx.diffViewFile
-    );
-    if (currentIdx > 0) {
-      const prevFile = displayFiles[currentIdx - 1]!;
-      ctx.setDiffViewFile(prevFile.filename);
-      ctx.setDiffFileIndex(currentIdx - 1);
-      ctx.setDiffScrollOffset(0);
-    }
-    return;
-  }
-}
-
-export function handleGlobalInput(
-  input: string,
-  key: Key,
-  ctx: AppContext
-): void {
-  if (ctx.focus === 'sidebar') {
-    if (input === '1' && ctx.activeTab !== 'sessions') {
-      ctx.setActiveTab('sessions');
-      ctx.setFocus('sidebar');
-      return;
-    }
-    if (input === '2' && ctx.activeTab !== 'reviews' && ctx.vcsConfigured) {
-      ctx.setActiveTab('reviews');
-      ctx.setFocus('sidebar');
-      return;
-    }
-  }
-
-  if (key.tab && ctx.activeTab === 'sessions') {
-    if (ctx.focus === 'sidebar' && ctx.selectedName) {
-      ctx.runOp('start-session', async () => {
-        if (!hasSession(ctx.selectedName!)) {
-          const worktreePath = resolve(
-            process.cwd(),
-            '.claude/worktrees/' + ctx.selectedName
-          );
-          startAiSession(
-            ctx.selectedName!,
-            ctx.paneCols,
-            ctx.paneRows,
-            worktreePath,
-            ctx.config
-          );
-          await ctx.refreshSessions();
-          ctx.setReconnectKey((k) => k + 1);
-        }
-        ctx.setFocus('terminal');
-      });
-    } else {
-      ctx.setFocus((f) => (f === 'sidebar' ? 'terminal' : 'sidebar'));
-    }
-    return;
-  }
-  if (key.tab && ctx.activeTab === 'reviews') {
-    if (
-      ctx.focus === 'sidebar' &&
-      ctx.reviewSessionName &&
-      ctx.selectedReviewPr
-    ) {
-      ctx.runOp('start-session', async () => {
-        if (hasSession(ctx.reviewSessionName!)) {
-          ctx.setReviewPane('terminal');
-          ctx.setReviewReconnectKey((k) => k + 1);
-          ctx.setFocus('terminal');
-        } else {
-          ctx.setReviewPane('confirm');
-          ctx.setReviewConfirm({
-            pr: ctx.selectedReviewPr!,
-            selectedOption: 0,
-          });
-        }
-      });
-    } else if (ctx.focus === 'terminal') {
-      ctx.setFocus('sidebar');
-      ctx.setReviewPane('detail');
-    }
-    return;
-  }
-
-  // When terminal is focused, useInput is disabled and raw stdin handles input.
-  // This function only runs when focus === 'sidebar'.
-  if (ctx.activeTab === 'sessions') {
-    handleSidebarInput(input, key, ctx);
-  } else if (ctx.activeTab === 'reviews') {
-    handleReviewsSidebarInput(input, key, ctx);
   }
 }
