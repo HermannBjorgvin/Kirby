@@ -3,6 +3,7 @@ import { Text, Box } from 'ink';
 import type { DiffFile } from '../../types.js';
 import { partitionFiles } from '../../utils/file-classifier.js';
 import { truncate } from '../../utils/truncate.js';
+import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -84,19 +85,17 @@ export const DiffFileList = memo(function DiffFileList({
   const maxVisible = Math.max(1, paneRows - chromeRows);
   const needsIndicators = displayFiles.length > maxVisible;
   const indicatorRows = needsIndicators ? 2 : 0;
-  const listRows = Math.max(1, maxVisible - indicatorRows);
+  const listRows = maxVisible - indicatorRows;
 
-  // Center selection in window
-  const halfWindow = Math.floor(listRows / 2);
-  const maxStart = Math.max(0, displayFiles.length - listRows);
-  const windowStart = Math.min(
-    Math.max(selectedIndex - halfWindow, 0),
-    maxStart
+  const { windowStart, aboveCount, belowCount } = computeScrollWindow({
+    totalItems: displayFiles.length,
+    selectedIndex,
+    maxVisible: listRows,
+  });
+  const visibleFiles = displayFiles.slice(
+    windowStart,
+    windowStart + Math.max(1, listRows)
   );
-  const visibleFiles = displayFiles.slice(windowStart, windowStart + listRows);
-
-  const aboveCount = windowStart;
-  const belowCount = Math.max(0, displayFiles.length - windowStart - listRows);
 
   const maxWidth = Math.max(20, paneCols - 2);
 

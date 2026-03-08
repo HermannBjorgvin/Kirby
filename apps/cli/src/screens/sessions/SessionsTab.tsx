@@ -1,5 +1,5 @@
 import { useInput } from 'ink';
-import { Sidebar } from './Sidebar.js';
+import { SessionsSidebar } from './SessionsSidebar.js';
 import { TerminalView } from '../../components/TerminalView.js';
 import { BranchPicker } from './BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
@@ -78,7 +78,7 @@ export function SessionsTab({
 
   return (
     <>
-      <Sidebar
+      <SessionsSidebar
         sessions={sessionCtx.sortedSessions}
         selectedIndex={sessionCtx.clampedSelectedIndex}
         focused={

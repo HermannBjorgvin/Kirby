@@ -43,6 +43,15 @@ export interface DeleteConfirmHandlerCtx {
   asyncOps: AsyncOpsValue;
 }
 
+/**
+ * Context for the sessions sidebar input handler.
+ *
+ * This handler is the main input dispatcher for the sessions tab — it handles
+ * navigation (j/k), tab switching (1/2), focus toggling (tab), and all sidebar
+ * actions (c/d/K/s/r/u/./g/q/enter). Each action touches a different subset
+ * of these fields, but they all flow through the same handler to avoid
+ * re-registering useInput on every mode change.
+ */
 export interface SessionsSidebarCtx {
   nav: NavValue;
   config: ConfigContextValue;

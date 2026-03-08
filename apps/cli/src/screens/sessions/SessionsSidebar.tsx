@@ -98,7 +98,7 @@ function OrphanPrSection({
   );
 }
 
-export function Sidebar({
+export function SessionsSidebar({
   sessions,
   selectedIndex,
   focused,

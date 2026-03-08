@@ -19,7 +19,17 @@ import { useConfig } from './ConfigContext.js';
 import { useAppState } from './AppStateContext.js';
 import type { AgentSession } from '../types.js';
 
+/**
+ * All session-related state: worktree sessions, PR data, and derived lookups.
+ *
+ * Groups:
+ * - **Session CRUD** — sessions, selectedIndex, refreshSessions, performDelete
+ * - **PR / VCS data** — prMap, orphanPrs, categorizedReviews, sessionPrMap
+ * - **Git sync** — mergedBranches, conflictCounts, lastSynced, triggerSync
+ * - **Derived selection** — sortedSessions, selectedSession, clampedSelectedIndex
+ */
 export interface SessionContextValue {
+  // ── Session CRUD ──
   sessions: AgentSession[];
   selectedIndex: number;
   setSelectedIndex: ReturnType<typeof useSessionManager>['setSelectedIndex'];
@@ -28,19 +38,25 @@ export interface SessionContextValue {
   flashStatus: (msg: string) => void;
   refreshSessions: () => Promise<AgentSession[]>;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
+
+  // ── PR / VCS data ──
   prMap: BranchPrMap;
   prError: string | null;
   refreshPr: () => void;
+  orphanPrs: PullRequestInfo[];
+  categorizedReviews: CategorizedReviews;
+  sessionBranchMap: Map<string, string>;
+  sessionPrMap: Map<string, PullRequestInfo>;
+
+  // ── Git sync ──
   lastSynced: number;
   triggerSync: () => void;
   mergedBranches: Set<string>;
   conflictCounts: Map<string, number>;
   conflictsLoading: boolean;
+
+  // ── Derived selection ──
   sortedSessions: AgentSession[];
-  orphanPrs: PullRequestInfo[];
-  categorizedReviews: CategorizedReviews;
-  sessionBranchMap: Map<string, string>;
-  sessionPrMap: Map<string, PullRequestInfo>;
   selectedSession: AgentSession | undefined;
   selectedName: string | null;
   totalItems: number;

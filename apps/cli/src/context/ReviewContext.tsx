@@ -4,8 +4,11 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import { useReviewManager } from '../hooks/useReviewManager.js';
 import { useSessionContext } from './SessionContext.js';
 
+/** Review tab state: the review manager, flattened PR list, and derived selection. */
 export interface ReviewContextValue {
+  /** Full review manager state (pane, confirm dialog, diff viewer, etc.). */
   review: ReturnType<typeof useReviewManager>;
+  /** All review PRs flattened in display order (needs-review → waiting → approved). */
   allReviewPrs: PullRequestInfo[];
   selectedReviewPr: PullRequestInfo | undefined;
   reviewSessionName: string | null;

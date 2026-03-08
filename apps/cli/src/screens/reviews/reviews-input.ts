@@ -45,6 +45,13 @@ export interface DiffViewerHandlerCtx {
   diffTotalLines: number;
 }
 
+/**
+ * Context for the reviews sidebar input handler.
+ *
+ * Dispatches navigation (j/k), tab switching (1/2), focus toggling (tab),
+ * and review actions (d/r/s/enter/q). Needs session context for PR refresh
+ * and status flashing, and review context for pane/selection management.
+ */
 export interface ReviewsSidebarCtx {
   nav: NavValue;
   config: ConfigContextValue;

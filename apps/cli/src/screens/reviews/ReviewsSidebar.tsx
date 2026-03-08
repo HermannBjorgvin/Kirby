@@ -4,6 +4,7 @@ import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
 import { PrBadge } from '../../components/PrBadge.js';
 import { SidebarLayout } from '../../components/SidebarLayout.js';
 import { truncate } from '../../utils/truncate.js';
+import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
 
 type SidebarRow =
   | { kind: 'section-header'; title: string; titleColor: string; count: number }
@@ -75,28 +76,25 @@ function computeWindow(
     Math.floor((availableLines - 2) / LINES_PER_ROW)
   );
 
-  // Center selection in window
-  const halfWindow = Math.floor(maxVisibleRows / 2);
-  const maxStart = Math.max(0, rows.length - maxVisibleRows);
-  const startIndex = Math.min(
-    Math.max(selectedIndex - halfWindow, 0),
-    maxStart
-  );
-
-  const aboveCount = startIndex;
-  const belowCount = Math.max(0, rows.length - startIndex - maxVisibleRows);
+  const pass1 = computeScrollWindow({
+    totalItems: rows.length,
+    selectedIndex,
+    maxVisible: maxVisibleRows,
+  });
 
   // Pass 2: recalculate with actual indicator count
-  const indicatorLines = (aboveCount > 0 ? 1 : 0) + (belowCount > 0 ? 1 : 0);
+  const indicatorLines =
+    (pass1.aboveCount > 0 ? 1 : 0) + (pass1.belowCount > 0 ? 1 : 0);
   const adjustedMaxRows = Math.max(
     1,
     Math.floor((availableLines - indicatorLines) / LINES_PER_ROW)
   );
-  const adjustedMaxStart = Math.max(0, rows.length - adjustedMaxRows);
-  const adjustedStart = Math.min(
-    Math.max(selectedIndex - Math.floor(adjustedMaxRows / 2), 0),
-    adjustedMaxStart
-  );
+
+  const { windowStart: adjustedStart } = computeScrollWindow({
+    totalItems: rows.length,
+    selectedIndex,
+    maxVisible: adjustedMaxRows,
+  });
 
   const visibleRows = rows.slice(
     adjustedStart,

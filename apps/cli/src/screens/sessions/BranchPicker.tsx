@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
+import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
 
 export const BranchPicker = memo(function BranchPicker({
   filter,
@@ -26,19 +27,17 @@ export const BranchPicker = memo(function BranchPicker({
   const maxVisible = Math.max(1, paneRows - chromeRows);
   const needsIndicators = filtered.length > maxVisible;
   const indicatorRows = needsIndicators ? 2 : 0;
-  const listRows = Math.max(1, maxVisible - indicatorRows);
+  const listRows = maxVisible - indicatorRows;
 
-  // Center selection in window, clamped to bounds
-  const halfWindow = Math.floor(listRows / 2);
-  const maxStart = Math.max(0, filtered.length - listRows);
-  const windowStart = Math.min(
-    Math.max(selectedIndex - halfWindow, 0),
-    maxStart
+  const { windowStart, aboveCount, belowCount } = computeScrollWindow({
+    totalItems: filtered.length,
+    selectedIndex,
+    maxVisible: listRows,
+  });
+  const visibleBranches = filtered.slice(
+    windowStart,
+    windowStart + Math.max(1, listRows)
   );
-  const visibleBranches = filtered.slice(windowStart, windowStart + listRows);
-
-  const aboveCount = windowStart;
-  const belowCount = Math.max(0, filtered.length - windowStart - listRows);
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
