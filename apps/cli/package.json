@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "bin": {
+    "kirby": "./main.js"
+  },
   "nx": {
     "name": "cli",
     "targets": {
@@ -16,15 +19,22 @@
           "platform": "node",
           "outputPath": "apps/cli/dist",
           "format": [
-            "cjs"
+            "esm"
           ],
-          "bundle": false,
+          "bundle": true,
+          "external": [
+            "node-pty"
+          ],
           "main": "apps/cli/src/main.tsx",
           "tsConfig": "apps/cli/tsconfig.app.json",
           "assets": [
-            "apps/cli/src/assets"
+            "apps/cli/src/assets",
+            "apps/cli/package.json"
           ],
           "esbuildOptions": {
+            "banner": {
+              "js": "#!/usr/bin/env node"
+            },
             "sourcemap": true,
             "outExtension": {
               ".js": ".js"
@@ -35,6 +45,9 @@
           "development": {},
           "production": {
             "esbuildOptions": {
+              "banner": {
+                "js": "#!/usr/bin/env node"
+              },
               "sourcemap": false,
               "outExtension": {
                 ".js": ".js"
@@ -77,6 +90,15 @@
         ],
         "executor": "nx:noop"
       },
+      "install-global": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "chmod +x apps/cli/dist/main.js && npm install -g ./apps/cli/dist"
+        }
+      },
       "serve": {
         "dependsOn": [
           "^build"
@@ -90,6 +112,7 @@
   },
   "dependencies": {
     "ink": "^6.8.0",
+    "node-pty": "^1.1.0",
     "react": "^19.2.4"
   },
   "devDependencies": {

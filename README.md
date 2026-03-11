@@ -26,7 +26,25 @@ The reviews tab works similarly showing you pull requests you are assigned to re
 - git
 - `gh` CLI (for GitHub provider)
 
-## Quick Start
+## Installation
+
+### Global install (recommended)
+
+Build a self-contained bundle and install the `kirby` command globally:
+
+```sh
+npm install
+npx nx install-global cli
+```
+
+Then run from any project directory:
+
+```sh
+kirby
+kirby /path/to/project
+```
+
+### Development
 
 ```sh
 npm install
