@@ -8,9 +8,11 @@ import { useSessionContext } from '../../context/SessionContext.js';
 import { useReviewContext } from '../../context/ReviewContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useDiffData } from '../../hooks/useDiffData.js';
+import { useReviewComments } from '../../hooks/useReviewComments.js';
 import { partitionFiles } from '../../utils/file-classifier.js';
 import { parseUnifiedDiff } from '../../utils/diff-parser.js';
 import { renderDiffLines } from '../../utils/diff-renderer.js';
+import { interleaveComments } from '../../utils/comment-renderer.js';
 import { handleSettingsInput } from '../../input-handlers.js';
 import {
   handleReviewConfirmInput,
@@ -43,6 +45,9 @@ export function ReviewsTab({
     reviewTotalItems,
   } = useReviewContext();
 
+  // ── Review comments (file-watched) ─────────────────────────────
+  const reviewComments = useReviewComments(selectedReviewPr?.id ?? null);
+
   // ── Diff data (scoped to reviews tab) ───────────────────────────
   const diffPrNumber = selectedReviewPr?.id ?? null;
   const diffData = useDiffData(
@@ -65,8 +70,25 @@ export function ReviewsTab({
     const allDiffs = parseUnifiedDiff(diffData.diffText);
     const fileDiffLines = allDiffs.get(review.diffViewFile);
     if (!fileDiffLines) return 0;
-    return renderDiffLines(fileDiffLines, terminal.paneCols).length;
-  }, [review.diffViewFile, diffData.diffText, terminal.paneCols]);
+    const rendered = renderDiffLines(fileDiffLines, terminal.paneCols);
+    const fileComments = reviewComments.filter(
+      (c) => c.file === review.diffViewFile
+    );
+    if (fileComments.length === 0) return rendered.length;
+    return interleaveComments(
+      fileDiffLines,
+      rendered,
+      fileComments,
+      terminal.paneCols,
+      review.selectedCommentId
+    ).length;
+  }, [
+    review.diffViewFile,
+    diffData.diffText,
+    terminal.paneCols,
+    reviewComments,
+    review.selectedCommentId,
+  ]);
 
   // Reset review pane when selected PR changes
   const prevReviewPrId = useRef(selectedReviewPr?.id);
@@ -118,6 +140,8 @@ export function ReviewsTab({
           diffFiles: diffData.files,
           terminal,
           diffTotalLines,
+          comments: reviewComments,
+          prId: selectedReviewPr?.id,
         });
       handleReviewsSidebarInput(input, key, {
         nav,
@@ -173,6 +197,8 @@ export function ReviewsTab({
           showSkipped={review.showSkipped}
           paneRows={terminal.paneRows}
           paneCols={terminal.paneCols}
+          comments={reviewComments}
+          selectedCommentId={review.selectedCommentId}
         />
       )}
     </>

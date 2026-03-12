@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { DiffFile } from '../../types.js';
+import type { DiffFile, ReviewComment } from '../../types.js';
 import { ReviewConfirmPane } from './ReviewConfirmPane.js';
 import { ReviewDetailPane } from './ReviewDetailPane.js';
 import { DiffFileList } from './DiffFileList.js';
@@ -26,6 +26,8 @@ export const ReviewPane = memo(function ReviewPane({
   showSkipped,
   paneRows,
   paneCols,
+  comments,
+  selectedCommentId,
 }: {
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewPane: string;
@@ -45,6 +47,8 @@ export const ReviewPane = memo(function ReviewPane({
   showSkipped: boolean;
   paneRows: number;
   paneCols: number;
+  comments: ReviewComment[];
+  selectedCommentId: string | null;
 }) {
   if (reviewConfirm) {
     return (
@@ -77,6 +81,8 @@ export const ReviewPane = memo(function ReviewPane({
         paneRows={paneRows}
         paneCols={paneCols}
         loading={diffTextLoading}
+        comments={comments}
+        selectedCommentId={selectedCommentId}
       />
     );
   }

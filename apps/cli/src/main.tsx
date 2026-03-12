@@ -107,6 +107,14 @@ function App({ forceSetup }: { forceSetup: boolean }) {
 // ── Entry point ────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
+
+// ── Subcommand routing (no React/Ink needed) ─────────────────────
+if (args[0] === 'util') {
+  const { handleUtilCommand } = await import('./commands/util.js');
+  await handleUtilCommand(args.slice(1));
+  process.exit(0);
+}
+
 const forceSetup = args.includes('--setup');
 const targetDir = args.find((a) => !a.startsWith('--'));
 if (targetDir) {

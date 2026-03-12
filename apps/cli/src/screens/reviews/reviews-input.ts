@@ -1,9 +1,10 @@
 import type { Key } from 'ink';
 import { createWorktree } from '@kirby/worktree-manager';
-import type { DiffFile } from '../../types.js';
+import type { DiffFile, ReviewComment } from '../../types.js';
 import { spawnSession, hasSession } from '../../pty-registry.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { handleTextInput } from '../../utils/handle-text-input.js';
+import { removeComment } from '../../utils/comment-store.js';
 import { getDisplayFiles } from '../../utils/file-classifier.js';
 import type { SessionContextValue } from '../../context/SessionContext.js';
 import type { ReviewContextValue } from '../../context/ReviewContext.js';
@@ -43,6 +44,8 @@ export interface DiffViewerHandlerCtx {
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
   diffTotalLines: number;
+  comments?: ReviewComment[];
+  prId?: number;
 }
 
 /**
@@ -77,16 +80,18 @@ async function startReviewSession(
   const pr = ctx.selectedReviewPr;
 
   let prompt =
-    `You are reviewing Pull Request #${pr.id} ` +
-    `titled ${pr.title || pr.sourceBranch}. ` +
-    `The PR merges ${pr.sourceBranch} into ${pr.targetBranch}, ` +
-    `authored by ${pr.createdByDisplayName || 'unknown'}. ` +
-    `Review the pull request thoroughly. For each issue you find: ` +
-    `1) Show the file path and line numbers, ` +
-    `2) Include a relevant code snippet, ` +
-    `3) Write a suggested review comment below the snippet. ` +
-    `After reviewing all changes, present a numbered list of all your suggested comments ` +
-    `and ask me which ones I want to post to the pull request.`;
+    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
+    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
+    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
+    `To add review comments, use this command:\n` +
+    `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
+    `Rules:\n` +
+    `- File paths are relative to the repo root\n` +
+    `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
+    `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
+    `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
+    `- Comments appear live in the reviewer's diff viewer\n\n` +
+    `Review all changed files thoroughly. Add comments for any issues found.`;
 
   if (additionalInstruction) {
     prompt +=
@@ -301,6 +306,35 @@ export function handleDiffViewerInput(
       ctx.review.setDiffFileIndex(currentIdx - 1);
       ctx.review.setDiffScrollOffset(0);
     }
+    return;
+  }
+
+  // ── Comment navigation & actions ──────────────────────────────
+  const fileComments = (ctx.comments ?? []).filter(
+    (c) => c.file === ctx.review.diffViewFile
+  );
+
+  if (input === 'c' && fileComments.length > 0) {
+    const currentId = ctx.review.selectedCommentId;
+    const currentIdx = currentId
+      ? fileComments.findIndex((c) => c.id === currentId)
+      : -1;
+    const nextIdx = (currentIdx + 1) % fileComments.length;
+    ctx.review.setSelectedCommentId(fileComments[nextIdx].id);
+    return;
+  }
+  if (input === 'C' && fileComments.length > 0) {
+    const currentId = ctx.review.selectedCommentId;
+    const currentIdx = currentId
+      ? fileComments.findIndex((c) => c.id === currentId)
+      : 0;
+    const prevIdx = currentIdx <= 0 ? fileComments.length - 1 : currentIdx - 1;
+    ctx.review.setSelectedCommentId(fileComments[prevIdx].id);
+    return;
+  }
+  if (input === 'x' && ctx.review.selectedCommentId && ctx.prId) {
+    removeComment(ctx.prId, ctx.review.selectedCommentId);
+    ctx.review.setSelectedCommentId(null);
     return;
   }
 }
