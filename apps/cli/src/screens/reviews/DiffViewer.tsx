@@ -14,6 +14,9 @@ export const DiffViewer = memo(function DiffViewer({
   loading,
   comments,
   selectedCommentId,
+  pendingDeleteCommentId,
+  editingCommentId,
+  editBuffer,
 }: {
   filename: string;
   diffText: string | null;
@@ -23,6 +26,9 @@ export const DiffViewer = memo(function DiffViewer({
   loading: boolean;
   comments?: ReviewComment[];
   selectedCommentId?: string | null;
+  pendingDeleteCommentId?: string | null;
+  editingCommentId?: string | null;
+  editBuffer?: string;
 }) {
   const annotatedLines = useMemo(() => {
     if (!diffText) return [];
@@ -44,9 +50,21 @@ export const DiffViewer = memo(function DiffViewer({
       rendered,
       fileComments,
       paneCols,
-      selectedCommentId ?? null
+      selectedCommentId ?? null,
+      pendingDeleteCommentId,
+      editingCommentId,
+      editBuffer
     );
-  }, [diffText, filename, paneCols, comments, selectedCommentId]);
+  }, [
+    diffText,
+    filename,
+    paneCols,
+    comments,
+    selectedCommentId,
+    pendingDeleteCommentId,
+    editingCommentId,
+    editBuffer,
+  ]);
 
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
@@ -98,11 +116,12 @@ export const DiffViewer = memo(function DiffViewer({
       <Box marginTop={1}>
         <Text dimColor>
           <Text color="cyan">j/k</Text> scroll · <Text color="cyan">d/u</Text>{' '}
-          half-page · <Text color="cyan">g/G</Text> top/bottom ·{' '}
+          half-page · <Text color="cyan">PgUp/Dn</Text> page ·{' '}
+          <Text color="cyan">g/G</Text> top/bottom ·{' '}
           <Text color="cyan">n/N</Text> next/prev file ·{' '}
           {hasComments && (
             <>
-              <Text color="cyan">c/C</Text> next/prev comment ·{' '}
+              <Text color="cyan">←/→ c/C</Text> comments ·{' '}
             </>
           )}
           <Text color="cyan">esc</Text> back

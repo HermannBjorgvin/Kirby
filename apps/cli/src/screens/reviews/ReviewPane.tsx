@@ -28,6 +28,9 @@ export const ReviewPane = memo(function ReviewPane({
   paneCols,
   comments,
   selectedCommentId,
+  pendingDeleteCommentId,
+  editingCommentId,
+  editBuffer,
 }: {
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewPane: string;
@@ -49,6 +52,9 @@ export const ReviewPane = memo(function ReviewPane({
   paneCols: number;
   comments: ReviewComment[];
   selectedCommentId: string | null;
+  pendingDeleteCommentId: string | null;
+  editingCommentId: string | null;
+  editBuffer: string;
 }) {
   if (reviewConfirm) {
     return (
@@ -69,6 +75,7 @@ export const ReviewPane = memo(function ReviewPane({
         loading={diffLoading}
         error={diffError}
         showSkipped={showSkipped}
+        comments={comments}
       />
     );
   }
@@ -83,6 +90,9 @@ export const ReviewPane = memo(function ReviewPane({
         loading={diffTextLoading}
         comments={comments}
         selectedCommentId={selectedCommentId}
+        pendingDeleteCommentId={pendingDeleteCommentId}
+        editingCommentId={editingCommentId}
+        editBuffer={editBuffer}
       />
     );
   }

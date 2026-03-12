@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useInput } from 'ink';
 import { ReviewsSidebar } from './ReviewsSidebar.js';
 import { ReviewPane } from './ReviewPane.js';
@@ -12,7 +12,11 @@ import { useReviewComments } from '../../hooks/useReviewComments.js';
 import { partitionFiles } from '../../utils/file-classifier.js';
 import { parseUnifiedDiff } from '../../utils/diff-parser.js';
 import { renderDiffLines } from '../../utils/diff-renderer.js';
-import { interleaveComments } from '../../utils/comment-renderer.js';
+import {
+  interleaveComments,
+  getCommentPositions,
+} from '../../utils/comment-renderer.js';
+import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { handleSettingsInput } from '../../input-handlers.js';
 import {
   handleReviewConfirmInput,
@@ -65,30 +69,71 @@ export function ReviewsTab({
     ? diffNormalFiles.length + diffSkippedFiles.length
     : diffNormalFiles.length;
 
-  const diffTotalLines = useMemo(() => {
-    if (!review.diffViewFile || !diffData.diffText) return 0;
+  // Compute parsed diff data for current file (reused for totalLines + positions)
+  const fileDiffData = useMemo(() => {
+    if (!review.diffViewFile || !diffData.diffText) return null;
     const allDiffs = parseUnifiedDiff(diffData.diffText);
     const fileDiffLines = allDiffs.get(review.diffViewFile);
-    if (!fileDiffLines) return 0;
+    if (!fileDiffLines) return null;
     const rendered = renderDiffLines(fileDiffLines, terminal.paneCols);
-    const fileComments = reviewComments.filter(
-      (c) => c.file === review.diffViewFile
-    );
-    if (fileComments.length === 0) return rendered.length;
+    return { fileDiffLines, rendered };
+  }, [review.diffViewFile, diffData.diffText, terminal.paneCols]);
+
+  const fileComments = useMemo(
+    () => reviewComments.filter((c) => c.file === review.diffViewFile),
+    [reviewComments, review.diffViewFile]
+  );
+
+  const diffTotalLines = useMemo(() => {
+    if (!fileDiffData) return 0;
+    if (fileComments.length === 0) return fileDiffData.rendered.length;
     return interleaveComments(
-      fileDiffLines,
-      rendered,
+      fileDiffData.fileDiffLines,
+      fileDiffData.rendered,
       fileComments,
       terminal.paneCols,
-      review.selectedCommentId
+      review.selectedCommentId,
+      review.pendingDeleteCommentId,
+      review.editingCommentId,
+      review.editBuffer
     ).length;
   }, [
-    review.diffViewFile,
-    diffData.diffText,
+    fileDiffData,
+    fileComments,
     terminal.paneCols,
-    reviewComments,
     review.selectedCommentId,
+    review.pendingDeleteCommentId,
+    review.editingCommentId,
+    review.editBuffer,
   ]);
+
+  const commentPositions = useMemo(() => {
+    if (!fileDiffData || fileComments.length === 0) return new Map();
+    return getCommentPositions(
+      fileDiffData.fileDiffLines,
+      fileDiffData.rendered,
+      fileComments
+    );
+  }, [fileDiffData, fileComments]);
+
+  // ── Scroll wheel (experimental) ──────────────────────────────────
+  const scrollWheelActive =
+    nav.activeTab === 'reviews' &&
+    review.reviewPane === 'diff-file' &&
+    !terminalFocused;
+
+  const handleScrollWheel = useCallback(
+    (delta: number) => {
+      const viewportHeight = Math.max(1, terminal.paneRows - 3);
+      const maxScroll = Math.max(0, diffTotalLines - viewportHeight);
+      review.setDiffScrollOffset((o) =>
+        Math.max(0, Math.min(o + delta, maxScroll))
+      );
+    },
+    [terminal.paneRows, diffTotalLines, review]
+  );
+
+  useScrollWheel(scrollWheelActive, handleScrollWheel);
 
   // Reset review pane when selected PR changes
   const prevReviewPrId = useRef(selectedReviewPr?.id);
@@ -142,6 +187,10 @@ export function ReviewsTab({
           diffTotalLines,
           comments: reviewComments,
           prId: selectedReviewPr?.id,
+          commentPositions,
+          selectedReviewPr,
+          config: configCtx,
+          sessions: sessionCtx,
         });
       handleReviewsSidebarInput(input, key, {
         nav,
@@ -199,6 +248,9 @@ export function ReviewsTab({
           paneCols={terminal.paneCols}
           comments={reviewComments}
           selectedCommentId={review.selectedCommentId}
+          pendingDeleteCommentId={review.pendingDeleteCommentId}
+          editingCommentId={review.editingCommentId}
+          editBuffer={review.editBuffer}
         />
       )}
     </>

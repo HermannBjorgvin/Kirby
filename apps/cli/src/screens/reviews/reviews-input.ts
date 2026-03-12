@@ -1,11 +1,20 @@
+import { spawn } from 'node:child_process';
+import { writeFileSync, readFileSync, watch } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Key } from 'ink';
 import { createWorktree } from '@kirby/worktree-manager';
 import type { DiffFile, ReviewComment } from '../../types.js';
 import { spawnSession, hasSession } from '../../pty-registry.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { handleTextInput } from '../../utils/handle-text-input.js';
-import { removeComment } from '../../utils/comment-store.js';
+import { removeComment, updateComment } from '../../utils/comment-store.js';
+import {
+  postReviewComments,
+  type PostContext,
+} from '../../utils/comment-poster.js';
 import { getDisplayFiles } from '../../utils/file-classifier.js';
+import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
 import type { SessionContextValue } from '../../context/SessionContext.js';
 import type { ReviewContextValue } from '../../context/ReviewContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
@@ -46,6 +55,10 @@ export interface DiffViewerHandlerCtx {
   diffTotalLines: number;
   comments?: ReviewComment[];
   prId?: number;
+  commentPositions?: Map<string, CommentPositionInfo>;
+  selectedReviewPr?: PullRequestInfo;
+  config: ConfigContextValue;
+  sessions: SessionContextValue;
 }
 
 /**
@@ -247,14 +260,61 @@ export function handleDiffViewerInput(
   key: Key,
   ctx: DiffViewerHandlerCtx
 ): void {
+  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
+  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  const fileComments = (ctx.comments ?? []).filter(
+    (c) => c.file === ctx.review.diffViewFile
+  );
+
+  // ── Inline edit mode ────────────────────────────────────────────
+  if (ctx.review.editingCommentId) {
+    if (key.escape) {
+      // Save
+      if (ctx.prId) {
+        updateComment(ctx.prId, ctx.review.editingCommentId, {
+          body: ctx.review.editBuffer,
+        });
+      }
+      ctx.review.setEditingCommentId(null);
+      ctx.review.setEditBuffer('');
+      return;
+    }
+    if (input === 'c' && key.ctrl) {
+      // Cancel without saving
+      ctx.review.setEditingCommentId(null);
+      ctx.review.setEditBuffer('');
+      return;
+    }
+    if (key.return) {
+      ctx.review.setEditBuffer((b) => b + '\n');
+      return;
+    }
+    handleTextInput(input, key, ctx.review.setEditBuffer);
+    return;
+  }
+
+  // ── Delete confirmation mode ────────────────────────────────────
+  if (ctx.review.pendingDeleteCommentId) {
+    if (input === 'y' && ctx.prId) {
+      removeComment(ctx.prId, ctx.review.pendingDeleteCommentId);
+      ctx.review.setPendingDeleteCommentId(null);
+      ctx.review.setSelectedCommentId(null);
+      return;
+    }
+    if (input === 'n' || key.escape) {
+      ctx.review.setPendingDeleteCommentId(null);
+      return;
+    }
+    // Swallow all other input while confirming
+    return;
+  }
+
+  // ── Normal navigation ───────────────────────────────────────────
   if (key.escape) {
     ctx.review.setReviewPane('diff');
     ctx.review.setDiffViewFile(null);
     return;
   }
-
-  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
 
   if (input === 'j' || key.downArrow) {
     ctx.review.setDiffScrollOffset((o) => Math.min(o + 1, maxScroll));
@@ -272,6 +332,16 @@ export function handleDiffViewerInput(
   if (input === 'u') {
     const half = Math.floor(viewportHeight / 2);
     ctx.review.setDiffScrollOffset((o) => Math.max(o - half, 0));
+    return;
+  }
+  if (key.pageDown) {
+    ctx.review.setDiffScrollOffset((o) =>
+      Math.min(o + viewportHeight, maxScroll)
+    );
+    return;
+  }
+  if (key.pageUp) {
+    ctx.review.setDiffScrollOffset((o) => Math.max(o - viewportHeight, 0));
     return;
   }
   if (input === 'g') {
@@ -310,31 +380,213 @@ export function handleDiffViewerInput(
   }
 
   // ── Comment navigation & actions ──────────────────────────────
-  const fileComments = (ctx.comments ?? []).filter(
-    (c) => c.file === ctx.review.diffViewFile
-  );
 
-  if (input === 'c' && fileComments.length > 0) {
-    const currentId = ctx.review.selectedCommentId;
-    const currentIdx = currentId
-      ? fileComments.findIndex((c) => c.id === currentId)
-      : -1;
-    const nextIdx = (currentIdx + 1) % fileComments.length;
-    ctx.review.setSelectedCommentId(fileComments[nextIdx].id);
+  // Helper: scroll so the referenced lines (lineStart) are visible above the comment
+  function scrollToComment(commentId: string) {
+    const positions = ctx.commentPositions;
+    if (!positions) return;
+    const info = positions.get(commentId);
+    if (!info) return;
+    // Scroll so refStartLine is near the top with a small margin
+    const scrollTarget = Math.max(0, info.refStartLine - 2);
+    ctx.review.setDiffScrollOffset(Math.min(scrollTarget, maxScroll));
+  }
+
+  if ((input === 'c' || key.rightArrow) && fileComments.length > 0) {
+    const positions = ctx.commentPositions;
+
+    if (positions && positions.size > 0) {
+      const currentId = ctx.review.selectedCommentId;
+      const currentInfo = currentId ? positions.get(currentId) : undefined;
+      const currentHeader = currentInfo?.headerLine ?? -1;
+
+      // Sort comments by header position
+      const sorted = fileComments
+        .map((c) => ({
+          id: c.id,
+          pos: positions.get(c.id)?.headerLine ?? Infinity,
+        }))
+        .sort((a, b) => a.pos - b.pos);
+
+      // Find next comment after current
+      let next = sorted.find(
+        (c) => c.pos > currentHeader && c.id !== currentId
+      );
+      // Wrap to first
+      if (!next) next = sorted[0];
+
+      if (next) {
+        ctx.review.setSelectedCommentId(next.id);
+        scrollToComment(next.id);
+      }
+    } else {
+      // Fallback: cycle by array index
+      const currentId = ctx.review.selectedCommentId;
+      const currentIdx = currentId
+        ? fileComments.findIndex((c) => c.id === currentId)
+        : -1;
+      const nextIdx = (currentIdx + 1) % fileComments.length;
+      ctx.review.setSelectedCommentId(fileComments[nextIdx].id);
+    }
     return;
   }
-  if (input === 'C' && fileComments.length > 0) {
-    const currentId = ctx.review.selectedCommentId;
-    const currentIdx = currentId
-      ? fileComments.findIndex((c) => c.id === currentId)
-      : 0;
-    const prevIdx = currentIdx <= 0 ? fileComments.length - 1 : currentIdx - 1;
-    ctx.review.setSelectedCommentId(fileComments[prevIdx].id);
+
+  if ((input === 'C' || key.leftArrow) && fileComments.length > 0) {
+    const positions = ctx.commentPositions;
+
+    if (positions && positions.size > 0) {
+      const currentId = ctx.review.selectedCommentId;
+      const currentInfo = currentId ? positions.get(currentId) : undefined;
+      const currentHeader = currentInfo?.headerLine ?? Infinity;
+
+      // Sort comments by header position descending
+      const sorted = fileComments
+        .map((c) => ({ id: c.id, pos: positions.get(c.id)?.headerLine ?? -1 }))
+        .sort((a, b) => b.pos - a.pos);
+
+      // Find previous comment before current
+      let prev = sorted.find(
+        (c) => c.pos < currentHeader && c.id !== currentId
+      );
+      // Wrap to last
+      if (!prev) prev = sorted[0];
+
+      if (prev) {
+        ctx.review.setSelectedCommentId(prev.id);
+        scrollToComment(prev.id);
+      }
+    } else {
+      // Fallback: cycle by array index
+      const currentId = ctx.review.selectedCommentId;
+      const currentIdx = currentId
+        ? fileComments.findIndex((c) => c.id === currentId)
+        : 0;
+      const prevIdx =
+        currentIdx <= 0 ? fileComments.length - 1 : currentIdx - 1;
+      ctx.review.setSelectedCommentId(fileComments[prevIdx].id);
+    }
     return;
   }
+
   if (input === 'x' && ctx.review.selectedCommentId && ctx.prId) {
-    removeComment(ctx.prId, ctx.review.selectedCommentId);
-    ctx.review.setSelectedCommentId(null);
+    ctx.review.setPendingDeleteCommentId(ctx.review.selectedCommentId);
+    return;
+  }
+
+  if (input === 'e' && ctx.review.selectedCommentId) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (comment) {
+      ctx.review.setEditingCommentId(comment.id);
+      ctx.review.setEditBuffer(comment.body);
+    }
+    return;
+  }
+
+  if (input === 'p' && ctx.review.selectedCommentId && ctx.prId) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (!comment || comment.status === 'posted') return;
+
+    const pr = ctx.selectedReviewPr;
+    if (!pr) return;
+
+    const vendor = ctx.config.config.vendor;
+    if (!vendor) {
+      ctx.sessions.flashStatus('No VCS configured');
+      return;
+    }
+    if (vendor === 'github' && !pr.headSha) {
+      ctx.sessions.flashStatus('Missing head SHA — try refreshing PR data');
+      return;
+    }
+
+    const postCtx: PostContext = {
+      vendor,
+      vendorAuth: ctx.config.config.vendorAuth,
+      vendorProject: ctx.config.config.vendorProject,
+      prId: ctx.prId,
+      headSha: pr.headSha,
+    };
+
+    ctx.sessions.flashStatus('Posting comment...');
+    const postedId = comment.id;
+    postReviewComments([comment], postCtx)
+      .then(() => {
+        ctx.sessions.flashStatus('Comment posted');
+        // Navigate to next unposted comment if one exists
+        const remaining = fileComments.filter(
+          (c) => c.id !== postedId && c.status !== 'posted'
+        );
+        if (remaining.length > 0) {
+          const positions = ctx.commentPositions;
+          const postedPos = positions?.get(postedId)?.headerLine ?? -1;
+          // Pick next comment after the posted one by position, or wrap to first
+          const sorted = remaining
+            .map((c) => ({
+              id: c.id,
+              pos: positions?.get(c.id)?.headerLine ?? Infinity,
+            }))
+            .sort((a, b) => a.pos - b.pos);
+          const next = sorted.find((c) => c.pos > postedPos) ?? sorted[0];
+          if (next) {
+            ctx.review.setSelectedCommentId(next.id);
+            scrollToComment(next.id);
+          }
+        } else {
+          ctx.review.setSelectedCommentId(null);
+        }
+      })
+      .catch((err: Error) =>
+        ctx.sessions.flashStatus(`Post failed: ${err.message}`)
+      );
+    return;
+  }
+
+  if (input === 'E' && ctx.review.selectedCommentId && ctx.prId) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (!comment) return;
+
+    const editor =
+      ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
+    if (!editor) {
+      ctx.sessions.flashStatus(
+        'No editor configured — set one in settings (s)'
+      );
+      return;
+    }
+
+    const tmpFile = join(tmpdir(), `kirby-comment-${comment.id}.md`);
+    writeFileSync(tmpFile, comment.body, 'utf8');
+
+    spawn(editor, [tmpFile], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    const prId = ctx.prId;
+    const commentId = comment.id;
+    const watcher = watch(tmpFile, () => {
+      try {
+        const newBody = readFileSync(tmpFile, 'utf8');
+        if (newBody !== comment.body) {
+          updateComment(prId, commentId, { body: newBody });
+        }
+      } catch {
+        // File may be temporarily unavailable during save
+      }
+    });
+
+    // Cleanup after 30 minutes
+    setTimeout(() => {
+      watcher.close();
+    }, 30 * 60 * 1000);
+
+    ctx.sessions.flashStatus(`Opened comment in ${editor}`);
     return;
   }
 }

@@ -27,7 +27,7 @@ export interface PostContext {
   vendorAuth: Record<string, string>;
   vendorProject: Record<string, string>;
   prId: number;
-  headSha: string;
+  headSha?: string;
 }
 
 export async function postReviewComments(
@@ -54,6 +54,9 @@ async function postGitHub(
   ctx: PostContext,
   event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES'
 ): Promise<void> {
+  if (!ctx.headSha) {
+    throw new Error('headSha is required for GitHub reviews');
+  }
   const owner = ctx.vendorProject.owner;
   const repo = ctx.vendorProject.repo;
 
