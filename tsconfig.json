@@ -20,6 +20,9 @@
     },
     {
       "path": "./libs/vcs/github"
+    },
+    {
+      "path": "./apps/cli-e2e"
     }
   ]
 }

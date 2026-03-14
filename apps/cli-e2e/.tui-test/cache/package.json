@@ -1,0 +1,27 @@
+{
+  "name": "@kirby/cli-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "nx": {
+    "name": "cli-e2e",
+    "targets": {
+      "e2e": {
+        "dependsOn": [
+          {
+            "projects": [
+              "cli"
+            ],
+            "target": "build"
+          }
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "npx @microsoft/tui-test",
+          "cwd": "apps/cli-e2e"
+        },
+        "cache": false
+      }
+    }
+  }
+}

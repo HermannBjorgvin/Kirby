@@ -8,6 +8,7 @@
   },
   "private": true,
   "devDependencies": {
+    "@microsoft/tui-test": "^0.0.1",
     "@nx/esbuild": "22.5.2",
     "@nx/eslint": "22.5.2",
     "@nx/eslint-plugin": "^22.5.3",

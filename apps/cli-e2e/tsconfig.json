@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts", "tui-test.config.ts"]
+}
