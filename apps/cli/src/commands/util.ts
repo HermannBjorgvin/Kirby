@@ -9,12 +9,20 @@ const VALID_SEVERITIES = new Set<CommentSeverity>([
   'nit',
 ]);
 
-function parseArgs(args: string[]): Record<string, string> {
+export function parseArgs(args: string[]): Record<string, string> {
   const result: Record<string, string> = {};
   for (const arg of args) {
-    const match = arg.match(/^--(\w+)=(.+)$/);
+    const match = arg.match(/^--(\w+)=(.+)$/s);
     if (match) {
-      result[match[1]] = match[2];
+      let value = match[2];
+      // Strip surrounding quotes
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      result[match[1]] = value;
     }
   }
   return result;

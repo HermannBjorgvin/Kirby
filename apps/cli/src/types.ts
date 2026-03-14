@@ -37,7 +37,7 @@ export interface ReviewComment {
   severity: CommentSeverity;
   body: string;
   side: 'LEFT' | 'RIGHT';
-  status: 'draft' | 'posted';
+  status: 'draft' | 'posting' | 'posted';
   createdAt: string;
 }
 

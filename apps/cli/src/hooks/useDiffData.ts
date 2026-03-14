@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DiffFile } from '../types.js';
+import { resolveRef, fetchDiffText } from '../utils/diff-fetcher.js';
 
 const execFile = promisify(execFileCb);
 
@@ -21,19 +22,6 @@ function mapNameStatus(letter: string): DiffFile['status'] {
     default:
       return 'modified';
   }
-}
-
-async function resolveRef(branch: string): Promise<string> {
-  // Prefer remote tracking ref, fall back to local branch
-  for (const candidate of [`origin/${branch}`, branch]) {
-    try {
-      await execFile('git', ['rev-parse', '--verify', candidate]);
-      return candidate;
-    } catch {
-      // try next
-    }
-  }
-  throw new Error(`Cannot resolve ref for branch: ${branch}`);
 }
 
 async function fetchAllFiles(
@@ -137,23 +125,6 @@ async function fetchAllFiles(
   }
 
   return files;
-}
-
-async function fetchDiffText(
-  sourceBranch: string,
-  targetBranch: string
-): Promise<string> {
-  const [sourceRef, targetRef] = await Promise.all([
-    resolveRef(sourceBranch),
-    resolveRef(targetBranch),
-  ]);
-
-  const { stdout } = await execFile(
-    'git',
-    ['diff', `${targetRef}...${sourceRef}`],
-    { maxBuffer: 50 * 1024 * 1024 }
-  );
-  return stdout;
 }
 
 export function useDiffData(

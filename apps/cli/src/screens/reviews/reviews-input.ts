@@ -8,7 +8,11 @@ import type { DiffFile, ReviewComment } from '../../types.js';
 import { spawnSession, hasSession } from '../../pty-registry.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { handleTextInput } from '../../utils/handle-text-input.js';
-import { removeComment, updateComment } from '../../utils/comment-store.js';
+import {
+  readComments,
+  removeComment,
+  updateComment,
+} from '../../utils/comment-store.js';
 import {
   postReviewComments,
   type PostContext,
@@ -488,7 +492,7 @@ export function handleDiffViewerInput(
     const comment = fileComments.find(
       (c) => c.id === ctx.review.selectedCommentId
     );
-    if (!comment || comment.status === 'posted') return;
+    if (!comment || comment.status !== 'draft') return;
 
     const pr = ctx.selectedReviewPr;
     if (!pr) return;
@@ -496,6 +500,10 @@ export function handleDiffViewerInput(
     const vendor = ctx.config.config.vendor;
     if (!vendor) {
       ctx.sessions.flashStatus('No VCS configured');
+      return;
+    }
+    if (vendor !== 'github' && vendor !== 'azure-devops') {
+      ctx.sessions.flashStatus(`Unsupported vendor: ${vendor}`);
       return;
     }
     if (vendor === 'github' && !pr.headSha) {
@@ -511,19 +519,25 @@ export function handleDiffViewerInput(
       headSha: pr.headSha,
     };
 
-    ctx.sessions.flashStatus('Posting comment...');
+    // Mark as posting to prevent double-press
     const postedId = comment.id;
+    const prId = ctx.prId;
+    updateComment(prId, postedId, { status: 'posting' });
+    ctx.sessions.flashStatus('Posting comment...');
+
     postReviewComments([comment], postCtx)
       .then(() => {
         ctx.sessions.flashStatus('Comment posted');
-        // Navigate to next unposted comment if one exists
-        const remaining = fileComments.filter(
-          (c) => c.id !== postedId && c.status !== 'posted'
+        // Re-read fresh comments to avoid stale closure
+        const freshComments = readComments(prId).filter(
+          (c) => c.file === ctx.review.diffViewFile
+        );
+        const remaining = freshComments.filter(
+          (c) => c.id !== postedId && c.status === 'draft'
         );
         if (remaining.length > 0) {
           const positions = ctx.commentPositions;
           const postedPos = positions?.get(postedId)?.headerLine ?? -1;
-          // Pick next comment after the posted one by position, or wrap to first
           const sorted = remaining
             .map((c) => ({
               id: c.id,
@@ -539,9 +553,11 @@ export function handleDiffViewerInput(
           ctx.review.setSelectedCommentId(null);
         }
       })
-      .catch((err: Error) =>
-        ctx.sessions.flashStatus(`Post failed: ${err.message}`)
-      );
+      .catch((err: Error) => {
+        // Revert to draft on failure
+        updateComment(prId, postedId, { status: 'draft' });
+        ctx.sessions.flashStatus(`Post failed: ${err.message}`);
+      });
     return;
   }
 

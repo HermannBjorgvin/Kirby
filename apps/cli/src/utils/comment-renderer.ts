@@ -10,8 +10,8 @@ const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
 const CYAN = '\x1b[36m';
 const MAGENTA = '\x1b[35m';
-// Subtle highlight for referenced lines (faint background)
-const BG_HIGHLIGHT = '\x1b[48;5;236m';
+// Warm yellow-tinted background for referenced lines (applied after the gutter)
+const BG_HIGHLIGHT = '\x1b[48;5;58m';
 
 export interface AnnotatedLine {
   type: 'diff' | 'comment-header' | 'comment-body';
@@ -56,6 +56,23 @@ function wrapText(text: string, width: number): string[] {
 const INDENT = ' '.repeat(13);
 const MAX_BODY_WIDTH = 80;
 
+/**
+ * Strip ANSI escape sequences to measure visible character width.
+ */
+function visibleLength(str: string): number {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, '').length;
+}
+
+/**
+ * Pad a string (which may contain ANSI codes) to a target visible width.
+ */
+function padVisible(str: string, targetWidth: number): string {
+  const visible = visibleLength(str);
+  if (visible >= targetWidth) return str;
+  return str + ' '.repeat(targetWidth - visible);
+}
+
 function renderCommentBlock(
   comment: ReviewComment,
   commentIndex: number,
@@ -66,16 +83,23 @@ function renderCommentBlock(
   editBuffer?: string
 ): AnnotatedLine[] {
   const badge = SEVERITY_BADGE[comment.severity] ?? `[${comment.severity}]`;
-  const statusMark = comment.status === 'posted' ? `${GREEN} ✓${RESET}` : '';
+  const statusMark =
+    comment.status === 'posted'
+      ? `${GREEN} ✓${RESET}`
+      : comment.status === 'posting'
+      ? `${YELLOW} ⏳${RESET}`
+      : '';
 
   // Selected: yellow border stands out; unselected: dim magenta
   const borderColor = selected ? `${YELLOW}${BOLD}` : `${MAGENTA}${DIM}`;
   const bodyColor = selected ? '' : `${DIM}`;
 
+  // Box inner width = maxBodyWidth + 2 (for "  " padding inside box)
   const maxBodyWidth = Math.min(
     MAX_BODY_WIDTH,
     Math.max(20, paneCols - INDENT.length - 6)
   );
+  const boxInnerWidth = maxBodyWidth + 2;
   const lines: AnnotatedLine[] = [];
 
   // Header: severity + hints on the same line
@@ -88,9 +112,15 @@ function renderCommentBlock(
     headerExtra += ` ${CYAN}EDITING${RESET} ${DIM}[esc] save · [ctrl+c] cancel${RESET}`;
   }
 
+  // Top border: ┌─ badge headerExtra ──...──┐
+  const headerContent = ` ${badge}${headerExtra} `;
+  const headerVisLen = visibleLength(headerContent);
+  const topFillLen = Math.max(0, boxInnerWidth - headerVisLen);
   lines.push({
     type: 'comment-header',
-    rendered: `${INDENT}${borderColor}┌─${RESET} ${badge}${headerExtra}`,
+    rendered: `${INDENT}${borderColor}┌─${RESET}${headerContent}${borderColor}${'─'.repeat(
+      topFillLen
+    )}┐${RESET}`,
     commentId: comment.id,
     commentIndex,
   });
@@ -100,9 +130,10 @@ function renderCommentBlock(
     for (const rawLine of editLines) {
       const wrapped = wrapText(rawLine, maxBodyWidth);
       for (const seg of wrapped) {
+        const padded = padVisible(seg, maxBodyWidth);
         lines.push({
           type: 'comment-body',
-          rendered: `${INDENT}${borderColor}│${RESET}  ${seg}`,
+          rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
           commentId: comment.id,
           commentIndex,
         });
@@ -110,7 +141,20 @@ function renderCommentBlock(
     }
     // Cursor indicator
     const lastIdx = lines.length - 1;
-    lines[lastIdx].rendered += `${CYAN}▏${RESET}`;
+    lines[lastIdx].rendered = lines[lastIdx].rendered.replace(
+      /│\x1b\[0m$/, // eslint-disable-line no-control-regex
+      `${CYAN}▏${RESET}${borderColor}│${RESET}`
+    );
+
+    // Bottom border
+    lines.push({
+      type: 'comment-body',
+      rendered: `${INDENT}${borderColor}└${'─'.repeat(
+        boxInnerWidth + 1
+      )}┘${RESET}`,
+      commentId: comment.id,
+      commentIndex,
+    });
 
     return lines;
   }
@@ -128,24 +172,37 @@ function renderCommentBlock(
   const displayLines = allWrappedLines.slice(0, maxLines);
 
   for (const line of displayLines) {
+    const padded = padVisible(`${bodyColor}${line}${RESET}`, maxBodyWidth);
     lines.push({
       type: 'comment-body',
-      rendered: `${INDENT}${borderColor}│${RESET}  ${bodyColor}${line}${RESET}`,
+      rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
       commentId: comment.id,
       commentIndex,
     });
   }
 
   if (!showAll && allWrappedLines.length > maxLines) {
+    const truncMsg = `${DIM}... ${
+      allWrappedLines.length - maxLines
+    } more lines${RESET}`;
+    const padded = padVisible(truncMsg, maxBodyWidth);
     lines.push({
       type: 'comment-body',
-      rendered: `${INDENT}${borderColor}│${RESET}  ${DIM}... ${
-        allWrappedLines.length - maxLines
-      } more lines${RESET}`,
+      rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
       commentId: comment.id,
       commentIndex,
     });
   }
+
+  // Bottom border
+  lines.push({
+    type: 'comment-body',
+    rendered: `${INDENT}${borderColor}└${'─'.repeat(
+      boxInnerWidth + 1
+    )}┘${RESET}`,
+    commentId: comment.id,
+    commentIndex,
+  });
 
   return lines;
 }
@@ -179,6 +236,65 @@ function buildHighlightSet(
   return highlighted;
 }
 
+export interface InsertionMap {
+  insertions: Map<number, ReviewComment[]>;
+  outOfDiff: ReviewComment[];
+  newLineToIndex: Map<number, number>;
+  oldLineToIndex: Map<number, number>;
+}
+
+export function computeInsertionMap(
+  diffLines: DiffLine[],
+  comments: ReviewComment[]
+): InsertionMap {
+  const newLineToIndex = new Map<number, number>();
+  for (let i = 0; i < diffLines.length; i++) {
+    const dl = diffLines[i];
+    if (dl.newLine != null) newLineToIndex.set(dl.newLine, i);
+  }
+
+  const oldLineToIndex = new Map<number, number>();
+  for (let i = 0; i < diffLines.length; i++) {
+    const dl = diffLines[i];
+    if (dl.oldLine != null) oldLineToIndex.set(dl.oldLine, i);
+  }
+
+  const insertions = new Map<number, ReviewComment[]>();
+  const outOfDiff: ReviewComment[] = [];
+
+  for (const comment of comments) {
+    const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
+    let insertAfter: number | undefined;
+
+    for (const targetLine of [comment.lineEnd, comment.lineStart]) {
+      if (lineMap.has(targetLine)) {
+        insertAfter = lineMap.get(targetLine);
+        break;
+      }
+    }
+
+    if (insertAfter === undefined) {
+      let closest = -1;
+      for (const [lineNum, idx] of lineMap) {
+        if (lineNum <= comment.lineEnd && idx > closest) {
+          closest = idx;
+        }
+      }
+      if (closest >= 0) insertAfter = closest;
+    }
+
+    if (insertAfter !== undefined) {
+      const existing = insertions.get(insertAfter) ?? [];
+      existing.push(comment);
+      insertions.set(insertAfter, existing);
+    } else {
+      outOfDiff.push(comment);
+    }
+  }
+
+  return { insertions, outOfDiff, newLineToIndex, oldLineToIndex };
+}
+
 export function interleaveComments(
   diffLines: DiffLine[],
   renderedDiffLines: string[],
@@ -196,68 +312,13 @@ export function interleaveComments(
     }));
   }
 
-  // Build highlight set for the selected comment's referenced lines
   const highlightSet = buildHighlightSet(
     diffLines,
     comments,
     selectedCommentId
   );
 
-  // Build map: newLine number → index in diffLines array
-  const newLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.newLine != null) {
-      newLineToIndex.set(dl.newLine, i);
-    }
-  }
-
-  // Also build oldLine map for LEFT-side comments
-  const oldLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.oldLine != null) {
-      oldLineToIndex.set(dl.oldLine, i);
-    }
-  }
-
-  // Map each comment to an insertion index (after which diff line index to insert)
-  const insertions = new Map<number, ReviewComment[]>();
-  const outOfDiff: ReviewComment[] = [];
-
-  for (const comment of comments) {
-    const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
-    let insertAfter: number | undefined;
-
-    // Try lineEnd first, then lineStart, then closest
-    for (const targetLine of [comment.lineEnd, comment.lineStart]) {
-      if (lineMap.has(targetLine)) {
-        insertAfter = lineMap.get(targetLine);
-        break;
-      }
-    }
-
-    // If exact line not found, find closest line <= lineEnd
-    if (insertAfter === undefined) {
-      let closest = -1;
-      for (const [lineNum, idx] of lineMap) {
-        if (lineNum <= comment.lineEnd && idx > closest) {
-          closest = idx;
-        }
-      }
-      if (closest >= 0) {
-        insertAfter = closest;
-      }
-    }
-
-    if (insertAfter !== undefined) {
-      const existing = insertions.get(insertAfter) ?? [];
-      existing.push(comment);
-      insertions.set(insertAfter, existing);
-    } else {
-      outOfDiff.push(comment);
-    }
-  }
+  const { insertions, outOfDiff } = computeInsertionMap(diffLines, comments);
 
   // Build annotated lines
   const result: AnnotatedLine[] = [];
@@ -265,9 +326,37 @@ export function interleaveComments(
 
   for (let i = 0; i < renderedDiffLines.length; i++) {
     let rendered = renderedDiffLines[i];
-    // Apply subtle highlight to referenced lines
+    // Apply yellow background highlight starting after the line-number gutter
+    // so it aligns with the comment box indent. Re-apply BG after every RESET
+    // so the background persists through the line's own ANSI codes.
     if (highlightSet.has(i)) {
-      rendered = `${BG_HIGHLIGHT}${rendered}${RESET}`;
+      // Find the char index where the gutter ends (after INDENT_LENGTH visible chars).
+      // If the line is too short (e.g. empty lines), skip highlighting entirely.
+      const GUTTER_CHARS = INDENT.length; // 13 visible chars
+      let visCount = 0;
+      let splitIdx = -1;
+      for (let j = 0; j < rendered.length; j++) {
+        if (rendered[j] === '\x1b') {
+          const end = rendered.indexOf('m', j);
+          if (end !== -1) {
+            j = end;
+            continue;
+          }
+        }
+        visCount++;
+        if (visCount > GUTTER_CHARS) {
+          splitIdx = j;
+          break;
+        }
+      }
+      if (splitIdx >= 0) {
+        const gutter = rendered.slice(0, splitIdx);
+        const content = rendered.slice(splitIdx);
+        rendered = `${gutter}${BG_HIGHLIGHT}${content.replaceAll(
+          RESET,
+          `${RESET}${BG_HIGHLIGHT}`
+        )}${RESET}`;
+      }
     }
     result.push({ type: 'diff', rendered });
 
@@ -334,26 +423,29 @@ export interface CommentPositionInfo {
 
 /**
  * Compute the annotated-line index of each comment header and its referenced lineStart.
- * Mirrors the insertion logic of `interleaveComments` but only records positions.
+ * Walks the actual annotated output to get exact positions (no estimation).
  */
 export function getCommentPositions(
+  annotatedLines: AnnotatedLine[],
   diffLines: DiffLine[],
-  renderedDiffLines: string[],
   comments: ReviewComment[]
 ): Map<string, CommentPositionInfo> {
   const positions = new Map<string, CommentPositionInfo>();
   if (comments.length === 0) return positions;
 
-  const newLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.newLine != null) newLineToIndex.set(dl.newLine, i);
-  }
+  const { newLineToIndex, oldLineToIndex } = computeInsertionMap(
+    diffLines,
+    comments
+  );
 
-  const oldLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.oldLine != null) oldLineToIndex.set(dl.oldLine, i);
+  // Map: diffLine index → first annotated line index for that diff line
+  const diffIdxToAnnotatedIdx = new Map<number, number>();
+  let diffIdx = 0;
+  for (let i = 0; i < annotatedLines.length; i++) {
+    if (annotatedLines[i].type === 'diff') {
+      diffIdxToAnnotatedIdx.set(diffIdx, i);
+      diffIdx++;
+    }
   }
 
   // For each comment, find the diffLines index of lineStart
@@ -366,85 +458,16 @@ export function getCommentPositions(
     }
   }
 
-  const insertions = new Map<number, ReviewComment[]>();
-  const outOfDiff: ReviewComment[] = [];
-
-  for (const comment of comments) {
-    const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
-    let insertAfter: number | undefined;
-
-    for (const targetLine of [comment.lineEnd, comment.lineStart]) {
-      if (lineMap.has(targetLine)) {
-        insertAfter = lineMap.get(targetLine);
-        break;
-      }
-    }
-
-    if (insertAfter === undefined) {
-      let closest = -1;
-      for (const [lineNum, idx] of lineMap) {
-        if (lineNum <= comment.lineEnd && idx > closest) {
-          closest = idx;
-        }
-      }
-      if (closest >= 0) insertAfter = closest;
-    }
-
-    if (insertAfter !== undefined) {
-      const existing = insertions.get(insertAfter) ?? [];
-      existing.push(comment);
-      insertions.set(insertAfter, existing);
-    } else {
-      outOfDiff.push(comment);
-    }
-  }
-
-  // Walk through and count annotated line indices
-  // Also track: diffLineIndex → annotated line index (for lineStart lookup)
-  const diffIdxToAnnotatedIdx = new Map<number, number>();
-  let lineIndex = 0;
-
-  for (let i = 0; i < renderedDiffLines.length; i++) {
-    diffIdxToAnnotatedIdx.set(i, lineIndex);
-    lineIndex++; // the diff line itself
-
-    const commentsHere = insertions.get(i);
-    if (commentsHere) {
-      for (const comment of commentsHere) {
-        const headerPos = lineIndex;
-        // Estimate block height: header(1) + body lines (no footer now)
-        const bodyLines = comment.body.split('\n');
-        const bodyCount = Math.min(bodyLines.length, 4);
-        const truncLine = bodyLines.length > 4 ? 1 : 0;
-        const blockHeight = 1 + bodyCount + truncLine; // header + body + truncation
-
-        // Find refStartLine
-        const lineStartDiffIdx = commentLineStartDiffIdx.get(comment.id);
-        const refStartLine =
-          lineStartDiffIdx !== undefined
-            ? diffIdxToAnnotatedIdx.get(lineStartDiffIdx) ?? headerPos
-            : headerPos;
-
-        positions.set(comment.id, { headerLine: headerPos, refStartLine });
-        lineIndex += blockHeight;
-      }
-    }
-  }
-
-  // out-of-diff comments
-  if (outOfDiff.length > 0) {
-    lineIndex++; // separator line
-    for (const comment of outOfDiff) {
-      lineIndex++; // "line N:" label
-      const headerPos = lineIndex;
-      const bodyLines = comment.body.split('\n');
-      const bodyCount = Math.min(bodyLines.length, 4);
-      const truncLine = bodyLines.length > 4 ? 1 : 0;
-      lineIndex += 1 + bodyCount + truncLine;
-      positions.set(comment.id, {
-        headerLine: headerPos,
-        refStartLine: headerPos,
-      });
+  // Scan annotated lines for comment-header entries
+  for (let i = 0; i < annotatedLines.length; i++) {
+    const line = annotatedLines[i];
+    if (line.type === 'comment-header' && line.commentId) {
+      const lineStartDiffIdx = commentLineStartDiffIdx.get(line.commentId);
+      const refStartLine =
+        lineStartDiffIdx !== undefined
+          ? diffIdxToAnnotatedIdx.get(lineStartDiffIdx) ?? i
+          : i;
+      positions.set(line.commentId, { headerLine: i, refStartLine });
     }
   }
 

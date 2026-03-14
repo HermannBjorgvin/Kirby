@@ -84,9 +84,8 @@ export function ReviewsTab({
     [reviewComments, review.diffViewFile]
   );
 
-  const diffTotalLines = useMemo(() => {
-    if (!fileDiffData) return 0;
-    if (fileComments.length === 0) return fileDiffData.rendered.length;
+  const interleavedLines = useMemo(() => {
+    if (!fileDiffData || fileComments.length === 0) return null;
     return interleaveComments(
       fileDiffData.fileDiffLines,
       fileDiffData.rendered,
@@ -96,7 +95,7 @@ export function ReviewsTab({
       review.pendingDeleteCommentId,
       review.editingCommentId,
       review.editBuffer
-    ).length;
+    );
   }, [
     fileDiffData,
     fileComments,
@@ -107,14 +106,21 @@ export function ReviewsTab({
     review.editBuffer,
   ]);
 
+  const diffTotalLines = useMemo(() => {
+    if (!fileDiffData) return 0;
+    if (interleavedLines) return interleavedLines.length;
+    return fileDiffData.rendered.length;
+  }, [fileDiffData, interleavedLines]);
+
   const commentPositions = useMemo(() => {
-    if (!fileDiffData || fileComments.length === 0) return new Map();
+    if (!fileDiffData || fileComments.length === 0 || !interleavedLines)
+      return new Map();
     return getCommentPositions(
+      interleavedLines,
       fileDiffData.fileDiffLines,
-      fileDiffData.rendered,
       fileComments
     );
-  }, [fileDiffData, fileComments]);
+  }, [fileDiffData, fileComments, interleavedLines]);
 
   // ── Scroll wheel (experimental) ──────────────────────────────────
   const scrollWheelActive =
@@ -122,15 +128,14 @@ export function ReviewsTab({
     review.reviewPane === 'diff-file' &&
     !terminalFocused;
 
+  const { setDiffScrollOffset } = review;
   const handleScrollWheel = useCallback(
     (delta: number) => {
       const viewportHeight = Math.max(1, terminal.paneRows - 3);
       const maxScroll = Math.max(0, diffTotalLines - viewportHeight);
-      review.setDiffScrollOffset((o) =>
-        Math.max(0, Math.min(o + delta, maxScroll))
-      );
+      setDiffScrollOffset((o) => Math.max(0, Math.min(o + delta, maxScroll)));
     },
-    [terminal.paneRows, diffTotalLines, review]
+    [terminal.paneRows, diffTotalLines, setDiffScrollOffset]
   );
 
   useScrollWheel(scrollWheelActive, handleScrollWheel);

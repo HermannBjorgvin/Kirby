@@ -30,12 +30,20 @@ export const DiffViewer = memo(function DiffViewer({
   editingCommentId?: string | null;
   editBuffer?: string;
 }) {
-  const annotatedLines = useMemo(() => {
-    if (!diffText) return [];
+  // Step 1: Parse + render diff (only re-runs when diff text or dimensions change)
+  const parsedDiff = useMemo(() => {
+    if (!diffText) return null;
     const allFileDiffs = parseUnifiedDiff(diffText);
     const fileDiffLines = allFileDiffs.get(filename);
-    if (!fileDiffLines) return [];
+    if (!fileDiffLines) return null;
     const rendered = renderDiffLines(fileDiffLines, paneCols);
+    return { fileDiffLines, rendered };
+  }, [diffText, filename, paneCols]);
+
+  // Step 2: Interleave comments (re-runs when comments or selection changes)
+  const annotatedLines = useMemo(() => {
+    if (!parsedDiff) return [];
+    const { fileDiffLines, rendered } = parsedDiff;
 
     if (!comments || comments.length === 0) {
       return rendered.map((line) => ({
@@ -56,7 +64,7 @@ export const DiffViewer = memo(function DiffViewer({
       editBuffer
     );
   }, [
-    diffText,
+    parsedDiff,
     filename,
     paneCols,
     comments,

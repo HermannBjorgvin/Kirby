@@ -23,7 +23,7 @@ function execWithStdin(
 }
 
 export interface PostContext {
-  vendor: string;
+  vendor: 'github' | 'azure-devops';
   vendorAuth: Record<string, string>;
   vendorProject: Record<string, string>;
   prId: number;
@@ -88,6 +88,7 @@ async function postAzureDevOps(
   const org = ctx.vendorProject.org;
   const project = ctx.vendorProject.project;
   const repo = ctx.vendorProject.repo;
+  const pat = ctx.vendorAuth.pat;
 
   for (const comment of comments) {
     const thread = {
@@ -112,25 +113,20 @@ async function postAzureDevOps(
       status: 1, // active
     };
 
-    const jsonInput = JSON.stringify(thread);
     const url = `https://dev.azure.com/${org}/${project}/_apis/git/repositories/${repo}/pullrequests/${ctx.prId}/threads?api-version=7.1`;
-    const pat = ctx.vendorAuth.pat;
 
-    await execWithStdin(
-      'curl',
-      [
-        '-s',
-        '-X',
-        'POST',
-        '-H',
-        'Content-Type: application/json',
-        '-u',
-        `:${pat}`,
-        '--data-binary',
-        '@-',
-        url,
-      ],
-      jsonInput
-    );
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${btoa(':' + pat)}`,
+      },
+      body: JSON.stringify(thread),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Azure DevOps API ${response.status}: ${text}`);
+    }
   }
 }

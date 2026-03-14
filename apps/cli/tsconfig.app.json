@@ -7,7 +7,7 @@
     "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": [],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
   "references": [
     {
       "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
