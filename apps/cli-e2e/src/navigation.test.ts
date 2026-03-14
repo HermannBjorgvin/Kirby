@@ -1,10 +1,10 @@
 import { test, expect } from '@microsoft/tui-test';
-import { createTestRepo, cleanupTestRepo } from './setup/git-repo.js';
+import { createTestRepo, registerCleanup } from './setup/git-repo.js';
 import { resolve } from 'node:path';
 
 const testDir = createTestRepo();
 const mainJs = resolve('../cli/dist/main.js');
-process.on('exit', () => cleanupTestRepo(testDir));
+registerCleanup(testDir);
 
 test.use({
   program: { file: 'node', args: [mainJs, testDir] },

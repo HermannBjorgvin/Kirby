@@ -25,3 +25,22 @@ export function cleanupTestRepo(dir: string): void {
     /* best effort */
   }
 }
+
+export function registerCleanup(dir: string): void {
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    cleanupTestRepo(dir);
+  };
+
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => {
+    cleanup();
+    process.exit(1);
+  });
+  process.on('SIGTERM', () => {
+    cleanup();
+    process.exit(1);
+  });
+}

@@ -48,3 +48,4 @@ Thumbs.db
 
 vitest.config.*.timestamp*
 tui-traces/
+.tui-test/
