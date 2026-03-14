@@ -1,10 +1,24 @@
+import { spawn } from 'node:child_process';
+import { writeFileSync, readFileSync, watch } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Key } from 'ink';
 import { createWorktree } from '@kirby/worktree-manager';
-import type { DiffFile } from '../../types.js';
+import type { DiffFile, ReviewComment } from '../../types.js';
 import { spawnSession, hasSession } from '../../pty-registry.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { handleTextInput } from '../../utils/handle-text-input.js';
+import {
+  readComments,
+  removeComment,
+  updateComment,
+} from '../../utils/comment-store.js';
+import {
+  postReviewComments,
+  type PostContext,
+} from '../../utils/comment-poster.js';
 import { getDisplayFiles } from '../../utils/file-classifier.js';
+import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
 import type { SessionContextValue } from '../../context/SessionContext.js';
 import type { ReviewContextValue } from '../../context/ReviewContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
@@ -38,11 +52,21 @@ export interface DiffFileListHandlerCtx {
   loadDiffText: () => Promise<void>;
 }
 
+export interface CommentContext {
+  comments: ReviewComment[];
+  prId: number;
+  positions: Map<string, CommentPositionInfo>;
+  selectedReviewPr: PullRequestInfo;
+}
+
 export interface DiffViewerHandlerCtx {
   review: ReviewValue;
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
   diffTotalLines: number;
+  commentCtx?: CommentContext;
+  config: ConfigContextValue;
+  sessions: SessionContextValue;
 }
 
 /**
@@ -77,16 +101,18 @@ async function startReviewSession(
   const pr = ctx.selectedReviewPr;
 
   let prompt =
-    `You are reviewing Pull Request #${pr.id} ` +
-    `titled ${pr.title || pr.sourceBranch}. ` +
-    `The PR merges ${pr.sourceBranch} into ${pr.targetBranch}, ` +
-    `authored by ${pr.createdByDisplayName || 'unknown'}. ` +
-    `Review the pull request thoroughly. For each issue you find: ` +
-    `1) Show the file path and line numbers, ` +
-    `2) Include a relevant code snippet, ` +
-    `3) Write a suggested review comment below the snippet. ` +
-    `After reviewing all changes, present a numbered list of all your suggested comments ` +
-    `and ask me which ones I want to post to the pull request.`;
+    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
+    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
+    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
+    `To add review comments, use this command:\n` +
+    `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
+    `Rules:\n` +
+    `- File paths are relative to the repo root\n` +
+    `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
+    `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
+    `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
+    `- Comments appear live in the reviewer's diff viewer\n\n` +
+    `Review all changed files thoroughly. Add comments for any issues found.`;
 
   if (additionalInstruction) {
     prompt +=
@@ -242,14 +268,61 @@ export function handleDiffViewerInput(
   key: Key,
   ctx: DiffViewerHandlerCtx
 ): void {
+  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
+  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  const fileComments = (ctx.commentCtx?.comments ?? []).filter(
+    (c) => c.file === ctx.review.diffViewFile
+  );
+
+  // ── Inline edit mode ────────────────────────────────────────────
+  if (ctx.review.editingCommentId) {
+    if (key.escape) {
+      // Save
+      if (ctx.commentCtx) {
+        updateComment(ctx.commentCtx.prId, ctx.review.editingCommentId, {
+          body: ctx.review.editBuffer,
+        });
+      }
+      ctx.review.setEditingCommentId(null);
+      ctx.review.setEditBuffer('');
+      return;
+    }
+    if (input === 'c' && key.ctrl) {
+      // Cancel without saving
+      ctx.review.setEditingCommentId(null);
+      ctx.review.setEditBuffer('');
+      return;
+    }
+    if (key.return) {
+      ctx.review.setEditBuffer((b) => b + '\n');
+      return;
+    }
+    handleTextInput(input, key, ctx.review.setEditBuffer);
+    return;
+  }
+
+  // ── Delete confirmation mode ────────────────────────────────────
+  if (ctx.review.pendingDeleteCommentId) {
+    if (input === 'y' && ctx.commentCtx) {
+      removeComment(ctx.commentCtx.prId, ctx.review.pendingDeleteCommentId);
+      ctx.review.setPendingDeleteCommentId(null);
+      ctx.review.setSelectedCommentId(null);
+      return;
+    }
+    if (input === 'n' || key.escape) {
+      ctx.review.setPendingDeleteCommentId(null);
+      return;
+    }
+    // Swallow all other input while confirming
+    return;
+  }
+
+  // ── Normal navigation ───────────────────────────────────────────
   if (key.escape) {
     ctx.review.setReviewPane('diff');
     ctx.review.setDiffViewFile(null);
     return;
   }
-
-  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
 
   if (input === 'j' || key.downArrow) {
     ctx.review.setDiffScrollOffset((o) => Math.min(o + 1, maxScroll));
@@ -267,6 +340,16 @@ export function handleDiffViewerInput(
   if (input === 'u') {
     const half = Math.floor(viewportHeight / 2);
     ctx.review.setDiffScrollOffset((o) => Math.max(o - half, 0));
+    return;
+  }
+  if (key.pageDown) {
+    ctx.review.setDiffScrollOffset((o) =>
+      Math.min(o + viewportHeight, maxScroll)
+    );
+    return;
+  }
+  if (key.pageUp) {
+    ctx.review.setDiffScrollOffset((o) => Math.max(o - viewportHeight, 0));
     return;
   }
   if (input === 'g') {
@@ -301,6 +384,227 @@ export function handleDiffViewerInput(
       ctx.review.setDiffFileIndex(currentIdx - 1);
       ctx.review.setDiffScrollOffset(0);
     }
+    return;
+  }
+
+  // ── Comment navigation & actions ──────────────────────────────
+
+  /**
+   * Find the next or previous comment ID relative to `currentId`.
+   * Sorts by header position, wraps around, and optionally filters.
+   */
+  function findAdjacentCommentId(
+    direction: 'next' | 'prev',
+    currentId: string | null,
+    candidates: ReviewComment[],
+    positions: Map<string, CommentPositionInfo> | undefined,
+    filter?: (c: ReviewComment) => boolean
+  ): string | undefined {
+    const pool = filter ? candidates.filter(filter) : candidates;
+    if (pool.length === 0) return undefined;
+
+    if (positions && positions.size > 0) {
+      const currentInfo = currentId ? positions.get(currentId) : undefined;
+      const currentHeader =
+        direction === 'next'
+          ? currentInfo?.headerLine ?? -1
+          : currentInfo?.headerLine ?? Infinity;
+
+      const sorted = pool
+        .map((c) => ({
+          id: c.id,
+          pos:
+            positions.get(c.id)?.headerLine ??
+            (direction === 'next' ? Infinity : -1),
+        }))
+        .sort((a, b) => (direction === 'next' ? a.pos - b.pos : b.pos - a.pos));
+
+      const found =
+        direction === 'next'
+          ? sorted.find((c) => c.pos > currentHeader && c.id !== currentId)
+          : sorted.find((c) => c.pos < currentHeader && c.id !== currentId);
+
+      return (found ?? sorted[0])?.id;
+    }
+
+    // Fallback: cycle by array index
+    const currentIdx = currentId
+      ? pool.findIndex((c) => c.id === currentId)
+      : direction === 'next'
+      ? -1
+      : 0;
+    const nextIdx =
+      direction === 'next'
+        ? (currentIdx + 1) % pool.length
+        : currentIdx <= 0
+        ? pool.length - 1
+        : currentIdx - 1;
+    return pool[nextIdx]?.id;
+  }
+
+  // Helper: scroll so the referenced lines (lineStart) are visible above the comment
+  function scrollToComment(commentId: string) {
+    const positions = ctx.commentCtx?.positions;
+    if (!positions) return;
+    const info = positions.get(commentId);
+    if (!info) return;
+    // Scroll so refStartLine is near the top with a small margin
+    const scrollTarget = Math.max(0, info.refStartLine - 2);
+    ctx.review.setDiffScrollOffset(Math.min(scrollTarget, maxScroll));
+  }
+
+  if ((input === 'c' || key.rightArrow) && fileComments.length > 0) {
+    const nextId = findAdjacentCommentId(
+      'next',
+      ctx.review.selectedCommentId,
+      fileComments,
+      ctx.commentCtx?.positions
+    );
+    if (nextId) {
+      ctx.review.setSelectedCommentId(nextId);
+      scrollToComment(nextId);
+    }
+    return;
+  }
+
+  if ((input === 'C' || key.leftArrow) && fileComments.length > 0) {
+    const prevId = findAdjacentCommentId(
+      'prev',
+      ctx.review.selectedCommentId,
+      fileComments,
+      ctx.commentCtx?.positions
+    );
+    if (prevId) {
+      ctx.review.setSelectedCommentId(prevId);
+      scrollToComment(prevId);
+    }
+    return;
+  }
+
+  if (input === 'x' && ctx.review.selectedCommentId && ctx.commentCtx) {
+    ctx.review.setPendingDeleteCommentId(ctx.review.selectedCommentId);
+    return;
+  }
+
+  if (input === 'e' && ctx.review.selectedCommentId) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (comment) {
+      ctx.review.setEditingCommentId(comment.id);
+      ctx.review.setEditBuffer(comment.body);
+    }
+    return;
+  }
+
+  if (input === 'p' && ctx.review.selectedCommentId && ctx.commentCtx) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (!comment || comment.status !== 'draft') return;
+
+    const pr = ctx.commentCtx.selectedReviewPr;
+
+    const vendor = ctx.config.config.vendor;
+    if (!vendor) {
+      ctx.sessions.flashStatus('No VCS configured');
+      return;
+    }
+    if (vendor !== 'github' && vendor !== 'azure-devops') {
+      ctx.sessions.flashStatus(`Unsupported vendor: ${vendor}`);
+      return;
+    }
+    if (vendor === 'github' && !pr.headSha) {
+      ctx.sessions.flashStatus('Missing head SHA — try refreshing PR data');
+      return;
+    }
+
+    const postCtx: PostContext = {
+      vendor,
+      vendorAuth: ctx.config.config.vendorAuth,
+      vendorProject: ctx.config.config.vendorProject,
+      prId: ctx.commentCtx.prId,
+      headSha: pr.headSha,
+    };
+
+    // Mark as posting to prevent double-press
+    const postedId = comment.id;
+    const prId = ctx.commentCtx.prId;
+    updateComment(prId, postedId, { status: 'posting' });
+    ctx.sessions.flashStatus('Posting comment...');
+
+    postReviewComments([comment], postCtx)
+      .then(() => {
+        ctx.sessions.flashStatus('Comment posted');
+        // Re-read fresh comments to avoid stale closure
+        const freshComments = readComments(prId).filter(
+          (c) => c.file === ctx.review.diffViewFile
+        );
+        const nextDraftId = findAdjacentCommentId(
+          'next',
+          postedId,
+          freshComments,
+          ctx.commentCtx?.positions,
+          (c) => c.status === 'draft'
+        );
+        if (nextDraftId) {
+          ctx.review.setSelectedCommentId(nextDraftId);
+          scrollToComment(nextDraftId);
+        } else {
+          ctx.review.setSelectedCommentId(null);
+        }
+      })
+      .catch((err: Error) => {
+        // Revert to draft on failure
+        updateComment(prId, postedId, { status: 'draft' });
+        ctx.sessions.flashStatus(`Post failed: ${err.message}`);
+      });
+    return;
+  }
+
+  if (input === 'E' && ctx.review.selectedCommentId && ctx.commentCtx) {
+    const comment = fileComments.find(
+      (c) => c.id === ctx.review.selectedCommentId
+    );
+    if (!comment) return;
+
+    const editor =
+      ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
+    if (!editor) {
+      ctx.sessions.flashStatus(
+        'No editor configured — set one in settings (s)'
+      );
+      return;
+    }
+
+    const tmpFile = join(tmpdir(), `kirby-comment-${comment.id}.md`);
+    writeFileSync(tmpFile, comment.body, 'utf8');
+
+    spawn(editor, [tmpFile], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    const prId = ctx.commentCtx!.prId;
+    const commentId = comment.id;
+    const watcher = watch(tmpFile, () => {
+      try {
+        const newBody = readFileSync(tmpFile, 'utf8');
+        if (newBody !== comment.body) {
+          updateComment(prId, commentId, { body: newBody });
+        }
+      } catch {
+        // File may be temporarily unavailable during save
+      }
+    });
+
+    // Cleanup after 30 minutes (unref so it doesn't keep the process alive)
+    const timer = setTimeout(() => {
+      watcher.close();
+    }, 30 * 60 * 1000);
+    timer.unref();
+
+    ctx.sessions.flashStatus(`Opened comment in ${editor}`);
     return;
   }
 }

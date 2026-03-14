@@ -82,6 +82,7 @@ export function parsePullRequest(
     isDraft?: boolean;
     reviewers?: RawReviewer[];
     createdBy?: { uniqueName?: string; displayName?: string };
+    lastMergeSourceCommit?: { commitId?: string };
   },
   project: Record<string, string>
 ): Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'> {
@@ -98,6 +99,7 @@ export function parsePullRequest(
     createdByIdentifier: raw.createdBy?.uniqueName ?? '',
     createdByDisplayName: raw.createdBy?.displayName ?? '',
     url: `https://dev.azure.com/${project.org}/${project.project}/_git/${project.repo}/pullrequest/${prId}`,
+    headSha: raw.lastMergeSourceCommit?.commitId,
   };
 }
 

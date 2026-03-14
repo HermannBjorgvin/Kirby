@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { DiffFile } from '../../types.js';
+import type { DiffFile, ReviewComment } from '../../types.js';
 import { partitionFiles } from '../../utils/file-classifier.js';
 import { truncate } from '../../utils/truncate.js';
 import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
@@ -29,18 +29,30 @@ function FileRow({
   file,
   selected,
   maxWidth,
+  commentCount,
+  hasAnyComments,
 }: {
   file: DiffFile;
   selected: boolean;
   maxWidth: number;
+  commentCount: number;
+  hasAnyComments: boolean;
 }) {
   const badge = statusBadge(file.status);
-  // "› A filename.ts  +10 -5"
   const prefix = selected ? '› ' : '  ';
   const stats = ` +${file.additions} -${file.deletions}`;
+
+  // Comment count badge on LEFT side: "N💬 " or padding for alignment
+  // Widest realistic badge: "99💬 " = 5 chars (count + emoji + space)
+  const badgeWidth = hasAnyComments ? 4 : 0;
+  const commentBadgeStr = commentCount > 0 ? `${commentCount}` : '';
+  const commentPad = hasAnyComments
+    ? ' '.repeat(Math.max(0, badgeWidth - commentBadgeStr.length))
+    : '';
+
   const nameWidth = Math.max(
     10,
-    maxWidth - prefix.length - 2 - stats.length - 1
+    maxWidth - prefix.length - 2 - badgeWidth - stats.length - 1
   );
   const name = file.previousFilename
     ? `${truncate(
@@ -53,6 +65,8 @@ function FileRow({
     <Text>
       <Text color={selected ? 'cyan' : undefined}>{prefix}</Text>
       <Text color={badge.color}>{badge.char}</Text>{' '}
+      {commentCount > 0 && <Text color="yellow">{commentBadgeStr} </Text>}
+      {commentCount === 0 && hasAnyComments && <Text>{commentPad}</Text>}
       <Text bold={selected}>{name}</Text>
       <Text color="green"> +{file.additions}</Text>
       <Text color="red"> -{file.deletions}</Text>
@@ -68,6 +82,7 @@ export const DiffFileList = memo(function DiffFileList({
   loading,
   error,
   showSkipped,
+  comments,
 }: {
   files: DiffFile[];
   selectedIndex: number;
@@ -76,9 +91,21 @@ export const DiffFileList = memo(function DiffFileList({
   loading: boolean;
   error: string | null;
   showSkipped: boolean;
+  comments?: ReviewComment[];
 }) {
   const { normal, skipped } = partitionFiles(files);
   const displayFiles = showSkipped ? [...normal, ...skipped] : normal;
+
+  const commentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!comments) return counts;
+    for (const c of comments) {
+      counts.set(c.file, (counts.get(c.file) ?? 0) + 1);
+    }
+    return counts;
+  }, [comments]);
+
+  const hasAnyComments = commentCounts.size > 0;
 
   // Chrome: title + divider + hints + optional warning + optional skipped header
   const chromeRows = 4;
@@ -129,6 +156,8 @@ export const DiffFileList = memo(function DiffFileList({
                 file={f}
                 selected={isSelected}
                 maxWidth={maxWidth}
+                commentCount={commentCounts.get(f.filename) ?? 0}
+                hasAnyComments={hasAnyComments}
               />
             );
           })}

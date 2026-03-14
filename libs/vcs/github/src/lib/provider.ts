@@ -134,6 +134,7 @@ const SEARCH_PRS_QUERY = `
           title
           headRefName
           baseRefName
+          headRefOid
           url
           author { login }
           isDraft
@@ -174,6 +175,7 @@ interface SearchPrNode {
   title: string;
   headRefName: string;
   baseRefName: string;
+  headRefOid: string;
   url: string;
   author: { login: string } | null;
   isDraft: boolean;
@@ -263,6 +265,7 @@ function transformSearchNode(node: SearchPrNode): PullRequestInfo {
     reviewers,
     buildStatus,
     activeCommentCount: unresolvedCount,
+    headSha: node.headRefOid,
   };
 }
 

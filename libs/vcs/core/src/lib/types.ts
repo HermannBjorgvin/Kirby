@@ -23,6 +23,7 @@ export interface PullRequestInfo {
   reviewers?: PullRequestReviewer[];
   activeCommentCount?: number;
   buildStatus?: BuildStatusState;
+  headSha?: string;
 }
 
 export type BranchPrMap = Record<string, PullRequestInfo | null>;

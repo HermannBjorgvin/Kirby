@@ -1,40 +1,33 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { Text, Box } from 'ink';
-import { parseUnifiedDiff } from '../../utils/diff-parser.js';
-import { renderDiffLines } from '../../utils/diff-renderer.js';
+import type { AnnotatedLine } from '../../utils/comment-renderer.js';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,
-  diffText,
+  annotatedLines,
   scrollOffset,
   paneRows,
   paneCols,
   loading,
 }: {
   filename: string;
-  diffText: string | null;
+  annotatedLines: AnnotatedLine[];
   scrollOffset: number;
   paneRows: number;
   paneCols: number;
   loading: boolean;
 }) {
-  const renderedLines = useMemo(() => {
-    if (!diffText) return [];
-    const allFileDiffs = parseUnifiedDiff(diffText);
-    const fileDiffLines = allFileDiffs.get(filename);
-    if (!fileDiffLines) return [];
-    return renderDiffLines(fileDiffLines, paneCols);
-  }, [diffText, filename, paneCols]);
-
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
-  const visibleLines = renderedLines.slice(
+  const visibleLines = annotatedLines.slice(
     scrollOffset,
     scrollOffset + viewportHeight
   );
-  const totalLines = renderedLines.length;
+  const totalLines = annotatedLines.length;
   const atTop = scrollOffset === 0;
   const atBottom = scrollOffset + viewportHeight >= totalLines;
+
+  const hasComments = annotatedLines.some((l) => l.type === 'comment-header');
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -51,7 +44,7 @@ export const DiffViewer = memo(function DiffViewer({
       </Text>
       <Text dimColor>{'─'.repeat(Math.min(40, paneCols - 2))}</Text>
 
-      {!loading && totalLines === 0 && diffText !== null && (
+      {!loading && totalLines === 0 && (
         <Text dimColor>(no diff for this file)</Text>
       )}
 
@@ -60,7 +53,7 @@ export const DiffViewer = memo(function DiffViewer({
           {!atTop && <Text dimColor>↑ {scrollOffset} lines above</Text>}
           {visibleLines.map((line, i) => (
             <Text key={scrollOffset + i} wrap="truncate">
-              {line}
+              {line.rendered}
             </Text>
           ))}
           {!atBottom && (
@@ -74,8 +67,14 @@ export const DiffViewer = memo(function DiffViewer({
       <Box marginTop={1}>
         <Text dimColor>
           <Text color="cyan">j/k</Text> scroll · <Text color="cyan">d/u</Text>{' '}
-          half-page · <Text color="cyan">g/G</Text> top/bottom ·{' '}
+          half-page · <Text color="cyan">PgUp/Dn</Text> page ·{' '}
+          <Text color="cyan">g/G</Text> top/bottom ·{' '}
           <Text color="cyan">n/N</Text> next/prev file ·{' '}
+          {hasComments && (
+            <>
+              <Text color="cyan">←/→ c/C</Text> comments ·{' '}
+            </>
+          )}
           <Text color="cyan">esc</Text> back
         </Text>
       </Box>

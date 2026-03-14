@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { DiffFile } from '../../types.js';
+import type { DiffFile, ReviewComment } from '../../types.js';
+import type { AnnotatedLine } from '../../utils/comment-renderer.js';
 import { ReviewConfirmPane } from './ReviewConfirmPane.js';
 import { ReviewDetailPane } from './ReviewDetailPane.js';
 import { DiffFileList } from './DiffFileList.js';
@@ -18,7 +19,6 @@ export const ReviewPane = memo(function ReviewPane({
   diffFiles,
   diffFileIndex,
   diffViewFile,
-  diffText,
   diffScrollOffset,
   diffLoading,
   diffTextLoading,
@@ -26,6 +26,8 @@ export const ReviewPane = memo(function ReviewPane({
   showSkipped,
   paneRows,
   paneCols,
+  comments,
+  annotatedLines,
 }: {
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewPane: string;
@@ -37,7 +39,6 @@ export const ReviewPane = memo(function ReviewPane({
   diffFiles: DiffFile[];
   diffFileIndex: number;
   diffViewFile: string | null;
-  diffText: string | null;
   diffScrollOffset: number;
   diffLoading: boolean;
   diffTextLoading: boolean;
@@ -45,6 +46,8 @@ export const ReviewPane = memo(function ReviewPane({
   showSkipped: boolean;
   paneRows: number;
   paneCols: number;
+  comments: ReviewComment[];
+  annotatedLines: AnnotatedLine[];
 }) {
   if (reviewConfirm) {
     return (
@@ -65,6 +68,7 @@ export const ReviewPane = memo(function ReviewPane({
         loading={diffLoading}
         error={diffError}
         showSkipped={showSkipped}
+        comments={comments}
       />
     );
   }
@@ -72,7 +76,7 @@ export const ReviewPane = memo(function ReviewPane({
     return (
       <DiffViewer
         filename={diffViewFile}
-        diffText={diffText}
+        annotatedLines={annotatedLines}
         scrollOffset={diffScrollOffset}
         paneRows={paneRows}
         paneCols={paneCols}

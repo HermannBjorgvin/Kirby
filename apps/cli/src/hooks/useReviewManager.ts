@@ -18,6 +18,14 @@ export function useReviewManager() {
   const [diffViewFile, setDiffViewFile] = useState<string | null>(null);
   const [diffScrollOffset, setDiffScrollOffset] = useState(0);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(
+    null
+  );
+  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<
+    string | null
+  >(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editBuffer, setEditBuffer] = useState('');
 
   return {
     reviewSelectedIndex,
@@ -40,5 +48,13 @@ export function useReviewManager() {
     setDiffScrollOffset,
     showSkipped,
     setShowSkipped,
+    selectedCommentId,
+    setSelectedCommentId,
+    pendingDeleteCommentId,
+    setPendingDeleteCommentId,
+    editingCommentId,
+    setEditingCommentId,
+    editBuffer,
+    setEditBuffer,
   };
 }
