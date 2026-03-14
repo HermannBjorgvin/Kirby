@@ -90,7 +90,7 @@ describe('diff-fetcher integration', () => {
     ];
 
     const renderedDiffLines = renderDiffLines(diffLines!, 120);
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines!,
       renderedDiffLines,
       comments,
@@ -130,7 +130,7 @@ describe('diff-fetcher integration', () => {
     ];
 
     const renderedDiffLines = diffLines.map((dl) => dl.content);
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines,
       renderedDiffLines,
       comments,

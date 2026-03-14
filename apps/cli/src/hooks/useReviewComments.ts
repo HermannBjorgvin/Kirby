@@ -4,23 +4,13 @@ import { readComments, commentDirPath } from '../utils/comment-store.js';
 import type { ReviewComment } from '../types.js';
 
 export function useReviewComments(prId: number | null): ReviewComment[] {
-  const [comments, setComments] = useState<ReviewComment[]>([]);
+  // Revision counter bumped by file watcher to trigger re-reads
+  const [revision, setRevision] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const reload = useCallback(() => {
-    setComments(prId !== null ? readComments(prId) : []);
-  }, [prId]);
-
-  // Initial load + reload on prId change
-  const initialComments = useMemo(
-    () => (prId !== null ? readComments(prId) : []),
-    [prId]
-  );
-
-  useEffect(() => {
-    setComments(initialComments);
-   
-  }, [initialComments]);
+  const bumpRevision = useCallback(() => {
+    setRevision((r) => r + 1);
+  }, []);
 
   useEffect(() => {
     if (prId === null) return;
@@ -31,7 +21,7 @@ export function useReviewComments(prId: number | null): ReviewComment[] {
     try {
       watcher = watch(dir, () => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(reload, 100);
+        debounceRef.current = setTimeout(bumpRevision, 100);
       });
     } catch {
       // Directory may not exist yet
@@ -41,7 +31,12 @@ export function useReviewComments(prId: number | null): ReviewComment[] {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       watcher?.close();
     };
-  }, [prId, reload]);
+  }, [prId, bumpRevision]);
 
-  return comments;
+  // Derive comments from prId + revision (re-reads on file change or prId change)
+  return useMemo(
+    () => (prId !== null ? readComments(prId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision triggers re-read
+    [prId, revision]
+  );
 }

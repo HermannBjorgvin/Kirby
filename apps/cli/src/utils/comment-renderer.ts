@@ -27,6 +27,11 @@ const SEVERITY_BADGE: Record<string, string> = {
   nit: `${DIM}[nit]${RESET}`,
 };
 
+const STATUS_MARKS: Record<string, string> = {
+  posted: `${GREEN} ✓${RESET}`,
+  posting: `${YELLOW} ⏳${RESET}`,
+};
+
 function wrapText(text: string, width: number): string[] {
   if (width <= 0) return [text];
   const result: string[] = [];
@@ -83,12 +88,7 @@ function renderCommentBlock(
   editBuffer?: string
 ): AnnotatedLine[] {
   const badge = SEVERITY_BADGE[comment.severity] ?? `[${comment.severity}]`;
-  const statusMark =
-    comment.status === 'posted'
-      ? `${GREEN} ✓${RESET}`
-      : comment.status === 'posting'
-      ? `${YELLOW} ⏳${RESET}`
-      : '';
+  const statusMark = STATUS_MARKS[comment.status] ?? '';
 
   // Selected: yellow border stands out; unselected: dim magenta
   const borderColor = selected ? `${YELLOW}${BOLD}` : `${MAGENTA}${DIM}`;
@@ -304,12 +304,15 @@ export function interleaveComments(
   pendingDeleteCommentId?: string | null,
   editingCommentId?: string | null,
   editBuffer?: string
-): AnnotatedLine[] {
+): { lines: AnnotatedLine[]; insertionMap: InsertionMap } {
   if (comments.length === 0) {
-    return renderedDiffLines.map((line) => ({
-      type: 'diff' as const,
-      rendered: line,
-    }));
+    return {
+      lines: renderedDiffLines.map((line) => ({
+        type: 'diff' as const,
+        rendered: line,
+      })),
+      insertionMap: computeInsertionMap(diffLines, comments),
+    };
   }
 
   const highlightSet = buildHighlightSet(
@@ -318,7 +321,8 @@ export function interleaveComments(
     selectedCommentId
   );
 
-  const { insertions, outOfDiff } = computeInsertionMap(diffLines, comments);
+  const insertionMap = computeInsertionMap(diffLines, comments);
+  const { insertions, outOfDiff } = insertionMap;
 
   // Build annotated lines
   const result: AnnotatedLine[] = [];
@@ -411,7 +415,7 @@ export function interleaveComments(
     }
   }
 
-  return result;
+  return { lines: result, insertionMap };
 }
 
 export interface CommentPositionInfo {
@@ -427,16 +431,13 @@ export interface CommentPositionInfo {
  */
 export function getCommentPositions(
   annotatedLines: AnnotatedLine[],
-  diffLines: DiffLine[],
+  insertionMap: InsertionMap,
   comments: ReviewComment[]
 ): Map<string, CommentPositionInfo> {
   const positions = new Map<string, CommentPositionInfo>();
   if (comments.length === 0) return positions;
 
-  const { newLineToIndex, oldLineToIndex } = computeInsertionMap(
-    diffLines,
-    comments
-  );
+  const { newLineToIndex, oldLineToIndex } = insertionMap;
 
   // Map: diffLine index → first annotated line index for that diff line
   const diffIdxToAnnotatedIdx = new Map<number, number>();

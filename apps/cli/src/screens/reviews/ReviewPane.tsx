@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { DiffFile, ReviewComment } from '../../types.js';
+import type { AnnotatedLine } from '../../utils/comment-renderer.js';
 import { ReviewConfirmPane } from './ReviewConfirmPane.js';
 import { ReviewDetailPane } from './ReviewDetailPane.js';
 import { DiffFileList } from './DiffFileList.js';
@@ -18,7 +19,6 @@ export const ReviewPane = memo(function ReviewPane({
   diffFiles,
   diffFileIndex,
   diffViewFile,
-  diffText,
   diffScrollOffset,
   diffLoading,
   diffTextLoading,
@@ -27,10 +27,7 @@ export const ReviewPane = memo(function ReviewPane({
   paneRows,
   paneCols,
   comments,
-  selectedCommentId,
-  pendingDeleteCommentId,
-  editingCommentId,
-  editBuffer,
+  annotatedLines,
 }: {
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewPane: string;
@@ -42,7 +39,6 @@ export const ReviewPane = memo(function ReviewPane({
   diffFiles: DiffFile[];
   diffFileIndex: number;
   diffViewFile: string | null;
-  diffText: string | null;
   diffScrollOffset: number;
   diffLoading: boolean;
   diffTextLoading: boolean;
@@ -51,10 +47,7 @@ export const ReviewPane = memo(function ReviewPane({
   paneRows: number;
   paneCols: number;
   comments: ReviewComment[];
-  selectedCommentId: string | null;
-  pendingDeleteCommentId: string | null;
-  editingCommentId: string | null;
-  editBuffer: string;
+  annotatedLines: AnnotatedLine[];
 }) {
   if (reviewConfirm) {
     return (
@@ -83,16 +76,11 @@ export const ReviewPane = memo(function ReviewPane({
     return (
       <DiffViewer
         filename={diffViewFile}
-        diffText={diffText}
+        annotatedLines={annotatedLines}
         scrollOffset={diffScrollOffset}
         paneRows={paneRows}
         paneCols={paneCols}
         loading={diffTextLoading}
-        comments={comments}
-        selectedCommentId={selectedCommentId}
-        pendingDeleteCommentId={pendingDeleteCommentId}
-        editingCommentId={editingCommentId}
-        editBuffer={editBuffer}
       />
     );
   }

@@ -52,15 +52,19 @@ export interface DiffFileListHandlerCtx {
   loadDiffText: () => Promise<void>;
 }
 
+export interface CommentContext {
+  comments: ReviewComment[];
+  prId: number;
+  positions: Map<string, CommentPositionInfo>;
+  selectedReviewPr: PullRequestInfo;
+}
+
 export interface DiffViewerHandlerCtx {
   review: ReviewValue;
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
   diffTotalLines: number;
-  comments?: ReviewComment[];
-  prId?: number;
-  commentPositions?: Map<string, CommentPositionInfo>;
-  selectedReviewPr?: PullRequestInfo;
+  commentCtx?: CommentContext;
   config: ConfigContextValue;
   sessions: SessionContextValue;
 }
@@ -266,7 +270,7 @@ export function handleDiffViewerInput(
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
   const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
-  const fileComments = (ctx.comments ?? []).filter(
+  const fileComments = (ctx.commentCtx?.comments ?? []).filter(
     (c) => c.file === ctx.review.diffViewFile
   );
 
@@ -274,8 +278,8 @@ export function handleDiffViewerInput(
   if (ctx.review.editingCommentId) {
     if (key.escape) {
       // Save
-      if (ctx.prId) {
-        updateComment(ctx.prId, ctx.review.editingCommentId, {
+      if (ctx.commentCtx) {
+        updateComment(ctx.commentCtx.prId, ctx.review.editingCommentId, {
           body: ctx.review.editBuffer,
         });
       }
@@ -299,8 +303,8 @@ export function handleDiffViewerInput(
 
   // ── Delete confirmation mode ────────────────────────────────────
   if (ctx.review.pendingDeleteCommentId) {
-    if (input === 'y' && ctx.prId) {
-      removeComment(ctx.prId, ctx.review.pendingDeleteCommentId);
+    if (input === 'y' && ctx.commentCtx) {
+      removeComment(ctx.commentCtx.prId, ctx.review.pendingDeleteCommentId);
       ctx.review.setPendingDeleteCommentId(null);
       ctx.review.setSelectedCommentId(null);
       return;
@@ -385,9 +389,62 @@ export function handleDiffViewerInput(
 
   // ── Comment navigation & actions ──────────────────────────────
 
+  /**
+   * Find the next or previous comment ID relative to `currentId`.
+   * Sorts by header position, wraps around, and optionally filters.
+   */
+  function findAdjacentCommentId(
+    direction: 'next' | 'prev',
+    currentId: string | null,
+    candidates: ReviewComment[],
+    positions: Map<string, CommentPositionInfo> | undefined,
+    filter?: (c: ReviewComment) => boolean
+  ): string | undefined {
+    const pool = filter ? candidates.filter(filter) : candidates;
+    if (pool.length === 0) return undefined;
+
+    if (positions && positions.size > 0) {
+      const currentInfo = currentId ? positions.get(currentId) : undefined;
+      const currentHeader =
+        direction === 'next'
+          ? currentInfo?.headerLine ?? -1
+          : currentInfo?.headerLine ?? Infinity;
+
+      const sorted = pool
+        .map((c) => ({
+          id: c.id,
+          pos:
+            positions.get(c.id)?.headerLine ??
+            (direction === 'next' ? Infinity : -1),
+        }))
+        .sort((a, b) => (direction === 'next' ? a.pos - b.pos : b.pos - a.pos));
+
+      const found =
+        direction === 'next'
+          ? sorted.find((c) => c.pos > currentHeader && c.id !== currentId)
+          : sorted.find((c) => c.pos < currentHeader && c.id !== currentId);
+
+      return (found ?? sorted[0])?.id;
+    }
+
+    // Fallback: cycle by array index
+    const currentIdx = currentId
+      ? pool.findIndex((c) => c.id === currentId)
+      : direction === 'next'
+      ? -1
+      : 0;
+    const nextIdx =
+      direction === 'next'
+        ? (currentIdx + 1) % pool.length
+        : currentIdx <= 0
+        ? pool.length - 1
+        : currentIdx - 1;
+    return pool[nextIdx]?.id;
+  }
+
   // Helper: scroll so the referenced lines (lineStart) are visible above the comment
   function scrollToComment(commentId: string) {
-    const positions = ctx.commentPositions;
+    const positions = ctx.commentCtx?.positions;
     if (!positions) return;
     const info = positions.get(commentId);
     if (!info) return;
@@ -397,82 +454,34 @@ export function handleDiffViewerInput(
   }
 
   if ((input === 'c' || key.rightArrow) && fileComments.length > 0) {
-    const positions = ctx.commentPositions;
-
-    if (positions && positions.size > 0) {
-      const currentId = ctx.review.selectedCommentId;
-      const currentInfo = currentId ? positions.get(currentId) : undefined;
-      const currentHeader = currentInfo?.headerLine ?? -1;
-
-      // Sort comments by header position
-      const sorted = fileComments
-        .map((c) => ({
-          id: c.id,
-          pos: positions.get(c.id)?.headerLine ?? Infinity,
-        }))
-        .sort((a, b) => a.pos - b.pos);
-
-      // Find next comment after current
-      let next = sorted.find(
-        (c) => c.pos > currentHeader && c.id !== currentId
-      );
-      // Wrap to first
-      if (!next) next = sorted[0];
-
-      if (next) {
-        ctx.review.setSelectedCommentId(next.id);
-        scrollToComment(next.id);
-      }
-    } else {
-      // Fallback: cycle by array index
-      const currentId = ctx.review.selectedCommentId;
-      const currentIdx = currentId
-        ? fileComments.findIndex((c) => c.id === currentId)
-        : -1;
-      const nextIdx = (currentIdx + 1) % fileComments.length;
-      ctx.review.setSelectedCommentId(fileComments[nextIdx].id);
+    const nextId = findAdjacentCommentId(
+      'next',
+      ctx.review.selectedCommentId,
+      fileComments,
+      ctx.commentCtx?.positions
+    );
+    if (nextId) {
+      ctx.review.setSelectedCommentId(nextId);
+      scrollToComment(nextId);
     }
     return;
   }
 
   if ((input === 'C' || key.leftArrow) && fileComments.length > 0) {
-    const positions = ctx.commentPositions;
-
-    if (positions && positions.size > 0) {
-      const currentId = ctx.review.selectedCommentId;
-      const currentInfo = currentId ? positions.get(currentId) : undefined;
-      const currentHeader = currentInfo?.headerLine ?? Infinity;
-
-      // Sort comments by header position descending
-      const sorted = fileComments
-        .map((c) => ({ id: c.id, pos: positions.get(c.id)?.headerLine ?? -1 }))
-        .sort((a, b) => b.pos - a.pos);
-
-      // Find previous comment before current
-      let prev = sorted.find(
-        (c) => c.pos < currentHeader && c.id !== currentId
-      );
-      // Wrap to last
-      if (!prev) prev = sorted[0];
-
-      if (prev) {
-        ctx.review.setSelectedCommentId(prev.id);
-        scrollToComment(prev.id);
-      }
-    } else {
-      // Fallback: cycle by array index
-      const currentId = ctx.review.selectedCommentId;
-      const currentIdx = currentId
-        ? fileComments.findIndex((c) => c.id === currentId)
-        : 0;
-      const prevIdx =
-        currentIdx <= 0 ? fileComments.length - 1 : currentIdx - 1;
-      ctx.review.setSelectedCommentId(fileComments[prevIdx].id);
+    const prevId = findAdjacentCommentId(
+      'prev',
+      ctx.review.selectedCommentId,
+      fileComments,
+      ctx.commentCtx?.positions
+    );
+    if (prevId) {
+      ctx.review.setSelectedCommentId(prevId);
+      scrollToComment(prevId);
     }
     return;
   }
 
-  if (input === 'x' && ctx.review.selectedCommentId && ctx.prId) {
+  if (input === 'x' && ctx.review.selectedCommentId && ctx.commentCtx) {
     ctx.review.setPendingDeleteCommentId(ctx.review.selectedCommentId);
     return;
   }
@@ -488,14 +497,13 @@ export function handleDiffViewerInput(
     return;
   }
 
-  if (input === 'p' && ctx.review.selectedCommentId && ctx.prId) {
+  if (input === 'p' && ctx.review.selectedCommentId && ctx.commentCtx) {
     const comment = fileComments.find(
       (c) => c.id === ctx.review.selectedCommentId
     );
     if (!comment || comment.status !== 'draft') return;
 
-    const pr = ctx.selectedReviewPr;
-    if (!pr) return;
+    const pr = ctx.commentCtx.selectedReviewPr;
 
     const vendor = ctx.config.config.vendor;
     if (!vendor) {
@@ -515,13 +523,13 @@ export function handleDiffViewerInput(
       vendor,
       vendorAuth: ctx.config.config.vendorAuth,
       vendorProject: ctx.config.config.vendorProject,
-      prId: ctx.prId,
+      prId: ctx.commentCtx.prId,
       headSha: pr.headSha,
     };
 
     // Mark as posting to prevent double-press
     const postedId = comment.id;
-    const prId = ctx.prId;
+    const prId = ctx.commentCtx.prId;
     updateComment(prId, postedId, { status: 'posting' });
     ctx.sessions.flashStatus('Posting comment...');
 
@@ -532,23 +540,16 @@ export function handleDiffViewerInput(
         const freshComments = readComments(prId).filter(
           (c) => c.file === ctx.review.diffViewFile
         );
-        const remaining = freshComments.filter(
-          (c) => c.id !== postedId && c.status === 'draft'
+        const nextDraftId = findAdjacentCommentId(
+          'next',
+          postedId,
+          freshComments,
+          ctx.commentCtx?.positions,
+          (c) => c.status === 'draft'
         );
-        if (remaining.length > 0) {
-          const positions = ctx.commentPositions;
-          const postedPos = positions?.get(postedId)?.headerLine ?? -1;
-          const sorted = remaining
-            .map((c) => ({
-              id: c.id,
-              pos: positions?.get(c.id)?.headerLine ?? Infinity,
-            }))
-            .sort((a, b) => a.pos - b.pos);
-          const next = sorted.find((c) => c.pos > postedPos) ?? sorted[0];
-          if (next) {
-            ctx.review.setSelectedCommentId(next.id);
-            scrollToComment(next.id);
-          }
+        if (nextDraftId) {
+          ctx.review.setSelectedCommentId(nextDraftId);
+          scrollToComment(nextDraftId);
         } else {
           ctx.review.setSelectedCommentId(null);
         }
@@ -561,7 +562,7 @@ export function handleDiffViewerInput(
     return;
   }
 
-  if (input === 'E' && ctx.review.selectedCommentId && ctx.prId) {
+  if (input === 'E' && ctx.review.selectedCommentId && ctx.commentCtx) {
     const comment = fileComments.find(
       (c) => c.id === ctx.review.selectedCommentId
     );
@@ -584,7 +585,7 @@ export function handleDiffViewerInput(
       stdio: 'ignore',
     }).unref();
 
-    const prId = ctx.prId;
+    const prId = ctx.commentCtx!.prId;
     const commentId = comment.id;
     const watcher = watch(tmpFile, () => {
       try {
@@ -597,10 +598,11 @@ export function handleDiffViewerInput(
       }
     });
 
-    // Cleanup after 30 minutes
-    setTimeout(() => {
+    // Cleanup after 30 minutes (unref so it doesn't keep the process alive)
+    const timer = setTimeout(() => {
       watcher.close();
     }, 30 * 60 * 1000);
+    timer.unref();
 
     ctx.sessions.flashStatus(`Opened comment in ${editor}`);
     return;

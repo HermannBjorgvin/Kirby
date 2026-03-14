@@ -1,79 +1,22 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { Text, Box } from 'ink';
-import { parseUnifiedDiff } from '../../utils/diff-parser.js';
-import { renderDiffLines } from '../../utils/diff-renderer.js';
-import { interleaveComments } from '../../utils/comment-renderer.js';
-import type { ReviewComment } from '../../types.js';
+import type { AnnotatedLine } from '../../utils/comment-renderer.js';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,
-  diffText,
+  annotatedLines,
   scrollOffset,
   paneRows,
   paneCols,
   loading,
-  comments,
-  selectedCommentId,
-  pendingDeleteCommentId,
-  editingCommentId,
-  editBuffer,
 }: {
   filename: string;
-  diffText: string | null;
+  annotatedLines: AnnotatedLine[];
   scrollOffset: number;
   paneRows: number;
   paneCols: number;
   loading: boolean;
-  comments?: ReviewComment[];
-  selectedCommentId?: string | null;
-  pendingDeleteCommentId?: string | null;
-  editingCommentId?: string | null;
-  editBuffer?: string;
 }) {
-  // Step 1: Parse + render diff (only re-runs when diff text or dimensions change)
-  const parsedDiff = useMemo(() => {
-    if (!diffText) return null;
-    const allFileDiffs = parseUnifiedDiff(diffText);
-    const fileDiffLines = allFileDiffs.get(filename);
-    if (!fileDiffLines) return null;
-    const rendered = renderDiffLines(fileDiffLines, paneCols);
-    return { fileDiffLines, rendered };
-  }, [diffText, filename, paneCols]);
-
-  // Step 2: Interleave comments (re-runs when comments or selection changes)
-  const annotatedLines = useMemo(() => {
-    if (!parsedDiff) return [];
-    const { fileDiffLines, rendered } = parsedDiff;
-
-    if (!comments || comments.length === 0) {
-      return rendered.map((line) => ({
-        type: 'diff' as const,
-        rendered: line,
-      }));
-    }
-
-    const fileComments = comments.filter((c) => c.file === filename);
-    return interleaveComments(
-      fileDiffLines,
-      rendered,
-      fileComments,
-      paneCols,
-      selectedCommentId ?? null,
-      pendingDeleteCommentId,
-      editingCommentId,
-      editBuffer
-    );
-  }, [
-    parsedDiff,
-    filename,
-    paneCols,
-    comments,
-    selectedCommentId,
-    pendingDeleteCommentId,
-    editingCommentId,
-    editBuffer,
-  ]);
-
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
   const visibleLines = annotatedLines.slice(
@@ -84,7 +27,7 @@ export const DiffViewer = memo(function DiffViewer({
   const atTop = scrollOffset === 0;
   const atBottom = scrollOffset + viewportHeight >= totalLines;
 
-  const hasComments = comments && comments.some((c) => c.file === filename);
+  const hasComments = annotatedLines.some((l) => l.type === 'comment-header');
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -101,7 +44,7 @@ export const DiffViewer = memo(function DiffViewer({
       </Text>
       <Text dimColor>{'─'.repeat(Math.min(40, paneCols - 2))}</Text>
 
-      {!loading && totalLines === 0 && diffText !== null && (
+      {!loading && totalLines === 0 && (
         <Text dimColor>(no diff for this file)</Text>
       )}
 

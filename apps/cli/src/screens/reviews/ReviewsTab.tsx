@@ -84,7 +84,7 @@ export function ReviewsTab({
     [reviewComments, review.diffViewFile]
   );
 
-  const interleavedLines = useMemo(() => {
+  const interleaveResult = useMemo(() => {
     if (!fileDiffData || fileComments.length === 0) return null;
     return interleaveComments(
       fileDiffData.fileDiffLines,
@@ -106,21 +106,25 @@ export function ReviewsTab({
     review.editBuffer,
   ]);
 
-  const diffTotalLines = useMemo(() => {
-    if (!fileDiffData) return 0;
-    if (interleavedLines) return interleavedLines.length;
-    return fileDiffData.rendered.length;
-  }, [fileDiffData, interleavedLines]);
+  const annotatedLines = useMemo(() => {
+    if (interleaveResult) return interleaveResult.lines;
+    if (!fileDiffData) return [];
+    return fileDiffData.rendered.map((line) => ({
+      type: 'diff' as const,
+      rendered: line,
+    }));
+  }, [interleaveResult, fileDiffData]);
+
+  const diffTotalLines = annotatedLines.length;
 
   const commentPositions = useMemo(() => {
-    if (!fileDiffData || fileComments.length === 0 || !interleavedLines)
-      return new Map();
+    if (!interleaveResult || fileComments.length === 0) return new Map();
     return getCommentPositions(
-      interleavedLines,
-      fileDiffData.fileDiffLines,
+      interleaveResult.lines,
+      interleaveResult.insertionMap,
       fileComments
     );
-  }, [fileDiffData, fileComments, interleavedLines]);
+  }, [interleaveResult, fileComments]);
 
   // ── Scroll wheel (experimental) ──────────────────────────────────
   const scrollWheelActive =
@@ -190,10 +194,14 @@ export function ReviewsTab({
           diffFiles: diffData.files,
           terminal,
           diffTotalLines,
-          comments: reviewComments,
-          prId: selectedReviewPr?.id,
-          commentPositions,
-          selectedReviewPr,
+          commentCtx: selectedReviewPr
+            ? {
+                comments: reviewComments,
+                prId: selectedReviewPr.id,
+                positions: commentPositions,
+                selectedReviewPr,
+              }
+            : undefined,
           config: configCtx,
           sessions: sessionCtx,
         });
@@ -243,7 +251,6 @@ export function ReviewsTab({
           diffFiles={diffData.files}
           diffFileIndex={review.diffFileIndex}
           diffViewFile={review.diffViewFile}
-          diffText={diffData.diffText}
           diffScrollOffset={review.diffScrollOffset}
           diffLoading={diffData.loading}
           diffTextLoading={diffData.diffLoading}
@@ -252,10 +259,7 @@ export function ReviewsTab({
           paneRows={terminal.paneRows}
           paneCols={terminal.paneCols}
           comments={reviewComments}
-          selectedCommentId={review.selectedCommentId}
-          pendingDeleteCommentId={review.pendingDeleteCommentId}
-          editingCommentId={review.editingCommentId}
-          editBuffer={review.editBuffer}
+          annotatedLines={annotatedLines}
         />
       )}
     </>

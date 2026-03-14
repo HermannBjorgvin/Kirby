@@ -108,14 +108,12 @@ describe('getCommentPositions', () => {
     const rendered = ['line1', 'line2', 'line3'];
     const comments = [makeComment({ id: 'c1', lineStart: 2, lineEnd: 2 })];
 
-    const annotated = interleaveComments(
-      diffLines,
-      rendered,
-      comments,
-      80,
-      null
+    const result = interleaveComments(diffLines, rendered, comments, 80, null);
+    const positions = getCommentPositions(
+      result.lines,
+      result.insertionMap,
+      comments
     );
-    const positions = getCommentPositions(annotated, diffLines, comments);
 
     expect(positions.has('c1')).toBe(true);
     const info = positions.get('c1')!;
@@ -153,8 +151,16 @@ describe('getCommentPositions', () => {
       'c1'
     );
 
-    const posUnsel = getCommentPositions(unselected, diffLines, comments);
-    const posSel = getCommentPositions(selected, diffLines, comments);
+    const posUnsel = getCommentPositions(
+      unselected.lines,
+      unselected.insertionMap,
+      comments
+    );
+    const posSel = getCommentPositions(
+      selected.lines,
+      selected.insertionMap,
+      comments
+    );
 
     // c2 should be at a different position when c1 is expanded vs collapsed
     expect(posSel.get('c2')!.headerLine).toBeGreaterThan(
@@ -185,7 +191,7 @@ describe('interleaveComments highlighting', () => {
     );
     const comments = [makeComment({ id: 'c1', lineStart: 3, lineEnd: 5 })];
 
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines,
       rendered,
       comments,
@@ -218,7 +224,7 @@ describe('interleaveComments highlighting', () => {
     );
     const comments = [makeComment({ id: 'c1', lineStart: 107, lineEnd: 116 })];
 
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines,
       rendered,
       comments,
@@ -241,7 +247,7 @@ describe('renderCommentBlock posting status', () => {
       makeComment({ id: 'c1', lineStart: 1, lineEnd: 1, status: 'posting' }),
     ];
 
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines,
       rendered,
       comments,
@@ -260,7 +266,7 @@ describe('renderCommentBlock posting status', () => {
       makeComment({ id: 'c1', lineStart: 1, lineEnd: 1, status: 'posted' }),
     ];
 
-    const annotated = interleaveComments(
+    const { lines: annotated } = interleaveComments(
       diffLines,
       rendered,
       comments,
