@@ -13,5 +13,7 @@
     },
     "./package.json": "./package.json"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@kirby/vcs-core": "*"
+  }
 }

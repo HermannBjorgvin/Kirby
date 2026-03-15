@@ -1,16 +1,3 @@
-import tty from 'node:tty';
-
-// Diagnostic: log stdin/TTY state before anything else (remove after CI debugging)
-console.error(
-  JSON.stringify({
-    isTTY: process.stdin.isTTY,
-    isatty0: tty.isatty(0),
-    stdinCtor: process.stdin.constructor.name,
-    TERM: process.env.TERM,
-    CI: process.env.CI,
-  })
-);
-
 import { useState } from 'react';
 import { render, Text, Box, useApp } from 'ink';
 import type { VcsProvider } from '@kirby/vcs-core';
@@ -144,18 +131,6 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Workaround: in PTY child processes (e.g. tui-test), process.stdin may not
-// be marked as a TTY even though fd 0 is a valid TTY. Construct a proper
-// tty.ReadStream so Ink's useInput/setRawMode works.
-let stdin: NodeJS.ReadStream = process.stdin;
-try {
-  if (!process.stdin.isTTY && tty.isatty(0)) {
-    stdin = new tty.ReadStream(0);
-  }
-} catch {
-  /* fallback to process.stdin */
-}
-
 render(
   <ConfigProvider providers={providers}>
     <AppStateProvider>
@@ -165,6 +140,5 @@ render(
         </ReviewProvider>
       </SessionProvider>
     </AppStateProvider>
-  </ConfigProvider>,
-  { stdin }
+  </ConfigProvider>
 );
