@@ -56,7 +56,7 @@ if (hasGhToken) {
 
   // 4. Create branch, push, create PR, merge PR
   createTestBranch(cloneDir, branchName);
-  const prNumber = createPullRequest(TEST_REPO, branchName);
+  const prNumber = createPullRequest(TEST_REPO, branchName, cloneDir);
   mergePullRequest(TEST_REPO, prNumber);
 
   // 5. Checkout default branch and sync

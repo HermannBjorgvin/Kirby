@@ -20,11 +20,12 @@ export function createTestBranch(repoDir: string, branchName: string): void {
  */
 export function createPullRequest(
   repoFullName: string,
-  branchName: string
+  branchName: string,
+  cwd: string
 ): number {
   const output = execSync(
     `gh pr create --repo ${repoFullName} --head ${branchName} --title "e2e: ${branchName}" --body "Automated e2e test PR"`,
-    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
   // gh pr create prints the PR URL; extract number from it
   const match = output.trim().match(/\/pull\/(\d+)$/);
@@ -33,7 +34,7 @@ export function createPullRequest(
   // Fallback: query for it
   const prNum = execSync(
     `gh pr view ${branchName} --repo ${repoFullName} --json number -q .number`,
-    { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
   return parseInt(prNum.trim(), 10);
 }
