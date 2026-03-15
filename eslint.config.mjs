@@ -18,5 +18,13 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
-  { ignores: ['**/node_modules', '**/dist', 'tmp', '.claude/worktrees'] }
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      'tmp',
+      '.claude/worktrees',
+      '**/.tui-test',
+    ],
+  }
 );

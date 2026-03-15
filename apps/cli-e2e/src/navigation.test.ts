@@ -6,8 +6,15 @@ const testDir = createTestRepo();
 const mainJs = resolve('../cli/dist/main.js');
 registerCleanup(testDir);
 
+// Strip CI env vars so Ink renders continuously (not last-frame-only),
+// allowing tui-test to observe intermediate render states.
+const cleanEnv = { ...process.env };
+delete cleanEnv.CI;
+delete cleanEnv.CONTINUOUS_INTEGRATION;
+delete cleanEnv.GITHUB_ACTIONS;
+
 test.use({
-  program: { file: 'node', args: [mainJs, testDir] },
+  program: { file: 'node', args: [mainJs, testDir], env: cleanEnv },
 });
 
 test.describe('Keyboard Navigation', () => {
