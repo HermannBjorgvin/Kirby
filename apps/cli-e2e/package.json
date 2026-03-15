@@ -17,7 +17,7 @@
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "npx @microsoft/tui-test",
+          "command": "env -u CI -u CONTINUOUS_INTEGRATION -u GITHUB_ACTIONS npx @microsoft/tui-test",
           "cwd": "apps/cli-e2e"
         },
         "cache": false
