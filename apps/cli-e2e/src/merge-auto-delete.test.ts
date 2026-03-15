@@ -35,7 +35,16 @@ if (hasGhToken) {
     stdio: 'pipe',
   });
 
-  // 2. Configure git identity in the clone
+  // 2. Configure remote URL with token so git push can authenticate
+  const token = process.env.GH_TOKEN;
+  if (token) {
+    execSync(
+      `git remote set-url origin https://x-access-token:${token}@github.com/${TEST_REPO}.git`,
+      { cwd: cloneDir, stdio: 'pipe' }
+    );
+  }
+
+  // 3. Configure git identity
   execSync('git config user.email "e2e@kirby.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
@@ -45,12 +54,12 @@ if (hasGhToken) {
     stdio: 'pipe',
   });
 
-  // 3. Create branch, push, create PR, merge PR
+  // 4. Create branch, push, create PR, merge PR
   createTestBranch(cloneDir, branchName);
   const prNumber = createPullRequest(TEST_REPO, branchName);
   mergePullRequest(TEST_REPO, prNumber);
 
-  // 4. Checkout default branch and sync
+  // 5. Checkout default branch and sync
   const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
     cwd: cloneDir,
     encoding: 'utf-8',
@@ -66,7 +75,7 @@ if (hasGhToken) {
     stdio: 'pipe',
   });
 
-  // 5. Ensure local branch still exists (recreate if remote-prune deleted it)
+  // 6. Ensure local branch still exists (recreate if remote-prune deleted it)
   try {
     execSync(`git rev-parse --verify ${branchName}`, {
       cwd: cloneDir,
@@ -79,14 +88,14 @@ if (hasGhToken) {
     });
   }
 
-  // 6. Create worktree so Kirby sees it as a session
+  // 7. Create worktree so Kirby sees it as a session
   const worktreeRel = join('.claude', 'worktrees', sessionName);
   execSync(`git worktree add "${worktreeRel}" "${branchName}"`, {
     cwd: cloneDir,
     stdio: 'pipe',
   });
 
-  // 7. Write global config with autoDeleteOnMerge enabled
+  // 8. Write global config with autoDeleteOnMerge enabled
   const kirbyDir = join(fakeHome, '.kirby');
   mkdirSync(kirbyDir, { recursive: true });
   writeFileSync(
@@ -95,7 +104,7 @@ if (hasGhToken) {
     'utf-8'
   );
 
-  // 8. Register remote branch cleanup (safety net)
+  // 9. Register remote branch cleanup (safety net)
   process.on('exit', () => {
     deleteRemoteBranch(TEST_REPO, branchName);
   });
