@@ -46,4 +46,4 @@ jobs:
         run: npx nx e2e cli-e2e
         env:
           GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
-          TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-bot/kirby-test-sandbox' }}
+          TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-runner/kirby-integration-test-repository' }}
