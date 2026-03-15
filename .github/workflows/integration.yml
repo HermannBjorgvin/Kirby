@@ -1,0 +1,49 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    paths:
+      - 'apps/cli/**'
+      - 'libs/**'
+      - 'apps/cli-e2e/**'
+      - '.github/workflows/integration.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: integration-tests
+  cancel-in-progress: false # test repo is shared state — queue, don't cancel
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Authenticate gh CLI
+        run: echo "${{ secrets.INTEGRATION_TEST_PAT }}" | gh auth login --with-token
+
+      - name: Build CLI
+        run: npx nx build cli
+
+      - name: Run e2e tests (including integration)
+        run: npx nx e2e cli-e2e
+        env:
+          GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
+          TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-bot/kirby-test-sandbox' }}
