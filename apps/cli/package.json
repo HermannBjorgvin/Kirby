@@ -111,6 +111,11 @@
     }
   },
   "dependencies": {
+    "@kirby/terminal": "*",
+    "@kirby/vcs-azure-devops": "*",
+    "@kirby/vcs-core": "*",
+    "@kirby/vcs-github": "*",
+    "@kirby/worktree-manager": "*",
     "ink": "^6.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4"

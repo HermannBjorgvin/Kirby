@@ -47,3 +47,5 @@ Thumbs.db
 .claude/worktrees/
 
 vitest.config.*.timestamp*
+tui-traces/
+.tui-test/
