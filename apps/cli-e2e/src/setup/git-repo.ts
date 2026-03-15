@@ -37,10 +37,10 @@ export function registerCleanup(dir: string): void {
   process.on('exit', cleanup);
   process.on('SIGINT', () => {
     cleanup();
-    process.exit(1);
+    process.kill(process.pid, 'SIGINT');
   });
   process.on('SIGTERM', () => {
     cleanup();
-    process.exit(1);
+    process.kill(process.pid, 'SIGTERM');
   });
 }
