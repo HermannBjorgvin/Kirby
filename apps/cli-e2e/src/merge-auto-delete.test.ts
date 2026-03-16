@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
 import {
-  createTestBranch,
+  createLocalBranch,
+  pushBranch,
   closePullRequest,
   createPullRequest,
   mergePullRequest,
@@ -16,15 +17,14 @@ import {
 const hasGhToken = !!process.env.GH_TOKEN;
 
 // ── Module-scope setup ─────────────────────────────────────────────
-// Everything here runs synchronously before tests. When GH_TOKEN is
-// missing the tests are skipped via test.when(), so the setup is
-// guarded with an if-block to avoid gh CLI errors.
+// Only local/idempotent operations here. GitHub API calls (push,
+// create PR, merge) move into the test body so retries or re-imports
+// don't create duplicate remote resources.
 
 const prefix = testBranchPrefix();
 const branchName = `${prefix}/test-merge`;
 const sessionName = branchName.replace(/\//g, '-');
 const mainJs = resolve('../cli/dist/main.js');
-let prNumber = 0;
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-integ-clone-'));
 const fakeHome = mkdtempSync(join(tmpdir(), 'kirby-integ-home-'));
@@ -57,9 +57,8 @@ if (hasGhToken) {
     stdio: 'pipe',
   });
 
-  // 4. Create branch, push, create PR (merge happens in the test body)
-  createTestBranch(cloneDir, branchName);
-  prNumber = createPullRequest(TEST_REPO, branchName, cloneDir);
+  // 4. Create local branch (no push — that happens in the test body)
+  createLocalBranch(cloneDir, branchName);
 
   // 5. Checkout default branch (worktree add requires branch isn't checked out)
   const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
@@ -86,12 +85,6 @@ if (hasGhToken) {
     JSON.stringify({ autoDeleteOnMerge: true }),
     'utf-8'
   );
-
-  // 8. Register remote branch cleanup (safety net)
-  process.on('exit', () => {
-    closePullRequest(TEST_REPO, prNumber);
-    deleteRemoteBranch(TEST_REPO, branchName);
-  });
 }
 
 // ── Configure tui-test ─────────────────────────────────────────────
@@ -119,49 +112,78 @@ test.when(
   hasGhToken,
   'detects merged PR and auto-deletes session',
   async ({ terminal }) => {
-    // 1. Wait for Kirby to render
-    await expect(
-      terminal.getByText('Worktree Sessions', { strict: false })
-    ).toBeVisible();
-
-    // 2. Verify session appears (PR not merged yet — guaranteed no race)
-    await expect(
-      terminal.getByText(sessionName, { strict: false })
-    ).toBeVisible();
-
-    // 3. Merge the PR now that we've confirmed the session is visible
-    mergePullRequest(TEST_REPO, prNumber);
-
-    // 4. Trigger sync periodically — GitHub search API may take 10-30s
-    //    to index the merge. Press 'g' (sync shortcut) every 10s.
-    const syncTimer = setInterval(() => terminal.write('g'), 10_000);
-    terminal.write('g');
+    // 1. Push branch + create PR (GitHub operations, not in module scope)
+    pushBranch(cloneDir, branchName);
+    const prNumber = createPullRequest(TEST_REPO, branchName, cloneDir);
 
     try {
-      // 5. Wait for session to disappear (auto-delete removes worktree + branch).
-      //    We assert on the persistent "(no sessions)" state rather than the
-      //    transient flash message which only lasts 3 seconds.
-      await expect(terminal.getByText('(no sessions)')).toBeVisible({
-        timeout: 90_000,
-      });
+      // 2. Wait for Kirby to render
+      await expect(
+        terminal.getByText('Worktree Sessions', { strict: false })
+      ).toBeVisible();
+
+      // 3. Verify session appears (PR not merged yet — guaranteed no race)
+      await expect(
+        terminal.getByText(sessionName, { strict: false })
+      ).toBeVisible();
+
+      // 4. Merge the PR now that we've confirmed the session is visible
+      mergePullRequest(TEST_REPO, prNumber);
+
+      // 5. Trigger sync periodically — GitHub search API may take 10-30s
+      //    to index the merge. Press 'g' (sync shortcut) every 10s.
+      const syncTimer = setInterval(() => terminal.write('g'), 10_000);
+      terminal.write('g');
+
+      try {
+        // 6. Wait for session to disappear (auto-delete removes worktree + branch).
+        //    We assert on the persistent "(no sessions)" state rather than the
+        //    transient flash message which only lasts 3 seconds.
+        await expect(terminal.getByText('(no sessions)')).toBeVisible({
+          timeout: 90_000,
+        });
+      } finally {
+        clearInterval(syncTimer);
+      }
+
+      // 7. Verify worktree directory was removed
+      const worktreePath = join(cloneDir, '.claude', 'worktrees', sessionName);
+      expect(existsSync(worktreePath)).toBe(false);
+
+      // 8. Verify local branch was deleted
+      let branchExists = true;
+      try {
+        execSync(`git rev-parse --verify "${branchName}"`, {
+          cwd: cloneDir,
+          stdio: 'pipe',
+        });
+      } catch {
+        branchExists = false;
+      }
+      expect(branchExists).toBe(false);
+
+      // 9. Verify the merge commit landed on the local default branch
+      //    (sync runs fetchRemote + fastForwardMainBranch)
+      const defaultBranch = execSync(
+        'git symbolic-ref refs/remotes/origin/HEAD',
+        {
+          cwd: cloneDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }
+      )
+        .trim()
+        .replace('refs/remotes/origin/', '');
+
+      const logOutput = execSync(
+        `git log "${defaultBranch}" --oneline --grep="e2e test branch: ${branchName}"`,
+        { cwd: cloneDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+      expect(logOutput.trim()).not.toBe('');
     } finally {
-      clearInterval(syncTimer);
+      // Cleanup GitHub resources (best-effort)
+      closePullRequest(TEST_REPO, prNumber);
+      deleteRemoteBranch(TEST_REPO, branchName);
     }
-
-    // 6. Verify worktree directory was removed
-    const worktreePath = join(cloneDir, '.claude', 'worktrees', sessionName);
-    expect(existsSync(worktreePath)).toBe(false);
-
-    // 7. Verify local branch was deleted
-    let branchExists = true;
-    try {
-      execSync(`git rev-parse --verify "${branchName}"`, {
-        cwd: cloneDir,
-        stdio: 'pipe',
-      });
-    } catch {
-      branchExists = false;
-    }
-    expect(branchExists).toBe(false);
   }
 );

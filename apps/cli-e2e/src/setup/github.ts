@@ -1,14 +1,20 @@
 import { execSync } from 'node:child_process';
 
 /**
- * Create a local branch, make an empty commit, and push to origin.
+ * Create a local branch and make an empty commit (no push).
  */
-export function createTestBranch(repoDir: string, branchName: string): void {
+export function createLocalBranch(repoDir: string, branchName: string): void {
   execSync(`git checkout -b "${branchName}"`, { cwd: repoDir, stdio: 'pipe' });
   execSync(`git commit --allow-empty -m "e2e test branch: ${branchName}"`, {
     cwd: repoDir,
     stdio: 'pipe',
   });
+}
+
+/**
+ * Push a local branch to origin.
+ */
+export function pushBranch(repoDir: string, branchName: string): void {
   execSync(`git push -u origin "${branchName}"`, {
     cwd: repoDir,
     stdio: 'pipe',
