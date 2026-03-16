@@ -111,6 +111,7 @@
     }
   },
   "dependencies": {
+    "@kirby/logger": "*",
     "@kirby/terminal": "*",
     "@kirby/vcs-azure-devops": "*",
     "@kirby/vcs-core": "*",

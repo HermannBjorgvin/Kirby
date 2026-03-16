@@ -23,6 +23,9 @@
     },
     {
       "path": "../../libs/terminal/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/logger/tsconfig.lib.json"
     }
   ]
 }

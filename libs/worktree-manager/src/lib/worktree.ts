@@ -6,6 +6,7 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { log } from '@kirby/logger';
 import { exec } from './exec.js';
 
 let cachedMainBranch: string | null = null;
@@ -20,7 +21,8 @@ export async function getMainBranch(): Promise<string> {
     });
     cachedMainBranch = stdout.trim().split('/').pop()!;
     return cachedMainBranch;
-  } catch {
+  } catch (e) {
+    log('warn', 'getMainBranch', 'symbolic-ref failed, trying fallback', e);
     // Fallback: check which remote branch exists
     try {
       await exec('git rev-parse --verify --quiet origin/master', {
@@ -28,7 +30,13 @@ export async function getMainBranch(): Promise<string> {
       });
       cachedMainBranch = 'master';
       return cachedMainBranch;
-    } catch {
+    } catch (e2) {
+      log(
+        'warn',
+        'getMainBranch',
+        'origin/master not found, defaulting to main',
+        e2
+      );
       cachedMainBranch = 'main';
       return cachedMainBranch;
     }
@@ -76,14 +84,26 @@ export async function createWorktree(branch: string): Promise<string | null> {
       encoding: 'utf8',
     });
     return absoluteDir;
-  } catch {
+  } catch (e) {
+    log(
+      'warn',
+      'createWorktree',
+      `existing branch checkout failed for ${branch}`,
+      e
+    );
     try {
       // Branch doesn't exist — create new branch from HEAD
       await exec(`git worktree add -b "${branch}" "${relativeDir}"`, {
         encoding: 'utf8',
       });
       return absoluteDir;
-    } catch {
+    } catch (e2) {
+      log(
+        'error',
+        'createWorktree',
+        `new branch creation failed for ${branch}`,
+        e2
+      );
       return null;
     }
   }
@@ -100,7 +120,13 @@ export async function removeWorktree(branch: string): Promise<boolean> {
       encoding: 'utf8',
     });
     return true;
-  } catch {
+  } catch (e) {
+    log(
+      'error',
+      'removeWorktree',
+      `git worktree remove failed for ${branch}`,
+      e
+    );
     return false;
   }
 }
@@ -133,7 +159,8 @@ export async function canRemoveBranch(
     if (status.trim().length > 0) {
       return { safe: false, reason: 'uncommitted changes' };
     }
-  } catch {
+  } catch (e) {
+    log('warn', 'canRemoveBranch', `status check failed for ${branch}`, e);
     // Worktree may not exist — skip this check
   }
 
@@ -147,7 +174,8 @@ export async function canRemoveBranch(
       if (unpushed.trim().length > 0) {
         return { safe: false, reason: 'not pushed to upstream' };
       }
-    } catch {
+    } catch (e) {
+      log('warn', 'canRemoveBranch', `unpushed check failed for ${branch}`, e);
       // Branch may not have remote tracking — skip
     }
   }
@@ -165,7 +193,8 @@ export async function listBranches(): Promise<string[]> {
       .trim()
       .split('\n')
       .filter((b) => b.length > 0);
-  } catch {
+  } catch (e) {
+    log('error', 'listBranches', 'git branch failed', e);
     return [];
   }
 }
@@ -175,7 +204,8 @@ export async function fetchRemote(): Promise<boolean> {
   try {
     await exec('git fetch --all --prune', { encoding: 'utf8' });
     return true;
-  } catch {
+  } catch (e) {
+    log('error', 'fetchRemote', 'git fetch failed', e);
     return false;
   }
 }
@@ -199,7 +229,8 @@ export async function listAllBranches(): Promise<string[]> {
       result.push(branch);
     }
     return result;
-  } catch {
+  } catch (e) {
+    log('error', 'listAllBranches', 'git branch -a failed', e);
     return [];
   }
 }
@@ -245,7 +276,8 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
     return parseWorktrees(stdout).filter(
       (w) => !w.bare && w.path.includes('.claude/worktrees/')
     );
-  } catch {
+  } catch (e) {
+    log('error', 'listWorktrees', 'git worktree list failed', e);
     return [];
   }
 }
@@ -255,7 +287,8 @@ export async function fastForwardMainBranch(): Promise<boolean> {
   const main = await getMainBranch();
   try {
     await exec(`git fetch origin ${main}`, { encoding: 'utf8' });
-  } catch {
+  } catch (e) {
+    log('error', 'fastForwardMainBranch', `git fetch origin ${main} failed`, e);
     return false;
   }
   try {
@@ -269,7 +302,8 @@ export async function fastForwardMainBranch(): Promise<boolean> {
       await exec(`git branch -f ${main} origin/${main}`, { encoding: 'utf8' });
     }
     return true;
-  } catch {
+  } catch (e) {
+    log('error', 'fastForwardMainBranch', 'fast-forward failed', e);
     return false;
   }
 }
@@ -307,7 +341,8 @@ export async function deleteBranch(
   try {
     await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
     return true;
-  } catch {
+  } catch (e) {
+    log('error', 'deleteBranch', `git branch ${flag} failed for ${branch}`, e);
     return false;
   }
 }
@@ -324,7 +359,8 @@ export async function rebaseOntoMaster(
     await exec(`git -C "${worktreePath}" fetch origin ${main}`, {
       encoding: 'utf8',
     });
-  } catch {
+  } catch (e) {
+    log('error', 'rebaseOntoMaster', `fetch origin ${main} failed`, e);
     return 'error';
   }
   try {
@@ -332,13 +368,14 @@ export async function rebaseOntoMaster(
       encoding: 'utf8',
     });
     return 'success';
-  } catch {
+  } catch (e) {
+    log('warn', 'rebaseOntoMaster', 'rebase failed, aborting', e);
     try {
       await exec(`git -C "${worktreePath}" rebase --abort`, {
         encoding: 'utf8',
       });
-    } catch {
-      /* abort failed — nothing more to do */
+    } catch (e2) {
+      log('error', 'rebaseOntoMaster', 'rebase --abort failed', e2);
     }
     return 'conflict';
   }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { BranchPrMap } from '@kirby/vcs-core';
+import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
-import { logError } from '../log.js';
 
 export function usePrData(refreshInterval = 60000) {
   const { config, provider } = useConfig();
