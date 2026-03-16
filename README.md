@@ -86,6 +86,37 @@ libs/vcs/github/       GitHub provider (via gh cli)
 | `Esc`     | Exit terminal focus / close panel         |
 | `q`       | Quit                                      |
 
+## Testing
+
+### Unit & Component Tests
+
+```sh
+npx nx test worktree-manager   # library unit tests
+npx nx test cli                # CLI unit + integration tests (vitest)
+```
+
+### E2E Tests
+
+E2E tests use [`@microsoft/tui-test`](https://github.com/nickclaw/tui-test) to drive the TUI in a real PTY. They run against the built CLI binary.
+
+```sh
+npx nx e2e cli-e2e
+```
+
+This runs fast startup/navigation tests (~5s each). Integration tests that hit GitHub are **skipped** unless `GH_TOKEN` is set.
+
+### Integration Tests
+
+Integration tests exercise real GitHub operations — creating branches, PRs, merging, and verifying auto-delete behavior.
+
+```sh
+GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
+```
+
+The PAT needs **Contents: R/W** and **Pull requests: R/W** scoped to the test repo. By default the tests use `kirby-test-runner/kirby-integration-test-repository` — override with `TEST_REPO=owner/repo`.
+
+In CI, integration tests run in a separate **Integration Tests** workflow (`.github/workflows/integration.yml`) using the `INTEGRATION_TEST_PAT` repo secret.
+
 ## Configuration
 
 Press `s` to open the settings panel. From there you can configure the VCS provider, AI tool, sync intervals, and auto-behaviors (auto-delete merged branches, auto-rebase). Press `a` to auto-detect project settings from the git remote.

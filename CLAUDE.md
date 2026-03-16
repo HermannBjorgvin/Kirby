@@ -57,6 +57,44 @@
 - **Run tests via NX:** `npx nx test worktree-manager`
 - **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
 
+### E2E Tests (tui-test)
+
+E2E tests live in `apps/cli-e2e/` and use `@microsoft/tui-test` (Playwright-style PTY testing). They run against the built CLI binary.
+
+```sh
+# Run all e2e tests (fast tests only, integration tests are skipped without GH_TOKEN)
+npx nx e2e cli-e2e
+```
+
+**tui-test gotcha:** `test.use()` only accepts `TestOptions` (rows, columns, shell, env, program). `timeout` is a `defineConfig`-only property — do not put it in `test.use()`. SWC won't catch the type error locally, but CI `typecheck` will fail.
+
+### Integration Tests
+
+Integration tests (e.g., `merge-auto-delete.test.ts`) exercise real GitHub operations — they create branches, PRs, merge, and verify Kirby's response. They are **skipped** when `GH_TOKEN` is not set.
+
+**Running locally:**
+
+```sh
+GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
+```
+
+**Required PAT permissions** (scoped to the test repo only):
+
+- Contents: Read & Write (clone, push branches, delete branches)
+- Pull requests: Read & Write (create, merge, close PRs)
+- The PAT owner must have admin access on the test repo (for `--admin` merge)
+
+**Environment variables:**
+
+- `GH_TOKEN` — fine-grained PAT for the test repo (required to run integration tests)
+- `TEST_REPO` — override the test repo (default: `kirby-test-runner/kirby-integration-test-repository`)
+- `KIRBY_LOG` — set automatically by the test to capture debug logs from the Kirby process
+
+**CI pipelines:**
+
+- **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Integration tests are skipped (no `GH_TOKEN`).
+- **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state.
+
 ## Project Structure
 
 ```
