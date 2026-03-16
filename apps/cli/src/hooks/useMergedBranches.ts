@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { canRemoveBranch, branchToSessionName } from '@kirby/worktree-manager';
+import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
-import { logError } from '../log.js';
 
 export function useMergedBranches(
   branches: string[],
@@ -53,7 +53,10 @@ export function useMergedBranches(
           if (check.safe) {
             onAutoDeleteRef.current(branchToSessionName(branch), branch);
           } else {
-            logError('useMergedBranches', `Skipping auto-delete of ${branch}: ${check.reason}`);
+            logError(
+              'useMergedBranches',
+              `Skipping auto-delete of ${branch}: ${check.reason}`
+            );
           }
         }
       }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseUnifiedDiff } from './diff-parser.js';
@@ -43,7 +43,7 @@ describe('diff-fetcher integration', () => {
     const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join(
       '\n'
     );
-    execSync(`printf '%s' '${lines}' > test.txt`, { cwd: repoDir });
+    writeFileSync(join(repoDir, 'test.txt'), lines);
     execSync('git add test.txt', { cwd: repoDir });
     execSync('git commit -m "initial"', { cwd: repoDir });
 

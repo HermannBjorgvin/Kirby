@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchRemote, fastForwardMainBranch } from '@kirby/worktree-manager';
+import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
-import { logError } from '../log.js';
 
 const DEFAULT_POLL_MS = 3_600_000; // 1 hour
 const MIN_POLL_MS = 300_000; // 5 minutes
