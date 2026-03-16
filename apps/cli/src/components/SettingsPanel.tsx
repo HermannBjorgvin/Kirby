@@ -67,6 +67,13 @@ export function buildSettingsFields(
       configBag: 'project',
     },
     { label: 'Email', key: 'email', configBag: 'project' },
+    {
+      label: 'Worktree Path',
+      key: 'worktreePath',
+      description:
+        'Template for worktree placement ({session} = sanitized branch). Restart required.',
+      configBag: 'global',
+    },
   ];
 
   if (provider) {

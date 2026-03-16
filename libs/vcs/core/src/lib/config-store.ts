@@ -47,6 +47,7 @@ interface RawGlobalConfig {
   autoRebase?: boolean;
   mergePollInterval?: number;
   editor?: string;
+  worktreePath?: string;
 }
 
 interface RawProjectConfig {
@@ -134,6 +135,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     autoRebase: global.autoRebase,
     mergePollInterval: global.mergePollInterval,
     editor: project.editor ?? global.editor,
+    worktreePath: global.worktreePath,
   };
 }
 

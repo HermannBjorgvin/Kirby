@@ -207,6 +207,24 @@ describe('readConfig', () => {
     const config = readConfig('/tmp/test');
     expect(config.editor).toBe('code-insiders');
   });
+
+  it('should include worktreePath when set in global config', () => {
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ worktreePath: '../{session}' })
+    );
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.worktreePath).toBe('../{session}');
+  });
+
+  it('should have undefined worktreePath when not set', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.worktreePath).toBeUndefined();
+  });
 });
 
 describe('isVcsConfigured', () => {

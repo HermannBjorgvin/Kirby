@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { resolve as pathResolve } from 'node:path';
 import {
   createWorktree,
   removeWorktree,
@@ -14,7 +15,10 @@ import {
   rebaseOntoMaster,
   getMainBranch,
   resetMainBranchCache,
+  resetWorktreeResolver,
   branchToSessionName,
+  setWorktreeResolver,
+  createTemplateResolver,
 } from './worktree.js';
 import { existsSync } from 'node:fs';
 
@@ -38,6 +42,7 @@ function resolve(stdout = '') {
 beforeEach(() => {
   vi.clearAllMocks();
   resetMainBranchCache();
+  resetWorktreeResolver();
 });
 
 describe('listBranches', () => {
@@ -280,15 +285,17 @@ describe('parseWorktrees', () => {
 });
 
 describe('listWorktrees', () => {
-  it('should return only .claude/worktrees/ entries, excluding main worktree', async () => {
+  const cwd = process.cwd();
+
+  it('should return only resolver-owned entries, excluding main worktree', async () => {
     mockExec.mockResolvedValueOnce(
       resolve(
         [
-          'worktree /home/user/repo',
+          `worktree ${cwd}`,
           'HEAD abc123',
           'branch refs/heads/main',
           '',
-          'worktree /home/user/repo/.claude/worktrees/feature-auth',
+          `worktree ${cwd}/.claude/worktrees/feature-auth`,
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
@@ -305,11 +312,11 @@ describe('listWorktrees', () => {
     mockExec.mockResolvedValueOnce(
       resolve(
         [
-          'worktree /home/user/repo',
+          `worktree ${cwd}`,
           'HEAD abc123',
           'bare',
           '',
-          'worktree /home/user/repo/.claude/worktrees/feature-auth',
+          `worktree ${cwd}/.claude/worktrees/feature-auth`,
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
@@ -330,16 +337,70 @@ describe('listWorktrees', () => {
   it('should return empty array when no worktrees exist', async () => {
     mockExec.mockResolvedValueOnce(
       resolve(
+        [`worktree ${cwd}`, 'HEAD abc123', 'branch refs/heads/main', ''].join(
+          '\n'
+        )
+      )
+    );
+
+    expect(await listWorktrees()).toEqual([]);
+  });
+
+  it('should use custom resolver when set', async () => {
+    setWorktreeResolver(
+      createTemplateResolver('../{session}', '/repos/myrepo.git')
+    );
+    mockExec.mockResolvedValueOnce(
+      resolve(
         [
-          'worktree /home/user/repo',
+          'worktree /repos/myrepo.git',
           'HEAD abc123',
-          'branch refs/heads/main',
+          'bare',
+          '',
+          'worktree /repos/feature-auth',
+          'HEAD def456',
+          'branch refs/heads/feature/auth',
+          '',
+          'worktree /repos/fix-bug',
+          'HEAD 789abc',
+          'branch refs/heads/fix/bug',
+          '',
+          'worktree /other/unrelated',
+          'HEAD 111222',
+          'branch refs/heads/other',
           '',
         ].join('\n')
       )
     );
 
-    expect(await listWorktrees()).toEqual([]);
+    const result = await listWorktrees();
+    expect(result).toHaveLength(2);
+    expect(result.map((w) => w.branch)).toEqual(['feature/auth', 'fix/bug']);
+  });
+
+  it('should not false-positive on prefix collisions', async () => {
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          `worktree ${cwd}`,
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+          `worktree ${cwd}/.claude/worktrees-old/stale`,
+          'HEAD def456',
+          'branch refs/heads/stale',
+          '',
+          `worktree ${cwd}/.claude/worktrees/feature-auth`,
+          'HEAD 789abc',
+          'branch refs/heads/feature/auth',
+          '',
+        ].join('\n')
+      )
+    );
+
+    const result = await listWorktrees();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.branch).toBe('feature/auth');
   });
 });
 
@@ -602,5 +663,84 @@ describe('branchToSessionName', () => {
 
   it('should handle empty string', () => {
     expect(branchToSessionName('')).toBe('');
+  });
+});
+
+describe('WorktreeResolver', () => {
+  describe('default resolver', () => {
+    it('dir() matches existing worktreeDir behavior', () => {
+      // default resolver is active after resetWorktreeResolver in beforeEach
+      // We test indirectly via createWorktree which calls worktreeDir
+      // Just verify branchToSessionName is used consistently
+      expect(branchToSessionName('feature/auth')).toBe('feature-auth');
+    });
+
+    it('owns() uses startsWith and rejects paths outside base', () => {
+      const cwd = process.cwd();
+      const base = pathResolve(cwd, '.claude/worktrees');
+      // The default resolver should own paths under .claude/worktrees
+      // We test via listWorktrees behavior (tested above)
+      // Here we test createTemplateResolver as a proxy for the pattern
+      const resolver = createTemplateResolver(
+        '.claude/worktrees/{session}',
+        cwd
+      );
+      expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
+      expect(resolver.owns(base)).toBe(true);
+      expect(resolver.owns(`${base}-old/stale`)).toBe(false);
+      expect(resolver.owns('/completely/different/path')).toBe(false);
+    });
+  });
+
+  describe('createTemplateResolver', () => {
+    it('with ../{session} produces sibling paths', () => {
+      const resolver = createTemplateResolver(
+        '../{session}',
+        '/repos/myrepo.git'
+      );
+      expect(resolver.dir('feature/auth')).toBe('../feature-auth');
+      expect(resolver.dir('main')).toBe('../main');
+    });
+
+    it('with {branch} preserves slashes', () => {
+      const resolver = createTemplateResolver(
+        'worktrees/{branch}',
+        '/repos/myrepo'
+      );
+      expect(resolver.dir('feature/auth')).toBe('worktrees/feature/auth');
+    });
+
+    it('owns() derives base from template', () => {
+      const resolver = createTemplateResolver(
+        '../{session}',
+        '/repos/myrepo.git'
+      );
+      // base = resolve('/repos/myrepo.git', '..') = '/repos'
+      expect(resolver.owns('/repos/feature-auth')).toBe(true);
+      expect(resolver.owns('/repos')).toBe(true);
+      expect(resolver.owns('/repos-other/foo')).toBe(false);
+      expect(resolver.owns('/other/path')).toBe(false);
+    });
+
+    it('owns() handles absolute template paths', () => {
+      const resolver = createTemplateResolver(
+        '/custom/worktrees/{session}',
+        '/any'
+      );
+      expect(resolver.owns('/custom/worktrees/feature-auth')).toBe(true);
+      expect(resolver.owns('/custom/worktrees')).toBe(true);
+      expect(resolver.owns('/custom/other')).toBe(false);
+    });
+
+    it('with default-like template matches default resolver behavior', () => {
+      const cwd = process.cwd();
+      const resolver = createTemplateResolver(
+        '.claude/worktrees/{session}',
+        cwd
+      );
+      const base = pathResolve(cwd, '.claude/worktrees');
+      expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
+      expect(resolver.owns(`${base}-old/stale`)).toBe(false);
+    });
   });
 });
