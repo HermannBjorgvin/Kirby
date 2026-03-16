@@ -10,11 +10,13 @@ export function log(
 ): void {
   if (!logPath) return;
   const ts = new Date().toISOString();
+  const serialized =
+    data instanceof Error
+      ? `${data.message}\n${data.stack ?? ''}`
+      : JSON.stringify(data);
   const line =
     data !== undefined
-      ? `${ts} [${level.toUpperCase()}] ${context}: ${message} ${JSON.stringify(
-          data
-        )}`
+      ? `${ts} [${level.toUpperCase()}] ${context}: ${message} ${serialized}`
       : `${ts} [${level.toUpperCase()}] ${context}: ${message}`;
   appendFileSync(logPath, line + '\n');
 }

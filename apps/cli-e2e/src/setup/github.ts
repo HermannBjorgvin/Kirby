@@ -4,12 +4,12 @@ import { execSync } from 'node:child_process';
  * Create a local branch, make an empty commit, and push to origin.
  */
 export function createTestBranch(repoDir: string, branchName: string): void {
-  execSync(`git checkout -b ${branchName}`, { cwd: repoDir, stdio: 'pipe' });
+  execSync(`git checkout -b "${branchName}"`, { cwd: repoDir, stdio: 'pipe' });
   execSync(`git commit --allow-empty -m "e2e test branch: ${branchName}"`, {
     cwd: repoDir,
     stdio: 'pipe',
   });
-  execSync(`git push -u origin ${branchName}`, {
+  execSync(`git push -u origin "${branchName}"`, {
     cwd: repoDir,
     stdio: 'pipe',
   });

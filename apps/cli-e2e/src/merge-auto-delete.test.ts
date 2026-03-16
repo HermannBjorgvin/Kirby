@@ -7,6 +7,7 @@ import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
 import {
   createTestBranch,
+  closePullRequest,
   createPullRequest,
   mergePullRequest,
   deleteRemoteBranch,
@@ -88,6 +89,7 @@ if (hasGhToken) {
 
   // 8. Register remote branch cleanup (safety net)
   process.on('exit', () => {
+    closePullRequest(TEST_REPO, prNumber);
     deleteRemoteBranch(TEST_REPO, branchName);
   });
 }
@@ -98,6 +100,8 @@ if (hasGhToken) {
 // override HOME for config isolation.
 
 test.use({
+  timeout: 120_000,
+  rows: 80,
   program: {
     file: 'node',
     args: [mainJs, cloneDir],
