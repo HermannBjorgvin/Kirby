@@ -34,7 +34,7 @@ registerCleanup(fakeHome);
 
 if (hasGhToken) {
   // 1. Clone sandbox repo
-  execSync(`gh repo clone ${TEST_REPO} "${cloneDir}" -- --single-branch`, {
+  execSync(`gh repo clone "${TEST_REPO}" "${cloneDir}" -- --single-branch`, {
     stdio: 'pipe',
   });
 
@@ -42,7 +42,7 @@ if (hasGhToken) {
   const token = process.env.GH_TOKEN;
   if (token) {
     execSync(
-      `git remote set-url origin https://x-access-token:${token}@github.com/${TEST_REPO}.git`,
+      `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
       { cwd: cloneDir, stdio: 'pipe' }
     );
   }
@@ -69,7 +69,7 @@ if (hasGhToken) {
   })
     .trim()
     .replace('refs/remotes/origin/', '');
-  execSync(`git checkout ${defaultBranch}`, { cwd: cloneDir, stdio: 'pipe' });
+  execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
 
   // 6. Create worktree so Kirby sees it as a session
   const worktreeRel = join('.claude', 'worktrees', sessionName);
@@ -156,7 +156,7 @@ test.when(
     // 7. Verify local branch was deleted
     let branchExists = true;
     try {
-      execSync(`git rev-parse --verify ${branchName}`, {
+      execSync(`git rev-parse --verify "${branchName}"`, {
         cwd: cloneDir,
         stdio: 'pipe',
       });

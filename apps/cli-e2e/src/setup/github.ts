@@ -24,7 +24,7 @@ export function createPullRequest(
   cwd: string
 ): number {
   const output = execSync(
-    `gh pr create --repo ${repoFullName} --head ${branchName} --title "e2e: ${branchName}" --body "Automated e2e test PR"`,
+    `gh pr create --repo "${repoFullName}" --head "${branchName}" --title "e2e: ${branchName}" --body "Automated e2e test PR"`,
     { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
   // gh pr create prints the PR URL; extract number from it
@@ -33,7 +33,7 @@ export function createPullRequest(
 
   // Fallback: query for it
   const prNum = execSync(
-    `gh pr view ${branchName} --repo ${repoFullName} --json number -q .number`,
+    `gh pr view "${branchName}" --repo "${repoFullName}" --json number -q .number`,
     { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
   return parseInt(prNum.trim(), 10);
@@ -43,7 +43,7 @@ export function createPullRequest(
  * Merge PR via gh CLI (merge commit strategy, no remote branch deletion).
  */
 export function mergePullRequest(repoFullName: string, prNumber: number): void {
-  execSync(`gh pr merge ${prNumber} --repo ${repoFullName} --merge --admin`, {
+  execSync(`gh pr merge ${prNumber} --repo "${repoFullName}" --merge --admin`, {
     stdio: 'pipe',
   });
 }
@@ -53,7 +53,7 @@ export function mergePullRequest(repoFullName: string, prNumber: number): void {
  */
 export function closePullRequest(repoFullName: string, prNumber: number): void {
   try {
-    execSync(`gh pr close ${prNumber} --repo ${repoFullName}`, {
+    execSync(`gh pr close ${prNumber} --repo "${repoFullName}"`, {
       stdio: 'pipe',
     });
   } catch {
@@ -70,7 +70,7 @@ export function deleteRemoteBranch(
 ): void {
   try {
     execSync(
-      `gh api -X DELETE repos/${repoFullName}/git/refs/heads/${branchName}`,
+      `gh api -X DELETE "repos/${repoFullName}/git/refs/heads/${branchName}"`,
       { stdio: 'pipe' }
     );
   } catch {
