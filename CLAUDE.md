@@ -70,7 +70,10 @@ npx nx e2e cli-e2e
 
 ### Integration Tests
 
-Integration tests (e.g., `merge-auto-delete.test.ts`) exercise real GitHub operations — they create branches, PRs, merge, and verify Kirby's response. They are **skipped** when `GH_TOKEN` is not set.
+Integration tests exercise real GitHub operations and are **skipped** when `GH_TOKEN` is not set.
+
+- `merge-auto-delete.test.ts` — creates branches, PRs, merges, verifies Kirby auto-deletes the session
+- `reviews-fixture.test.ts` — reads 3 permanent fixture PRs in the test repo, verifies the Reviews tab categorizes them correctly
 
 **Running locally:**
 
@@ -89,6 +92,16 @@ GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
 - `GH_TOKEN` — fine-grained PAT for the test repo (required to run integration tests)
 - `TEST_REPO` — override the test repo (default: `kirby-test-runner/kirby-integration-test-repository`)
 - `KIRBY_LOG` — set automatically by the test to capture debug logs from the Kirby process
+
+**Fixture PRs in the test repo** (used by `reviews-fixture.test.ts`):
+
+| PR | Branch | Title | CI | Review (by kirby-test-runner) |
+|----|--------|-------|----|-------------------------------|
+| #37 | `fixture/add-color-support` | Add color support for tile values | passes | Approved |
+| #38 | `fixture/add-undo-feature` | Add undo feature with history stack | passes | Changes requested (3 inline comments) |
+| #39 | `fixture/add-ai-solver` | Add AI solver for auto-play mode | fails | Approved (1 suggestion comment) |
+
+These PRs are permanent fixtures — tests only read them, never modify. The test repo contains a C 2048 game project.
 
 **CI pipelines:**
 
