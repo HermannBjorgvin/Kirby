@@ -100,7 +100,6 @@ if (hasGhToken) {
 // override HOME for config isolation.
 
 test.use({
-  timeout: 120_000,
   rows: 80,
   program: {
     file: 'node',
