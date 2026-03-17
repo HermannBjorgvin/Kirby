@@ -47,7 +47,7 @@ export function useSessionManager(
   const performDelete = useCallback(
     async (sessionName: string, branch: string) => {
       killSession(sessionName);
-      await removeWorktree(branch);
+      await removeWorktree(branch, { force: true });
       await deleteBranch(branch, true);
       const updated = await refreshSessions();
       setSelectedIndex((prev) =>

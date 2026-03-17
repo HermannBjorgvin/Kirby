@@ -142,72 +142,57 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     },
   });
 
-  // Known bug: removeWorktree() doesn't use --force, so git refuses to remove
-  // dirty worktrees. The worktree directory is left behind as an orphan.
-  // When the bug is fixed, remove the test.fail marker.
-  test.fail(
-    'delete session with dirty worktree — probes force-removal bug',
-    async ({ terminal }) => {
-      const branchName = 'e2e-dirty';
-      const sessionName = branchName;
+  test('delete session with dirty worktree is force-removed', async ({
+    terminal,
+  }) => {
+    const branchName = 'e2e-dirty';
+    const sessionName = branchName;
 
-      // 1. Wait for empty state
-      await expect(terminal.getByText('Kirby')).toBeVisible();
-      await expect(terminal.getByText('(no sessions)')).toBeVisible();
+    // 1. Wait for empty state
+    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
-      // 2. Create session via branch picker
-      terminal.write('c');
-      await expect(terminal.getByText('Branch Picker')).toBeVisible();
+    // 2. Create session via branch picker
+    terminal.write('c');
+    await expect(terminal.getByText('Branch Picker')).toBeVisible();
 
-      await typeText(terminal, branchName);
-      await expect(
-        terminal.getByText('(new branch)', { strict: false })
-      ).toBeVisible({ timeout: 5_000 });
+    await typeText(terminal, branchName);
+    await expect(
+      terminal.getByText('(new branch)', { strict: false })
+    ).toBeVisible({ timeout: 5_000 });
 
-      await new Promise((r) => setTimeout(r, 2_000));
-      terminal.write('\r');
+    await new Promise((r) => setTimeout(r, 2_000));
+    terminal.write('\r');
 
-      await expect(terminal.getByText('Branch Picker')).not.toBeVisible({
-        timeout: 5_000,
-      });
-      await expect(
-        terminal.getByText(sessionName, { strict: false })
-      ).toBeVisible({ timeout: 20_000 });
+    await expect(terminal.getByText('Branch Picker')).not.toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(
+      terminal.getByText(sessionName, { strict: false })
+    ).toBeVisible({ timeout: 20_000 });
 
-      // 3. Make the worktree dirty by writing an untracked file
-      const worktreePath = join(env2.dir, '.claude', 'worktrees', sessionName);
-      expect(existsSync(worktreePath)).toBe(true);
-      writeFileSync(join(worktreePath, 'dirty.txt'), 'uncommitted change');
+    // 3. Make the worktree dirty by writing an untracked file
+    const worktreePath = join(env2.dir, '.claude', 'worktrees', sessionName);
+    expect(existsSync(worktreePath)).toBe(true);
+    writeFileSync(join(worktreePath, 'dirty.txt'), 'uncommitted change');
 
-      // 4. Press 'd' — canRemoveBranch detects uncommitted changes → confirm
-      terminal.write('d');
-      await expect(
-        terminal.getByText('Esc cancel', { strict: false })
-      ).toBeVisible({ timeout: 10_000 });
+    // 4. Press 'd' — canRemoveBranch detects uncommitted changes → confirm
+    terminal.write('d');
+    await expect(
+      terminal.getByText('Esc cancel', { strict: false })
+    ).toBeVisible({ timeout: 10_000 });
 
-      // 5. Confirm deletion by typing the branch name
-      await typeText(terminal, branchName);
-      await new Promise((r) => setTimeout(r, 2_000));
-      terminal.write('\r');
+    // 5. Confirm deletion by typing the branch name
+    await typeText(terminal, branchName);
+    await new Promise((r) => setTimeout(r, 2_000));
+    terminal.write('\r');
 
-      // 6. Wait for the deletion to process.
-      //
-      //    BUG PROBE: `removeWorktree()` calls `git worktree remove` WITHOUT
-      //    --force. With a dirty worktree (untracked files), git refuses to
-      //    remove it. But `performDelete()` doesn't check the return value
-      //    and proceeds to `deleteBranch()` with force (-D). Result:
-      //    - PTY killed ✓
-      //    - Worktree still on disk ✗ (git refused to remove dirty worktree)
-      //    - Branch force-deleted ✓
-      //    This leaves an orphaned worktree directory with no matching branch.
-      //
-      //    We assert the expected (correct) behavior: the worktree directory
-      //    should be fully removed. This test FAILS when the bug is present.
+    // 6. Session should disappear
+    await expect(terminal.getByText('(no sessions)')).toBeVisible({
+      timeout: 15_000,
+    });
 
-      await new Promise((r) => setTimeout(r, 5_000));
-
-      // The worktree should have been fully removed
-      expect(existsSync(worktreePath)).toBe(false);
-    }
-  );
+    // 7. Verify worktree directory was fully removed despite dirty state
+    expect(existsSync(worktreePath)).toBe(false);
+  });
 });

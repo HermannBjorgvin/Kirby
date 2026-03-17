@@ -113,10 +113,14 @@ export async function createWorktree(branch: string): Promise<string | null> {
  * Remove a git worktree for a branch.
  * Returns true on success, false on failure.
  */
-export async function removeWorktree(branch: string): Promise<boolean> {
+export async function removeWorktree(
+  branch: string,
+  { force = false }: { force?: boolean } = {}
+): Promise<boolean> {
   const relativeDir = worktreeDir(branch);
   try {
-    await exec(`git worktree remove "${relativeDir}"`, {
+    const forceFlag = force ? ' --force' : '';
+    await exec(`git worktree remove${forceFlag} "${relativeDir}"`, {
       encoding: 'utf8',
     });
     return true;
