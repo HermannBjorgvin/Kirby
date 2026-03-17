@@ -126,6 +126,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [sessionMgr.sessions, sessionPrMap]
   );
 
+  // Safe to close over sessionPrMap: it only changes on PR refresh (usePrData),
+  // never during session creation, so the map is current when callers invoke this
+  // right after refreshSessions().
   const findSortedIdx = useCallback(
     (rawSessions: AgentSession[], name: string): number =>
       findSortedSessionIndex(rawSessions, sessionPrMap, name),

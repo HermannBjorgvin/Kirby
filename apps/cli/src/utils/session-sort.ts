@@ -10,9 +10,15 @@ export function sortSessionsByPrId(
   sessionPrMap: Map<string, PullRequestInfo>
 ): AgentSession[] {
   return [...sessions].sort((a, b) => {
-    const idA = sessionPrMap.get(a.name)?.id ?? -Infinity;
-    const idB = sessionPrMap.get(b.name)?.id ?? -Infinity;
-    return idB - idA;
+    const idA = sessionPrMap.get(a.name)?.id;
+    const idB = sessionPrMap.get(b.name)?.id;
+    // Both have PRs: sort descending by ID
+    if (idA != null && idB != null) return idB - idA;
+    // Only one has a PR: it sorts first
+    if (idA != null) return -1;
+    if (idB != null) return 1;
+    // Neither has a PR: preserve original order
+    return 0;
   });
 }
 

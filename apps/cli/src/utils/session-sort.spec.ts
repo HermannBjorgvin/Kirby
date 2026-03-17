@@ -57,6 +57,21 @@ describe('sortSessionsByPrId', () => {
     sortSessionsByPrId(original, prMap);
     expect(original[0]!.name).toBe('a');
   });
+
+  it('preserves insertion order among sessions without PRs', () => {
+    const prMap = makePrMap([['has-pr', 1]]);
+    const sorted = sortSessionsByPrId(
+      sessions('z-no-pr', 'a-no-pr', 'has-pr', 'm-no-pr'),
+      prMap
+    );
+    // has-pr first, then the three PR-less in original order
+    expect(sorted.map((s) => s.name)).toEqual([
+      'has-pr',
+      'z-no-pr',
+      'a-no-pr',
+      'm-no-pr',
+    ]);
+  });
 });
 
 describe('findSortedSessionIndex', () => {
