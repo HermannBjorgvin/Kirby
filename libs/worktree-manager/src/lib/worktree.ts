@@ -9,6 +9,52 @@ import { resolve } from 'node:path';
 import { log } from '@kirby/logger';
 import { exec } from './exec.js';
 
+// ── WorktreeResolver ─────────────────────────────────────────────
+
+export interface WorktreeResolver {
+  /** Relative path for a new worktree for this branch */
+  dir(branch: string): string;
+  /** True if this absolute worktree path belongs to this resolver */
+  owns(absolutePath: string): boolean;
+}
+
+const defaultResolver: WorktreeResolver = {
+  dir: (branch) => '.claude/worktrees/' + branchToSessionName(branch),
+  owns: (p) => {
+    const base = resolve(process.cwd(), '.claude/worktrees');
+    return p === base || p.startsWith(base + '/');
+  },
+};
+
+let activeResolver: WorktreeResolver = defaultResolver;
+
+export function setWorktreeResolver(r: WorktreeResolver): void {
+  activeResolver = r;
+}
+
+export function resetWorktreeResolver(): void {
+  activeResolver = defaultResolver;
+}
+
+export function createTemplateResolver(
+  template: string,
+  cwd = process.cwd()
+): WorktreeResolver {
+  const baseTemplate =
+    template.replace(/\/?\{(?:branch|session)\}.*$/, '') || '.';
+  const baseDir = resolve(cwd, baseTemplate);
+
+  return {
+    dir: (branch) =>
+      template
+        .replace('{branch}', branch)
+        .replace('{session}', branchToSessionName(branch)),
+    owns: (p) => p === baseDir || p.startsWith(baseDir + '/'),
+  };
+}
+
+// ── Main branch cache ────────────────────────────────────────────
+
 let cachedMainBranch: string | null = null;
 
 /** Auto-detect the main branch name (master or main) and cache it. */
@@ -59,9 +105,9 @@ export function branchToSessionName(branch: string): string {
   return branch.replace(/\//g, '-');
 }
 
-/** Convert a branch name to its .claude/worktrees/ relative directory */
+/** Convert a branch name to its worktree relative directory */
 function worktreeDir(branch: string): string {
-  return '.claude/worktrees/' + branchToSessionName(branch);
+  return activeResolver.dir(branch);
 }
 
 /**
@@ -278,7 +324,7 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
       encoding: 'utf8',
     });
     return parseWorktrees(stdout).filter(
-      (w) => !w.bare && w.path.includes('.claude/worktrees/')
+      (w) => !w.bare && activeResolver.owns(w.path)
     );
   } catch (e) {
     log('error', 'listWorktrees', 'git worktree list failed', e);

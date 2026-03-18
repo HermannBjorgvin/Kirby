@@ -14,10 +14,14 @@ import {
   removeWorktree,
   canRemoveBranch,
   listAllBranches,
+  listWorktrees,
   fastForwardMainBranch,
   countConflicts,
   rebaseOntoMaster,
   resetMainBranchCache,
+  resetWorktreeResolver,
+  setWorktreeResolver,
+  createTemplateResolver,
 } from './worktree.js';
 
 // Collect temp dirs for cleanup
@@ -101,6 +105,7 @@ function setupRemoteAndClone(): {
 beforeEach(() => {
   originalCwd = process.cwd();
   resetMainBranchCache();
+  resetWorktreeResolver();
 });
 
 afterEach(() => {
@@ -416,5 +421,86 @@ describe('integration: rebaseOntoMaster', () => {
     expect(result).toBe('conflict');
 
     await removeWorktree('feature-rebase-conflict');
+  });
+});
+
+// ── Bare repo + template resolver integration tests ──────────────
+
+function setupBareRepo(): { bareDir: string; parentDir: string } {
+  // Create a normal repo, then clone it as bare
+  const seedDir = mkdtempSync(join(tmpdir(), 'worktree-seed-bare-'));
+  tempDirs.push(seedDir);
+  execSync('git init', { cwd: seedDir, stdio: 'pipe' });
+  execSync('git config user.email "test@example.com"', {
+    cwd: seedDir,
+    stdio: 'pipe',
+  });
+  execSync('git config user.name "Test User"', {
+    cwd: seedDir,
+    stdio: 'pipe',
+  });
+  execSync('git checkout -b master', { cwd: seedDir, stdio: 'pipe' });
+  writeFileSync(join(seedDir, 'README.md'), '# test');
+  execSync('git add .', { cwd: seedDir, stdio: 'pipe' });
+  execSync('git commit -m "initial commit"', { cwd: seedDir, stdio: 'pipe' });
+
+  // Clone as bare repo inside a parent directory
+  const parentDir = mkdtempSync(join(tmpdir(), 'worktree-bare-parent-'));
+  tempDirs.push(parentDir);
+  const bareDir = join(parentDir, 'myrepo.git');
+  execSync(`git clone --bare "${seedDir}" "${bareDir}"`, { stdio: 'pipe' });
+
+  return { bareDir, parentDir };
+}
+
+describe('integration: bare repo with template resolver', () => {
+  it('should create worktree as sibling using template resolver', async () => {
+    const { bareDir, parentDir } = setupBareRepo();
+    process.chdir(bareDir);
+
+    setWorktreeResolver(createTemplateResolver('../{session}', bareDir));
+
+    const path = await createWorktree('feature/sidebar');
+    expect(path).not.toBeNull();
+    expect(existsSync(path!)).toBe(true);
+    // Sibling of the bare repo
+    expect(path).toBe(join(parentDir, 'feature-sidebar'));
+
+    await removeWorktree('feature/sidebar');
+  });
+
+  it('should list only resolver-owned worktrees', async () => {
+    const { bareDir } = setupBareRepo();
+    process.chdir(bareDir);
+
+    setWorktreeResolver(createTemplateResolver('../{session}', bareDir));
+
+    await createWorktree('feature/a');
+    await createWorktree('feature/b');
+
+    const worktrees = await listWorktrees();
+    expect(worktrees).toHaveLength(2);
+    expect(worktrees.map((w) => w.branch).sort()).toEqual([
+      'feature/a',
+      'feature/b',
+    ]);
+
+    await removeWorktree('feature/a');
+    await removeWorktree('feature/b');
+  });
+
+  it('should remove the correct worktree', async () => {
+    const { bareDir, parentDir } = setupBareRepo();
+    process.chdir(bareDir);
+
+    setWorktreeResolver(createTemplateResolver('../{session}', bareDir));
+
+    await createWorktree('feature/remove-me');
+    const wtPath = join(parentDir, 'feature-remove-me');
+    expect(existsSync(wtPath)).toBe(true);
+
+    const removed = await removeWorktree('feature/remove-me');
+    expect(removed).toBe(true);
+    expect(existsSync(wtPath)).toBe(false);
   });
 });

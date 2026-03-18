@@ -89,4 +89,5 @@ export interface AppConfig {
   autoRebase?: boolean;
   mergePollInterval?: number; // ms, default 3600000, min 300000
   editor?: string;
+  worktreePath?: string;
 }

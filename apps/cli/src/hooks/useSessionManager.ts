@@ -5,6 +5,8 @@ import {
   listAllBranches,
   listWorktrees,
   branchToSessionName,
+  setWorktreeResolver,
+  createTemplateResolver,
 } from '@kirby/worktree-manager';
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
@@ -60,6 +62,11 @@ export function useSessionManager(
   // Load sessions and branches on mount
   useEffect(() => {
     let cancelled = false;
+
+    const config = readConfig();
+    if (config.worktreePath) {
+      setWorktreeResolver(createTemplateResolver(config.worktreePath));
+    }
 
     (async () => {
       if (cancelled) return;

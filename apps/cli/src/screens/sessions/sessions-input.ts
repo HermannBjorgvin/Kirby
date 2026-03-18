@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import {
@@ -198,15 +197,16 @@ export function handleSessionsSidebarInput(
     if (ctx.nav.focus === 'sidebar' && ctx.sessions.selectedName) {
       ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessions.selectedName!)) {
-          const worktreePath = resolve(
-            process.cwd(),
-            '.claude/worktrees/' + ctx.sessions.selectedName
+          const worktrees = await listWorktrees();
+          const wt = worktrees.find(
+            (w) => branchToSessionName(w.branch) === ctx.sessions.selectedName
           );
+          if (!wt) return;
           startAiSession(
             ctx.sessions.selectedName!,
             ctx.terminal.paneCols,
             ctx.terminal.paneRows,
-            worktreePath,
+            wt.path,
             ctx.config.config
           );
           await ctx.sessions.refreshSessions();
