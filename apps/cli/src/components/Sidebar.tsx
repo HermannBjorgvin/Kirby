@@ -203,20 +203,15 @@ export const Sidebar = memo(function Sidebar({
 
     items.forEach((item, idx) => {
       const section = getSectionKey(item);
-      // Insert section header at transitions (skip for 'pull-requests' section when it's the only kind)
+      // Insert section header at every section transition
       if (section !== lastSection) {
-        const showPrHeader = items.some(
-          (i) => i.kind !== 'session' && !(i.kind === 'orphan-pr' && !i.pr.isDraft)
-        );
-        if (section !== 'pull-requests' || showPrHeader) {
-          result.push({
-            type: 'header',
-            key: section,
-            count: sectionCounts.get(section) ?? 0,
-            first: isFirst,
-          });
-          isFirst = false;
-        }
+        result.push({
+          type: 'header',
+          key: section,
+          count: sectionCounts.get(section) ?? 0,
+          first: isFirst,
+        });
+        isFirst = false;
         lastSection = section;
       }
       result.push({ type: 'item', item, itemIndex: idx });
