@@ -1,11 +1,11 @@
 import { createContext, useContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { useStdout } from 'ink';
 import { useNavigation } from '../hooks/useNavigation.js';
 import { useAsyncOperation } from '../hooks/useAsyncOperation.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { useBranchPicker } from '../hooks/useBranchPicker.js';
 import { useDeleteConfirmation } from '../hooks/useDeleteConfirmation.js';
+import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
 /** Top-level UI state shared across all tabs (navigation, modals, layout). */
 export interface AppStateContextValue {
@@ -30,9 +30,7 @@ const AppStateContext = createContext<AppStateContextValue | null>(null);
 const SIDEBAR_WIDTH = 48;
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const { stdout } = useStdout();
-  const termRows = stdout?.rows ?? 24;
-  const termCols = stdout?.columns ?? 80;
+  const { rows: termRows, cols: termCols } = useTerminalDimensions();
 
   const paneCols = Math.max(20, termCols - SIDEBAR_WIDTH - 2);
   const paneRows = Math.max(5, termRows - 5);
