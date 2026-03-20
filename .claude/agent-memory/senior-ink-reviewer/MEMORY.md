@@ -21,7 +21,7 @@
 - **main.tsx slimmed down**: ~136 lines, delegates to SessionsTab and ReviewsTab screen components
 - **pty-registry.ts**: module-level mutable Map singleton, no React integration
 - **No error boundaries** -- unhandled error crashes entire TUI
-- **Only 1 test file** for cli app: `pr-utils.spec.ts`
+- **Test files** for cli app: `pr-utils.spec.ts`, `session-sort.spec.ts`
 - **No resize listener** -- `useStdout().stdout.rows/columns` doesn't update on resize
 
 ## Ink Patterns
@@ -37,6 +37,7 @@
 
 - Shell injection risk in git functions using string interpolation
 - Stale closures in event handlers -- use functional setState form
+- Stale closure risk in `findSortedIndex` useCallback (closes over sessionPrMap): works by accident because PR data doesn't refresh in same async flow as session creation. Document or pass explicitly.
 - Duplicated logic (branch filtering computed in both input handler and BranchPicker)
 - No useWindowSize() for terminal resize
 
@@ -45,3 +46,4 @@
 - 2026-02-25: Reviewed perf async conversion + serve target cleanup
 - 2026-02-26: Reviewed xterm-headless removal, self-managed worktrees feature
 - 2026-03-07: Full codebase review of apps/cli/src/ -- see detailed findings in review output
+- 2026-03-17: Session sort bug fix review -- sorted index extracted to `utils/session-sort.ts`, stale closure concern flagged

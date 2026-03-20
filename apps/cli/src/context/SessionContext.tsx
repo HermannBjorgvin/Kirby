@@ -18,6 +18,10 @@ import { useConflictCounts } from '../hooks/useConflictCounts.js';
 import { useConfig } from './ConfigContext.js';
 import { useAppState } from './AppStateContext.js';
 import type { AgentSession } from '../types.js';
+import {
+  sortSessionsByPrId,
+  findSortedSessionIndex,
+} from '../utils/session-sort.js';
 
 /**
  * All session-related state: worktree sessions, PR data, and derived lookups.
@@ -37,6 +41,7 @@ export interface SessionContextValue {
   statusMessage: string | null;
   flashStatus: (msg: string) => void;
   refreshSessions: () => Promise<AgentSession[]>;
+  findSortedIndex: (sessions: AgentSession[], name: string) => number;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
 
   // ── PR / VCS data ──
@@ -116,13 +121,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [prMap]
   );
 
-  const sortedSessions = useMemo(() => {
-    return [...sessionMgr.sessions].sort((a, b) => {
-      const idA = sessionPrMap.get(a.name)?.id ?? -Infinity;
-      const idB = sessionPrMap.get(b.name)?.id ?? -Infinity;
-      return idB - idA;
-    });
-  }, [sessionMgr.sessions, sessionPrMap]);
+  const sortedSessions = useMemo(
+    () => sortSessionsByPrId(sessionMgr.sessions, sessionPrMap),
+    [sessionMgr.sessions, sessionPrMap]
+  );
+
+  // Safe to close over sessionPrMap: it only changes on PR refresh (usePrData),
+  // never during session creation, so the map is current when callers invoke this
+  // right after refreshSessions().
+  const findSortedIdx = useCallback(
+    (rawSessions: AgentSession[], name: string): number =>
+      findSortedSessionIndex(rawSessions, sessionPrMap, name),
+    [sessionPrMap]
+  );
 
   const totalItems = sortedSessions.length + orphanPrs.length;
   const clampedSelectedIndex =
@@ -142,6 +153,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       statusMessage: sessionMgr.statusMessage,
       flashStatus: sessionMgr.flashStatus,
       refreshSessions: sessionMgr.refreshSessions,
+      findSortedIndex: findSortedIdx,
       performDelete: sessionMgr.performDelete,
       prMap,
       prError,
@@ -163,6 +175,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       sessionMgr,
+      findSortedIdx,
       prMap,
       prError,
       refreshPr,

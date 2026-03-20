@@ -237,7 +237,7 @@ export function handleBranchPickerInput(
             ctx.config.config
           );
           const updated = await ctx.sessions.refreshSessions();
-          const idx = updated.findIndex((s) => s.name === sessionName);
+          const idx = ctx.sessions.findSortedIndex(updated, sessionName);
           if (idx >= 0) ctx.sessions.setSelectedIndex(idx);
         }
       });
@@ -1066,7 +1066,7 @@ export function handleSidebarInput(
             ctx.config.config
           );
           const updated = await ctx.sessions.refreshSessions();
-          const idx = updated.findIndex((s) => s.name === sessionName);
+          const idx = ctx.sessions.findSortedIndex(updated, sessionName);
           if (idx >= 0) sidebar.setSelectedIndex(idx);
         }
       });
