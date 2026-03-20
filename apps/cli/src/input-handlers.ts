@@ -16,34 +16,13 @@ export type AsyncOpsValue = AppStateContextValue['asyncOps'];
 export type SettingsValue = AppStateContextValue['settings'];
 export type TerminalLayout = AppStateContextValue['terminal'];
 
-// ── Shared input helpers ──────────────────────────────────────────
-
-export function handleTabSwitchInput(
-  input: string,
-  nav: NavValue,
-  vcsConfigured: boolean
-): boolean {
-  if (nav.focus !== 'sidebar') return false;
-  if (input === '1' && nav.activeTab !== 'sessions') {
-    nav.setActiveTab('sessions');
-    nav.setFocus('sidebar');
-    return true;
-  }
-  if (input === '2' && nav.activeTab !== 'reviews' && vcsConfigured) {
-    nav.setActiveTab('reviews');
-    nav.setFocus('sidebar');
-    return true;
-  }
-  return false;
-}
+// ── Settings input handler ────────────────────────────────────────
 
 export interface SettingsHandlerCtx {
   settings: SettingsValue;
   config: ConfigContextValue;
   sessions: SessionContextValue;
 }
-
-// ── Settings input handler ────────────────────────────────────────
 
 export function handleSettingsInput(
   input: string,

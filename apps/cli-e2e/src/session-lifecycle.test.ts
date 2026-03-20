@@ -62,7 +62,7 @@ test.describe('Session Lifecycle – clean delete', () => {
     const sessionName = branchName;
 
     // 1. Wait for empty state
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
     // 2. Open branch picker, type a new branch name
@@ -90,12 +90,12 @@ test.describe('Session Lifecycle – clean delete', () => {
     const worktreePath = join(env1.dir, '.claude', 'worktrees', sessionName);
     expect(existsSync(worktreePath)).toBe(true);
 
-    // 5. Press 'd' to delete — no remote tracking → confirm dialog.
+    // 5. Press 'x' to delete — no remote tracking → confirm dialog.
     //    The confirm text wraps across lines in a 100-col terminal,
     //    so match a short fragment that stays on one line.
-    terminal.write('d');
+    terminal.write('x');
     await expect(
-      terminal.getByText('Esc cancel', { strict: false })
+      terminal.getByText('to confirm', { strict: false })
     ).toBeVisible({ timeout: 10_000 });
 
     // 6. Type the branch name to confirm deletion
@@ -149,7 +149,7 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     const sessionName = branchName;
 
     // 1. Wait for empty state
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
     // 2. Create session via branch picker
@@ -176,10 +176,10 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     expect(existsSync(worktreePath)).toBe(true);
     writeFileSync(join(worktreePath, 'dirty.txt'), 'uncommitted change');
 
-    // 4. Press 'd' — canRemoveBranch detects uncommitted changes → confirm
-    terminal.write('d');
+    // 4. Press 'x' — canRemoveBranch detects uncommitted changes → confirm
+    terminal.write('x');
     await expect(
-      terminal.getByText('Esc cancel', { strict: false })
+      terminal.getByText('to confirm', { strict: false })
     ).toBeVisible({ timeout: 10_000 });
 
     // 5. Confirm deletion by typing the branch name

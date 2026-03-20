@@ -21,8 +21,9 @@ test.describe('Terminal Resize', () => {
     terminal,
   }) => {
     // 1. Verify initial render at 100x30
-    await expect(terminal.getByText('Kirby')).toBeVisible();
-    await expect(terminal.getByText('1 Sessions')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
     // 2. Resize to a larger terminal and wait for debounce
@@ -30,8 +31,9 @@ test.describe('Terminal Resize', () => {
     await new Promise((r) => setTimeout(r, DEBOUNCE_SETTLE_MS));
 
     // 3. Verify the app still renders correctly after resize
-    await expect(terminal.getByText('Kirby')).toBeVisible();
-    await expect(terminal.getByText('1 Sessions')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
     await expect(terminal.getByText('checkout branch')).toBeVisible();
   });
@@ -40,7 +42,9 @@ test.describe('Terminal Resize', () => {
     terminal,
   }) => {
     // 1. Verify initial render at 100x30
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
     // 2. Resize to a smaller terminal and wait for debounce
@@ -48,14 +52,18 @@ test.describe('Terminal Resize', () => {
     await new Promise((r) => setTimeout(r, DEBOUNCE_SETTLE_MS));
 
     // 3. Verify the app still renders correctly at smaller size
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
   });
 
   test('debounce coalesces rapid resizes into single update', async ({
     terminal,
   }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
 
     // Simulate a drag-resize: several size changes in quick succession.
     // The 500ms debounce should discard intermediate sizes and only
@@ -67,8 +75,9 @@ test.describe('Terminal Resize', () => {
     await new Promise((r) => setTimeout(r, DEBOUNCE_SETTLE_MS));
 
     // App should settle and render correctly at the final size
-    await expect(terminal.getByText('Kirby')).toBeVisible();
-    await expect(terminal.getByText('1 Sessions')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
     await expect(terminal.getByText('checkout branch')).toBeVisible();
   });

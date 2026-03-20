@@ -119,7 +119,7 @@ test.when(
     try {
       // 2. Wait for Kirby to render
       await expect(
-        terminal.getByText('Worktree Sessions', { strict: false })
+        terminal.getByText('Kirby', { strict: false })
       ).toBeVisible();
 
       // 3. Verify session appears (PR not merged yet — guaranteed no race)

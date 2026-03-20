@@ -142,6 +142,26 @@ describe('categorizeReviews', () => {
     expect(result.waitingForAuthor).toEqual([]);
   });
 
+  it('excludes PRs created by the current user', () => {
+    const prMap: BranchPrMap = {
+      'branch-a': makePr({
+        id: 1,
+        createdByIdentifier: 'me@test.com',
+        reviewers: [
+          {
+            displayName: 'Me',
+            identifier: 'me@test.com',
+            decision: 'no-response',
+          },
+        ],
+      }),
+    };
+    const result = categorizeReviews(prMap, mockConfig, mockProvider);
+    expect(result.needsReview).toEqual([]);
+    expect(result.approvedByYou).toEqual([]);
+    expect(result.waitingForAuthor).toEqual([]);
+  });
+
   it('skips PRs where user is not a reviewer', () => {
     const prMap: BranchPrMap = {
       'branch-a': makePr({

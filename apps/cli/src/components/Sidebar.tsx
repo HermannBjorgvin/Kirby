@@ -1,0 +1,385 @@
+import { memo, useMemo } from 'react';
+import { Text, Box } from 'ink';
+import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { AgentSession, SidebarItem } from '../types.js';
+import { PrBadge } from './PrBadge.js';
+import { SidebarLayout } from './SidebarLayout.js';
+import { truncate } from '../utils/truncate.js';
+import { computeScrollWindow } from '../hooks/useScrollWindow.js';
+import { useConfig } from '../context/ConfigContext.js';
+
+// ── Constants ───────────────────────────────────────────────────
+
+const LINES_PER_ROW = 3;
+const FIXED_CHROME_LINES = 11;
+
+// ── Section header detection ────────────────────────────────────
+
+type SectionKey =
+  | 'pull-requests'
+  | 'draft-pull-requests'
+  | 'needs-review'
+  | 'waiting'
+  | 'approved';
+
+function getSectionKey(item: SidebarItem): SectionKey {
+  if (item.kind === 'session') return 'pull-requests';
+  if (item.kind === 'orphan-pr')
+    return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
+  return item.category;
+}
+
+const SECTION_LABELS: Record<SectionKey, { title: string; color: string }> = {
+  'pull-requests': { title: 'Pull Requests', color: 'blue' },
+  'draft-pull-requests': { title: 'Draft Pull Requests', color: 'gray' },
+  'needs-review': { title: 'Needs Your Review', color: 'red' },
+  waiting: { title: 'Waiting for Author', color: 'yellow' },
+  approved: { title: 'Approved by You', color: 'green' },
+};
+
+// ── Sub-components ──────────────────────────────────────────────
+
+const SessionItemRow = memo(function SessionItemRow({
+  session,
+  selected,
+  pr,
+  sidebarWidth,
+  isMerged,
+  conflictCount,
+}: {
+  session: AgentSession;
+  selected: boolean;
+  pr: PullRequestInfo | undefined;
+  sidebarWidth: number;
+  isMerged: boolean;
+  conflictCount: number | undefined;
+}) {
+  const { vcsConfigured } = useConfig();
+  const icon = session.running ? '●' : '○';
+  const color = session.running ? 'green' : 'gray';
+
+  return (
+    <Box flexDirection="column">
+      <Text>
+        <Text color={selected ? 'cyan' : undefined}>
+          {selected ? '› ' : '  '}
+        </Text>
+        <Text color={color}>{icon} </Text>
+        <Text bold={selected}>
+          {truncate(pr?.title || session.name, 42)}
+        </Text>
+        {isMerged ? (
+          <Text dimColor color="green">
+            {' '}
+            merged
+          </Text>
+        ) : null}
+      </Text>
+      {conflictCount != null && conflictCount > 0 ? (
+        <Text dimColor color="yellow">
+          {'    '}
+          {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
+        </Text>
+      ) : null}
+      {vcsConfigured ? <PrBadge pr={pr} sidebarWidth={sidebarWidth} /> : null}
+    </Box>
+  );
+});
+
+const OrphanPrRow = memo(function OrphanPrRow({
+  pr,
+  selected,
+  sidebarWidth,
+}: {
+  pr: PullRequestInfo;
+  selected: boolean;
+  sidebarWidth: number;
+}) {
+  return (
+    <Box flexDirection="column">
+      <Text>
+        <Text color={selected ? 'cyan' : undefined}>
+          {selected ? '› ' : '  '}
+        </Text>
+        <Text bold={selected}>
+          {truncate(pr.title || pr.sourceBranch, 42)}
+        </Text>
+      </Text>
+      <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
+    </Box>
+  );
+});
+
+const ReviewPrRow = memo(function ReviewPrRow({
+  pr,
+  selected,
+  sidebarWidth,
+  innerWidth,
+}: {
+  pr: PullRequestInfo;
+  selected: boolean;
+  sidebarWidth: number;
+  innerWidth: number;
+}) {
+  return (
+    <Box flexDirection="column">
+      <Text>
+        <Text color={selected ? 'cyan' : undefined}>
+          {selected ? '› ' : '  '}
+        </Text>
+        <Text bold={selected}>
+          {truncate(pr.title || pr.sourceBranch, innerWidth - 4)}
+        </Text>
+      </Text>
+      <PrBadge
+        pr={pr}
+        sidebarWidth={sidebarWidth}
+        author={pr.createdByDisplayName || 'unknown'}
+      />
+    </Box>
+  );
+});
+
+function SectionHeader({
+  title,
+  color,
+  count,
+  innerWidth,
+  first,
+}: {
+  title: string;
+  color: string;
+  count: number;
+  innerWidth: number;
+  first: boolean;
+}) {
+  return (
+    <Box flexDirection="column" marginTop={first ? 0 : 1}>
+      <Text bold color={color}>
+        {title} ({count})
+      </Text>
+      <Text dimColor>{'─'.repeat(Math.max(1, innerWidth))}</Text>
+    </Box>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────
+
+export interface SidebarProps {
+  items: SidebarItem[];
+  selectedIndex: number;
+  sidebarWidth: number;
+  paneRows: number;
+  focused: boolean;
+  conflictsLoading?: boolean;
+}
+
+export const Sidebar = memo(function Sidebar({
+  items,
+  selectedIndex,
+  sidebarWidth,
+  paneRows,
+  focused,
+}: SidebarProps) {
+  const { vcsConfigured } = useConfig();
+  const innerWidth = Math.max(10, sidebarWidth - 2);
+
+  // Build renderable rows (items + section headers)
+  type RenderRow =
+    | { type: 'header'; key: SectionKey; count: number; first: boolean }
+    | { type: 'item'; item: SidebarItem; itemIndex: number };
+
+  const rows = useMemo(() => {
+    const result: RenderRow[] = [];
+    let lastSection: SectionKey | null = null;
+    let isFirst = true;
+
+    // Count items per section for the header
+    const sectionCounts = new Map<SectionKey, number>();
+    for (const item of items) {
+      const key = getSectionKey(item);
+      sectionCounts.set(key, (sectionCounts.get(key) ?? 0) + 1);
+    }
+
+    items.forEach((item, idx) => {
+      const section = getSectionKey(item);
+      // Insert section header at transitions (skip for 'pull-requests' section when it's the only kind)
+      if (section !== lastSection) {
+        const showPrHeader = items.some(
+          (i) => i.kind !== 'session' && !(i.kind === 'orphan-pr' && !i.pr.isDraft)
+        );
+        if (section !== 'pull-requests' || showPrHeader) {
+          result.push({
+            type: 'header',
+            key: section,
+            count: sectionCounts.get(section) ?? 0,
+            first: isFirst,
+          });
+          isFirst = false;
+        }
+        lastSection = section;
+      }
+      result.push({ type: 'item', item, itemIndex: idx });
+    });
+    return result;
+  }, [items]);
+
+  // Compute scroll window
+  const { visibleRows, aboveCount, belowCount } = useMemo(() => {
+    const totalLines = rows.length * LINES_PER_ROW;
+    const availableLines = paneRows - FIXED_CHROME_LINES;
+
+    if (totalLines <= availableLines) {
+      return { visibleRows: rows, aboveCount: 0, belowCount: 0 };
+    }
+
+    // Find row index of selected item
+    const selectedRowIdx = rows.findIndex(
+      (r) => r.type === 'item' && r.itemIndex === selectedIndex
+    );
+    const maxVisibleRows = Math.max(
+      1,
+      Math.floor((availableLines - 2) / LINES_PER_ROW)
+    );
+
+    const pass1 = computeScrollWindow({
+      totalItems: rows.length,
+      selectedIndex: Math.max(0, selectedRowIdx),
+      maxVisible: maxVisibleRows,
+    });
+
+    const indicatorLines =
+      (pass1.aboveCount > 0 ? 1 : 0) + (pass1.belowCount > 0 ? 1 : 0);
+    const adjustedMax = Math.max(
+      1,
+      Math.floor((availableLines - indicatorLines) / LINES_PER_ROW)
+    );
+
+    const { windowStart } = computeScrollWindow({
+      totalItems: rows.length,
+      selectedIndex: Math.max(0, selectedRowIdx),
+      maxVisible: adjustedMax,
+    });
+
+    const visible = rows.slice(windowStart, windowStart + adjustedMax);
+    return {
+      visibleRows: visible,
+      aboveCount: windowStart,
+      belowCount: Math.max(0, rows.length - windowStart - adjustedMax),
+    };
+  }, [rows, selectedIndex, paneRows]);
+
+  return (
+    <SidebarLayout
+      focused={focused}
+      sidebarWidth={sidebarWidth}
+      emptyText="(no sessions)"
+      isEmpty={items.length === 0}
+      keybinds={
+        <>
+          <Text dimColor>
+            <Text color="cyan">j/k</Text> navigate
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">c</Text> checkout branch
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">x</Text> delete branch
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">K</Text> kill agent
+          </Text>
+          {vcsConfigured ? (
+            <Text dimColor>
+              <Text color="cyan">d</Text> view diff
+            </Text>
+          ) : null}
+          <Text dimColor>
+            <Text color="cyan">u</Text> rebase onto master
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">.</Text> open in editor
+          </Text>
+          {vcsConfigured ? (
+            <>
+              <Text dimColor>
+                <Text color="cyan">r</Text> refresh PR data
+              </Text>
+              <Text dimColor>
+                <Text color="cyan">g</Text> sync with origin
+              </Text>
+            </>
+          ) : null}
+          <Text dimColor>
+            <Text color="cyan">enter</Text> start/focus session
+          </Text>
+          <Text dimColor>
+            <Text color="cyan">s</Text> settings{' '}
+            <Text color="cyan">q</Text> quit
+          </Text>
+        </>
+      }
+      legend={
+        vcsConfigured ? (
+          <>
+            <Text dimColor>🔧✅ passed 🔧🔥 failed 🔧⏳ pending</Text>
+            <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
+          </>
+        ) : undefined
+      }
+    >
+      {aboveCount > 0 && <Text dimColor>↑ {aboveCount} more</Text>}
+      {visibleRows.map((row) => {
+        if (row.type === 'header') {
+          const label = SECTION_LABELS[row.key];
+          return (
+            <SectionHeader
+              key={`section-${row.key}`}
+              title={label.title}
+              color={label.color}
+              count={row.count}
+              innerWidth={innerWidth}
+              first={row.first}
+            />
+          );
+        }
+        const { item, itemIndex } = row;
+        const selected = itemIndex === selectedIndex;
+
+        if (item.kind === 'session') {
+          return (
+            <SessionItemRow
+              key={`s-${item.session.name}`}
+              session={item.session}
+              selected={selected}
+              pr={item.pr}
+              sidebarWidth={sidebarWidth}
+              isMerged={item.isMerged}
+              conflictCount={item.conflictCount}
+            />
+          );
+        }
+        if (item.kind === 'orphan-pr') {
+          return (
+            <OrphanPrRow
+              key={`o-${item.pr.id}`}
+              pr={item.pr}
+              selected={selected}
+              sidebarWidth={sidebarWidth}
+            />
+          );
+        }
+        return (
+          <ReviewPrRow
+            key={`r-${item.pr.id}`}
+            pr={item.pr}
+            selected={selected}
+            sidebarWidth={sidebarWidth}
+            innerWidth={innerWidth}
+          />
+        );
+      })}
+      {belowCount > 0 && <Text dimColor>↓ {belowCount} more</Text>}
+    </SidebarLayout>
+  );
+});
