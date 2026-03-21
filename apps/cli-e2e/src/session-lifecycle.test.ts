@@ -84,7 +84,7 @@ test.describe('Session Lifecycle – clean delete', () => {
     });
     await expect(
       terminal.getByText(sessionName, { strict: false })
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible({ timeout: 10_000 });
 
     // 4. Verify worktree directory was created on disk
     const worktreePath = join(env1.dir, '.claude', 'worktrees', sessionName);
@@ -169,7 +169,7 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     });
     await expect(
       terminal.getByText(sessionName, { strict: false })
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible({ timeout: 10_000 });
 
     // 3. Make the worktree dirty by writing an untracked file
     const worktreePath = join(env2.dir, '.claude', 'worktrees', sessionName);
