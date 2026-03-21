@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../types.js';
+import { getPrFromItem } from '../types.js';
 import { buildSidebarItems } from '../utils/sidebar-items.js';
 import { useSessionContext } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
@@ -19,14 +20,9 @@ export interface SidebarContextValue {
   sessionNameForTerminal: string | null;
 }
 
-const SidebarContext =
-  createContext<SidebarContextValue | null>(null);
+const SidebarContext = createContext<SidebarContextValue | null>(null);
 
-export function SidebarProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function SidebarProvider({ children }: { children: ReactNode }) {
   const sessionCtx = useSessionContext();
   const { vcsConfigured } = useConfig();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -63,8 +59,7 @@ export function SidebarProvider({
 
   const selectedPr = useMemo(() => {
     if (!selectedItem) return undefined;
-    if (selectedItem.kind === 'session') return selectedItem.pr;
-    return selectedItem.pr;
+    return getPrFromItem(selectedItem);
   }, [selectedItem]);
 
   const sessionNameForTerminal = useMemo(() => {
@@ -98,17 +93,12 @@ export function SidebarProvider({
   );
 
   return (
-    <SidebarContext.Provider value={value}>
-      {children}
-    </SidebarContext.Provider>
+    <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>
   );
 }
 
 export function useSidebar(): SidebarContextValue {
   const ctx = useContext(SidebarContext);
-  if (!ctx)
-    throw new Error(
-      'useSidebar must be used within SidebarProvider'
-    );
+  if (!ctx) throw new Error('useSidebar must be used within SidebarProvider');
   return ctx;
 }

@@ -13,6 +13,10 @@ import { useSessionContext } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneMode } from '../../hooks/usePaneMode.js';
+import type { PaneModeValue } from '../../hooks/usePaneMode.js';
+import { useDiffState } from '../../hooks/useDiffState.js';
+import { useCommentState } from '../../hooks/useCommentState.js';
+import { useReviewConfirmState } from '../../hooks/useReviewConfirmState.js';
 import { useDiffData } from '../../hooks/useDiffData.js';
 import { useReviewComments } from '../../hooks/useReviewComments.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
@@ -52,7 +56,24 @@ export function MainTab({
   const configCtx = useConfig();
   const sidebar = useSidebar();
 
-  const pane = usePaneMode(sidebar.selectedItem, sidebar.sessionNameForTerminal);
+  const paneModeHook = usePaneMode(
+    sidebar.selectedItem,
+    sidebar.sessionNameForTerminal
+  );
+  const diffState = useDiffState();
+  const commentState = useCommentState();
+  const reviewConfirmState = useReviewConfirmState();
+
+  // Compose into the single pane object that input handlers expect
+  const pane: PaneModeValue = useMemo(
+    () => ({
+      ...paneModeHook,
+      ...diffState,
+      ...commentState,
+      ...reviewConfirmState,
+    }),
+    [paneModeHook, diffState, commentState, reviewConfirmState]
+  );
 
   const terminalHook = useTerminal(
     sidebar.sessionNameForTerminal,
@@ -142,8 +163,7 @@ export function MainTab({
   }, [interleaveResult, fileComments]);
 
   // ── Scroll wheel ──────────────────────────────────────────────
-  const scrollWheelActive =
-    pane.paneMode === 'diff-file' && !terminalFocused;
+  const scrollWheelActive = pane.paneMode === 'diff-file' && !terminalFocused;
 
   const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(

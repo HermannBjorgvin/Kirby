@@ -1,7 +1,10 @@
-import { useState, useRef } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import { useState } from 'react';
 import type { PaneMode, SidebarItem } from '../types.js';
+import { getPrFromItem } from '../types.js';
 import { hasSession } from '../pty-registry.js';
+import type { useDiffState } from './useDiffState.js';
+import type { useCommentState } from './useCommentState.js';
+import type { useReviewConfirmState } from './useReviewConfirmState.js';
 
 /**
  * Compute the default pane mode for a given item.
@@ -13,19 +16,25 @@ function defaultPaneMode(
 ): PaneMode {
   if (!item) return 'terminal';
   if (sessionName && hasSession(sessionName)) return 'terminal';
-  if (
-    item.kind === 'review-pr' &&
-    reviewSessionStarted.has(item.pr.id)
-  ) {
+  if (item.kind === 'review-pr' && reviewSessionStarted.has(item.pr.id)) {
     return 'terminal';
   }
-  const pr = item.kind === 'session' ? item.pr : item.pr;
+  const pr = getPrFromItem(item);
   if (pr) return 'pr-detail';
   return 'terminal';
 }
 
 /**
- * Manages the right-pane mode and all review/diff state.
+ * The composite type returned when all pane hooks are combined.
+ * Input handlers receive this shape — no changes needed downstream.
+ */
+export type PaneModeValue = ReturnType<typeof usePaneMode> &
+  ReturnType<typeof useDiffState> &
+  ReturnType<typeof useCommentState> &
+  ReturnType<typeof useReviewConfirmState>;
+
+/**
+ * Manages the right-pane mode and session tracking.
  *
  * Auto-resets pane mode when the selected item changes:
  * - Running PTY session → 'terminal'
@@ -37,88 +46,39 @@ export function usePaneMode(
   sessionNameForTerminal: string | null
 ) {
   const [paneMode, setPaneMode] = useState<PaneMode>('terminal');
-
-  // ── Diff viewer state ──
-  const [diffFileIndex, setDiffFileIndex] = useState(0);
-  const [diffViewFile, setDiffViewFile] = useState<string | null>(null);
-  const [diffScrollOffset, setDiffScrollOffset] = useState(0);
-  const [showSkipped, setShowSkipped] = useState(false);
-
-  // ── Comment state ──
-  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(
-    null
-  );
-  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<
-    string | null
-  >(null);
-  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editBuffer, setEditBuffer] = useState('');
-
-  // ── Confirm dialog state ──
-  const [reviewConfirm, setReviewConfirm] = useState<{
-    pr: PullRequestInfo;
-    selectedOption: number;
-  } | null>(null);
-  const [reviewInstruction, setReviewInstruction] = useState('');
-
-  // ── Session tracking ──
-  const [reviewSessionStarted, setReviewSessionStarted] = useState<
-    Set<number>
-  >(new Set());
   const [reconnectKey, setReconnectKey] = useState(0);
+  const [reviewSessionStarted, setReviewSessionStarted] = useState<Set<number>>(
+    new Set()
+  );
 
-  // ── Auto-reset pane mode on item change ──
-  // Track the item key as a ref. When the key changes, we compute the new
-  // default pane mode and return that — then schedule a state update so
-  // subsequent renders use the correct state value.
-  const prevItemKeyRef = useRef<string | null>(null);
+  // Auto-reset pane mode when selected item changes.
+  // Uses the React "store previous value" pattern to detect prop changes
+  // during render — no useEffect needed.
   const itemKey = selectedItem
     ? selectedItem.kind === 'session'
       ? `session:${selectedItem.session.name}`
       : `pr:${selectedItem.pr.id}`
     : null;
 
-  let effectivePaneMode = paneMode;
-  if (itemKey !== prevItemKeyRef.current) {
-    prevItemKeyRef.current = itemKey;
-    effectivePaneMode = defaultPaneMode(
+  const [prevItemKey, setPrevItemKey] = useState<string | null>(null);
+  if (itemKey !== prevItemKey) {
+    setPrevItemKey(itemKey);
+    const target = defaultPaneMode(
       selectedItem,
       sessionNameForTerminal,
       reviewSessionStarted
     );
-    // Update state to match (will cause one more render but avoids lint issues)
-    if (effectivePaneMode !== paneMode) {
-      // Use queueMicrotask to avoid setState during render
-      queueMicrotask(() => setPaneMode(effectivePaneMode));
+    if (target !== paneMode) {
+      setPaneMode(target);
     }
   }
 
   return {
-    paneMode: effectivePaneMode,
+    paneMode,
     setPaneMode,
-    diffFileIndex,
-    setDiffFileIndex,
-    diffViewFile,
-    setDiffViewFile,
-    diffScrollOffset,
-    setDiffScrollOffset,
-    showSkipped,
-    setShowSkipped,
-    selectedCommentId,
-    setSelectedCommentId,
-    pendingDeleteCommentId,
-    setPendingDeleteCommentId,
-    editingCommentId,
-    setEditingCommentId,
-    editBuffer,
-    setEditBuffer,
-    reviewConfirm,
-    setReviewConfirm,
-    reviewInstruction,
-    setReviewInstruction,
-    reviewSessionStarted,
-    setReviewSessionStarted,
     reconnectKey,
     setReconnectKey,
+    reviewSessionStarted,
+    setReviewSessionStarted,
   };
 }
