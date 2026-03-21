@@ -10,8 +10,12 @@ import { useConfig } from '../context/ConfigContext.js';
 
 // ── Constants ───────────────────────────────────────────────────
 
-const LINES_PER_ROW = 3;
-const FIXED_CHROME_LINES = 11;
+// Header: 1 line of text + 1 marginBottom = 2 lines
+const HEADER_LINES = 2;
+// Keybind line counts (must match the JSX in the render)
+const KEYBIND_LINES_VCS = 11; // j/k, c, x, K, d, u, ., r, g, enter, s/q
+const KEYBIND_LINES_NO_VCS = 8; // j/k, c, x, K, u, ., enter, s/q
+const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
 
 // ── Section header detection ────────────────────────────────────
 
@@ -169,7 +173,7 @@ export interface SidebarProps {
   items: SidebarItem[];
   selectedIndex: number;
   sidebarWidth: number;
-  paneRows: number;
+  termRows: number;
   focused: boolean;
   conflictsLoading?: boolean;
 }
@@ -178,7 +182,7 @@ export const Sidebar = memo(function Sidebar({
   items,
   selectedIndex,
   sidebarWidth,
-  paneRows,
+  termRows,
   focused,
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
@@ -219,50 +223,80 @@ export const Sidebar = memo(function Sidebar({
     return result;
   }, [items]);
 
-  // Compute scroll window
-  const { visibleRows, aboveCount, belowCount } = useMemo(() => {
-    const totalLines = rows.length * LINES_PER_ROW;
-    const availableLines = paneRows - FIXED_CHROME_LINES;
+  // Compute height of each row based on its content
+  const rowHeights = useMemo(() => {
+    return rows.map((row): number => {
+      if (row.type === 'header') return row.first ? 2 : 3; // title + separator (+ marginTop if not first)
+      const { item } = row;
+      if (item.kind === 'session') {
+        let h = 1; // title line
+        if (item.conflictCount != null && item.conflictCount > 0) h++;
+        if (vcsConfigured) h++; // PrBadge (badge or "(no PR)")
+        return h;
+      }
+      if (item.kind === 'orphan-pr') return 2; // title + badge
+      return 3; // review: title + badge + "by author"
+    });
+  }, [rows, vcsConfigured]);
 
-    if (totalLines <= availableLines) {
+  // Compute scroll window using actual row heights
+  const { visibleRows, aboveCount, belowCount } = useMemo(() => {
+    // Total non-item lines: header + keybinds margin + keybind lines + optional legend
+    const chromeLines = HEADER_LINES
+      + 1 + (vcsConfigured ? KEYBIND_LINES_VCS : KEYBIND_LINES_NO_VCS)
+      + (vcsConfigured ? 1 + LEGEND_LINES : 0);
+    const availableLines = termRows - chromeLines;
+    const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
+
+    if (totalHeight <= availableLines) {
       return { visibleRows: rows, aboveCount: 0, belowCount: 0 };
     }
 
-    // Find row index of selected item
-    const selectedRowIdx = rows.findIndex(
-      (r) => r.type === 'item' && r.itemIndex === selectedIndex
-    );
-    const maxVisibleRows = Math.max(
-      1,
-      Math.floor((availableLines - 2) / LINES_PER_ROW)
+    // Reserve space for scroll indicators (↑/↓ more)
+    const budget = availableLines - 2;
+
+    // Estimate how many rows fit (from top) to get a maxVisible for centering
+    let fitCount = 0;
+    let fitHeight = 0;
+    for (let i = 0; i < rowHeights.length; i++) {
+      if (fitHeight + rowHeights[i] > budget) break;
+      fitHeight += rowHeights[i];
+      fitCount++;
+    }
+
+    const selectedRowIdx = Math.max(
+      0,
+      rows.findIndex(
+        (r) => r.type === 'item' && r.itemIndex === selectedIndex
+      )
     );
 
-    const pass1 = computeScrollWindow({
+    // Use computeScrollWindow for centering, then verify with actual heights
+    const { windowStart: tentativeStart } = computeScrollWindow({
       totalItems: rows.length,
-      selectedIndex: Math.max(0, selectedRowIdx),
-      maxVisible: maxVisibleRows,
+      selectedIndex: selectedRowIdx,
+      maxVisible: Math.max(1, fitCount),
     });
 
-    const indicatorLines =
-      (pass1.aboveCount > 0 ? 1 : 0) + (pass1.belowCount > 0 ? 1 : 0);
-    const adjustedMax = Math.max(
-      1,
-      Math.floor((availableLines - indicatorLines) / LINES_PER_ROW)
-    );
+    // From tentativeStart, greedily add rows until budget is exhausted
+    let actualCount = 0;
+    let usedHeight = 0;
+    for (let i = tentativeStart; i < rows.length; i++) {
+      if (usedHeight + rowHeights[i] > budget) break;
+      usedHeight += rowHeights[i];
+      actualCount++;
+    }
 
-    const { windowStart } = computeScrollWindow({
-      totalItems: rows.length,
-      selectedIndex: Math.max(0, selectedRowIdx),
-      maxVisible: adjustedMax,
-    });
-
-    const visible = rows.slice(windowStart, windowStart + adjustedMax);
+    const visible = rows.slice(tentativeStart, tentativeStart + actualCount);
     return {
       visibleRows: visible,
-      aboveCount: windowStart,
-      belowCount: Math.max(0, rows.length - windowStart - adjustedMax),
+      aboveCount: tentativeStart,
+      belowCount: Math.max(
+        0,
+        rows.length - tentativeStart - actualCount
+      ),
     };
-  }, [rows, selectedIndex, paneRows]);
+  }, [rows, rowHeights, selectedIndex, termRows, vcsConfigured]);
 
   return (
     <SidebarLayout

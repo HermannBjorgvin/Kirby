@@ -256,7 +256,7 @@ export function MainTab({
         items={sidebar.items}
         selectedIndex={sidebar.clampedIndex}
         sidebarWidth={appState.sidebarWidth}
-        paneRows={terminal.paneRows}
+        termRows={appState.termRows}
         focused={sidebarFocused}
       />
       {settings.settingsOpen && (

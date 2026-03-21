@@ -23,13 +23,15 @@ export function SidebarLayout({
   children,
 }: SidebarLayoutProps) {
   return (
-    <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
-      {title && (
-        <Text bold color={focused ? 'blue' : 'gray'}>
-          {title}
-        </Text>
-      )}
-      {isEmpty ? <Text dimColor>{emptyText}</Text> : children}
+    <Box flexDirection="column" width={sidebarWidth} paddingX={1} flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1}>
+        {title && (
+          <Text bold color={focused ? 'blue' : 'gray'}>
+            {title}
+          </Text>
+        )}
+        {isEmpty ? <Text dimColor>{emptyText}</Text> : children}
+      </Box>
       <Box marginTop={1} flexDirection="column">
         {keybinds}
       </Box>
