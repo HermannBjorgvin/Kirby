@@ -15,8 +15,8 @@ export type SidebarItem =
       isMerged: boolean;
       conflictCount?: number;
     }
-  | { kind: 'orphan-pr'; pr: PullRequestInfo }
-  | { kind: 'review-pr'; pr: PullRequestInfo; category: ReviewCategory };
+  | { kind: 'orphan-pr'; pr: PullRequestInfo; running?: boolean }
+  | { kind: 'review-pr'; pr: PullRequestInfo; category: ReviewCategory; running?: boolean };
 
 export interface AgentSession {
   name: string;

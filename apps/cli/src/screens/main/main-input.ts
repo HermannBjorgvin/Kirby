@@ -692,8 +692,11 @@ export function handleConfirmInput(
           );
         }
         const updated = await ctx.sessions.refreshSessions();
-        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
-        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        // Review PRs stay in their section — only reposition for non-review items
+        if (ctx.selectedItem?.kind !== 'review-pr') {
+          const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -752,8 +755,10 @@ export function handleConfirmInput(
           }
         }
         const updated = await ctx.sessions.refreshSessions();
-        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
-        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        if (ctx.selectedItem?.kind !== 'review-pr') {
+          const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -767,8 +772,10 @@ export function handleConfirmInput(
           await startReviewSession(ctx);
         }
         const updated = await ctx.sessions.refreshSessions();
-        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
-        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        if (ctx.selectedItem?.kind !== 'review-pr') {
+          const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+        }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -862,8 +869,16 @@ export function handleSidebarInput(
   }
 
   // Delete branch (was 'd', now 'x')
-  if (input === 'x' && selectedItem?.kind === 'session') {
-    const sessionName = selectedItem.session.name;
+  if (
+    input === 'x' &&
+    selectedItem &&
+    (selectedItem.kind === 'session' ||
+      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
+  ) {
+    const sessionName =
+      selectedItem.kind === 'session'
+        ? selectedItem.session.name
+        : branchToSessionName(selectedItem.pr.sourceBranch);
     ctx.asyncOps.run('check-delete', async () => {
       const worktrees = await listWorktrees();
       const wt = worktrees.find(
@@ -902,9 +917,18 @@ export function handleSidebarInput(
   }
 
   // Kill agent
-  if (input === 'K' && selectedItem?.kind === 'session') {
+  if (
+    input === 'K' &&
+    selectedItem &&
+    (selectedItem.kind === 'session' ||
+      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
+  ) {
+    const sessionName =
+      selectedItem.kind === 'session'
+        ? selectedItem.session.name
+        : branchToSessionName(selectedItem.pr.sourceBranch);
     ctx.asyncOps.run('delete', async () => {
-      killSession(selectedItem.session.name);
+      killSession(sessionName);
       await ctx.sessions.refreshSessions();
     });
     ctx.pane.setReconnectKey((k) => k + 1);

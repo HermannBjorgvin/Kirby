@@ -94,10 +94,12 @@ const OrphanPrRow = memo(function OrphanPrRow({
   pr,
   selected,
   sidebarWidth,
+  running,
 }: {
   pr: PullRequestInfo;
   selected: boolean;
   sidebarWidth: number;
+  running?: boolean;
 }) {
   return (
     <Box flexDirection="column">
@@ -105,6 +107,9 @@ const OrphanPrRow = memo(function OrphanPrRow({
         <Text color={selected ? 'cyan' : undefined}>
           {selected ? '› ' : '  '}
         </Text>
+        {running != null && (
+          <Text color={running ? 'green' : 'gray'}>{running ? '● ' : '○ '}</Text>
+        )}
         <Text bold={selected}>
           {truncate(pr.title || pr.sourceBranch, 42)}
         </Text>
@@ -119,20 +124,26 @@ const ReviewPrRow = memo(function ReviewPrRow({
   selected,
   sidebarWidth,
   innerWidth,
+  running,
 }: {
   pr: PullRequestInfo;
   selected: boolean;
   sidebarWidth: number;
   innerWidth: number;
+  running?: boolean;
 }) {
+  const ledWidth = running != null ? 2 : 0;
   return (
     <Box flexDirection="column">
       <Text>
         <Text color={selected ? 'cyan' : undefined}>
           {selected ? '› ' : '  '}
         </Text>
+        {running != null && (
+          <Text color={running ? 'green' : 'gray'}>{running ? '● ' : '○ '}</Text>
+        )}
         <Text bold={selected}>
-          {truncate(pr.title || pr.sourceBranch, innerWidth - 4)}
+          {truncate(pr.title || pr.sourceBranch, innerWidth - 4 - ledWidth)}
         </Text>
       </Text>
       <PrBadge
@@ -347,6 +358,7 @@ export const Sidebar = memo(function Sidebar({
           pr={item.pr}
           selected={selected}
           sidebarWidth={sidebarWidth}
+          running={item.running}
         />
       );
     }
@@ -357,6 +369,7 @@ export const Sidebar = memo(function Sidebar({
         selected={selected}
         sidebarWidth={sidebarWidth}
         innerWidth={innerWidth}
+        running={item.running}
       />
     );
   };

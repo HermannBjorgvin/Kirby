@@ -10,7 +10,6 @@ import {
   categorizeReviews as categorizePrReviews,
   buildSessionLookups,
 } from '../utils/pr-utils.js';
-import { branchToSessionName } from '@kirby/worktree-manager';
 import { useSessionManager } from '../hooks/useSessionManager.js';
 import { usePrData } from '../hooks/usePrData.js';
 import { useRemoteSync } from '../hooks/useRemoteSync.js';
@@ -114,18 +113,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const categorizedReviews = useMemo((): CategorizedReviews => {
     if (!provider)
       return { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
-    const reviews = categorizePrReviews(prMap, config, provider);
-    // Filter out review PRs that already have a worktree session to avoid
-    // duplicates in the sidebar (the PR appears as a session item instead).
-    const sessionNames = new Set(sessionMgr.sessions.map((s) => s.name));
-    const notSession = (pr: PullRequestInfo) =>
-      !sessionNames.has(branchToSessionName(pr.sourceBranch));
-    return {
-      needsReview: reviews.needsReview.filter(notSession),
-      waitingForAuthor: reviews.waitingForAuthor.filter(notSession),
-      approvedByYou: reviews.approvedByYou.filter(notSession),
-    };
-  }, [prMap, config, provider, sessionMgr.sessions]);
+    return categorizePrReviews(prMap, config, provider);
+  }, [prMap, config, provider]);
 
   const { sessionBranchMap, sessionPrMap } = useMemo(
     () => buildSessionLookups(prMap),
