@@ -137,9 +137,12 @@ test.when(
 
       try {
         // 6. Wait for session to disappear (auto-delete removes worktree + branch).
-        //    We assert on the persistent "(no sessions)" state rather than the
-        //    transient flash message which only lasts 3 seconds.
-        await expect(terminal.getByText('(no sessions)')).toBeVisible({
+        //    In the unified sidebar, review PRs remain visible even after all
+        //    sessions are deleted, so we assert the session name is gone rather
+        //    than looking for "(no sessions)".
+        await expect(
+          terminal.getByText(sessionName, { strict: false })
+        ).not.toBeVisible({
           timeout: 90_000,
         });
       } finally {

@@ -51,7 +51,7 @@ if (hasGhToken) {
 async function createSessionViaBranchPicker(
   terminal: Terminal,
   branchFilter: string,
-  sessionName: string
+  waitForText: string
 ) {
   // Open branch picker
   terminal.write('c');
@@ -73,8 +73,10 @@ async function createSessionViaBranchPicker(
   // Press Enter to create
   terminal.write('\r');
 
-  // Wait for session to appear in sidebar
-  await expect(terminal.getByText(sessionName, { strict: false })).toBeVisible({
+  // Wait for the running indicator (●) to appear next to the session.
+  // In the unified sidebar, sessions with PRs display the PR title, not
+  // the branch name, so we match on the indicator + title/name text.
+  await expect(terminal.getByText(waitForText, { strict: false })).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -117,16 +119,19 @@ test.when(
     //    Buggy findIndex('undo') = 2 (raw) → sorted[2] = color (WRONG)
     //    Fixed findSortedIndex('undo') = 1 → sorted[1] = undo (CORRECT)
 
+    // In the unified sidebar, sessions with PRs display the PR title,
+    // not the branch name. We wait for the running indicator (●) next to
+    // the PR title to confirm each session was created.
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-color',
-      'fixture-add-color-support'
+      '● Add color support'
     );
 
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-ai-solver',
-      'fixture-add-ai-solver'
+      '● Add AI solver'
     );
 
     // 3. Wait for PR data to load (PR badges should appear)
@@ -139,17 +144,17 @@ test.when(
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-undo',
-      'fixture-add-undo-feature'
+      '● Add undo feature'
     );
 
     // 5. The selection marker (›) should be on the newly created session
     await expect(
-      terminal.getByText(/›.*fixture-add-undo-feature/g, { strict: false })
+      terminal.getByText(/›.*Add undo feature/g, { strict: false })
     ).toBeVisible();
 
     // 6. Confirm the marker is NOT on the wrong session (color-support)
     expect(
-      terminal.getByText(/›.*fixture-add-color-support/g, { strict: false })
+      terminal.getByText(/›.*Add color support/g, { strict: false })
     ).not.toBeVisible();
   }
 );
