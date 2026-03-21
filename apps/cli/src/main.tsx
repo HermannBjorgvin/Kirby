@@ -5,15 +5,11 @@ import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
 import { StatusBar } from './components/StatusBar.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
-import { useTerminal } from './hooks/useTerminal.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { AppStateProvider, useAppState } from './context/AppStateContext.js';
 import { SessionProvider } from './context/SessionContext.js';
-import {
-  SidebarProvider,
-  useSidebar,
-} from './context/SidebarContext.js';
+import { SidebarProvider } from './context/SidebarContext.js';
 import { MainTab } from './screens/main/MainTab.js';
 
 // ── Provider registry ──────────────────────────────────────────────
@@ -25,8 +21,7 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 function App({ forceSetup }: { forceSetup: boolean }) {
   const { exit } = useApp();
   const { config, provider, vcsConfigured } = useConfig();
-  const { nav, terminal, termRows } = useAppState();
-  const sidebar = useSidebar();
+  const { nav, termRows } = useAppState();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   const showOnboarding =
@@ -35,18 +30,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
     !!provider &&
     (!vcsConfigured || forceSetup);
 
-  // ── Terminal hook ─────────────────────────────────────────────────
   const terminalFocused = nav.focus === 'terminal';
-  const escapeTerminal = () => nav.setFocus('sidebar');
-
-  const terminalHook = useTerminal(
-    sidebar.sessionNameForTerminal,
-    terminal.paneCols,
-    terminal.paneRows,
-    0, // reconnectKey is managed inside MainTab via usePaneMode
-    terminalFocused,
-    escapeTerminal
-  );
 
   if (showOnboarding) {
     return (
@@ -67,7 +51,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
       </Box>
       <Box flexGrow={1}>
         <MainTab
-          terminalContent={terminalHook.content}
           terminalFocused={terminalFocused}
           showOnboarding={showOnboarding}
           exit={exit}

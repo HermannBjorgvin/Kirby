@@ -16,6 +16,7 @@ import { usePaneMode } from '../../hooks/usePaneMode.js';
 import { useDiffData } from '../../hooks/useDiffData.js';
 import { useReviewComments } from '../../hooks/useReviewComments.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useTerminal } from '../../hooks/useTerminal.js';
 import { partitionFiles } from '../../utils/file-classifier.js';
 import { parseUnifiedDiff } from '../../utils/diff-parser.js';
 import { renderDiffLines } from '../../utils/diff-renderer.js';
@@ -34,14 +35,12 @@ import {
 } from './main-input.js';
 
 interface MainTabProps {
-  terminalContent: string;
   terminalFocused: boolean;
   showOnboarding: boolean;
   exit: () => void;
 }
 
 export function MainTab({
-  terminalContent,
   terminalFocused,
   showOnboarding,
   exit,
@@ -54,6 +53,15 @@ export function MainTab({
   const sidebar = useSidebar();
 
   const pane = usePaneMode(sidebar.selectedItem, sidebar.sessionNameForTerminal);
+
+  const terminalHook = useTerminal(
+    sidebar.sessionNameForTerminal,
+    terminal.paneCols,
+    terminal.paneRows,
+    pane.reconnectKey,
+    terminalFocused,
+    () => nav.setFocus('sidebar')
+  );
 
   // ── Review comments (file-watched) ────────────────────────────
   const reviewComments = useReviewComments(sidebar.selectedPr?.id ?? null);
@@ -285,7 +293,7 @@ export function MainTab({
           )}
           {!pane.reviewConfirm && pane.paneMode === 'terminal' && (
             <TerminalView
-              content={terminalContent}
+              content={terminalHook.content}
               focused={nav.focus === 'terminal'}
             />
           )}

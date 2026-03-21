@@ -23,7 +23,7 @@ export function SidebarLayout({
   children,
 }: SidebarLayoutProps) {
   return (
-    <Box flexDirection="column" width={sidebarWidth} paddingX={1} flexGrow={1}>
+    <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
       <Box flexDirection="column" flexGrow={1}>
         {title && (
           <Text bold color={focused ? 'blue' : 'gray'}>

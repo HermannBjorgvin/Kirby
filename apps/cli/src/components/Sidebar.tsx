@@ -240,7 +240,7 @@ export const Sidebar = memo(function Sidebar({
   }, [rows, vcsConfigured]);
 
   // Compute scroll window using actual row heights
-  const { visibleRows, aboveCount, belowCount } = useMemo(() => {
+  const { fullyVisibleRows, gap, aboveCount, belowCount } = useMemo(() => {
     // Total non-item lines: header + keybinds margin + keybind lines + optional legend
     const chromeLines = HEADER_LINES
       + 1 + (vcsConfigured ? KEYBIND_LINES_VCS : KEYBIND_LINES_NO_VCS)
@@ -249,7 +249,7 @@ export const Sidebar = memo(function Sidebar({
     const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
 
     if (totalHeight <= availableLines) {
-      return { visibleRows: rows, aboveCount: 0, belowCount: 0 };
+      return { fullyVisibleRows: rows, gap: 0, aboveCount: 0, belowCount: 0 };
     }
 
     // Reserve space for scroll indicators (↑/↓ more)
@@ -278,25 +278,76 @@ export const Sidebar = memo(function Sidebar({
       maxVisible: Math.max(1, fitCount),
     });
 
-    // From tentativeStart, greedily add rows until budget is exhausted
-    let actualCount = 0;
+    // From tentativeStart, greedily add rows that fully fit within budget
+    let fullCount = 0;
     let usedHeight = 0;
     for (let i = tentativeStart; i < rows.length; i++) {
       if (usedHeight + rowHeights[i] > budget) break;
       usedHeight += rowHeights[i];
-      actualCount++;
+      fullCount++;
     }
 
-    const visible = rows.slice(tentativeStart, tentativeStart + actualCount);
+    const gap = budget - usedHeight;
+    const nextIdx = tentativeStart + fullCount;
+
     return {
-      visibleRows: visible,
+      fullyVisibleRows: rows.slice(tentativeStart, tentativeStart + fullCount),
+      gap,
       aboveCount: tentativeStart,
-      belowCount: Math.max(
-        0,
-        rows.length - tentativeStart - actualCount
-      ),
+      belowCount: Math.max(0, rows.length - nextIdx),
     };
   }, [rows, rowHeights, selectedIndex, termRows, vcsConfigured]);
+
+  const renderRow = (row: RenderRow) => {
+    if (row.type === 'header') {
+      const label = SECTION_LABELS[row.key];
+      return (
+        <SectionHeader
+          key={`section-${row.key}`}
+          title={label.title}
+          color={label.color}
+          count={row.count}
+          innerWidth={innerWidth}
+          first={row.first}
+        />
+      );
+    }
+    const { item, itemIndex } = row;
+    const selected = itemIndex === selectedIndex;
+
+    if (item.kind === 'session') {
+      return (
+        <SessionItemRow
+          key={`s-${item.session.name}`}
+          session={item.session}
+          selected={selected}
+          pr={item.pr}
+          sidebarWidth={sidebarWidth}
+          isMerged={item.isMerged}
+          conflictCount={item.conflictCount}
+        />
+      );
+    }
+    if (item.kind === 'orphan-pr') {
+      return (
+        <OrphanPrRow
+          key={`o-${item.pr.id}`}
+          pr={item.pr}
+          selected={selected}
+          sidebarWidth={sidebarWidth}
+        />
+      );
+    }
+    return (
+      <ReviewPrRow
+        key={`r-${item.pr.id}`}
+        pr={item.pr}
+        selected={selected}
+        sidebarWidth={sidebarWidth}
+        innerWidth={innerWidth}
+      />
+    );
+  };
 
   return (
     <SidebarLayout
@@ -358,56 +409,8 @@ export const Sidebar = memo(function Sidebar({
       }
     >
       {aboveCount > 0 && <Text dimColor>↑ {aboveCount} more</Text>}
-      {visibleRows.map((row) => {
-        if (row.type === 'header') {
-          const label = SECTION_LABELS[row.key];
-          return (
-            <SectionHeader
-              key={`section-${row.key}`}
-              title={label.title}
-              color={label.color}
-              count={row.count}
-              innerWidth={innerWidth}
-              first={row.first}
-            />
-          );
-        }
-        const { item, itemIndex } = row;
-        const selected = itemIndex === selectedIndex;
-
-        if (item.kind === 'session') {
-          return (
-            <SessionItemRow
-              key={`s-${item.session.name}`}
-              session={item.session}
-              selected={selected}
-              pr={item.pr}
-              sidebarWidth={sidebarWidth}
-              isMerged={item.isMerged}
-              conflictCount={item.conflictCount}
-            />
-          );
-        }
-        if (item.kind === 'orphan-pr') {
-          return (
-            <OrphanPrRow
-              key={`o-${item.pr.id}`}
-              pr={item.pr}
-              selected={selected}
-              sidebarWidth={sidebarWidth}
-            />
-          );
-        }
-        return (
-          <ReviewPrRow
-            key={`r-${item.pr.id}`}
-            pr={item.pr}
-            selected={selected}
-            sidebarWidth={sidebarWidth}
-            innerWidth={innerWidth}
-          />
-        );
-      })}
+      {fullyVisibleRows.map((row) => renderRow(row))}
+      {gap > 0 && belowCount > 0 && <Box height={gap} />}
       {belowCount > 0 && <Text dimColor>↓ {belowCount} more</Text>}
     </SidebarLayout>
   );

@@ -881,6 +881,7 @@ export function handleSidebarInput(
         await ctx.sessions.performDelete(sessionName, branch);
       } else {
         killSession(sessionName);
+        ctx.pane.setReconnectKey((k) => k + 1);
         const updated = await ctx.sessions.refreshSessions();
         if (sidebar.clampedIndex >= updated.length) {
           sidebar.setSelectedIndex(Math.max(0, updated.length - 1));
@@ -896,6 +897,7 @@ export function handleSidebarInput(
       killSession(selectedItem.session.name);
       await ctx.sessions.refreshSessions();
     });
+    ctx.pane.setReconnectKey((k) => k + 1);
     return;
   }
 
