@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import { branchToSessionName } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../types.js';
 import { buildSidebarItems } from '../utils/sidebar-items.js';
 import { useSessionContext } from './SessionContext.js';
@@ -14,7 +15,7 @@ export interface SidebarContextValue {
   clampedIndex: number;
   selectedItem: SidebarItem | undefined;
   selectedPr: PullRequestInfo | undefined;
-  /** Session name to use for terminal: session name for session items, review-pr-{id} for review PRs with started sessions, null otherwise. */
+  /** Session name to use for terminal: branch-based name for all item kinds. */
   sessionNameForTerminal: string | null;
 }
 
@@ -69,9 +70,8 @@ export function SidebarProvider({
   const sessionNameForTerminal = useMemo(() => {
     if (!selectedItem) return null;
     if (selectedItem.kind === 'session') return selectedItem.session.name;
-    if (selectedItem.kind === 'review-pr')
-      return `review-pr-${selectedItem.pr.id}`;
-    return null;
+    // Both orphan-pr and review-pr use branch-based naming
+    return branchToSessionName(selectedItem.pr.sourceBranch);
   }, [selectedItem]);
 
   const value = useMemo<SidebarContextValue>(

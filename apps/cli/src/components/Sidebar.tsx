@@ -272,28 +272,40 @@ export const Sidebar = memo(function Sidebar({
     );
 
     // Use computeScrollWindow for centering, then verify with actual heights
-    const { windowStart: tentativeStart } = computeScrollWindow({
+    let start = computeScrollWindow({
       totalItems: rows.length,
       selectedIndex: selectedRowIdx,
       maxVisible: Math.max(1, fitCount),
-    });
+    }).windowStart;
 
-    // From tentativeStart, greedily add rows that fully fit within budget
-    let fullCount = 0;
-    let usedHeight = 0;
-    for (let i = tentativeStart; i < rows.length; i++) {
-      if (usedHeight + rowHeights[i] > budget) break;
-      usedHeight += rowHeights[i];
-      fullCount++;
+    // From start, greedily add rows that fully fit within budget
+    const greedySlice = (from: number) => {
+      let count = 0;
+      let height = 0;
+      for (let i = from; i < rows.length; i++) {
+        if (height + rowHeights[i] > budget) break;
+        height += rowHeights[i];
+        count++;
+      }
+      return { count, height };
+    };
+
+    let { count: fullCount, height: usedHeight } = greedySlice(start);
+
+    // If selected row fell outside the visible window (row heights vary),
+    // slide the window forward until the selected row is included.
+    while (selectedRowIdx >= start + fullCount && start < rows.length - 1) {
+      start++;
+      ({ count: fullCount, height: usedHeight } = greedySlice(start));
     }
 
     const gap = budget - usedHeight;
-    const nextIdx = tentativeStart + fullCount;
+    const nextIdx = start + fullCount;
 
     return {
-      fullyVisibleRows: rows.slice(tentativeStart, tentativeStart + fullCount),
+      fullyVisibleRows: rows.slice(start, start + fullCount),
       gap,
-      aboveCount: tentativeStart,
+      aboveCount: start,
       belowCount: Math.max(0, rows.length - nextIdx),
     };
   }, [rows, rowHeights, selectedIndex, termRows, vcsConfigured]);

@@ -198,6 +198,7 @@ export function MainTab({
         nav,
         asyncOps,
         sessions: sessionCtx,
+        sidebar,
         terminal,
         config: configCtx,
         selectedItem: sidebar.selectedItem,

@@ -90,6 +90,7 @@ export interface ConfirmHandlerCtx {
   nav: NavValue;
   asyncOps: AsyncOpsValue;
   sessions: SessionContextValue;
+  sidebar: SidebarContextValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
   selectedItem: SidebarItem | undefined;
@@ -690,6 +691,9 @@ export function handleConfirmInput(
             ctx.pane.reviewInstruction || undefined
           );
         }
+        const updated = await ctx.sessions.refreshSessions();
+        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -747,6 +751,9 @@ export function handleConfirmInput(
             }
           }
         }
+        const updated = await ctx.sessions.refreshSessions();
+        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -759,6 +766,9 @@ export function handleConfirmInput(
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(ctx);
         }
+        const updated = await ctx.sessions.refreshSessions();
+        const idx = ctx.sessions.findSortedIndex(updated, ctx.sessionNameForTerminal!);
+        if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
         ctx.pane.setReconnectKey((k) => k + 1);
@@ -1051,27 +1061,6 @@ export function handleSidebarInput(
         });
       }
       return;
-    }
-
-    // Orphan PR → create worktree and start session
-    if (selectedItem.kind === 'orphan-pr') {
-      const orphanPr = selectedItem.pr;
-      ctx.asyncOps.run('create-worktree', async () => {
-        const worktreePath = await createWorktree(orphanPr.sourceBranch);
-        if (worktreePath) {
-          const sessionName = branchToSessionName(orphanPr.sourceBranch);
-          startAiSession(
-            sessionName,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            worktreePath,
-            ctx.config.config
-          );
-          const updated = await ctx.sessions.refreshSessions();
-          const idx = ctx.sessions.findSortedIndex(updated, sessionName);
-          if (idx >= 0) sidebar.setSelectedIndex(idx);
-        }
-      });
     }
   }
 }
