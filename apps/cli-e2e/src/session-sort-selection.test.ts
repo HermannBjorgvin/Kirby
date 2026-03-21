@@ -103,7 +103,7 @@ test.when(
   async ({ terminal }) => {
     // 1. Wait for Kirby to render
     await expect(
-      terminal.getByText('Pull Requests', { strict: false })
+      terminal.getByText('Approved by You', { strict: false })
     ).toBeVisible();
 
     // 2. Create sessions in an order that DIFFERS from PR-sorted order.

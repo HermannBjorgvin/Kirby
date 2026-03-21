@@ -269,9 +269,9 @@ export const Sidebar = memo(function Sidebar({
     // Estimate how many rows fit (from top) to get a maxVisible for centering
     let fitCount = 0;
     let fitHeight = 0;
-    for (let i = 0; i < rowHeights.length; i++) {
-      if (fitHeight + rowHeights[i] > budget) break;
-      fitHeight += rowHeights[i];
+    for (const height of rowHeights) {
+      if (fitHeight + height > budget) break;
+      fitHeight += height;
       fitCount++;
     }
 
