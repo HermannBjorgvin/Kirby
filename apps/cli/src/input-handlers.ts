@@ -8,13 +8,14 @@ import {
 import type { AppStateContextValue } from './context/AppStateContext.js';
 import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
+import type { TerminalLayout } from './context/LayoutContext.js';
 
 // ── Shared context slice types ────────────────────────────────────
 
 export type NavValue = AppStateContextValue['nav'];
 export type AsyncOpsValue = AppStateContextValue['asyncOps'];
 export type SettingsValue = AppStateContextValue['settings'];
-export type TerminalLayout = AppStateContextValue['terminal'];
+export type { TerminalLayout };
 
 // ── Settings input handler ────────────────────────────────────────
 

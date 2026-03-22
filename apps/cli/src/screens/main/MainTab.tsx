@@ -9,6 +9,7 @@ import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useAppState } from '../../context/AppStateContext.js';
+import { useLayout } from '../../context/LayoutContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
@@ -50,8 +51,9 @@ export function MainTab({
   exit,
 }: MainTabProps) {
   const appState = useAppState();
-  const { nav, asyncOps, branchPicker, deleteConfirm, settings, terminal } =
-    appState;
+  const { nav, asyncOps, branchPicker, deleteConfirm, settings } = appState;
+  const layout = useLayout();
+  const { terminal } = layout;
   const sessionCtx = useSessionActions();
   const configCtx = useConfig();
   const sidebar = useSidebar();
@@ -284,8 +286,8 @@ export function MainTab({
       <Sidebar
         items={sidebar.items}
         selectedIndex={sidebar.clampedIndex}
-        sidebarWidth={appState.sidebarWidth}
-        termRows={appState.termRows}
+        sidebarWidth={layout.sidebarWidth}
+        termRows={layout.termRows}
         focused={sidebarFocused}
       />
       {settings.settingsOpen && (
