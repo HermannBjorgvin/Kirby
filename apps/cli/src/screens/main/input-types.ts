@@ -10,7 +10,7 @@ import type {
   SettingsValue,
   TerminalLayout,
 } from '../../input-handlers.js';
-import type { PaneModeValue } from '../../hooks/usePaneMode.js';
+import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
 
 // ── Context slice types ──────────────────────────────────────────
