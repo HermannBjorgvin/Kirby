@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { AnnotatedLine } from '../../utils/comment-renderer.js';
+import type { AnnotatedLine } from '@kirby/review-comments';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,

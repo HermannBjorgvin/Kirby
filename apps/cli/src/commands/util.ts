@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { appendComment } from '../utils/comment-store.js';
-import type { CommentSeverity, ReviewComment } from '../types.js';
+import {
+  appendComment,
+  type CommentSeverity,
+  type ReviewComment,
+} from '@kirby/review-comments';
 
 const VALID_SEVERITIES = new Set<CommentSeverity>([
   'critical',

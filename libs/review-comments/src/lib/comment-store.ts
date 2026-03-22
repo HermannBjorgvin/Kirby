@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { ReviewComment, ReviewCommentsFile } from '../types.js';
+import type { ReviewComment, ReviewCommentsFile } from './types.js';
 
 const KIRBY_DIR = join(homedir(), '.kirby');
 

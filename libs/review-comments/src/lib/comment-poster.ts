@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { ReviewComment } from '../types.js';
+import type { ReviewComment } from './types.js';
 import { updateComment } from './comment-store.js';
 
 function execWithStdin(

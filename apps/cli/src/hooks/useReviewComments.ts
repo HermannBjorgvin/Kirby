@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { watch } from 'node:fs';
-import { readComments, commentDirPath } from '../utils/comment-store.js';
-import type { ReviewComment } from '../types.js';
+import {
+  readComments,
+  commentDirPath,
+  type ReviewComment,
+} from '@kirby/review-comments';
 
 export function useReviewComments(prId: number | null): ReviewComment[] {
   // Revision counter bumped by file watcher to trigger re-reads

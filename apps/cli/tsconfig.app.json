@@ -29,6 +29,9 @@
     },
     {
       "path": "../../libs/diff/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/review-comments/tsconfig.lib.json"
     }
   ]
 }

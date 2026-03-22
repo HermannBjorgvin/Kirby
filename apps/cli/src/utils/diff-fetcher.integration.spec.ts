@@ -4,8 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
-import { interleaveComments } from './comment-renderer.js';
-import type { ReviewComment } from '../types.js';
+import { interleaveComments, type ReviewComment } from '@kirby/review-comments';
 
 // BG_HIGHLIGHT ANSI code used by comment-renderer
 const BG_HIGHLIGHT = '\x1b[48;5;58m';

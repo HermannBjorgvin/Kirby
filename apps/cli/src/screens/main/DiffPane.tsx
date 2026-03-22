@@ -14,7 +14,7 @@ import { partitionFiles, parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
-} from '../../utils/comment-renderer.js';
+} from '@kirby/review-comments';
 import {
   handleDiffFileListInput,
   handleDiffViewerInput,

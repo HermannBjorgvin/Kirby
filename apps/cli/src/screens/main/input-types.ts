@@ -11,7 +11,7 @@ import type {
   TerminalLayout,
 } from '../../input-handlers.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
+import type { CommentPositionInfo } from '@kirby/review-comments';
 
 // ── Context slice types ──────────────────────────────────────────
 
