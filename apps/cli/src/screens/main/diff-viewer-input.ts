@@ -6,13 +6,11 @@ import {
   readComments,
   removeComment,
   updateComment,
-} from '../../utils/comment-store.js';
-import {
   postReviewComments,
   type PostContext,
-} from '../../utils/comment-poster.js';
-import { getDisplayFiles } from '../../utils/file-classifier.js';
-import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
+  type CommentPositionInfo,
+} from '@kirby/review-comments';
+import { getDisplayFiles } from '@kirby/diff';
 import { writeFileSync, readFileSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

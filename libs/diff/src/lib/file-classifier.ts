@@ -1,4 +1,4 @@
-import type { DiffFile, FileCategory } from '../types.js';
+import type { DiffFile, FileCategory } from './types.js';
 
 const LOCKFILE_PATTERNS = [
   /^package-lock\.json$/,

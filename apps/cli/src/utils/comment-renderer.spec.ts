@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { DiffLine } from './diff-parser.js';
-import type { ReviewComment } from '../types.js';
+import type { DiffLine } from '@kirby/diff';
 import {
+  type ReviewComment,
   computeInsertionMap,
   getCommentPositions,
   interleaveComments,
-} from './comment-renderer.js';
+} from '@kirby/review-comments';
 
 function makeDiffLines(
   specs: { oldLine?: number; newLine?: number }[]

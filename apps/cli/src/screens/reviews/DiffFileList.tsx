@@ -1,9 +1,10 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { DiffFile, ReviewComment } from '../../types.js';
-import { partitionFiles } from '../../utils/file-classifier.js';
+import type { ReviewComment } from '../../types.js';
+import type { DiffFile } from '@kirby/diff';
+import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
-import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
+import { computeScrollWindow } from '../../utils/scroll-window.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;

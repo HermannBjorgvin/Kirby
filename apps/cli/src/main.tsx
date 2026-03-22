@@ -8,6 +8,7 @@ import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { AppStateProvider, useAppState } from './context/AppStateContext.js';
+import { LayoutProvider, useLayout } from './context/LayoutContext.js';
 import { SessionProvider } from './context/SessionContext.js';
 import { SidebarProvider } from './context/SidebarContext.js';
 import { MainTab } from './screens/main/MainTab.js';
@@ -21,7 +22,8 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 function App({ forceSetup }: { forceSetup: boolean }) {
   const { exit } = useApp();
   const { config, provider, vcsConfigured } = useConfig();
-  const { nav, termRows } = useAppState();
+  const { nav } = useAppState();
+  const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   const showOnboarding =
@@ -89,12 +91,14 @@ process.on('SIGTERM', () => {
 
 render(
   <ConfigProvider providers={providers}>
-    <AppStateProvider>
-      <SessionProvider>
-        <SidebarProvider>
-          <App forceSetup={forceSetup} />
-        </SidebarProvider>
-      </SessionProvider>
-    </AppStateProvider>
+    <LayoutProvider>
+      <AppStateProvider>
+        <SessionProvider>
+          <SidebarProvider>
+            <App forceSetup={forceSetup} />
+          </SidebarProvider>
+        </SessionProvider>
+      </AppStateProvider>
+    </LayoutProvider>
   </ConfigProvider>
 );

@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ReviewComment } from '../types.js';
+import type { ReviewComment } from '@kirby/review-comments';
 
 // Mock comment-store before importing the module under test
-vi.mock('./comment-store.js', () => ({
-  updateComment: vi.fn(),
-}));
+vi.mock('@kirby/review-comments', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@kirby/review-comments')
+  >();
+  return {
+    ...actual,
+    updateComment: vi.fn(),
+  };
+});
 
-const { postReviewComments } = await import('./comment-poster.js');
-await import('./comment-store.js');
+const { postReviewComments } = await import('@kirby/review-comments');
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);

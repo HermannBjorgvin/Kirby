@@ -6,22 +6,23 @@ import {
   resolveValue,
 } from './components/SettingsPanel.js';
 import type { AppStateContextValue } from './context/AppStateContext.js';
-import type { SessionContextValue } from './context/SessionContext.js';
+import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
+import type { TerminalLayout } from './context/LayoutContext.js';
 
 // ── Shared context slice types ────────────────────────────────────
 
 export type NavValue = AppStateContextValue['nav'];
 export type AsyncOpsValue = AppStateContextValue['asyncOps'];
 export type SettingsValue = AppStateContextValue['settings'];
-export type TerminalLayout = AppStateContextValue['terminal'];
+export type { TerminalLayout };
 
 // ── Settings input handler ────────────────────────────────────────
 
 export interface SettingsHandlerCtx {
   settings: SettingsValue;
   config: ConfigContextValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
 }
 
 export function handleSettingsInput(

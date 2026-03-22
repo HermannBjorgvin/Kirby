@@ -23,52 +23,46 @@ import {
   findSortedSessionIndex,
 } from '../utils/session-sort.js';
 
-/**
- * All session-related state: worktree sessions, PR data, and derived lookups.
- *
- * Groups:
- * - **Session CRUD** — sessions, selectedIndex, refreshSessions, performDelete
- * - **PR / VCS data** — prMap, orphanPrs, categorizedReviews, sessionPrMap
- * - **Git sync** — mergedBranches, conflictCounts, lastSynced, triggerSync
- * - **Derived selection** — sortedSessions, selectedSession, clampedSelectedIndex
- */
-export interface SessionContextValue {
-  // ── Session CRUD ──
-  sessions: AgentSession[];
-  selectedIndex: number;
-  setSelectedIndex: ReturnType<typeof useSessionManager>['setSelectedIndex'];
-  worktreeBranches: string[];
-  statusMessage: string | null;
-  flashStatus: (msg: string) => void;
-  refreshSessions: () => Promise<AgentSession[]>;
-  findSortedIndex: (sessions: AgentSession[], name: string) => number;
-  performDelete: (sessionName: string, branch: string) => Promise<void>;
+// ── Data context (consumed by SidebarProvider, changes on data refresh) ──
 
-  // ── PR / VCS data ──
+export interface SessionDataContextValue {
+  sessions: AgentSession[];
+  sortedSessions: AgentSession[];
+  worktreeBranches: string[];
   prMap: BranchPrMap;
   prError: string | null;
-  refreshPr: () => void;
   orphanPrs: PullRequestInfo[];
   categorizedReviews: CategorizedReviews;
   sessionBranchMap: Map<string, string>;
   sessionPrMap: Map<string, PullRequestInfo>;
-
-  // ── Git sync ──
-  lastSynced: number;
-  triggerSync: () => void;
   mergedBranches: Set<string>;
   conflictCounts: Map<string, number>;
   conflictsLoading: boolean;
-
-  // ── Derived selection ──
-  sortedSessions: AgentSession[];
+  lastSynced: number;
   selectedSession: AgentSession | undefined;
   selectedName: string | null;
   totalItems: number;
   clampedSelectedIndex: number;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+// ── Actions context (consumed by input handlers / StatusBar) ──
+
+export interface SessionActionsContextValue {
+  selectedIndex: number;
+  setSelectedIndex: ReturnType<typeof useSessionManager>['setSelectedIndex'];
+  statusMessage: string | null;
+  flashStatus: (msg: string) => void;
+  refreshSessions: () => Promise<AgentSession[]>;
+  findSortedIndex: (sessions: AgentSession[], name: string) => number;
+  performDelete: (sessionName: string, branch: string) => Promise<void>;
+  refreshPr: () => void;
+  triggerSync: () => void;
+}
+
+const SessionDataContext = createContext<SessionDataContextValue | null>(null);
+const SessionActionsContext = createContext<SessionActionsContextValue | null>(
+  null
+);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { config, provider, providers, setConfig } = useConfig();
@@ -144,51 +138,40 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       : undefined;
   const selectedName = selectedSession?.name ?? null;
 
-  const value = useMemo<SessionContextValue>(
+  const dataValue = useMemo<SessionDataContextValue>(
     () => ({
       sessions: sessionMgr.sessions,
-      selectedIndex: sessionMgr.selectedIndex,
-      setSelectedIndex: sessionMgr.setSelectedIndex,
+      sortedSessions,
       worktreeBranches: sessionMgr.worktreeBranches,
-      statusMessage: sessionMgr.statusMessage,
-      flashStatus: sessionMgr.flashStatus,
-      refreshSessions: sessionMgr.refreshSessions,
-      findSortedIndex: findSortedIdx,
-      performDelete: sessionMgr.performDelete,
       prMap,
       prError,
-      refreshPr,
-      lastSynced,
-      triggerSync,
-      mergedBranches,
-      conflictCounts,
-      conflictsLoading,
-      sortedSessions,
       orphanPrs,
       categorizedReviews,
       sessionBranchMap,
       sessionPrMap,
+      mergedBranches,
+      conflictCounts,
+      conflictsLoading,
+      lastSynced,
       selectedSession,
       selectedName,
       totalItems,
       clampedSelectedIndex,
     }),
     [
-      sessionMgr,
-      findSortedIdx,
+      sessionMgr.sessions,
+      sortedSessions,
+      sessionMgr.worktreeBranches,
       prMap,
       prError,
-      refreshPr,
-      lastSynced,
-      triggerSync,
-      mergedBranches,
-      conflictCounts,
-      conflictsLoading,
-      sortedSessions,
       orphanPrs,
       categorizedReviews,
       sessionBranchMap,
       sessionPrMap,
+      mergedBranches,
+      conflictCounts,
+      conflictsLoading,
+      lastSynced,
       selectedSession,
       selectedName,
       totalItems,
@@ -196,14 +179,59 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const {
+    selectedIndex,
+    setSelectedIndex,
+    statusMessage,
+    flashStatus,
+    refreshSessions,
+    performDelete,
+  } = sessionMgr;
+
+  const actionsValue = useMemo<SessionActionsContextValue>(
+    () => ({
+      selectedIndex,
+      setSelectedIndex,
+      statusMessage,
+      flashStatus,
+      refreshSessions,
+      findSortedIndex: findSortedIdx,
+      performDelete,
+      refreshPr,
+      triggerSync,
+    }),
+    [
+      selectedIndex,
+      setSelectedIndex,
+      statusMessage,
+      flashStatus,
+      refreshSessions,
+      findSortedIdx,
+      performDelete,
+      refreshPr,
+      triggerSync,
+    ]
+  );
+
   return (
-    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+    <SessionDataContext.Provider value={dataValue}>
+      <SessionActionsContext.Provider value={actionsValue}>
+        {children}
+      </SessionActionsContext.Provider>
+    </SessionDataContext.Provider>
   );
 }
 
-export function useSessionContext(): SessionContextValue {
-  const ctx = useContext(SessionContext);
+export function useSessionData(): SessionDataContextValue {
+  const ctx = useContext(SessionDataContext);
   if (!ctx)
-    throw new Error('useSessionContext must be used within SessionProvider');
+    throw new Error('useSessionData must be used within SessionProvider');
+  return ctx;
+}
+
+export function useSessionActions(): SessionActionsContextValue {
+  const ctx = useContext(SessionActionsContext);
+  if (!ctx)
+    throw new Error('useSessionActions must be used within SessionProvider');
   return ctx;
 }

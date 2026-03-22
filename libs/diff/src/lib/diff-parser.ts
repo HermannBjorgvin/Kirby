@@ -1,14 +1,4 @@
-export interface DiffLine {
-  type: 'add' | 'remove' | 'context' | 'hunk-header';
-  content: string;
-  oldLine?: number;
-  newLine?: number;
-}
-
-export interface FileDiff {
-  filename: string;
-  lines: DiffLine[];
-}
+import type { DiffLine } from './types.js';
 
 /**
  * Parse a unified diff text into per-file diffs.

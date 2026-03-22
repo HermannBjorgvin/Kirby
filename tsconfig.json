@@ -26,6 +26,12 @@
     },
     {
       "path": "./libs/logger"
+    },
+    {
+      "path": "./libs/diff"
+    },
+    {
+      "path": "./libs/review-comments"
     }
   ]
 }

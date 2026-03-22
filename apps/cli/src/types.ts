@@ -38,34 +38,9 @@ export interface AgentSession {
   running: boolean;
 }
 
-export interface DiffFile {
-  filename: string;
-  status: 'added' | 'modified' | 'removed' | 'renamed' | 'copied' | 'changed';
-  additions: number;
-  deletions: number;
-  binary: boolean;
-  previousFilename?: string;
-}
-
-export type FileCategory = 'normal' | 'binary' | 'lockfile' | 'generated';
-
-// ── Review comments ──────────────────────────────────────────────
-
-export type CommentSeverity = 'critical' | 'major' | 'minor' | 'nit';
-
-export interface ReviewComment {
-  id: string;
-  file: string;
-  lineStart: number;
-  lineEnd: number;
-  severity: CommentSeverity;
-  body: string;
-  side: 'LEFT' | 'RIGHT';
-  status: 'draft' | 'posting' | 'posted';
-  createdAt: string;
-}
-
-export interface ReviewCommentsFile {
-  prId: number;
-  comments: ReviewComment[];
-}
+export type { DiffFile, FileCategory } from '@kirby/diff';
+export type {
+  ReviewComment,
+  ReviewCommentsFile,
+  CommentSeverity,
+} from '@kirby/review-comments';

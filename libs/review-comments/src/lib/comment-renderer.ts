@@ -1,5 +1,5 @@
-import type { DiffLine } from './diff-parser.js';
-import type { ReviewComment } from '../types.js';
+import type { DiffLine } from '@kirby/diff';
+import type { ReviewComment } from './types.js';
 
 // ANSI color codes (matching diff-renderer conventions)
 const DIM = '\x1b[2m';

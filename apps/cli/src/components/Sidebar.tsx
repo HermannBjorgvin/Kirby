@@ -5,7 +5,7 @@ import type { AgentSession, SidebarItem } from '../types.js';
 import { PrBadge } from './PrBadge.js';
 import { SidebarLayout } from './SidebarLayout.js';
 import { truncate } from '../utils/truncate.js';
-import { computeScrollWindow } from '../hooks/useScrollWindow.js';
+import { computeScrollWindow } from '../utils/scroll-window.js';
 import { useConfig } from '../context/ConfigContext.js';
 
 // ── Constants ───────────────────────────────────────────────────
@@ -50,6 +50,7 @@ const SessionItemRow = memo(function SessionItemRow({
   sidebarWidth,
   isMerged,
   conflictCount,
+  vcsConfigured,
 }: {
   session: AgentSession;
   selected: boolean;
@@ -57,8 +58,8 @@ const SessionItemRow = memo(function SessionItemRow({
   sidebarWidth: number;
   isMerged: boolean;
   conflictCount: number | undefined;
+  vcsConfigured: boolean;
 }) {
-  const { vcsConfigured } = useConfig();
   const icon = session.running ? '●' : '○';
   const color = session.running ? 'green' : 'gray';
 
@@ -69,9 +70,7 @@ const SessionItemRow = memo(function SessionItemRow({
           {selected ? '› ' : '  '}
         </Text>
         <Text color={color}>{icon} </Text>
-        <Text bold={selected}>
-          {truncate(pr?.title || session.name, 42)}
-        </Text>
+        <Text bold={selected}>{truncate(pr?.title || session.name, 42)}</Text>
         {isMerged ? (
           <Text dimColor color="green">
             {' '}
@@ -108,11 +107,11 @@ const OrphanPrRow = memo(function OrphanPrRow({
           {selected ? '› ' : '  '}
         </Text>
         {running != null && (
-          <Text color={running ? 'green' : 'gray'}>{running ? '● ' : '○ '}</Text>
+          <Text color={running ? 'green' : 'gray'}>
+            {running ? '● ' : '○ '}
+          </Text>
         )}
-        <Text bold={selected}>
-          {truncate(pr.title || pr.sourceBranch, 42)}
-        </Text>
+        <Text bold={selected}>{truncate(pr.title || pr.sourceBranch, 42)}</Text>
       </Text>
       <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
     </Box>
@@ -140,7 +139,9 @@ const ReviewPrRow = memo(function ReviewPrRow({
           {selected ? '› ' : '  '}
         </Text>
         {running != null && (
-          <Text color={running ? 'green' : 'gray'}>{running ? '● ' : '○ '}</Text>
+          <Text color={running ? 'green' : 'gray'}>
+            {running ? '● ' : '○ '}
+          </Text>
         )}
         <Text bold={selected}>
           {truncate(pr.title || pr.sourceBranch, innerWidth - 4 - ledWidth)}
@@ -253,9 +254,11 @@ export const Sidebar = memo(function Sidebar({
   // Compute scroll window using actual row heights
   const { fullyVisibleRows, gap, aboveCount, belowCount } = useMemo(() => {
     // Total non-item lines: header + keybinds margin + keybind lines + optional legend
-    const chromeLines = HEADER_LINES
-      + 1 + (vcsConfigured ? KEYBIND_LINES_VCS : KEYBIND_LINES_NO_VCS)
-      + (vcsConfigured ? 1 + LEGEND_LINES : 0);
+    const chromeLines =
+      HEADER_LINES +
+      1 +
+      (vcsConfigured ? KEYBIND_LINES_VCS : KEYBIND_LINES_NO_VCS) +
+      (vcsConfigured ? 1 + LEGEND_LINES : 0);
     const availableLines = termRows - chromeLines;
     const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
 
@@ -277,9 +280,7 @@ export const Sidebar = memo(function Sidebar({
 
     const selectedRowIdx = Math.max(
       0,
-      rows.findIndex(
-        (r) => r.type === 'item' && r.itemIndex === selectedIndex
-      )
+      rows.findIndex((r) => r.type === 'item' && r.itemIndex === selectedIndex)
     );
 
     // Use computeScrollWindow for centering, then verify with actual heights
@@ -348,6 +349,7 @@ export const Sidebar = memo(function Sidebar({
           sidebarWidth={sidebarWidth}
           isMerged={item.isMerged}
           conflictCount={item.conflictCount}
+          vcsConfigured={vcsConfigured}
         />
       );
     }
@@ -419,8 +421,8 @@ export const Sidebar = memo(function Sidebar({
             <Text color="cyan">enter</Text> start/focus session
           </Text>
           <Text dimColor>
-            <Text color="cyan">s</Text> settings{' '}
-            <Text color="cyan">q</Text> quit
+            <Text color="cyan">s</Text> settings <Text color="cyan">q</Text>{' '}
+            quit
           </Text>
         </>
       }

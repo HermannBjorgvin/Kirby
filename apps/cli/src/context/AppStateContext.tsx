@@ -5,9 +5,8 @@ import { useAsyncOperation } from '../hooks/useAsyncOperation.js';
 import { useSettings } from '../hooks/useSettings.js';
 import { useBranchPicker } from '../hooks/useBranchPicker.js';
 import { useDeleteConfirmation } from '../hooks/useDeleteConfirmation.js';
-import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 
-/** Top-level UI state shared across all tabs (navigation, modals, layout). */
+/** UI state shared across all tabs (navigation, modals, async ops). */
 export interface AppStateContextValue {
   /** Active tab and focus (sidebar vs terminal). */
   nav: ReturnType<typeof useNavigation>;
@@ -19,45 +18,20 @@ export interface AppStateContextValue {
   branchPicker: ReturnType<typeof useBranchPicker>;
   /** Delete-confirmation modal state. */
   deleteConfirm: ReturnType<typeof useDeleteConfirmation>;
-  /** Terminal pane dimensions in rows/cols (derived from stdout minus chrome). */
-  terminal: { paneCols: number; paneRows: number };
-  sidebarWidth: number;
-  termRows: number;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
-const SIDEBAR_WIDTH = 48;
-
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const { rows: termRows, cols: termCols } = useTerminalDimensions();
-
-  const paneCols = Math.max(20, termCols - SIDEBAR_WIDTH - 2);
-  const paneRows = Math.max(5, termRows - 5);
-
   const nav = useNavigation();
   const asyncOps = useAsyncOperation();
   const settings = useSettings();
   const branchPicker = useBranchPicker();
   const deleteConfirm = useDeleteConfirmation();
 
-  const terminal = useMemo(
-    () => ({ paneCols, paneRows }),
-    [paneCols, paneRows]
-  );
-
   const value = useMemo<AppStateContextValue>(
-    () => ({
-      nav,
-      asyncOps,
-      settings,
-      branchPicker,
-      deleteConfirm,
-      terminal,
-      sidebarWidth: SIDEBAR_WIDTH,
-      termRows,
-    }),
-    [nav, asyncOps, settings, branchPicker, deleteConfirm, terminal, termRows]
+    () => ({ nav, asyncOps, settings, branchPicker, deleteConfirm }),
+    [nav, asyncOps, settings, branchPicker, deleteConfirm]
   );
 
   return (
