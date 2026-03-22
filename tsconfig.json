@@ -26,6 +26,9 @@
     },
     {
       "path": "./libs/logger"
+    },
+    {
+      "path": "./libs/diff"
     }
   ]
 }
