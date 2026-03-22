@@ -179,19 +179,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const {
+    selectedIndex,
+    setSelectedIndex,
+    statusMessage,
+    flashStatus,
+    refreshSessions,
+    performDelete,
+  } = sessionMgr;
+
   const actionsValue = useMemo<SessionActionsContextValue>(
     () => ({
-      selectedIndex: sessionMgr.selectedIndex,
-      setSelectedIndex: sessionMgr.setSelectedIndex,
-      statusMessage: sessionMgr.statusMessage,
-      flashStatus: sessionMgr.flashStatus,
-      refreshSessions: sessionMgr.refreshSessions,
+      selectedIndex,
+      setSelectedIndex,
+      statusMessage,
+      flashStatus,
+      refreshSessions,
       findSortedIndex: findSortedIdx,
-      performDelete: sessionMgr.performDelete,
+      performDelete,
       refreshPr,
       triggerSync,
     }),
-    [sessionMgr, findSortedIdx, refreshPr, triggerSync]
+    [
+      selectedIndex,
+      setSelectedIndex,
+      statusMessage,
+      flashStatus,
+      refreshSessions,
+      findSortedIdx,
+      performDelete,
+      refreshPr,
+      triggerSync,
+    ]
   );
 
   return (
