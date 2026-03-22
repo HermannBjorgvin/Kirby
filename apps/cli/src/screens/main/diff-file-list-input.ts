@@ -1,5 +1,5 @@
 import type { Key } from 'ink';
-import { getDisplayFiles } from '../../utils/file-classifier.js';
+import { getDisplayFiles } from '@kirby/diff';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 
 export function handleDiffFileListInput(

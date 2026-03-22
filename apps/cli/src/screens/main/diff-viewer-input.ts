@@ -11,7 +11,7 @@ import {
   postReviewComments,
   type PostContext,
 } from '../../utils/comment-poster.js';
-import { getDisplayFiles } from '../../utils/file-classifier.js';
+import { getDisplayFiles } from '@kirby/diff';
 import type { CommentPositionInfo } from '../../utils/comment-renderer.js';
 import { writeFileSync, readFileSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';

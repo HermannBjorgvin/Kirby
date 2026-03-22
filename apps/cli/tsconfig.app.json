@@ -26,6 +26,9 @@
     },
     {
       "path": "../../libs/logger/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/diff/tsconfig.lib.json"
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { DiffLine } from './diff-parser.js';
+import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from '../types.js';
 import {
   computeInsertionMap,

@@ -10,14 +10,15 @@ import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { useDiffData } from '../../hooks/useDiffData.js';
 import { useReviewComments } from '../../hooks/useReviewComments.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
-import { partitionFiles } from '../../utils/file-classifier.js';
-import { parseUnifiedDiff } from '../../utils/diff-parser.js';
-import { renderDiffLines } from '../../utils/diff-renderer.js';
+import { partitionFiles, parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
 } from '../../utils/comment-renderer.js';
-import { handleDiffFileListInput, handleDiffViewerInput } from './main-input.js';
+import {
+  handleDiffFileListInput,
+  handleDiffViewerInput,
+} from './main-input.js';
 
 interface DiffPaneProps {
   pane: PaneModeValue;

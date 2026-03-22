@@ -3,8 +3,7 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { parseUnifiedDiff } from './diff-parser.js';
-import { renderDiffLines } from './diff-renderer.js';
+import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
 import { interleaveComments } from './comment-renderer.js';
 import type { ReviewComment } from '../types.js';
 

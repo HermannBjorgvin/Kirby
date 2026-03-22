@@ -38,16 +38,7 @@ export interface AgentSession {
   running: boolean;
 }
 
-export interface DiffFile {
-  filename: string;
-  status: 'added' | 'modified' | 'removed' | 'renamed' | 'copied' | 'changed';
-  additions: number;
-  deletions: number;
-  binary: boolean;
-  previousFilename?: string;
-}
-
-export type FileCategory = 'normal' | 'binary' | 'lockfile' | 'generated';
+export type { DiffFile, FileCategory } from '@kirby/diff';
 
 // ── Review comments ──────────────────────────────────────────────
 
