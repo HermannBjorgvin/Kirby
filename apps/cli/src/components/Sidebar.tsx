@@ -50,6 +50,7 @@ const SessionItemRow = memo(function SessionItemRow({
   sidebarWidth,
   isMerged,
   conflictCount,
+  vcsConfigured,
 }: {
   session: AgentSession;
   selected: boolean;
@@ -57,8 +58,8 @@ const SessionItemRow = memo(function SessionItemRow({
   sidebarWidth: number;
   isMerged: boolean;
   conflictCount: number | undefined;
+  vcsConfigured: boolean;
 }) {
-  const { vcsConfigured } = useConfig();
   const icon = session.running ? '●' : '○';
   const color = session.running ? 'green' : 'gray';
 
@@ -348,6 +349,7 @@ export const Sidebar = memo(function Sidebar({
           sidebarWidth={sidebarWidth}
           isMerged={item.isMerged}
           conflictCount={item.conflictCount}
+          vcsConfigured={vcsConfigured}
         />
       );
     }
