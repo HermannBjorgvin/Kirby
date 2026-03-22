@@ -132,6 +132,8 @@ export function descriptorFromKeypress(
     ['delete', 'delete'],
     ['pageDown', 'pageDown'],
     ['pageUp', 'pageUp'],
+    ['home', 'home'],
+    ['end', 'end'],
   ];
 
   for (const [keyFlag] of flagMap) {

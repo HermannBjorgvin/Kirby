@@ -21,6 +21,8 @@ export interface KeyDescriptor {
       | 'delete'
       | 'pageDown'
       | 'pageUp'
+      | 'home'
+      | 'end'
     >
   >;
   /** Require Ctrl modifier */
@@ -318,7 +320,7 @@ export const ACTIONS: ActionDef[] = [
 
 export const NORMIE_PRESET: KeybindPreset = {
   id: 'normie',
-  name: 'Normie',
+  name: 'Normie defaults',
   bindings: {
     // Sidebar
     'sidebar.navigate-down': [{ flags: { downArrow: true } }],
@@ -329,8 +331,8 @@ export const NORMIE_PRESET: KeybindPreset = {
       { flags: { delete: true } },
       { flags: { backspace: true } },
     ],
-    'sidebar.kill-agent': [{ input: 'K' }],
-    'sidebar.open-settings': [{ input: ',' }],
+    'sidebar.kill-agent': [{ input: 'K', shift: true }],
+    'sidebar.open-settings': [{ input: 's' }],
     'sidebar.refresh-pr': [{ input: 'r' }],
     'sidebar.rebase': [{ input: 'u' }],
     'sidebar.open-editor': [{ input: 'e' }],
@@ -340,8 +342,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
 
     // Settings
-    'settings.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
-    'settings.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
+    'settings.navigate-down': [{ flags: { downArrow: true } }],
+    'settings.navigate-up': [{ flags: { upArrow: true } }],
     'settings.close': [{ flags: { escape: true } }],
     'settings.cycle-left': [{ flags: { leftArrow: true } }],
     'settings.cycle-right': [{ flags: { rightArrow: true } }],
@@ -356,8 +358,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     'branch-picker.fetch': [{ input: 'f', ctrl: true }],
 
     // Confirm Dialog
-    'confirm.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
-    'confirm.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
+    'confirm.navigate-down': [{ flags: { downArrow: true } }],
+    'confirm.navigate-up': [{ flags: { upArrow: true } }],
     'confirm.cancel': [{ flags: { escape: true } }],
     'confirm.select': [{ flags: { return: true } }],
 
@@ -379,16 +381,16 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.half-page-up': [{ flags: { pageUp: true } }],
     'diff-viewer.page-down': [{ flags: { pageDown: true } }],
     'diff-viewer.page-up': [{ flags: { pageUp: true } }],
-    'diff-viewer.go-top': [{ input: 'g' }],
-    'diff-viewer.go-bottom': [{ input: 'G' }],
+    'diff-viewer.go-top': [{ flags: { home: true } }],
+    'diff-viewer.go-bottom': [{ flags: { end: true } }],
     'diff-viewer.next-file': [{ flags: { rightArrow: true } }],
     'diff-viewer.prev-file': [{ flags: { leftArrow: true } }],
-    'diff-viewer.next-comment': [{ input: 'n' }],
-    'diff-viewer.prev-comment': [{ input: 'N' }],
+    'diff-viewer.next-comment': [{ shift: true, flags: { downArrow: true } }],
+    'diff-viewer.prev-comment': [{ shift: true, flags: { upArrow: true } }],
     'diff-viewer.delete-comment': [{ flags: { delete: true } }],
     'diff-viewer.edit-comment': [{ input: 'e' }],
     'diff-viewer.post-comment': [{ input: 'p' }],
-    'diff-viewer.editor-edit': [{ input: 'E' }],
+    'diff-viewer.editor-edit': [{ input: 'E', shift: true }],
     'diff-viewer.back': [{ flags: { escape: true } }],
   },
 };

@@ -44,7 +44,7 @@ export const SYNC_INTERVAL_PRESETS: { name: string; value: string | null }[] = [
 ];
 
 export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
-  { name: 'Normie', value: 'normie' },
+  { name: 'Normie defaults', value: 'normie' },
   { name: 'Vim Losers', value: 'vim' },
 ];
 

@@ -23,6 +23,8 @@ export function keyDescriptorToString(desc: KeyDescriptor): string {
     if (desc.flags.delete) keys.push('Del');
     if (desc.flags.pageDown) keys.push('PgDn');
     if (desc.flags.pageUp) keys.push('PgUp');
+    if (desc.flags.home) keys.push('Home');
+    if (desc.flags.end) keys.push('End');
   }
 
   // Character input

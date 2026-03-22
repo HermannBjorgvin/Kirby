@@ -55,9 +55,9 @@ test.describe('Keybindings — Default (Normie) Preset', () => {
     });
   });
 
-  test('comma opens settings in normie preset', async ({ terminal }) => {
+  test('s opens settings in normie preset', async ({ terminal }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Settings', { strict: false })
     ).toBeVisible();
@@ -93,21 +93,23 @@ test.describe('Keybindings — Settings Controls', () => {
     terminal,
   }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // Open settings (normie uses comma)
-    terminal.write(',');
+    // Open settings (normie uses s)
+    terminal.write('s');
     await expect(
       terminal.getByText('Settings', { strict: false })
     ).toBeVisible();
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
-    await expect(terminal.getByText('Normie', { strict: false })).toBeVisible();
+    await expect(
+      terminal.getByText('Normie defaults', { strict: false })
+    ).toBeVisible();
   });
 
   test('Enter on Controls opens controls sub-screen', async ({ terminal }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
     // Open settings
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
@@ -126,7 +128,7 @@ test.describe('Keybindings — Settings Controls', () => {
     terminal,
   }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
@@ -169,9 +171,11 @@ test.describe('Keybindings — Preset Switching', () => {
   }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
-    // Open settings (normie: comma)
-    terminal.write(',');
-    await expect(terminal.getByText('Normie', { strict: false })).toBeVisible();
+    // Open settings (normie: s)
+    terminal.write('s');
+    await expect(
+      terminal.getByText('Normie defaults', { strict: false })
+    ).toBeVisible();
 
     // Controls is first field — cycle right to switch to Vim Losers
     terminal.keyRight();
@@ -280,8 +284,8 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
   test('can navigate bindings and enter rebind mode', async ({ terminal }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
-    // Open settings (normie: comma)
-    terminal.write(',');
+    // Open settings (normie: s)
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
@@ -313,7 +317,7 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
     // Open controls sub-screen
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
@@ -347,7 +351,7 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
     // Open controls sub-screen
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
@@ -411,7 +415,7 @@ test.describe('Keybindings — Modifier keys resolve correctly', () => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
     // Open controls
-    terminal.write(',');
+    terminal.write('s');
     await expect(
       terminal.getByText('Controls', { strict: false })
     ).toBeVisible();
