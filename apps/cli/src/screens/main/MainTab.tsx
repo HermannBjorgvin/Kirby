@@ -45,67 +45,69 @@ export function MainTab({
   );
 
   // ── Input handling (modals + sidebar) ──────────────────────────
-  useInput(
-    (input, key) => {
-      if (branchPicker.creating) {
-        return handleBranchPickerInput(input, key, {
-          branchPicker,
-          sessions: sessionCtx,
-          asyncOps,
-          terminal,
-          config: configCtx,
-        });
-      }
+  useInput((input, key) => {
+    // Keep this hook always active (no `isActive` option) so Ink's raw-mode
+    // ref-count never drops to 0. Using `isActive: false` triggers
+    // setRawMode(false), which disables raw mode and causes character echo.
+    if (terminalFocused || showOnboarding) return;
 
-      if (deleteConfirm.confirmDelete) {
-        return handleConfirmDeleteInput(input, key, {
-          deleteConfirm,
-          sessions: sessionCtx,
-          asyncOps,
-        });
-      }
-
-      if (settings.settingsOpen) {
-        return handleSettingsInput(input, key, {
-          settings,
-          config: configCtx,
-          sessions: sessionCtx,
-        });
-      }
-
-      if (pane.reviewConfirm) {
-        return handleConfirmInput(input, key, {
-          pane,
-          nav,
-          asyncOps,
-          sessions: sessionCtx,
-          sidebar,
-          terminal,
-          config: configCtx,
-          selectedItem: sidebar.selectedItem,
-          sessionNameForTerminal: sidebar.sessionNameForTerminal,
-        });
-      }
-
-      // Diff input is handled by DiffPane's own useInput
-      if (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') return;
-
-      handleSidebarInput(input, key, {
-        nav,
-        config: configCtx,
-        sessions: sessionCtx,
-        sidebar,
+    if (branchPicker.creating) {
+      return handleBranchPickerInput(input, key, {
         branchPicker,
-        deleteConfirm,
-        settings,
+        sessions: sessionCtx,
         asyncOps,
         terminal,
-        pane,
-        exit,
+        config: configCtx,
       });
-    },
-    { isActive: !terminalFocused && !showOnboarding }
-  );
+    }
+
+    if (deleteConfirm.confirmDelete) {
+      return handleConfirmDeleteInput(input, key, {
+        deleteConfirm,
+        sessions: sessionCtx,
+        asyncOps,
+      });
+    }
+
+    if (settings.settingsOpen) {
+      return handleSettingsInput(input, key, {
+        settings,
+        config: configCtx,
+        sessions: sessionCtx,
+      });
+    }
+
+    if (pane.reviewConfirm) {
+      return handleConfirmInput(input, key, {
+        pane,
+        nav,
+        asyncOps,
+        sessions: sessionCtx,
+        sidebar,
+        terminal,
+        config: configCtx,
+        selectedItem: sidebar.selectedItem,
+        sessionNameForTerminal: sidebar.sessionNameForTerminal,
+      });
+    }
+
+    // Diff input is handled by DiffPane's own useInput
+    if (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') return;
+
+    handleSidebarInput(input, key, {
+      nav,
+      config: configCtx,
+      sessions: sessionCtx,
+      sidebar,
+      branchPicker,
+      deleteConfirm,
+      settings,
+      asyncOps,
+      terminal,
+      pane,
+      exit,
+    });
+  });
 
   // ── Render ─────────────────────────────────────────────────────
   const sidebarFocused =
