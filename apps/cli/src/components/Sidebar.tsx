@@ -7,14 +7,12 @@ import { SidebarLayout } from './SidebarLayout.js';
 import { truncate } from '../utils/truncate.js';
 import { computeScrollWindow } from '../utils/scroll-window.js';
 import { useConfig } from '../context/ConfigContext.js';
+import { useKeybinds } from '../context/KeybindContext.js';
 
 // ── Constants ───────────────────────────────────────────────────
 
 // Header: 1 line of text + 1 marginBottom = 2 lines
 const HEADER_LINES = 2;
-// Keybind line counts (must match the JSX in the render)
-const KEYBIND_LINES_VCS = 11; // j/k, c, x, K, d, u, ., r, g, enter, s/q
-const KEYBIND_LINES_NO_VCS = 8; // j/k, c, x, K, u, ., enter, s/q
 const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
 
 // ── Section header detection ────────────────────────────────────
@@ -198,7 +196,34 @@ export const Sidebar = memo(function Sidebar({
   focused,
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
+  const keybinds = useKeybinds();
   const innerWidth = Math.max(10, sidebarWidth - 2);
+
+  // Build dynamic keybind hints from the active preset
+  const sidebarHints = useMemo(() => {
+    const hints = keybinds.getHints('sidebar');
+    const filtered = vcsConfigured ? hints : hints.filter((h) => !h.vcsOnly);
+
+    // Combine navigate-down + navigate-up into a single "j/k navigate" hint
+    const navDownIdx = filtered.findIndex(
+      (h) => h.actionId === 'sidebar.navigate-down'
+    );
+    if (navDownIdx >= 0) {
+      const navKeys = keybinds.getNavKeys('sidebar');
+      const combined = { ...filtered[navDownIdx]!, keys: navKeys };
+      return [
+        combined,
+        ...filtered.filter(
+          (h) =>
+            h.actionId !== 'sidebar.navigate-down' &&
+            h.actionId !== 'sidebar.navigate-up'
+        ),
+      ];
+    }
+    return filtered;
+  }, [keybinds, vcsConfigured]);
+
+  const keybindLineCount = sidebarHints.length;
 
   // Build renderable rows (items + section headers)
   type RenderRow =
@@ -257,7 +282,7 @@ export const Sidebar = memo(function Sidebar({
     const chromeLines =
       HEADER_LINES +
       1 +
-      (vcsConfigured ? KEYBIND_LINES_VCS : KEYBIND_LINES_NO_VCS) +
+      keybindLineCount +
       (vcsConfigured ? 1 + LEGEND_LINES : 0);
     const availableLines = termRows - chromeLines;
     const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
@@ -320,7 +345,14 @@ export const Sidebar = memo(function Sidebar({
       aboveCount: start,
       belowCount: Math.max(0, rows.length - nextIdx),
     };
-  }, [rows, rowHeights, selectedIndex, termRows, vcsConfigured]);
+  }, [
+    rows,
+    rowHeights,
+    selectedIndex,
+    termRows,
+    vcsConfigured,
+    keybindLineCount,
+  ]);
 
   const renderRow = (row: RenderRow) => {
     if (row.type === 'header') {
@@ -384,46 +416,11 @@ export const Sidebar = memo(function Sidebar({
       isEmpty={items.length === 0}
       keybinds={
         <>
-          <Text dimColor>
-            <Text color="cyan">j/k</Text> navigate
-          </Text>
-          <Text dimColor>
-            <Text color="cyan">c</Text> checkout branch
-          </Text>
-          <Text dimColor>
-            <Text color="cyan">x</Text> delete branch
-          </Text>
-          <Text dimColor>
-            <Text color="cyan">K</Text> kill agent
-          </Text>
-          {vcsConfigured ? (
-            <Text dimColor>
-              <Text color="cyan">d</Text> view diff
+          {sidebarHints.map((hint) => (
+            <Text key={hint.actionId} dimColor>
+              <Text color="cyan">{hint.keys}</Text> {hint.label}
             </Text>
-          ) : null}
-          <Text dimColor>
-            <Text color="cyan">u</Text> rebase onto master
-          </Text>
-          <Text dimColor>
-            <Text color="cyan">.</Text> open in editor
-          </Text>
-          {vcsConfigured ? (
-            <>
-              <Text dimColor>
-                <Text color="cyan">r</Text> refresh PR data
-              </Text>
-              <Text dimColor>
-                <Text color="cyan">g</Text> sync with origin
-              </Text>
-            </>
-          ) : null}
-          <Text dimColor>
-            <Text color="cyan">enter</Text> start/focus session
-          </Text>
-          <Text dimColor>
-            <Text color="cyan">s</Text> settings <Text color="cyan">q</Text>{' '}
-            quit
-          </Text>
+          ))}
         </>
       }
       legend={

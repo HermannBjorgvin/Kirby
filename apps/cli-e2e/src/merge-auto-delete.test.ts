@@ -82,7 +82,7 @@ if (hasGhToken) {
   mkdirSync(kirbyDir, { recursive: true });
   writeFileSync(
     join(kirbyDir, 'config.json'),
-    JSON.stringify({ autoDeleteOnMerge: true }),
+    JSON.stringify({ autoDeleteOnMerge: true, keybindPreset: 'vim' }),
     'utf-8'
   );
 }

@@ -2,15 +2,20 @@ import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { BranchPicker } from '../sessions/BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
+import { ControlsPanel } from '../../components/ControlsPanel.js';
 import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';
 import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { useAppState } from '../../context/AppStateContext.js';
 import { useLayout } from '../../context/LayoutContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
+import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
-import { handleSettingsInput } from '../../input-handlers.js';
+import {
+  handleSettingsInput,
+  handleControlsInput,
+} from '../../input-handlers.js';
 import {
   handleBranchPickerInput,
   handleConfirmDeleteInput,
@@ -37,6 +42,7 @@ export function MainTab({
   const { terminal } = layout;
   const sessionCtx = useSessionActions();
   const configCtx = useConfig();
+  const keybinds = useKeybinds();
   const sidebar = useSidebar();
 
   const pane = usePaneReducer(
@@ -58,6 +64,7 @@ export function MainTab({
         asyncOps,
         terminal,
         config: configCtx,
+        keybinds,
       });
     }
 
@@ -66,6 +73,15 @@ export function MainTab({
         deleteConfirm,
         sessions: sessionCtx,
         asyncOps,
+        keybinds,
+      });
+    }
+
+    // Controls sub-screen (within settings)
+    if (settings.settingsOpen && settings.controlsOpen) {
+      return handleControlsInput(input, key, {
+        settings,
+        keybinds,
       });
     }
 
@@ -74,6 +90,7 @@ export function MainTab({
         settings,
         config: configCtx,
         sessions: sessionCtx,
+        keybinds,
       });
     }
 
@@ -88,6 +105,7 @@ export function MainTab({
         config: configCtx,
         selectedItem: sidebar.selectedItem,
         sessionNameForTerminal: sidebar.sessionNameForTerminal,
+        keybinds,
       });
     }
 
@@ -105,6 +123,7 @@ export function MainTab({
       asyncOps,
       terminal,
       pane,
+      keybinds,
       exit,
     });
   });
@@ -125,7 +144,15 @@ export function MainTab({
         termRows={layout.termRows}
         focused={sidebarFocused}
       />
-      {settings.settingsOpen && (
+      {settings.settingsOpen && settings.controlsOpen && (
+        <ControlsPanel
+          scrollOffset={settings.controlsScrollOffset}
+          paneRows={terminal.paneRows}
+          selectedIndex={settings.controlsSelectedIndex}
+          rebindActionId={settings.controlsRebindActionId}
+        />
+      )}
+      {settings.settingsOpen && !settings.controlsOpen && (
         <SettingsPanel
           fieldIndex={settings.settingsFieldIndex}
           editingField={settings.editingField}

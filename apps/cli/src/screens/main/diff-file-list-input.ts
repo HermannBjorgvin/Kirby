@@ -1,33 +1,42 @@
 import type { Key } from 'ink';
 import { getDisplayFiles } from '@kirby/diff';
 import type { DiffFileListHandlerCtx } from './input-types.js';
+import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 export function handleDiffFileListInput(
   input: string,
   key: Key,
   ctx: DiffFileListHandlerCtx
 ): void {
-  if (key.escape) {
+  const action = resolveAction(
+    input,
+    key,
+    'diff-file-list',
+    ctx.keybinds.bindings,
+    ACTIONS
+  );
+
+  if (action === 'diff-file-list.back') {
     ctx.pane.setPaneMode('pr-detail');
     return;
   }
 
-  if (input === 's') {
+  if (action === 'diff-file-list.toggle-skipped') {
     ctx.pane.setShowSkipped((v) => !v);
     ctx.pane.setDiffFileIndex(0);
     return;
   }
 
-  if (input === 'j' || key.downArrow) {
+  if (action === 'diff-file-list.navigate-down') {
     ctx.pane.setDiffFileIndex((i) => Math.min(i + 1, ctx.diffDisplayCount - 1));
     return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'diff-file-list.navigate-up') {
     ctx.pane.setDiffFileIndex((i) => Math.max(i - 1, 0));
     return;
   }
 
-  if (key.return && ctx.diffDisplayCount > 0) {
+  if (action === 'diff-file-list.open' && ctx.diffDisplayCount > 0) {
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);
     const file = displayFiles[ctx.pane.diffFileIndex];
     if (file) {

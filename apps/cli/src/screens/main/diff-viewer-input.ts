@@ -15,6 +15,7 @@ import { writeFileSync, readFileSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DiffViewerHandlerCtx } from './input-types.js';
+import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -79,58 +80,114 @@ function scrollToComment(
   ctx.pane.setDiffScrollOffset(Math.min(scrollTarget, maxScroll));
 }
 
-// ── Scroll handling ──────────────────────────────────────────────
+// ── Main entry point ─────────────────────────────────────────────
 
-function handleDiffScroll(
+export function handleDiffViewerInput(
   input: string,
   key: Key,
-  ctx: DiffViewerHandlerCtx,
-  viewportHeight: number,
-  maxScroll: number
-): boolean {
-  if (input === 'j' || key.downArrow) {
+  ctx: DiffViewerHandlerCtx
+): void {
+  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
+  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  const fileComments = (ctx.commentCtx?.comments ?? []).filter(
+    (c) => c.file === ctx.pane.diffViewFile
+  );
+
+  // ── Inline edit mode (exempt from keybind resolution) ──
+  if (ctx.pane.editingCommentId) {
+    if (key.escape) {
+      if (ctx.commentCtx) {
+        updateComment(ctx.commentCtx.prId, ctx.pane.editingCommentId, {
+          body: ctx.pane.editBuffer,
+        });
+      }
+      ctx.pane.setEditingCommentId(null);
+      ctx.pane.setEditBuffer('');
+      return;
+    }
+    if (input === 'c' && key.ctrl) {
+      ctx.pane.setEditingCommentId(null);
+      ctx.pane.setEditBuffer('');
+      return;
+    }
+    if (key.return) {
+      ctx.pane.setEditBuffer((b) => b + '\n');
+      return;
+    }
+    handleTextInput(input, key, ctx.pane.setEditBuffer);
+    return;
+  }
+
+  // ── Delete confirmation mode (exempt from keybind resolution) ──
+  if (ctx.pane.pendingDeleteCommentId) {
+    if (input === 'y' && ctx.commentCtx) {
+      removeComment(ctx.commentCtx.prId, ctx.pane.pendingDeleteCommentId);
+      ctx.pane.setPendingDeleteCommentId(null);
+      ctx.pane.setSelectedCommentId(null);
+      return;
+    }
+    if (input === 'n' || key.escape) {
+      ctx.pane.setPendingDeleteCommentId(null);
+      return;
+    }
+    return;
+  }
+
+  // ── Normal navigation (uses keybind resolution) ──
+  const action = resolveAction(
+    input,
+    key,
+    'diff-viewer',
+    ctx.keybinds.bindings,
+    ACTIONS
+  );
+
+  if (action === 'diff-viewer.back') {
+    ctx.pane.setPaneMode('diff');
+    ctx.pane.setDiffViewFile(null);
+    return;
+  }
+
+  // Scroll
+  if (action === 'diff-viewer.scroll-down') {
     ctx.pane.setDiffScrollOffset((o) => Math.min(o + 1, maxScroll));
-    return true;
+    return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'diff-viewer.scroll-up') {
     ctx.pane.setDiffScrollOffset((o) => Math.max(o - 1, 0));
-    return true;
+    return;
   }
-  if (input === 'd') {
+  if (action === 'diff-viewer.half-page-down') {
     const half = Math.floor(viewportHeight / 2);
     ctx.pane.setDiffScrollOffset((o) => Math.min(o + half, maxScroll));
-    return true;
+    return;
   }
-  if (input === 'u') {
+  if (action === 'diff-viewer.half-page-up') {
     const half = Math.floor(viewportHeight / 2);
     ctx.pane.setDiffScrollOffset((o) => Math.max(o - half, 0));
-    return true;
+    return;
   }
-  if (key.pageDown) {
+  if (action === 'diff-viewer.page-down') {
     ctx.pane.setDiffScrollOffset((o) =>
       Math.min(o + viewportHeight, maxScroll)
     );
-    return true;
+    return;
   }
-  if (key.pageUp) {
+  if (action === 'diff-viewer.page-up') {
     ctx.pane.setDiffScrollOffset((o) => Math.max(o - viewportHeight, 0));
-    return true;
+    return;
   }
-  if (input === 'g') {
+  if (action === 'diff-viewer.go-top') {
     ctx.pane.setDiffScrollOffset(0);
-    return true;
+    return;
   }
-  if (input === 'G') {
+  if (action === 'diff-viewer.go-bottom') {
     ctx.pane.setDiffScrollOffset(maxScroll);
-    return true;
+    return;
   }
-  return false;
-}
 
-// ── File navigation ──────────────────────────────────────────────
-
-function handleDiffFileNav(input: string, ctx: DiffViewerHandlerCtx): boolean {
-  if (input === 'n') {
+  // File navigation
+  if (action === 'diff-viewer.next-file') {
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);
     const currentIdx = displayFiles.findIndex(
       (f) => f.filename === ctx.pane.diffViewFile
@@ -141,9 +198,9 @@ function handleDiffFileNav(input: string, ctx: DiffViewerHandlerCtx): boolean {
       ctx.pane.setDiffFileIndex(currentIdx + 1);
       ctx.pane.setDiffScrollOffset(0);
     }
-    return true;
+    return;
   }
-  if (input === 'N') {
+  if (action === 'diff-viewer.prev-file') {
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);
     const currentIdx = displayFiles.findIndex(
       (f) => f.filename === ctx.pane.diffViewFile
@@ -154,21 +211,11 @@ function handleDiffFileNav(input: string, ctx: DiffViewerHandlerCtx): boolean {
       ctx.pane.setDiffFileIndex(currentIdx - 1);
       ctx.pane.setDiffScrollOffset(0);
     }
-    return true;
+    return;
   }
-  return false;
-}
 
-// ── Comment navigation ───────────────────────────────────────────
-
-function handleCommentNav(
-  input: string,
-  key: Key,
-  ctx: DiffViewerHandlerCtx,
-  fileComments: ReviewComment[],
-  maxScroll: number
-): boolean {
-  if ((input === 'c' || key.rightArrow) && fileComments.length > 0) {
+  // Comment navigation
+  if (action === 'diff-viewer.next-comment' && fileComments.length > 0) {
     const nextId = findAdjacentCommentId(
       'next',
       ctx.pane.selectedCommentId,
@@ -179,10 +226,9 @@ function handleCommentNav(
       ctx.pane.setSelectedCommentId(nextId);
       scrollToComment(nextId, ctx, maxScroll);
     }
-    return true;
+    return;
   }
-
-  if ((input === 'C' || key.leftArrow) && fileComments.length > 0) {
+  if (action === 'diff-viewer.prev-comment' && fileComments.length > 0) {
     const prevId = findAdjacentCommentId(
       'prev',
       ctx.pane.selectedCommentId,
@@ -193,26 +239,20 @@ function handleCommentNav(
       ctx.pane.setSelectedCommentId(prevId);
       scrollToComment(prevId, ctx, maxScroll);
     }
-    return true;
+    return;
   }
 
-  return false;
-}
-
-// ── Comment actions ──────────────────────────────────────────────
-
-function handleCommentActions(
-  input: string,
-  ctx: DiffViewerHandlerCtx,
-  fileComments: ReviewComment[],
-  maxScroll: number
-): boolean {
-  if (input === 'x' && ctx.pane.selectedCommentId && ctx.commentCtx) {
+  // Comment actions
+  if (
+    action === 'diff-viewer.delete-comment' &&
+    ctx.pane.selectedCommentId &&
+    ctx.commentCtx
+  ) {
     ctx.pane.setPendingDeleteCommentId(ctx.pane.selectedCommentId);
-    return true;
+    return;
   }
 
-  if (input === 'e' && ctx.pane.selectedCommentId) {
+  if (action === 'diff-viewer.edit-comment' && ctx.pane.selectedCommentId) {
     const comment = fileComments.find(
       (c) => c.id === ctx.pane.selectedCommentId
     );
@@ -220,29 +260,32 @@ function handleCommentActions(
       ctx.pane.setEditingCommentId(comment.id);
       ctx.pane.setEditBuffer(comment.body);
     }
-    return true;
+    return;
   }
 
-  if (input === 'p' && ctx.pane.selectedCommentId && ctx.commentCtx) {
+  if (
+    action === 'diff-viewer.post-comment' &&
+    ctx.pane.selectedCommentId &&
+    ctx.commentCtx
+  ) {
     const comment = fileComments.find(
       (c) => c.id === ctx.pane.selectedCommentId
     );
-    if (!comment || comment.status !== 'draft') return true;
+    if (!comment || comment.status !== 'draft') return;
 
     const pr = ctx.commentCtx.selectedReviewPr;
-
     const vendor = ctx.config.config.vendor;
     if (!vendor) {
       ctx.sessions.flashStatus('No VCS configured');
-      return true;
+      return;
     }
     if (vendor !== 'github' && vendor !== 'azure-devops') {
       ctx.sessions.flashStatus(`Unsupported vendor: ${vendor}`);
-      return true;
+      return;
     }
     if (vendor === 'github' && !pr.headSha) {
       ctx.sessions.flashStatus('Missing head SHA — try refreshing PR data');
-      return true;
+      return;
     }
 
     const postCtx: PostContext = {
@@ -282,22 +325,24 @@ function handleCommentActions(
         updateComment(prId, postedId, { status: 'draft' });
         ctx.sessions.flashStatus(`Post failed: ${err.message}`);
       });
-    return true;
+    return;
   }
 
-  if (input === 'E' && ctx.pane.selectedCommentId && ctx.commentCtx) {
+  if (
+    action === 'diff-viewer.editor-edit' &&
+    ctx.pane.selectedCommentId &&
+    ctx.commentCtx
+  ) {
     const comment = fileComments.find(
       (c) => c.id === ctx.pane.selectedCommentId
     );
-    if (!comment) return true;
+    if (!comment) return;
 
     const editor =
       ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
     if (!editor) {
-      ctx.sessions.flashStatus(
-        'No editor configured — set one in settings (s)'
-      );
-      return true;
+      ctx.sessions.flashStatus('No editor configured — set one in settings');
+      return;
     }
 
     const tmpFile = join(tmpdir(), `kirby-comment-${comment.id}.md`);
@@ -327,74 +372,6 @@ function handleCommentActions(
     timer.unref();
 
     ctx.sessions.flashStatus(`Opened comment in ${editor}`);
-    return true;
-  }
-
-  return false;
-}
-
-// ── Main entry point ─────────────────────────────────────────────
-
-export function handleDiffViewerInput(
-  input: string,
-  key: Key,
-  ctx: DiffViewerHandlerCtx
-): void {
-  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
-  const fileComments = (ctx.commentCtx?.comments ?? []).filter(
-    (c) => c.file === ctx.pane.diffViewFile
-  );
-
-  // ── Inline edit mode ──
-  if (ctx.pane.editingCommentId) {
-    if (key.escape) {
-      if (ctx.commentCtx) {
-        updateComment(ctx.commentCtx.prId, ctx.pane.editingCommentId, {
-          body: ctx.pane.editBuffer,
-        });
-      }
-      ctx.pane.setEditingCommentId(null);
-      ctx.pane.setEditBuffer('');
-      return;
-    }
-    if (input === 'c' && key.ctrl) {
-      ctx.pane.setEditingCommentId(null);
-      ctx.pane.setEditBuffer('');
-      return;
-    }
-    if (key.return) {
-      ctx.pane.setEditBuffer((b) => b + '\n');
-      return;
-    }
-    handleTextInput(input, key, ctx.pane.setEditBuffer);
     return;
   }
-
-  // ── Delete confirmation mode ──
-  if (ctx.pane.pendingDeleteCommentId) {
-    if (input === 'y' && ctx.commentCtx) {
-      removeComment(ctx.commentCtx.prId, ctx.pane.pendingDeleteCommentId);
-      ctx.pane.setPendingDeleteCommentId(null);
-      ctx.pane.setSelectedCommentId(null);
-      return;
-    }
-    if (input === 'n' || key.escape) {
-      ctx.pane.setPendingDeleteCommentId(null);
-      return;
-    }
-    return;
-  }
-
-  // ── Normal navigation ──
-  if (key.escape) {
-    ctx.pane.setPaneMode('diff');
-    ctx.pane.setDiffViewFile(null);
-    return;
-  }
-
-  if (handleDiffScroll(input, key, ctx, viewportHeight, maxScroll)) return;
-  if (handleDiffFileNav(input, ctx)) return;
-  if (handleCommentNav(input, key, ctx, fileComments, maxScroll)) return;
-  handleCommentActions(input, ctx, fileComments, maxScroll);
 }

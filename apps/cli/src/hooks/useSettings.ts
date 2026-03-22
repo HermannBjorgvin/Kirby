@@ -5,6 +5,12 @@ export function useSettings() {
   const [settingsFieldIndex, setSettingsFieldIndex] = useState(0);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editBuffer, setEditBuffer] = useState('');
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [controlsScrollOffset, setControlsScrollOffset] = useState(0);
+  const [controlsSelectedIndex, setControlsSelectedIndex] = useState(0);
+  const [controlsRebindActionId, setControlsRebindActionId] = useState<
+    string | null
+  >(null);
 
   return {
     settingsOpen,
@@ -15,5 +21,13 @@ export function useSettings() {
     setEditingField,
     editBuffer,
     setEditBuffer,
+    controlsOpen,
+    setControlsOpen,
+    controlsScrollOffset,
+    setControlsScrollOffset,
+    controlsSelectedIndex,
+    setControlsSelectedIndex,
+    controlsRebindActionId,
+    setControlsRebindActionId,
   };
 }

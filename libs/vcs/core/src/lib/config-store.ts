@@ -48,6 +48,8 @@ interface RawGlobalConfig {
   mergePollInterval?: number;
   editor?: string;
   worktreePath?: string;
+  keybindPreset?: string;
+  keybindOverrides?: Record<string, unknown[]>;
 }
 
 interface RawProjectConfig {
@@ -136,6 +138,8 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     mergePollInterval: global.mergePollInterval,
     editor: project.editor ?? global.editor,
     worktreePath: global.worktreePath,
+    keybindPreset: global.keybindPreset,
+    keybindOverrides: global.keybindOverrides,
   };
 }
 

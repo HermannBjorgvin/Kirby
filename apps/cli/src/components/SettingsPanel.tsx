@@ -11,6 +11,8 @@ export interface SettingsField {
   presets?: { name: string; value: string | null }[];
   /** Which config bag this field lives in */
   configBag: 'global' | 'project' | 'vendorAuth' | 'vendorProject';
+  /** If set, Enter on this field triggers a named action instead of editing */
+  action?: 'open-controls';
 }
 
 export const AI_PRESETS: { name: string; value: string | null }[] = [
@@ -41,11 +43,24 @@ export const SYNC_INTERVAL_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Custom', value: null },
 ];
 
+export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
+  { name: 'Normie', value: 'normie' },
+  { name: 'Vim Losers', value: 'vim' },
+];
+
 /** Build the settings field list dynamically from the active provider */
 export function buildSettingsFields(
   provider: VcsProvider | null
 ): SettingsField[] {
   const fields: SettingsField[] = [
+    {
+      label: 'Controls',
+      key: 'keybindPreset',
+      description: 'Keybinding preset — Enter to view all bindings',
+      presets: KEYBIND_PRESETS,
+      configBag: 'global',
+      action: 'open-controls',
+    },
     {
       label: 'AI Tool',
       key: 'aiCommand',

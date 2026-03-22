@@ -90,4 +90,6 @@ export interface AppConfig {
   mergePollInterval?: number; // ms, default 3600000, min 300000
   editor?: string;
   worktreePath?: string;
+  keybindPreset?: string;
+  keybindOverrides?: Record<string, unknown[]>;
 }

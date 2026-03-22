@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { AnnotatedLine } from '@kirby/review-comments';
+import { useKeybinds } from '../../context/KeybindContext.js';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,
@@ -17,6 +18,8 @@ export const DiffViewer = memo(function DiffViewer({
   paneCols: number;
   loading: boolean;
 }) {
+  const keybinds = useKeybinds();
+
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
   const visibleLines = annotatedLines.slice(
@@ -28,6 +31,18 @@ export const DiffViewer = memo(function DiffViewer({
   const atBottom = scrollOffset + viewportHeight >= totalLines;
 
   const hasComments = annotatedLines.some((l) => l.type === 'comment-header');
+
+  // Dynamic hint keys from the active preset/overrides
+  const scrollKeys = keybinds.getHintKeys('diff-viewer.scroll-down');
+  const halfPageKeys = keybinds.getHintKeys('diff-viewer.half-page-down');
+  const pageKeys = keybinds.getHintKeys('diff-viewer.page-down');
+  const topBottomDown = keybinds.getHintKeys('diff-viewer.go-top');
+  const topBottomUp = keybinds.getHintKeys('diff-viewer.go-bottom');
+  const nextFileKeys = keybinds.getHintKeys('diff-viewer.next-file');
+  const prevFileKeys = keybinds.getHintKeys('diff-viewer.prev-file');
+  const nextCommentKeys = keybinds.getHintKeys('diff-viewer.next-comment');
+  const prevCommentKeys = keybinds.getHintKeys('diff-viewer.prev-comment');
+  const backKeys = keybinds.getHintKeys('diff-viewer.back');
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -66,16 +81,26 @@ export const DiffViewer = memo(function DiffViewer({
 
       <Box marginTop={1}>
         <Text dimColor>
-          <Text color="cyan">j/k</Text> scroll · <Text color="cyan">d/u</Text>{' '}
-          half-page · <Text color="cyan">PgUp/Dn</Text> page ·{' '}
-          <Text color="cyan">g/G</Text> top/bottom ·{' '}
-          <Text color="cyan">n/N</Text> next/prev file ·{' '}
+          <Text color="cyan">{scrollKeys}</Text> scroll ·{' '}
+          <Text color="cyan">{halfPageKeys}</Text> half-page ·{' '}
+          <Text color="cyan">{pageKeys}</Text> page ·{' '}
+          <Text color="cyan">
+            {topBottomDown}/{topBottomUp}
+          </Text>{' '}
+          top/bottom ·{' '}
+          <Text color="cyan">
+            {nextFileKeys}/{prevFileKeys}
+          </Text>{' '}
+          next/prev file ·{' '}
           {hasComments && (
             <>
-              <Text color="cyan">←/→ c/C</Text> comments ·{' '}
+              <Text color="cyan">
+                {nextCommentKeys}/{prevCommentKeys}
+              </Text>{' '}
+              comments ·{' '}
             </>
           )}
-          <Text color="cyan">esc</Text> back
+          <Text color="cyan">{backKeys}</Text> back
         </Text>
       </Box>
     </Box>
