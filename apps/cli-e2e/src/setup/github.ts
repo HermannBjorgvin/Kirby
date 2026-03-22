@@ -1,11 +1,15 @@
 import { execSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
- * Create a local branch and make an empty commit (no push).
+ * Create a local branch with a real file change (no push).
  */
 export function createLocalBranch(repoDir: string, branchName: string): void {
   execSync(`git checkout -b "${branchName}"`, { cwd: repoDir, stdio: 'pipe' });
-  execSync(`git commit --allow-empty -m "e2e test branch: ${branchName}"`, {
+  writeFileSync(join(repoDir, 'e2e-marker.txt'), `branch: ${branchName}\n`);
+  execSync('git add e2e-marker.txt', { cwd: repoDir, stdio: 'pipe' });
+  execSync(`git commit -m "e2e test branch: ${branchName}"`, {
     cwd: repoDir,
     stdio: 'pipe',
   });

@@ -34,10 +34,9 @@ export function useSessionManager(
         running: hasPtySession(name),
       });
     }
-    const nonReview = filtered.filter((s) => !s.name.startsWith('review-pr-'));
-    setSessions(nonReview);
+    setSessions(filtered);
     setWorktreeBranches(worktrees.map((wt) => wt.branch));
-    return nonReview;
+    return filtered;
   }, []);
 
   const flashStatus = useCallback((msg: string) => {

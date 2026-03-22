@@ -1,0 +1,304 @@
+import { spawn } from 'node:child_process';
+import type { Key } from 'ink';
+import {
+  canRemoveBranch,
+  listAllBranches,
+  listWorktrees,
+  branchToSessionName,
+  rebaseOntoMaster,
+} from '@kirby/worktree-manager';
+import { hasSession, killSession } from '../../pty-registry.js';
+import { getPrFromItem } from '../../types.js';
+import type { SidebarInputCtx } from './input-types.js';
+import { startAiSession } from './branch-picker-input.js';
+
+export function handleSidebarInput(
+  input: string,
+  key: Key,
+  ctx: SidebarInputCtx
+): void {
+  const { sidebar, pane } = ctx;
+  const selectedItem = sidebar.selectedItem;
+
+  // Tab focus toggle
+  if (key.tab) {
+    if (ctx.nav.focus === 'sidebar' && sidebar.sessionNameForTerminal) {
+      ctx.asyncOps.run('start-session', async () => {
+        if (!selectedItem) return;
+
+        if (hasSession(sidebar.sessionNameForTerminal!)) {
+          pane.setPaneMode('terminal');
+          pane.setReconnectKey((k) => k + 1);
+          ctx.nav.setFocus('terminal');
+          return;
+        }
+
+        // Session item → auto-start PTY
+        if (selectedItem.kind === 'session') {
+          const worktrees = await listWorktrees();
+          const wt = worktrees.find(
+            (w) => branchToSessionName(w.branch) === selectedItem.session.name
+          );
+          if (!wt) return;
+          startAiSession(
+            selectedItem.session.name,
+            ctx.terminal.paneCols,
+            ctx.terminal.paneRows,
+            wt.path,
+            ctx.config.config
+          );
+          await ctx.sessions.refreshSessions();
+          pane.setReconnectKey((k) => k + 1);
+          pane.setPaneMode('terminal');
+          ctx.nav.setFocus('terminal');
+          return;
+        }
+
+        // Review/orphan PR → show confirm dialog
+        if (selectedItem.pr) {
+          pane.setPaneMode('confirm');
+          pane.setReviewConfirm({
+            pr: selectedItem.pr,
+            selectedOption: 0,
+          });
+        }
+      });
+    } else if (ctx.nav.focus === 'terminal') {
+      ctx.nav.setFocus('sidebar');
+    }
+    return;
+  }
+
+  // Quit
+  if (input === 'q') {
+    ctx.exit();
+    return;
+  }
+
+  // Create/checkout branch
+  if (input === 'c') {
+    ctx.asyncOps.run('fetch-branches', async () => {
+      const allBranches = await listAllBranches();
+      ctx.branchPicker.setBranches(allBranches);
+      ctx.branchPicker.setCreating(true);
+      ctx.branchPicker.setBranchFilter('');
+      ctx.branchPicker.setBranchIndex(0);
+    });
+    return;
+  }
+
+  // Delete branch (was 'd', now 'x')
+  if (
+    input === 'x' &&
+    selectedItem &&
+    (selectedItem.kind === 'session' ||
+      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
+  ) {
+    const sessionName =
+      selectedItem.kind === 'session'
+        ? selectedItem.session.name
+        : branchToSessionName(selectedItem.pr.sourceBranch);
+    ctx.asyncOps.run('check-delete', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      const branch = wt?.branch;
+      if (branch) {
+        const check = await canRemoveBranch(branch);
+        if (!check.safe) {
+          if (
+            check.reason === 'not pushed to upstream' ||
+            check.reason === 'uncommitted changes'
+          ) {
+            ctx.deleteConfirm.setConfirmDelete({
+              branch,
+              sessionName,
+              reason: check.reason,
+            });
+            ctx.deleteConfirm.setConfirmInput('');
+          } else {
+            ctx.sessions.flashStatus(`Cannot delete: ${check.reason}`);
+          }
+          return;
+        }
+        await ctx.sessions.performDelete(sessionName, branch);
+      } else {
+        killSession(sessionName);
+        ctx.pane.setReconnectKey((k) => k + 1);
+        const updated = await ctx.sessions.refreshSessions();
+        if (sidebar.clampedIndex >= updated.length) {
+          sidebar.setSelectedIndex(Math.max(0, updated.length - 1));
+        }
+      }
+    });
+    return;
+  }
+
+  // Kill agent
+  if (
+    input === 'K' &&
+    selectedItem &&
+    (selectedItem.kind === 'session' ||
+      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
+  ) {
+    const sessionName =
+      selectedItem.kind === 'session'
+        ? selectedItem.session.name
+        : branchToSessionName(selectedItem.pr.sourceBranch);
+    ctx.asyncOps.run('delete', async () => {
+      killSession(sessionName);
+      await ctx.sessions.refreshSessions();
+    });
+    ctx.pane.setReconnectKey((k) => k + 1);
+    return;
+  }
+
+  // Settings
+  if (input === 's') {
+    ctx.settings.setSettingsOpen(true);
+    ctx.settings.setSettingsFieldIndex(0);
+    return;
+  }
+
+  // Refresh PR data
+  if (input === 'r') {
+    ctx.sessions.refreshPr();
+    ctx.sessions.flashStatus('Refreshing PR data...');
+    return;
+  }
+
+  // Rebase onto master
+  if (input === 'u' && selectedItem?.kind === 'session') {
+    const sessionName = selectedItem.session.name;
+    ctx.asyncOps.run('rebase', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      if (!wt) {
+        ctx.sessions.flashStatus('No worktree found for selected session');
+        return;
+      }
+      ctx.sessions.flashStatus('Updating from origin...');
+      const rebaseMessages = {
+        success: 'Rebased onto origin successfully',
+        conflict: 'Conflicts detected — rebase aborted',
+        error: 'Failed to fetch from origin',
+      } as const;
+      ctx.sessions.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
+    });
+    return;
+  }
+
+  // Open in editor
+  if (input === '.' && selectedItem?.kind === 'session') {
+    const sessionName = selectedItem.session.name;
+    ctx.asyncOps.run('open-editor', async () => {
+      const worktrees = await listWorktrees();
+      const wt = worktrees.find(
+        (w) => branchToSessionName(w.branch) === sessionName
+      );
+      if (!wt) {
+        ctx.sessions.flashStatus('No worktree found for selected session');
+        return;
+      }
+      const editor =
+        ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
+      if (!editor) {
+        ctx.sessions.flashStatus(
+          'No editor configured — set one in settings (s)'
+        );
+        return;
+      }
+      spawn(editor, [wt.path], { detached: true, stdio: 'ignore' }).unref();
+      ctx.sessions.flashStatus(`Opened in ${editor}`);
+    });
+    return;
+  }
+
+  // Sync with origin
+  if (input === 'g') {
+    ctx.sessions.flashStatus('Syncing with origin...');
+    ctx.sessions.triggerSync();
+    return;
+  }
+
+  // View diff ('d' key — only when item has a PR)
+  if (input === 'd' && selectedItem) {
+    const pr = getPrFromItem(selectedItem);
+    if (pr) {
+      pane.setPaneMode('diff');
+      pane.setDiffFileIndex(0);
+    }
+    return;
+  }
+
+  // Navigate
+  if (input === 'j' || key.downArrow) {
+    sidebar.setSelectedIndex((i) => Math.min(i + 1, sidebar.totalItems - 1));
+    return;
+  }
+  if (input === 'k' || key.upArrow) {
+    sidebar.setSelectedIndex((i) => Math.max(i - 1, 0));
+    return;
+  }
+
+  // Enter
+  if (key.return && selectedItem) {
+    // Session with running PTY → focus terminal
+    if (
+      selectedItem.kind === 'session' &&
+      sidebar.sessionNameForTerminal &&
+      hasSession(sidebar.sessionNameForTerminal)
+    ) {
+      pane.setPaneMode('terminal');
+      pane.setReconnectKey((k) => k + 1);
+      ctx.nav.setFocus('terminal');
+      return;
+    }
+
+    // Session with no PTY, no PR → auto-start session
+    if (selectedItem.kind === 'session' && !selectedItem.pr) {
+      ctx.asyncOps.run('start-session', async () => {
+        const worktrees = await listWorktrees();
+        const wt = worktrees.find(
+          (w) => branchToSessionName(w.branch) === selectedItem.session.name
+        );
+        if (!wt) return;
+        startAiSession(
+          selectedItem.session.name,
+          ctx.terminal.paneCols,
+          ctx.terminal.paneRows,
+          wt.path,
+          ctx.config.config
+        );
+        await ctx.sessions.refreshSessions();
+        pane.setReconnectKey((k) => k + 1);
+        pane.setPaneMode('terminal');
+        ctx.nav.setFocus('terminal');
+      });
+      return;
+    }
+
+    // Item with PR → show confirm dialog
+    const pr = getPrFromItem(selectedItem);
+    if (pr) {
+      if (
+        sidebar.sessionNameForTerminal &&
+        hasSession(sidebar.sessionNameForTerminal)
+      ) {
+        pane.setPaneMode('terminal');
+        pane.setReconnectKey((k) => k + 1);
+        ctx.nav.setFocus('terminal');
+      } else {
+        pane.setPaneMode('confirm');
+        pane.setReviewConfirm({
+          pr,
+          selectedOption: 0,
+        });
+      }
+      return;
+    }
+  }
+}

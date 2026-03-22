@@ -72,23 +72,20 @@ test.use({
 
 test.when(
   hasGhToken,
-  'Reviews tab shows fixture PRs in correct categories',
+  'Unified sidebar shows fixture PRs in correct categories',
   async ({ terminal }) => {
-    // 1. Wait for Kirby to start
+    // 1. Wait for Kirby to start — unified sidebar shows "Kirby" as title
     await expect(
-      terminal.getByText('Worktree Sessions', { strict: false })
+      terminal.getByText('Kirby', { strict: false })
     ).toBeVisible();
 
-    // 2. Switch to Reviews tab
-    terminal.write('2');
-
-    // 3. Wait for PR data to load — fixture PRs should appear
+    // 2. Wait for PR data to load — fixture PRs should appear in review sections
     //    kirby-test-runner approved PR #37, so "Approved by You" section exists
     await expect(
       terminal.getByText('Approved by You', { strict: false })
     ).toBeVisible({ timeout: 30_000 });
 
-    // 4. Verify all 3 fixture PRs are visible
+    // 3. Verify all 3 fixture PRs are visible
     await expect(
       terminal.getByText('Add color support for tile values', { strict: false })
     ).toBeVisible();
@@ -101,12 +98,12 @@ test.when(
       terminal.getByText('Add AI solver for auto-play mode', { strict: false })
     ).toBeVisible();
 
-    // 5. Verify "Waiting for Author" section exists (PR #38 has changes requested)
+    // 4. Verify "Waiting for Author" section exists (PR #38 has changes requested)
     await expect(
       terminal.getByText('Waiting for Author', { strict: false })
     ).toBeVisible();
 
-    // 6. Verify PR #38 shows comment count (3 inline review comments)
+    // 5. Verify PR #38 shows comment count (3 inline review comments)
     await expect(
       terminal.getByText('3 comments', { strict: false })
     ).toBeVisible();

@@ -12,7 +12,9 @@ test.use({
 
 test.describe('Keyboard Navigation', () => {
   test('s opens settings panel', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     terminal.write('s');
     await expect(
       terminal.getByText('Settings', { strict: false })
@@ -20,26 +22,30 @@ test.describe('Keyboard Navigation', () => {
   });
 
   test('Esc closes settings panel', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     terminal.write('s');
     await expect(
       terminal.getByText('Settings', { strict: false })
     ).toBeVisible();
     terminal.keyEscape();
-    await expect(
-      terminal.getByText('Worktree Sessions', { strict: false })
-    ).toBeVisible();
+    await expect(terminal.getByText('checkout branch')).toBeVisible();
   });
 
   test('c opens branch picker', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     terminal.write('c');
     // Branch picker shows in the sidebar area
     await expect(terminal.getByText(/master|main/g)).toBeVisible();
   });
 
   test('Esc closes branch picker', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
+    await expect(
+      terminal.getByText('Kirby', { strict: false })
+    ).toBeVisible();
     terminal.write('c');
     await expect(terminal.getByText(/master|main/g)).toBeVisible();
     terminal.keyEscape();

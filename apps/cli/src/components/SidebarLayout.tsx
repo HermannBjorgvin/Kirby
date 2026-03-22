@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Text, Box } from 'ink';
 
 interface SidebarLayoutProps {
-  title: string;
+  title?: string;
   focused: boolean;
   sidebarWidth: number;
   emptyText?: string;
@@ -22,15 +22,16 @@ export function SidebarLayout({
   legend,
   children,
 }: SidebarLayoutProps) {
-  const innerWidth = Math.max(10, sidebarWidth - 2);
-
   return (
     <Box flexDirection="column" width={sidebarWidth} paddingX={1}>
-      <Text bold color={focused ? 'blue' : 'gray'}>
-        {title}
-      </Text>
-      <Text dimColor>{'─'.repeat(innerWidth)}</Text>
-      {isEmpty ? <Text dimColor>{emptyText}</Text> : children}
+      <Box flexDirection="column" flexGrow={1}>
+        {title && (
+          <Text bold color={focused ? 'blue' : 'gray'}>
+            {title}
+          </Text>
+        )}
+        {isEmpty ? <Text dimColor>{emptyText}</Text> : children}
+      </Box>
       <Box marginTop={1} flexDirection="column">
         {keybinds}
       </Box>

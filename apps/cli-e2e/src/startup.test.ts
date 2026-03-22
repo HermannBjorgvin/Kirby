@@ -13,16 +13,8 @@ test.use({
 
 test.describe('App Startup', () => {
   test('renders Kirby header', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
-  });
-
-  test('shows Sessions tab', async ({ terminal }) => {
-    await expect(terminal.getByText('1 Sessions')).toBeVisible();
-  });
-
-  test('shows sidebar title', async ({ terminal }) => {
     await expect(
-      terminal.getByText('Worktree Sessions', { strict: false })
+      terminal.getByText('Kirby', { strict: false })
     ).toBeVisible();
   });
 
@@ -33,10 +25,5 @@ test.describe('App Startup', () => {
   test('shows keybind hints', async ({ terminal }) => {
     await expect(terminal.getByText('checkout branch')).toBeVisible();
     await expect(terminal.getByText('quit')).toBeVisible();
-  });
-
-  test('does not show Reviews tab without VCS config', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby')).toBeVisible();
-    await expect(terminal.getByText('2 Reviews')).not.toBeVisible();
   });
 });

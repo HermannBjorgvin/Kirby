@@ -40,6 +40,8 @@ export function categorizeReviews(
 
   for (const pr of Object.values(prMap)) {
     if (!pr || !pr.reviewers) continue;
+    // Skip PRs created by the current user — they belong in sessions, not reviews
+    if (provider.matchesUser(pr.createdByIdentifier, config)) continue;
     const reviewer = pr.reviewers.find((r) =>
       provider.matchesUser(r.identifier, config)
     );
