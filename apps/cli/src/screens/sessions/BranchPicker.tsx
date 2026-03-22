@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import { computeScrollWindow } from '../../hooks/useScrollWindow.js';
+import { computeScrollWindow } from '../../utils/scroll-window.js';
 
 export const BranchPicker = memo(function BranchPicker({
   filter,
