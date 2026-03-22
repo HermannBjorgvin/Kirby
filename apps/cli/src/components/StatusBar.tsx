@@ -1,11 +1,15 @@
 import { Text } from 'ink';
 import { useAppState } from '../context/AppStateContext.js';
-import { useSessionContext } from '../context/SessionContext.js';
+import {
+  useSessionActions,
+  useSessionData,
+} from '../context/SessionContext.js';
 import { useConfig } from '../context/ConfigContext.js';
 
 export function StatusBar() {
   const { branchPicker, deleteConfirm, asyncOps } = useAppState();
-  const { statusMessage, prError } = useSessionContext();
+  const { statusMessage } = useSessionActions();
+  const { prError } = useSessionData();
   const { vcsConfigured } = useConfig();
 
   if (deleteConfirm.confirmDelete) {

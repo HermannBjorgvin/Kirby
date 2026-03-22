@@ -5,7 +5,7 @@ import { branchToSessionName } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../types.js';
 import { getPrFromItem } from '../types.js';
 import { buildSidebarItems } from '../utils/sidebar-items.js';
-import { useSessionContext } from './SessionContext.js';
+import { useSessionData } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
 
 export interface SidebarContextValue {
@@ -23,7 +23,7 @@ export interface SidebarContextValue {
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const sessionCtx = useSessionContext();
+  const sessionCtx = useSessionData();
   const { vcsConfigured } = useConfig();
   const [selectedIndex, setSelectedIndex] = useState(0);
 

@@ -1,7 +1,7 @@
 import type { DiffFile, ReviewComment, SidebarItem } from '../../types.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { AppStateContextValue } from '../../context/AppStateContext.js';
-import type { SessionContextValue } from '../../context/SessionContext.js';
+import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
 import type { SidebarContextValue } from '../../context/SidebarContext.js';
 import type {
@@ -22,7 +22,7 @@ export type DeleteConfirmValue = AppStateContextValue['deleteConfirm'];
 
 export interface BranchPickerHandlerCtx {
   branchPicker: BranchPickerValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
@@ -30,7 +30,7 @@ export interface BranchPickerHandlerCtx {
 
 export interface DeleteConfirmHandlerCtx {
   deleteConfirm: DeleteConfirmValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
 }
 
@@ -55,14 +55,14 @@ export interface DiffViewerHandlerCtx {
   diffTotalLines: number;
   commentCtx?: CommentContext;
   config: ConfigContextValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
 }
 
 export interface ConfirmHandlerCtx {
   pane: PaneModeValue;
   nav: NavValue;
   asyncOps: AsyncOpsValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
   sidebar: SidebarContextValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
@@ -73,7 +73,7 @@ export interface ConfirmHandlerCtx {
 export interface SidebarInputCtx {
   nav: NavValue;
   config: ConfigContextValue;
-  sessions: SessionContextValue;
+  sessions: SessionActionsContextValue;
   sidebar: SidebarContextValue;
   branchPicker: BranchPickerValue;
   deleteConfirm: DeleteConfirmValue;

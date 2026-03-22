@@ -9,7 +9,7 @@ import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useAppState } from '../../context/AppStateContext.js';
-import { useSessionContext } from '../../context/SessionContext.js';
+import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneMode } from '../../hooks/usePaneMode.js';
@@ -52,7 +52,7 @@ export function MainTab({
   const appState = useAppState();
   const { nav, asyncOps, branchPicker, deleteConfirm, settings, terminal } =
     appState;
-  const sessionCtx = useSessionContext();
+  const sessionCtx = useSessionActions();
   const configCtx = useConfig();
   const sidebar = useSidebar();
 
