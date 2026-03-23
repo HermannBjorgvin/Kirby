@@ -167,16 +167,6 @@ export function handleDiffViewerInput(
     ctx.pane.setDiffScrollOffset((o) => Math.max(o - half, 0));
     return;
   }
-  if (action === 'diff-viewer.page-down') {
-    ctx.pane.setDiffScrollOffset((o) =>
-      Math.min(o + viewportHeight, maxScroll)
-    );
-    return;
-  }
-  if (action === 'diff-viewer.page-up') {
-    ctx.pane.setDiffScrollOffset((o) => Math.max(o - viewportHeight, 0));
-    return;
-  }
   if (action === 'diff-viewer.go-top') {
     ctx.pane.setDiffScrollOffset(0);
     return;

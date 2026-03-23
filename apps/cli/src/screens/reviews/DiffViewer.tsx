@@ -3,6 +3,46 @@ import { Text, Box } from 'ink';
 import type { AnnotatedLine } from '@kirby/review-comments';
 import { useKeybinds } from '../../context/KeybindContext.js';
 
+// Separate component to isolate context subscription from memo'd parent
+function DiffViewerHints({ hasComments }: { hasComments: boolean }) {
+  const kb = useKeybinds();
+  const scrollKeys = kb.getHintKeys('diff-viewer.scroll-down');
+  const halfPageKeys = kb.getHintKeys('diff-viewer.half-page-down');
+  const topKeys = kb.getHintKeys('diff-viewer.go-top');
+  const bottomKeys = kb.getHintKeys('diff-viewer.go-bottom');
+  const nextFileKeys = kb.getHintKeys('diff-viewer.next-file');
+  const prevFileKeys = kb.getHintKeys('diff-viewer.prev-file');
+  const nextCommentKeys = kb.getHintKeys('diff-viewer.next-comment');
+  const prevCommentKeys = kb.getHintKeys('diff-viewer.prev-comment');
+  const backKeys = kb.getHintKeys('diff-viewer.back');
+
+  return (
+    <Box marginTop={1}>
+      <Text dimColor>
+        <Text color="cyan">{scrollKeys}</Text> scroll ·{' '}
+        <Text color="cyan">{halfPageKeys}</Text> half-page ·{' '}
+        <Text color="cyan">
+          {topKeys}/{bottomKeys}
+        </Text>{' '}
+        top/bottom ·{' '}
+        <Text color="cyan">
+          {nextFileKeys}/{prevFileKeys}
+        </Text>{' '}
+        next/prev file ·{' '}
+        {hasComments && (
+          <>
+            <Text color="cyan">
+              {nextCommentKeys}/{prevCommentKeys}
+            </Text>{' '}
+            comments ·{' '}
+          </>
+        )}
+        <Text color="cyan">{backKeys}</Text> back
+      </Text>
+    </Box>
+  );
+}
+
 export const DiffViewer = memo(function DiffViewer({
   filename,
   annotatedLines,
@@ -18,8 +58,6 @@ export const DiffViewer = memo(function DiffViewer({
   paneCols: number;
   loading: boolean;
 }) {
-  const keybinds = useKeybinds();
-
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
   const visibleLines = annotatedLines.slice(
@@ -31,18 +69,6 @@ export const DiffViewer = memo(function DiffViewer({
   const atBottom = scrollOffset + viewportHeight >= totalLines;
 
   const hasComments = annotatedLines.some((l) => l.type === 'comment-header');
-
-  // Dynamic hint keys from the active preset/overrides
-  const scrollKeys = keybinds.getHintKeys('diff-viewer.scroll-down');
-  const halfPageKeys = keybinds.getHintKeys('diff-viewer.half-page-down');
-  const pageKeys = keybinds.getHintKeys('diff-viewer.page-down');
-  const topBottomDown = keybinds.getHintKeys('diff-viewer.go-top');
-  const topBottomUp = keybinds.getHintKeys('diff-viewer.go-bottom');
-  const nextFileKeys = keybinds.getHintKeys('diff-viewer.next-file');
-  const prevFileKeys = keybinds.getHintKeys('diff-viewer.prev-file');
-  const nextCommentKeys = keybinds.getHintKeys('diff-viewer.next-comment');
-  const prevCommentKeys = keybinds.getHintKeys('diff-viewer.prev-comment');
-  const backKeys = keybinds.getHintKeys('diff-viewer.back');
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -79,30 +105,7 @@ export const DiffViewer = memo(function DiffViewer({
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          <Text color="cyan">{scrollKeys}</Text> scroll ·{' '}
-          <Text color="cyan">{halfPageKeys}</Text> half-page ·{' '}
-          <Text color="cyan">{pageKeys}</Text> page ·{' '}
-          <Text color="cyan">
-            {topBottomDown}/{topBottomUp}
-          </Text>{' '}
-          top/bottom ·{' '}
-          <Text color="cyan">
-            {nextFileKeys}/{prevFileKeys}
-          </Text>{' '}
-          next/prev file ·{' '}
-          {hasComments && (
-            <>
-              <Text color="cyan">
-                {nextCommentKeys}/{prevCommentKeys}
-              </Text>{' '}
-              comments ·{' '}
-            </>
-          )}
-          <Text color="cyan">{backKeys}</Text> back
-        </Text>
-      </Box>
+      <DiffViewerHints hasComments={hasComments} />
     </Box>
   );
 });

@@ -153,7 +153,10 @@ export function descriptorFromKeypress(
     desc.ctrl = true;
     if (input) desc.input = input;
   }
-  if (key.shift) {
+  // Skip shift for uppercase letters — Ink auto-sets key.shift for A-Z,
+  // and the resolver already handles this via the isUppercaseChar special case.
+  const isUppercaseInput = input.length === 1 && /[A-Z]/.test(input);
+  if (key.shift && !isUppercaseInput) {
     desc.shift = true;
   }
   if (key.meta) {

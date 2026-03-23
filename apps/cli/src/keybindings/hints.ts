@@ -27,10 +27,13 @@ export function keyDescriptorToString(desc: KeyDescriptor): string {
     if (desc.flags.end) keys.push('End');
   }
 
-  // Character input
+  // Character input — show uppercase as Shift+lowercase for clarity
   if (desc.input !== undefined) {
     if (desc.input === ' ') keys.push('Space');
-    else keys.push(desc.input);
+    else if (desc.input.length === 1 && /[A-Z]/.test(desc.input)) {
+      if (!modifiers.includes('Shift')) modifiers.push('Shift');
+      keys.push(desc.input.toLowerCase());
+    } else keys.push(desc.input);
   }
 
   if (keys.length === 0 && modifiers.length === 0) return '?';

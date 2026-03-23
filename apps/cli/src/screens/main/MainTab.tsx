@@ -146,7 +146,6 @@ export function MainTab({
       />
       {settings.settingsOpen && settings.controlsOpen && (
         <ControlsPanel
-          scrollOffset={settings.controlsScrollOffset}
           paneRows={terminal.paneRows}
           selectedIndex={settings.controlsSelectedIndex}
           rebindActionId={settings.controlsRebindActionId}

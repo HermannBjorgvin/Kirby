@@ -40,7 +40,8 @@ export type InputContext =
   | 'confirm'
   | 'confirm-delete'
   | 'diff-file-list'
-  | 'diff-viewer';
+  | 'diff-viewer'
+  | 'controls';
 
 /** A bindable action in the application */
 export interface ActionDef {
@@ -261,16 +262,6 @@ export const ACTIONS: ActionDef[] = [
     label: 'Half page up',
     context: 'diff-viewer',
   },
-  {
-    id: 'diff-viewer.page-down',
-    label: 'Page down',
-    context: 'diff-viewer',
-  },
-  {
-    id: 'diff-viewer.page-up',
-    label: 'Page up',
-    context: 'diff-viewer',
-  },
   { id: 'diff-viewer.go-top', label: 'Go to top', context: 'diff-viewer' },
   {
     id: 'diff-viewer.go-bottom',
@@ -314,6 +305,14 @@ export const ACTIONS: ActionDef[] = [
     context: 'diff-viewer',
   },
   { id: 'diff-viewer.back', label: 'Back', context: 'diff-viewer' },
+
+  // ── Controls ──
+  { id: 'controls.navigate-down', label: 'Navigate down', context: 'controls' },
+  { id: 'controls.navigate-up', label: 'Navigate up', context: 'controls' },
+  { id: 'controls.close', label: 'Back', context: 'controls' },
+  { id: 'controls.rebind', label: 'Rebind', context: 'controls' },
+  { id: 'controls.cycle-left', label: 'Previous preset', context: 'controls' },
+  { id: 'controls.cycle-right', label: 'Next preset', context: 'controls' },
 ];
 
 // ── Presets ─────────────────────────────────────────────────────────
@@ -379,8 +378,6 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.scroll-up': [{ flags: { upArrow: true } }],
     'diff-viewer.half-page-down': [{ flags: { pageDown: true } }],
     'diff-viewer.half-page-up': [{ flags: { pageUp: true } }],
-    'diff-viewer.page-down': [{ flags: { pageDown: true } }],
-    'diff-viewer.page-up': [{ flags: { pageUp: true } }],
     'diff-viewer.go-top': [{ flags: { home: true } }],
     'diff-viewer.go-bottom': [{ flags: { end: true } }],
     'diff-viewer.next-file': [{ flags: { rightArrow: true } }],
@@ -392,6 +389,14 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E', shift: true }],
     'diff-viewer.back': [{ flags: { escape: true } }],
+
+    // Controls
+    'controls.navigate-down': [{ flags: { downArrow: true } }],
+    'controls.navigate-up': [{ flags: { upArrow: true } }],
+    'controls.close': [{ flags: { escape: true } }],
+    'controls.rebind': [{ flags: { return: true } }],
+    'controls.cycle-left': [{ flags: { leftArrow: true } }],
+    'controls.cycle-right': [{ flags: { rightArrow: true } }],
   },
 };
 
@@ -459,8 +464,6 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-viewer.scroll-up': [{ input: 'k' }, { flags: { upArrow: true } }],
     'diff-viewer.half-page-down': [{ input: 'd' }],
     'diff-viewer.half-page-up': [{ input: 'u' }],
-    'diff-viewer.page-down': [{ flags: { pageDown: true } }],
-    'diff-viewer.page-up': [{ flags: { pageUp: true } }],
     'diff-viewer.go-top': [{ input: 'g' }],
     'diff-viewer.go-bottom': [{ input: 'G' }],
     'diff-viewer.next-file': [{ input: 'n' }],
@@ -478,6 +481,14 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
+
+    // Controls
+    'controls.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
+    'controls.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
+    'controls.close': [{ flags: { escape: true } }],
+    'controls.rebind': [{ flags: { return: true } }],
+    'controls.cycle-left': [{ flags: { leftArrow: true } }],
+    'controls.cycle-right': [{ flags: { rightArrow: true } }],
   },
 };
 

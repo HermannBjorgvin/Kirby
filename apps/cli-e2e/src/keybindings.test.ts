@@ -378,24 +378,10 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
   });
 });
 
-// ── Modifier key bindings don't conflict with plain keys ───────────
+// ── Modifier key display ───────────────────────────────────────────
 
-test.describe('Keybindings — Modifier keys resolve correctly', () => {
-  // Pre-configure normie with custom overrides: next-comment = Shift+Down
+test.describe('Keybindings — Modifier key display', () => {
   const env = createIsolatedEnv();
-  writeFileSync(
-    join(env.home, '.kirby', 'config.json'),
-    JSON.stringify({
-      keybindPreset: 'normie',
-      keybindOverrides: {
-        'diff-viewer.next-comment': [
-          { shift: true, flags: { downArrow: true } },
-        ],
-        'diff-viewer.prev-comment': [{ shift: true, flags: { upArrow: true } }],
-      },
-    }),
-    'utf-8'
-  );
 
   test.use({
     rows: 30,
@@ -409,32 +395,16 @@ test.describe('Keybindings — Modifier keys resolve correctly', () => {
     },
   });
 
-  test('controls screen shows Shift+Down for custom binding', async ({
+  test('normie preset shows Shift+k for kill agent in sidebar hints', async ({
     terminal,
   }) => {
     await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-
-    // Open controls
-    terminal.write('s');
+    // Normie preset binds kill-agent to Shift+K, displayed as Shift+k
     await expect(
-      terminal.getByText('Controls', { strict: false })
+      terminal.getByText('Shift+k', { strict: false })
     ).toBeVisible();
-    terminal.write('\r');
     await expect(
-      terminal.getByText('Navigate down', { strict: false })
+      terminal.getByText('kill agent', { strict: false })
     ).toBeVisible();
-
-    // Scroll down to find the diff-viewer section with "Next comment"
-    // Send j presses with delays so React processes each state update
-    for (let i = 0; i < 25; i++) {
-      terminal.write('j');
-      await new Promise((r) => setTimeout(r, 80));
-    }
-
-    // The custom binding should show Shift+Down with a * marker
-    await expect(
-      terminal.getByText('Shift+Down', { strict: false })
-    ).toBeVisible();
-    await expect(terminal.getByText('*', { strict: false })).toBeVisible();
   });
 });

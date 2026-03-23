@@ -109,7 +109,7 @@ export function handleSettingsInput(
     // Special action fields — open sub-screens
     if (field.action === 'open-controls') {
       ctx.settings.setControlsOpen(true);
-      ctx.settings.setControlsScrollOffset(0);
+      ctx.settings.setControlsSelectedIndex(0);
       return;
     }
 
@@ -209,31 +209,34 @@ export function handleControlsInput(
     return;
   }
 
-  // ── Normal mode ──
+  // ── Normal mode (uses keybind resolution) ──
 
-  // Esc → back to settings
-  if (key.escape) {
+  const action = resolveAction(
+    input,
+    key,
+    'controls',
+    ctx.keybinds.bindings,
+    ACTIONS
+  );
+
+  if (action === 'controls.close') {
     ctx.settings.setControlsOpen(false);
     ctx.settings.setControlsSelectedIndex(0);
     return;
   }
 
-  // Navigate bindings (scroll follows selection)
-  if (input === 'j' || key.downArrow) {
+  if (action === 'controls.navigate-down') {
     ctx.settings.setControlsSelectedIndex((i) =>
       Math.min(i + 1, totalBindings - 1)
     );
-    ctx.settings.setControlsScrollOffset((o) => o + 1);
     return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'controls.navigate-up') {
     ctx.settings.setControlsSelectedIndex((i) => Math.max(i - 1, 0));
-    ctx.settings.setControlsScrollOffset((o) => Math.max(o - 1, 0));
     return;
   }
 
-  // Enter → rebind selected binding
-  if (key.return && totalBindings > 0) {
+  if (action === 'controls.rebind' && totalBindings > 0) {
     const selected = bindingRows[ctx.settings.controlsSelectedIndex];
     if (selected) {
       ctx.settings.setControlsRebindActionId(selected.actionId);
@@ -241,11 +244,10 @@ export function handleControlsInput(
     return;
   }
 
-  // Cycle preset
-  if (key.leftArrow || key.rightArrow) {
+  if (action === 'controls.cycle-left' || action === 'controls.cycle-right') {
     const currentIdx = PRESETS.findIndex((p) => p.id === ctx.keybinds.presetId);
     let nextIdx: number;
-    if (key.rightArrow) {
+    if (action === 'controls.cycle-right') {
       nextIdx = (currentIdx + 1) % PRESETS.length;
     } else {
       nextIdx = (currentIdx - 1 + PRESETS.length) % PRESETS.length;
