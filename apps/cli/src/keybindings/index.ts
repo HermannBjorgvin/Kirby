@@ -10,6 +10,7 @@ export type {
   KeyDescriptor,
   InputContext,
   ActionDef,
+  ActionId,
   KeybindPreset,
 } from './registry.js';
 export {

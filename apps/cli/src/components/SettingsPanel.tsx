@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { useConfig } from '../context/ConfigContext.js';
+import { useKeybinds } from '../context/KeybindContext.js';
 
 export interface SettingsField {
   label: string;
@@ -150,6 +151,25 @@ export function resolveValue(config: AppConfig, field: SettingsField): string {
   }
 }
 
+function SettingsHints({ enterAction }: { enterAction: 'toggle' | 'edit' }) {
+  const kb = useKeybinds();
+  const navKeys = kb.getNavKeys('settings');
+  const editKeys = kb.getHintKeys('settings.edit-toggle');
+  const autoDetectKeys = kb.getHintKeys('settings.auto-detect');
+  const closeKeys = kb.getHintKeys('settings.close');
+
+  return (
+    <Box marginTop={1}>
+      <Text dimColor>
+        <Text color="cyan">{navKeys}</Text> nav ·{' '}
+        <Text color="cyan">{editKeys}</Text> {enterAction} ·{' '}
+        <Text color="cyan">{autoDetectKeys}</Text> auto-detect ·{' '}
+        <Text color="cyan">{closeKeys}</Text> back
+      </Text>
+    </Box>
+  );
+}
+
 export function SettingsPanel({
   fieldIndex,
   editingField,
@@ -232,15 +252,13 @@ export function SettingsPanel({
           </Text>
         </Box>
       ) : null}
-      <Box marginTop={1}>
-        <Text dimColor>
-          j/k nav ·{' '}
-          {fields[fieldIndex]?.presets?.every((p) => p.value !== null)
-            ? 'Enter toggle'
-            : 'Enter edit'}{' '}
-          · a auto-detect · Esc back
-        </Text>
-      </Box>
+      <SettingsHints
+        enterAction={
+          fields[fieldIndex]?.presets?.every((p) => p.value !== null)
+            ? 'toggle'
+            : 'edit'
+        }
+      />
     </Box>
   );
 }

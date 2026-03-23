@@ -5,7 +5,6 @@ import { getPrFromItem } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { ConfirmHandlerCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
-import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 async function startReviewSession(
   ctx: ConfirmHandlerCtx,
@@ -67,13 +66,7 @@ export function handleConfirmInput(
   const confirm = ctx.pane.reviewConfirm!;
   const opt = confirm.selectedOption;
 
-  const action = resolveAction(
-    input,
-    key,
-    'confirm',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'confirm');
 
   if (action === 'confirm.cancel') {
     ctx.pane.setReviewConfirm(null);
@@ -82,7 +75,8 @@ export function handleConfirmInput(
     return;
   }
 
-  // Option 2: Add instructions (text input mode — exempt from resolution)
+  // Option 2: Add instructions (text input mode)
+  // Try nav actions first, then fall through to text input
   if (opt === 2) {
     if (key.return) {
       ctx.asyncOps.run('start-session', async () => {
@@ -109,11 +103,11 @@ export function handleConfirmInput(
       });
       return;
     }
-    if (key.upArrow || (input === 'k' && key.ctrl)) {
+    if (action === 'confirm.navigate-up') {
       ctx.pane.setReviewConfirm({ ...confirm, selectedOption: 1 });
       return;
     }
-    if (key.downArrow || (input === 'j' && key.ctrl)) {
+    if (action === 'confirm.navigate-down') {
       ctx.pane.setReviewConfirm({ ...confirm, selectedOption: 3 });
       return;
     }

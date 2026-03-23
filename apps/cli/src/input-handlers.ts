@@ -13,14 +13,13 @@ import type { KeybindContextValue } from './context/KeybindContext.js';
 import {
   PRESETS,
   ACTIONS,
-  resolveAction,
   findConflict,
   descriptorFromKeypress,
 } from './keybindings/index.js';
 import {
   buildControlsRows,
   getBindingRows,
-} from './components/ControlsPanel.js';
+} from './keybindings/controls-data.js';
 
 // ── Shared context slice types ────────────────────────────────────
 
@@ -63,13 +62,7 @@ export function handleSettingsInput(
     return;
   }
 
-  const action = resolveAction(
-    input,
-    key,
-    'settings',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'settings');
 
   if (action === 'settings.close') {
     ctx.settings.setSettingsOpen(false);
@@ -216,13 +209,7 @@ export function handleControlsInput(
 
   // ── Normal mode (uses keybind resolution) ──
 
-  const action = resolveAction(
-    input,
-    key,
-    'controls',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'controls');
 
   if (action === 'controls.close') {
     ctx.settings.setControlsOpen(false);

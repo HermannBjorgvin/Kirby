@@ -64,7 +64,7 @@ export interface KeybindPreset {
 
 // ── Action Catalog ─────────────────────────────────────────────────
 
-export const ACTIONS: ActionDef[] = [
+export const ACTIONS = [
   // ── Sidebar ──
   {
     id: 'sidebar.navigate-down',
@@ -313,7 +313,10 @@ export const ACTIONS: ActionDef[] = [
   { id: 'controls.rebind', label: 'Rebind', context: 'controls' },
   { id: 'controls.cycle-left', label: 'Previous preset', context: 'controls' },
   { id: 'controls.cycle-right', label: 'Next preset', context: 'controls' },
-];
+] as const satisfies readonly ActionDef[];
+
+/** Derived union of all action ID strings */
+export type ActionId = (typeof ACTIONS)[number]['id'];
 
 // ── Presets ─────────────────────────────────────────────────────────
 

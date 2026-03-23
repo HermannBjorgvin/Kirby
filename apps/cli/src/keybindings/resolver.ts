@@ -70,7 +70,7 @@ export function resolveAction(
   key: Key,
   context: InputContext,
   bindings: Record<string, KeyDescriptor[]>,
-  actions: ActionDef[]
+  actions: readonly ActionDef[]
 ): string | null {
   const contextActions = actions.filter((a) => a.context === context);
 
@@ -93,7 +93,7 @@ export function findConflict(
   key: Key,
   context: InputContext,
   bindings: Record<string, KeyDescriptor[]>,
-  actions: ActionDef[],
+  actions: readonly ActionDef[],
   excludeActionId: string
 ): string | null {
   const contextActions = actions.filter(

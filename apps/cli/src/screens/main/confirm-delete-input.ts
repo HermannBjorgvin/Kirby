@@ -1,20 +1,13 @@
 import type { Key } from 'ink';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { DeleteConfirmHandlerCtx } from './input-types.js';
-import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 export function handleConfirmDeleteInput(
   input: string,
   key: Key,
   ctx: DeleteConfirmHandlerCtx
 ): void {
-  const action = resolveAction(
-    input,
-    key,
-    'confirm-delete',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'confirm-delete');
 
   if (action === 'confirm-delete.cancel') {
     ctx.deleteConfirm.setConfirmDelete(null);

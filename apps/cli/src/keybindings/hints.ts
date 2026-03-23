@@ -59,7 +59,7 @@ export interface HintEntry {
  */
 export function getHintsForContext(
   context: InputContext,
-  actions: ActionDef[],
+  actions: readonly ActionDef[],
   bindings: Record<string, KeyDescriptor[]>
 ): HintEntry[] {
   const contextActions = actions.filter(

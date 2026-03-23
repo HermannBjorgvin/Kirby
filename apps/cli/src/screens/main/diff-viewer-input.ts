@@ -15,7 +15,6 @@ import { writeFileSync, readFileSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DiffViewerHandlerCtx } from './input-types.js';
-import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -134,13 +133,7 @@ export function handleDiffViewerInput(
   }
 
   // ── Normal navigation (uses keybind resolution) ──
-  const action = resolveAction(
-    input,
-    key,
-    'diff-viewer',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'diff-viewer');
 
   if (action === 'diff-viewer.back') {
     ctx.pane.setPaneMode('diff');

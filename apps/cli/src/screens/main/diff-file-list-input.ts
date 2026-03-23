@@ -1,20 +1,13 @@
 import type { Key } from 'ink';
 import { getDisplayFiles } from '@kirby/diff';
 import type { DiffFileListHandlerCtx } from './input-types.js';
-import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 export function handleDiffFileListInput(
   input: string,
   key: Key,
   ctx: DiffFileListHandlerCtx
 ): void {
-  const action = resolveAction(
-    input,
-    key,
-    'diff-file-list',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'diff-file-list');
 
   if (action === 'diff-file-list.back') {
     ctx.pane.setPaneMode('pr-detail');

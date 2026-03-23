@@ -9,7 +9,6 @@ import {
 import { spawnSession } from '../../pty-registry.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
-import { ACTIONS, resolveAction } from '../../keybindings/index.js';
 
 const DEFAULT_AI_COMMAND = 'claude --continue || claude';
 
@@ -29,13 +28,7 @@ export function handleBranchPickerInput(
   key: Key,
   ctx: BranchPickerHandlerCtx
 ): void {
-  const action = resolveAction(
-    input,
-    key,
-    'branch-picker',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'branch-picker');
 
   if (action === 'branch-picker.cancel') {
     ctx.branchPicker.setCreating(false);

@@ -11,8 +11,6 @@ import { hasSession, killSession } from '../../pty-registry.js';
 import { getPrFromItem } from '../../types.js';
 import type { SidebarInputCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
-import { ACTIONS } from '../../keybindings/index.js';
-import { resolveAction } from '../../keybindings/resolver.js';
 
 export function handleSidebarInput(
   input: string,
@@ -22,13 +20,7 @@ export function handleSidebarInput(
   const { sidebar, pane } = ctx;
   const selectedItem = sidebar.selectedItem;
 
-  const action = resolveAction(
-    input,
-    key,
-    'sidebar',
-    ctx.keybinds.bindings,
-    ACTIONS
-  );
+  const action = ctx.keybinds.resolve(input, key, 'sidebar');
 
   // Tab focus toggle
   if (action === 'sidebar.focus-terminal') {

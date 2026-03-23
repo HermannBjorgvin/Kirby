@@ -105,52 +105,58 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
     [mergedBindings]
   );
 
+  /** Update config and persist keybind fields in one call */
+  const updateAndPersist = useCallback(
+    (updater: (prev: AppConfig) => AppConfig) => {
+      let next: AppConfig | undefined;
+      setConfig((prev) => {
+        next = updater(prev);
+        return next;
+      });
+      queueMicrotask(() => {
+        if (next) persistKeybindFields(next);
+      });
+    },
+    [setConfig]
+  );
+
   const setPreset = useCallback(
     (presetId: string) => {
       if (!PRESETS.find((p) => p.id === presetId)) return;
-      let captured!: AppConfig;
-      setConfig((prev) => {
-        captured = { ...prev, keybindPreset: presetId };
-        return captured;
-      });
-      queueMicrotask(() => persistKeybindFields(captured));
+      updateAndPersist((prev) => ({ ...prev, keybindPreset: presetId }));
     },
-    [setConfig]
+    [updateAndPersist]
   );
 
   const updateBinding = useCallback(
     (actionId: string, descriptors: KeyDescriptor[]) => {
-      let captured!: AppConfig;
-      setConfig((prev) => {
+      updateAndPersist((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
-        const newOverrides = { ...prevOverrides, [actionId]: descriptors };
-        captured = { ...prev, keybindOverrides: newOverrides };
-        return captured;
+        return {
+          ...prev,
+          keybindOverrides: { ...prevOverrides, [actionId]: descriptors },
+        };
       });
-      queueMicrotask(() => persistKeybindFields(captured));
     },
-    [setConfig]
+    [updateAndPersist]
   );
 
   const resetBinding = useCallback(
     (actionId: string) => {
-      let captured!: AppConfig;
-      setConfig((prev) => {
+      updateAndPersist((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
         const rest = Object.fromEntries(
           Object.entries(prevOverrides).filter(([k]) => k !== actionId)
         );
-        captured = {
+        return {
           ...prev,
           keybindOverrides: Object.keys(rest).length > 0 ? rest : undefined,
         };
-        return captured;
       });
-      queueMicrotask(() => persistKeybindFields(captured));
     },
-    [setConfig]
+    [updateAndPersist]
   );
 
   const isCustom = useCallback(
