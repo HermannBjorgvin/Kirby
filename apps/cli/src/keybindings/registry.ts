@@ -334,7 +334,7 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.open-settings': [{ input: 's' }],
     'sidebar.refresh-pr': [{ input: 'r' }],
     'sidebar.rebase': [{ input: 'u' }],
-    'sidebar.open-editor': [{ input: 'e' }],
+    'sidebar.open-editor': [{ input: 'E', shift: true }],
     'sidebar.sync-origin': [{ input: 'f' }],
     'sidebar.view-diff': [{ input: 'd' }],
     'sidebar.start-session': [{ flags: { return: true } }],
