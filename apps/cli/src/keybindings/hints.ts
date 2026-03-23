@@ -12,10 +12,10 @@ export function keyDescriptorToString(desc: KeyDescriptor): string {
 
   // Special key flags
   if (desc.flags) {
-    if (desc.flags.upArrow) keys.push('Up');
-    if (desc.flags.downArrow) keys.push('Down');
-    if (desc.flags.leftArrow) keys.push('Left');
-    if (desc.flags.rightArrow) keys.push('Right');
+    if (desc.flags.upArrow) keys.push('↑');
+    if (desc.flags.downArrow) keys.push('↓');
+    if (desc.flags.leftArrow) keys.push('←');
+    if (desc.flags.rightArrow) keys.push('→');
     if (desc.flags.return) keys.push('Enter');
     if (desc.flags.escape) keys.push('Esc');
     if (desc.flags.tab) keys.push('Tab');

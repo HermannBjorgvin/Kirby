@@ -297,9 +297,7 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
     ).toBeVisible();
 
     // First binding row should be selected (has › marker)
-    await expect(
-      terminal.getByText(/›.*Down/g, { strict: false })
-    ).toBeVisible();
+    await expect(terminal.getByText(/›.*↓/g, { strict: false })).toBeVisible();
 
     // Navigate down to Quit binding
     terminal.write('j');
@@ -374,7 +372,7 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
       terminal.getByText('Press a key', { strict: false })
     ).not.toBeVisible({ timeout: 3_000 });
     // Original binding still shown
-    await expect(terminal.getByText('Down', { strict: false })).toBeVisible();
+    await expect(terminal.getByText('↓', { strict: false })).toBeVisible();
   });
 });
 

@@ -325,7 +325,7 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.navigate-down': [{ flags: { downArrow: true } }],
     'sidebar.navigate-up': [{ flags: { upArrow: true } }],
     'sidebar.quit': [{ input: 'q' }],
-    'sidebar.checkout-branch': [{ input: 'n' }],
+    'sidebar.checkout-branch': [{ input: 'c' }],
     'sidebar.delete-branch': [
       { flags: { delete: true } },
       { flags: { backspace: true } },
