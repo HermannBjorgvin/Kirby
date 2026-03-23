@@ -78,7 +78,7 @@ function FileRow({
 
 function DiffFileListHints() {
   const kb = useKeybinds();
-  const navKeys = kb.getHintKeys('diff-file-list.navigate-down');
+  const navKeys = kb.getNavKeys('diff-file-list');
   const openKeys = kb.getHintKeys('diff-file-list.open');
   const backKeys = kb.getHintKeys('diff-file-list.back');
   return (

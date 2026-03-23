@@ -17,6 +17,18 @@ import type {
   HintEntry,
 } from '../keybindings/index.js';
 import { readGlobalConfig, writeGlobalConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@kirby/vcs-core';
+
+/**
+ * Persist keybind-related fields to global config in a single write.
+ * Captures the intended state from React, avoiding stale disk reads.
+ */
+function persistKeybindFields(config: AppConfig): void {
+  const g = readGlobalConfig();
+  g.keybindPreset = config.keybindPreset;
+  g.keybindOverrides = config.keybindOverrides;
+  writeGlobalConfig(g);
+}
 
 // ── Context ──────────────────────────────────────────────────────
 
@@ -96,59 +108,47 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
   const setPreset = useCallback(
     (presetId: string) => {
       if (!PRESETS.find((p) => p.id === presetId)) return;
-      setConfig((prev) => ({ ...prev, keybindPreset: presetId }));
-      queueMicrotask(() => {
-        const g = readGlobalConfig();
-        g.keybindPreset = presetId;
-        writeGlobalConfig(g);
+      let captured!: AppConfig;
+      setConfig((prev) => {
+        captured = { ...prev, keybindPreset: presetId };
+        return captured;
       });
+      queueMicrotask(() => persistKeybindFields(captured));
     },
     [setConfig]
   );
 
   const updateBinding = useCallback(
     (actionId: string, descriptors: KeyDescriptor[]) => {
+      let captured!: AppConfig;
       setConfig((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
         const newOverrides = { ...prevOverrides, [actionId]: descriptors };
-        return { ...prev, keybindOverrides: newOverrides };
+        captured = { ...prev, keybindOverrides: newOverrides };
+        return captured;
       });
-      queueMicrotask(() => {
-        const g = readGlobalConfig();
-        const existing =
-          (g.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
-        g.keybindOverrides = { ...existing, [actionId]: descriptors };
-        writeGlobalConfig(g);
-      });
+      queueMicrotask(() => persistKeybindFields(captured));
     },
     [setConfig]
   );
 
   const resetBinding = useCallback(
     (actionId: string) => {
+      let captured!: AppConfig;
       setConfig((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
         const rest = Object.fromEntries(
           Object.entries(prevOverrides).filter(([k]) => k !== actionId)
         );
-        return {
+        captured = {
           ...prev,
           keybindOverrides: Object.keys(rest).length > 0 ? rest : undefined,
         };
+        return captured;
       });
-      queueMicrotask(() => {
-        const g = readGlobalConfig();
-        const existing =
-          (g.keybindOverrides as Record<string, unknown[]>) ?? {};
-        const filtered = Object.fromEntries(
-          Object.entries(existing).filter(([k]) => k !== actionId)
-        );
-        g.keybindOverrides =
-          Object.keys(filtered).length > 0 ? filtered : undefined;
-        writeGlobalConfig(g);
-      });
+      queueMicrotask(() => persistKeybindFields(captured));
     },
     [setConfig]
   );

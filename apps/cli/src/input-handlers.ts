@@ -99,7 +99,12 @@ export function handleSettingsInput(
         idx = (idx - 1 + namedPresets.length) % namedPresets.length;
       }
       const preset = namedPresets[idx]!;
-      ctx.config.updateField(field, preset.value ?? undefined);
+      // Use unified write path for keybind preset
+      if (field.key === 'keybindPreset' && preset.value) {
+        ctx.keybinds.setPreset(preset.value);
+      } else {
+        ctx.config.updateField(field, preset.value ?? undefined);
+      }
     }
     return;
   }
