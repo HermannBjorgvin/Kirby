@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import type { AppConfig, VcsProvider } from './types.js';
+import type { AppConfig, KeyDescriptorConfig, VcsProvider } from './types.js';
 
 const WM_DIR = join(homedir(), '.kirby');
 const GLOBAL_CONFIG_PATH = join(WM_DIR, 'config.json');
@@ -48,6 +48,8 @@ interface RawGlobalConfig {
   mergePollInterval?: number;
   editor?: string;
   worktreePath?: string;
+  keybindPreset?: string;
+  keybindOverrides?: Record<string, KeyDescriptorConfig[]>;
 }
 
 interface RawProjectConfig {
@@ -136,6 +138,8 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     mergePollInterval: global.mergePollInterval,
     editor: project.editor ?? global.editor,
     worktreePath: global.worktreePath,
+    keybindPreset: global.keybindPreset,
+    keybindOverrides: global.keybindOverrides,
   };
 }
 

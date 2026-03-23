@@ -7,6 +7,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
+import { KeybindProvider } from './context/KeybindContext.js';
 import { AppStateProvider, useAppState } from './context/AppStateContext.js';
 import { LayoutProvider, useLayout } from './context/LayoutContext.js';
 import { SessionProvider } from './context/SessionContext.js';
@@ -91,14 +92,16 @@ process.on('SIGTERM', () => {
 
 render(
   <ConfigProvider providers={providers}>
-    <LayoutProvider>
-      <AppStateProvider>
-        <SessionProvider>
-          <SidebarProvider>
-            <App forceSetup={forceSetup} />
-          </SidebarProvider>
-        </SessionProvider>
-      </AppStateProvider>
-    </LayoutProvider>
+    <KeybindProvider>
+      <LayoutProvider>
+        <AppStateProvider>
+          <SessionProvider>
+            <SidebarProvider>
+              <App forceSetup={forceSetup} />
+            </SidebarProvider>
+          </SessionProvider>
+        </AppStateProvider>
+      </LayoutProvider>
+    </KeybindProvider>
   </ConfigProvider>
 );

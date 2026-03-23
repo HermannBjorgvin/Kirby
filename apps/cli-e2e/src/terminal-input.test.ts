@@ -1,5 +1,5 @@
 import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createTestRepo, registerCleanup } from './setup/git-repo.js';
@@ -13,9 +13,15 @@ function createIsolatedTestEnv() {
   registerCleanup(dir);
   registerCleanup(home);
 
-  // Create .kirby dir but do NOT pre-configure aiCommand —
-  // the test sets it through the settings UI.
+  // Create .kirby dir with vim preset — the test uses vim keybindings
+  // (s for settings, c for branch picker, K for kill, x for delete).
+  // Do NOT pre-configure aiCommand — the test sets it through the settings UI.
   mkdirSync(join(home, '.kirby'), { recursive: true });
+  writeFileSync(
+    join(home, '.kirby', 'config.json'),
+    JSON.stringify({ keybindPreset: 'vim' }),
+    'utf-8'
+  );
 
   return { dir, home, log };
 }
@@ -63,8 +69,10 @@ test.describe('Terminal Input', () => {
       terminal.getByText('Settings', { strict: false })
     ).toBeVisible();
 
-    // AI Tool is the first field (already selected).
-    // Press Enter to enter custom edit mode.
+    // Controls is the first field — navigate down to AI Tool.
+    terminal.write('j');
+    await new Promise((r) => setTimeout(r, 300));
+    // Press Enter to enter custom edit mode for AI Tool.
     terminal.write('\r');
     await new Promise((r) => setTimeout(r, 500));
 
@@ -74,18 +82,18 @@ test.describe('Terminal Input', () => {
 
     // Save with Enter
     terminal.write('\r');
-    await new Promise((r) => setTimeout(r, 500));
 
     // Verify the custom value is displayed
     await expect(
       terminal.getByText('Custom: bash', { strict: false })
     ).toBeVisible();
 
-    // Close settings
+    // Close settings — wait for save to settle, then press Esc
+    await new Promise((r) => setTimeout(r, 1_000));
     terminal.keyEscape();
     await expect(
       terminal.getByText('Settings', { strict: false })
-    ).not.toBeVisible({ timeout: 3_000 });
+    ).not.toBeVisible({ timeout: 5_000 });
 
     // ── 3. Create session via branch picker ──────────────────────
     terminal.write('c');

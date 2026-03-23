@@ -28,14 +28,16 @@ export function handleBranchPickerInput(
   key: Key,
   ctx: BranchPickerHandlerCtx
 ): void {
-  if (key.escape) {
+  const action = ctx.keybinds.resolve(input, key, 'branch-picker');
+
+  if (action === 'branch-picker.cancel') {
     ctx.branchPicker.setCreating(false);
     ctx.branchPicker.setBranchFilter('');
     ctx.branchPicker.setBranchIndex(0);
     return;
   }
 
-  if (key.ctrl && input === 'f') {
+  if (action === 'branch-picker.fetch') {
     ctx.asyncOps.run('fetch-branches', async () => {
       ctx.sessions.flashStatus('Fetching remotes...');
       await fetchRemote();
@@ -51,18 +53,18 @@ export function handleBranchPickerInput(
     b.toLowerCase().includes(ctx.branchPicker.branchFilter.toLowerCase())
   );
 
-  if (key.upArrow) {
+  if (action === 'branch-picker.navigate-up') {
     ctx.branchPicker.setBranchIndex((i) => Math.max(i - 1, 0));
     return;
   }
-  if (key.downArrow) {
+  if (action === 'branch-picker.navigate-down') {
     ctx.branchPicker.setBranchIndex((i) =>
       Math.min(i + 1, filtered.length - 1)
     );
     return;
   }
 
-  if (key.return) {
+  if (action === 'branch-picker.select') {
     const branch =
       filtered.length > 0
         ? filtered[ctx.branchPicker.branchIndex]!
@@ -91,6 +93,7 @@ export function handleBranchPickerInput(
     return;
   }
 
+  // Text input for branch filter (exempt from resolution)
   if (handleTextInput(input, key, ctx.branchPicker.setBranchFilter)) {
     ctx.branchPicker.setBranchIndex(0);
   }

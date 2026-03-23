@@ -47,7 +47,7 @@ if (hasGhToken) {
   mkdirSync(kirbyDir, { recursive: true });
   writeFileSync(
     join(kirbyDir, 'config.json'),
-    JSON.stringify({}),
+    JSON.stringify({ keybindPreset: 'vim' }),
     'utf-8'
   );
 }
@@ -75,9 +75,7 @@ test.when(
   'Unified sidebar shows fixture PRs in correct categories',
   async ({ terminal }) => {
     // 1. Wait for Kirby to start — unified sidebar shows "Kirby" as title
-    await expect(
-      terminal.getByText('Kirby', { strict: false })
-    ).toBeVisible();
+    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
 
     // 2. Wait for PR data to load — fixture PRs should appear in review sections
     //    kirby-test-runner approved PR #37, so "Approved by You" section exists
@@ -91,7 +89,9 @@ test.when(
     ).toBeVisible();
 
     await expect(
-      terminal.getByText('Add undo feature with history stack', { strict: false })
+      terminal.getByText('Add undo feature with history stack', {
+        strict: false,
+      })
     ).toBeVisible();
 
     await expect(

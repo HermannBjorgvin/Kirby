@@ -78,6 +78,15 @@ export interface VcsProvider {
   ): Promise<Set<string>>;
 }
 
+/** Key binding descriptor as stored in config (JSON-safe, no ink dependency) */
+export interface KeyDescriptorConfig {
+  input?: string;
+  flags?: Record<string, boolean>;
+  ctrl?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+}
+
 export interface AppConfig {
   email?: string;
   prPollInterval?: number;
@@ -90,4 +99,6 @@ export interface AppConfig {
   mergePollInterval?: number; // ms, default 3600000, min 300000
   editor?: string;
   worktreePath?: string;
+  keybindPreset?: string;
+  keybindOverrides?: Record<string, KeyDescriptorConfig[]>;
 }

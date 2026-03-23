@@ -95,11 +95,11 @@ GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
 
 **Fixture PRs in the test repo** (used by `reviews-fixture.test.ts`):
 
-| PR | Branch | Title | CI | Review (by kirby-test-runner) |
-|----|--------|-------|----|-------------------------------|
-| #37 | `fixture/add-color-support` | Add color support for tile values | passes | Approved |
-| #38 | `fixture/add-undo-feature` | Add undo feature with history stack | passes | Changes requested (3 inline comments) |
-| #39 | `fixture/add-ai-solver` | Add AI solver for auto-play mode | fails | Approved (1 suggestion comment) |
+| PR  | Branch                      | Title                               | CI     | Review (by kirby-test-runner)         |
+| --- | --------------------------- | ----------------------------------- | ------ | ------------------------------------- |
+| #37 | `fixture/add-color-support` | Add color support for tile values   | passes | Approved                              |
+| #38 | `fixture/add-undo-feature`  | Add undo feature with history stack | passes | Changes requested (3 inline comments) |
+| #39 | `fixture/add-ai-solver`     | Add AI solver for auto-play mode    | fails  | Approved (1 suggestion comment)       |
 
 These PRs are permanent fixtures — tests only read them, never modify. The test repo contains a C 2048 game project.
 
@@ -114,12 +114,17 @@ These PRs are permanent fixtures — tests only read them, never modify. The tes
 apps/cli/                        — Ink TUI application (ESM, React 19)
   src/main.tsx                   — Entry point, root component
   src/pty-registry.ts            — PTY session lifecycle (spawn, get, kill)
-  src/input-handlers.ts          — Shared input types (NavValue, etc.) + helpers (handleTabSwitchInput)
+  src/input-handlers.ts          — Shared input types (NavValue, etc.) + settings/controls handlers
+  src/keybindings/               — Customizable keybinding system
+    registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
+    resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
+    hints.ts                     — Human-readable key display strings
+    controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
-  src/screens/sessions/          — Sessions tab (SessionsTab, Sidebar, BranchPicker, sessions-input)
-  src/screens/reviews/           — Reviews tab (ReviewsTab, ReviewsSidebar, ReviewPane, reviews-input)
-  src/context/                   — React contexts (AppState, Session, Review, Config)
-  src/hooks/                     — Custom hooks (useTerminal, useDiffData)
+  src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
+  src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
+  src/context/                   — React contexts (AppState, Session, Config, Keybind, Layout, Sidebar)
+  src/hooks/                     — Custom hooks (useTerminal, useDiffData, useSettings)
 libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
 libs/terminal/                   — PTY session + terminal emulation (node-pty + @xterm/headless)

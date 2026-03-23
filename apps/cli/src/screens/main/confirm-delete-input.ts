@@ -7,12 +7,14 @@ export function handleConfirmDeleteInput(
   key: Key,
   ctx: DeleteConfirmHandlerCtx
 ): void {
-  if (key.escape) {
+  const action = ctx.keybinds.resolve(input, key, 'confirm-delete');
+
+  if (action === 'confirm-delete.cancel') {
     ctx.deleteConfirm.setConfirmDelete(null);
     ctx.deleteConfirm.setConfirmInput('');
     return;
   }
-  if (key.return) {
+  if (action === 'confirm-delete.confirm') {
     if (
       ctx.deleteConfirm.confirmInput === ctx.deleteConfirm.confirmDelete!.branch
     ) {

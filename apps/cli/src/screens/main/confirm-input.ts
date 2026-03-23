@@ -66,7 +66,9 @@ export function handleConfirmInput(
   const confirm = ctx.pane.reviewConfirm!;
   const opt = confirm.selectedOption;
 
-  if (key.escape) {
+  const action = ctx.keybinds.resolve(input, key, 'confirm');
+
+  if (action === 'confirm.cancel') {
     ctx.pane.setReviewConfirm(null);
     ctx.pane.setReviewInstruction('');
     ctx.pane.setPaneMode('pr-detail');
@@ -74,6 +76,7 @@ export function handleConfirmInput(
   }
 
   // Option 2: Add instructions (text input mode)
+  // Try nav actions first, then fall through to text input
   if (opt === 2) {
     if (key.return) {
       ctx.asyncOps.run('start-session', async () => {
@@ -100,11 +103,11 @@ export function handleConfirmInput(
       });
       return;
     }
-    if (key.upArrow || (input === 'k' && key.ctrl)) {
+    if (action === 'confirm.navigate-up') {
       ctx.pane.setReviewConfirm({ ...confirm, selectedOption: 1 });
       return;
     }
-    if (key.downArrow || (input === 'j' && key.ctrl)) {
+    if (action === 'confirm.navigate-down') {
       ctx.pane.setReviewConfirm({ ...confirm, selectedOption: 3 });
       return;
     }
@@ -112,14 +115,14 @@ export function handleConfirmInput(
     return;
   }
 
-  if (input === 'j' || key.downArrow) {
+  if (action === 'confirm.navigate-down') {
     ctx.pane.setReviewConfirm({
       ...confirm,
       selectedOption: Math.min(opt + 1, CONFIRM_OPTIONS - 1),
     });
     return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'confirm.navigate-up') {
     ctx.pane.setReviewConfirm({
       ...confirm,
       selectedOption: Math.max(opt - 1, 0),
@@ -127,7 +130,7 @@ export function handleConfirmInput(
     return;
   }
 
-  if (key.return) {
+  if (action === 'confirm.select') {
     // Option 0: Start session (plain AI session)
     if (opt === 0) {
       ctx.asyncOps.run('start-session', async () => {

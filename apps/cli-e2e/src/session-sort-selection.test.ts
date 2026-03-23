@@ -42,7 +42,7 @@ if (hasGhToken) {
   mkdirSync(kirbyDir, { recursive: true });
   writeFileSync(
     join(kirbyDir, 'config.json'),
-    JSON.stringify({ aiCommand: 'cat' }),
+    JSON.stringify({ aiCommand: 'cat', keybindPreset: 'vim' }),
     'utf-8'
   );
 }

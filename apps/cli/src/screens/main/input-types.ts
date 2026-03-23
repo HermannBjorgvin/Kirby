@@ -4,6 +4,7 @@ import type { AppStateContextValue } from '../../context/AppStateContext.js';
 import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
 import type { SidebarContextValue } from '../../context/SidebarContext.js';
+import type { KeybindContextValue } from '../../context/KeybindContext.js';
 import type {
   NavValue,
   AsyncOpsValue,
@@ -26,12 +27,14 @@ export interface BranchPickerHandlerCtx {
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
+  keybinds: KeybindContextValue;
 }
 
 export interface DeleteConfirmHandlerCtx {
   deleteConfirm: DeleteConfirmValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
+  keybinds: KeybindContextValue;
 }
 
 export interface DiffFileListHandlerCtx {
@@ -39,6 +42,7 @@ export interface DiffFileListHandlerCtx {
   diffFiles: DiffFile[];
   diffDisplayCount: number;
   loadDiffText: () => Promise<void>;
+  keybinds: KeybindContextValue;
 }
 
 export interface CommentContext {
@@ -56,6 +60,7 @@ export interface DiffViewerHandlerCtx {
   commentCtx?: CommentContext;
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
+  keybinds: KeybindContextValue;
 }
 
 export interface ConfirmHandlerCtx {
@@ -68,6 +73,7 @@ export interface ConfirmHandlerCtx {
   config: ConfigContextValue;
   selectedItem: SidebarItem | undefined;
   sessionNameForTerminal: string | null;
+  keybinds: KeybindContextValue;
 }
 
 export interface SidebarInputCtx {
@@ -81,5 +87,6 @@ export interface SidebarInputCtx {
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   pane: PaneModeValue;
+  keybinds: KeybindContextValue;
   exit: () => void;
 }

@@ -18,7 +18,10 @@ function createIsolatedTestEnv() {
   mkdirSync(kd, { recursive: true });
   writeFileSync(
     join(kd, 'config.json'),
-    JSON.stringify({ aiCommand: 'echo kirby-session-active && sleep 300' }),
+    JSON.stringify({
+      aiCommand: 'echo kirby-session-active && sleep 300',
+      keybindPreset: 'vim',
+    }),
     'utf-8'
   );
 

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { useConfig } from '../context/ConfigContext.js';
+import { useKeybinds } from '../context/KeybindContext.js';
 
 export interface SettingsField {
   label: string;
@@ -11,6 +12,8 @@ export interface SettingsField {
   presets?: { name: string; value: string | null }[];
   /** Which config bag this field lives in */
   configBag: 'global' | 'project' | 'vendorAuth' | 'vendorProject';
+  /** If set, Enter on this field triggers a named action instead of editing */
+  action?: 'open-controls';
 }
 
 export const AI_PRESETS: { name: string; value: string | null }[] = [
@@ -41,11 +44,24 @@ export const SYNC_INTERVAL_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Custom', value: null },
 ];
 
+export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
+  { name: 'Normie defaults', value: 'normie' },
+  { name: 'Vim Losers', value: 'vim' },
+];
+
 /** Build the settings field list dynamically from the active provider */
 export function buildSettingsFields(
   provider: VcsProvider | null
 ): SettingsField[] {
   const fields: SettingsField[] = [
+    {
+      label: 'Controls',
+      key: 'keybindPreset',
+      description: 'Keybinding preset — Enter to view all bindings',
+      presets: KEYBIND_PRESETS,
+      configBag: 'global',
+      action: 'open-controls',
+    },
     {
       label: 'AI Tool',
       key: 'aiCommand',
@@ -135,6 +151,25 @@ export function resolveValue(config: AppConfig, field: SettingsField): string {
   }
 }
 
+function SettingsHints({ enterAction }: { enterAction: 'toggle' | 'edit' }) {
+  const kb = useKeybinds();
+  const navKeys = kb.getNavKeys('settings');
+  const editKeys = kb.getHintKeys('settings.edit-toggle');
+  const autoDetectKeys = kb.getHintKeys('settings.auto-detect');
+  const closeKeys = kb.getHintKeys('settings.close');
+
+  return (
+    <Box marginTop={1}>
+      <Text dimColor>
+        <Text color="cyan">{navKeys}</Text> nav ·{' '}
+        <Text color="cyan">{editKeys}</Text> {enterAction} ·{' '}
+        <Text color="cyan">{autoDetectKeys}</Text> auto-detect ·{' '}
+        <Text color="cyan">{closeKeys}</Text> back
+      </Text>
+    </Box>
+  );
+}
+
 export function SettingsPanel({
   fieldIndex,
   editingField,
@@ -217,15 +252,13 @@ export function SettingsPanel({
           </Text>
         </Box>
       ) : null}
-      <Box marginTop={1}>
-        <Text dimColor>
-          j/k nav ·{' '}
-          {fields[fieldIndex]?.presets?.every((p) => p.value !== null)
-            ? 'Enter toggle'
-            : 'Enter edit'}{' '}
-          · a auto-detect · Esc back
-        </Text>
-      </Box>
+      <SettingsHints
+        enterAction={
+          fields[fieldIndex]?.presets?.every((p) => p.value !== null)
+            ? 'toggle'
+            : 'edit'
+        }
+      />
     </Box>
   );
 }

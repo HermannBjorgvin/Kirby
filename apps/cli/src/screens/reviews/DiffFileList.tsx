@@ -5,6 +5,7 @@ import type { DiffFile } from '@kirby/diff';
 import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
 import { computeScrollWindow } from '../../utils/scroll-window.js';
+import { useKeybinds } from '../../context/KeybindContext.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -72,6 +73,24 @@ function FileRow({
       <Text color="green"> +{file.additions}</Text>
       <Text color="red"> -{file.deletions}</Text>
     </Text>
+  );
+}
+
+function DiffFileListHints() {
+  const kb = useKeybinds();
+  const navKeys = kb.getNavKeys('diff-file-list');
+  const openKeys = kb.getHintKeys('diff-file-list.open');
+  const toggleKeys = kb.getHintKeys('diff-file-list.toggle-skipped');
+  const backKeys = kb.getHintKeys('diff-file-list.back');
+  return (
+    <Box marginTop={1}>
+      <Text dimColor>
+        <Text color="cyan">{navKeys}</Text> navigate ·{' '}
+        <Text color="cyan">{openKeys}</Text> view diff ·{' '}
+        <Text color="cyan">{toggleKeys}</Text> toggle skipped ·{' '}
+        <Text color="cyan">{backKeys}</Text> back
+      </Text>
+    </Box>
   );
 }
 
@@ -167,24 +186,11 @@ export const DiffFileList = memo(function DiffFileList({
       )}
 
       {skipped.length > 0 && !showSkipped && (
-        <Text dimColor>
-          {skipped.length} skipped (binary/lock/generated) ·{' '}
-          <Text color="cyan">s</Text> to show
-        </Text>
+        <Text dimColor>{skipped.length} skipped (binary/lock/generated)</Text>
       )}
-      {skipped.length > 0 && showSkipped && (
-        <Text dimColor>
-          showing all · <Text color="cyan">s</Text> to hide skipped
-        </Text>
-      )}
+      {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          <Text color="cyan">j/k</Text> navigate ·{' '}
-          <Text color="cyan">enter</Text> view diff ·{' '}
-          <Text color="cyan">esc</Text> back
-        </Text>
-      </Box>
+      <DiffFileListHints />
     </Box>
   );
 });

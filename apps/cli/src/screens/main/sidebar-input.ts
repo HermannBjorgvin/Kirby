@@ -20,8 +20,10 @@ export function handleSidebarInput(
   const { sidebar, pane } = ctx;
   const selectedItem = sidebar.selectedItem;
 
+  const action = ctx.keybinds.resolve(input, key, 'sidebar');
+
   // Tab focus toggle
-  if (key.tab) {
+  if (action === 'sidebar.focus-terminal') {
     if (ctx.nav.focus === 'sidebar' && sidebar.sessionNameForTerminal) {
       ctx.asyncOps.run('start-session', async () => {
         if (!selectedItem) return;
@@ -70,13 +72,13 @@ export function handleSidebarInput(
   }
 
   // Quit
-  if (input === 'q') {
+  if (action === 'sidebar.quit') {
     ctx.exit();
     return;
   }
 
   // Create/checkout branch
-  if (input === 'c') {
+  if (action === 'sidebar.checkout-branch') {
     ctx.asyncOps.run('fetch-branches', async () => {
       const allBranches = await listAllBranches();
       ctx.branchPicker.setBranches(allBranches);
@@ -87,9 +89,9 @@ export function handleSidebarInput(
     return;
   }
 
-  // Delete branch (was 'd', now 'x')
+  // Delete branch
   if (
-    input === 'x' &&
+    action === 'sidebar.delete-branch' &&
     selectedItem &&
     (selectedItem.kind === 'session' ||
       (selectedItem.kind === 'review-pr' && selectedItem.running != null))
@@ -137,7 +139,7 @@ export function handleSidebarInput(
 
   // Kill agent
   if (
-    input === 'K' &&
+    action === 'sidebar.kill-agent' &&
     selectedItem &&
     (selectedItem.kind === 'session' ||
       (selectedItem.kind === 'review-pr' && selectedItem.running != null))
@@ -155,21 +157,21 @@ export function handleSidebarInput(
   }
 
   // Settings
-  if (input === 's') {
+  if (action === 'sidebar.open-settings') {
     ctx.settings.setSettingsOpen(true);
     ctx.settings.setSettingsFieldIndex(0);
     return;
   }
 
   // Refresh PR data
-  if (input === 'r') {
+  if (action === 'sidebar.refresh-pr') {
     ctx.sessions.refreshPr();
     ctx.sessions.flashStatus('Refreshing PR data...');
     return;
   }
 
   // Rebase onto master
-  if (input === 'u' && selectedItem?.kind === 'session') {
+  if (action === 'sidebar.rebase' && selectedItem?.kind === 'session') {
     const sessionName = selectedItem.session.name;
     ctx.asyncOps.run('rebase', async () => {
       const worktrees = await listWorktrees();
@@ -192,7 +194,7 @@ export function handleSidebarInput(
   }
 
   // Open in editor
-  if (input === '.' && selectedItem?.kind === 'session') {
+  if (action === 'sidebar.open-editor' && selectedItem?.kind === 'session') {
     const sessionName = selectedItem.session.name;
     ctx.asyncOps.run('open-editor', async () => {
       const worktrees = await listWorktrees();
@@ -206,9 +208,7 @@ export function handleSidebarInput(
       const editor =
         ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
       if (!editor) {
-        ctx.sessions.flashStatus(
-          'No editor configured — set one in settings (s)'
-        );
+        ctx.sessions.flashStatus('No editor configured — set one in settings');
         return;
       }
       spawn(editor, [wt.path], { detached: true, stdio: 'ignore' }).unref();
@@ -218,14 +218,14 @@ export function handleSidebarInput(
   }
 
   // Sync with origin
-  if (input === 'g') {
+  if (action === 'sidebar.sync-origin') {
     ctx.sessions.flashStatus('Syncing with origin...');
     ctx.sessions.triggerSync();
     return;
   }
 
-  // View diff ('d' key — only when item has a PR)
-  if (input === 'd' && selectedItem) {
+  // View diff
+  if (action === 'sidebar.view-diff' && selectedItem) {
     const pr = getPrFromItem(selectedItem);
     if (pr) {
       pane.setPaneMode('diff');
@@ -235,17 +235,17 @@ export function handleSidebarInput(
   }
 
   // Navigate
-  if (input === 'j' || key.downArrow) {
+  if (action === 'sidebar.navigate-down') {
     sidebar.setSelectedIndex((i) => Math.min(i + 1, sidebar.totalItems - 1));
     return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'sidebar.navigate-up') {
     sidebar.setSelectedIndex((i) => Math.max(i - 1, 0));
     return;
   }
 
   // Enter
-  if (key.return && selectedItem) {
+  if (action === 'sidebar.start-session' && selectedItem) {
     // Session with running PTY → focus terminal
     if (
       selectedItem.kind === 'session' &&

@@ -9,6 +9,17 @@ import type { AppStateContextValue } from './context/AppStateContext.js';
 import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
 import type { TerminalLayout } from './context/LayoutContext.js';
+import type { KeybindContextValue } from './context/KeybindContext.js';
+import {
+  PRESETS,
+  ACTIONS,
+  findConflict,
+  descriptorFromKeypress,
+} from './keybindings/index.js';
+import {
+  buildControlsRows,
+  getBindingRows,
+} from './keybindings/controls-data.js';
 
 // ── Shared context slice types ────────────────────────────────────
 
@@ -23,6 +34,7 @@ export interface SettingsHandlerCtx {
   settings: SettingsValue;
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
+  keybinds: KeybindContextValue;
 }
 
 export function handleSettingsInput(
@@ -50,21 +62,23 @@ export function handleSettingsInput(
     return;
   }
 
-  if (key.escape) {
+  const action = ctx.keybinds.resolve(input, key, 'settings');
+
+  if (action === 'settings.close') {
     ctx.settings.setSettingsOpen(false);
     return;
   }
-  if (input === 'j' || key.downArrow) {
+  if (action === 'settings.navigate-down') {
     ctx.settings.setSettingsFieldIndex((i) =>
       Math.min(i + 1, fields.length - 1)
     );
     return;
   }
-  if (input === 'k' || key.upArrow) {
+  if (action === 'settings.navigate-up') {
     ctx.settings.setSettingsFieldIndex((i) => Math.max(i - 1, 0));
     return;
   }
-  if (key.leftArrow || key.rightArrow) {
+  if (action === 'settings.cycle-left' || action === 'settings.cycle-right') {
     const field = fields[ctx.settings.settingsFieldIndex]!;
     if (field.presets) {
       const namedPresets = field.presets.filter((p) => p.value !== null);
@@ -72,18 +86,31 @@ export function handleSettingsInput(
       const effectiveValue = currentValue || namedPresets[0]!.value;
       let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
       if (idx === -1) idx = 0;
-      if (key.rightArrow) {
+      if (action === 'settings.cycle-right') {
         idx = (idx + 1) % namedPresets.length;
       } else {
         idx = (idx - 1 + namedPresets.length) % namedPresets.length;
       }
       const preset = namedPresets[idx]!;
-      ctx.config.updateField(field, preset.value ?? undefined);
+      // Use unified write path for keybind preset
+      if (field.key === 'keybindPreset' && preset.value) {
+        ctx.keybinds.setPreset(preset.value);
+      } else {
+        ctx.config.updateField(field, preset.value ?? undefined);
+      }
     }
     return;
   }
-  if (key.return) {
+  if (action === 'settings.edit-toggle') {
     const field = fields[ctx.settings.settingsFieldIndex]!;
+
+    // Special action fields — open sub-screens
+    if (field.action === 'open-controls') {
+      ctx.settings.setControlsOpen(true);
+      ctx.settings.setControlsSelectedIndex(0);
+      return;
+    }
+
     if (field.presets && field.presets.every((p) => p.value !== null)) {
       const namedPresets = field.presets;
       const currentValue = resolveValue(ctx.config.config, field) || undefined;
@@ -97,7 +124,7 @@ export function handleSettingsInput(
     ctx.settings.setEditBuffer(resolveValue(ctx.config.config, field));
     return;
   }
-  if (input === 'a') {
+  if (action === 'settings.auto-detect') {
     const { updated, detected } = autoDetectProjectConfig(
       process.cwd(),
       ctx.config.providers
@@ -111,6 +138,113 @@ export function handleSettingsInput(
         'Nothing new to detect (all fields already set)'
       );
     }
+    return;
+  }
+}
+
+// ── Controls sub-screen input handler ─────────────────────────────
+
+export interface ControlsHandlerCtx {
+  settings: SettingsValue;
+  keybinds: KeybindContextValue;
+}
+
+export function handleControlsInput(
+  input: string,
+  key: Key,
+  ctx: ControlsHandlerCtx
+): void {
+  const rows = buildControlsRows(ctx.keybinds.bindings, ctx.keybinds.isCustom);
+  const bindingRows = getBindingRows(rows);
+  const totalBindings = bindingRows.length;
+
+  // ── Rebind mode: capture any keypress ──
+  if (ctx.settings.controlsRebindActionId) {
+    const actionId = ctx.settings.controlsRebindActionId;
+
+    // Esc → cancel rebind
+    if (key.escape) {
+      ctx.settings.setControlsRebindActionId(null);
+      return;
+    }
+
+    // Delete/Backspace → reset to preset default
+    if (key.delete || key.backspace) {
+      ctx.keybinds.resetBinding(actionId);
+      ctx.settings.setControlsRebindActionId(null);
+      return;
+    }
+
+    // Capture the keypress as a new binding
+    const desc = descriptorFromKeypress(input, key);
+    if (!desc) return;
+
+    // Find the action's context
+    const action = ACTIONS.find((a) => a.id === actionId);
+    if (!action) return;
+
+    // Check for conflicts in the same context
+    const conflictId = findConflict(
+      input,
+      key,
+      action.context,
+      ctx.keybinds.bindings,
+      ACTIONS,
+      actionId
+    );
+
+    if (conflictId) {
+      // Swap: give the conflicting action our old binding
+      const oldBinding = ctx.keybinds.bindings[actionId];
+      if (oldBinding) {
+        ctx.keybinds.updateBinding(conflictId, oldBinding);
+      }
+    }
+
+    // Set the new binding
+    ctx.keybinds.updateBinding(actionId, [desc]);
+    ctx.settings.setControlsRebindActionId(null);
+    return;
+  }
+
+  // ── Normal mode (uses keybind resolution) ──
+
+  const action = ctx.keybinds.resolve(input, key, 'controls');
+
+  if (action === 'controls.close') {
+    ctx.settings.setControlsOpen(false);
+    ctx.settings.setControlsSelectedIndex(0);
+    return;
+  }
+
+  if (action === 'controls.navigate-down') {
+    ctx.settings.setControlsSelectedIndex((i) =>
+      Math.min(i + 1, totalBindings - 1)
+    );
+    return;
+  }
+  if (action === 'controls.navigate-up') {
+    ctx.settings.setControlsSelectedIndex((i) => Math.max(i - 1, 0));
+    return;
+  }
+
+  if (action === 'controls.rebind' && totalBindings > 0) {
+    const selected = bindingRows[ctx.settings.controlsSelectedIndex];
+    if (selected) {
+      ctx.settings.setControlsRebindActionId(selected.actionId);
+    }
+    return;
+  }
+
+  if (action === 'controls.cycle-left' || action === 'controls.cycle-right') {
+    const currentIdx = PRESETS.findIndex((p) => p.id === ctx.keybinds.presetId);
+    let nextIdx: number;
+    if (action === 'controls.cycle-right') {
+      nextIdx = (currentIdx + 1) % PRESETS.length;
+    } else {
+      nextIdx = (currentIdx - 1 + PRESETS.length) % PRESETS.length;
+    }
+    ctx.keybinds.setPreset(PRESETS[nextIdx]!.id);
     return;
   }
 }
