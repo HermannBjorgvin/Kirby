@@ -61,6 +61,7 @@ export function MainTab({
       return handleBranchPickerInput(input, key, {
         branchPicker,
         sessions: sessionCtx,
+        sidebar,
         asyncOps,
         terminal,
         config: configCtx,
@@ -139,7 +140,7 @@ export function MainTab({
     <>
       <Sidebar
         items={sidebar.items}
-        selectedIndex={sidebar.clampedIndex}
+        selectedIndex={sidebar.selectedIndex}
         sidebarWidth={layout.sidebarWidth}
         termRows={layout.termRows}
         focused={sidebarFocused}

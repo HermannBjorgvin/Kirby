@@ -21,20 +21,3 @@ export function sortSessionsByPrId(
     return 0;
   });
 }
-
-/**
- * Find the index of a session by name in a PR-ID-sorted list.
- *
- * Use this instead of `sessions.findIndex(s => s.name === name)` when the
- * result will be passed to `setSelectedIndex`, because the sidebar renders
- * sessions in sorted (by PR ID) order, not insertion order.
- */
-export function findSortedSessionIndex(
-  sessions: AgentSession[],
-  sessionPrMap: Map<string, PullRequestInfo>,
-  name: string
-): number {
-  return sortSessionsByPrId(sessions, sessionPrMap).findIndex(
-    (s) => s.name === name
-  );
-}

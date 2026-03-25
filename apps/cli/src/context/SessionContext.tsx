@@ -18,10 +18,7 @@ import { useConflictCounts } from '../hooks/useConflictCounts.js';
 import { useConfig } from './ConfigContext.js';
 import { useAppState } from './AppStateContext.js';
 import type { AgentSession } from '../types.js';
-import {
-  sortSessionsByPrId,
-  findSortedSessionIndex,
-} from '../utils/session-sort.js';
+import { sortSessionsByPrId } from '../utils/session-sort.js';
 
 // ── Data context (consumed by SidebarProvider, changes on data refresh) ──
 
@@ -39,21 +36,14 @@ export interface SessionDataContextValue {
   conflictCounts: Map<string, number>;
   conflictsLoading: boolean;
   lastSynced: number;
-  selectedSession: AgentSession | undefined;
-  selectedName: string | null;
-  totalItems: number;
-  clampedSelectedIndex: number;
 }
 
 // ── Actions context (consumed by input handlers / StatusBar) ──
 
 export interface SessionActionsContextValue {
-  selectedIndex: number;
-  setSelectedIndex: ReturnType<typeof useSessionManager>['setSelectedIndex'];
   statusMessage: string | null;
   flashStatus: (msg: string) => void;
   refreshSessions: () => Promise<AgentSession[]>;
-  findSortedIndex: (sessions: AgentSession[], name: string) => number;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
   refreshPr: () => void;
   triggerSync: () => void;
@@ -120,24 +110,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [sessionMgr.sessions, sessionPrMap]
   );
 
-  // Safe to close over sessionPrMap: it only changes on PR refresh (usePrData),
-  // never during session creation, so the map is current when callers invoke this
-  // right after refreshSessions().
-  const findSortedIdx = useCallback(
-    (rawSessions: AgentSession[], name: string): number =>
-      findSortedSessionIndex(rawSessions, sessionPrMap, name),
-    [sessionPrMap]
-  );
-
-  const totalItems = sortedSessions.length + orphanPrs.length;
-  const clampedSelectedIndex =
-    totalItems > 0 ? Math.min(sessionMgr.selectedIndex, totalItems - 1) : 0;
-  const selectedSession =
-    clampedSelectedIndex < sortedSessions.length
-      ? sortedSessions[clampedSelectedIndex]
-      : undefined;
-  const selectedName = selectedSession?.name ?? null;
-
   const dataValue = useMemo<SessionDataContextValue>(
     () => ({
       sessions: sessionMgr.sessions,
@@ -153,10 +125,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       conflictCounts,
       conflictsLoading,
       lastSynced,
-      selectedSession,
-      selectedName,
-      totalItems,
-      clampedSelectedIndex,
     }),
     [
       sessionMgr.sessions,
@@ -172,41 +140,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       conflictCounts,
       conflictsLoading,
       lastSynced,
-      selectedSession,
-      selectedName,
-      totalItems,
-      clampedSelectedIndex,
     ]
   );
 
-  const {
-    selectedIndex,
-    setSelectedIndex,
-    statusMessage,
-    flashStatus,
-    refreshSessions,
-    performDelete,
-  } = sessionMgr;
+  const { statusMessage, flashStatus, refreshSessions, performDelete } =
+    sessionMgr;
 
   const actionsValue = useMemo<SessionActionsContextValue>(
     () => ({
-      selectedIndex,
-      setSelectedIndex,
       statusMessage,
       flashStatus,
       refreshSessions,
-      findSortedIndex: findSortedIdx,
       performDelete,
       refreshPr,
       triggerSync,
     }),
     [
-      selectedIndex,
-      setSelectedIndex,
       statusMessage,
       flashStatus,
       refreshSessions,
-      findSortedIdx,
       performDelete,
       refreshPr,
       triggerSync,

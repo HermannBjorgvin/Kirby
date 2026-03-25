@@ -81,9 +81,8 @@ export function handleBranchPickerInput(
             worktreePath,
             ctx.config.config
           );
-          const updated = await ctx.sessions.refreshSessions();
-          const idx = ctx.sessions.findSortedIndex(updated, sessionName);
-          if (idx >= 0) ctx.sessions.setSelectedIndex(idx);
+          await ctx.sessions.refreshSessions();
+          ctx.sidebar.selectByKey(`session:${sessionName}`);
         }
       });
     }

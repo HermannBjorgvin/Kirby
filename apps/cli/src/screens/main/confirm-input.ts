@@ -86,14 +86,9 @@ export function handleConfirmInput(
             ctx.pane.reviewInstruction || undefined
           );
         }
-        const updated = await ctx.sessions.refreshSessions();
-        // Review PRs stay in their section — only reposition for non-review items
+        await ctx.sessions.refreshSessions();
         if (ctx.selectedItem?.kind !== 'review-pr') {
-          const idx = ctx.sessions.findSortedIndex(
-            updated,
-            ctx.sessionNameForTerminal!
-          );
-          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+          ctx.sidebar.selectByKey(`session:${ctx.sessionNameForTerminal!}`);
         }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
@@ -151,13 +146,9 @@ export function handleConfirmInput(
             }
           }
         }
-        const updated = await ctx.sessions.refreshSessions();
+        await ctx.sessions.refreshSessions();
         if (ctx.selectedItem?.kind !== 'review-pr') {
-          const idx = ctx.sessions.findSortedIndex(
-            updated,
-            ctx.sessionNameForTerminal!
-          );
-          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+          ctx.sidebar.selectByKey(`session:${ctx.sessionNameForTerminal!}`);
         }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
@@ -171,13 +162,9 @@ export function handleConfirmInput(
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(ctx);
         }
-        const updated = await ctx.sessions.refreshSessions();
+        await ctx.sessions.refreshSessions();
         if (ctx.selectedItem?.kind !== 'review-pr') {
-          const idx = ctx.sessions.findSortedIndex(
-            updated,
-            ctx.sessionNameForTerminal!
-          );
-          if (idx >= 0) ctx.sidebar.setSelectedIndex(idx);
+          ctx.sidebar.selectByKey(`session:${ctx.sessionNameForTerminal!}`);
         }
         ctx.pane.setPaneMode('terminal');
         ctx.nav.setFocus('terminal');
