@@ -33,6 +33,13 @@ export function getPrFromItem(item: SidebarItem): PullRequestInfo | undefined {
   return item.pr;
 }
 
+/** Stable identity key for a sidebar item. Survives list reorders. */
+export function getItemKey(item: SidebarItem): string {
+  if (item.kind === 'session') return `session:${item.session.name}`;
+  if (item.kind === 'orphan-pr') return `orphan:${item.pr.id}`;
+  return `review:${item.pr.id}`;
+}
+
 export interface AgentSession {
   name: string;
   running: boolean;

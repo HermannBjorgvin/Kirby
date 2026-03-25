@@ -24,6 +24,7 @@ export type DeleteConfirmValue = AppStateContextValue['deleteConfirm'];
 export interface BranchPickerHandlerCtx {
   branchPicker: BranchPickerValue;
   sessions: SessionActionsContextValue;
+  sidebar: SidebarContextValue;
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;

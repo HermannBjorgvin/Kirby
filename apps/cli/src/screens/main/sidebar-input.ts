@@ -128,10 +128,7 @@ export function handleSidebarInput(
       } else {
         killSession(sessionName);
         ctx.pane.setReconnectKey((k) => k + 1);
-        const updated = await ctx.sessions.refreshSessions();
-        if (sidebar.clampedIndex >= updated.length) {
-          sidebar.setSelectedIndex(Math.max(0, updated.length - 1));
-        }
+        await ctx.sessions.refreshSessions();
       }
     });
     return;
@@ -236,11 +233,11 @@ export function handleSidebarInput(
 
   // Navigate
   if (action === 'sidebar.navigate-down') {
-    sidebar.setSelectedIndex((i) => Math.min(i + 1, sidebar.totalItems - 1));
+    sidebar.moveSelection(1);
     return;
   }
   if (action === 'sidebar.navigate-up') {
-    sidebar.setSelectedIndex((i) => Math.max(i - 1, 0));
+    sidebar.moveSelection(-1);
     return;
   }
 

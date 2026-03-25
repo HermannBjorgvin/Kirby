@@ -19,7 +19,6 @@ export function useSessionManager(
   setBranches: (v: string[]) => void
 ) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,10 +49,7 @@ export function useSessionManager(
       killSession(sessionName);
       await removeWorktree(branch, { force: true });
       await deleteBranch(branch, true);
-      const updated = await refreshSessions();
-      setSelectedIndex((prev) =>
-        prev >= updated.length ? Math.max(0, updated.length - 1) : prev
-      );
+      await refreshSessions();
     },
     [refreshSessions]
   );
@@ -89,8 +85,6 @@ export function useSessionManager(
 
   return {
     sessions,
-    selectedIndex,
-    setSelectedIndex,
     worktreeBranches,
     statusMessage,
     flashStatus,

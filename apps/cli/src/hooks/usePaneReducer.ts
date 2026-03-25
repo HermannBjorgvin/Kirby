@@ -1,7 +1,7 @@
 import { useReducer, useMemo, useState } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { PaneMode, SidebarItem } from '../types.js';
-import { getPrFromItem } from '../types.js';
+import { getItemKey, getPrFromItem } from '../types.js';
 import { hasSession } from '../pty-registry.js';
 
 // ── State ────────────────────────────────────────────────────────
@@ -155,11 +155,7 @@ export function usePaneReducer(
 
   // Auto-reset pane mode when selected item changes.
   // Uses the React "store previous value" pattern.
-  const itemKey = selectedItem
-    ? selectedItem.kind === 'session'
-      ? `session:${selectedItem.session.name}`
-      : `pr:${selectedItem.pr.id}`
-    : null;
+  const itemKey = selectedItem ? getItemKey(selectedItem) : null;
 
   const [prevItemKey, setPrevItemKey] = useState<string | null>(null);
   if (itemKey !== prevItemKey) {

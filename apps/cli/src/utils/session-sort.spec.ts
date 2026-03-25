@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { AgentSession } from '../types.js';
-import { sortSessionsByPrId, findSortedSessionIndex } from './session-sort.js';
+import { sortSessionsByPrId } from './session-sort.js';
 
 function makePrMap(entries: [string, number][]): Map<string, PullRequestInfo> {
   const map = new Map<string, PullRequestInfo>();
@@ -74,48 +74,3 @@ describe('sortSessionsByPrId', () => {
   });
 });
 
-describe('findSortedSessionIndex', () => {
-  it('returns correct index for session with highest PR ID', () => {
-    const s = sessions('feature-a', 'feature-b', 'feature-c', 'feature-d');
-    const prMap = makePrMap([
-      ['feature-a', 5],
-      ['feature-c', 10],
-      ['feature-d', 15],
-    ]);
-    // Sorted: feature-d(15), feature-c(10), feature-a(5), feature-b(no PR)
-    expect(findSortedSessionIndex(s, prMap, 'feature-d')).toBe(0);
-    expect(findSortedSessionIndex(s, prMap, 'feature-c')).toBe(1);
-    expect(findSortedSessionIndex(s, prMap, 'feature-a')).toBe(2);
-    expect(findSortedSessionIndex(s, prMap, 'feature-b')).toBe(3);
-  });
-
-  it('returns -1 for non-existent session', () => {
-    expect(
-      findSortedSessionIndex(sessions('a'), new Map(), 'nonexistent')
-    ).toBe(-1);
-  });
-
-  it('reproduces the original bug scenario (orphan PR creation)', () => {
-    // Before fix: code used unsorted findIndex which would return 3
-    // After fix: sorted findIndex correctly returns 0
-    const s = sessions('feature-a', 'feature-b', 'feature-c', 'feature-d');
-    const prMap = makePrMap([
-      ['feature-a', 5],
-      ['feature-c', 10],
-      ['feature-d', 15], // newly created from orphan PR
-    ]);
-
-    // Bug: unsorted findIndex('feature-d') = 3
-    const buggyIndex = s.findIndex((x) => x.name === 'feature-d');
-    expect(buggyIndex).toBe(3);
-
-    // Fix: sorted findIndex('feature-d') = 0
-    const correctIndex = findSortedSessionIndex(s, prMap, 'feature-d');
-    expect(correctIndex).toBe(0);
-
-    // The buggy index would select feature-b in sorted view
-    const sorted = sortSessionsByPrId(s, prMap);
-    expect(sorted[buggyIndex]!.name).toBe('feature-b'); // wrong!
-    expect(sorted[correctIndex]!.name).toBe('feature-d'); // correct!
-  });
-});
