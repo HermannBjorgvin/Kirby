@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
@@ -32,7 +32,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   // Track last resolved index so we can fall back to a nearby position
   // when the selected item is removed (e.g. session deleted).
-  const lastResolvedIndexRef = useRef(0);
+  // Uses useState (not useRef) because refs cannot be accessed during render.
+  const [lastResolvedIndex, setLastResolvedIndex] = useState(0);
 
   const items = useMemo(
     () =>
@@ -69,11 +70,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   let resolvedIndex: number;
   if (selectedKey && totalItems > 0) {
     const idx = items.findIndex((item) => getItemKey(item) === selectedKey);
-    resolvedIndex = idx >= 0 ? idx : Math.min(lastResolvedIndexRef.current, totalItems - 1);
+    resolvedIndex = idx >= 0 ? idx : Math.min(lastResolvedIndex, totalItems - 1);
   } else {
-    resolvedIndex = totalItems > 0 ? 0 : 0;
+    resolvedIndex = 0;
   }
-  lastResolvedIndexRef.current = resolvedIndex;
+  if (resolvedIndex !== lastResolvedIndex) {
+    setLastResolvedIndex(resolvedIndex);
+  }
 
   const resolvedItem = items[resolvedIndex];
   const resolvedKey = resolvedItem ? getItemKey(resolvedItem) : null;
@@ -100,16 +103,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const moveSelection = useCallback(
     (offset: number) => {
-      // Use lastResolvedIndexRef for the current position so we don't
-      // need items/selectedKey in the dependency array.
-      const current = lastResolvedIndexRef.current;
-      const newIdx = Math.max(0, Math.min(current + offset, items.length - 1));
+      const newIdx = Math.max(0, Math.min(resolvedIndex + offset, items.length - 1));
       const item = items[newIdx];
       if (item) {
         setSelectedKey(getItemKey(item));
       }
     },
-    [items]
+    [items, resolvedIndex]
   );
 
   const value = useMemo<SidebarContextValue>(
