@@ -86,8 +86,10 @@ test.describe('Sidebar auto-hide', () => {
       terminal.getByText(branchName, { strict: false })
     ).not.toBeVisible({ timeout: 5_000 });
 
-    // 5. Tab back → sidebar reappears
-    terminal.write('\t');
+    // 5. Ctrl+Space exits the terminal pane → sidebar reappears
+    //    (Tab is forwarded into the PTY when focused on the agent, so the
+    //    exit key is \x00 — see useRawStdinForward.ts)
+    terminal.write('\x00');
     await expect(terminal.getByText(branchName, { strict: false })).toBeVisible(
       { timeout: 5_000 }
     );
