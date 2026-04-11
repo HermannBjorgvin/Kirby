@@ -136,15 +136,35 @@ export function MainTab({
     !settings.settingsOpen &&
     !pane.reviewConfirm;
 
+  // Auto-hide the sidebar while the user is driving an agent session or
+  // scanning a diff, so the content pane can reclaim the full width.
+  // undefined → default on; explicit false opts out.
+  const autoHideEnabled = configCtx.config.autoHideSidebar !== false;
+  const hideablePaneMode =
+    pane.paneMode === 'terminal' ||
+    pane.paneMode === 'diff' ||
+    pane.paneMode === 'diff-file';
+  const sidebarHidden =
+    autoHideEnabled && nav.focus === 'terminal' && hideablePaneMode;
+
+  const effectiveTerminal = sidebarHidden
+    ? {
+        paneCols: Math.max(20, layout.termCols - 2),
+        paneRows: terminal.paneRows,
+      }
+    : terminal;
+
   return (
     <>
-      <Sidebar
-        items={sidebar.items}
-        selectedIndex={sidebar.selectedIndex}
-        sidebarWidth={layout.sidebarWidth}
-        termRows={layout.termRows}
-        focused={sidebarFocused}
-      />
+      {!sidebarHidden && (
+        <Sidebar
+          items={sidebar.items}
+          selectedIndex={sidebar.selectedIndex}
+          sidebarWidth={layout.sidebarWidth}
+          termRows={layout.termRows}
+          focused={sidebarFocused}
+        />
+      )}
       {settings.settingsOpen && settings.controlsOpen && (
         <ControlsPanel
           paneRows={terminal.paneRows}
@@ -179,7 +199,7 @@ export function MainTab({
           {!pane.reviewConfirm && pane.paneMode === 'terminal' && (
             <TerminalPane
               sessionNameForTerminal={sidebar.sessionNameForTerminal}
-              terminal={terminal}
+              terminal={effectiveTerminal}
               reconnectKey={pane.reconnectKey}
               terminalFocused={terminalFocused}
               onFocusSidebar={() => nav.setFocus('sidebar')}
@@ -192,7 +212,7 @@ export function MainTab({
             (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') && (
               <DiffPane
                 pane={pane}
-                terminal={terminal}
+                terminal={effectiveTerminal}
                 selectedPr={sidebar.selectedPr}
                 terminalFocused={terminalFocused}
               />

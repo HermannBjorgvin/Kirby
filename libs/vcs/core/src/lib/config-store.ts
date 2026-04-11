@@ -45,6 +45,7 @@ interface RawGlobalConfig {
   vendorAuth?: Record<string, Record<string, string>>;
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
+  autoHideSidebar?: boolean;
   mergePollInterval?: number;
   editor?: string;
   worktreePath?: string;
@@ -135,6 +136,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     vendorProject,
     autoDeleteOnMerge: global.autoDeleteOnMerge,
     autoRebase: global.autoRebase,
+    autoHideSidebar: global.autoHideSidebar,
     mergePollInterval: global.mergePollInterval,
     editor: project.editor ?? global.editor,
     worktreePath: global.worktreePath,
