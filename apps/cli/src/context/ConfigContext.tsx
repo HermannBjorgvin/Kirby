@@ -25,7 +25,11 @@ function coerceConfigValue(
   value: string | undefined
 ): string | boolean | number | undefined {
   if (value === undefined) return undefined;
-  if (key === 'autoDeleteOnMerge' || key === 'autoRebase') {
+  if (
+    key === 'autoDeleteOnMerge' ||
+    key === 'autoRebase' ||
+    key === 'autoHideSidebar'
+  ) {
     return value === 'true';
   }
   if (key === 'mergePollInterval' || key === 'prPollInterval') {

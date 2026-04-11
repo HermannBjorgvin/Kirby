@@ -96,6 +96,7 @@ export interface AppConfig {
   vendorProject: Record<string, string>;
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
+  autoHideSidebar?: boolean;
   mergePollInterval?: number; // ms, default 3600000, min 300000
   editor?: string;
   worktreePath?: string;

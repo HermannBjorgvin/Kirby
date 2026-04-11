@@ -29,6 +29,11 @@ export const BOOL_PRESETS: { name: string; value: string | null }[] = [
   { name: 'On', value: 'true' },
 ];
 
+export const BOOL_PRESETS_ON_FIRST: { name: string; value: string | null }[] = [
+  { name: 'On', value: 'true' },
+  { name: 'Off', value: 'false' },
+];
+
 export const EDITOR_PRESETS: { name: string; value: string | null }[] = [
   { name: 'VS Code', value: 'code' },
   { name: 'VS Code Insiders', value: 'code-insiders' },
@@ -88,6 +93,14 @@ export function buildSettingsFields(
       key: 'worktreePath',
       description:
         'Template for worktree placement ({session} = sanitized branch). Restart required.',
+      configBag: 'global',
+    },
+    {
+      label: 'Auto Hide Sidebar',
+      key: 'autoHideSidebar',
+      description:
+        'Hide the sidebar when focused on a terminal session or diff',
+      presets: BOOL_PRESETS_ON_FIRST,
       configBag: 'global',
     },
   ];
