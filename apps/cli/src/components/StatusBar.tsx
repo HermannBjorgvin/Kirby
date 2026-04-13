@@ -1,61 +1,33 @@
 import { Text } from 'ink';
+import { Alert, Spinner } from '@inkjs/ui';
 import { useAppState } from '../context/AppStateContext.js';
-import {
-  useSessionActions,
-  useSessionData,
-} from '../context/SessionContext.js';
+import { useSessionData } from '../context/SessionContext.js';
 import { useConfig } from '../context/ConfigContext.js';
 
+// Slim bottom status bar — one row.
+//
+// Only shows persistent/ongoing state. Transient notifications (the old
+// `statusMessage` flow) now render as toasts in the top-right — see
+// ToastContainer + ToastContext. Delete confirm UI lives in
+// DeleteConfirmModal. Branch picker filter lives in its own pane.
+//
+// Priority (highest first):
+//   1. prError        → persistent, red, until next successful poll
+//   2. terminal focus → dim hint
+//   3. asyncOps       → live spinner
+//   4. VCS setup hint → dim hint when not configured
 export function StatusBar() {
-  const { nav, branchPicker, deleteConfirm, asyncOps } = useAppState();
-  const { statusMessage } = useSessionActions();
+  const { nav, asyncOps } = useAppState();
   const { prError } = useSessionData();
   const { vcsConfigured } = useConfig();
 
-  if (deleteConfirm.confirmDelete) {
-    return (
-      <Text>
-        <Text color="red">
-          Warning: {deleteConfirm.confirmDelete.reason}. Type{' '}
-        </Text>
-        <Text bold color="yellow">
-          {deleteConfirm.confirmDelete.branch}
-        </Text>
-        <Text color="red"> to confirm: </Text>
-        <Text color="cyan">{deleteConfirm.confirmInput}</Text>
-        <Text dimColor>_</Text>
-        <Text dimColor> · Esc cancel</Text>
-      </Text>
-    );
-  }
-  if (branchPicker.creating) {
-    return (
-      <Text>
-        Branch: <Text color="cyan">{branchPicker.branchFilter}</Text>
-        <Text dimColor>_</Text>
-        <Text dimColor> · Enter select · Esc cancel</Text>
-      </Text>
-    );
-  }
-  if (statusMessage) {
-    return <Text color="yellow">{statusMessage}</Text>;
-  }
-  if (prError) {
-    return <Text color="red">PR error: {prError}</Text>;
-  }
-  if (nav.focus === 'terminal') {
+  if (prError) return <Alert variant="error">{`PR error: ${prError}`}</Alert>;
+  if (nav.focus === 'terminal')
     return <Text dimColor>ctrl+space to exit terminal</Text>;
+
+  if (asyncOps.inFlight.size > 0) {
+    return <Spinner label={[...asyncOps.inFlight].join(', ')} />;
   }
 
-  const ops =
-    asyncOps.inFlight.size > 0
-      ? ` · ${[...asyncOps.inFlight].join(', ')}...`
-      : '';
-
-  return (
-    <Text dimColor>
-      {!vcsConfigured ? ' · (s to configure VCS)' : ''}
-      {ops ? <Text color="yellow">{ops}</Text> : null}
-    </Text>
-  );
+  return !vcsConfigured ? <Text dimColor>(s to configure VCS)</Text> : null;
 }

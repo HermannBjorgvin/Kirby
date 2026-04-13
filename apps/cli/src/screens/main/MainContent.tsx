@@ -23,7 +23,7 @@ interface MainContentProps {
 // mutually-exclusive sub-panes based on modal and pane-mode state, in
 // the same precedence order MainTab used to inline. Extracted from
 // MainTab so MainTab can focus on the layout shell (Sidebar + Pane +
-// DeleteConfirmModal) without drowning in conditional JSX.
+// DeleteConfirmModal overlay) without drowning in conditional JSX.
 //
 // Precedence (highest first):
 //   1. Controls sub-screen  → ControlsPanel
