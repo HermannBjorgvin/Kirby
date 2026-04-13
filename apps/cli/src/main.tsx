@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, Text, Box, useApp } from 'ink';
+import { render, Box, useApp } from 'ink';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
@@ -45,19 +45,15 @@ function App({ forceSetup }: { forceSetup: boolean }) {
 
   return (
     <Box flexDirection="column" height={termRows}>
-      <Box paddingX={1} justifyContent="space-between" marginBottom={1}>
-        <Box gap={2}>
-          <Text bold>😸 Kirby</Text>
-          <StatusBar />
-        </Box>
-        <Text dimColor>{process.cwd()}</Text>
-      </Box>
       <Box flexGrow={1}>
         <MainTab
           terminalFocused={terminalFocused}
           showOnboarding={showOnboarding}
           exit={exit}
         />
+      </Box>
+      <Box flexShrink={0} paddingX={1}>
+        <StatusBar />
       </Box>
     </Box>
   );

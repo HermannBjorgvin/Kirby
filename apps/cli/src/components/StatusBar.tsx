@@ -7,7 +7,7 @@ import {
 import { useConfig } from '../context/ConfigContext.js';
 
 export function StatusBar() {
-  const { branchPicker, deleteConfirm, asyncOps } = useAppState();
+  const { nav, branchPicker, deleteConfirm, asyncOps } = useAppState();
   const { statusMessage } = useSessionActions();
   const { prError } = useSessionData();
   const { vcsConfigured } = useConfig();
@@ -42,6 +42,9 @@ export function StatusBar() {
   }
   if (prError) {
     return <Text color="red">PR error: {prError}</Text>;
+  }
+  if (nav.focus === 'terminal') {
+    return <Text dimColor>ctrl+space to exit terminal</Text>;
   }
 
   const ops =

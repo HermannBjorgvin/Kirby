@@ -1,12 +1,8 @@
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
-import { BranchPicker } from '../sessions/BranchPicker.js';
-import { SettingsPanel } from '../../components/SettingsPanel.js';
-import { ControlsPanel } from '../../components/ControlsPanel.js';
-import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';
-import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
+import { Pane } from '../../components/Pane.js';
 import { useAppState } from '../../context/AppStateContext.js';
-import { useLayout } from '../../context/LayoutContext.js';
+import { useLayout, LAYOUT } from '../../context/LayoutContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
@@ -22,8 +18,8 @@ import {
   handleConfirmInput,
   handleSidebarInput,
 } from './main-input.js';
-import { TerminalPane } from './TerminalPane.js';
-import { DiffPane } from './DiffPane.js';
+import { MainContent } from './MainContent.js';
+import { getMainFocused, getSidebarFocused, getPaneTitle } from './focus.js';
 
 interface MainTabProps {
   terminalFocused: boolean;
@@ -130,15 +126,37 @@ export function MainTab({
   });
 
   // ── Render ─────────────────────────────────────────────────────
-  const sidebarFocused =
-    nav.focus === 'sidebar' &&
-    !branchPicker.creating &&
-    !settings.settingsOpen &&
-    !pane.reviewConfirm;
+  // Single source of truth for which pane shows the active border color.
+  // Both getMainFocused and getSidebarFocused are pure helpers (see
+  // ./focus.ts) that stay aligned with the actual input sink — crucially,
+  // diff modes count as main-focused because DiffPane.useInput is the
+  // real input handler there, not the sidebar.
+  const focusState = {
+    navFocus: nav.focus,
+    paneMode: pane.paneMode,
+    branchPickerCreating: branchPicker.creating,
+    settingsOpen: settings.settingsOpen,
+    reviewConfirmActive: pane.reviewConfirm !== null,
+    deleteConfirmActive: deleteConfirm.confirmDelete !== null,
+  };
+  const mainFocused = getMainFocused(focusState);
+  const sidebarFocused = getSidebarFocused(focusState);
+
+  const paneTitle = getPaneTitle({
+    paneMode: pane.paneMode,
+    branchPickerCreating: branchPicker.creating,
+    settingsOpen: settings.settingsOpen,
+    controlsOpen: settings.controlsOpen,
+    reviewConfirmActive: pane.reviewConfirm !== null,
+    aiCommand: configCtx.config.aiCommand,
+    prTitle: sidebar.selectedPr?.title,
+    sessionName: sidebar.sessionNameForTerminal,
+  });
 
   // Auto-hide the sidebar while the user is driving an agent session or
   // scanning a diff, so the content pane can reclaim the full width.
-  // undefined → default on; explicit false opts out.
+  // undefined → default on; explicit false opts out. (Feature from
+  // commit 06bd627 — preserved verbatim except for constant reuse.)
   const autoHideEnabled = configCtx.config.autoHideSidebar !== false;
   const hideablePaneMode =
     pane.paneMode === 'terminal' ||
@@ -149,7 +167,7 @@ export function MainTab({
 
   const effectiveTerminal = sidebarHidden
     ? {
-        paneCols: Math.max(20, layout.termCols - 2),
+        paneCols: Math.max(20, layout.termCols - LAYOUT.PANE_BORDER_COLS),
         paneRows: terminal.paneRows,
       }
     : terminal;
@@ -165,60 +183,16 @@ export function MainTab({
           focused={sidebarFocused}
         />
       )}
-      {settings.settingsOpen && settings.controlsOpen && (
-        <ControlsPanel
-          paneRows={terminal.paneRows}
-          selectedIndex={settings.controlsSelectedIndex}
-          rebindActionId={settings.controlsRebindActionId}
+      <Pane focused={mainFocused} title={paneTitle} flexGrow={1}>
+        <MainContent
+          pane={pane}
+          terminal={effectiveTerminal}
+          terminalFocused={terminalFocused}
+          sessionNameForTerminal={sidebar.sessionNameForTerminal}
+          selectedPr={sidebar.selectedPr}
+          onFocusSidebar={() => nav.setFocus('sidebar')}
         />
-      )}
-      {settings.settingsOpen && !settings.controlsOpen && (
-        <SettingsPanel
-          fieldIndex={settings.settingsFieldIndex}
-          editingField={settings.editingField}
-          editBuffer={settings.editBuffer}
-        />
-      )}
-      {!settings.settingsOpen && branchPicker.creating && (
-        <BranchPicker
-          filter={branchPicker.branchFilter}
-          branches={branchPicker.branches}
-          selectedIndex={branchPicker.branchIndex}
-          paneRows={terminal.paneRows}
-        />
-      )}
-      {!settings.settingsOpen && !branchPicker.creating && (
-        <>
-          {pane.reviewConfirm && (
-            <ReviewConfirmPane
-              pr={pane.reviewConfirm.pr}
-              selectedOption={pane.reviewConfirm.selectedOption}
-              instruction={pane.reviewInstruction}
-            />
-          )}
-          {!pane.reviewConfirm && pane.paneMode === 'terminal' && (
-            <TerminalPane
-              sessionNameForTerminal={sidebar.sessionNameForTerminal}
-              terminal={effectiveTerminal}
-              reconnectKey={pane.reconnectKey}
-              terminalFocused={terminalFocused}
-              onFocusSidebar={() => nav.setFocus('sidebar')}
-            />
-          )}
-          {!pane.reviewConfirm && pane.paneMode === 'pr-detail' && (
-            <ReviewDetailPane pr={sidebar.selectedPr} />
-          )}
-          {!pane.reviewConfirm &&
-            (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') && (
-              <DiffPane
-                pane={pane}
-                terminal={effectiveTerminal}
-                selectedPr={sidebar.selectedPr}
-                terminalFocused={terminalFocused}
-              />
-            )}
-        </>
-      )}
+      </Pane>
     </>
   );
 }
