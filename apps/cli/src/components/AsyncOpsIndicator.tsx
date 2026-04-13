@@ -1,4 +1,4 @@
-import { Box } from 'ink';
+import { Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import { useAppState } from '../context/AppStateContext.js';
 import { useLayout } from '../context/LayoutContext.js';
@@ -49,11 +49,16 @@ export function AsyncOpsIndicator() {
         marginTop={TOP_ROW}
         marginRight={EDGE_GUTTER}
         width={INDICATOR_WIDTH}
-        // Right-align within the reserved column so the spinner hugs
-        // the right edge even when the label is short.
-        alignItems="flex-end"
+        // Row flex: main-axis is horizontal, so justifyContent pushes
+        // the label+spinner pair to the right edge of the 40-col
+        // reserved column. Inside the row, label renders first and
+        // the spinner second — so the animated character sits on the
+        // RIGHT of the text.
+        justifyContent="flex-end"
+        gap={1}
       >
-        <Spinner label={label} />
+        <Text>{label}</Text>
+        <Spinner />
       </Box>
     </Box>
   );
