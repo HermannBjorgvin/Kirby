@@ -8,7 +8,9 @@ export type OperationName =
   | 'delete'
   | 'check-delete'
   | 'start-session'
-  | 'open-editor';
+  | 'open-editor'
+  | 'refresh-pr'
+  | 'post-comment';
 
 export function useAsyncOperation() {
   const [inFlight, setInFlight] = useState<Set<OperationName>>(new Set());

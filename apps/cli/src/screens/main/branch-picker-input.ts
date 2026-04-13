@@ -39,7 +39,8 @@ export function handleBranchPickerInput(
 
   if (action === 'branch-picker.fetch') {
     ctx.asyncOps.run('fetch-branches', async () => {
-      ctx.sessions.flashStatus('Fetching remotes...');
+      // No "Fetching remotes…" flash — the 'fetch-branches' spinner
+      // (label: "Fetching branches") already shows we're working.
       await fetchRemote();
       const allBranches = await listAllBranches();
       ctx.branchPicker.setBranches(allBranches);

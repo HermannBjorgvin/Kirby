@@ -2,6 +2,23 @@ import { Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import { useAppState } from '../context/AppStateContext.js';
 import { useLayout } from '../context/LayoutContext.js';
+import type { OperationName } from '../hooks/useAsyncOperation.js';
+
+// Human-readable labels for each async operation. Falls back to the
+// raw op name if an entry is missing — keeps us from crashing on a
+// new op that forgot its label.
+const OP_LABELS: Partial<Record<OperationName, string>> = {
+  sync: 'Syncing with origin',
+  rebase: 'Rebasing',
+  'fetch-branches': 'Fetching branches',
+  'create-worktree': 'Creating session',
+  delete: 'Deleting session',
+  'check-delete': 'Checking session',
+  'start-session': 'Starting agent',
+  'open-editor': 'Opening editor',
+  'refresh-pr': 'Refreshing PRs',
+  'post-comment': 'Posting comment',
+};
 
 // Width reservation for the spinner + label. Roughly enough for the
 // longest op name list we expect (e.g. "sync, rebase, fetch-branches").
@@ -32,7 +49,9 @@ export function AsyncOpsIndicator() {
 
   if (asyncOps.inFlight.size === 0) return null;
 
-  const label = [...asyncOps.inFlight].join(', ');
+  const label = [...asyncOps.inFlight]
+    .map((op) => OP_LABELS[op] ?? op)
+    .join(', ');
 
   return (
     <Box

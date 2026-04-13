@@ -57,8 +57,8 @@ export interface SessionActionsContextValue {
   flashStatus: (msg: string, variant?: ToastVariant) => void;
   refreshSessions: () => Promise<AgentSession[]>;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
-  refreshPr: () => void;
-  triggerSync: () => void;
+  refreshPr: () => Promise<void>;
+  triggerSync: () => Promise<void>;
 }
 
 const SessionDataContext = createContext<SessionDataContextValue | null>(null);
