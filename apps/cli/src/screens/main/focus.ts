@@ -59,6 +59,11 @@ export interface PaneTitleState {
   aiCommand: string | undefined;
   prTitle: string | undefined;
   sessionName: string | null;
+  /**
+   * When true AND we're in terminal mode, the title appends a
+   * `· ctrl+space to exit` hint so the user knows how to escape.
+   */
+  terminalFocused: boolean;
 }
 
 /**
@@ -67,8 +72,9 @@ export interface PaneTitleState {
  *
  * In terminal mode the title becomes:
  *   🤖 Claude — Fix navigation bug   (PR title available)
- *   🤖 Claude — feature-foo          (no PR, falls back to session/branch name)
+ *   🤖 Claude — feature-foo          (no PR, session/branch name)
  *   🤖 Claude                        (no session selected)
+ *   …with ` · ctrl+space to exit` appended when terminalFocused.
  */
 export function getPaneTitle(s: PaneTitleState): string {
   if (s.controlsOpen) return 'Controls';
@@ -81,6 +87,8 @@ export function getPaneTitle(s: PaneTitleState): string {
 
   const agent = resolvePresetName(s.aiCommand, AI_PRESETS, 'Agent');
   const label = s.prTitle || s.sessionName;
-  if (label) return `\u{1F916} ${agent} \u2014 ${label}`;
-  return `\u{1F916} ${agent}`;
+  const base = label
+    ? `\u{1F916} ${agent} \u2014 ${label}`
+    : `\u{1F916} ${agent}`;
+  return s.terminalFocused ? `${base} (ctrl+space to exit)` : base;
 }

@@ -151,6 +151,7 @@ export function MainTab({
     aiCommand: configCtx.config.aiCommand,
     prTitle: sidebar.selectedPr?.title,
     sessionName: sidebar.sessionNameForTerminal,
+    terminalFocused,
   });
 
   // Auto-hide the sidebar while the user is driving an agent session or

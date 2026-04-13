@@ -1,33 +1,22 @@
 import { Text } from 'ink';
-import { Alert, Spinner } from '@inkjs/ui';
-import { useAppState } from '../context/AppStateContext.js';
-import { useSessionData } from '../context/SessionContext.js';
 import { useConfig } from '../context/ConfigContext.js';
 
-// Slim bottom status bar — one row.
+// Bottom bar. After M7 this is the quietest surface in the app —
+// everything transient moved elsewhere:
 //
-// Only shows persistent/ongoing state. Transient notifications (the old
-// `statusMessage` flow) now render as toasts in the top-right — see
-// ToastContainer + ToastContext. Delete confirm UI lives in
-// DeleteConfirmModal. Branch picker filter lives in its own pane.
+//   - PR fetch errors              → toast (SessionContext useEffect)
+//   - statusMessage (transient)    → toast (flashStatus → ToastContext)
+//   - asyncOps.inFlight spinner    → AsyncOpsIndicator overlay (top-right)
+//   - ctrl+space-to-exit hint      → pane title (getPaneTitle)
+//   - delete confirmation          → DeleteConfirmModal
+//   - branch picker filter echo    → BranchPicker pane itself
 //
-// Priority (highest first):
-//   1. prError        → persistent, red, until next successful poll
-//   2. terminal focus → dim hint
-//   3. asyncOps       → live spinner
-//   4. VCS setup hint → dim hint when not configured
+// Only the VCS setup hint remains here. Renders null once VCS is
+// configured, so the bottom row is completely empty in the steady
+// state. If we never find another use for this strip, a follow-up can
+// delete StatusBar entirely and surface the hint as an onboarding toast.
 export function StatusBar() {
-  const { nav, asyncOps } = useAppState();
-  const { prError } = useSessionData();
   const { vcsConfigured } = useConfig();
-
-  if (prError) return <Alert variant="error">{`PR error: ${prError}`}</Alert>;
-  if (nav.focus === 'terminal')
-    return <Text dimColor>ctrl+space to exit terminal</Text>;
-
-  if (asyncOps.inFlight.size > 0) {
-    return <Spinner label={[...asyncOps.inFlight].join(', ')} />;
-  }
-
-  return !vcsConfigured ? <Text dimColor>(s to configure VCS)</Text> : null;
+  if (vcsConfigured) return null;
+  return <Text dimColor>(s to configure VCS)</Text>;
 }

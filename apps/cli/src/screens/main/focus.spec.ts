@@ -25,6 +25,7 @@ const baseTitle: PaneTitleState = {
   aiCommand: undefined,
   prTitle: undefined,
   sessionName: null,
+  terminalFocused: false,
 };
 
 describe('getMainFocused', () => {
@@ -142,6 +143,32 @@ describe('getPaneTitle', () => {
         sessionName: 'x',
       })
     ).toBe('\u{1F916} Claude \u2014 x');
+  });
+
+  it('appends the ctrl+space hint when the terminal is focused', () => {
+    expect(
+      getPaneTitle({
+        ...baseTitle,
+        sessionName: 'feature-foo',
+        terminalFocused: true,
+      })
+    ).toBe('\u{1F916} Claude \u2014 feature-foo (ctrl+space to exit)');
+  });
+
+  it('appends the hint even without a session label', () => {
+    expect(getPaneTitle({ ...baseTitle, terminalFocused: true })).toBe(
+      '\u{1F916} Claude (ctrl+space to exit)'
+    );
+  });
+
+  it('does not append the hint outside terminal mode', () => {
+    expect(
+      getPaneTitle({
+        ...baseTitle,
+        paneMode: 'diff',
+        terminalFocused: true,
+      })
+    ).toBe('Files Changed');
   });
 
   // ── Non-terminal modes (unchanged from before) ──────────────────

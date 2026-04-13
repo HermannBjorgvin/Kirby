@@ -6,6 +6,7 @@ import { githubProvider } from '@kirby/vcs-github';
 import { StatusBar } from './components/StatusBar.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { ToastContainer } from './components/ToastContainer.js';
+import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
@@ -103,6 +104,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
           confirmInput={deleteConfirm.confirmInput}
         />
       )}
+      <AsyncOpsIndicator />
       <ToastContainer />
     </Box>
   );

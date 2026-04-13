@@ -12,9 +12,13 @@ import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
 // so downstream consumers don't need to do any more math.
 const SIDEBAR_WIDTH = 48;
 const BOTTOM_STATUS_ROWS = 1; // slim status row at the bottom of the screen
-const PANE_BORDER_ROWS = 2; // round-border top + bottom
-const PANE_TITLE_ROWS = 1; // first-row bold title inside the bordered Box
-const PANE_BORDER_COLS = 2; // round-border left + right
+const PANE_BORDER_ROWS = 2; // top + bottom border
+// Titles live INSIDE the top border line (via @mishieck/ink-titled-box),
+// so they don't consume a dedicated content row. Kept as a named
+// constant for clarity — flip to >0 if we ever switch back to an
+// above-content title.
+const PANE_TITLE_ROWS = 0;
+const PANE_BORDER_COLS = 2; // left + right border
 
 export const LAYOUT = {
   SIDEBAR_WIDTH,
