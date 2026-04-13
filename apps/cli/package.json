@@ -111,6 +111,7 @@
     }
   },
   "dependencies": {
+    "@inkjs/ui": "^2.0.0",
     "@kirby/logger": "*",
     "@kirby/terminal": "*",
     "@kirby/vcs-azure-devops": "*",
