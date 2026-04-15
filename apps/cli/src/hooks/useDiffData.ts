@@ -3,6 +3,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DiffFile } from '../types.js';
 import { resolveRef, fetchDiffText } from '../utils/diff-fetcher.js';
+import { buildNonInteractiveGitEnv } from '../utils/non-interactive-git.js';
 
 const execFile = promisify(execFileCb);
 
@@ -32,11 +33,13 @@ async function fetchAllFiles(
   // that already exist locally, e.g. via worktrees)
   await Promise.all([
     execFile('git', ['fetch', 'origin', sourceBranch], {
+      env: buildNonInteractiveGitEnv(),
       timeout: 30_000,
     }).catch(() => {
       /* branch may already exist locally */
     }),
     execFile('git', ['fetch', 'origin', targetBranch], {
+      env: buildNonInteractiveGitEnv(),
       timeout: 30_000,
     }).catch(() => {
       /* branch may already exist locally */

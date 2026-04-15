@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { log } from '@kirby/logger';
-import { exec } from './exec.js';
+import { exec, execNoPrompt } from './exec.js';
 
 // ── WorktreeResolver ─────────────────────────────────────────────
 
@@ -252,7 +252,7 @@ export async function listBranches(): Promise<string[]> {
 /** Fetch from all remotes and prune stale tracking branches */
 export async function fetchRemote(): Promise<boolean> {
   try {
-    await exec('git fetch --all --prune', { encoding: 'utf8' });
+    await execNoPrompt('git fetch --all --prune', { encoding: 'utf8' });
     return true;
   } catch (e) {
     log('error', 'fetchRemote', 'git fetch failed', e);
@@ -336,7 +336,7 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
 export async function fastForwardMainBranch(): Promise<boolean> {
   const main = await getMainBranch();
   try {
-    await exec(`git fetch origin ${main}`, { encoding: 'utf8' });
+    await execNoPrompt(`git fetch origin ${main}`, { encoding: 'utf8' });
   } catch (e) {
     log('error', 'fastForwardMainBranch', `git fetch origin ${main} failed`, e);
     return false;
@@ -406,7 +406,7 @@ export async function rebaseOntoMaster(
 ): Promise<'success' | 'conflict' | 'error'> {
   const main = await getMainBranch();
   try {
-    await exec(`git -C "${worktreePath}" fetch origin ${main}`, {
+    await execNoPrompt(`git -C "${worktreePath}" fetch origin ${main}`, {
       encoding: 'utf8',
     });
   } catch (e) {

@@ -24,15 +24,17 @@ import { existsSync } from 'node:fs';
 
 vi.mock('./exec.js', () => ({
   exec: vi.fn(),
+  execNoPrompt: vi.fn(),
 }));
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
 }));
 
-import { exec } from './exec.js';
+import { exec, execNoPrompt } from './exec.js';
 
 const mockExec = vi.mocked(exec);
+const mockExecNoPrompt = vi.mocked(execNoPrompt);
 const mockExistsSync = vi.mocked(existsSync);
 
 function resolve(stdout = '') {
@@ -44,6 +46,14 @@ beforeEach(() => {
   resetMainBranchCache();
   resetWorktreeResolver();
 });
+
+function expectNonInteractiveGitOptions(options: unknown) {
+  expect(options).toEqual(
+    expect.objectContaining({
+      encoding: 'utf8',
+    })
+  );
+}
 
 describe('listBranches', () => {
   it('should parse git branch output into array', async () => {
@@ -408,36 +418,38 @@ describe('rebaseOntoMaster', () => {
   it('should return success when fetch and rebase both succeed', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve()); // rebase
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('success');
-    expect(mockExec).toHaveBeenCalledTimes(3);
-    expect(mockExec).toHaveBeenCalledWith(
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExecNoPrompt).toHaveBeenCalledWith(
       'git -C "/path/to/worktree" fetch origin master',
-      { encoding: 'utf8' }
+      expect.any(Object)
     );
     expect(mockExec).toHaveBeenCalledWith(
       'git -C "/path/to/worktree" rebase origin/master',
       { encoding: 'utf8' }
     );
+    expectNonInteractiveGitOptions(mockExecNoPrompt.mock.calls[0]?.[1]);
   });
 
   it('should return error when fetch fails', async () => {
     mockExec
-      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockRejectedValueOnce(new Error('fetch failed'));
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')); // getMainBranch
+    mockExecNoPrompt.mockRejectedValueOnce(new Error('fetch failed'));
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('error');
-    expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
+    expect(mockExec).toHaveBeenCalledTimes(1); // getMainBranch
+    expect(mockExecNoPrompt).toHaveBeenCalledTimes(1); // fetch
   });
 
   it('should return conflict and abort when rebase fails', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockResolvedValueOnce(resolve()); // abort succeeds
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch succeeds
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(4);
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).toHaveBeenLastCalledWith(
       'git -C "/path/to/worktree" rebase --abort',
       { encoding: 'utf8' }
@@ -447,25 +459,27 @@ describe('rebaseOntoMaster', () => {
   it('should return conflict even when abort also fails', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch succeeds
       .mockRejectedValueOnce(new Error('conflict')) // rebase fails
       .mockRejectedValueOnce(new Error('abort failed')); // abort fails
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch succeeds
     expect(await rebaseOntoMaster('/path/to/worktree')).toBe('conflict');
-    expect(mockExec).toHaveBeenCalledTimes(4);
+    expect(mockExec).toHaveBeenCalledTimes(3);
   });
 });
 
 describe('fetchRemote', () => {
   it('should return true on success', async () => {
-    mockExec.mockResolvedValueOnce(resolve());
+    mockExecNoPrompt.mockResolvedValueOnce(resolve());
     expect(await fetchRemote()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith('git fetch --all --prune', {
-      encoding: 'utf8',
-    });
+    expect(mockExecNoPrompt).toHaveBeenCalledWith(
+      'git fetch --all --prune',
+      expect.any(Object)
+    );
+    expectNonInteractiveGitOptions(mockExecNoPrompt.mock.calls[0]?.[1]);
   });
 
   it('should return false when git fails', async () => {
-    mockExec.mockRejectedValueOnce(new Error('network error'));
+    mockExecNoPrompt.mockRejectedValueOnce(new Error('network error'));
     expect(await fetchRemote()).toBe(false);
   });
 });
@@ -543,13 +557,14 @@ describe('fastForwardMainBranch', () => {
   it('should use branch -f when HEAD is not on main branch', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // branch -f
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch
     expect(await fastForwardMainBranch()).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith('git fetch origin master', {
-      encoding: 'utf8',
-    });
+    expect(mockExecNoPrompt).toHaveBeenCalledWith(
+      'git fetch origin master',
+      expect.any(Object)
+    );
     expect(mockExec).toHaveBeenCalledWith('git symbolic-ref --short HEAD', {
       encoding: 'utf8',
     });
@@ -557,14 +572,15 @@ describe('fastForwardMainBranch', () => {
       'git branch -f master origin/master',
       { encoding: 'utf8' }
     );
+    expectNonInteractiveGitOptions(mockExecNoPrompt.mock.calls[0]?.[1]);
   });
 
   it('should use merge --ff-only when HEAD IS on main branch', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('master\n')) // symbolic-ref HEAD
       .mockResolvedValueOnce(resolve()); // merge --ff-only
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch
     expect(await fastForwardMainBranch()).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git merge --ff-only origin/master', {
       encoding: 'utf8',
@@ -573,26 +589,27 @@ describe('fastForwardMainBranch', () => {
 
   it('should return false when fetch fails', async () => {
     mockExec
-      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockRejectedValueOnce(new Error('fetch failed'));
+      .mockResolvedValueOnce(resolve('refs/remotes/origin/master')); // getMainBranch
+    mockExecNoPrompt.mockRejectedValueOnce(new Error('fetch failed'));
     expect(await fastForwardMainBranch()).toBe(false);
-    expect(mockExec).toHaveBeenCalledTimes(2); // getMainBranch + fetch
+    expect(mockExec).toHaveBeenCalledTimes(1); // getMainBranch
+    expect(mockExecNoPrompt).toHaveBeenCalledTimes(1); // fetch
   });
 
   it('should return false when branch update fails', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch
       .mockResolvedValueOnce(resolve('feature/foo\n')) // symbolic-ref HEAD
       .mockRejectedValueOnce(new Error('branch update failed'));
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch
     expect(await fastForwardMainBranch()).toBe(false);
   });
 
   it('should return false when HEAD is detached and branch -f fails', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
-      .mockResolvedValueOnce(resolve()) // fetch
       .mockRejectedValueOnce(new Error('not a symbolic ref')); // symbolic-ref HEAD fails (detached)
+    mockExecNoPrompt.mockResolvedValueOnce(resolve()); // fetch
     expect(await fastForwardMainBranch()).toBe(false);
   });
 });

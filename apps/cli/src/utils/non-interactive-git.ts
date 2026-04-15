@@ -1,11 +1,4 @@
-import { exec as execCb, type ExecOptions } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const execPromise = promisify(execCb);
-
-export const exec = execPromise;
-
-function withNonInteractiveGitEnv(
+export function buildNonInteractiveGitEnv(
   env: NodeJS.ProcessEnv = {}
 ): NodeJS.ProcessEnv {
   const mergedEnv = { ...process.env, ...env };
@@ -20,11 +13,4 @@ function withNonInteractiveGitEnv(
     GIT_TERMINAL_PROMPT: '0',
     SSH_ASKPASS_REQUIRE: 'never',
   };
-}
-
-export function execNoPrompt(command: string, options: ExecOptions = {}) {
-  return execPromise(command, {
-    ...options,
-    env: withNonInteractiveGitEnv(options.env),
-  });
 }
