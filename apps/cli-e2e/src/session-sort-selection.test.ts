@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO } from './setup/constants.js';
+import { sidebarLocator } from './setup/sidebar.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
@@ -51,36 +52,23 @@ if (hasGhToken) {
 async function createSessionViaBranchPicker(
   terminal: Terminal,
   branchFilter: string,
-  waitFor: RegExp
+  waitForTitle: string
 ) {
-  // Open branch picker
   terminal.write('c');
   await expect(
     terminal.getByText('Branch Picker', { strict: false })
   ).toBeVisible();
 
-  // Type the filter text
   terminal.write(branchFilter);
 
-  // Wait for the filter to be reflected in the branch picker title.
-  // The title renders as "Branch Picker / {filter}" when a filter is active.
-  // This is the only reliable signal that React has committed the filter state,
-  // so the filtered branch list is correct when Enter is pressed.
   await expect(
     terminal.getByText(`/ ${branchFilter}`, { strict: false })
   ).toBeVisible();
 
-  // Press Enter to create
   terminal.write('\r');
 
-  // Wait for the session's row to appear in the sidebar with ANY running/
-  // selected-state icon preceding the title. The caller passes a regex like
-  // /[◉◎●○].*Title/ — we don't pin a specific icon because:
-  //   - `◉` / `◎` render when the row is selected (fresh sessions auto-select)
-  //   - `●` / `○` render once the next session is created and steals focus
-  //   - The PTY may or may not be running yet (running vs stopped).
-  // All four icons are valid "session exists" signals.
-  await expect(terminal.getByText(waitFor, { strict: false })).toBeVisible({
+  // Wait for the session row in any icon state (selected or not, running or not).
+  await expect(sidebarLocator(terminal, waitForTitle).any()).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -123,27 +111,16 @@ test.when(
     //    Buggy findIndex('undo') = 2 (raw) → sorted[2] = color (WRONG)
     //    Fixed findSortedIndex('undo') = 1 → sorted[1] = undo (CORRECT)
 
-    // Each fixture branch already exists in the sidebar as a REVIEW PR
-    // (category "Waiting for Author" / "Approved by You"). When a session
-    // is created for that branch, `buildSidebarItems` keeps the row in
-    // its review section and the icon flips from `○` (review, no session)
-    // to one of ◉ / ◎ / ● depending on selection + running state.
-    //
-    // Icon map: ◉ selected+running, ◎ selected+stopped,
-    //           ● not-selected+running, ○ not-selected+stopped.
-    // The helper accepts any of the four — selection shifts as later
-    // sessions are created, and exact selection state is asserted
-    // separately below in steps 5 and 6.
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-color',
-      /[◉◎●○].*Add color support/g
+      'Add color support'
     );
 
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-ai-solver',
-      /[◉◎●○].*Add AI solver/g
+      'Add AI solver'
     );
 
     // 3. Wait for PR data to load (PR badges should appear)
@@ -156,20 +133,17 @@ test.when(
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-undo',
-      /[◉◎●○].*Add undo feature/g
+      'Add undo feature'
     );
 
-    // 5. The selection indicator (◉ running, ◎ stopped) should be on the
-    //    newly created session.
+    // 5. The selection indicator should be on the newly created session.
     await expect(
-      terminal.getByText(/[◉◎].*Add undo feature/g, { strict: false })
+      sidebarLocator(terminal, 'Add undo feature').selected()
     ).toBeVisible();
 
-    // 6. Confirm the indicator is NOT on the wrong session (color-support).
-    //    Color is de-selected now — should show the un-selected variants
-    //    (● running / ○ stopped), not [◉◎].
+    // 6. Confirm selection is NOT on the wrong session (color-support).
     expect(
-      terminal.getByText(/[◉◎].*Add color support/g, { strict: false })
+      sidebarLocator(terminal, 'Add color support').selected()
     ).not.toBeVisible();
   }
 );
