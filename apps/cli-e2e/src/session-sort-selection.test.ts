@@ -137,13 +137,13 @@ test.when(
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-color',
-      /[◉◎●○].*Add color support/
+      /[◉◎●○].*Add color support/g
     );
 
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-ai-solver',
-      /[◉◎●○].*Add AI solver/
+      /[◉◎●○].*Add AI solver/g
     );
 
     // 3. Wait for PR data to load (PR badges should appear)
@@ -156,7 +156,7 @@ test.when(
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-undo',
-      /[◉◎●○].*Add undo feature/
+      /[◉◎●○].*Add undo feature/g
     );
 
     // 5. The selection indicator (◉ running, ◎ stopped) should be on the
