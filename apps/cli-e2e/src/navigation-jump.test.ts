@@ -56,10 +56,11 @@ if (hasGhToken) {
   pushBranch(cloneDir, branchA);
 
   // 4. Go back to default branch, then create branch B + push
-  const defaultBranch = execSync(
-    'git symbolic-ref refs/remotes/origin/HEAD',
-    { cwd: cloneDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-  )
+  const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
+    cwd: cloneDir,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
     .trim()
     .replace('refs/remotes/origin/', '');
   execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
@@ -159,9 +160,12 @@ test.when(
       terminal.write('j');
       await new Promise((r) => setTimeout(r, 500));
 
-      // 7. Verify session B is selected (› marker next to its name)
+      // 7. Verify session B is selected (◉ running / ◎ stopped indicator
+      //    next to its name).
       await expect(
-        terminal.getByText(new RegExp(`›.*${sessionB}`, 'g'), { strict: false })
+        terminal.getByText(new RegExp(`[◉◎].*${sessionB}`, 'g'), {
+          strict: false,
+        })
       ).toBeVisible();
 
       // 8. Create a PR for branch B — its ID will be higher than A's,
@@ -192,14 +196,14 @@ test.when(
 
       // Assert: selection should still be on session B's PR title
       await expect(
-        terminal.getByText(new RegExp(`›.*e2e: ${branchB}`, 'g'), {
+        terminal.getByText(new RegExp(`[◉◎].*e2e: ${branchB}`, 'g'), {
           strict: false,
         })
       ).toBeVisible();
 
       // Assert: selection should NOT be on session A
       expect(
-        terminal.getByText(new RegExp(`›.*e2e: ${branchA}`, 'g'), {
+        terminal.getByText(new RegExp(`[◉◎].*e2e: ${branchA}`, 'g'), {
           strict: false,
         })
       ).not.toBeVisible();
