@@ -1,58 +1,22 @@
 import { Text } from 'ink';
-import { useAppState } from '../context/AppStateContext.js';
-import {
-  useSessionActions,
-  useSessionData,
-} from '../context/SessionContext.js';
 import { useConfig } from '../context/ConfigContext.js';
 
+// Bottom bar. After M7 this is the quietest surface in the app —
+// everything transient moved elsewhere:
+//
+//   - PR fetch errors              → toast (SessionContext useEffect)
+//   - statusMessage (transient)    → toast (flashStatus → ToastContext)
+//   - asyncOps.inFlight spinner    → AsyncOpsIndicator overlay (top-right)
+//   - ctrl+space-to-exit hint      → pane title (getPaneTitle)
+//   - delete confirmation          → DeleteConfirmModal
+//   - branch picker filter echo    → BranchPicker pane itself
+//
+// Only the VCS setup hint remains here. Renders null once VCS is
+// configured, so the bottom row is completely empty in the steady
+// state. If we never find another use for this strip, a follow-up can
+// delete StatusBar entirely and surface the hint as an onboarding toast.
 export function StatusBar() {
-  const { branchPicker, deleteConfirm, asyncOps } = useAppState();
-  const { statusMessage } = useSessionActions();
-  const { prError } = useSessionData();
   const { vcsConfigured } = useConfig();
-
-  if (deleteConfirm.confirmDelete) {
-    return (
-      <Text>
-        <Text color="red">
-          Warning: {deleteConfirm.confirmDelete.reason}. Type{' '}
-        </Text>
-        <Text bold color="yellow">
-          {deleteConfirm.confirmDelete.branch}
-        </Text>
-        <Text color="red"> to confirm: </Text>
-        <Text color="cyan">{deleteConfirm.confirmInput}</Text>
-        <Text dimColor>_</Text>
-        <Text dimColor> · Esc cancel</Text>
-      </Text>
-    );
-  }
-  if (branchPicker.creating) {
-    return (
-      <Text>
-        Branch: <Text color="cyan">{branchPicker.branchFilter}</Text>
-        <Text dimColor>_</Text>
-        <Text dimColor> · Enter select · Esc cancel</Text>
-      </Text>
-    );
-  }
-  if (statusMessage) {
-    return <Text color="yellow">{statusMessage}</Text>;
-  }
-  if (prError) {
-    return <Text color="red">PR error: {prError}</Text>;
-  }
-
-  const ops =
-    asyncOps.inFlight.size > 0
-      ? ` · ${[...asyncOps.inFlight].join(', ')}...`
-      : '';
-
-  return (
-    <Text dimColor>
-      {!vcsConfigured ? ' · (s to configure VCS)' : ''}
-      {ops ? <Text color="yellow">{ops}</Text> : null}
-    </Text>
-  );
+  if (vcsConfigured) return null;
+  return <Text dimColor>(s to configure VCS)</Text>;
 }

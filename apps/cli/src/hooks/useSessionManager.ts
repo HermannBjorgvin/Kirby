@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   removeWorktree,
   deleteBranch,
@@ -20,8 +20,6 @@ export function useSessionManager(
 ) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshSessions = useCallback(async () => {
     const worktrees = await listWorktrees();
@@ -36,12 +34,6 @@ export function useSessionManager(
     setSessions(filtered);
     setWorktreeBranches(worktrees.map((wt) => wt.branch));
     return filtered;
-  }, []);
-
-  const flashStatus = useCallback((msg: string) => {
-    if (statusTimer.current) clearTimeout(statusTimer.current);
-    setStatusMessage(msg);
-    statusTimer.current = setTimeout(() => setStatusMessage(null), 3000);
   }, []);
 
   const performDelete = useCallback(
@@ -78,7 +70,6 @@ export function useSessionManager(
 
     return () => {
       cancelled = true;
-      if (statusTimer.current) clearTimeout(statusTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -86,8 +77,6 @@ export function useSessionManager(
   return {
     sessions,
     worktreeBranches,
-    statusMessage,
-    flashStatus,
     refreshSessions,
     performDelete,
   };

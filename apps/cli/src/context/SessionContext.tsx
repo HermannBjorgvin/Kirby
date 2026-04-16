@@ -1,4 +1,10 @@
-import { createContext, useContext, useMemo, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useCallback,
+  useEffect,
+} from 'react';
 import type { ReactNode } from 'react';
 import type {
   PullRequestInfo,
@@ -17,6 +23,8 @@ import { useMergedBranches } from '../hooks/useMergedBranches.js';
 import { useConflictCounts } from '../hooks/useConflictCounts.js';
 import { useConfig } from './ConfigContext.js';
 import { useAppState } from './AppStateContext.js';
+import { useToastActions } from './ToastContext.js';
+import type { ToastVariant } from './ToastContext.js';
 import type { AgentSession } from '../types.js';
 import { sortSessionsByPrId } from '../utils/session-sort.js';
 
@@ -41,12 +49,16 @@ export interface SessionDataContextValue {
 // ── Actions context (consumed by input handlers / StatusBar) ──
 
 export interface SessionActionsContextValue {
-  statusMessage: string | null;
-  flashStatus: (msg: string) => void;
+  /**
+   * Push a transient notification toast. Defaults to the `info` variant.
+   * Internally delegates to ToastContext — every call renders in the
+   * top-right toast stack.
+   */
+  flashStatus: (msg: string, variant?: ToastVariant) => void;
   refreshSessions: () => Promise<AgentSession[]>;
   performDelete: (sessionName: string, branch: string) => Promise<void>;
-  refreshPr: () => void;
-  triggerSync: () => void;
+  refreshPr: () => Promise<void>;
+  triggerSync: () => Promise<void>;
 }
 
 const SessionDataContext = createContext<SessionDataContextValue | null>(null);
@@ -57,6 +69,7 @@ const SessionActionsContext = createContext<SessionActionsContextValue | null>(
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { config, provider, providers, setConfig } = useConfig();
   const { branchPicker } = useAppState();
+  const { flash } = useToastActions();
 
   const sessionMgr = useSessionManager(
     providers,
@@ -67,12 +80,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
   const { lastSynced, triggerSync } = useRemoteSync();
 
+  // Surface PR fetch errors as transient toasts instead of a persistent
+  // bottom-bar alert. `usePrData` re-sets the same error string on every
+  // failed poll; React's setState bails on Object.is equality, so this
+  // effect only fires when the ERROR VALUE CHANGES — not on every poll.
+  // Null → non-null fires once; non-null → different non-null fires once;
+  // non-null → null is silent (error resolved).
+  useEffect(() => {
+    if (prError) flash(`PR error: ${prError}`, 'error');
+  }, [prError, flash]);
+
   const onMergedDelete = useCallback(
     (sessionName: string, branch: string) => {
       sessionMgr.performDelete(sessionName, branch);
-      sessionMgr.flashStatus(`Auto-deleted merged branch: ${branch}`);
+      flash(`Auto-deleted merged branch: ${branch}`, 'success');
     },
-    [sessionMgr]
+    [sessionMgr, flash]
   );
 
   const { mergedBranches } = useMergedBranches(
@@ -143,26 +166,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  const { statusMessage, flashStatus, refreshSessions, performDelete } =
-    sessionMgr;
+  const { refreshSessions, performDelete } = sessionMgr;
 
   const actionsValue = useMemo<SessionActionsContextValue>(
     () => ({
-      statusMessage,
-      flashStatus,
+      flashStatus: flash,
       refreshSessions,
       performDelete,
       refreshPr,
       triggerSync,
     }),
-    [
-      statusMessage,
-      flashStatus,
-      refreshSessions,
-      performDelete,
-      refreshPr,
-      triggerSync,
-    ]
+    [flash, refreshSessions, performDelete, refreshPr, triggerSync]
   );
 
   return (

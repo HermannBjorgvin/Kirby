@@ -12,6 +12,7 @@ import {
   closePullRequest,
   deleteRemoteBranch,
 } from './setup/github.js';
+import { sidebarLocator } from './setup/sidebar.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
@@ -56,10 +57,11 @@ if (hasGhToken) {
   pushBranch(cloneDir, branchA);
 
   // 4. Go back to default branch, then create branch B + push
-  const defaultBranch = execSync(
-    'git symbolic-ref refs/remotes/origin/HEAD',
-    { cwd: cloneDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-  )
+  const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
+    cwd: cloneDir,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
     .trim()
     .replace('refs/remotes/origin/', '');
   execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
@@ -159,10 +161,8 @@ test.when(
       terminal.write('j');
       await new Promise((r) => setTimeout(r, 500));
 
-      // 7. Verify session B is selected (› marker next to its name)
-      await expect(
-        terminal.getByText(new RegExp(`›.*${sessionB}`, 'g'), { strict: false })
-      ).toBeVisible();
+      // 7. Verify session B is selected
+      await expect(sidebarLocator(terminal, sessionB).selected()).toBeVisible();
 
       // 8. Create a PR for branch B — its ID will be higher than A's,
       //    so after refresh it sorts ABOVE A.
@@ -192,16 +192,12 @@ test.when(
 
       // Assert: selection should still be on session B's PR title
       await expect(
-        terminal.getByText(new RegExp(`›.*e2e: ${branchB}`, 'g'), {
-          strict: false,
-        })
+        sidebarLocator(terminal, `e2e: ${branchB}`).selected()
       ).toBeVisible();
 
       // Assert: selection should NOT be on session A
       expect(
-        terminal.getByText(new RegExp(`›.*e2e: ${branchA}`, 'g'), {
-          strict: false,
-        })
+        sidebarLocator(terminal, `e2e: ${branchA}`).selected()
       ).not.toBeVisible();
     } finally {
       // Cleanup GitHub resources (best-effort)

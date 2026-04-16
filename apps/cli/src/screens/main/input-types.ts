@@ -61,6 +61,7 @@ export interface DiffViewerHandlerCtx {
   commentCtx?: CommentContext;
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
+  asyncOps: AsyncOpsValue;
   keybinds: KeybindContextValue;
 }
 

@@ -1,18 +1,25 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
+import { Divider } from './Divider.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { AgentSession, SidebarItem } from '../types.js';
 import { PrBadge } from './PrBadge.js';
 import { SidebarLayout } from './SidebarLayout.js';
-import { truncate } from '../utils/truncate.js';
 import { computeScrollWindow } from '../utils/scroll-window.js';
 import { useConfig } from '../context/ConfigContext.js';
 import { useKeybinds } from '../context/KeybindContext.js';
+import { LAYOUT } from '../context/LayoutContext.js';
 
 // ── Constants ───────────────────────────────────────────────────
 
-// Header: 1 line of text + 1 marginBottom = 2 lines
-const HEADER_LINES = 2;
+// Rows the sidebar does NOT get for scrollable items:
+//   - Pane border (top + bottom)       → LAYOUT.PANE_BORDER_ROWS
+//   - Pane title row ("Kirby")         → LAYOUT.PANE_TITLE_ROWS
+//   - Bottom status bar at the root    → LAYOUT.BOTTOM_STATUS_ROWS
+// This compensates for the fact that Sidebar gets `termRows` (the full
+// terminal height) but actually renders inside a smaller flex slot.
+const SIDEBAR_CHROME_ROWS =
+  LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS + LAYOUT.BOTTOM_STATUS_ROWS;
 const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
 
 // ── Section header detection ────────────────────────────────────
@@ -58,17 +65,24 @@ const SessionItemRow = memo(function SessionItemRow({
   conflictCount: number | undefined;
   vcsConfigured: boolean;
 }) {
-  const icon = session.running ? '●' : '○';
-  const color = session.running ? 'green' : 'gray';
+  // Single icon column: selected state (◉ ring) overrides, otherwise
+  // running state (● filled green / ○ hollow gray). Saves 2 chars vs.
+  // the old "› " + "● " two-column layout.
+  let icon: string;
+  let iconColor: string;
+  if (selected) {
+    icon = session.running ? '◉' : '◎';
+    iconColor = 'cyan';
+  } else {
+    icon = session.running ? '●' : '○';
+    iconColor = session.running ? 'green' : 'gray';
+  }
 
   return (
     <Box flexDirection="column">
-      <Text>
-        <Text color={selected ? 'cyan' : undefined}>
-          {selected ? '› ' : '  '}
-        </Text>
-        <Text color={color}>{icon} </Text>
-        <Text bold={selected}>{truncate(pr?.title || session.name, 42)}</Text>
+      <Text wrap="truncate">
+        <Text color={iconColor}>{icon} </Text>
+        <Text bold={selected}>{pr?.title || session.name}</Text>
         {isMerged ? (
           <Text dimColor color="green">
             {' '}
@@ -78,7 +92,7 @@ const SessionItemRow = memo(function SessionItemRow({
       </Text>
       {conflictCount != null && conflictCount > 0 ? (
         <Text dimColor color="yellow">
-          {'    '}
+          {'  '}
           {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
         </Text>
       ) : null}
@@ -98,18 +112,24 @@ const OrphanPrRow = memo(function OrphanPrRow({
   sidebarWidth: number;
   running?: boolean;
 }) {
+  let icon: string;
+  let iconColor: string;
+  if (selected) {
+    icon = running ? '◉' : '◎';
+    iconColor = 'cyan';
+  } else if (running != null) {
+    icon = running ? '●' : '○';
+    iconColor = running ? 'green' : 'gray';
+  } else {
+    icon = '○';
+    iconColor = 'gray';
+  }
+
   return (
     <Box flexDirection="column">
-      <Text>
-        <Text color={selected ? 'cyan' : undefined}>
-          {selected ? '› ' : '  '}
-        </Text>
-        {running != null && (
-          <Text color={running ? 'green' : 'gray'}>
-            {running ? '● ' : '○ '}
-          </Text>
-        )}
-        <Text bold={selected}>{truncate(pr.title || pr.sourceBranch, 42)}</Text>
+      <Text wrap="truncate">
+        <Text color={iconColor}>{icon} </Text>
+        <Text bold={selected}>{pr.title || pr.sourceBranch}</Text>
       </Text>
       <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
     </Box>
@@ -120,30 +140,31 @@ const ReviewPrRow = memo(function ReviewPrRow({
   pr,
   selected,
   sidebarWidth,
-  innerWidth,
   running,
 }: {
   pr: PullRequestInfo;
   selected: boolean;
   sidebarWidth: number;
-  innerWidth: number;
   running?: boolean;
 }) {
-  const ledWidth = running != null ? 2 : 0;
+  let icon: string;
+  let iconColor: string;
+  if (selected) {
+    icon = running ? '◉' : '◎';
+    iconColor = 'cyan';
+  } else if (running != null) {
+    icon = running ? '●' : '○';
+    iconColor = running ? 'green' : 'gray';
+  } else {
+    icon = '○';
+    iconColor = 'gray';
+  }
+
   return (
     <Box flexDirection="column">
-      <Text>
-        <Text color={selected ? 'cyan' : undefined}>
-          {selected ? '› ' : '  '}
-        </Text>
-        {running != null && (
-          <Text color={running ? 'green' : 'gray'}>
-            {running ? '● ' : '○ '}
-          </Text>
-        )}
-        <Text bold={selected}>
-          {truncate(pr.title || pr.sourceBranch, innerWidth - 4 - ledWidth)}
-        </Text>
+      <Text wrap="truncate">
+        <Text color={iconColor}>{icon} </Text>
+        <Text bold={selected}>{pr.title || pr.sourceBranch}</Text>
       </Text>
       <PrBadge
         pr={pr}
@@ -158,21 +179,20 @@ function SectionHeader({
   title,
   color,
   count,
-  innerWidth,
   first,
 }: {
   title: string;
   color: string;
   count: number;
-  innerWidth: number;
   first: boolean;
 }) {
   return (
-    <Box flexDirection="column" marginTop={first ? 0 : 1}>
-      <Text bold color={color}>
-        {title} ({count})
-      </Text>
-      <Text dimColor>{'─'.repeat(Math.max(1, innerWidth))}</Text>
+    <Box marginTop={first ? 0 : 1}>
+      <Divider
+        title={`${title} (${count})`}
+        titleColor={color}
+        dividerColor="gray"
+      />
     </Box>
   );
 }
@@ -197,7 +217,6 @@ export const Sidebar = memo(function Sidebar({
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
   const keybinds = useKeybinds();
-  const innerWidth = Math.max(10, sidebarWidth - 2);
 
   // Build dynamic keybind hints from the active preset
   const sidebarHints = useMemo(() => {
@@ -263,7 +282,7 @@ export const Sidebar = memo(function Sidebar({
   // Compute height of each row based on its content
   const rowHeights = useMemo(() => {
     return rows.map((row): number => {
-      if (row.type === 'header') return row.first ? 2 : 3; // title + separator (+ marginTop if not first)
+      if (row.type === 'header') return row.first ? 1 : 2; // divider (+ marginTop if not first)
       const { item } = row;
       if (item.kind === 'session') {
         let h = 1; // title line
@@ -278,9 +297,9 @@ export const Sidebar = memo(function Sidebar({
 
   // Compute scroll window using actual row heights
   const { fullyVisibleRows, gap, aboveCount, belowCount } = useMemo(() => {
-    // Total non-item lines: header + keybinds margin + keybind lines + optional legend
+    // Total non-item lines: sidebar chrome + keybinds margin + keybind lines + optional legend
     const chromeLines =
-      HEADER_LINES +
+      SIDEBAR_CHROME_ROWS +
       1 +
       keybindLineCount +
       (vcsConfigured ? 1 + LEGEND_LINES : 0);
@@ -363,7 +382,6 @@ export const Sidebar = memo(function Sidebar({
           title={label.title}
           color={label.color}
           count={row.count}
-          innerWidth={innerWidth}
           first={row.first}
         />
       );
@@ -402,7 +420,6 @@ export const Sidebar = memo(function Sidebar({
         pr={item.pr}
         selected={selected}
         sidebarWidth={sidebarWidth}
-        innerWidth={innerWidth}
         running={item.running}
       />
     );
@@ -410,6 +427,7 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <SidebarLayout
+      title="😸 Kirby"
       focused={focused}
       sidebarWidth={sidebarWidth}
       emptyText="(no sessions)"

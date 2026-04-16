@@ -111,12 +111,14 @@
     }
   },
   "dependencies": {
+    "@inkjs/ui": "^2.0.0",
     "@kirby/logger": "*",
     "@kirby/terminal": "*",
     "@kirby/vcs-azure-devops": "*",
     "@kirby/vcs-core": "*",
     "@kirby/vcs-github": "*",
     "@kirby/worktree-manager": "*",
+    "@mishieck/ink-titled-box": "0.4.2",
     "ink": "^6.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4"

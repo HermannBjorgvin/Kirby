@@ -47,3 +47,4 @@
 - 2026-02-26: Reviewed xterm-headless removal, self-managed worktrees feature
 - 2026-03-07: Full codebase review of apps/cli/src/ -- see detailed findings in review output
 - 2026-03-17: Session sort bug fix review -- sorted index extracted to `utils/session-sort.ts`, stale closure concern flagged
+- 2026-04-13: Modal + Toast system review -- Toast has setTimeout leak + cap-evict timer leak; flagged Ink 6.8 inset props are dead code (not implemented in runtime). See [ink_6_8_inset_props.md](ink_6_8_inset_props.md).

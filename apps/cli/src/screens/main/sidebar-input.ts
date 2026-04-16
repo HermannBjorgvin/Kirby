@@ -160,10 +160,11 @@ export function handleSidebarInput(
     return;
   }
 
-  // Refresh PR data
+  // Refresh PR data — loading state shown by the top-right spinner.
   if (action === 'sidebar.refresh-pr') {
-    ctx.sessions.refreshPr();
-    ctx.sessions.flashStatus('Refreshing PR data...');
+    ctx.asyncOps.run('refresh-pr', async () => {
+      await ctx.sessions.refreshPr();
+    });
     return;
   }
 
@@ -179,7 +180,8 @@ export function handleSidebarInput(
         ctx.sessions.flashStatus('No worktree found for selected session');
         return;
       }
-      ctx.sessions.flashStatus('Updating from origin...');
+      // No "Updating from origin…" flash — the 'rebase' spinner
+      // (label: "Rebasing") already communicates that we're working.
       const rebaseMessages = {
         success: 'Rebased onto origin successfully',
         conflict: 'Conflicts detected — rebase aborted',
@@ -214,10 +216,11 @@ export function handleSidebarInput(
     return;
   }
 
-  // Sync with origin
+  // Sync with origin — loading state shown by the top-right spinner.
   if (action === 'sidebar.sync-origin') {
-    ctx.sessions.flashStatus('Syncing with origin...');
-    ctx.sessions.triggerSync();
+    ctx.asyncOps.run('sync', async () => {
+      await ctx.sessions.triggerSync();
+    });
     return;
   }
 

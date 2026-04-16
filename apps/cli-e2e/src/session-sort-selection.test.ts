@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO } from './setup/constants.js';
+import { sidebarLocator } from './setup/sidebar.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
@@ -51,32 +52,30 @@ if (hasGhToken) {
 async function createSessionViaBranchPicker(
   terminal: Terminal,
   branchFilter: string,
-  waitForText: string
+  waitForTitle: string
 ) {
-  // Open branch picker
   terminal.write('c');
   await expect(
     terminal.getByText('Branch Picker', { strict: false })
   ).toBeVisible();
 
-  // Type the filter text
   terminal.write(branchFilter);
 
-  // Wait for the filter to be reflected in the branch picker title.
-  // The title renders as "Branch Picker / {filter}" when a filter is active.
-  // This is the only reliable signal that React has committed the filter state,
-  // so the filtered branch list is correct when Enter is pressed.
   await expect(
     terminal.getByText(`/ ${branchFilter}`, { strict: false })
   ).toBeVisible();
 
-  // Press Enter to create
   terminal.write('\r');
 
-  // Wait for the running indicator (●) to appear next to the session.
-  // In the unified sidebar, sessions with PRs display the PR title, not
-  // the branch name, so we match on the indicator + title/name text.
-  await expect(terminal.getByText(waitForText, { strict: false })).toBeVisible({
+  // Wait for the branch picker to close before proceeding. The Enter
+  // triggers an async worktree creation; setCreating(false) fires
+  // synchronously, so the branch picker title disappears first.
+  await expect(
+    terminal.getByText('Branch Picker', { strict: false })
+  ).not.toBeVisible();
+
+  // Wait for the session row in any icon state (selected or not, running or not).
+  await expect(sidebarLocator(terminal, waitForTitle).any()).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -119,19 +118,16 @@ test.when(
     //    Buggy findIndex('undo') = 2 (raw) → sorted[2] = color (WRONG)
     //    Fixed findSortedIndex('undo') = 1 → sorted[1] = undo (CORRECT)
 
-    // In the unified sidebar, sessions with PRs display the PR title,
-    // not the branch name. We wait for the running indicator (●) next to
-    // the PR title to confirm each session was created.
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-color',
-      '● Add color support'
+      'Add color support'
     );
 
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-ai-solver',
-      '● Add AI solver'
+      'Add AI solver'
     );
 
     // 3. Wait for PR data to load (PR badges should appear)
@@ -144,17 +140,17 @@ test.when(
     await createSessionViaBranchPicker(
       terminal,
       'fixture/add-undo',
-      '● Add undo feature'
+      'Add undo feature'
     );
 
-    // 5. The selection marker (›) should be on the newly created session
+    // 5. The selection indicator should be on the newly created session.
     await expect(
-      terminal.getByText(/›.*Add undo feature/g, { strict: false })
+      sidebarLocator(terminal, 'Add undo feature').selected()
     ).toBeVisible();
 
-    // 6. Confirm the marker is NOT on the wrong session (color-support)
+    // 6. Confirm selection is NOT on the wrong session (color-support).
     expect(
-      terminal.getByText(/›.*Add color support/g, { strict: false })
+      sidebarLocator(terminal, 'Add color support').selected()
     ).not.toBeVisible();
   }
 );

@@ -26,5 +26,5 @@ export function TerminalPane({
     onFocusSidebar
   );
 
-  return <TerminalView content={content} focused={terminalFocused} />;
+  return <TerminalView content={content} />;
 }

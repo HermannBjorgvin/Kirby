@@ -281,11 +281,14 @@ export function handleDiffViewerInput(
 
     const postedId = comment.id;
     const prId = ctx.commentCtx.prId;
+    const commentCtx = ctx.commentCtx;
     updateComment(prId, postedId, { status: 'posting' });
-    ctx.sessions.flashStatus('Posting comment...');
 
-    postReviewComments([comment], postCtx)
-      .then(() => {
+    // Loading state shown by the top-right spinner; no "Posting
+    // comment…" flash. Result/failure toasts fire on completion.
+    ctx.asyncOps.run('post-comment', async () => {
+      try {
+        await postReviewComments([comment], postCtx);
         ctx.sessions.flashStatus('Comment posted');
         const freshComments = readComments(prId).filter(
           (c) => c.file === ctx.pane.diffViewFile
@@ -294,7 +297,7 @@ export function handleDiffViewerInput(
           'next',
           postedId,
           freshComments,
-          ctx.commentCtx?.positions,
+          commentCtx.positions,
           (c) => c.status === 'draft'
         );
         if (nextDraftId) {
@@ -303,11 +306,11 @@ export function handleDiffViewerInput(
         } else {
           ctx.pane.setSelectedCommentId(null);
         }
-      })
-      .catch((err: Error) => {
+      } catch (err) {
         updateComment(prId, postedId, { status: 'draft' });
-        ctx.sessions.flashStatus(`Post failed: ${err.message}`);
-      });
+        ctx.sessions.flashStatus(`Post failed: ${(err as Error).message}`);
+      }
+    });
     return;
   }
 

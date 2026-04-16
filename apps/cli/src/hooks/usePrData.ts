@@ -11,33 +11,33 @@ export function usePrData(refreshInterval = 60000) {
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async (): Promise<void> => {
     if (!provider || !provider.isConfigured(vendorAuth, vendorProject)) return;
     setLoading(true);
-    provider
-      .fetchPullRequests(vendorAuth, vendorProject)
-      .then((map) => {
-        if (mountedRef.current) {
-          setPrMap(map);
-          setError(null);
-        }
-      })
-      .catch((err: Error) => {
-        logError(`fetchPullRequests [${provider.id}]`, err);
-        if (mountedRef.current) {
-          setError(err.message);
-        }
-      })
-      .finally(() => {
-        if (mountedRef.current) setLoading(false);
-      });
+    try {
+      const map = await provider.fetchPullRequests(vendorAuth, vendorProject);
+      if (mountedRef.current) {
+        setPrMap(map);
+        setError(null);
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      logError(`fetchPullRequests [${provider.id}]`, error);
+      if (mountedRef.current) {
+        setError(error.message);
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }, [vendorAuth, vendorProject, provider]);
 
   useEffect(() => {
     mountedRef.current = true;
     if (!provider || !provider.isConfigured(vendorAuth, vendorProject)) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch must trigger on mount
-    refresh();
+    // Fire and forget — the initial fetch happens on mount. `refresh`
+    // now returns a promise, but we don't need to await it here; the
+    // state updates inside it are mount-guarded by `mountedRef`.
+    void refresh();
     const interval = setInterval(refresh, prPollInterval ?? refreshInterval);
     return () => {
       mountedRef.current = false;

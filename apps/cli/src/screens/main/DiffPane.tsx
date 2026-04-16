@@ -6,6 +6,7 @@ import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
+import { useAppState } from '../../context/AppStateContext.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { useDiffData } from '../../hooks/useDiffData.js';
@@ -37,6 +38,7 @@ export function DiffPane({
   const sessionCtx = useSessionActions();
   const configCtx = useConfig();
   const keybinds = useKeybinds();
+  const { asyncOps } = useAppState();
 
   // ── Review comments (file-watched) ────────────────────────────
   const reviewComments = useReviewComments(selectedPr?.id ?? null);
@@ -164,6 +166,7 @@ export function DiffPane({
             : undefined,
           config: configCtx,
           sessions: sessionCtx,
+          asyncOps,
           keybinds,
         });
       }

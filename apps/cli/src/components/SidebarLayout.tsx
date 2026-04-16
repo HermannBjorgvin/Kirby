@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Text, Box } from 'ink';
+import { Pane } from './Pane.js';
 
 interface SidebarLayoutProps {
   title?: string;
@@ -12,6 +13,12 @@ interface SidebarLayoutProps {
   children: ReactNode;
 }
 
+// Layout wrapper for the sidebar column. Content is laid out top-to-bottom:
+//   - optional title (rendered by Pane as the first row inside the border)
+//   - scrollable items area (flex-grows to fill remaining space)
+//   - keybinds footer
+//   - optional legend
+// The Pane component owns the round border and the focused/unfocused color.
 export function SidebarLayout({
   title,
   focused,
@@ -23,18 +30,8 @@ export function SidebarLayout({
   children,
 }: SidebarLayoutProps) {
   return (
-    <Box
-      flexDirection="column"
-      width={sidebarWidth}
-      flexShrink={0}
-      paddingX={1}
-    >
+    <Pane focused={focused} title={title} width={sidebarWidth} flexShrink={0}>
       <Box flexDirection="column" flexGrow={1}>
-        {title && (
-          <Text bold color={focused ? 'blue' : 'gray'}>
-            {title}
-          </Text>
-        )}
         {isEmpty ? <Text dimColor>{emptyText}</Text> : children}
       </Box>
       <Box marginTop={1} flexDirection="column">
@@ -45,6 +42,6 @@ export function SidebarLayout({
           {legend}
         </Box>
       )}
-    </Box>
+    </Pane>
   );
 }
