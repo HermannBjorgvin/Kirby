@@ -67,6 +67,13 @@ async function createSessionViaBranchPicker(
 
   terminal.write('\r');
 
+  // Wait for the branch picker to close before proceeding. The Enter
+  // triggers an async worktree creation; setCreating(false) fires
+  // synchronously, so the branch picker title disappears first.
+  await expect(
+    terminal.getByText('Branch Picker', { strict: false })
+  ).not.toBeVisible();
+
   // Wait for the session row in any icon state (selected or not, running or not).
   await expect(sidebarLocator(terminal, waitForTitle).any()).toBeVisible({
     timeout: 15_000,
