@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../types.js';
-import { getItemKey, getPrFromItem } from '../types.js';
+import { getItemKey, getPrFromItem, isItemActive } from '../types.js';
 import { buildSidebarItems } from '../utils/sidebar-items.js';
 import { useSessionData } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
@@ -21,6 +21,8 @@ export interface SidebarContextValue {
   selectByKey: (key: string) => void;
   /** Move selection by a relative offset (positive = down, negative = up). */
   moveSelection: (offset: number) => void;
+  /** Jump to the next/previous active (running) item. No-op if none found. */
+  moveSelectionToActive: (direction: 1 | -1) => void;
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
@@ -112,6 +114,23 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     [items, resolvedIndex]
   );
 
+  const moveSelectionToActive = useCallback(
+    (direction: 1 | -1) => {
+      for (
+        let i = resolvedIndex + direction;
+        i >= 0 && i < items.length;
+        i += direction
+      ) {
+        const item = items[i];
+        if (item && isItemActive(item)) {
+          setSelectedKey(getItemKey(item));
+          return;
+        }
+      }
+    },
+    [items, resolvedIndex]
+  );
+
   const value = useMemo<SidebarContextValue>(
     () => ({
       items,
@@ -122,6 +141,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       totalItems,
       selectByKey,
       moveSelection,
+      moveSelectionToActive,
     }),
     [
       items,
@@ -132,6 +152,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       totalItems,
       selectByKey,
       moveSelection,
+      moveSelectionToActive,
     ]
   );
 

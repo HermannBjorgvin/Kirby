@@ -243,6 +243,14 @@ export function handleSidebarInput(
     sidebar.moveSelection(-1);
     return;
   }
+  if (action === 'sidebar.jump-next-active') {
+    sidebar.moveSelectionToActive(1);
+    return;
+  }
+  if (action === 'sidebar.jump-prev-active') {
+    sidebar.moveSelectionToActive(-1);
+    return;
+  }
 
   // Enter
   if (action === 'sidebar.start-session' && selectedItem) {

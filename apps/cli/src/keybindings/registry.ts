@@ -79,6 +79,16 @@ export const ACTIONS = [
     context: 'sidebar',
   },
   {
+    id: 'sidebar.jump-next-active',
+    label: 'Jump to next active session',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.jump-prev-active',
+    label: 'Jump to previous active session',
+    context: 'sidebar',
+  },
+  {
     id: 'sidebar.quit',
     label: 'Quit',
     context: 'sidebar',
@@ -327,6 +337,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     // Sidebar
     'sidebar.navigate-down': [{ flags: { downArrow: true } }],
     'sidebar.navigate-up': [{ flags: { upArrow: true } }],
+    'sidebar.jump-next-active': [{ shift: true, flags: { downArrow: true } }],
+    'sidebar.jump-prev-active': [{ shift: true, flags: { upArrow: true } }],
     'sidebar.quit': [{ input: 'q' }],
     'sidebar.checkout-branch': [{ input: 'c' }],
     'sidebar.delete-branch': [
@@ -410,6 +422,8 @@ export const VIM_PRESET: KeybindPreset = {
     // Sidebar
     'sidebar.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
     'sidebar.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
+    'sidebar.jump-next-active': [{ shift: true, flags: { downArrow: true } }],
+    'sidebar.jump-prev-active': [{ shift: true, flags: { upArrow: true } }],
     'sidebar.quit': [{ input: 'q' }],
     'sidebar.checkout-branch': [{ input: 'c' }],
     'sidebar.delete-branch': [{ input: 'x' }],
