@@ -40,6 +40,12 @@ export function getItemKey(item: SidebarItem): string {
   return `review:${item.pr.id}`;
 }
 
+/** Whether this sidebar item represents an active (running) agent session. */
+export function isItemActive(item: SidebarItem): boolean {
+  if (item.kind === 'session') return item.session.running;
+  return item.running === true;
+}
+
 export interface AgentSession {
   name: string;
   running: boolean;
