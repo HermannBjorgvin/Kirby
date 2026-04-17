@@ -24,7 +24,7 @@ const emptyReviews: CategorizedReviews = {
 };
 
 describe('buildSidebarItems', () => {
-  it('returns sessions first with branch/PR/merge/conflict info', () => {
+  it('emits no-PR sessions before PR-backed sessions with branch/PR/merge/conflict info', () => {
     const sessions: AgentSession[] = [
       { name: 'feature-foo', running: true },
       { name: 'feature-bar', running: false },
@@ -51,23 +51,58 @@ describe('buildSidebarItems', () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toEqual({
       kind: 'session',
-      session: sessions[0],
-      pr,
-      branch: 'feature/foo',
-      isMerged: false,
-      conflictCount: 3,
-    });
-    expect(items[1]).toEqual({
-      kind: 'session',
       session: sessions[1],
       pr: undefined,
       branch: 'feature/bar',
       isMerged: true,
       conflictCount: undefined,
     });
+    expect(items[1]).toEqual({
+      kind: 'session',
+      session: sessions[0],
+      pr,
+      branch: 'feature/foo',
+      isMerged: false,
+      conflictCount: 3,
+    });
   });
 
-  it('places orphan PRs after sessions, draft before active', () => {
+  it('splits PR-backed sessions into draft and active buckets', () => {
+    const sessions: AgentSession[] = [
+      { name: 'feature-active', running: true },
+      { name: 'feature-draft', running: true },
+      { name: 'feature-local', running: false },
+    ];
+    const activePr = makePr({ id: 40, isDraft: false });
+    const draftPr = makePr({ id: 41, isDraft: true });
+    const sessionBranchMap = new Map([
+      ['feature-active', 'feature/active'],
+      ['feature-draft', 'feature/draft'],
+      ['feature-local', 'feature/local'],
+    ]);
+    const sessionPrMap = new Map([
+      ['feature-active', activePr],
+      ['feature-draft', draftPr],
+    ]);
+
+    const items = buildSidebarItems(
+      sessions,
+      [],
+      emptyReviews,
+      sessionBranchMap,
+      sessionPrMap,
+      new Set(),
+      new Map()
+    );
+
+    expect(items.map((i) => (i.kind === 'session' ? i.session.name : i.kind))).toEqual([
+      'feature-local',
+      'feature-draft',
+      'feature-active',
+    ]);
+  });
+
+  it('places draft orphan PRs before active orphan PRs', () => {
     const activePr = makePr({ id: 10, isDraft: false });
     const draftPr = makePr({ id: 11, isDraft: true });
 

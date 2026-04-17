@@ -33,7 +33,10 @@ type SectionKey =
   | 'approved';
 
 function getSectionKey(item: SidebarItem): SectionKey {
-  if (item.kind === 'session') return 'worktrees';
+  if (item.kind === 'session') {
+    if (!item.pr) return 'worktrees';
+    return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
+  }
   if (item.kind === 'orphan-pr')
     return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
   return item.category;

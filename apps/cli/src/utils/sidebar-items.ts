@@ -6,9 +6,9 @@ import { branchToSessionName } from '@kirby/worktree-manager';
  * Build a flat, ordered list of sidebar items from all data sources.
  *
  * Section order:
- * 1. Worktrees/sessions (sorted by PR id descending, sessions without PRs last)
- * 2. Draft orphan PRs
- * 3. Active orphan PRs (your PRs with no worktree session)
+ * 1. Worktrees — sessions with no PR
+ * 2. Draft Pull Requests — sessions with a draft PR, then draft orphan PRs
+ * 3. Pull Requests — sessions with an active PR, then active orphan PRs
  * 4. Needs review (others' PRs you need to review)
  * 5. Waiting for author
  * 6. Approved by you
@@ -41,25 +41,42 @@ export function buildSidebarItems(
   // Build a quick lookup: session name → AgentSession for review-pr running status
   const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
 
-  // 1. Sessions (exclude those whose branch belongs to a review PR)
+  // Bucket sessions by PR status so each section can be emitted in order.
+  const noPrSessions: SidebarItem[] = [];
+  const draftPrSessions: SidebarItem[] = [];
+  const activePrSessions: SidebarItem[] = [];
+
   for (const session of sortedSessions) {
     const branch = sessionBranchMap.get(session.name);
     if (branch && reviewBranches.has(branch)) continue;
     const pr = sessionPrMap.get(session.name);
     const isMerged = branch ? mergedBranches.has(branch) : false;
     const conflictCount = branch ? conflictCounts.get(branch) : undefined;
-    items.push({ kind: 'session', session, pr, branch, isMerged, conflictCount });
+    const item: SidebarItem = {
+      kind: 'session',
+      session,
+      pr,
+      branch,
+      isMerged,
+      conflictCount,
+    };
+    if (!pr) noPrSessions.push(item);
+    else if (pr.isDraft) draftPrSessions.push(item);
+    else activePrSessions.push(item);
   }
 
-  // 2. Draft orphan PRs
-  const draftOrphanPrs = orphanPrs.filter((pr) => pr.isDraft === true);
-  for (const pr of draftOrphanPrs) {
+  // 1. Worktrees (sessions with no PR)
+  items.push(...noPrSessions);
+
+  // 2. Draft Pull Requests — session-backed first, then orphans
+  items.push(...draftPrSessions);
+  for (const pr of orphanPrs.filter((p) => p.isDraft === true)) {
     items.push({ kind: 'orphan-pr', pr });
   }
 
-  // 3. Active orphan PRs
-  const activeOrphanPrs = orphanPrs.filter((pr) => pr.isDraft !== true);
-  for (const pr of activeOrphanPrs) {
+  // 3. Pull Requests — session-backed first, then orphans
+  items.push(...activePrSessions);
+  for (const pr of orphanPrs.filter((p) => p.isDraft !== true)) {
     items.push({ kind: 'orphan-pr', pr });
   }
 
