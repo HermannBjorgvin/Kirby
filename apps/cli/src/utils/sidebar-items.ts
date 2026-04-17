@@ -6,9 +6,9 @@ import { branchToSessionName } from '@kirby/worktree-manager';
  * Build a flat, ordered list of sidebar items from all data sources.
  *
  * Section order:
- * 1. Sessions (sorted by PR id descending, sessions without PRs last)
- * 2. Active orphan PRs (your PRs with no worktree session)
- * 3. Draft orphan PRs
+ * 1. Worktrees/sessions (sorted by PR id descending, sessions without PRs last)
+ * 2. Draft orphan PRs
+ * 3. Active orphan PRs (your PRs with no worktree session)
  * 4. Needs review (others' PRs you need to review)
  * 5. Waiting for author
  * 6. Approved by you
@@ -51,15 +51,15 @@ export function buildSidebarItems(
     items.push({ kind: 'session', session, pr, branch, isMerged, conflictCount });
   }
 
-  // 2. Active orphan PRs
-  const activeOrphanPrs = orphanPrs.filter((pr) => pr.isDraft !== true);
-  for (const pr of activeOrphanPrs) {
+  // 2. Draft orphan PRs
+  const draftOrphanPrs = orphanPrs.filter((pr) => pr.isDraft === true);
+  for (const pr of draftOrphanPrs) {
     items.push({ kind: 'orphan-pr', pr });
   }
 
-  // 3. Draft orphan PRs
-  const draftOrphanPrs = orphanPrs.filter((pr) => pr.isDraft === true);
-  for (const pr of draftOrphanPrs) {
+  // 3. Active orphan PRs
+  const activeOrphanPrs = orphanPrs.filter((pr) => pr.isDraft !== true);
+  for (const pr of activeOrphanPrs) {
     items.push({ kind: 'orphan-pr', pr });
   }
 

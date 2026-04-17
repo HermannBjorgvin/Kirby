@@ -67,7 +67,7 @@ describe('buildSidebarItems', () => {
     });
   });
 
-  it('places orphan PRs after sessions, active before draft', () => {
+  it('places orphan PRs after sessions, draft before active', () => {
     const activePr = makePr({ id: 10, isDraft: false });
     const draftPr = makePr({ id: 11, isDraft: true });
 
@@ -82,8 +82,8 @@ describe('buildSidebarItems', () => {
     );
 
     expect(items).toHaveLength(2);
-    expect(items[0]).toEqual({ kind: 'orphan-pr', pr: activePr });
-    expect(items[1]).toEqual({ kind: 'orphan-pr', pr: draftPr });
+    expect(items[0]).toEqual({ kind: 'orphan-pr', pr: draftPr });
+    expect(items[1]).toEqual({ kind: 'orphan-pr', pr: activePr });
   });
 
   it('places review PRs after orphans in category order', () => {
