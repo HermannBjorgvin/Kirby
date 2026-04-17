@@ -25,6 +25,7 @@ const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
 // ── Section header detection ────────────────────────────────────
 
 type SectionKey =
+  | 'worktrees'
   | 'pull-requests'
   | 'draft-pull-requests'
   | 'needs-review'
@@ -32,13 +33,14 @@ type SectionKey =
   | 'approved';
 
 function getSectionKey(item: SidebarItem): SectionKey {
-  if (item.kind === 'session') return 'pull-requests';
+  if (item.kind === 'session') return 'worktrees';
   if (item.kind === 'orphan-pr')
     return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
   return item.category;
 }
 
 const SECTION_LABELS: Record<SectionKey, { title: string; color: string }> = {
+  worktrees: { title: 'Worktrees', color: 'cyan' },
   'pull-requests': { title: 'Pull Requests', color: 'blue' },
   'draft-pull-requests': { title: 'Draft Pull Requests', color: 'gray' },
   'needs-review': { title: 'Needs Your Review', color: 'red' },
