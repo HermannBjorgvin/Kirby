@@ -1,6 +1,8 @@
 import nx from '@nx/eslint-plugin';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import react from 'eslint-plugin-react';
+import importPlugin from 'eslint-plugin-import';
 
 export default tseslint.config(
   ...nx.configs['flat/base'],
@@ -9,7 +11,12 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
   {
-    plugins: { 'react-hooks': reactHooks },
+    plugins: {
+      react,
+      'react-hooks': reactHooks,
+      import: importPlugin,
+    },
+    settings: { react: { version: '19.2' } },
     rules: reactHooks.configs.recommended.rules,
   },
   {
