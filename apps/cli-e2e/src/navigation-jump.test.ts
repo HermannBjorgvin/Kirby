@@ -116,10 +116,9 @@ test.use({
 
 test.when(
   hasGhToken,
-  'selected session stays selected after PR data refresh reorders items',
+  'selected session stays selected when another session moves to Pull Requests',
   async ({ terminal }) => {
     let prNumberA: number | undefined;
-    let prNumberB: number | undefined;
 
     try {
       // 1. Wait for Kirby to render
@@ -127,7 +126,8 @@ test.when(
         terminal.getByText('Kirby', { strict: false })
       ).toBeVisible();
 
-      // 2. Both sessions should appear (no PRs yet — both show session names)
+      // 2. Both sessions appear under "Worktrees" (no PRs yet).
+      //    Order is [A, B] — sessions without PRs preserve input order.
       await expect(
         terminal.getByText(sessionA, { strict: false })
       ).toBeVisible();
@@ -135,11 +135,19 @@ test.when(
         terminal.getByText(sessionB, { strict: false })
       ).toBeVisible();
 
-      // 3. Create PR for branch A. This PR will be indexed by GitHub Search
-      //    within ~30-90 seconds. We need it to appear before proceeding.
+      // 3. Navigate down once to select session B (index 1 within Worktrees)
+      terminal.write('j');
+      await new Promise((r) => setTimeout(r, 500));
+
+      // 4. Verify session B is selected
+      await expect(sidebarLocator(terminal, sessionB).selected()).toBeVisible();
+
+      // 5. Create a PR for branch A. A will move from the Worktrees section
+      //    into the Pull Requests section, producing a reorder. Selection
+      //    (tracked by stable key `session:<name>`) must stay on B.
       prNumberA = createPullRequest(TEST_REPO, branchA, cloneDir);
 
-      // 4. Trigger PR refresh via 'r' periodically. Also poll via config (5s).
+      // 6. Trigger PR refresh via 'r' periodically. Also poll via config (5s).
       //    Wait up to 90s for the search API to index the new PR.
       const refreshTimerA = setInterval(() => terminal.write('r'), 10_000);
       terminal.write('r');
@@ -152,57 +160,23 @@ test.when(
         clearInterval(refreshTimerA);
       }
 
-      // 5. Now the sidebar order (sorted by PR ID desc for sessions):
-      //      index 0: session A (has PR #prNumberA) — sorted first
-      //      index 1: session B (no PR) — sorted last
-      //    SidebarContext.selectedIndex = 0 → A is selected.
-
-      // 6. Navigate down once to select session B
-      terminal.write('j');
-      await new Promise((r) => setTimeout(r, 500));
-
-      // 7. Verify session B is selected
-      await expect(sidebarLocator(terminal, sessionB).selected()).toBeVisible();
-
-      // 8. Create a PR for branch B — its ID will be higher than A's,
-      //    so after refresh it sorts ABOVE A.
-      prNumberB = createPullRequest(TEST_REPO, branchB, cloneDir);
-
-      // 9. Wait for B's PR badge to appear
-      const refreshTimerB = setInterval(() => terminal.write('r'), 10_000);
-      terminal.write('r');
-
-      try {
-        await expect(
-          terminal.getByText(`#${prNumberB}`, { strict: false })
-        ).toBeVisible({ timeout: 90_000 });
-      } finally {
-        clearInterval(refreshTimerB);
-      }
-
-      // 10. After refresh the sort order flipped:
-      //       index 0: session B (PR #prNumberB, higher) — now first
-      //       index 1: session A (PR #prNumberA, lower)  — now second
-      //
-      //     BUG: SidebarContext.selectedIndex is still 1 (where B used to be),
-      //     but index 1 now points to session A. The selection jumped.
+      // 7. After refresh:
+      //      Worktrees     (1): B   ← still selected
+      //      Pull Requests (1): A   (moved here because it now has a PR)
 
       // Wait for React to settle
       await new Promise((r) => setTimeout(r, 1_000));
 
-      // Assert: selection should still be on session B's PR title
-      await expect(
-        sidebarLocator(terminal, `e2e: ${branchB}`).selected()
-      ).toBeVisible();
+      // Assert: selection should still be on session B
+      await expect(sidebarLocator(terminal, sessionB).selected()).toBeVisible();
 
-      // Assert: selection should NOT be on session A
+      // Assert: selection should NOT be on session A's PR row
       expect(
         sidebarLocator(terminal, `e2e: ${branchA}`).selected()
       ).not.toBeVisible();
     } finally {
       // Cleanup GitHub resources (best-effort)
       if (prNumberA) closePullRequest(TEST_REPO, prNumberA);
-      if (prNumberB) closePullRequest(TEST_REPO, prNumberB);
       deleteRemoteBranch(TEST_REPO, branchA);
       deleteRemoteBranch(TEST_REPO, branchB);
     }
