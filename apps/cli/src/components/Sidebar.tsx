@@ -15,11 +15,9 @@ import { LAYOUT } from '../context/LayoutContext.js';
 // Rows the sidebar does NOT get for scrollable items:
 //   - Pane border (top + bottom)       → LAYOUT.PANE_BORDER_ROWS
 //   - Pane title row ("Kirby")         → LAYOUT.PANE_TITLE_ROWS
-//   - Bottom status bar at the root    → LAYOUT.BOTTOM_STATUS_ROWS
 // This compensates for the fact that Sidebar gets `termRows` (the full
 // terminal height) but actually renders inside a smaller flex slot.
-const SIDEBAR_CHROME_ROWS =
-  LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS + LAYOUT.BOTTOM_STATUS_ROWS;
+const SIDEBAR_CHROME_ROWS = LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS;
 const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
 
 // ── Section header detection ────────────────────────────────────

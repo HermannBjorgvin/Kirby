@@ -3,7 +3,6 @@ import { render, Box, useApp } from 'ink';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
-import { StatusBar } from './components/StatusBar.js';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { ToastContainer } from './components/ToastContainer.js';
 import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
@@ -55,9 +54,6 @@ function App({ forceSetup }: { forceSetup: boolean }) {
           showOnboarding={showOnboarding}
           exit={exit}
         />
-      </Box>
-      <Box flexShrink={0} paddingX={1}>
-        <StatusBar />
       </Box>
       {deleteConfirm.confirmDelete && (
         <DeleteConfirmModal

@@ -46,7 +46,7 @@ export interface SessionDataContextValue {
   lastSynced: number;
 }
 
-// ── Actions context (consumed by input handlers / StatusBar) ──
+// ── Actions context (consumed by input handlers) ──
 
 export interface SessionActionsContextValue {
   /**
