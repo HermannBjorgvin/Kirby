@@ -1,7 +1,16 @@
+import { useMemo } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
 import { useAppState } from '../../context/AppStateContext.js';
+import {
+  useBranchPickerState,
+  useBranchPickerActions,
+  useDeleteConfirmState,
+  useDeleteConfirmActions,
+  useSettingsState,
+  useSettingsActions,
+} from '../../context/ModalContext.js';
 import { useLayout, LAYOUT } from '../../context/LayoutContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
@@ -32,8 +41,25 @@ export function MainTab({
   showOnboarding,
   exit,
 }: MainTabProps) {
-  const { nav, asyncOps, branchPicker, deleteConfirm, settings } =
-    useAppState();
+  const { nav, asyncOps } = useAppState();
+  const branchPickerState = useBranchPickerState();
+  const branchPickerActions = useBranchPickerActions();
+  const deleteConfirmState = useDeleteConfirmState();
+  const deleteConfirmActions = useDeleteConfirmActions();
+  const settingsState = useSettingsState();
+  const settingsActions = useSettingsActions();
+  const branchPicker = useMemo(
+    () => ({ ...branchPickerState, ...branchPickerActions }),
+    [branchPickerState, branchPickerActions]
+  );
+  const deleteConfirm = useMemo(
+    () => ({ ...deleteConfirmState, ...deleteConfirmActions }),
+    [deleteConfirmState, deleteConfirmActions]
+  );
+  const settings = useMemo(
+    () => ({ ...settingsState, ...settingsActions }),
+    [settingsState, settingsActions]
+  );
   const layout = useLayout();
   const { terminal } = layout;
   const sessionCtx = useSessionActions();

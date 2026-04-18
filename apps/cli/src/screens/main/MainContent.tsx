@@ -8,7 +8,10 @@ import { TerminalPane } from './TerminalPane.js';
 import { DiffPane } from './DiffPane.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import { useAppState } from '../../context/AppStateContext.js';
+import {
+  useSettingsState,
+  useBranchPickerState,
+} from '../../context/ModalContext.js';
 
 interface MainContentProps {
   pane: PaneModeValue;
@@ -50,7 +53,8 @@ export function MainContent({
   selectedPr,
   onFocusSidebar,
 }: MainContentProps) {
-  const { settings, branchPicker } = useAppState();
+  const settings = useSettingsState();
+  const branchPicker = useBranchPickerState();
 
   const screenType: ScreenType = (() => {
     if (settings.settingsOpen && settings.controlsOpen) return 'controls';

@@ -12,6 +12,8 @@ import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { AppStateProvider, useAppState } from './context/AppStateContext.js';
 import { LayoutProvider, useLayout } from './context/LayoutContext.js';
+import { ModalProvider } from './context/ModalContext.js';
+import { useDeleteConfirmState } from './context/ModalContext.js';
 import { SessionProvider } from './context/SessionContext.js';
 import { SidebarProvider } from './context/SidebarContext.js';
 import { ToastProvider } from './context/ToastContext.js';
@@ -26,7 +28,8 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 function App({ forceSetup }: { forceSetup: boolean }) {
   const { exit } = useApp();
   const { config, provider, vcsConfigured } = useConfig();
-  const { nav, deleteConfirm } = useAppState();
+  const { nav } = useAppState();
+  const deleteConfirm = useDeleteConfirmState();
   const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
@@ -100,13 +103,15 @@ render(
     <KeybindProvider>
       <LayoutProvider>
         <AppStateProvider>
-          <ToastProvider>
-            <SessionProvider>
-              <SidebarProvider>
-                <App forceSetup={forceSetup} />
-              </SidebarProvider>
-            </SessionProvider>
-          </ToastProvider>
+          <ModalProvider>
+            <ToastProvider>
+              <SessionProvider>
+                <SidebarProvider>
+                  <App forceSetup={forceSetup} />
+                </SidebarProvider>
+              </SessionProvider>
+            </ToastProvider>
+          </ModalProvider>
         </AppStateProvider>
       </LayoutProvider>
     </KeybindProvider>

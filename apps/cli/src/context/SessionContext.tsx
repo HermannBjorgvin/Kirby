@@ -16,7 +16,7 @@ import { useRemoteSync } from '../hooks/useRemoteSync.js';
 import { useMergedBranches } from '../hooks/useMergedBranches.js';
 import { useConflictCounts } from '../hooks/useConflictCounts.js';
 import { useConfig } from './ConfigContext.js';
-import { useAppState } from './AppStateContext.js';
+import { useBranchPickerActions } from './ModalContext.js';
 import { useToastActions } from './ToastContext.js';
 import type { ToastVariant } from './ToastContext.js';
 import type { AgentSession } from '../types.js';
@@ -62,14 +62,10 @@ const SessionActionsContext = createContext<SessionActionsContextValue | null>(
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { config, provider, providers, reloadFromDisk } = useConfig();
-  const { branchPicker } = useAppState();
+  const { setBranches } = useBranchPickerActions();
   const { flash } = useToastActions();
 
-  const sessionMgr = useSessionManager(
-    providers,
-    reloadFromDisk,
-    branchPicker.setBranches
-  );
+  const sessionMgr = useSessionManager(providers, reloadFromDisk, setBranches);
 
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
   const { lastSynced, triggerSync } = useRemoteSync();

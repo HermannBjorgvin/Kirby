@@ -6,6 +6,7 @@ import {
   resolveValue,
 } from './components/SettingsPanel.js';
 import type { AppStateContextValue } from './context/AppStateContext.js';
+import type { SettingsValue as SettingsModalValue } from './context/ModalContext.js';
 import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
 import type { TerminalLayout } from './context/LayoutContext.js';
@@ -25,7 +26,7 @@ import {
 
 export type NavValue = AppStateContextValue['nav'];
 export type AsyncOpsValue = AppStateContextValue['asyncOps'];
-export type SettingsValue = AppStateContextValue['settings'];
+export type SettingsValue = SettingsModalValue;
 export type { TerminalLayout };
 
 // ── Settings input handler ────────────────────────────────────────
