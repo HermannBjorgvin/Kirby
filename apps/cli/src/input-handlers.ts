@@ -1,5 +1,5 @@
 import type { Key } from 'ink';
-import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
+import { autoDetectProjectConfig } from '@kirby/vcs-core';
 import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
@@ -130,7 +130,7 @@ export function handleSettingsInput(
       ctx.config.providers
     );
     if (updated) {
-      ctx.config.setConfig(readConfig());
+      ctx.config.reloadFromDisk();
       const fields = Object.keys(detected).join(', ');
       ctx.sessions.flashStatus(`Auto-detected: ${fields}`);
     } else {

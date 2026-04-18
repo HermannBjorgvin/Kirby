@@ -16,19 +16,6 @@ import type {
   KeyDescriptor,
   HintEntry,
 } from '../keybindings/index.js';
-import { readGlobalConfig, writeGlobalConfig } from '@kirby/vcs-core';
-import type { AppConfig } from '@kirby/vcs-core';
-
-/**
- * Persist keybind-related fields to global config in a single write.
- * Captures the intended state from React, avoiding stale disk reads.
- */
-function persistKeybindFields(config: AppConfig): void {
-  const g = readGlobalConfig();
-  g.keybindPreset = config.keybindPreset;
-  g.keybindOverrides = config.keybindOverrides;
-  writeGlobalConfig(g);
-}
 
 // ── Context ──────────────────────────────────────────────────────
 
@@ -60,7 +47,7 @@ export interface KeybindContextValue {
 const KeybindContext = createContext<KeybindContextValue | null>(null);
 
 export function KeybindProvider({ children }: { children: ReactNode }) {
-  const { config, setConfig } = useConfig();
+  const { config, updateKeybindFields } = useConfig();
 
   const preset = useMemo(
     () => getPreset(config.keybindPreset),
@@ -105,32 +92,17 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
     [mergedBindings]
   );
 
-  /** Update config and persist keybind fields in one call */
-  const updateAndPersist = useCallback(
-    (updater: (prev: AppConfig) => AppConfig) => {
-      let next: AppConfig | undefined;
-      setConfig((prev) => {
-        next = updater(prev);
-        return next;
-      });
-      queueMicrotask(() => {
-        if (next) persistKeybindFields(next);
-      });
-    },
-    [setConfig]
-  );
-
   const setPreset = useCallback(
     (presetId: string) => {
       if (!PRESETS.find((p) => p.id === presetId)) return;
-      updateAndPersist((prev) => ({ ...prev, keybindPreset: presetId }));
+      updateKeybindFields((prev) => ({ ...prev, keybindPreset: presetId }));
     },
-    [updateAndPersist]
+    [updateKeybindFields]
   );
 
   const updateBinding = useCallback(
     (actionId: string, descriptors: KeyDescriptor[]) => {
-      updateAndPersist((prev) => {
+      updateKeybindFields((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
         return {
@@ -139,12 +111,12 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [updateAndPersist]
+    [updateKeybindFields]
   );
 
   const resetBinding = useCallback(
     (actionId: string) => {
-      updateAndPersist((prev) => {
+      updateKeybindFields((prev) => {
         const prevOverrides =
           (prev.keybindOverrides as Record<string, KeyDescriptor[]>) ?? {};
         const rest = Object.fromEntries(
@@ -156,7 +128,7 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [updateAndPersist]
+    [updateKeybindFields]
   );
 
   const isCustom = useCallback(

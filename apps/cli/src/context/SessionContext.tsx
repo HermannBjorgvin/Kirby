@@ -67,13 +67,13 @@ const SessionActionsContext = createContext<SessionActionsContextValue | null>(
 );
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { config, provider, providers, setConfig } = useConfig();
+  const { config, provider, providers, reloadFromDisk } = useConfig();
   const { branchPicker } = useAppState();
   const { flash } = useToastActions();
 
   const sessionMgr = useSessionManager(
     providers,
-    setConfig,
+    reloadFromDisk,
     branchPicker.setBranches
   );
 

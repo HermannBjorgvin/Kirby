@@ -10,12 +10,12 @@ import {
 } from '@kirby/worktree-manager';
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
-import type { VcsProvider, AppConfig } from '@kirby/vcs-core';
+import type { VcsProvider } from '@kirby/vcs-core';
 import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
-  setConfig: (v: AppConfig | ((prev: AppConfig) => AppConfig)) => void,
+  reloadConfig: () => void,
   setBranches: (v: string[]) => void
 ) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -65,7 +65,7 @@ export function useSessionManager(
     // Auto-detect per-project fields on first launch
     const { updated } = autoDetectProjectConfig(process.cwd(), providers);
     if (updated) {
-      setConfig(readConfig());
+      reloadConfig();
     }
 
     return () => {
