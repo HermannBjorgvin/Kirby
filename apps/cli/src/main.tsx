@@ -10,7 +10,8 @@ import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
-import { AppStateProvider, useAppState } from './context/AppStateContext.js';
+import { NavProvider, useNavState } from './context/NavContext.js';
+import { AsyncOpsProvider } from './context/AsyncOpsContext.js';
 import { LayoutProvider, useLayout } from './context/LayoutContext.js';
 import { ModalProvider } from './context/ModalContext.js';
 import { useDeleteConfirmState } from './context/ModalContext.js';
@@ -28,7 +29,7 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 function App({ forceSetup }: { forceSetup: boolean }) {
   const { exit } = useApp();
   const { config, provider, vcsConfigured } = useConfig();
-  const { nav } = useAppState();
+  const nav = useNavState();
   const deleteConfirm = useDeleteConfirmState();
   const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -102,17 +103,19 @@ render(
   <ConfigProvider providers={providers}>
     <KeybindProvider>
       <LayoutProvider>
-        <AppStateProvider>
-          <ModalProvider>
-            <ToastProvider>
-              <SessionProvider>
-                <SidebarProvider>
-                  <App forceSetup={forceSetup} />
-                </SidebarProvider>
-              </SessionProvider>
-            </ToastProvider>
-          </ModalProvider>
-        </AppStateProvider>
+        <NavProvider>
+          <AsyncOpsProvider>
+            <ModalProvider>
+              <ToastProvider>
+                <SessionProvider>
+                  <SidebarProvider>
+                    <App forceSetup={forceSetup} />
+                  </SidebarProvider>
+                </SessionProvider>
+              </ToastProvider>
+            </ModalProvider>
+          </AsyncOpsProvider>
+        </NavProvider>
       </LayoutProvider>
     </KeybindProvider>
   </ConfigProvider>

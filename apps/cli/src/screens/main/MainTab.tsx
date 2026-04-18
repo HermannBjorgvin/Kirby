@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
-import { useAppState } from '../../context/AppStateContext.js';
+import { useNavState, useNavActions } from '../../context/NavContext.js';
+import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import {
   useBranchPickerState,
   useBranchPickerActions,
@@ -41,7 +42,13 @@ export function MainTab({
   showOnboarding,
   exit,
 }: MainTabProps) {
-  const { nav, asyncOps } = useAppState();
+  const navState = useNavState();
+  const navActions = useNavActions();
+  const nav = useMemo(
+    () => ({ ...navState, ...navActions }),
+    [navState, navActions]
+  );
+  const asyncOps = useAsyncOps();
   const branchPickerState = useBranchPickerState();
   const branchPickerActions = useBranchPickerActions();
   const deleteConfirmState = useDeleteConfirmState();

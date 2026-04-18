@@ -5,7 +5,8 @@ import {
   buildSettingsFields,
   resolveValue,
 } from './components/SettingsPanel.js';
-import type { AppStateContextValue } from './context/AppStateContext.js';
+import type { NavValue as NavContextValue } from './context/NavContext.js';
+import type { AsyncOpsValue as AsyncOpsContextValue } from './context/AsyncOpsContext.js';
 import type { SettingsValue as SettingsModalValue } from './context/ModalContext.js';
 import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
@@ -24,8 +25,8 @@ import {
 
 // ── Shared context slice types ────────────────────────────────────
 
-export type NavValue = AppStateContextValue['nav'];
-export type AsyncOpsValue = AppStateContextValue['asyncOps'];
+export type NavValue = NavContextValue;
+export type AsyncOpsValue = AsyncOpsContextValue;
 export type SettingsValue = SettingsModalValue;
 export type { TerminalLayout };
 
