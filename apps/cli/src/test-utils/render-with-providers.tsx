@@ -10,6 +10,31 @@ export interface RenderWithProvidersOptions {
   providers?: VcsProvider[];
 }
 
+// ink-testing-library's return type references unexported classes
+// with `private` fields, which tsc can't name when emitting our own
+// declarations. Re-shape the return as a structural type so the
+// consumer API stays identical without dragging in private members.
+export interface RenderWithProvidersResult {
+  rerender: (tree: ReactElement) => void;
+  unmount: () => void;
+  cleanup: () => void;
+  stdout: {
+    write: (frame: string) => void;
+    readonly frames: string[];
+    lastFrame: () => string | undefined;
+  };
+  stderr: {
+    write: (frame: string) => void;
+    readonly frames: string[];
+    lastFrame: () => string | undefined;
+  };
+  stdin: {
+    write: (data: string) => void;
+  };
+  frames: string[];
+  lastFrame: () => string | undefined;
+}
+
 /**
  * Mount a component inside ConfigProvider → KeybindProvider → ToastProvider
  * for use in `ink-testing-library` specs. Keep the wrapping minimal — specs
@@ -19,7 +44,7 @@ export interface RenderWithProvidersOptions {
 export function renderWithProviders(
   node: ReactElement,
   options: RenderWithProvidersOptions = {}
-) {
+): RenderWithProvidersResult {
   const providers = options.providers ?? [];
   return inkRender(
     <ConfigProvider providers={providers}>
