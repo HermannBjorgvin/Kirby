@@ -14,7 +14,8 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/worktree-manager"
+    "name": "@kirby/worktree-manager",
+    "tags": ["type:lib", "scope:worktree-manager"]
   },
   "dependencies": {
     "@kirby/logger": "^0.0.1",

@@ -48,6 +48,22 @@ export default tseslint.config(
           ],
         },
       ],
+      '@nx/enforce-module-boundaries': [
+        'error',
+        {
+          allow: [],
+          depConstraints: [
+            {
+              sourceTag: 'type:app',
+              onlyDependOnLibsWithTags: ['type:lib'],
+            },
+            {
+              sourceTag: 'type:lib',
+              onlyDependOnLibsWithTags: ['type:lib'],
+            },
+          ],
+        },
+      ],
     },
   },
   // Typed linting — scoped to production source only.

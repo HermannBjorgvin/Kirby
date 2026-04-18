@@ -8,6 +8,7 @@
   },
   "nx": {
     "name": "cli",
+    "tags": ["type:app", "scope:cli"],
     "targets": {
       "build": {
         "executor": "@nx/esbuild:esbuild",

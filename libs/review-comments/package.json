@@ -13,5 +13,9 @@
     },
     "./package.json": "./package.json"
   },
+  "nx": {
+    "name": "@kirby/review-comments",
+    "tags": ["type:lib", "scope:review-comments"]
+  },
   "dependencies": {}
 }
