@@ -10,9 +10,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    {
-      "path": "../diff/tsconfig.lib.json"
-    }
-  ]
+  "references": []
 }
