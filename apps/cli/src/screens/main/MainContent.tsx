@@ -19,11 +19,19 @@ interface MainContentProps {
   onFocusSidebar: () => void;
 }
 
+type ScreenType =
+  | 'controls'
+  | 'settings'
+  | 'branchPicker'
+  | 'reviewConfirm'
+  | 'terminal'
+  | 'prDetail'
+  | 'diff'
+  | 'diffFile';
+
 // Pure router for the main content pane. Renders exactly one of the
 // mutually-exclusive sub-panes based on modal and pane-mode state, in
-// the same precedence order MainTab used to inline. Extracted from
-// MainTab so MainTab can focus on the layout shell (Sidebar + Pane +
-// DeleteConfirmModal overlay) without drowning in conditional JSX.
+// the same precedence order MainTab used to inline.
 //
 // Precedence (highest first):
 //   1. Controls sub-screen  → ControlsPanel
@@ -32,7 +40,8 @@ interface MainContentProps {
 //   4. Review confirm       → ReviewConfirmPane
 //   5. Terminal mode        → TerminalPane
 //   6. PR detail mode       → ReviewDetailPane
-//   7. Diff mode            → DiffPane
+//   7. Diff list            → DiffPane
+//   8. Diff file viewer     → DiffPane
 export function MainContent({
   pane,
   terminal,
@@ -43,66 +52,72 @@ export function MainContent({
 }: MainContentProps) {
   const { settings, branchPicker } = useAppState();
 
-  if (settings.settingsOpen && settings.controlsOpen) {
-    return (
-      <ControlsPanel
-        paneRows={terminal.paneRows}
-        selectedIndex={settings.controlsSelectedIndex}
-        rebindActionId={settings.controlsRebindActionId}
-      />
-    );
+  const screenType: ScreenType = (() => {
+    if (settings.settingsOpen && settings.controlsOpen) return 'controls';
+    if (settings.settingsOpen) return 'settings';
+    if (branchPicker.creating) return 'branchPicker';
+    if (pane.reviewConfirm) return 'reviewConfirm';
+    if (pane.paneMode === 'pr-detail') return 'prDetail';
+    if (pane.paneMode === 'diff') return 'diff';
+    if (pane.paneMode === 'diff-file') return 'diffFile';
+    return 'terminal';
+  })();
+
+  switch (screenType) {
+    case 'controls':
+      return (
+        <ControlsPanel
+          paneRows={terminal.paneRows}
+          selectedIndex={settings.controlsSelectedIndex}
+          rebindActionId={settings.controlsRebindActionId}
+        />
+      );
+    case 'settings':
+      return (
+        <SettingsPanel
+          fieldIndex={settings.settingsFieldIndex}
+          editingField={settings.editingField}
+          editBuffer={settings.editBuffer}
+        />
+      );
+    case 'branchPicker':
+      return (
+        <BranchPicker
+          filter={branchPicker.branchFilter}
+          branches={branchPicker.branches}
+          selectedIndex={branchPicker.branchIndex}
+          paneRows={terminal.paneRows}
+        />
+      );
+    case 'reviewConfirm':
+      return (
+        <ReviewConfirmPane
+          pr={pane.reviewConfirm!.pr}
+          selectedOption={pane.reviewConfirm!.selectedOption}
+          instruction={pane.reviewInstruction}
+        />
+      );
+    case 'terminal':
+      return (
+        <TerminalPane
+          sessionNameForTerminal={sessionNameForTerminal}
+          terminal={terminal}
+          reconnectKey={pane.reconnectKey}
+          terminalFocused={terminalFocused}
+          onFocusSidebar={onFocusSidebar}
+        />
+      );
+    case 'prDetail':
+      return <ReviewDetailPane pr={selectedPr} />;
+    case 'diff':
+    case 'diffFile':
+      return (
+        <DiffPane
+          pane={pane}
+          terminal={terminal}
+          selectedPr={selectedPr}
+          terminalFocused={terminalFocused}
+        />
+      );
   }
-  if (settings.settingsOpen) {
-    return (
-      <SettingsPanel
-        fieldIndex={settings.settingsFieldIndex}
-        editingField={settings.editingField}
-        editBuffer={settings.editBuffer}
-      />
-    );
-  }
-  if (branchPicker.creating) {
-    return (
-      <BranchPicker
-        filter={branchPicker.branchFilter}
-        branches={branchPicker.branches}
-        selectedIndex={branchPicker.branchIndex}
-        paneRows={terminal.paneRows}
-      />
-    );
-  }
-  if (pane.reviewConfirm) {
-    return (
-      <ReviewConfirmPane
-        pr={pane.reviewConfirm.pr}
-        selectedOption={pane.reviewConfirm.selectedOption}
-        instruction={pane.reviewInstruction}
-      />
-    );
-  }
-  if (pane.paneMode === 'terminal') {
-    return (
-      <TerminalPane
-        sessionNameForTerminal={sessionNameForTerminal}
-        terminal={terminal}
-        reconnectKey={pane.reconnectKey}
-        terminalFocused={terminalFocused}
-        onFocusSidebar={onFocusSidebar}
-      />
-    );
-  }
-  if (pane.paneMode === 'pr-detail') {
-    return <ReviewDetailPane pr={selectedPr} />;
-  }
-  if (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') {
-    return (
-      <DiffPane
-        pane={pane}
-        terminal={terminal}
-        selectedPr={selectedPr}
-        terminalFocused={terminalFocused}
-      />
-    );
-  }
-  return null;
 }
