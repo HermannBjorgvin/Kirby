@@ -4,7 +4,10 @@ import type { AppStateContextValue } from '../../context/AppStateContext.js';
 import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
 import type { SidebarContextValue } from '../../context/SidebarContext.js';
-import type { KeybindContextValue } from '../../context/KeybindContext.js';
+import type {
+  KeybindContextValue,
+  KeybindResolveValue,
+} from '../../context/KeybindContext.js';
 import type {
   NavValue,
   AsyncOpsValue,
@@ -43,7 +46,7 @@ export interface DiffFileListHandlerCtx {
   diffFiles: DiffFile[];
   diffDisplayCount: number;
   loadDiffText: () => Promise<void>;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface CommentContext {
@@ -62,7 +65,7 @@ export interface DiffViewerHandlerCtx {
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface ConfirmHandlerCtx {

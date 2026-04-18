@@ -5,7 +5,7 @@ import type { DiffFile } from '@kirby/diff';
 import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
 import { computeScrollWindow } from '../../utils/scroll-window.js';
-import { useKeybinds } from '../../context/KeybindContext.js';
+import { useKeybindResolve } from '../../context/KeybindContext.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -77,7 +77,7 @@ function FileRow({
 }
 
 function DiffFileListHints() {
-  const kb = useKeybinds();
+  const kb = useKeybindResolve();
   const navKeys = kb.getNavKeys('diff-file-list');
   const openKeys = kb.getHintKeys('diff-file-list.open');
   const toggleKeys = kb.getHintKeys('diff-file-list.toggle-skipped');

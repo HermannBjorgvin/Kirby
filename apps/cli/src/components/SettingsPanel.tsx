@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { useConfig } from '../context/ConfigContext.js';
-import { useKeybinds } from '../context/KeybindContext.js';
+import { useKeybindResolve } from '../context/KeybindContext.js';
 
 export interface SettingsField {
   label: string;
@@ -165,7 +165,7 @@ export function resolveValue(config: AppConfig, field: SettingsField): string {
 }
 
 function SettingsHints({ enterAction }: { enterAction: 'toggle' | 'edit' }) {
-  const kb = useKeybinds();
+  const kb = useKeybindResolve();
   const navKeys = kb.getNavKeys('settings');
   const editKeys = kb.getHintKeys('settings.edit-toggle');
   const autoDetectKeys = kb.getHintKeys('settings.auto-detect');

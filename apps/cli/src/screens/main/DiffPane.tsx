@@ -5,7 +5,7 @@ import { DiffFileList } from '../reviews/DiffFileList.js';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
-import { useKeybinds } from '../../context/KeybindContext.js';
+import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useAppState } from '../../context/AppStateContext.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
@@ -37,7 +37,7 @@ export function DiffPane({
 }: DiffPaneProps) {
   const sessionCtx = useSessionActions();
   const configCtx = useConfig();
-  const keybinds = useKeybinds();
+  const keybinds = useKeybindResolve();
   const { asyncOps } = useAppState();
 
   // ── Review comments (file-watched) ────────────────────────────

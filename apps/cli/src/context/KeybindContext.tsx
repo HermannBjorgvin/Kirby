@@ -17,9 +17,20 @@ import type {
   HintEntry,
 } from '../keybindings/index.js';
 
-// ── Context ──────────────────────────────────────────────────────
+// ── Two-context split ────────────────────────────────────────────
+//
+// Resolve context: data + pure lookups. Re-renders when the active
+// preset or custom overrides change. Consumers that only need to
+// render hint labels or resolve keypresses subscribe here.
+//
+// Actions context: stable callbacks (setPreset, updateBinding,
+// resetBinding). The value reference is memoized across re-renders,
+// so subscribers that never read state don't re-render on every
+// keystroke.
+//
+// Mirrors the same split used by ToastContext.
 
-export interface KeybindContextValue {
+export interface KeybindResolveValue {
   /** The active preset ID */
   presetId: string;
   /** The active preset's display name */
@@ -34,17 +45,29 @@ export interface KeybindContextValue {
   getNavKeys: (contextPrefix: string) => string;
   /** Get all hint entries for a context */
   getHints: (context: InputContext) => HintEntry[];
+  /** Check if an action has a custom override */
+  isCustom: (actionId: string) => boolean;
+}
+
+export interface KeybindActionsValue {
   /** Change the active preset */
   setPreset: (presetId: string) => void;
   /** Update a single binding (custom override) */
   updateBinding: (actionId: string, descriptors: KeyDescriptor[]) => void;
   /** Reset a single binding to preset default */
   resetBinding: (actionId: string) => void;
-  /** Check if an action has a custom override */
-  isCustom: (actionId: string) => boolean;
 }
 
-const KeybindContext = createContext<KeybindContextValue | null>(null);
+/**
+ * Combined state+actions shape. Kept for call sites (input handlers)
+ * that bundle both reads and writes into a single `keybinds` prop —
+ * those consumers aren't inside the React render tree, so there's no
+ * re-render cost to composing the two hooks at the call site.
+ */
+export type KeybindContextValue = KeybindResolveValue & KeybindActionsValue;
+
+const KeybindResolveContext = createContext<KeybindResolveValue | null>(null);
+const KeybindActionsContext = createContext<KeybindActionsValue | null>(null);
 
 export function KeybindProvider({ children }: { children: ReactNode }) {
   const { config, updateKeybindFields } = useConfig();
@@ -92,6 +115,13 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
     [mergedBindings]
   );
 
+  const isCustom = useCallback(
+    (actionId: string) => {
+      return overrides != null && actionId in overrides;
+    },
+    [overrides]
+  );
+
   const setPreset = useCallback(
     (presetId: string) => {
       if (!PRESETS.find((p) => p.id === presetId)) return;
@@ -131,14 +161,7 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
     [updateKeybindFields]
   );
 
-  const isCustom = useCallback(
-    (actionId: string) => {
-      return overrides != null && actionId in overrides;
-    },
-    [overrides]
-  );
-
-  const value = useMemo<KeybindContextValue>(
+  const resolveValue = useMemo<KeybindResolveValue>(
     () => ({
       presetId: preset.id,
       presetName: preset.name,
@@ -147,9 +170,6 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
       getHintKeys,
       getNavKeys,
       getHints,
-      setPreset,
-      updateBinding,
-      resetBinding,
       isCustom,
     }),
     [
@@ -159,20 +179,58 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
       getHintKeys,
       getNavKeys,
       getHints,
-      setPreset,
-      updateBinding,
-      resetBinding,
       isCustom,
     ]
   );
 
+  const actionsValue = useMemo<KeybindActionsValue>(
+    () => ({ setPreset, updateBinding, resetBinding }),
+    [setPreset, updateBinding, resetBinding]
+  );
+
   return (
-    <KeybindContext.Provider value={value}>{children}</KeybindContext.Provider>
+    <KeybindResolveContext.Provider value={resolveValue}>
+      <KeybindActionsContext.Provider value={actionsValue}>
+        {children}
+      </KeybindActionsContext.Provider>
+    </KeybindResolveContext.Provider>
   );
 }
 
-export function useKeybinds(): KeybindContextValue {
-  const ctx = useContext(KeybindContext);
-  if (!ctx) throw new Error('useKeybinds must be used within KeybindProvider');
+/**
+ * Read the merged keybindings, resolver, hint helpers, and preset
+ * identity. Re-renders when the active preset or any custom override
+ * changes. Use this from components that render hints or route
+ * keypresses to actions.
+ */
+export function useKeybindResolve(): KeybindResolveValue {
+  const ctx = useContext(KeybindResolveContext);
+  if (!ctx)
+    throw new Error('useKeybindResolve must be used within KeybindProvider');
   return ctx;
+}
+
+/**
+ * Read the preset/binding mutators. Stable references — subscribers
+ * don't re-render when the active preset or bindings change. Use from
+ * input handlers or settings UIs that only dispatch.
+ */
+export function useKeybindActions(): KeybindActionsValue {
+  const ctx = useContext(KeybindActionsContext);
+  if (!ctx)
+    throw new Error('useKeybindActions must be used within KeybindProvider');
+  return ctx;
+}
+
+/**
+ * Combined reader — subscribes to both contexts. Use ONLY at call
+ * sites that package keybinds into a single object to hand to an
+ * imperative handler (see MainTab's useInput). Render-path components
+ * should pick the narrower hook: useKeybindResolve for hints/lookups,
+ * useKeybindActions for dispatch-only.
+ */
+export function useKeybinds(): KeybindContextValue {
+  const resolve = useKeybindResolve();
+  const actions = useKeybindActions();
+  return useMemo(() => ({ ...resolve, ...actions }), [resolve, actions]);
 }

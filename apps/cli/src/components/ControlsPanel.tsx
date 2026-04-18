@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Text, Box } from 'ink';
-import { useKeybinds } from '../context/KeybindContext.js';
+import { useKeybindResolve } from '../context/KeybindContext.js';
 import { ACTIONS } from '../keybindings/index.js';
 import {
   buildControlsRows,
@@ -10,7 +10,7 @@ import {
 // ── Hints sub-component (isolates context subscription from parent) ──
 
 function ControlsHints({ rebindLabel }: { rebindLabel: string | null }) {
-  const kb = useKeybinds();
+  const kb = useKeybindResolve();
   const navKeys = kb.getHintKeys('controls.navigate-down');
   const rebindKeys = kb.getHintKeys('controls.rebind');
   const cycleLeft = kb.getHintKeys('controls.cycle-left');
@@ -53,7 +53,7 @@ export function ControlsPanel({
   selectedIndex: number;
   rebindActionId: string | null;
 }) {
-  const { presetName, bindings, isCustom } = useKeybinds();
+  const { presetName, bindings, isCustom } = useKeybindResolve();
 
   const rows = useMemo(
     () => buildControlsRows(bindings, isCustom),

@@ -7,7 +7,7 @@ import { PrBadge } from './PrBadge.js';
 import { SidebarLayout } from './SidebarLayout.js';
 import { computeScrollWindow } from '../utils/scroll-window.js';
 import { useConfig } from '../context/ConfigContext.js';
-import { useKeybinds } from '../context/KeybindContext.js';
+import { useKeybindResolve } from '../context/KeybindContext.js';
 import { LAYOUT } from '../context/LayoutContext.js';
 
 // ── Constants ───────────────────────────────────────────────────
@@ -219,7 +219,7 @@ export const Sidebar = memo(function Sidebar({
   focused,
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
-  const keybinds = useKeybinds();
+  const keybinds = useKeybindResolve();
 
   // Build dynamic keybind hints from the active preset
   const sidebarHints = useMemo(() => {
