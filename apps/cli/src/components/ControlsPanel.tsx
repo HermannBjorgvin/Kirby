@@ -1,11 +1,19 @@
 import { useMemo } from 'react';
-import { Text, Box } from 'ink';
-import { useKeybindResolve } from '../context/KeybindContext.js';
+import { Text, Box, useInput } from 'ink';
+import {
+  useKeybindResolve,
+  useKeybinds,
+} from '../context/KeybindContext.js';
+import {
+  useSettingsState,
+  useSettingsActions,
+} from '../context/ModalContext.js';
 import { ACTIONS } from '../keybindings/index.js';
 import {
   buildControlsRows,
   getBindingRows,
 } from '../keybindings/controls-data.js';
+import { handleControlsInput } from '../input-handlers.js';
 
 // ── Hints sub-component (isolates context subscription from parent) ──
 
@@ -54,6 +62,26 @@ export function ControlsPanel({
   rebindActionId: string | null;
 }) {
   const { presetName, bindings, isCustom } = useKeybindResolve();
+
+  // ── Input routing ─────────────────────────────────────────────
+  // ControlsPanel owns its own keypress routing; MainTab no longer
+  // branches on controlsOpen.
+  const settingsState = useSettingsState();
+  const settingsActions = useSettingsActions();
+  const settings = useMemo(
+    () => ({ ...settingsState, ...settingsActions }),
+    [settingsState, settingsActions]
+  );
+  // handleControlsInput calls resolve, setPreset, updateBinding,
+  // and resetBinding — needs the combined context.
+  const keybinds = useKeybinds();
+
+  useInput(
+    (input, key) => {
+      handleControlsInput(input, key, { settings, keybinds });
+    },
+    { isActive: settings.settingsOpen && settings.controlsOpen }
+  );
 
   const rows = useMemo(
     () => buildControlsRows(bindings, isCustom),

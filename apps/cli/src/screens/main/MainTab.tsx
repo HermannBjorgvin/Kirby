@@ -20,10 +20,6 @@ import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
 import { getItemKey } from '../../types.js';
 import {
-  handleSettingsInput,
-  handleControlsInput,
-} from '../../input-handlers.js';
-import {
   handleConfirmInput,
   handleSidebarInput,
 } from './main-input.js';
@@ -100,27 +96,12 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
   useInput((input, key) => {
     if (terminalFocused || showOnboarding) return;
 
-    // Branch picker and delete-confirm modals own their own useInput
-    // hooks — skip so we don't double-route.
+    // Modals own their own useInput hooks — skip so we don't
+    // double-route. Branch picker, delete-confirm, settings, and the
+    // controls sub-screen each have a nested useInput({ isActive }).
     if (branchPicker.creating) return;
     if (deleteConfirm.confirmDelete) return;
-
-    // Controls sub-screen (within settings)
-    if (settings.settingsOpen && settings.controlsOpen) {
-      return handleControlsInput(input, key, {
-        settings,
-        keybinds,
-      });
-    }
-
-    if (settings.settingsOpen) {
-      return handleSettingsInput(input, key, {
-        settings,
-        config: configCtx,
-        sessions: sessionCtx,
-        keybinds,
-      });
-    }
+    if (settings.settingsOpen) return;
 
     if (pane.reviewConfirm) {
       return handleConfirmInput(input, key, {
