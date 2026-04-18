@@ -30,6 +30,10 @@ export default tseslint.config(
           fixStyle: 'separate-type-imports',
         },
       ],
+      'react/jsx-key': 'error',
+      'react/no-unstable-nested-components': 'error',
+      'react/jsx-no-constructed-context-values': 'error',
+      'react/self-closing-comp': 'error',
     },
   },
   // Typed linting — scoped to production source only.
