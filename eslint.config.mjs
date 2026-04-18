@@ -34,6 +34,20 @@ export default tseslint.config(
       'react/no-unstable-nested-components': 'error',
       'react/jsx-no-constructed-context-values': 'error',
       'react/self-closing-comp': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      'import/no-cycle': ['error', { maxDepth: 3 }],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/index'],
+              message:
+                'No barrel imports — import from the concrete file.',
+            },
+          ],
+        },
+      ],
     },
   },
   // Typed linting — scoped to production source only.
