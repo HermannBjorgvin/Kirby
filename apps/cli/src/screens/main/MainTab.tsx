@@ -24,7 +24,6 @@ import {
   handleControlsInput,
 } from '../../input-handlers.js';
 import {
-  handleConfirmDeleteInput,
   handleConfirmInput,
   handleSidebarInput,
 } from './main-input.js';
@@ -101,18 +100,10 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
   useInput((input, key) => {
     if (terminalFocused || showOnboarding) return;
 
-    // Branch picker input is handled by BranchPicker's own useInput —
-    // skip so we don't double-route.
+    // Branch picker and delete-confirm modals own their own useInput
+    // hooks — skip so we don't double-route.
     if (branchPicker.creating) return;
-
-    if (deleteConfirm.confirmDelete) {
-      return handleConfirmDeleteInput(input, key, {
-        deleteConfirm,
-        sessions: sessionCtx,
-        asyncOps,
-        keybinds,
-      });
-    }
+    if (deleteConfirm.confirmDelete) return;
 
     // Controls sub-screen (within settings)
     if (settings.settingsOpen && settings.controlsOpen) {

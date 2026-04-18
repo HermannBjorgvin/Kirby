@@ -41,7 +41,7 @@ export interface DeleteConfirmHandlerCtx {
   deleteConfirm: DeleteConfirmValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface DiffFileListHandlerCtx {
