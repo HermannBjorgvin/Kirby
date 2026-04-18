@@ -24,7 +24,6 @@ import {
   handleControlsInput,
 } from '../../input-handlers.js';
 import {
-  handleBranchPickerInput,
   handleConfirmDeleteInput,
   handleConfirmInput,
   handleSidebarInput,
@@ -102,17 +101,9 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
   useInput((input, key) => {
     if (terminalFocused || showOnboarding) return;
 
-    if (branchPicker.creating) {
-      return handleBranchPickerInput(input, key, {
-        branchPicker,
-        sessions: sessionCtx,
-        sidebar,
-        asyncOps,
-        terminal,
-        config: configCtx,
-        keybinds,
-      });
-    }
+    // Branch picker input is handled by BranchPicker's own useInput —
+    // skip so we don't double-route.
+    if (branchPicker.creating) return;
 
     if (deleteConfirm.confirmDelete) {
       return handleConfirmDeleteInput(input, key, {

@@ -34,7 +34,7 @@ export interface BranchPickerHandlerCtx {
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface DeleteConfirmHandlerCtx {
