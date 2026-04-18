@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import { fetchRemote, fastForwardMainBranch } from '@kirby/worktree-manager';
 import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
+import { usePolling } from './usePolling.js';
 
 const DEFAULT_POLL_MS = 3_600_000; // 1 hour
 const MIN_POLL_MS = 300_000; // 5 minutes
@@ -9,41 +10,24 @@ const MIN_POLL_MS = 300_000; // 5 minutes
 export function useRemoteSync() {
   const { vcsConfigured, config } = useConfig();
   const { mergePollInterval } = config;
-  const [lastSynced, setLastSynced] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const mountedRef = useRef(true);
 
-  const sync = useCallback(async () => {
-    if (!vcsConfigured) return;
-    setIsSyncing(true);
+  const interval = Math.max(MIN_POLL_MS, mergePollInterval ?? DEFAULT_POLL_MS);
+
+  const sync = useCallback(async (): Promise<number> => {
     try {
       await fetchRemote();
       await fastForwardMainBranch();
-      if (mountedRef.current) setLastSynced(Date.now());
     } catch (err: unknown) {
       logError('useRemoteSync', err);
-    } finally {
-      if (mountedRef.current) setIsSyncing(false);
     }
-  }, [vcsConfigured]);
+    return Date.now();
+  }, []);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    if (!vcsConfigured) return;
+  const polling = usePolling<number>(sync, interval, vcsConfigured);
 
-    sync();
-
-    const interval = Math.max(
-      MIN_POLL_MS,
-      mergePollInterval ?? DEFAULT_POLL_MS
-    );
-    const timer = setInterval(sync, interval);
-
-    return () => {
-      mountedRef.current = false;
-      clearInterval(timer);
-    };
-  }, [vcsConfigured, mergePollInterval, sync]);
-
-  return { lastSynced, isSyncing, triggerSync: sync };
+  return {
+    lastSynced: polling.value ?? 0,
+    isSyncing: polling.loading,
+    triggerSync: polling.refresh,
+  };
 }
