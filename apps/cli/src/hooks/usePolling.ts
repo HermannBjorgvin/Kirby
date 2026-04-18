@@ -24,7 +24,6 @@ export function usePolling<T>(
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
   const fnRef = useRef(fn);
-  // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
   fnRef.current = fn;
 
   const refresh = useCallback(async (): Promise<void> => {
