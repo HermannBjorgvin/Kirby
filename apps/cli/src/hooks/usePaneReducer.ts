@@ -1,8 +1,64 @@
-import { useReducer, useMemo, useState } from 'react';
+import { useMemo, useReducer, useSyncExternalStore } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { PaneMode, SidebarItem } from '../types.js';
-import { getItemKey, getPrFromItem } from '../types.js';
+import { getPrFromItem } from '../types.js';
 import { hasSession } from '../pty-registry.js';
+
+// ── reviewSessionStarted external store ──────────────────────────
+//
+// Tracks which review-PR sessions the user has explicitly started
+// (i.e. after the "Start session" confirm). When the user navigates
+// back to that review row, we want pane mode to land on 'terminal'
+// instead of re-opening the PR-detail screen. This piece of state
+// deliberately *persists across sidebar-item changes* — unlike the
+// rest of PaneState, which resets on item change via the `key` remount
+// of MainTabBody (see MainTab.tsx).
+//
+// Because the usePaneReducer call gets a fresh `useReducer` on every
+// remount, we can't keep this set in `PaneState` — it'd blow away on
+// every navigation. Hosting it in a module-local store means the set
+// survives key remounts while useSyncExternalStore keeps consumers
+// subscribed.
+
+let reviewStartedSet = new Set<number>();
+const reviewStartedListeners = new Set<() => void>();
+
+function subscribeReviewStarted(cb: () => void): () => void {
+  reviewStartedListeners.add(cb);
+  return () => {
+    reviewStartedListeners.delete(cb);
+  };
+}
+
+function getReviewStartedSnapshot(): Set<number> {
+  return reviewStartedSet;
+}
+
+function notifyReviewStarted(): void {
+  for (const cb of reviewStartedListeners) cb();
+}
+
+/**
+ * Imperative writer for the reviewSessionStarted store. Accepts the
+ * same Updater<Set<number>> shape the old SET_REVIEW_SESSION_STARTED
+ * action did, so callers (confirm-input.ts) don't need to change.
+ */
+function setReviewSessionStartedExternal(
+  updater: Updater<Set<number>>
+): void {
+  reviewStartedSet = resolve(updater, reviewStartedSet);
+  notifyReviewStarted();
+}
+
+/**
+ * Test-only: reset the external store. Real code should never call
+ * this — the store is deliberately persistent. Used by specs that
+ * want a clean slate between runs.
+ */
+export function __resetReviewSessionStartedForTest(): void {
+  reviewStartedSet = new Set();
+  notifyReviewStarted();
+}
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -10,7 +66,6 @@ export interface PaneState {
   // Pane mode
   paneMode: PaneMode;
   reconnectKey: number;
-  reviewSessionStarted: Set<number>;
 
   // Diff navigation
   diffFileIndex: number;
@@ -32,7 +87,6 @@ export interface PaneState {
 export const initialState: PaneState = {
   paneMode: 'terminal',
   reconnectKey: 0,
-  reviewSessionStarted: new Set(),
   diffFileIndex: 0,
   diffViewFile: null,
   diffScrollOffset: 0,
@@ -55,7 +109,6 @@ function resolve<T>(updater: Updater<T>, prev: T): T {
 export type PaneAction =
   | { type: 'SET_PANE_MODE'; mode: PaneMode }
   | { type: 'SET_RECONNECT_KEY'; updater: Updater<number> }
-  | { type: 'SET_REVIEW_SESSION_STARTED'; updater: Updater<Set<number>> }
   | { type: 'SET_DIFF_FILE_INDEX'; updater: Updater<number> }
   | { type: 'SET_DIFF_VIEW_FILE'; file: string | null }
   | { type: 'SET_DIFF_SCROLL_OFFSET'; updater: Updater<number> }
@@ -76,8 +129,6 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
       return { ...state, paneMode: action.mode };
     case 'SET_RECONNECT_KEY':
       return { ...state, reconnectKey: resolve(action.updater, state.reconnectKey) };
-    case 'SET_REVIEW_SESSION_STARTED':
-      return { ...state, reviewSessionStarted: resolve(action.updater, state.reviewSessionStarted) };
     case 'SET_DIFF_FILE_INDEX':
       return { ...state, diffFileIndex: resolve(action.updater, state.diffFileIndex) };
     case 'SET_DIFF_VIEW_FILE':
@@ -122,7 +173,11 @@ export interface PaneActions {
 }
 
 /** Combined type for input handlers: read state + call setters. */
-export type PaneModeValue = PaneState & PaneActions;
+export type PaneModeValue = PaneState & {
+  /** Which review PRs have an active session started. Survives
+   * navigation (lives in an external store, not in the reducer). */
+  reviewSessionStarted: Set<number>;
+} & PaneActions;
 
 // ── Hook ─────────────────────────────────────────────────────────
 
@@ -145,38 +200,44 @@ function defaultPaneMode(
  * Consolidated pane state machine. Replaces the previous four hooks:
  * usePaneMode, useDiffState, useCommentState, useReviewConfirmState.
  *
- * Auto-resets pane mode when the selected sidebar item changes.
+ * The call site (MainTab) mounts this hook inside a component keyed on
+ * the selected sidebar item's identity, so on every item change the
+ * hook remounts and `useReducer`'s lazy initializer picks the starting
+ * pane mode via `defaultPaneMode`. There is no render-time auto-reset
+ * path anymore.
+ *
+ * `reviewSessionStarted` is the only piece of state that deliberately
+ * persists across item changes; it lives in a module-local external
+ * store and is read via `useSyncExternalStore`.
  */
 export function usePaneReducer(
   selectedItem: SidebarItem | undefined,
   sessionNameForTerminal: string | null
 ): PaneModeValue {
-  const [state, dispatch] = useReducer(paneReducer, initialState);
+  const reviewSessionStarted = useSyncExternalStore(
+    subscribeReviewStarted,
+    getReviewStartedSnapshot
+  );
 
-  // Auto-reset pane mode when selected item changes.
-  // Uses the React "store previous value" pattern.
-  const itemKey = selectedItem ? getItemKey(selectedItem) : null;
-
-  const [prevItemKey, setPrevItemKey] = useState<string | null>(null);
-  if (itemKey !== prevItemKey) {
-    setPrevItemKey(itemKey);
-    const target = defaultPaneMode(
-      selectedItem,
-      sessionNameForTerminal,
-      state.reviewSessionStarted
-    );
-    if (target !== state.paneMode) {
-      dispatch({ type: 'SET_PANE_MODE', mode: target });
-    }
-  }
+  const [state, dispatch] = useReducer(
+    paneReducer,
+    { selectedItem, sessionNameForTerminal, reviewSessionStarted },
+    (arg) => ({
+      ...initialState,
+      paneMode: defaultPaneMode(
+        arg.selectedItem,
+        arg.sessionNameForTerminal,
+        arg.reviewSessionStarted
+      ),
+    })
+  );
 
   const actions = useMemo<PaneActions>(
     () => ({
       setPaneMode: (mode) => dispatch({ type: 'SET_PANE_MODE', mode }),
       setReconnectKey: (updater) =>
         dispatch({ type: 'SET_RECONNECT_KEY', updater }),
-      setReviewSessionStarted: (updater) =>
-        dispatch({ type: 'SET_REVIEW_SESSION_STARTED', updater }),
+      setReviewSessionStarted: setReviewSessionStartedExternal,
       setDiffFileIndex: (updater) =>
         dispatch({ type: 'SET_DIFF_FILE_INDEX', updater }),
       setDiffViewFile: (file) =>
@@ -202,7 +263,7 @@ export function usePaneReducer(
   );
 
   return useMemo(
-    () => ({ ...state, ...actions }),
-    [state, actions]
+    () => ({ ...state, reviewSessionStarted, ...actions }),
+    [state, reviewSessionStarted, actions]
   );
 }

@@ -135,15 +135,6 @@ describe('paneReducer', () => {
     expect(next.reviewInstruction).toBe('LGTM');
   });
 
-  it('SET_REVIEW_SESSION_STARTED accepts a value updater', () => {
-    const set = new Set([1, 2]);
-    const next = paneReducer(initialState, {
-      type: 'SET_REVIEW_SESSION_STARTED',
-      updater: set,
-    });
-    expect(next.reviewSessionStarted).toBe(set);
-  });
-
   // ── Updater<T>: function form ────────────────────────────────────
 
   it('SET_RECONNECT_KEY accepts a function updater with prev', () => {
@@ -203,18 +194,6 @@ describe('paneReducer', () => {
       updater: (prev) => `${prev} good`,
     });
     expect(next.reviewInstruction).toBe('Looks good');
-  });
-
-  it('SET_REVIEW_SESSION_STARTED accepts a function updater that inserts', () => {
-    const start = {
-      ...initialState,
-      reviewSessionStarted: new Set([1]),
-    };
-    const next = paneReducer(start, {
-      type: 'SET_REVIEW_SESSION_STARTED',
-      updater: (prev) => new Set([...prev, 2]),
-    });
-    expect([...next.reviewSessionStarted].sort()).toEqual([1, 2]);
   });
 
   // ── Identity on unrelated fields ─────────────────────────────────

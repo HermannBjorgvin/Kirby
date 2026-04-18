@@ -18,6 +18,7 @@ import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
+import { getItemKey } from '../../types.js';
 import {
   handleSettingsInput,
   handleControlsInput,
@@ -37,11 +38,29 @@ interface MainTabProps {
   exit: () => void;
 }
 
-export function MainTab({
-  terminalFocused,
-  showOnboarding,
-  exit,
-}: MainTabProps) {
+// MainTab holds an always-on no-op useInput to keep Ink's raw-mode
+// ref-count above zero while MainTabBody remounts on sidebar-item
+// changes. Without this guard the selected-item remount would briefly
+// tear down the only useInput in the tree, flipping raw-mode off and
+// causing character echo in the terminal.
+export function MainTab(props: MainTabProps) {
+  useInput(() => {
+    // Intentionally empty — see comment above.
+  });
+
+  const sidebar = useSidebar();
+  const itemKey = sidebar.selectedItem
+    ? getItemKey(sidebar.selectedItem)
+    : 'empty';
+
+  return <MainTabBody key={itemKey} {...props} />;
+}
+
+// MainTabBody owns the pane state + the real input router. React
+// unmounts and remounts it whenever `itemKey` changes (see MainTab
+// above), so `usePaneReducer`'s lazy initializer picks a fresh pane
+// mode via defaultPaneMode() — no render-time setState to reset.
+function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
   const navState = useNavState();
   const navActions = useNavActions();
   const nav = useMemo(
@@ -81,9 +100,6 @@ export function MainTab({
 
   // ── Input handling (modals + sidebar) ──────────────────────────
   useInput((input, key) => {
-    // Keep this hook always active (no `isActive` option) so Ink's raw-mode
-    // ref-count never drops to 0. Using `isActive: false` triggers
-    // setRawMode(false), which disables raw mode and causes character echo.
     if (terminalFocused || showOnboarding) return;
 
     if (branchPicker.creating) {
@@ -189,8 +205,7 @@ export function MainTab({
 
   // Auto-hide the sidebar while the user is driving an agent session or
   // scanning a diff, so the content pane can reclaim the full width.
-  // undefined → default on; explicit false opts out. (Feature from
-  // commit 06bd627 — preserved verbatim except for constant reuse.)
+  // undefined → default on; explicit false opts out.
   const autoHideEnabled = configCtx.config.autoHideSidebar !== false;
   const hideablePaneMode =
     pane.paneMode === 'terminal' ||
