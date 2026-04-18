@@ -5,7 +5,8 @@ import { ControlsPanel } from '../../components/ControlsPanel.js';
 import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';
 import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { TerminalPane } from './TerminalPane.js';
-import { DiffPane } from './DiffPane.js';
+import { DiffFileListContainer } from './DiffFileListContainer.js';
+import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import {
@@ -114,9 +115,17 @@ export function MainContent({
     case 'prDetail':
       return <ReviewDetailPane pr={selectedPr} />;
     case 'diff':
+      return (
+        <DiffFileListContainer
+          pane={pane}
+          terminal={terminal}
+          selectedPr={selectedPr}
+          terminalFocused={terminalFocused}
+        />
+      );
     case 'diffFile':
       return (
-        <DiffPane
+        <DiffFileViewerContainer
           pane={pane}
           terminal={terminal}
           selectedPr={selectedPr}
