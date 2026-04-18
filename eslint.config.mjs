@@ -23,12 +23,20 @@ export default tseslint.config(
     rules: {
       // Too aggressive for this codebase — common pattern after null checks and array access
       '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          fixStyle: 'separate-type-imports',
+        },
+      ],
     },
   },
   {
     ignores: [
       '**/node_modules',
       '**/dist',
+      '**/out-tsc',
       'tmp',
       '.claude/worktrees',
       '**/.tui-test',
