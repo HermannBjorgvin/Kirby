@@ -29,7 +29,7 @@ export interface PaneState {
   reviewInstruction: string;
 }
 
-const initialState: PaneState = {
+export const initialState: PaneState = {
   paneMode: 'terminal',
   reconnectKey: 0,
   reviewSessionStarted: new Set(),
@@ -52,7 +52,7 @@ function resolve<T>(updater: Updater<T>, prev: T): T {
   return typeof updater === 'function' ? (updater as (prev: T) => T)(prev) : updater;
 }
 
-type PaneAction =
+export type PaneAction =
   | { type: 'SET_PANE_MODE'; mode: PaneMode }
   | { type: 'SET_RECONNECT_KEY'; updater: Updater<number> }
   | { type: 'SET_REVIEW_SESSION_STARTED'; updater: Updater<Set<number>> }
@@ -70,7 +70,7 @@ type PaneAction =
     }
   | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> };
 
-function paneReducer(state: PaneState, action: PaneAction): PaneState {
+export function paneReducer(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
     case 'SET_PANE_MODE':
       return { ...state, paneMode: action.mode };
