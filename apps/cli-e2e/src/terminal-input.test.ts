@@ -1,51 +1,20 @@
 import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { createTestRepo, registerCleanup } from './setup/git-repo.js';
+import {
+  MAIN_JS,
+  createIsolatedTestEnv,
+  deleteSelectedSession,
+  openBranchPickerAndCreate,
+  openSettings,
+  typeText,
+} from './setup/app.js';
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-function createIsolatedTestEnv() {
-  const dir = createTestRepo();
-  const home = mkdtempSync(join(tmpdir(), 'kirby-input-home-'));
-  const log = join(tmpdir(), `kirby-input-${Date.now()}.log`);
-  registerCleanup(dir);
-  registerCleanup(home);
-
-  // Create .kirby dir with vim preset — the test uses vim keybindings
-  // (s for settings, c for branch picker, K for kill, x for delete).
-  // Do NOT pre-configure aiCommand — the test sets it through the settings UI.
-  mkdirSync(join(home, '.kirby'), { recursive: true });
-  writeFileSync(
-    join(home, '.kirby', 'config.json'),
-    JSON.stringify({ keybindPreset: 'vim' }),
-    'utf-8'
-  );
-
-  return { dir, home, log };
-}
-
-async function typeText(
-  terminal: { write: (s: string) => void },
-  text: string
-) {
-  for (const ch of text) {
-    terminal.write(ch);
-    await new Promise((r) => setTimeout(r, 80));
-  }
-}
-
-const mainJs = resolve('../cli/dist/main.js');
-const env = createIsolatedTestEnv();
-
-// ── Test ──────────────────────────────────────────────────────────
+const env = createIsolatedTestEnv({ scope: 'input' });
 
 test.describe('Terminal Input', () => {
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -64,10 +33,7 @@ test.describe('Terminal Input', () => {
     await expect(terminal.getByText('(no sessions)')).toBeVisible();
 
     // ── 2. Open settings and set AI Tool to 'bash' ──────────────
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
+    await openSettings(terminal);
 
     // Controls is the first field — navigate down to AI Tool.
     terminal.write('j');
@@ -96,25 +62,7 @@ test.describe('Terminal Input', () => {
     ).not.toBeVisible({ timeout: 5_000 });
 
     // ── 3. Create session via branch picker ──────────────────────
-    terminal.write('c');
-    await expect(terminal.getByText('Branch Picker')).toBeVisible();
-
-    await typeText(terminal, branchName);
-    await expect(
-      terminal.getByText('(new branch)', { strict: false })
-    ).toBeVisible({ timeout: 5_000 });
-
-    // Let React re-render so useInput closure captures updated branchFilter
-    await new Promise((r) => setTimeout(r, 2_000));
-    terminal.write('\r');
-
-    // Wait for branch picker to close, then session to appear
-    await expect(terminal.getByText('Branch Picker')).not.toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(terminal.getByText(branchName, { strict: false })).toBeVisible(
-      { timeout: 10_000 }
-    );
+    await openBranchPickerAndCreate(terminal, branchName);
 
     // ── 4. Tab to start bash session and focus terminal ──────────
     terminal.write('\t');
@@ -160,18 +108,6 @@ test.describe('Terminal Input', () => {
     await new Promise((r) => setTimeout(r, 2_000));
 
     // ── 8. Delete the branch ─────────────────────────────────────
-    terminal.write('x');
-    await expect(
-      terminal.getByText('to confirm', { strict: false })
-    ).toBeVisible({ timeout: 10_000 });
-
-    await typeText(terminal, branchName);
-    await new Promise((r) => setTimeout(r, 2_000));
-    terminal.write('\r');
-
-    // Session should disappear
-    await expect(terminal.getByText('(no sessions)')).toBeVisible({
-      timeout: 15_000,
-    });
+    await deleteSelectedSession(terminal, branchName);
   });
 });

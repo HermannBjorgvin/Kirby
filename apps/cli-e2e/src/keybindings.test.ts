@@ -1,42 +1,15 @@
 import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { createTestRepo, registerCleanup } from './setup/git-repo.js';
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-function createIsolatedEnv() {
-  const dir = createTestRepo();
-  const home = mkdtempSync(join(tmpdir(), 'kirby-keybinds-'));
-  const log = join(tmpdir(), `kirby-keybinds-${Date.now()}.log`);
-  registerCleanup(dir);
-  registerCleanup(home);
-  mkdirSync(join(home, '.kirby'), { recursive: true });
-  return { dir, home, log };
-}
-
-function createEnvWithPreset(preset: string) {
-  const env = createIsolatedEnv();
-  writeFileSync(
-    join(env.home, '.kirby', 'config.json'),
-    JSON.stringify({ keybindPreset: preset }),
-    'utf-8'
-  );
-  return env;
-}
-
-const mainJs = resolve('../cli/dist/main.js');
+import { MAIN_JS, createIsolatedTestEnv } from './setup/app.js';
 
 // ── Default Preset (Normie) ────────────────────────────────────────
 
 test.describe('Keybindings — Default (Normie) Preset', () => {
-  const env = createIsolatedEnv();
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'normie' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -75,12 +48,12 @@ test.describe('Keybindings — Default (Normie) Preset', () => {
 // ── Settings Controls Entry ────────────────────────────────────────
 
 test.describe('Keybindings — Settings Controls', () => {
-  const env = createIsolatedEnv();
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'normie' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -152,12 +125,12 @@ test.describe('Keybindings — Settings Controls', () => {
 // ── Preset Switching ───────────────────────────────────────────────
 
 test.describe('Keybindings — Preset Switching', () => {
-  const env = createIsolatedEnv();
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'normie' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -196,12 +169,12 @@ test.describe('Keybindings — Preset Switching', () => {
 // ── Vim Losers Preset ──────────────────────────────────────────────
 
 test.describe('Keybindings — Vim Losers Preset', () => {
-  const env = createEnvWithPreset('vim');
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'vim' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -238,12 +211,12 @@ test.describe('Keybindings — Vim Losers Preset', () => {
 
 test.describe('Keybindings — Preset Persistence', () => {
   // Pre-configure vim preset in config
-  const env = createEnvWithPreset('vim');
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'vim' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -267,12 +240,12 @@ test.describe('Keybindings — Preset Persistence', () => {
 // ── Per-Binding Customization ──────────────────────────────────────
 
 test.describe('Keybindings — Per-Binding Rebind', () => {
-  const env = createIsolatedEnv();
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'normie' });
 
   test.use({
     rows: 40,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
@@ -379,12 +352,12 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
 // ── Modifier key display ───────────────────────────────────────────
 
 test.describe('Keybindings — Modifier key display', () => {
-  const env = createIsolatedEnv();
+  const env = createIsolatedTestEnv({ scope: 'keybinds', config: 'normie' });
 
   test.use({
     rows: 30,
     columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
+    program: { file: 'node', args: [MAIN_JS, env.dir] },
     env: {
       ...process.env,
       HOME: env.home,
