@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useCallback,
-  useEffect,
-} from 'react';
+import { createContext, useContext, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type {
   PullRequestInfo,
@@ -79,16 +73,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
   const { lastSynced, triggerSync } = useRemoteSync();
-
-  // Surface PR fetch errors as transient toasts instead of a persistent
-  // bottom-bar alert. `usePrData` re-sets the same error string on every
-  // failed poll; React's setState bails on Object.is equality, so this
-  // effect only fires when the ERROR VALUE CHANGES — not on every poll.
-  // Null → non-null fires once; non-null → different non-null fires once;
-  // non-null → null is silent (error resolved).
-  useEffect(() => {
-    if (prError) flash(`PR error: ${prError}`, 'error');
-  }, [prError, flash]);
 
   const onMergedDelete = useCallback(
     (sessionName: string, branch: string) => {
