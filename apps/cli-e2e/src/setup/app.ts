@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect } from '@microsoft/tui-test';
@@ -60,19 +61,30 @@ export function writeKirbyConfig(
 }
 
 /**
- * Write `<projectDir>/.kirby/config.json` with the given contents.
- * Mirrors `writeKirbyConfig` but targets the project-scoped config
- * that `readConfig()` pulls `vendor` and `vendorProject` from (see
- * libs/vcs/core/src/lib/config-store.ts). Use this when a test needs
- * to pre-seed the vendor — global config doesn't cover it.
+ * Write the per-project config that `readConfig()` resolves `vendor`
+ * and `vendorProject` from. Kirby doesn't store project config in
+ * `<projectDir>/.kirby/config.json` (a natural-looking place) — it
+ * stores it under the GLOBAL kirby dir keyed by a hash of the project
+ * path:
+ *
+ *   <home>/.kirby/projects/<sha256(projectDir).slice(0,16)>/config.json
+ *
+ * See `projectConfigPath` in libs/vcs/core/src/lib/config-store.ts.
+ * This helper reproduces that path so tests can pre-seed the project
+ * config without launching Kirby first.
  */
 export function writeProjectKirbyConfig(
+  home: string,
   projectDir: string,
   config: Record<string, unknown>
 ): void {
-  const kirbyDir = join(projectDir, '.kirby');
-  mkdirSync(kirbyDir, { recursive: true });
-  writeFileSync(join(kirbyDir, 'config.json'), JSON.stringify(config), 'utf-8');
+  const key = createHash('sha256')
+    .update(projectDir)
+    .digest('hex')
+    .slice(0, 16);
+  const dir = join(home, '.kirby', 'projects', key);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'config.json'), JSON.stringify(config), 'utf-8');
 }
 
 /**

@@ -27,7 +27,7 @@ const envT1 = createIsolatedTestEnv({
   scope: 'onboarding-welcome',
   config: { keybindPreset: 'vim' },
 });
-writeProjectKirbyConfig(envT1.dir, PROJECT_CONFIG);
+writeProjectKirbyConfig(envT1.home, envT1.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — welcome step isolation', () => {
   test.use({
@@ -79,7 +79,7 @@ const envT2 = createIsolatedTestEnv({
   scope: 'onboarding-forward',
   config: { keybindPreset: 'vim' },
 });
-writeProjectKirbyConfig(envT2.dir, PROJECT_CONFIG);
+writeProjectKirbyConfig(envT2.home, envT2.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — forward navigation', () => {
   test.use({
@@ -144,7 +144,7 @@ const envT3 = createIsolatedTestEnv({
   scope: 'onboarding-skip',
   config: { keybindPreset: 'vim' },
 });
-writeProjectKirbyConfig(envT3.dir, PROJECT_CONFIG);
+writeProjectKirbyConfig(envT3.home, envT3.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — Esc skip from fields step', () => {
   test.use({
