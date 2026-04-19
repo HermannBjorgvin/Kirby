@@ -207,14 +207,14 @@ test.describe('Modal input routing — controls Esc returns to settings', () => 
     await expect(
       terminal.getByText('Settings', { strict: false })
     ).toBeVisible();
-    // 'Navigate down' is controls-sub-screen text and must be gone.
+    // 'Navigate down' is controls-sub-screen text and must be gone —
+    // this is the load-bearing signal that we exited controls. Don't
+    // re-add a `getByText('quit').not.toBeVisible()` check here: the
+    // sidebar stays rendered alongside the Settings pane in a
+    // 100-col terminal, so `quit` is always visible and can't be
+    // used as a "not sidebar-focused" signal.
     await expect(
       terminal.getByText('Navigate down', { strict: false })
     ).not.toBeVisible({ timeout: 3_000 });
-
-    // Settings is still up — sidebar 'quit' hint must NOT be showing.
-    await expect(terminal.getByText('quit', { strict: false })).not.toBeVisible(
-      { timeout: 2_000 }
-    );
   });
 });

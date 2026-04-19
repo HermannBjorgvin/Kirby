@@ -1,24 +1,33 @@
 import { test, expect } from '@microsoft/tui-test';
-import { MAIN_JS, createIsolatedTestEnv } from './setup/app.js';
+import {
+  MAIN_JS,
+  createIsolatedTestEnv,
+  writeProjectKirbyConfig,
+} from './setup/app.js';
 
 // Covers the Step 22 refactor: OnboardingWizard's single useInput was
 // split into four step-owned useInput({ isActive: step === 'x' })
 // hooks. Each describe launches `kirby --setup` with a preconfigured
 // GitHub vendor so the wizard appears deterministically without
 // requiring real auto-detect or gh CLI state.
+//
+// Config scope gotcha: the wizard gate in main.tsx checks
+// `config.vendor`, which `readConfig()` pulls from the PROJECT config
+// (<dir>/.kirby/config.json), NOT the global one in $HOME. So vendor
+// + vendorProject must be written to the project dir.
 
-const SHARED_CONFIG = {
+const PROJECT_CONFIG = {
   vendor: 'github',
   vendorProject: { owner: 'test-owner', repo: 'test-repo' },
-  keybindPreset: 'vim',
 };
 
 // ── T1: Welcome step only advances on Enter ───────────────────────
 
 const envT1 = createIsolatedTestEnv({
   scope: 'onboarding-welcome',
-  config: SHARED_CONFIG,
+  config: { keybindPreset: 'vim' },
 });
+writeProjectKirbyConfig(envT1.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — welcome step isolation', () => {
   test.use({
@@ -68,8 +77,9 @@ test.describe('Onboarding wizard — welcome step isolation', () => {
 
 const envT2 = createIsolatedTestEnv({
   scope: 'onboarding-forward',
-  config: SHARED_CONFIG,
+  config: { keybindPreset: 'vim' },
 });
+writeProjectKirbyConfig(envT2.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — forward navigation', () => {
   test.use({
@@ -132,8 +142,9 @@ test.describe('Onboarding wizard — forward navigation', () => {
 
 const envT3 = createIsolatedTestEnv({
   scope: 'onboarding-skip',
-  config: SHARED_CONFIG,
+  config: { keybindPreset: 'vim' },
 });
+writeProjectKirbyConfig(envT3.dir, PROJECT_CONFIG);
 
 test.describe('Onboarding wizard — Esc skip from fields step', () => {
   test.use({

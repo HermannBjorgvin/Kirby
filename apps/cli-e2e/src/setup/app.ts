@@ -60,6 +60,22 @@ export function writeKirbyConfig(
 }
 
 /**
+ * Write `<projectDir>/.kirby/config.json` with the given contents.
+ * Mirrors `writeKirbyConfig` but targets the project-scoped config
+ * that `readConfig()` pulls `vendor` and `vendorProject` from (see
+ * libs/vcs/core/src/lib/config-store.ts). Use this when a test needs
+ * to pre-seed the vendor — global config doesn't cover it.
+ */
+export function writeProjectKirbyConfig(
+  projectDir: string,
+  config: Record<string, unknown>
+): void {
+  const kirbyDir = join(projectDir, '.kirby');
+  mkdirSync(kirbyDir, { recursive: true });
+  writeFileSync(join(kirbyDir, 'config.json'), JSON.stringify(config), 'utf-8');
+}
+
+/**
  * Standard test environment: a fresh empty git repo, a fake $HOME
  * with ~/.kirby/config.json, and a KIRBY_LOG path. Cleanup handlers
  * registered at module scope via `registerCleanup`.
