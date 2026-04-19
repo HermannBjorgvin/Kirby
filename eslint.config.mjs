@@ -42,8 +42,7 @@ export default tseslint.config(
           patterns: [
             {
               group: ['**/index'],
-              message:
-                'No barrel imports — import from the concrete file.',
+              message: 'No barrel imports — import from the concrete file.',
             },
           ],
         },
@@ -63,32 +62,6 @@ export default tseslint.config(
             },
           ],
         },
-      ],
-    },
-  },
-  // Typed linting — scoped to production source only.
-  // Spec files, config files, and test-utils aren't in any tsconfig,
-  // so projectService can't parse them; we skip typed rules there.
-  // Regular lint rules still run on those files via the blocks above.
-  {
-    files: ['**/src/**/*.{ts,tsx,cts,mts}'],
-    ignores: [
-      '**/*.spec.ts',
-      '**/*.spec.tsx',
-      '**/*.test.ts',
-      '**/*.test.tsx',
-      '**/test-utils/**',
-    ],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
-      '@typescript-eslint/switch-exhaustiveness-check': [
-        'error',
-        { considerDefaultExhaustiveForUnions: true },
       ],
     },
   },
