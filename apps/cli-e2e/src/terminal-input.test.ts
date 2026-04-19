@@ -70,8 +70,17 @@ test.describe('Terminal Input', () => {
       terminal.getByText('ctrl+space to exit', { strict: false })
     ).toBeVisible({ timeout: 10_000 });
 
-    // Give bash a moment to initialize
-    await new Promise((r) => setTimeout(r, 1_000));
+    // Wait for bash's prompt to finish painting before we type —
+    // typing too early interleaves the user input with the prompt
+    // render and mangles both. 'e2e-raw-input' is the branch name,
+    // which shows up in bash's cwd segment of the prompt (\`…/worktrees/e2e-raw-input$\`).
+    // That's a deterministic signal that the PTY has reached the
+    // prompt state, unlike the 1s fixed-sleep this replaces which
+    // was routinely too short on slower CI hosts.
+    await expect(
+      terminal.getByText('e2e-raw-input$', { strict: false })
+    ).toBeVisible({ timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 500));
 
     // ── 5. Type a command and verify output ──────────────────────
     // Use tr to lowercase the output so command and output are distinct:
