@@ -53,7 +53,6 @@ async function startReviewSession(
     ctx.terminal.paneRows,
     worktreePath
   );
-  ctx.pane.setReviewSessionStarted((prev) => new Set([...prev, pr.id]));
 }
 
 const CONFIRM_OPTIONS = 4;
