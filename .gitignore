@@ -51,3 +51,5 @@ vitest.config.*.timestamp*
 tui-traces/
 .tui-test/
 test-output
+test-results
+playwright-report

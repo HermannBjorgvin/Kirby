@@ -3,15 +3,66 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
-    },
-    "./package.json": "./package.json"
-  },
-  "dependencies": {}
+  "nx": {
+    "name": "cli-e2e-web",
+    "targets": {
+      "e2e": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          {
+            "projects": [
+              "cli"
+            ],
+            "target": "build"
+          },
+          {
+            "projects": [
+              "cli-wterm-host"
+            ],
+            "target": "build"
+          }
+        ],
+        "inputs": [
+          "default",
+          "^production",
+          {
+            "externalDependencies": [
+              "@playwright/test"
+            ]
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/test-output/playwright/output",
+          "{projectRoot}/test-output/playwright/report"
+        ],
+        "options": {
+          "command": "playwright test --grep-invert @integration",
+          "cwd": "apps/cli-e2e-web"
+        }
+      },
+      "e2e:integration": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          {
+            "projects": [
+              "cli"
+            ],
+            "target": "build"
+          },
+          {
+            "projects": [
+              "cli-wterm-host"
+            ],
+            "target": "build"
+          }
+        ],
+        "options": {
+          "command": "playwright test",
+          "cwd": "apps/cli-e2e-web"
+        }
+      }
+    }
+  }
 }
