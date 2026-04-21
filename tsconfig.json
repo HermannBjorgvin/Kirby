@@ -32,6 +32,9 @@
     },
     {
       "path": "./libs/review-comments"
+    },
+    {
+      "path": "./apps/cli-wterm-host"
     }
   ]
 }
