@@ -2,8 +2,8 @@
 import {
   test as base,
   expect,
-  type Page,
   type Locator,
+  type Page,
 } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
@@ -84,6 +84,14 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     await page.goto(`/?session=${encodeURIComponent(sessionId)}`);
     const root = page.locator('#wterm-root');
     await root.click();
+
+    // Wait for Kirby's initial render. CI cold-start can take several seconds
+    // (fresh Node, wterm WASM init, Ink first paint) — per-assertion 5s default
+    // is too tight. Fail loudly here with a big timeout so individual tests
+    // don't have to worry about the cold start.
+    await expect(page.getByText('Kirby').first()).toBeVisible({
+      timeout: 30_000,
+    });
 
     const term: KirbyTerm = {
       page,
