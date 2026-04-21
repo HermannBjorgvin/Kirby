@@ -27,6 +27,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - uses: nrwl/nx-set-shas@v4
 
       - run: npx nx affected -t lint test build typecheck e2e
