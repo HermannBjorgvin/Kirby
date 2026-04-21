@@ -6,53 +6,15 @@
   "nx": {
     "name": "cli-wterm-host",
     "targets": {
-      "build-server": {
-        "executor": "@nx/esbuild:esbuild",
-        "outputs": [
-          "{options.outputPath}"
-        ],
-        "options": {
-          "platform": "node",
-          "outputPath": "apps/cli-wterm-host/dist",
-          "format": [
-            "esm"
-          ],
-          "bundle": true,
-          "external": [
-            "node-pty",
-            "ws"
-          ],
-          "main": "apps/cli-wterm-host/src/main.ts",
-          "tsConfig": "apps/cli-wterm-host/tsconfig.app.json",
-          "assets": [
-            "apps/cli-wterm-host/src/assets"
-          ],
-          "esbuildOptions": {
-            "sourcemap": true,
-            "outExtension": {
-              ".js": ".js"
-            }
-          }
-        }
-      },
-      "build-client": {
+      "build": {
         "executor": "nx:run-commands",
-        "dependsOn": [
-          "build-server"
-        ],
         "outputs": [
-          "{projectRoot}/dist/public"
+          "{projectRoot}/dist"
         ],
         "options": {
-          "command": "node build-client.mjs",
+          "command": "node build.mjs",
           "cwd": "apps/cli-wterm-host"
         }
-      },
-      "build": {
-        "executor": "nx:noop",
-        "dependsOn": [
-          "build-client"
-        ]
       },
       "serve": {
         "continuous": true,

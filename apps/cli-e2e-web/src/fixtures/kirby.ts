@@ -5,7 +5,6 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -31,7 +30,6 @@ export interface KirbyTerm {
 
 export interface KirbySession {
   term: KirbyTerm;
-  sessionId: string;
   repoPath: string;
   homeDir: string;
 }
@@ -44,7 +42,6 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
 
   kirby: async ({ page, baseURL, kirbyConfig, kirbyEnv, cols, rows }, use) => {
     const host = baseURL ?? 'http://localhost:5174';
-    const sessionId = randomUUID();
     const repoPath = createTestRepo();
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
     await mkdir(join(homeDir, '.kirby'), { recursive: true });
@@ -55,11 +52,10 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       );
     }
 
-    const spawnRes = await fetch(`${host}/__spawn`, {
+    const spawnRes = await fetch(`${host}/spawn`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId,
         repoPath,
         homeDir,
         cols,
@@ -69,7 +65,7 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     });
     if (!spawnRes.ok) {
       throw new Error(
-        `POST /__spawn failed: ${spawnRes.status} ${await spawnRes.text()}`
+        `POST /spawn failed: ${spawnRes.status} ${await spawnRes.text()}`
       );
     }
 
@@ -81,14 +77,11 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       consoleMessages.push(`[browser:pageerror] ${err.message}`);
     });
 
-    await page.goto(`/?session=${encodeURIComponent(sessionId)}`);
+    await page.goto('/');
     const root = page.locator('#wterm-root');
-    await root.click();
 
-    // Wait for Kirby's initial render. CI cold-start can take several seconds
-    // (fresh Node, wterm WASM init, Ink first paint) — per-assertion 5s default
-    // is too tight. Fail loudly here with a big timeout so individual tests
-    // don't have to worry about the cold start.
+    // Wait for Kirby's first render. Cold-start + any WS reconnect cycles
+    // can take several seconds on CI runners.
     await expect(page.getByText('Kirby').first()).toBeVisible({
       timeout: 30_000,
     });
@@ -125,7 +118,7 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     };
 
     try {
-      await use({ term, sessionId, repoPath, homeDir });
+      await use({ term, repoPath, homeDir });
     } catch (err) {
       if (consoleMessages.length) {
         console.error(
@@ -137,9 +130,7 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       throw err;
     } finally {
       try {
-        await fetch(`${host}/__kill?session=${encodeURIComponent(sessionId)}`, {
-          method: 'POST',
-        });
+        await fetch(`${host}/kill`, { method: 'POST' });
       } catch {
         /* best effort */
       }

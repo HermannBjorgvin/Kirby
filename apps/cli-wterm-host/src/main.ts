@@ -22,14 +22,94 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-interface PendingSession extends SpawnRequest {
-  sessionId: string;
+// Single active PTY — we run workers=1, so multiplexing sessions was
+// architectural speculation we don't need. Ring buffer preserves recent
+// output so a late/reconnecting client can replay the terminal state
+// (critical for surviving the browser's 1001 close during cold start).
+const BUFFER_MAX_BYTES = 2 * 1024 * 1024;
+let activePty: IPty | null = null;
+let outputBuffer: Buffer[] = [];
+let outputBufferSize = 0;
+const clients = new Set<WebSocket>();
+
+function appendBuffer(chunk: Buffer): void {
+  outputBuffer.push(chunk);
+  outputBufferSize += chunk.length;
+  while (outputBufferSize > BUFFER_MAX_BYTES && outputBuffer.length > 1) {
+    const dropped = outputBuffer.shift();
+    if (dropped) outputBufferSize -= dropped.length;
+  }
 }
 
-const pendingSessions = new Map<string, PendingSession>();
-const activePtys = new Map<string, IPty>();
+function clearBuffer(): void {
+  outputBuffer = [];
+  outputBufferSize = 0;
+}
 
-function createDevSessionSpawn(): PendingSession {
+function killActivePty(): void {
+  if (!activePty) return;
+  try {
+    activePty.kill();
+  } catch {
+    /* ignore */
+  }
+  activePty = null;
+}
+
+function spawnKirby(req: SpawnRequest): void {
+  killActivePty();
+  clearBuffer();
+
+  console.log(
+    `[pty] spawn: node ${cliBinary} ${req.repoPath} (HOME=${req.homeDir})`
+  );
+  // Ink disables its interactive TTY renderer when CI-env-vars are set, so
+  // Kirby produces no output under Playwright's webServer (which inherits
+  // CI=true). Strip them for the spawned PTY so Kirby paints normally.
+  // This mirrors what apps/cli-e2e's tui-test command does.
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    HOME: req.homeDir,
+    TERM: 'xterm-256color',
+    ...req.env,
+  };
+  delete childEnv.CI;
+  delete childEnv.CONTINUOUS_INTEGRATION;
+  delete childEnv.GITHUB_ACTIONS;
+
+  const pty = spawnPty('node', [cliBinary, req.repoPath], {
+    name: 'xterm-256color',
+    cols: req.cols ?? 100,
+    rows: req.rows ?? 30,
+    cwd: workspaceRoot,
+    env: childEnv as Record<string, string>,
+  });
+  activePty = pty;
+  console.log(`[pty] spawned pid=${pty.pid}`);
+
+  let firstDataLogged = false;
+  pty.onData((data) => {
+    if (!firstDataLogged) {
+      console.log(`[pty] first data (${data.length} bytes)`);
+      firstDataLogged = true;
+    }
+    const buf = Buffer.from(data, 'utf8');
+    appendBuffer(buf);
+    for (const ws of clients) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(buf, { binary: true });
+      }
+    }
+  });
+  pty.onExit(({ exitCode, signal }) => {
+    console.log(`[pty] exited code=${exitCode} signal=${signal ?? '-'}`);
+    if (activePty === pty) {
+      activePty = null;
+    }
+  });
+}
+
+function spawnDevDefault(): void {
   const home = execSync(`mktemp -d "${tmpdir()}/kirby-wterm-dev-home.XXXXXX"`)
     .toString()
     .trim();
@@ -47,7 +127,7 @@ function createDevSessionSpawn(): PendingSession {
     stdio: 'pipe',
   });
   execSync(`mkdir -p "${path.join(home, '.kirby')}"`, { stdio: 'pipe' });
-  return { sessionId: 'dev-session', repoPath: repo, homeDir: home };
+  spawnKirby({ repoPath: repo, homeDir: home });
 }
 
 async function readBody(req: http.IncomingMessage): Promise<string> {
@@ -84,27 +164,18 @@ async function serveStatic(
   }
 }
 
-function isLocalhost(req: http.IncomingMessage): boolean {
-  const addr = req.socket.remoteAddress;
-  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
-  if (req.method === 'POST' && url.pathname === '/__spawn') {
-    if (!isLocalhost(req)) {
-      res.writeHead(403).end('forbidden');
-      return;
-    }
+  if (req.method === 'POST' && url.pathname === '/spawn') {
     try {
       const body = await readBody(req);
-      const parsed = JSON.parse(body) as PendingSession;
-      if (!parsed.sessionId || !parsed.repoPath || !parsed.homeDir) {
-        res.writeHead(400).end('missing sessionId, repoPath, or homeDir');
+      const parsed = JSON.parse(body) as SpawnRequest;
+      if (!parsed.repoPath || !parsed.homeDir) {
+        res.writeHead(400).end('missing repoPath or homeDir');
         return;
       }
-      pendingSessions.set(parsed.sessionId, parsed);
+      spawnKirby(parsed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
@@ -113,31 +184,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/__kill') {
-    if (!isLocalhost(req)) {
-      res.writeHead(403).end('forbidden');
-      return;
-    }
-    const sessionId = url.searchParams.get('session');
-    if (!sessionId) {
-      res.writeHead(400).end('missing session');
-      return;
-    }
-    pendingSessions.delete(sessionId);
-    const pty = activePtys.get(sessionId);
-    if (pty) {
-      try {
-        pty.kill();
-      } catch {
-        /* ignore */
-      }
-      activePtys.delete(sessionId);
-    }
-    res.writeHead(200).end('ok');
-    return;
-  }
-
-  if (req.method === 'GET' && url.pathname === '/__health') {
+  if (req.method === 'POST' && url.pathname === '/kill') {
+    killActivePty();
+    clearBuffer();
     res.writeHead(200).end('ok');
     return;
   }
@@ -158,109 +207,61 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    handleWs(ws, url);
-  });
+  wss.handleUpgrade(req, socket, head, handleWs);
 });
 
-function handleWs(ws: WebSocket, url: URL): void {
-  const sessionId = url.searchParams.get('session') ?? 'dev-session';
-  let cfg = pendingSessions.get(sessionId);
-  if (!cfg) {
-    if (sessionId === 'dev-session') {
-      cfg = createDevSessionSpawn();
-    } else {
-      ws.send(
-        JSON.stringify({
-          type: 'error',
-          message: `unknown session: ${sessionId}`,
-        } satisfies ControlMessage)
-      );
-      ws.close();
-      return;
-    }
+function handleWs(ws: WebSocket): void {
+  console.log('[ws] connected');
+  clients.add(ws);
+
+  // If no PTY is running (manual Chrome browse with no prior /spawn, or
+  // Kirby exited), auto-spawn a dev default so the page shows something.
+  // We don't await here — we want handleWs to stay sync so buffered bytes
+  // (from any prior spawn) start flowing to the client right away.
+  if (!activePty) {
+    console.log('[ws] no active pty, auto-spawning dev default');
+    spawnDevDefault();
   }
-  pendingSessions.delete(sessionId);
 
-  const pty = spawnPty('node', [cliBinary, cfg.repoPath], {
-    name: 'xterm-256color',
-    cols: cfg.cols ?? 100,
-    rows: cfg.rows ?? 30,
-    cwd: workspaceRoot,
-    env: {
-      ...process.env,
-      HOME: cfg.homeDir,
-      TERM: 'xterm-256color',
-      ...cfg.env,
-    },
-  });
-  activePtys.set(sessionId, pty);
-
-  pty.onData((data) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(Buffer.from(data, 'utf8'), { binary: true });
-    }
-  });
-  pty.onExit(({ exitCode }) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: 'exit',
-          code: exitCode,
-        } satisfies ControlMessage)
-      );
-      ws.close();
-    }
-    activePtys.delete(sessionId);
-  });
+  // Replay buffered output so this client catches up.
+  for (const chunk of outputBuffer) {
+    ws.send(chunk, { binary: true });
+  }
 
   ws.on('message', (raw, isBinary) => {
+    if (!activePty) return;
     const buf = Array.isArray(raw)
       ? Buffer.concat(raw)
       : Buffer.from(raw as ArrayBuffer);
     if (isBinary) {
-      pty.write(buf.toString('utf8'));
+      activePty.write(buf.toString('utf8'));
       return;
     }
     try {
       const msg = JSON.parse(buf.toString('utf8')) as ControlMessage;
       if (msg.type === 'resize') {
-        pty.resize(msg.cols, msg.rows);
+        activePty.resize(msg.cols, msg.rows);
       }
     } catch {
       /* ignore */
     }
   });
 
-  ws.on('close', () => {
-    const active = activePtys.get(sessionId);
-    if (active) {
-      try {
-        active.kill();
-      } catch {
-        /* ignore */
-      }
-      activePtys.delete(sessionId);
-    }
+  ws.on('close', (code, reason) => {
+    console.log(
+      `[ws] disconnected code=${code} reason=${reason.toString() || '-'}`
+    );
+    clients.delete(ws);
+    // PTY intentionally stays alive across WS close.
   });
 }
 
-function cleanup(): void {
-  for (const pty of activePtys.values()) {
-    try {
-      pty.kill();
-    } catch {
-      /* ignore */
-    }
-  }
-  activePtys.clear();
-}
 process.on('SIGINT', () => {
-  cleanup();
+  killActivePty();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
-  cleanup();
+  killActivePty();
   process.exit(0);
 });
 
