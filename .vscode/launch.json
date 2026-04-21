@@ -36,6 +36,16 @@
         "${workspaceFolder}/apps/cli-wterm-host/dist/**/*.(m|c|)js",
         "!**/node_modules/**"
       ]
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Kirby in Chrome (wterm)",
+      "url": "http://localhost:5174",
+      "userDataDir": "${workspaceFolder}/.vscode/chrome",
+      "webRoot": "${workspaceFolder}/apps/cli-wterm-host/src/public",
+      "preLaunchTask": "serve cli-wterm-host",
+      "sourceMaps": true
     }
   ]
 }

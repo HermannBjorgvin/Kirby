@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "serve cli-wterm-host",
+      "type": "shell",
+      "command": "npx nx serve cli-wterm-host",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      },
+      "problemMatcher": {
+        "owner": "kirby-wterm",
+        "pattern": {
+          "regexp": "^$",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^> nx run cli-wterm-host",
+          "endsPattern": "^listening on http://localhost:\\d+"
+        }
+      }
+    }
+  ]
+}

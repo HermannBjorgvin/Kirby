@@ -37,6 +37,9 @@
       },
       "build-client": {
         "executor": "nx:run-commands",
+        "dependsOn": [
+          "build-server"
+        ],
         "outputs": [
           "{projectRoot}/dist/public"
         ],
@@ -48,7 +51,6 @@
       "build": {
         "executor": "nx:noop",
         "dependsOn": [
-          "build-server",
           "build-client"
         ]
       },
