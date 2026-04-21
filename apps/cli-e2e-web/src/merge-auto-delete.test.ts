@@ -94,11 +94,14 @@ test.describe('@integration Merge Auto-Delete', () => {
       mergePullRequest(TEST_REPO, prNumber);
 
       // 4. Trigger sync periodically — GitHub search API may take 10-30s
-      //    to index the merge. Press 'g' (sync shortcut) every 10s.
+      //    to index the merge. Send 'g' (sync shortcut) every 10s.
+      //    Use term.write() (direct WS send) rather than term.type()
+      //    (keyboard events with delay) to match the legacy
+      //    terminal.write('g') semantics and avoid per-char overhead.
       const syncTimer = setInterval(() => {
-        void kirby.term.type('g');
+        void kirby.term.write('g');
       }, 10_000);
-      await kirby.term.type('g');
+      await kirby.term.write('g');
 
       try {
         // 5. Wait for the session row to disappear. In the unified sidebar,

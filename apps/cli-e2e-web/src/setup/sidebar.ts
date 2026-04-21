@@ -21,9 +21,15 @@ export function anyItem(title: string): RegExp {
   return new RegExp(`[${ANY}].*${escapeRegExp(title)}`);
 }
 
+// Scope the icon-then-title regex to a single .term-row. Without this,
+// Playwright's getByText(/regex/) matches against any element's combined
+// text, so `.*` bridges across rows — e.g. `/[◉◎].*Add color support/`
+// would spuriously match when `◉` sits next to a DIFFERENT session that
+// happens to appear before "Add color support" in the grid.
 export function sidebarLocator(page: Page, title: string) {
   return {
-    selected: (): Locator => page.getByText(selectedItem(title)),
-    any: (): Locator => page.getByText(anyItem(title)),
+    selected: (): Locator =>
+      page.locator('.term-row', { hasText: selectedItem(title) }),
+    any: (): Locator => page.locator('.term-row', { hasText: anyItem(title) }),
   };
 }
