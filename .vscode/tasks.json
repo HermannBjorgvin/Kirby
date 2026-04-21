@@ -4,7 +4,7 @@
     {
       "label": "serve cli-wterm-host",
       "type": "shell",
-      "command": "npx nx serve cli-wterm-host",
+      "command": "npx nx serve cli-wterm-host --output-style=stream-without-prefixes",
       "isBackground": true,
       "presentation": {
         "reveal": "silent",
@@ -20,7 +20,7 @@
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^> nx run cli-wterm-host",
+          "beginsPattern": ".+",
           "endsPattern": "^listening on http://localhost:\\d+"
         }
       }
