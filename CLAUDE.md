@@ -114,6 +114,30 @@ The `term` object exposes `getByText`, `press(key)`, `type(text, {delay})`, `wri
 
 **How to debug a failing Playwright test:** `playwright.config.ts` has `trace: 'retain-on-failure'` + `screenshot: 'only-on-failure'` + `video: 'retain-on-failure'`. CI uploads `apps/cli-e2e-web/test-output/` as `playwright-test-output` artifact on failure. Locally, run `npx playwright show-trace apps/cli-e2e-web/test-output/playwright/output/<test>/trace.zip`.
 
+### Interactive QA (Playwright MCP + shared Chrome)
+
+Both the VSCode debugger and the Playwright MCP connect to the same Chrome instance via CDP on port 9222, using the isolated profile at `.vscode/chrome` (gitignored). Only **one** Chrome should be running at a time — the user launches it one way or the other, and Claude (via MCP) attaches.
+
+**Launch paths (pick one):**
+
+- **VSCode F5** → `Kirby in Chrome (wterm)` config. Starts the wterm host via the `serve cli-wterm-host` preLaunchTask, then Chrome with `--remote-debugging-port=9222 --user-data-dir=${workspaceFolder}/.vscode/chrome`. Also attaches VSCode's JS debugger.
+- **VSCode Run Task → `Launch Chrome for Kirby QA`** — same Chrome args, no JS debugger attached. Useful if you just want to browse Kirby without a debugger session.
+- **Bash (Claude or user)**:
+  ```sh
+  chromium \
+    --remote-debugging-port=9222 \
+    --user-data-dir=.vscode/chrome \
+    --no-first-run \
+    --no-default-browser-check \
+    --hide-crash-restore-bubble \
+    http://localhost:5174 &
+  ```
+  (Requires `npx nx serve cli-wterm-host` to already be running.)
+
+**Playwright MCP (`.mcp.json`)** is configured with `--cdp-endpoint http://127.0.0.1:9222`, so it _only attaches_ — it never spawns its own browser. The user must start Chrome one of the above ways before MCP tools will work. If MCP shows connection errors, Chrome probably isn't running (or is on a different port).
+
+**Port/profile collisions:** only one Chrome process at a time can own `.vscode/chrome`. If VSCode's F5 complains about the port or profile being in use, close the other Chrome first.
+
 ### Integration Tests
 
 Integration tests exercise real GitHub operations and are **skipped** when `GH_TOKEN` is not set.

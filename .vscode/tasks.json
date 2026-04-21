@@ -24,6 +24,18 @@
           "endsPattern": "^listening on http://localhost:\\d+"
         }
       }
+    },
+    {
+      "label": "Launch Chrome for Kirby QA",
+      "detail": "Opens Chromium on :9222 with the .vscode/chrome profile so both VSCode's debugger and the Playwright MCP can attach via CDP. Use this when you want Kirby in Chrome but don't need the JS debugger attached.",
+      "type": "shell",
+      "command": "chromium --remote-debugging-port=9222 --user-data-dir=${workspaceFolder}/.vscode/chrome --no-first-run --no-default-browser-check --hide-crash-restore-bubble http://localhost:5174",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
     }
   ]
 }
