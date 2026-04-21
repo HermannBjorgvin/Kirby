@@ -25,3 +25,25 @@ export function cleanupTestRepo(dir: string): void {
     /* best effort */
   }
 }
+
+/**
+ * Register cleanup on process exit for module-scope tempdirs
+ * (used by integration tests that clone the real test repo once per file).
+ */
+export function registerCleanup(dir: string): void {
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    cleanupTestRepo(dir);
+  };
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => {
+    cleanup();
+    process.kill(process.pid, 'SIGINT');
+  });
+  process.on('SIGTERM', () => {
+    cleanup();
+    process.kill(process.pid, 'SIGTERM');
+  });
+}

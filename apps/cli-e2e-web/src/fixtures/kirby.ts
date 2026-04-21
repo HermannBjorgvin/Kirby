@@ -16,6 +16,15 @@ export interface KirbyOptions {
   kirbyEnv?: Record<string, string>;
   cols: number;
   rows: number;
+  /**
+   * Override the repo path Kirby runs against. If unset, the fixture
+   * creates a fresh git-init'd tempdir per test and cleans it up on
+   * teardown. If set, the fixture uses the given path as-is and leaves
+   * it alone on teardown (caller owns the directory's lifecycle —
+   * useful for module-scope clones of real test repos in
+   * integration tests).
+   */
+  kirbyRepoPath?: string;
 }
 
 export interface KirbyTerm {
@@ -39,10 +48,15 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
   kirbyEnv: [undefined, { option: true }],
   cols: [100, { option: true }],
   rows: [30, { option: true }],
+  kirbyRepoPath: [undefined, { option: true }],
 
-  kirby: async ({ page, baseURL, kirbyConfig, kirbyEnv, cols, rows }, use) => {
+  kirby: async (
+    { page, baseURL, kirbyConfig, kirbyEnv, cols, rows, kirbyRepoPath },
+    use
+  ) => {
     const host = baseURL ?? 'http://localhost:5174';
-    const repoPath = createTestRepo();
+    const ownsRepo = !kirbyRepoPath;
+    const repoPath = kirbyRepoPath ?? createTestRepo();
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
     await mkdir(join(homeDir, '.kirby'), { recursive: true });
     if (kirbyConfig) {
@@ -138,7 +152,7 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       } catch {
         /* best effort */
       }
-      cleanupTestRepo(repoPath);
+      if (ownsRepo) cleanupTestRepo(repoPath);
       try {
         await rm(homeDir, { recursive: true, force: true });
       } catch {
