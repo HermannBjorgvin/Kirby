@@ -82,9 +82,13 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
 
     // Wait for Kirby's first render. Cold-start + any WS reconnect cycles
     // can take several seconds on CI runners.
-    await expect(page.getByText('Kirby').first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // Using locator.waitFor() (not `expect`) keeps this out of the
+    // `playwright/no-standalone-expect` eslint rule's scope — this is
+    // readiness plumbing, not a test assertion.
+    await page
+      .getByText('Kirby')
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 });
 
     const term: KirbyTerm = {
       page,
