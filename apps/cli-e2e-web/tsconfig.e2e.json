@@ -3,14 +3,17 @@
   "compilerOptions": {
     "allowJs": true,
     "outDir": "out-tsc/playwright",
-    "sourceMap": false
+    "sourceMap": false,
+    "lib": ["es2022", "dom"],
+    "types": ["node"]
   },
   "include": ["**/*.ts", "**/*.js", "playwright.config.ts"],
   "exclude": [
     "out-tsc",
     "test-output",
+    "test-results",
     "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.cjs"
+    "eslint.config.cjs",
+    "eslint.config.mjs"
   ]
 }

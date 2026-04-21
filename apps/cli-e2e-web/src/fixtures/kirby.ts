@@ -73,6 +73,14 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       );
     }
 
+    const consoleMessages: string[] = [];
+    page.on('console', (msg) => {
+      consoleMessages.push(`[browser:${msg.type()}] ${msg.text()}`);
+    });
+    page.on('pageerror', (err) => {
+      consoleMessages.push(`[browser:pageerror] ${err.message}`);
+    });
+
     await page.goto(`/?session=${encodeURIComponent(sessionId)}`);
     const root = page.locator('#wterm-root');
     await root.click();
@@ -110,6 +118,15 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
 
     try {
       await use({ term, sessionId, repoPath, homeDir });
+    } catch (err) {
+      if (consoleMessages.length) {
+        console.error(
+          `[kirby fixture] browser console while test failed:\n${consoleMessages.join(
+            '\n'
+          )}`
+        );
+      }
+      throw err;
     } finally {
       try {
         await fetch(`${host}/__kill?session=${encodeURIComponent(sessionId)}`, {
