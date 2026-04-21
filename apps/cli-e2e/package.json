@@ -6,7 +6,8 @@
   "nx": {
     "name": "cli-e2e",
     "targets": {
-      "e2e": {
+      "//": "e2e target temporarily disabled — parity held by cli-e2e-web (Playwright+wterm). Tests under src/ are kept on disk for reference during the migration; restore the target below to re-enable.",
+      "//e2e": {
         "dependsOn": [
           {
             "projects": [
