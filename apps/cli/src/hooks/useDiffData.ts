@@ -27,7 +27,7 @@ function mapNameStatus(letter: string): DiffFile['status'] {
 async function fetchAllFiles(
   sourceBranch: string,
   targetBranch: string
-): Promise<DiffFile[]> {
+): Promise<{ files: DiffFile[]; sourceRef: string; targetRef: string }> {
   // Try to fetch latest from remote (tolerate failures for branches
   // that already exist locally, e.g. via worktrees)
   await Promise.all([
@@ -124,7 +124,13 @@ async function fetchAllFiles(
     });
   }
 
-  return files;
+  return { files, sourceRef, targetRef };
+}
+
+interface FilesCacheEntry {
+  files: DiffFile[];
+  sourceRef: string;
+  targetRef: string;
 }
 
 export function useDiffData(
@@ -137,30 +143,37 @@ export function useDiffData(
   const [error, setError] = useState<string | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
-  const cacheRef = useRef<Map<number, DiffFile[]>>(new Map());
+  const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
   const diffCacheRef = useRef<Map<number, string>>(new Map());
+  // Bumped whenever prNumber changes; async callbacks capture the token
+  // at call time and bail on resolve if the current prNumber has moved on.
+  // Guards against rapid sidebar nav stomping state with a stale fetch.
+  const requestIdRef = useRef(0);
 
   const loadFiles = useCallback(async () => {
     if (!prNumber || !sourceBranch || !targetBranch) return;
 
     const cached = cacheRef.current.get(prNumber);
     if (cached) {
-      setFiles(cached);
+      setFiles(cached.files);
       setError(null);
       return;
     }
 
+    const token = requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await fetchAllFiles(sourceBranch, targetBranch);
+      if (token !== requestIdRef.current) return;
       cacheRef.current.set(prNumber, result);
-      setFiles(result);
+      setFiles(result.files);
     } catch (err: unknown) {
+      if (token !== requestIdRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
-      setLoading(false);
+      if (token === requestIdRef.current) setLoading(false);
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
@@ -173,21 +186,33 @@ export function useDiffData(
       return;
     }
 
+    const token = requestIdRef.current;
+    // Reuse refs resolved by loadFiles if available — saves two
+    // `git rev-parse --verify` execs per PR open.
+    const entry = cacheRef.current.get(prNumber);
+    const preResolved = entry
+      ? { sourceRef: entry.sourceRef, targetRef: entry.targetRef }
+      : undefined;
+
     setDiffLoading(true);
     try {
-      const text = await fetchDiffText(sourceBranch, targetBranch);
+      const text = await fetchDiffText(sourceBranch, targetBranch, preResolved);
+      if (token !== requestIdRef.current) return;
       diffCacheRef.current.set(prNumber, text);
       setDiffText(text);
     } catch (err: unknown) {
+      if (token !== requestIdRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
-      setDiffLoading(false);
+      if (token === requestIdRef.current) setDiffLoading(false);
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
-  // Auto-load files when prNumber changes
+  // Auto-load files when prNumber changes. Bump the request id so any
+  // in-flight fetches for the previous PR bail on resolve.
   useEffect(() => {
+    requestIdRef.current += 1;
     if (prNumber) {
       loadFiles();
     } else {
@@ -195,6 +220,15 @@ export function useDiffData(
       setDiffText(null);
     }
   }, [prNumber, loadFiles]);
+
+  // Auto-prefetch diff text as soon as the file list lands. By the time
+  // the user hits Enter on a file the text is usually already cached,
+  // turning the open from "loading diff..." into instant.
+  useEffect(() => {
+    if (!prNumber || files.length === 0) return;
+    if (diffCacheRef.current.has(prNumber)) return;
+    loadDiffText();
+  }, [prNumber, files.length, loadDiffText]);
 
   return {
     files,

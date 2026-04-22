@@ -9,6 +9,7 @@ import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
+import { useDiffBundle } from '../../hooks/useDiffBundle.js';
 import {
   useSettingsState,
   useBranchPickerState,
@@ -56,6 +57,15 @@ export function MainContent({
 }: MainContentProps) {
   const settings = useSettingsState();
   const branchPicker = useBranchPickerState();
+
+  // One diff-data instance shared by the list + viewer containers.
+  // Mounted unconditionally so the in-memory file/diff cache and the
+  // fs.watch on the comments dir survive the list→viewer switch.
+  const diffBundle = useDiffBundle(
+    selectedPr?.id ?? null,
+    selectedPr?.sourceBranch ?? '',
+    selectedPr?.targetBranch ?? ''
+  );
 
   const screenType: ScreenType = (() => {
     if (settings.settingsOpen && settings.controlsOpen) return 'controls';
@@ -119,8 +129,8 @@ export function MainContent({
         <DiffFileListContainer
           pane={pane}
           terminal={terminal}
-          selectedPr={selectedPr}
           terminalFocused={terminalFocused}
+          diffBundle={diffBundle}
         />
       );
     case 'diffFile':
@@ -130,6 +140,7 @@ export function MainContent({
           terminal={terminal}
           selectedPr={selectedPr}
           terminalFocused={terminalFocused}
+          diffBundle={diffBundle}
         />
       );
   }

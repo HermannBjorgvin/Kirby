@@ -13,8 +13,7 @@ import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import { useDiffData } from '../../hooks/useDiffData.js';
-import { useReviewComments } from '../../hooks/useReviewComments.js';
+import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { handleDiffViewerInput } from './main-input.js';
 
@@ -23,45 +22,46 @@ interface DiffFileViewerContainerProps {
   terminal: TerminalLayout;
   selectedPr: PullRequestInfo | undefined;
   terminalFocused: boolean;
+  diffBundle: DiffBundle;
 }
 
 // Owns the single-file half of the old DiffPane: parses the diff for
 // the currently opened file, interleaves review comments, computes the
 // annotated line stream + comment positions, wires scroll-wheel input,
 // and routes diff-viewer keypresses. Mounted by MainContent when
-// paneMode === 'diff-file'.
+// paneMode === 'diff-file'. Diff data flows in via `diffBundle` from
+// MainContent so the viewer shares state with the list container.
 export function DiffFileViewerContainer({
   pane,
   terminal,
   selectedPr,
   terminalFocused,
+  diffBundle,
 }: DiffFileViewerContainerProps) {
   const sessionCtx = useSessionActions();
   const configCtx = useConfig();
   const keybinds = useKeybindResolve();
   const asyncOps = useAsyncOps();
 
-  const reviewComments = useReviewComments(selectedPr?.id ?? null);
-
-  const diffData = useDiffData(
-    selectedPr?.id ?? null,
-    selectedPr?.sourceBranch ?? '',
-    selectedPr?.targetBranch ?? ''
+  // Parse the whole diff once per `diffText`; the per-file slice below
+  // then just does a Map.get(). Without this split, the parse re-ran on
+  // every file open and every terminal resize.
+  const parsedDiff = useMemo(
+    () => (diffBundle.diffText ? parseUnifiedDiff(diffBundle.diffText) : null),
+    [diffBundle.diffText]
   );
 
-  // ── Parsed diff for the current file ────────────────────────────
   const fileDiffData = useMemo(() => {
-    if (!pane.diffViewFile || !diffData.diffText) return null;
-    const allDiffs = parseUnifiedDiff(diffData.diffText);
-    const fileDiffLines = allDiffs.get(pane.diffViewFile);
+    if (!pane.diffViewFile || !parsedDiff) return null;
+    const fileDiffLines = parsedDiff.get(pane.diffViewFile);
     if (!fileDiffLines) return null;
     const rendered = renderDiffLines(fileDiffLines, terminal.paneCols);
     return { fileDiffLines, rendered };
-  }, [pane.diffViewFile, diffData.diffText, terminal.paneCols]);
+  }, [pane.diffViewFile, parsedDiff, terminal.paneCols]);
 
   const fileComments = useMemo(
-    () => reviewComments.filter((c) => c.file === pane.diffViewFile),
-    [reviewComments, pane.diffViewFile]
+    () => diffBundle.comments.filter((c) => c.file === pane.diffViewFile),
+    [diffBundle.comments, pane.diffViewFile]
   );
 
   const interleaveResult = useMemo(() => {
@@ -123,12 +123,12 @@ export function DiffFileViewerContainer({
     (input, key) => {
       handleDiffViewerInput(input, key, {
         pane,
-        diffFiles: diffData.files,
+        diffFiles: diffBundle.files,
         terminal,
         diffTotalLines,
         commentCtx: selectedPr
           ? {
-              comments: reviewComments,
+              comments: diffBundle.comments,
               prId: selectedPr.id,
               positions: commentPositions,
               selectedReviewPr: selectedPr,
@@ -152,7 +152,7 @@ export function DiffFileViewerContainer({
       scrollOffset={pane.diffScrollOffset}
       paneRows={terminal.paneRows}
       paneCols={terminal.paneCols}
-      loading={diffData.diffLoading}
+      loading={diffBundle.diffLoading}
     />
   );
 }
