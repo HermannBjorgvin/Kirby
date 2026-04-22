@@ -26,7 +26,7 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 
 // ── App ────────────────────────────────────────────────────────────
 
-function App({ forceSetup }: { forceSetup: boolean }) {
+function App() {
   const { exit } = useApp();
   const { config, provider, vcsConfigured } = useConfig();
   const nav = useNavState();
@@ -35,10 +35,7 @@ function App({ forceSetup }: { forceSetup: boolean }) {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   const showOnboarding =
-    !onboardingComplete &&
-    !!config.vendor &&
-    !!provider &&
-    (!vcsConfigured || forceSetup);
+    !onboardingComplete && !!config.vendor && !!provider && !vcsConfigured;
 
   const terminalFocused = nav.focus === 'terminal';
 
@@ -83,7 +80,6 @@ if (args[0] === 'util') {
   process.exit(0);
 }
 
-const forceSetup = args.includes('--setup');
 const targetDir = args.find((a) => !a.startsWith('--'));
 if (targetDir) {
   process.chdir(targetDir);
@@ -109,7 +105,7 @@ render(
               <ToastProvider>
                 <SessionProvider>
                   <SidebarProvider>
-                    <App forceSetup={forceSetup} />
+                    <App />
                   </SidebarProvider>
                 </SessionProvider>
               </ToastProvider>
