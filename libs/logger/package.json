@@ -14,7 +14,11 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/logger"
+    "name": "@kirby/logger",
+    "tags": [
+      "type:lib",
+      "scope:logger"
+    ]
   },
   "dependencies": {
     "tslib": "^2.3.0"

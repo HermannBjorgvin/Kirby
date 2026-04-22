@@ -1,7 +1,7 @@
-import { useReducer, useMemo, useState } from 'react';
+import { useMemo, useReducer } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { PaneMode, SidebarItem } from '../types.js';
-import { getItemKey, getPrFromItem } from '../types.js';
+import { getPrFromItem } from '../types.js';
 import { hasSession } from '../pty-registry.js';
 
 // ── State ────────────────────────────────────────────────────────
@@ -10,7 +10,6 @@ export interface PaneState {
   // Pane mode
   paneMode: PaneMode;
   reconnectKey: number;
-  reviewSessionStarted: Set<number>;
 
   // Diff navigation
   diffFileIndex: number;
@@ -29,10 +28,9 @@ export interface PaneState {
   reviewInstruction: string;
 }
 
-const initialState: PaneState = {
+export const initialState: PaneState = {
   paneMode: 'terminal',
   reconnectKey: 0,
-  reviewSessionStarted: new Set(),
   diffFileIndex: 0,
   diffViewFile: null,
   diffScrollOffset: 0,
@@ -49,13 +47,14 @@ const initialState: PaneState = {
 
 type Updater<T> = T | ((prev: T) => T);
 function resolve<T>(updater: Updater<T>, prev: T): T {
-  return typeof updater === 'function' ? (updater as (prev: T) => T)(prev) : updater;
+  return typeof updater === 'function'
+    ? (updater as (prev: T) => T)(prev)
+    : updater;
 }
 
-type PaneAction =
+export type PaneAction =
   | { type: 'SET_PANE_MODE'; mode: PaneMode }
   | { type: 'SET_RECONNECT_KEY'; updater: Updater<number> }
-  | { type: 'SET_REVIEW_SESSION_STARTED'; updater: Updater<Set<number>> }
   | { type: 'SET_DIFF_FILE_INDEX'; updater: Updater<number> }
   | { type: 'SET_DIFF_VIEW_FILE'; file: string | null }
   | { type: 'SET_DIFF_SCROLL_OFFSET'; updater: Updater<number> }
@@ -70,22 +69,32 @@ type PaneAction =
     }
   | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> };
 
-function paneReducer(state: PaneState, action: PaneAction): PaneState {
+export function paneReducer(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
     case 'SET_PANE_MODE':
       return { ...state, paneMode: action.mode };
     case 'SET_RECONNECT_KEY':
-      return { ...state, reconnectKey: resolve(action.updater, state.reconnectKey) };
-    case 'SET_REVIEW_SESSION_STARTED':
-      return { ...state, reviewSessionStarted: resolve(action.updater, state.reviewSessionStarted) };
+      return {
+        ...state,
+        reconnectKey: resolve(action.updater, state.reconnectKey),
+      };
     case 'SET_DIFF_FILE_INDEX':
-      return { ...state, diffFileIndex: resolve(action.updater, state.diffFileIndex) };
+      return {
+        ...state,
+        diffFileIndex: resolve(action.updater, state.diffFileIndex),
+      };
     case 'SET_DIFF_VIEW_FILE':
       return { ...state, diffViewFile: action.file };
     case 'SET_DIFF_SCROLL_OFFSET':
-      return { ...state, diffScrollOffset: resolve(action.updater, state.diffScrollOffset) };
+      return {
+        ...state,
+        diffScrollOffset: resolve(action.updater, state.diffScrollOffset),
+      };
     case 'SET_SHOW_SKIPPED':
-      return { ...state, showSkipped: resolve(action.updater, state.showSkipped) };
+      return {
+        ...state,
+        showSkipped: resolve(action.updater, state.showSkipped),
+      };
     case 'SET_SELECTED_COMMENT_ID':
       return { ...state, selectedCommentId: action.id };
     case 'SET_PENDING_DELETE_COMMENT_ID':
@@ -93,11 +102,17 @@ function paneReducer(state: PaneState, action: PaneAction): PaneState {
     case 'SET_EDITING_COMMENT_ID':
       return { ...state, editingCommentId: action.id };
     case 'SET_EDIT_BUFFER':
-      return { ...state, editBuffer: resolve(action.updater, state.editBuffer) };
+      return {
+        ...state,
+        editBuffer: resolve(action.updater, state.editBuffer),
+      };
     case 'SET_REVIEW_CONFIRM':
       return { ...state, reviewConfirm: action.value };
     case 'SET_REVIEW_INSTRUCTION':
-      return { ...state, reviewInstruction: resolve(action.updater, state.reviewInstruction) };
+      return {
+        ...state,
+        reviewInstruction: resolve(action.updater, state.reviewInstruction),
+      };
   }
 }
 
@@ -106,7 +121,6 @@ function paneReducer(state: PaneState, action: PaneAction): PaneState {
 export interface PaneActions {
   setPaneMode: (mode: PaneMode) => void;
   setReconnectKey: (updater: Updater<number>) => void;
-  setReviewSessionStarted: (updater: Updater<Set<number>>) => void;
   setDiffFileIndex: (updater: Updater<number>) => void;
   setDiffViewFile: (file: string | null) => void;
   setDiffScrollOffset: (updater: Updater<number>) => void;
@@ -128,14 +142,10 @@ export type PaneModeValue = PaneState & PaneActions;
 
 function defaultPaneMode(
   item: SidebarItem | undefined,
-  sessionName: string | null,
-  reviewSessionStarted: Set<number>
+  sessionName: string | null
 ): PaneMode {
   if (!item) return 'terminal';
   if (sessionName && hasSession(sessionName)) return 'terminal';
-  if (item.kind === 'review-pr' && reviewSessionStarted.has(item.pr.id)) {
-    return 'terminal';
-  }
   const pr = getPrFromItem(item);
   if (pr) return 'pr-detail';
   return 'terminal';
@@ -145,42 +155,39 @@ function defaultPaneMode(
  * Consolidated pane state machine. Replaces the previous four hooks:
  * usePaneMode, useDiffState, useCommentState, useReviewConfirmState.
  *
- * Auto-resets pane mode when the selected sidebar item changes.
+ * The call site (MainTab) mounts this hook inside a component keyed on
+ * the selected sidebar item's identity, so on every item change the
+ * hook remounts and `useReducer`'s lazy initializer picks the starting
+ * pane mode via `defaultPaneMode`. There is no render-time auto-reset
+ * path anymore.
+ *
+ * Pane state no longer tracks "has this review-PR been started" — the
+ * spawned `claude --continue || claude` handles resume-if-possible at
+ * the shell level, which makes a JS-side cache redundant. Returning to
+ * a review-PR row whose PTY has exited shows pr-detail; pressing Enter
+ * re-enters via claude --continue.
  */
 export function usePaneReducer(
   selectedItem: SidebarItem | undefined,
   sessionNameForTerminal: string | null
 ): PaneModeValue {
-  const [state, dispatch] = useReducer(paneReducer, initialState);
-
-  // Auto-reset pane mode when selected item changes.
-  // Uses the React "store previous value" pattern.
-  const itemKey = selectedItem ? getItemKey(selectedItem) : null;
-
-  const [prevItemKey, setPrevItemKey] = useState<string | null>(null);
-  if (itemKey !== prevItemKey) {
-    setPrevItemKey(itemKey);
-    const target = defaultPaneMode(
-      selectedItem,
-      sessionNameForTerminal,
-      state.reviewSessionStarted
-    );
-    if (target !== state.paneMode) {
-      dispatch({ type: 'SET_PANE_MODE', mode: target });
-    }
-  }
+  const [state, dispatch] = useReducer(
+    paneReducer,
+    { selectedItem, sessionNameForTerminal },
+    (arg) => ({
+      ...initialState,
+      paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
+    })
+  );
 
   const actions = useMemo<PaneActions>(
     () => ({
       setPaneMode: (mode) => dispatch({ type: 'SET_PANE_MODE', mode }),
       setReconnectKey: (updater) =>
         dispatch({ type: 'SET_RECONNECT_KEY', updater }),
-      setReviewSessionStarted: (updater) =>
-        dispatch({ type: 'SET_REVIEW_SESSION_STARTED', updater }),
       setDiffFileIndex: (updater) =>
         dispatch({ type: 'SET_DIFF_FILE_INDEX', updater }),
-      setDiffViewFile: (file) =>
-        dispatch({ type: 'SET_DIFF_VIEW_FILE', file }),
+      setDiffViewFile: (file) => dispatch({ type: 'SET_DIFF_VIEW_FILE', file }),
       setDiffScrollOffset: (updater) =>
         dispatch({ type: 'SET_DIFF_SCROLL_OFFSET', updater }),
       setShowSkipped: (updater) =>
@@ -201,8 +208,5 @@ export function usePaneReducer(
     []
   );
 
-  return useMemo(
-    () => ({ ...state, ...actions }),
-    [state, actions]
-  );
+  return useMemo(() => ({ ...state, ...actions }), [state, actions]);
 }

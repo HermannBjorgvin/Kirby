@@ -5,6 +5,10 @@
   "type": "module",
   "nx": {
     "name": "cli-e2e",
+    "tags": [
+      "type:app",
+      "scope:cli-e2e"
+    ],
     "targets": {
       "e2e": {
         "executor": "nx:run-commands",

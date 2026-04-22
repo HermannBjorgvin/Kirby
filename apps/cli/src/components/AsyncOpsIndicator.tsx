@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
-import { useAppState } from '../context/AppStateContext.js';
+import { useAsyncOps } from '../context/AsyncOpsContext.js';
 import { useLayout } from '../context/LayoutContext.js';
 import type { OperationName } from '../hooks/useAsyncOperation.js';
 
@@ -44,7 +44,7 @@ const TOP_ROW = 1;
 // top-right. The inner stack is a column so future additions (e.g. a
 // second indicator row) would stack below the spinner naturally.
 export function AsyncOpsIndicator() {
-  const { asyncOps } = useAppState();
+  const asyncOps = useAsyncOps();
   const { termCols, termRows } = useLayout();
 
   if (asyncOps.inFlight.size === 0) return null;

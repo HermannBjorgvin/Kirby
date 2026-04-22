@@ -28,6 +28,10 @@ function makeKey(overrides: Partial<Key> = {}): Key {
     ctrl: false,
     shift: false,
     meta: false,
+    super: false,
+    hyper: false,
+    capsLock: false,
+    numLock: false,
     ...overrides,
   };
 }

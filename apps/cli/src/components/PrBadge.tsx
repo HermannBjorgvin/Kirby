@@ -57,6 +57,8 @@ export const PrBadge = memo(function PrBadge({
       case 'pending':
         buildEmoji = '⏳';
         break;
+      case 'none':
+        break;
     }
   }
 

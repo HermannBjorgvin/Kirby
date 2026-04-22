@@ -13,8 +13,8 @@ function makeDiffLines(
   return specs.map((s) => ({
     type: 'context' as const,
     content: 'x',
-    oldLine: s.oldLine ?? null,
-    newLine: s.newLine ?? null,
+    oldLine: s.oldLine,
+    newLine: s.newLine,
   }));
 }
 

@@ -1,56 +1,54 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { BranchPrMap } from '@kirby/vcs-core';
 import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
+import { useToastActions } from '../context/ToastContext.js';
+import { usePolling } from './usePolling.js';
 
 export function usePrData(refreshInterval = 60000) {
   const { config, provider } = useConfig();
+  const { flash } = useToastActions();
   const { vendorAuth, vendorProject, prPollInterval } = config;
-  const [prMap, setPrMap] = useState<BranchPrMap>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (!provider || !provider.isConfigured(vendorAuth, vendorProject)) return;
-    setLoading(true);
+  const enabled =
+    provider != null && provider.isConfigured(vendorAuth, vendorProject);
+
+  const fetchPrs = useCallback(async (): Promise<BranchPrMap> => {
+    if (!enabled || !provider) return {};
     try {
-      const map = await provider.fetchPullRequests(vendorAuth, vendorProject);
-      if (mountedRef.current) {
-        setPrMap(map);
-        setError(null);
-      }
+      return await provider.fetchPullRequests(vendorAuth, vendorProject);
     } catch (err: unknown) {
-      const error = err as Error;
-      logError(`fetchPullRequests [${provider.id}]`, error);
-      if (mountedRef.current) {
-        setError(error.message);
-      }
-    } finally {
-      if (mountedRef.current) setLoading(false);
+      logError(`fetchPullRequests [${provider.id}]`, err as Error);
+      throw err;
     }
-  }, [vendorAuth, vendorProject, provider]);
+  }, [enabled, provider, vendorAuth, vendorProject]);
 
+  const polling = usePolling<BranchPrMap>(
+    fetchPrs,
+    prPollInterval ?? refreshInterval,
+    enabled
+  );
+
+  // Toast on new error messages only — the poll fires the same
+  // callback every interval, so without this guard a persistent
+  // failure would re-flash forever.
+  const lastFlashedErrorRef = useRef<string | null>(null);
   useEffect(() => {
-    mountedRef.current = true;
-    if (!provider || !provider.isConfigured(vendorAuth, vendorProject)) return;
-    // Fire and forget — the initial fetch happens on mount. `refresh`
-    // now returns a promise, but we don't need to await it here; the
-    // state updates inside it are mount-guarded by `mountedRef`.
-    void refresh();
-    const interval = setInterval(refresh, prPollInterval ?? refreshInterval);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(interval);
-    };
-  }, [
-    vendorAuth,
-    vendorProject,
-    prPollInterval,
-    provider,
-    refresh,
-    refreshInterval,
-  ]);
+    const message = polling.error?.message ?? null;
+    if (message === null) {
+      lastFlashedErrorRef.current = null;
+      return;
+    }
+    if (lastFlashedErrorRef.current !== message) {
+      lastFlashedErrorRef.current = message;
+      flash(`PR error: ${message}`, 'error');
+    }
+  }, [polling.error, flash]);
 
-  return { prMap, loading, error, refresh };
+  return {
+    prMap: polling.value ?? {},
+    loading: polling.loading,
+    error: polling.error?.message ?? null,
+    refresh: polling.refresh,
+  };
 }

@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Box, Text } from 'ink';
+import { useEffect, useMemo, useState } from 'react';
+import { Box, Text, useInput } from 'ink';
 import { Alert } from '@inkjs/ui';
 import { Modal } from './Modal.js';
 import { Pane } from './Pane.js';
+import {
+  useDeleteConfirmState,
+  useDeleteConfirmActions,
+} from '../context/ModalContext.js';
+import { useSessionActions } from '../context/SessionContext.js';
+import { useAsyncOps } from '../context/AsyncOpsContext.js';
+import { useKeybindResolve } from '../context/KeybindContext.js';
+import { handleConfirmDeleteInput } from '../screens/main/confirm-delete-input.js';
 
 interface DeleteConfirmModalProps {
   branch: string;
@@ -24,13 +32,35 @@ function BlinkingCursor() {
 }
 
 // Delete confirmation dialog. Shown when the user triggers a session
-// delete. Input handling lives in handleConfirmDeleteInput (see
-// main-input.ts) — this component is purely visual.
+// delete. Owns its own keypress routing via a nested useInput hook;
+// MainTab no longer has to branch on deleteConfirm.confirmDelete.
 export function DeleteConfirmModal({
   branch,
   reason,
   confirmInput,
 }: DeleteConfirmModalProps) {
+  const deleteConfirmState = useDeleteConfirmState();
+  const deleteConfirmActions = useDeleteConfirmActions();
+  const deleteConfirm = useMemo(
+    () => ({ ...deleteConfirmState, ...deleteConfirmActions }),
+    [deleteConfirmState, deleteConfirmActions]
+  );
+  const sessions = useSessionActions();
+  const asyncOps = useAsyncOps();
+  const keybinds = useKeybindResolve();
+
+  useInput(
+    (input, key) => {
+      handleConfirmDeleteInput(input, key, {
+        deleteConfirm,
+        sessions,
+        asyncOps,
+        keybinds,
+      });
+    },
+    { isActive: deleteConfirm.confirmDelete !== null }
+  );
+
   return (
     <Modal>
       <Pane focused title="Confirm Delete" flexDirection="column">

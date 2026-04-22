@@ -1,10 +1,16 @@
 import type { DiffFile, ReviewComment, SidebarItem } from '../../types.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AppStateContextValue } from '../../context/AppStateContext.js';
 import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
 import type { SidebarContextValue } from '../../context/SidebarContext.js';
-import type { KeybindContextValue } from '../../context/KeybindContext.js';
+import type {
+  KeybindContextValue,
+  KeybindResolveValue,
+} from '../../context/KeybindContext.js';
+import type {
+  BranchPickerValue as BranchPickerModalValue,
+  DeleteConfirmValue as DeleteConfirmModalValue,
+} from '../../context/ModalContext.js';
 import type {
   NavValue,
   AsyncOpsValue,
@@ -16,8 +22,8 @@ import type { CommentPositionInfo } from '@kirby/review-comments';
 
 // ── Context slice types ──────────────────────────────────────────
 
-export type BranchPickerValue = AppStateContextValue['branchPicker'];
-export type DeleteConfirmValue = AppStateContextValue['deleteConfirm'];
+export type BranchPickerValue = BranchPickerModalValue;
+export type DeleteConfirmValue = DeleteConfirmModalValue;
 
 // ── Shared context interfaces ────────────────────────────────────
 
@@ -28,14 +34,14 @@ export interface BranchPickerHandlerCtx {
   asyncOps: AsyncOpsValue;
   terminal: TerminalLayout;
   config: ConfigContextValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface DeleteConfirmHandlerCtx {
   deleteConfirm: DeleteConfirmValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface DiffFileListHandlerCtx {
@@ -43,7 +49,7 @@ export interface DiffFileListHandlerCtx {
   diffFiles: DiffFile[];
   diffDisplayCount: number;
   loadDiffText: () => Promise<void>;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface CommentContext {
@@ -62,7 +68,7 @@ export interface DiffViewerHandlerCtx {
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
-  keybinds: KeybindContextValue;
+  keybinds: KeybindResolveValue;
 }
 
 export interface ConfirmHandlerCtx {

@@ -1,24 +1,25 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
-import { useAppState } from '../../context/AppStateContext.js';
+import { useNavState, useNavActions } from '../../context/NavContext.js';
+import { useAsyncOps } from '../../context/AsyncOpsContext.js';
+import {
+  useBranchPickerState,
+  useBranchPickerActions,
+  useDeleteConfirmState,
+  useDeleteConfirmActions,
+  useSettingsState,
+  useSettingsActions,
+} from '../../context/ModalContext.js';
 import { useLayout, LAYOUT } from '../../context/LayoutContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
-import {
-  handleSettingsInput,
-  handleControlsInput,
-} from '../../input-handlers.js';
-import {
-  handleBranchPickerInput,
-  handleConfirmDeleteInput,
-  handleConfirmInput,
-  handleSidebarInput,
-} from './main-input.js';
+import { getItemKey } from '../../types.js';
+import { handleConfirmInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';
 import { getMainFocused, getSidebarFocused, getPaneTitle } from './focus.js';
 
@@ -28,13 +29,54 @@ interface MainTabProps {
   exit: () => void;
 }
 
-export function MainTab({
-  terminalFocused,
-  showOnboarding,
-  exit,
-}: MainTabProps) {
-  const { nav, asyncOps, branchPicker, deleteConfirm, settings } =
-    useAppState();
+// MainTab holds an always-on no-op useInput to keep Ink's raw-mode
+// ref-count above zero while MainTabBody remounts on sidebar-item
+// changes. Without this guard the selected-item remount would briefly
+// tear down the only useInput in the tree, flipping raw-mode off and
+// causing character echo in the terminal.
+export function MainTab(props: MainTabProps) {
+  useInput(() => {
+    // Intentionally empty — see comment above.
+  });
+
+  const sidebar = useSidebar();
+  const itemKey = sidebar.selectedItem
+    ? getItemKey(sidebar.selectedItem)
+    : 'empty';
+
+  return <MainTabBody key={itemKey} {...props} />;
+}
+
+// MainTabBody owns the pane state + the real input router. React
+// unmounts and remounts it whenever `itemKey` changes (see MainTab
+// above), so `usePaneReducer`'s lazy initializer picks a fresh pane
+// mode via defaultPaneMode() — no render-time setState to reset.
+function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
+  const navState = useNavState();
+  const navActions = useNavActions();
+  const nav = useMemo(
+    () => ({ ...navState, ...navActions }),
+    [navState, navActions]
+  );
+  const asyncOps = useAsyncOps();
+  const branchPickerState = useBranchPickerState();
+  const branchPickerActions = useBranchPickerActions();
+  const deleteConfirmState = useDeleteConfirmState();
+  const deleteConfirmActions = useDeleteConfirmActions();
+  const settingsState = useSettingsState();
+  const settingsActions = useSettingsActions();
+  const branchPicker = useMemo(
+    () => ({ ...branchPickerState, ...branchPickerActions }),
+    [branchPickerState, branchPickerActions]
+  );
+  const deleteConfirm = useMemo(
+    () => ({ ...deleteConfirmState, ...deleteConfirmActions }),
+    [deleteConfirmState, deleteConfirmActions]
+  );
+  const settings = useMemo(
+    () => ({ ...settingsState, ...settingsActions }),
+    [settingsState, settingsActions]
+  );
   const layout = useLayout();
   const { terminal } = layout;
   const sessionCtx = useSessionActions();
@@ -52,48 +94,14 @@ export function MainTab({
 
   // ── Input handling (modals + sidebar) ──────────────────────────
   useInput((input, key) => {
-    // Keep this hook always active (no `isActive` option) so Ink's raw-mode
-    // ref-count never drops to 0. Using `isActive: false` triggers
-    // setRawMode(false), which disables raw mode and causes character echo.
     if (terminalFocused || showOnboarding) return;
 
-    if (branchPicker.creating) {
-      return handleBranchPickerInput(input, key, {
-        branchPicker,
-        sessions: sessionCtx,
-        sidebar,
-        asyncOps,
-        terminal,
-        config: configCtx,
-        keybinds,
-      });
-    }
-
-    if (deleteConfirm.confirmDelete) {
-      return handleConfirmDeleteInput(input, key, {
-        deleteConfirm,
-        sessions: sessionCtx,
-        asyncOps,
-        keybinds,
-      });
-    }
-
-    // Controls sub-screen (within settings)
-    if (settings.settingsOpen && settings.controlsOpen) {
-      return handleControlsInput(input, key, {
-        settings,
-        keybinds,
-      });
-    }
-
-    if (settings.settingsOpen) {
-      return handleSettingsInput(input, key, {
-        settings,
-        config: configCtx,
-        sessions: sessionCtx,
-        keybinds,
-      });
-    }
+    // Modals own their own useInput hooks — skip so we don't
+    // double-route. Branch picker, delete-confirm, settings, and the
+    // controls sub-screen each have a nested useInput({ isActive }).
+    if (branchPicker.creating) return;
+    if (deleteConfirm.confirmDelete) return;
+    if (settings.settingsOpen) return;
 
     if (pane.reviewConfirm) {
       return handleConfirmInput(input, key, {
@@ -161,8 +169,7 @@ export function MainTab({
 
   // Auto-hide the sidebar while the user is driving an agent session or
   // scanning a diff, so the content pane can reclaim the full width.
-  // undefined → default on; explicit false opts out. (Feature from
-  // commit 06bd627 — preserved verbatim except for constant reuse.)
+  // undefined → default on; explicit false opts out.
   const autoHideEnabled = configCtx.config.autoHideSidebar !== false;
   const hideablePaneMode =
     pane.paneMode === 'terminal' ||

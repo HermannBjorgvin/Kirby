@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { canRemoveBranch, branchToSessionName } from '@kirby/worktree-manager';
 import { logError } from '@kirby/logger';
 import { useConfig } from '../context/ConfigContext.js';
@@ -12,17 +12,9 @@ export function useMergedBranches(
   const { vendorAuth, vendorProject, autoDeleteOnMerge } = config;
   const [mergedBranches, setMergedBranches] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const mountedRef = useRef(true);
   const onAutoDeleteRef = useRef(onAutoDelete);
   // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
   onAutoDeleteRef.current = onAutoDelete;
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     const fetchMerged = provider?.fetchMergedBranches;
@@ -41,7 +33,7 @@ export function useMergedBranches(
         merged = new Set<string>();
       }
 
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
       setMergedBranches(merged);
       setLoading(false);
 
@@ -49,7 +41,7 @@ export function useMergedBranches(
       if (autoDeleteOnMerge) {
         for (const branch of merged) {
           const check = await canRemoveBranch(branch, true);
-          if (cancelled || !mountedRef.current) return;
+          if (cancelled) return;
           if (check.safe) {
             onAutoDeleteRef.current(branchToSessionName(branch), branch);
           } else {

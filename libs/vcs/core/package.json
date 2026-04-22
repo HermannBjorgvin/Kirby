@@ -13,5 +13,12 @@
     },
     "./package.json": "./package.json"
   },
+  "nx": {
+    "name": "@kirby/vcs-core",
+    "tags": [
+      "type:lib",
+      "scope:vcs"
+    ]
+  },
   "dependencies": {}
 }

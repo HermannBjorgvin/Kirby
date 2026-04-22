@@ -27,7 +27,7 @@ function mapNameStatus(letter: string): DiffFile['status'] {
 async function fetchAllFiles(
   sourceBranch: string,
   targetBranch: string
-): Promise<DiffFile[]> {
+): Promise<{ files: DiffFile[]; sourceRef: string; targetRef: string }> {
   // Try to fetch latest from remote (tolerate failures for branches
   // that already exist locally, e.g. via worktrees)
   await Promise.all([
@@ -124,7 +124,13 @@ async function fetchAllFiles(
     });
   }
 
-  return files;
+  return { files, sourceRef, targetRef };
+}
+
+interface FilesCacheEntry {
+  files: DiffFile[];
+  sourceRef: string;
+  targetRef: string;
 }
 
 export function useDiffData(
@@ -137,7 +143,7 @@ export function useDiffData(
   const [error, setError] = useState<string | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
-  const cacheRef = useRef<Map<number, DiffFile[]>>(new Map());
+  const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
   const diffCacheRef = useRef<Map<number, string>>(new Map());
 
   const loadFiles = useCallback(async () => {
@@ -145,8 +151,9 @@ export function useDiffData(
 
     const cached = cacheRef.current.get(prNumber);
     if (cached) {
-      setFiles(cached);
+      setFiles(cached.files);
       setError(null);
+      setLoading(false);
       return;
     }
 
@@ -155,7 +162,7 @@ export function useDiffData(
     try {
       const result = await fetchAllFiles(sourceBranch, targetBranch);
       cacheRef.current.set(prNumber, result);
-      setFiles(result);
+      setFiles(result.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -170,12 +177,20 @@ export function useDiffData(
     const cached = diffCacheRef.current.get(prNumber);
     if (cached) {
       setDiffText(cached);
+      setDiffLoading(false);
       return;
     }
 
+    // Reuse refs resolved by loadFiles if available — saves two
+    // `git rev-parse --verify` execs per PR open.
+    const entry = cacheRef.current.get(prNumber);
+    const preResolved = entry
+      ? { sourceRef: entry.sourceRef, targetRef: entry.targetRef }
+      : undefined;
+
     setDiffLoading(true);
     try {
-      const text = await fetchDiffText(sourceBranch, targetBranch);
+      const text = await fetchDiffText(sourceBranch, targetBranch, preResolved);
       diffCacheRef.current.set(prNumber, text);
       setDiffText(text);
     } catch (err: unknown) {
@@ -186,7 +201,7 @@ export function useDiffData(
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
-  // Auto-load files when prNumber changes
+  // Auto-load files when prNumber changes.
   useEffect(() => {
     if (prNumber) {
       loadFiles();
@@ -195,6 +210,15 @@ export function useDiffData(
       setDiffText(null);
     }
   }, [prNumber, loadFiles]);
+
+  // Auto-prefetch diff text as soon as the file list lands. By the time
+  // the user hits Enter on a file the text is usually already cached,
+  // turning the open from "loading diff..." into instant.
+  useEffect(() => {
+    if (!prNumber || files.length === 0) return;
+    if (diffCacheRef.current.has(prNumber)) return;
+    loadDiffText();
+  }, [prNumber, files.length, loadDiffText]);
 
   return {
     files,

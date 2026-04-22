@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
@@ -7,6 +15,28 @@ import { getItemKey, getPrFromItem, isItemActive } from '../types.js';
 import { buildSidebarItems } from '../utils/sidebar-items.js';
 import { useSessionData } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
+
+/**
+ * Pure resolver for the sidebar's selected index.
+ *
+ * If the selected key is present in the current items array, return
+ * its index. If it's missing (e.g. the item was deleted), fall back
+ * to the last valid index clamped to the new list length so the
+ * cursor lands on a nearby row. Empty / null-key case returns 0.
+ *
+ * Extracted so it can be tested without spinning up the full provider
+ * tree (SessionContext pulls live git state in).
+ */
+export function resolveSelectedIndex(
+  items: SidebarItem[],
+  selectedKey: string | null,
+  lastValidIndex: number
+): number {
+  if (!selectedKey || items.length === 0) return 0;
+  const idx = items.findIndex((item) => getItemKey(item) === selectedKey);
+  if (idx >= 0) return idx;
+  return Math.min(Math.max(0, lastValidIndex), items.length - 1);
+}
 
 export interface SidebarContextValue {
   items: SidebarItem[];
@@ -30,12 +60,14 @@ const SidebarContext = createContext<SidebarContextValue | null>(null);
 export function SidebarProvider({ children }: { children: ReactNode }) {
   const sessionCtx = useSessionData();
   const { vcsConfigured } = useConfig();
+  // Sole source of truth for what's selected. Every render derives
+  // `selectedIndex` by looking up the key in the current items array.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  // Track last resolved index so we can fall back to a nearby position
-  // when the selected item is removed (e.g. session deleted).
-  // Uses useState (not useRef) because refs cannot be accessed during render.
-  const [lastResolvedIndex, setLastResolvedIndex] = useState(0);
+  // Mirror of the last valid numeric index. A `ref` (not state)
+  // because this is bookkeeping for the fallback path — mutating it
+  // during render doesn't need to trigger a re-render.
+  const lastValidIndexRef = useRef(0);
 
   const items = useMemo(
     () =>
@@ -64,30 +96,30 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const totalItems = items.length;
 
-  // ── Resolve key → index ──────────────────────────────────────────
-  // This runs during render (not in useEffect) to avoid a flash of
-  // wrong selection. Same "store previous value" pattern used by
-  // usePaneReducer for pane mode auto-reset.
+  // ── Derive selectedIndex from selectedKey + items ────────────────
+  // Pure derivation on every render — no setState called here.
+  const selectedIndex = resolveSelectedIndex(
+    items,
+    selectedKey,
+    lastValidIndexRef.current
+  );
+  lastValidIndexRef.current = selectedIndex;
 
-  let resolvedIndex: number;
-  if (selectedKey && totalItems > 0) {
-    const idx = items.findIndex((item) => getItemKey(item) === selectedKey);
-    resolvedIndex = idx >= 0 ? idx : Math.min(lastResolvedIndex, totalItems - 1);
-  } else {
-    resolvedIndex = 0;
-  }
-  if (resolvedIndex !== lastResolvedIndex) {
-    setLastResolvedIndex(resolvedIndex);
-  }
-
-  const resolvedItem = items[resolvedIndex];
+  const resolvedItem = items[selectedIndex];
   const resolvedKey = resolvedItem ? getItemKey(resolvedItem) : null;
 
-  // If the key doesn't match the resolved item (item was deleted or
-  // key was null on first render), sync the key to the actual item.
-  if (resolvedKey !== selectedKey) {
-    setSelectedKey(resolvedKey);
-  }
+  // ── Reconcile key on items change ────────────────────────────────
+  // If the selected item disappeared (delete / merge) or `selectedKey`
+  // was null on mount, sync `selectedKey` to the fallback item. Runs
+  // only when `items` change — navigation via `selectByKey` resolves
+  // synchronously in the derivation above and doesn't need the effect.
+  useEffect(() => {
+    if (resolvedKey !== selectedKey) {
+      setSelectedKey(resolvedKey);
+    }
+    // selectedKey intentionally omitted so we only fire on items change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   // ── Derived values (cheap — no useMemo needed) ───────────────────
   const selectedItem = resolvedItem;
@@ -95,8 +127,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const sessionNameForTerminal = !selectedItem
     ? null
     : selectedItem.kind === 'session'
-      ? selectedItem.session.name
-      : branchToSessionName(selectedItem.pr.sourceBranch);
+    ? selectedItem.session.name
+    : branchToSessionName(selectedItem.pr.sourceBranch);
 
   // ── Navigation helpers ───────────────────────────────────────────
   const selectByKey = useCallback((key: string) => {
@@ -105,19 +137,22 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const moveSelection = useCallback(
     (offset: number) => {
-      const newIdx = Math.max(0, Math.min(resolvedIndex + offset, items.length - 1));
+      const newIdx = Math.max(
+        0,
+        Math.min(selectedIndex + offset, items.length - 1)
+      );
       const item = items[newIdx];
       if (item) {
         setSelectedKey(getItemKey(item));
       }
     },
-    [items, resolvedIndex]
+    [items, selectedIndex]
   );
 
   const moveSelectionToActive = useCallback(
     (direction: 1 | -1) => {
       for (
-        let i = resolvedIndex + direction;
+        let i = selectedIndex + direction;
         i >= 0 && i < items.length;
         i += direction
       ) {
@@ -128,13 +163,13 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [items, resolvedIndex]
+    [items, selectedIndex]
   );
 
   const value = useMemo<SidebarContextValue>(
     () => ({
       items,
-      selectedIndex: resolvedIndex,
+      selectedIndex,
       selectedItem,
       selectedPr,
       sessionNameForTerminal,
@@ -145,7 +180,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     }),
     [
       items,
-      resolvedIndex,
+      selectedIndex,
       selectedItem,
       selectedPr,
       sessionNameForTerminal,

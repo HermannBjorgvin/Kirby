@@ -1,8 +1,14 @@
 import { useMemo } from 'react';
-import { Text, Box } from 'ink';
+import { Text, Box, useInput } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { useConfig } from '../context/ConfigContext.js';
-import { useKeybinds } from '../context/KeybindContext.js';
+import { useKeybindResolve, useKeybinds } from '../context/KeybindContext.js';
+import {
+  useSettingsState,
+  useSettingsActions,
+} from '../context/ModalContext.js';
+import { useSessionActions } from '../context/SessionContext.js';
+import { handleSettingsInput } from '../input-handlers.js';
 
 export interface SettingsField {
   label: string;
@@ -165,7 +171,7 @@ export function resolveValue(config: AppConfig, field: SettingsField): string {
 }
 
 function SettingsHints({ enterAction }: { enterAction: 'toggle' | 'edit' }) {
-  const kb = useKeybinds();
+  const kb = useKeybindResolve();
   const navKeys = kb.getNavKeys('settings');
   const editKeys = kb.getHintKeys('settings.edit-toggle');
   const autoDetectKeys = kb.getHintKeys('settings.auto-detect');
@@ -192,8 +198,36 @@ export function SettingsPanel({
   editingField: string | null;
   editBuffer: string;
 }) {
-  const { config, provider } = useConfig();
+  const configCtx = useConfig();
+  const { config, provider } = configCtx;
   const fields = useMemo(() => buildSettingsFields(provider), [provider]);
+
+  // ── Input routing ──────────────────────────────────────────────
+  // SettingsPanel owns its keypress routing; MainTab no longer has
+  // to branch on settingsOpen. Guard against the controls sub-screen
+  // so both panels don't double-handle when ControlsPanel is up.
+  const settingsState = useSettingsState();
+  const settingsActions = useSettingsActions();
+  const settings = useMemo(
+    () => ({ ...settingsState, ...settingsActions }),
+    [settingsState, settingsActions]
+  );
+  const sessions = useSessionActions();
+  // handleSettingsInput uses both resolve() and setPreset(), so we
+  // subscribe to the combined Keybind context.
+  const keybinds = useKeybinds();
+
+  useInput(
+    (input, key) => {
+      handleSettingsInput(input, key, {
+        settings,
+        config: configCtx,
+        sessions,
+        keybinds,
+      });
+    },
+    { isActive: settings.settingsOpen && !settings.controlsOpen }
+  );
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>

@@ -1,11 +1,11 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { AnnotatedLine } from '@kirby/review-comments';
-import { useKeybinds } from '../../context/KeybindContext.js';
+import { useKeybindResolve } from '../../context/KeybindContext.js';
 
 // Separate component to isolate context subscription from memo'd parent
 function DiffViewerHints({ hasComments }: { hasComments: boolean }) {
-  const kb = useKeybinds();
+  const kb = useKeybindResolve();
   const scrollKeys = kb.getHintKeys('diff-viewer.scroll-down');
   const halfPageKeys = kb.getHintKeys('diff-viewer.half-page-down');
   const topKeys = kb.getHintKeys('diff-viewer.go-top');
