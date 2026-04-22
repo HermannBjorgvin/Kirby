@@ -14,7 +14,7 @@ A terminal UI for managing multiple AI coding sessions across git worktrees, wit
 ## Screenshot
 
 The sidebar shows active PR's and lets you create a new agent session and worktree based on the branch.
-<img width="1678" height="1521" alt="image" src="https://github.com/user-attachments/assets/a65d50af-0d64-4f2e-acbf-22c5cbbf20d7" />
+<img width="1682" height="1518" alt="image" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
 
 ## Configuration
 
