@@ -1,53 +1,43 @@
-import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test, expect } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
 import {
-  createLocalBranch,
-  pushBranch,
   closePullRequest,
+  createLocalBranch,
   createPullRequest,
-  mergePullRequest,
   deleteRemoteBranch,
+  mergePullRequest,
+  pushBranch,
 } from './setup/github.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
 // ── Module-scope setup ─────────────────────────────────────────────
 // Only local/idempotent operations here. GitHub API calls (push,
-// create PR, merge) move into the test body so retries or re-imports
-// don't create duplicate remote resources.
+// create PR, merge) move into the test body so retries don't create
+// duplicate remote resources.
 
 const prefix = testBranchPrefix();
 const branchName = `${prefix}/test-merge`;
 const sessionName = branchName.replace(/\//g, '-');
-const mainJs = resolve('../cli/dist/main.js');
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-integ-clone-'));
-const fakeHome = mkdtempSync(join(tmpdir(), 'kirby-integ-home-'));
-const logFile = join(tmpdir(), 'kirby-integ-debug.log');
 registerCleanup(cloneDir);
-registerCleanup(fakeHome);
 
 if (hasGhToken) {
-  // 1. Clone sandbox repo
+  const token = process.env.GH_TOKEN;
+
   execSync(`gh repo clone "${TEST_REPO}" "${cloneDir}" -- --single-branch`, {
     stdio: 'pipe',
   });
-
-  // 2. Configure remote URL with token so git push can authenticate
-  const token = process.env.GH_TOKEN;
-  if (token) {
-    execSync(
-      `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
-      { cwd: cloneDir, stdio: 'pipe' }
-    );
-  }
-
-  // 3. Configure git identity
+  execSync(
+    `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
+    { cwd: cloneDir, stdio: 'pipe' }
+  );
   execSync('git config user.email "e2e@kirby.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
@@ -57,10 +47,10 @@ if (hasGhToken) {
     stdio: 'pipe',
   });
 
-  // 4. Create local branch (no push — that happens in the test body)
+  // Create local branch (no push — that happens in the test body)
   createLocalBranch(cloneDir, branchName);
 
-  // 5. Checkout default branch (worktree add requires branch isn't checked out)
+  // Checkout default branch so `worktree add` can check out our branch
   const defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD', {
     cwd: cloneDir,
     encoding: 'utf-8',
@@ -70,90 +60,65 @@ if (hasGhToken) {
     .replace('refs/remotes/origin/', '');
   execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
 
-  // 6. Create worktree so Kirby sees it as a session
-  const worktreeRel = join('.claude', 'worktrees', sessionName);
-  execSync(`git worktree add "${worktreeRel}" "${branchName}"`, {
-    cwd: cloneDir,
-    stdio: 'pipe',
-  });
-
-  // 7. Write global config with autoDeleteOnMerge enabled
-  const kirbyDir = join(fakeHome, '.kirby');
-  mkdirSync(kirbyDir, { recursive: true });
-  writeFileSync(
-    join(kirbyDir, 'config.json'),
-    JSON.stringify({ autoDeleteOnMerge: true, keybindPreset: 'vim' }),
-    'utf-8'
+  // Create worktree so Kirby sees it as an existing session on startup
+  execSync(
+    `git worktree add "${join(
+      '.claude',
+      'worktrees',
+      sessionName
+    )}" "${branchName}"`,
+    { cwd: cloneDir, stdio: 'pipe' }
   );
 }
 
-// ── Configure tui-test ─────────────────────────────────────────────
-// env is a top-level TestOptions property (not inside program).
-// Spread process.env so the child gets PATH, GH_TOKEN, etc., then
-// override HOME for config isolation.
+test.describe('@integration Merge Auto-Delete', () => {
+  test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
-test.use({
-  rows: 80,
-  program: {
-    file: 'node',
-    args: [mainJs, cloneDir],
-  },
-  env: {
-    ...process.env,
-    HOME: fakeHome,
-    TERM: 'xterm-256color',
-    KIRBY_LOG: logFile,
-  },
-});
+  test.use({
+    kirbyRepoPath: cloneDir,
+    kirbyConfig: { autoDeleteOnMerge: true, keybindPreset: 'vim' },
+    rows: 80,
+  });
 
-// ── Tests ──────────────────────────────────────────────────────────
-
-test.when(
-  hasGhToken,
-  'detects merged PR and auto-deletes session',
-  async ({ terminal }) => {
-    // 1. Push branch + create PR (GitHub operations, not in module scope)
+  test('detects merged PR and auto-deletes session', async ({ kirby }) => {
+    // 1. Push branch + create PR (GitHub ops, not in module scope)
     pushBranch(cloneDir, branchName);
     const prNumber = createPullRequest(TEST_REPO, branchName, cloneDir);
 
     try {
-      // 2. Wait for Kirby to render
-      await expect(
-        terminal.getByText('Kirby', { strict: false })
-      ).toBeVisible();
+      // 2. Kirby renders (fixture already waited) + session visible
+      await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+      await expect(kirby.term.getByText(sessionName).first()).toBeVisible();
 
-      // 3. Verify session appears (PR not merged yet — guaranteed no race)
-      await expect(
-        terminal.getByText(sessionName, { strict: false })
-      ).toBeVisible();
-
-      // 4. Merge the PR now that we've confirmed the session is visible
+      // 3. Merge the PR now that we've confirmed the session is visible
       mergePullRequest(TEST_REPO, prNumber);
 
-      // 5. Trigger sync periodically — GitHub search API may take 10-30s
-      //    to index the merge. Press 'g' (sync shortcut) every 10s.
-      const syncTimer = setInterval(() => terminal.write('g'), 10_000);
-      terminal.write('g');
+      // 4. Trigger sync periodically — GitHub search API may take 10-30s
+      //    to index the merge. Send 'g' (sync shortcut) every 10s.
+      //    Use term.write() (direct WS send) rather than term.type()
+      //    (keyboard events with delay) to match the legacy
+      //    terminal.write('g') semantics and avoid per-char overhead.
+      const syncTimer = setInterval(() => {
+        void kirby.term.write('g');
+      }, 10_000);
+      await kirby.term.write('g');
 
       try {
-        // 6. Wait for session to disappear (auto-delete removes worktree + branch).
-        //    In the unified sidebar, review PRs remain visible even after all
-        //    sessions are deleted, so we assert the session name is gone rather
-        //    than looking for "(no sessions)".
-        await expect(
-          terminal.getByText(sessionName, { strict: false })
-        ).not.toBeVisible({
-          timeout: 90_000,
-        });
+        // 5. Wait for the session row to disappear. In the unified sidebar,
+        //    review PRs remain visible even after sessions are gone, so we
+        //    assert the session name is gone rather than "(no sessions)".
+        await expect(kirby.term.getByText(sessionName).first()).not.toBeVisible(
+          { timeout: 90_000 }
+        );
       } finally {
         clearInterval(syncTimer);
       }
 
-      // 7. Verify worktree directory was removed
+      // 6. Worktree directory was removed
       const worktreePath = join(cloneDir, '.claude', 'worktrees', sessionName);
       expect(existsSync(worktreePath)).toBe(false);
 
-      // 8. Verify local branch was deleted
+      // 7. Local branch was deleted
       let branchExists = true;
       try {
         execSync(`git rev-parse --verify "${branchName}"`, {
@@ -165,8 +130,8 @@ test.when(
       }
       expect(branchExists).toBe(false);
 
-      // 9. Verify the merge commit landed on the local default branch
-      //    (sync runs fetchRemote + fastForwardMainBranch)
+      // 8. Merge commit landed on local default branch (sync runs
+      //    fetchRemote + fastForwardMainBranch)
       const defaultBranch = execSync(
         'git symbolic-ref refs/remotes/origin/HEAD',
         {
@@ -180,7 +145,11 @@ test.when(
 
       const logOutput = execSync(
         `git log "${defaultBranch}" --oneline --grep="e2e test branch: ${branchName}"`,
-        { cwd: cloneDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+        {
+          cwd: cloneDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }
       );
       expect(logOutput.trim()).not.toBe('');
     } finally {
@@ -188,5 +157,5 @@ test.when(
       closePullRequest(TEST_REPO, prNumber);
       deleteRemoteBranch(TEST_REPO, branchName);
     }
-  }
-);
+  });
+});

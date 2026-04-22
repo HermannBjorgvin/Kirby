@@ -1,63 +1,36 @@
-import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { createTestRepo, registerCleanup } from './setup/git-repo.js';
-
-const testDir = createTestRepo();
-const mainJs = resolve('../cli/dist/main.js');
-registerCleanup(testDir);
-
-// Use isolated home with vim preset to match original test expectations
-const home = mkdtempSync(join(tmpdir(), 'kirby-nav-'));
-registerCleanup(home);
-mkdirSync(join(home, '.kirby'), { recursive: true });
-writeFileSync(
-  join(home, '.kirby', 'config.json'),
-  JSON.stringify({ keybindPreset: 'vim' }),
-  'utf-8'
-);
+import { test, expect } from './fixtures/kirby.js';
 
 test.use({
-  program: { file: 'node', args: [mainJs, testDir] },
-  env: {
-    ...process.env,
-    HOME: home,
-    TERM: 'xterm-256color',
-  },
+  kirbyConfig: { keybindPreset: 'vim' },
 });
 
 test.describe('Keyboard Navigation', () => {
-  test('s opens settings panel', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
+  test('s opens settings panel', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
   });
 
-  test('Esc closes settings panel', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
-    terminal.keyEscape();
-    await expect(terminal.getByText('checkout branch')).toBeVisible();
+  test('Esc closes settings panel', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
+    await kirby.term.press('Escape');
+    await expect(kirby.term.getByText('checkout branch')).toBeVisible();
   });
 
-  test('c opens branch picker', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('c');
-    // Branch picker shows in the sidebar area
-    await expect(terminal.getByText(/master|main/g)).toBeVisible();
+  test('c opens branch picker', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('c');
+    // Branch picker shows the default branch name in the sidebar area.
+    await expect(kirby.term.getByText(/master|main/).first()).toBeVisible();
   });
 
-  test('Esc closes branch picker', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('c');
-    await expect(terminal.getByText(/master|main/g)).toBeVisible();
-    terminal.keyEscape();
-    await expect(terminal.getByText('checkout branch')).toBeVisible();
+  test('Esc closes branch picker', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('c');
+    await expect(kirby.term.getByText(/master|main/).first()).toBeVisible();
+    await kirby.term.press('Escape');
+    await expect(kirby.term.getByText('checkout branch')).toBeVisible();
   });
 });

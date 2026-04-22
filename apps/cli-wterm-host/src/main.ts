@@ -66,7 +66,6 @@ function spawnKirby(req: SpawnRequest): void {
   // Ink disables its interactive TTY renderer when CI-env-vars are set, so
   // Kirby produces no output under Playwright's webServer (which inherits
   // CI=true). Strip them for the spawned PTY so Kirby paints normally.
-  // This mirrors what apps/cli-e2e's tui-test command does.
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
     HOME: req.homeDir,
@@ -164,6 +163,11 @@ async function serveStatic(
   }
 }
 
+// Security posture: trusted-localhost-only. /spawn, /kill, and WS /pty are
+// unauthenticated by design. The server binds to `localhost` below and this
+// host is intended for dev + Playwright (workers=1). Do not expose the port
+// beyond loopback without adding auth — /spawn accepts an arbitrary repoPath
+// and env, which is equivalent to local code execution for any caller.
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 

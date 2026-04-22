@@ -57,32 +57,18 @@
 - **Run tests via NX:** `npx nx test worktree-manager`
 - **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
 
-### E2E Tests — two stacks during migration
-
-We're migrating from `@microsoft/tui-test` (PTY-based, in-process) to
-browser-based testing via `@wterm/dom` + `@playwright/test`. Both stacks run in
-parallel until the new one has full parity with the old; then the old one is
-removed. During the transition:
-
-- `apps/cli-e2e/` — **tui-test (legacy)**, still the authoritative suite
-- `apps/cli-e2e-web/` — **Playwright**, driving Kirby in headless Chromium via
-  the `apps/cli-wterm-host/` bridge
-
-```sh
-# Legacy stack (tui-test)
-npx nx e2e cli-e2e
-
-# New stack (Playwright + wterm)
-npx nx e2e cli-e2e-web               # offline tests only
-npx nx e2e:integration cli-e2e-web   # offline + @integration-tagged (needs GH_TOKEN)
-```
-
-**tui-test gotcha (legacy):** `test.use()` only accepts `TestOptions` (rows, columns, shell, env, program). `timeout` is a `defineConfig`-only property — do not put it in `test.use()`. SWC won't catch the type error locally, but CI `typecheck` will fail.
-
 ### E2E Tests (Playwright + wterm)
 
-Tests live in `apps/cli-e2e-web/src/*.test.ts` and use the fixture at
-`apps/cli-e2e-web/src/fixtures/kirby.ts`. Per test, the fixture:
+E2E tests run Kirby in headless Chromium via the `apps/cli-wterm-host/` bridge
+and drive it with `@playwright/test`.
+
+```sh
+npx nx e2e cli-e2e               # offline tests only
+npx nx e2e:integration cli-e2e   # offline + @integration-tagged (needs GH_TOKEN)
+```
+
+Tests live in `apps/cli-e2e/src/*.test.ts` and use the fixture at
+`apps/cli-e2e/src/fixtures/kirby.ts`. Per test, the fixture:
 
 1. Creates a temp git repo (`createTestRepo()`) + isolated HOME with optional `.kirby/config.json`.
 2. POSTs `/spawn { repoPath, homeDir, env, cols, rows }` to the wterm host.
@@ -112,7 +98,7 @@ The `term` object exposes `getByText`, `press(key)`, `type(text, {delay})`, `wri
 - `WS /pty` — replays the output ring buffer (~2 MB) on connect, streams live. **Does NOT kill the PTY on close** (by design — survives the browser's 1001 "Going Away" during cold start). Auto-spawns a dev-default tempdir if a client connects with no prior `/spawn`, so `npx nx serve cli-wterm-host` + open Chrome "just works".
 - Single active PTY at a time (workers=1 in Playwright, no multiplexing).
 
-**How to debug a failing Playwright test:** `playwright.config.ts` has `trace: 'retain-on-failure'` + `screenshot: 'only-on-failure'` + `video: 'retain-on-failure'`. CI uploads `apps/cli-e2e-web/test-output/` as `playwright-test-output` artifact on failure. Locally, run `npx playwright show-trace apps/cli-e2e-web/test-output/playwright/output/<test>/trace.zip`.
+**How to debug a failing Playwright test:** `playwright.config.ts` has `trace: 'retain-on-failure'` + `screenshot: 'only-on-failure'` + `video: 'retain-on-failure'`. CI uploads `apps/cli-e2e/test-output/` as `playwright-test-output` artifact on failure. Locally, run `npx playwright show-trace apps/cli-e2e/test-output/playwright/output/<test>/trace.zip`.
 
 ### Interactive QA (Playwright MCP + shared Chrome)
 
@@ -148,7 +134,7 @@ Integration tests exercise real GitHub operations and are **skipped** when `GH_T
 **Running locally:**
 
 ```sh
-GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
+GH_TOKEN=<fine-grained-PAT> npx nx e2e:integration cli-e2e
 ```
 
 **Required PAT permissions** (scoped to the test repo only):
@@ -175,8 +161,8 @@ These PRs are permanent fixtures — tests only read them, never modify. The tes
 
 **CI pipelines:**
 
-- **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Runs `npx playwright install --with-deps chromium` before `nx affected` (needed for `cli-e2e-web`). Uploads `apps/cli-e2e-web/test-output/` as an artifact on failure. Integration tests skipped (no `GH_TOKEN`).
-- **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state. (Only runs the tui-test suite today; `cli-e2e-web`'s `e2e:integration` target is ported once tests have been migrated.)
+- **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Runs `npx playwright install --with-deps chromium` before `nx affected` (needed for `cli-e2e`). Uploads `apps/cli-e2e/test-output/` as an artifact on failure. Integration tests skipped (no `GH_TOKEN`).
+- **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e:integration cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state.
 
 ## Project Structure
 
@@ -201,11 +187,10 @@ apps/cli-wterm-host/             — HTTP + WS host that bridges Kirby PTY to br
   src/public/index.html
   src/public/client.ts           — Browser: @wterm/dom + auto-reconnect WS
   build.mjs                      — Single esbuild script (Node server + browser client)
-apps/cli-e2e/                    — E2E tests (legacy, @microsoft/tui-test)
-apps/cli-e2e-web/                — E2E tests (new, @playwright/test)
+apps/cli-e2e/                    — E2E tests (@playwright/test)
   src/fixtures/kirby.ts          — Per-test: temp repo, POST /spawn, page, term helpers
-  src/setup/                     — git-repo.ts, sidebar.ts, constants.ts (ported from cli-e2e)
-  src/*.test.ts                  — Test files (mirror of apps/cli-e2e/src/*.test.ts)
+  src/setup/                     — git-repo.ts, sidebar.ts, constants.ts, github.ts
+  src/*.test.ts                  — Test files (one per feature area)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
 libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
@@ -221,9 +206,9 @@ libs/terminal/                   — PTY session + terminal emulation (node-pty 
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
 - **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. worktree-manager importing terminal).
 - **`TSX_TSCONFIG_PATH`:** The serve target sets this env var so tsx picks up `jsx: "react-jsx"` from `tsconfig.app.json`. Without it, tsx defaults to classic JSX transform and requires `import React`.
-- **Ink disables its interactive TTY renderer when CI env vars are set.** `CI=true` / `CONTINUOUS_INTEGRATION` / `GITHUB_ACTIONS` all trigger it. If you spawn Kirby from a process that inherits those (e.g. Playwright's `webServer` on GitHub Actions or locally via `CI=1 npx …`), Kirby paints **nothing** — every `getByText` times out. Always strip those three vars in the env passed to the spawned PTY (see `cli-wterm-host/src/main.ts:spawnKirby` and the `env -u CI …` wrapper in `apps/cli-e2e/package.json`). Cost us three CI rounds chasing a phantom WS lifecycle bug before the actual cause was found.
+- **Ink disables its interactive TTY renderer when CI env vars are set.** `CI=true` / `CONTINUOUS_INTEGRATION` / `GITHUB_ACTIONS` all trigger it. If you spawn Kirby from a process that inherits those (e.g. Playwright's `webServer` on GitHub Actions or locally via `CI=1 npx …`), Kirby paints **nothing** — every `getByText` times out. Always strip those three vars in the env passed to the spawned PTY (see `cli-wterm-host/src/main.ts:spawnKirby`). Cost us three CI rounds chasing a phantom WS lifecycle bug before the actual cause was found.
 - **Browsers under automation can close a WS with code 1001 ("Going Away") within ~100ms of opening it.** Don't couple PTY lifetime to WS lifetime in the host — the wterm host keeps the PTY alive across WS disconnects and buffers recent output (ring buffer, ~2MB) so a reconnecting client replays the terminal state. Client has a 200ms auto-reconnect on close.
-- **NX inline config vs `project.json`:** our apps (`cli`, `cli-wterm-host`, `cli-e2e`, `cli-e2e-web`) all use inline `"nx": { "name": "...", "targets": {...} }` in `package.json`. Generators default to this in recent Nx, and it keeps the project definition next to its deps. When the `@nx/playwright:configuration` generator infers a target via plugin config in `nx.json`, add an explicit override in `package.json`'s `nx.targets` to get exactly the command/deps you want (e.g. `e2e` running `playwright test --grep-invert @integration`).
+- **NX inline config vs `project.json`:** our apps (`cli`, `cli-wterm-host`, `cli-e2e`) all use inline `"nx": { "name": "...", "targets": {...} }` in `package.json`. Generators default to this in recent Nx, and it keeps the project definition next to its deps. `cli-e2e` defines its `e2e` and `e2e:integration` targets explicitly rather than relying on `@nx/playwright/plugin` inference — we removed that plugin from `nx.json` because (a) we're the only Playwright project and (b) explicit config is easier to reason about (e.g. `e2e` running `playwright test --grep-invert @integration`).
 - **Avoid nested platform-split build targets.** Original `cli-wterm-host` had `build-server` (node, `@nx/esbuild`) + `build-client` (browser, custom script) + `build` (noop) with `dependsOn` ordering to work around `@nx/esbuild`'s output-path cleaning. One `build.mjs` running both esbuild invocations is simpler and avoids the ordering bug.
 - **Playwright `outputDir` + Nx `outputs` must agree** or nx caching works with stale artifacts. We pin `outputDir: './test-output/playwright/output'` and set matching `outputs` in the `e2e` target.
 

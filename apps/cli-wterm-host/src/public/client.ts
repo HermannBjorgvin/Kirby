@@ -81,7 +81,6 @@ term.onResize = (cols, rows) => sendControl({ type: 'resize', cols, rows });
 interface WTermTestHandle {
   send(bytes: string): void;
   resize(cols: number, rows: number): void;
-  getText(): string;
 }
 (window as unknown as { __wterm: WTermTestHandle }).__wterm = {
   send(bytes) {
@@ -90,9 +89,6 @@ interface WTermTestHandle {
   resize(cols, rows) {
     term.resize(cols, rows);
     sendControl({ type: 'resize', cols, rows });
-  },
-  getText() {
-    return root?.textContent ?? '';
   },
 };
 

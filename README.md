@@ -97,20 +97,20 @@ npx nx test cli                # CLI unit + integration tests (vitest)
 
 ### E2E Tests
 
-E2E tests use [`@microsoft/tui-test`](https://github.com/nickclaw/tui-test) to drive the TUI in a real PTY. They run against the built CLI binary.
+E2E tests drive Kirby in headless Chromium via `@playwright/test` and the `apps/cli-wterm-host/` bridge (which runs Kirby in a PTY and streams it over WebSocket to `@wterm/dom`).
 
 ```sh
 npx nx e2e cli-e2e
 ```
 
-This runs fast startup/navigation tests (~5s each). Integration tests that hit GitHub are **skipped** unless `GH_TOKEN` is set.
+This runs fast startup/navigation tests. Integration tests that hit GitHub are **skipped** unless `GH_TOKEN` is set.
 
 ### Integration Tests
 
 Integration tests exercise real GitHub operations — creating branches, PRs, merging, and verifying auto-delete behavior.
 
 ```sh
-GH_TOKEN=<fine-grained-PAT> npx nx e2e cli-e2e
+GH_TOKEN=<fine-grained-PAT> npx nx e2e:integration cli-e2e
 ```
 
 The PAT needs **Contents: R/W** and **Pull requests: R/W** scoped to the test repo. By default the tests use `kirby-test-runner/kirby-integration-test-repository` — override with `TEST_REPO=owner/repo`.

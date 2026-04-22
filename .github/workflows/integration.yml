@@ -9,7 +9,6 @@ on:
       - 'apps/cli/**'
       - 'libs/**'
       - 'apps/cli-e2e/**'
-      - 'apps/cli-e2e-web/**'
       - 'apps/cli-wterm-host/**'
       - '.github/workflows/integration.yml'
   workflow_dispatch:
@@ -48,7 +47,7 @@ jobs:
         run: npx nx build cli
 
       - name: Run e2e tests (including integration)
-        run: npx nx e2e:integration cli-e2e-web
+        run: npx nx e2e:integration cli-e2e
         env:
           GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
           TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-runner/kirby-integration-test-repository' }}
@@ -67,6 +66,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-test-output-integration
-          path: apps/cli-e2e-web/test-output
+          path: apps/cli-e2e/test-output
           if-no-files-found: ignore
           retention-days: 7

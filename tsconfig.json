@@ -22,9 +22,6 @@
       "path": "./libs/vcs/github"
     },
     {
-      "path": "./apps/cli-e2e"
-    },
-    {
       "path": "./libs/logger"
     },
     {
@@ -37,7 +34,7 @@
       "path": "./apps/cli-wterm-host"
     },
     {
-      "path": "./apps/cli-e2e-web"
+      "path": "./apps/cli-e2e"
     }
   ]
 }
