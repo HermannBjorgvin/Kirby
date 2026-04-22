@@ -17,6 +17,20 @@ import {
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import type { SettingsField } from '../components/SettingsPanel.js';
 
+/** Subset of AppConfig persisted via keybind mutators (see updateKeybindFields) */
+export type KeybindFields = Pick<
+  AppConfig,
+  'keybindPreset' | 'keybindOverrides'
+>;
+
+/** Persist keybind fields to global config in a single write. */
+function persistKeybindFields(config: AppConfig): void {
+  const g = readGlobalConfig();
+  g.keybindPreset = config.keybindPreset;
+  g.keybindOverrides = config.keybindOverrides;
+  writeGlobalConfig(g);
+}
+
 // ── Config value coercion ────────────────────────────────────────
 
 /** Coerce a string value to the correct type for known config keys */
@@ -115,11 +129,20 @@ export function persistConfigField(
 
 export interface ConfigContextValue {
   config: AppConfig;
-  setConfig: (v: AppConfig | ((prev: AppConfig) => AppConfig)) => void;
   provider: VcsProvider | null;
   providers: VcsProvider[];
   vcsConfigured: boolean;
   updateField: (field: SettingsField, value: string | undefined) => void;
+  /**
+   * Update keybind-related fields and persist them to global config in a
+   * single write. Callers return the new values for `keybindPreset` and/or
+   * `keybindOverrides`; everything else on `AppConfig` is preserved.
+   */
+  updateKeybindFields: (
+    updater: (prev: KeybindFields) => KeybindFields
+  ) => void;
+  /** Re-read the on-disk config into state (e.g. after auto-detect wrote). */
+  reloadFromDisk: () => void;
 }
 
 const ConfigContext = createContext<ConfigContextValue | null>(null);
@@ -158,16 +181,47 @@ export function ConfigProvider({
     []
   );
 
+  const updateKeybindFields = useCallback(
+    (updater: (prev: KeybindFields) => KeybindFields) => {
+      let next!: AppConfig;
+      setConfig((prev) => {
+        const patch = updater({
+          keybindPreset: prev.keybindPreset,
+          keybindOverrides: prev.keybindOverrides,
+        });
+        next = { ...prev, ...patch };
+        return next;
+      });
+      queueMicrotask(() => {
+        persistKeybindFields(next);
+      });
+    },
+    []
+  );
+
+  const reloadFromDisk = useCallback(() => {
+    setConfig(readConfig());
+  }, []);
+
   const value = useMemo<ConfigContextValue>(
     () => ({
       config,
-      setConfig,
       provider,
       providers,
       vcsConfigured,
       updateField,
+      updateKeybindFields,
+      reloadFromDisk,
     }),
-    [config, provider, providers, vcsConfigured, updateField]
+    [
+      config,
+      provider,
+      providers,
+      vcsConfigured,
+      updateField,
+      updateKeybindFields,
+      reloadFromDisk,
+    ]
   );
 
   return (

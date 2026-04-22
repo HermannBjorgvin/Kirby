@@ -13,6 +13,13 @@
     },
     "./package.json": "./package.json"
   },
+  "nx": {
+    "name": "@kirby/vcs-azure-devops",
+    "tags": [
+      "type:lib",
+      "scope:vcs"
+    ]
+  },
   "dependencies": {
     "@kirby/vcs-core": "*"
   }

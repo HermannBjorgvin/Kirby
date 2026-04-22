@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { countConflicts } from '@kirby/worktree-manager';
 
 /**
@@ -8,14 +8,6 @@ import { countConflicts } from '@kirby/worktree-manager';
 export function useConflictCounts(branches: string[], lastSynced: number) {
   const [counts, setCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!lastSynced || branches.length === 0) return;
@@ -26,7 +18,6 @@ export function useConflictCounts(branches: string[], lastSynced: number) {
 
     (async () => {
       const results = new Map<string, number>();
-      // Run all conflict checks concurrently
       const entries = await Promise.all(
         branches.map(async (branch) => {
           try {
@@ -40,10 +31,9 @@ export function useConflictCounts(branches: string[], lastSynced: number) {
       for (const [branch, count] of entries) {
         results.set(branch, count);
       }
-      if (!cancelled && mountedRef.current) {
-        setCounts(results);
-        setLoading(false);
-      }
+      if (cancelled) return;
+      setCounts(results);
+      setLoading(false);
     })();
 
     return () => {

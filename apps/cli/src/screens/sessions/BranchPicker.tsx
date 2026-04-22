@@ -1,6 +1,17 @@
-import { memo } from 'react';
-import { Text, Box } from 'ink';
+import { memo, useMemo } from 'react';
+import { Text, Box, useInput } from 'ink';
 import { computeScrollWindow } from '../../utils/scroll-window.js';
+import {
+  useBranchPickerState,
+  useBranchPickerActions,
+} from '../../context/ModalContext.js';
+import { useSessionActions } from '../../context/SessionContext.js';
+import { useAsyncOps } from '../../context/AsyncOpsContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
+import { useKeybindResolve } from '../../context/KeybindContext.js';
+import { useLayout } from '../../context/LayoutContext.js';
+import { useSidebar } from '../../context/SidebarContext.js';
+import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({
   filter,
@@ -13,6 +24,39 @@ export const BranchPicker = memo(function BranchPicker({
   selectedIndex: number;
   paneRows: number;
 }) {
+  // ── Input handling ────────────────────────────────────────────
+  // Moved out of MainTab so the branch picker owns its own keypress
+  // routing. The `isActive` guard keeps the hook attached only while
+  // the picker is on screen; MainTab's always-on no-op useInput holds
+  // Ink's raw-mode ref-count steady either way.
+  const branchPickerState = useBranchPickerState();
+  const branchPickerActions = useBranchPickerActions();
+  const branchPicker = useMemo(
+    () => ({ ...branchPickerState, ...branchPickerActions }),
+    [branchPickerState, branchPickerActions]
+  );
+  const sessions = useSessionActions();
+  const sidebar = useSidebar();
+  const asyncOps = useAsyncOps();
+  const config = useConfig();
+  const keybinds = useKeybindResolve();
+  const { terminal } = useLayout();
+
+  useInput(
+    (input, key) => {
+      handleBranchPickerInput(input, key, {
+        branchPicker,
+        sessions,
+        sidebar,
+        asyncOps,
+        terminal,
+        config,
+        keybinds,
+      });
+    },
+    { isActive: branchPicker.creating }
+  );
+
   const filtered = branches.filter((b) =>
     b.toLowerCase().includes(filter.toLowerCase())
   );

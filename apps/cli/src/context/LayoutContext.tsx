@@ -46,14 +46,19 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   const paneCols = Math.max(20, termCols - SIDEBAR_WIDTH - PANE_BORDER_COLS);
   const paneRows = Math.max(5, termRows - PANE_BORDER_ROWS - PANE_TITLE_ROWS);
 
-  const terminal = useMemo(
-    () => ({ paneCols, paneRows }),
-    [paneCols, paneRows]
-  );
-
+  // One memo, not two — the outer object's identity only changes when
+  // any of paneCols / paneRows / termRows / termCols changes, and
+  // `terminal` is re-created in that same pass. The previous nested
+  // useMemo for `terminal` added a layer of indirection without
+  // changing the referential stability guarantees.
   const value = useMemo<LayoutContextValue>(
-    () => ({ terminal, sidebarWidth: SIDEBAR_WIDTH, termRows, termCols }),
-    [terminal, termRows, termCols]
+    () => ({
+      terminal: { paneCols, paneRows },
+      sidebarWidth: SIDEBAR_WIDTH,
+      termRows,
+      termCols,
+    }),
+    [paneCols, paneRows, termRows, termCols]
   );
 
   return (

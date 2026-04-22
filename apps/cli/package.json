@@ -8,6 +8,10 @@
   },
   "nx": {
     "name": "cli",
+    "tags": [
+      "type:app",
+      "scope:cli"
+    ],
     "targets": {
       "build": {
         "executor": "@nx/esbuild:esbuild",
@@ -125,6 +129,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.21.0"
   }
 }

@@ -35,8 +35,14 @@ export const ReviewConfirmPane = memo(function ReviewConfirmPane({
         <Text>What would you like to do?</Text>
 
         <Box marginTop={1} flexDirection="column">
-          <Option label="Start session" selected={selectedOption === 0} />
-          <Option label="Start review" selected={selectedOption === 1} />
+          <Option
+            label="Start/Continue session"
+            selected={selectedOption === 0}
+          />
+          <Option
+            label="Start/Continue review"
+            selected={selectedOption === 1}
+          />
 
           <Box flexDirection="column">
             <Option label="Add instructions:" selected={selectedOption === 2} />

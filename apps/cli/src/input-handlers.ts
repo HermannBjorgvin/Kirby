@@ -1,11 +1,13 @@
 import type { Key } from 'ink';
-import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
+import { autoDetectProjectConfig } from '@kirby/vcs-core';
 import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
   resolveValue,
 } from './components/SettingsPanel.js';
-import type { AppStateContextValue } from './context/AppStateContext.js';
+import type { NavValue as NavContextValue } from './context/NavContext.js';
+import type { AsyncOpsValue as AsyncOpsContextValue } from './context/AsyncOpsContext.js';
+import type { SettingsValue as SettingsModalValue } from './context/ModalContext.js';
 import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
 import type { TerminalLayout } from './context/LayoutContext.js';
@@ -23,9 +25,9 @@ import {
 
 // ── Shared context slice types ────────────────────────────────────
 
-export type NavValue = AppStateContextValue['nav'];
-export type AsyncOpsValue = AppStateContextValue['asyncOps'];
-export type SettingsValue = AppStateContextValue['settings'];
+export type NavValue = NavContextValue;
+export type AsyncOpsValue = AsyncOpsContextValue;
+export type SettingsValue = SettingsModalValue;
 export type { TerminalLayout };
 
 // ── Settings input handler ────────────────────────────────────────
@@ -130,7 +132,7 @@ export function handleSettingsInput(
       ctx.config.providers
     );
     if (updated) {
-      ctx.config.setConfig(readConfig());
+      ctx.config.reloadFromDisk();
       const fields = Object.keys(detected).join(', ');
       ctx.sessions.flashStatus(`Auto-detected: ${fields}`);
     } else {
