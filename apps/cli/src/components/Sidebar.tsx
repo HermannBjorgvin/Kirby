@@ -209,6 +209,7 @@ export interface SidebarProps {
   termRows: number;
   focused: boolean;
   conflictsLoading?: boolean;
+  hintsHidden?: boolean;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -217,6 +218,7 @@ export const Sidebar = memo(function Sidebar({
   sidebarWidth,
   termRows,
   focused,
+  hintsHidden = false,
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
   const keybinds = useKeybinds();
@@ -224,6 +226,12 @@ export const Sidebar = memo(function Sidebar({
   // Build dynamic keybind hints from the active preset
   const sidebarHints = useMemo(() => {
     const hints = keybinds.getHints('sidebar');
+
+    if (hintsHidden) {
+      const toggle = hints.find((h) => h.actionId === 'sidebar.toggle-hints');
+      return toggle ? [{ ...toggle, label: 'show hints' }] : [];
+    }
+
     const filtered = vcsConfigured ? hints : hints.filter((h) => !h.vcsOnly);
 
     // Combine navigate-down + navigate-up into a single "j/k navigate" hint
@@ -243,7 +251,7 @@ export const Sidebar = memo(function Sidebar({
       ];
     }
     return filtered;
-  }, [keybinds, vcsConfigured]);
+  }, [keybinds, vcsConfigured, hintsHidden]);
 
   const keybindLineCount = sidebarHints.length;
 
@@ -305,7 +313,7 @@ export const Sidebar = memo(function Sidebar({
       SIDEBAR_CHROME_ROWS +
       1 +
       keybindLineCount +
-      (vcsConfigured ? 1 + LEGEND_LINES : 0);
+      (vcsConfigured && !hintsHidden ? 1 + LEGEND_LINES : 0);
     const availableLines = termRows - chromeLines;
     const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
 
@@ -374,6 +382,7 @@ export const Sidebar = memo(function Sidebar({
     termRows,
     vcsConfigured,
     keybindLineCount,
+    hintsHidden,
   ]);
 
   const renderRow = (row: RenderRow) => {
@@ -445,7 +454,7 @@ export const Sidebar = memo(function Sidebar({
         </>
       }
       legend={
-        vcsConfigured ? (
+        vcsConfigured && !hintsHidden ? (
           <>
             <Text dimColor>🔧✅ passed 🔧🔥 failed 🔧⏳ pending</Text>
             <Text dimColor>🔔 needs attention ⭐ fully approved</Text>
