@@ -145,10 +145,6 @@ export function useDiffData(
   const [diffLoading, setDiffLoading] = useState(false);
   const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
   const diffCacheRef = useRef<Map<number, string>>(new Map());
-  // Bumped whenever prNumber changes; async callbacks capture the token
-  // at call time and bail on resolve if the current prNumber has moved on.
-  // Guards against rapid sidebar nav stomping state with a stale fetch.
-  const requestIdRef = useRef(0);
 
   const loadFiles = useCallback(async () => {
     if (!prNumber || !sourceBranch || !targetBranch) return;
@@ -157,23 +153,21 @@ export function useDiffData(
     if (cached) {
       setFiles(cached.files);
       setError(null);
+      setLoading(false);
       return;
     }
 
-    const token = requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await fetchAllFiles(sourceBranch, targetBranch);
-      if (token !== requestIdRef.current) return;
       cacheRef.current.set(prNumber, result);
       setFiles(result.files);
     } catch (err: unknown) {
-      if (token !== requestIdRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
-      if (token === requestIdRef.current) setLoading(false);
+      setLoading(false);
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
@@ -183,10 +177,10 @@ export function useDiffData(
     const cached = diffCacheRef.current.get(prNumber);
     if (cached) {
       setDiffText(cached);
+      setDiffLoading(false);
       return;
     }
 
-    const token = requestIdRef.current;
     // Reuse refs resolved by loadFiles if available — saves two
     // `git rev-parse --verify` execs per PR open.
     const entry = cacheRef.current.get(prNumber);
@@ -197,22 +191,18 @@ export function useDiffData(
     setDiffLoading(true);
     try {
       const text = await fetchDiffText(sourceBranch, targetBranch, preResolved);
-      if (token !== requestIdRef.current) return;
       diffCacheRef.current.set(prNumber, text);
       setDiffText(text);
     } catch (err: unknown) {
-      if (token !== requestIdRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
-      if (token === requestIdRef.current) setDiffLoading(false);
+      setDiffLoading(false);
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
-  // Auto-load files when prNumber changes. Bump the request id so any
-  // in-flight fetches for the previous PR bail on resolve.
+  // Auto-load files when prNumber changes.
   useEffect(() => {
-    requestIdRef.current += 1;
     if (prNumber) {
       loadFiles();
     } else {
