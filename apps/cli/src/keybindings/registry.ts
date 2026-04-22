@@ -173,6 +173,13 @@ export const ACTIONS = [
     label: 'Focus terminal',
     context: 'sidebar',
   },
+  {
+    id: 'sidebar.toggle-hints',
+    label: 'Toggle hint visibility',
+    context: 'sidebar',
+    hintLabel: 'hide hints',
+    showInHints: true,
+  },
 
   // ── Settings ──
   {
@@ -354,6 +361,7 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.view-diff': [{ input: 'd' }],
     'sidebar.start-session': [{ flags: { return: true } }],
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
+    'sidebar.toggle-hints': [{ input: '?' }],
 
     // Settings
     'settings.navigate-down': [{ flags: { downArrow: true } }],
@@ -436,6 +444,7 @@ export const VIM_PRESET: KeybindPreset = {
     'sidebar.view-diff': [{ input: 'd' }],
     'sidebar.start-session': [{ flags: { return: true } }],
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
+    'sidebar.toggle-hints': [{ input: '?' }],
 
     // Settings (same as normie — transient modal)
     'settings.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],

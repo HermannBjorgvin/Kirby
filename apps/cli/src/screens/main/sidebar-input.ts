@@ -22,6 +22,12 @@ export function handleSidebarInput(
 
   const action = ctx.keybinds.resolve(input, key, 'sidebar');
 
+  // Toggle hint visibility
+  if (action === 'sidebar.toggle-hints') {
+    ctx.toggleHints();
+    return;
+  }
+
   // Tab focus toggle
   if (action === 'sidebar.focus-terminal') {
     if (ctx.nav.focus === 'sidebar' && sidebar.sessionNameForTerminal) {

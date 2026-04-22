@@ -204,6 +204,39 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
   });
 });
 
+// ── Hint Toggle ────────────────────────────────────────────────────
+
+test.describe('Keybindings — Hint Toggle', () => {
+  // Default 30 rows leaves the last hint right at the bottom border; use
+  // a taller terminal so the full expanded list is unambiguously visible.
+  test.use({ rows: 40 });
+
+  test('? collapses hints to single "show hints" row and restores them', async ({
+    kirby,
+  }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+
+    // Default state: full hint list rendered, including the toggle itself.
+    await expect(kirby.term.getByText('hide hints').first()).toBeVisible();
+    await expect(kirby.term.getByText('quit').first()).toBeVisible();
+
+    // Collapse.
+    await kirby.term.type('?');
+    await expect(kirby.term.getByText('show hints').first()).toBeVisible();
+    await expect(kirby.term.getByText('quit').first()).not.toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(kirby.term.getByText('hide hints').first()).not.toBeVisible({
+      timeout: 3_000,
+    });
+
+    // Restore.
+    await kirby.term.type('?');
+    await expect(kirby.term.getByText('hide hints').first()).toBeVisible();
+    await expect(kirby.term.getByText('quit').first()).toBeVisible();
+  });
+});
+
 // ── Modifier key display ───────────────────────────────────────────
 
 test.describe('Keybindings — Modifier key display', () => {

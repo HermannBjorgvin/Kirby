@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
@@ -45,6 +46,9 @@ export function MainTab({
     sidebar.selectedItem,
     sidebar.sessionNameForTerminal
   );
+
+  const [hintsHidden, setHintsHidden] = useState(false);
+  const toggleHints = useCallback(() => setHintsHidden((v) => !v), []);
 
   // ── Input handling (modals + sidebar) ──────────────────────────
   useInput((input, key) => {
@@ -121,6 +125,7 @@ export function MainTab({
       terminal,
       pane,
       keybinds,
+      toggleHints,
       exit,
     });
   });
@@ -182,6 +187,7 @@ export function MainTab({
           sidebarWidth={layout.sidebarWidth}
           termRows={layout.termRows}
           focused={sidebarFocused}
+          hintsHidden={hintsHidden}
         />
       )}
       <Pane focused={mainFocused} title={paneTitle} flexGrow={1}>

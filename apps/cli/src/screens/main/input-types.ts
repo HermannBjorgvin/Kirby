@@ -90,5 +90,6 @@ export interface SidebarInputCtx {
   terminal: TerminalLayout;
   pane: PaneModeValue;
   keybinds: KeybindContextValue;
+  toggleHints: () => void;
   exit: () => void;
 }
