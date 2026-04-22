@@ -19,12 +19,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [
-      '**/node_modules',
-      '**/dist',
-      'tmp',
-      '.claude/worktrees',
-      '**/.tui-test',
-    ],
+    ignores: ['**/node_modules', '**/dist', 'tmp', '.claude/worktrees'],
   }
 );

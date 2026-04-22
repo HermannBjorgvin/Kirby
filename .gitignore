@@ -23,6 +23,7 @@ node_modules
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+.vscode/chrome/
 
 # misc
 /.sass-cache
@@ -49,3 +50,6 @@ Thumbs.db
 vitest.config.*.timestamp*
 tui-traces/
 .tui-test/
+test-output
+test-results
+playwright-report

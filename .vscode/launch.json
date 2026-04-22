@@ -18,6 +18,40 @@
         "${workspaceFolder}/apps/cli/dist/**/*.(m|c|)js",
         "!**/node_modules/**"
       ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @kirby/cli-wterm-host with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@kirby/cli-wterm-host"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9230"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/cli-wterm-host/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Kirby in Chrome (wterm)",
+      "url": "http://localhost:5174",
+      "webRoot": "${workspaceFolder}/apps/cli-wterm-host/src/public",
+      "preLaunchTask": "serve cli-wterm-host",
+      "sourceMaps": true,
+      "runtimeArgs": [
+        "--remote-debugging-port=9222",
+        "--user-data-dir=${workspaceFolder}/.vscode/chrome",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--hide-crash-restore-bubble"
+      ]
     }
   ]
 }

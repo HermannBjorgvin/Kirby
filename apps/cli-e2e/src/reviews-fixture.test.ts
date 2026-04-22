@@ -1,38 +1,30 @@
-import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test, expect } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
 // ── Module-scope setup ─────────────────────────────────────────────
-const mainJs = resolve('../cli/dist/main.js');
+// Clone the sandbox repo once per file (workers=1, so effectively once
+// per run). Reads only — no branches/PRs created by this file.
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-reviews-clone-'));
-const fakeHome = mkdtempSync(join(tmpdir(), 'kirby-reviews-home-'));
-const logFile = join(tmpdir(), 'kirby-reviews-debug.log');
 registerCleanup(cloneDir);
-registerCleanup(fakeHome);
 
 if (hasGhToken) {
-  // 1. Clone sandbox repo
+  const token = process.env.GH_TOKEN;
+
   execSync(`gh repo clone "${TEST_REPO}" "${cloneDir}" -- --single-branch`, {
     stdio: 'pipe',
   });
-
-  // 2. Configure remote URL with token so git commands can authenticate
-  const token = process.env.GH_TOKEN;
-  if (token) {
-    execSync(
-      `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
-      { cwd: cloneDir, stdio: 'pipe' }
-    );
-  }
-
-  // 3. Configure git identity
+  execSync(
+    `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
+    { cwd: cloneDir, stdio: 'pipe' }
+  );
   execSync('git config user.email "e2e@kirby.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
@@ -41,71 +33,47 @@ if (hasGhToken) {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-
-  // 4. Write global config (auto-detect fills vendorProject on startup)
-  const kirbyDir = join(fakeHome, '.kirby');
-  mkdirSync(kirbyDir, { recursive: true });
-  writeFileSync(
-    join(kirbyDir, 'config.json'),
-    JSON.stringify({ keybindPreset: 'vim' }),
-    'utf-8'
-  );
 }
 
-// ── Configure tui-test ─────────────────────────────────────────────
-test.use({
-  rows: 60,
-  columns: 120,
-  program: {
-    file: 'node',
-    args: [mainJs, cloneDir],
-  },
-  env: {
-    ...process.env,
-    HOME: fakeHome,
-    TERM: 'xterm-256color',
-    KIRBY_LOG: logFile,
-  },
+test.describe('@integration Reviews Fixture', () => {
+  test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
+
+  test.use({
+    kirbyRepoPath: cloneDir,
+    kirbyConfig: { keybindPreset: 'vim' },
+    rows: 60,
+    cols: 120,
+  });
+
+  test('Unified sidebar shows fixture PRs in correct categories', async ({
+    kirby,
+  }) => {
+    // 1. Kirby renders (the fixture already waited for this)
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+
+    // 2. Wait for PR data to load — kirby-test-runner approved PR #37,
+    //    so "Approved by You" section should appear.
+    await expect(kirby.term.getByText('Approved by You').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // 3. All 3 fixture PRs visible
+    await expect(
+      kirby.term.getByText('Add color support for tile values').first()
+    ).toBeVisible();
+    await expect(
+      kirby.term.getByText('Add undo feature with history stack').first()
+    ).toBeVisible();
+    await expect(
+      kirby.term.getByText('Add AI solver for auto-play mode').first()
+    ).toBeVisible();
+
+    // 4. "Waiting for Author" section exists (PR #38 has changes requested)
+    await expect(
+      kirby.term.getByText('Waiting for Author').first()
+    ).toBeVisible();
+
+    // 5. PR #38 shows comment count (3 inline review comments)
+    await expect(kirby.term.getByText('3 comments').first()).toBeVisible();
+  });
 });
-
-// ── Tests ──────────────────────────────────────────────────────────
-
-test.when(
-  hasGhToken,
-  'Unified sidebar shows fixture PRs in correct categories',
-  async ({ terminal }) => {
-    // 1. Wait for Kirby to start — unified sidebar shows "Kirby" as title
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-
-    // 2. Wait for PR data to load — fixture PRs should appear in review sections
-    //    kirby-test-runner approved PR #37, so "Approved by You" section exists
-    await expect(
-      terminal.getByText('Approved by You', { strict: false })
-    ).toBeVisible({ timeout: 30_000 });
-
-    // 3. Verify all 3 fixture PRs are visible
-    await expect(
-      terminal.getByText('Add color support for tile values', { strict: false })
-    ).toBeVisible();
-
-    await expect(
-      terminal.getByText('Add undo feature with history stack', {
-        strict: false,
-      })
-    ).toBeVisible();
-
-    await expect(
-      terminal.getByText('Add AI solver for auto-play mode', { strict: false })
-    ).toBeVisible();
-
-    // 4. Verify "Waiting for Author" section exists (PR #38 has changes requested)
-    await expect(
-      terminal.getByText('Waiting for Author', { strict: false })
-    ).toBeVisible();
-
-    // 5. Verify PR #38 shows comment count (3 inline review comments)
-    await expect(
-      terminal.getByText('3 comments', { strict: false })
-    ).toBeVisible();
-  }
-);

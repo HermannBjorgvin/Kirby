@@ -1,193 +1,89 @@
-import { test, expect } from '@microsoft/tui-test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { createTestRepo, registerCleanup } from './setup/git-repo.js';
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-function createIsolatedEnv() {
-  const dir = createTestRepo();
-  const home = mkdtempSync(join(tmpdir(), 'kirby-keybinds-'));
-  const log = join(tmpdir(), `kirby-keybinds-${Date.now()}.log`);
-  registerCleanup(dir);
-  registerCleanup(home);
-  mkdirSync(join(home, '.kirby'), { recursive: true });
-  return { dir, home, log };
-}
-
-function createEnvWithPreset(preset: string) {
-  const env = createIsolatedEnv();
-  writeFileSync(
-    join(env.home, '.kirby', 'config.json'),
-    JSON.stringify({ keybindPreset: preset }),
-    'utf-8'
-  );
-  return env;
-}
-
-const mainJs = resolve('../cli/dist/main.js');
+import { test, expect } from './fixtures/kirby.js';
 
 // ── Default Preset (Normie) ────────────────────────────────────────
 
 test.describe('Keybindings — Default (Normie) Preset', () => {
-  const env = createIsolatedEnv();
-
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
-
-  test('default shows normie-style hints without j/k', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // Normie preset should show arrow key names, not j/k
-    await expect(terminal.getByText('navigate')).toBeVisible();
-    // Should NOT show "j/k" in the hints
-    await expect(terminal.getByText('j/k', { strict: false })).not.toBeVisible({
+  test('default shows normie-style hints without j/k', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(kirby.term.getByText('navigate')).toBeVisible();
+    await expect(kirby.term.getByText('j/k').first()).not.toBeVisible({
       timeout: 3_000,
     });
   });
 
-  test('s opens settings in normie preset', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
+  test('s opens settings in normie preset', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
   });
 
-  test('arrow keys navigate sidebar in normie preset', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // Arrow down should work for navigation (no-op with empty sidebar, but should not error)
-    terminal.keyDown();
-    // App should still be responsive — verify main UI is present
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+  test('arrow keys navigate sidebar in normie preset', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    // Arrow down should work (no-op with empty sidebar, but should not error)
+    await kirby.term.press('ArrowDown');
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
   });
 });
 
 // ── Settings Controls Entry ────────────────────────────────────────
 
 test.describe('Keybindings — Settings Controls', () => {
-  const env = createIsolatedEnv();
-
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
-
   test('settings panel shows Controls field with Normie preset', async ({
-    terminal,
+    kirby,
   }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // Open settings (normie uses s)
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
-    await expect(
-      terminal.getByText('Normie defaults', { strict: false })
-    ).toBeVisible();
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
+    await expect(kirby.term.getByText('Normie defaults').first()).toBeVisible();
   });
 
-  test('Enter on Controls opens controls sub-screen', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // Open settings
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
+  test('Enter on Controls opens controls sub-screen', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
 
-    // Controls should be the first field — press Enter to open sub-screen
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Sidebar', { strict: false })
-    ).toBeVisible();
-    await expect(
-      terminal.getByText('Navigate down', { strict: false })
-    ).toBeVisible();
+    // Controls is the first field — Enter opens sub-screen
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Sidebar').first()).toBeVisible();
+    await expect(kirby.term.getByText('Navigate down').first()).toBeVisible();
   });
 
   test('Esc from controls sub-screen returns to settings', async ({
-    terminal,
+    kirby,
   }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Navigate down', { strict: false })
-    ).toBeVisible();
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Navigate down').first()).toBeVisible();
 
-    // Esc should return to settings
-    terminal.keyEscape();
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
-    // Controls field should still be visible in the settings list
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
+    await kirby.term.press('Escape');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
   });
 });
 
 // ── Preset Switching ───────────────────────────────────────────────
 
 test.describe('Keybindings — Preset Switching', () => {
-  const env = createIsolatedEnv();
-
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
-
   test('cycling to Vim Losers preset updates sidebar hints', async ({
-    terminal,
+    kirby,
   }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
 
-    // Open settings (normie: s)
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Normie defaults', { strict: false })
-    ).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Normie defaults').first()).toBeVisible();
 
     // Controls is first field — cycle right to switch to Vim Losers
-    terminal.keyRight();
-    await expect(
-      terminal.getByText('Vim Losers', { strict: false })
-    ).toBeVisible();
+    await kirby.term.press('ArrowRight');
+    await expect(kirby.term.getByText('Vim Losers').first()).toBeVisible();
 
     // Close settings
-    terminal.keyEscape();
+    await kirby.term.press('Escape');
 
-    // Now sidebar hints should show vim-style "j/k"
-    await expect(terminal.getByText('j/k', { strict: false })).toBeVisible({
+    // Sidebar hints should show vim-style "j/k"
+    await expect(kirby.term.getByText('j/k').first()).toBeVisible({
       timeout: 3_000,
     });
   });
@@ -196,213 +92,127 @@ test.describe('Keybindings — Preset Switching', () => {
 // ── Vim Losers Preset ──────────────────────────────────────────────
 
 test.describe('Keybindings — Vim Losers Preset', () => {
-  const env = createEnvWithPreset('vim');
+  test.use({ kirbyConfig: { keybindPreset: 'vim' } });
 
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
+  test('vim preset shows j/k in hints', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(kirby.term.getByText('j/k').first()).toBeVisible();
   });
 
-  test('vim preset shows j/k in hints', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    await expect(terminal.getByText('j/k', { strict: false })).toBeVisible();
+  test('s opens settings in vim preset', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Settings').first()).toBeVisible();
+    await expect(kirby.term.getByText('Vim Losers').first()).toBeVisible();
   });
 
-  test('s opens settings in vim preset', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Settings', { strict: false })
-    ).toBeVisible();
-    await expect(
-      terminal.getByText('Vim Losers', { strict: false })
-    ).toBeVisible();
-  });
-
-  test('j/k navigate sidebar in vim preset', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-    // j should work for navigation (no-op with empty sidebar, but no error)
-    terminal.write('j');
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+  test('j/k navigate sidebar in vim preset', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await kirby.term.type('j');
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
   });
 });
 
 // ── Preset Persistence ─────────────────────────────────────────────
 
 test.describe('Keybindings — Preset Persistence', () => {
-  // Pre-configure vim preset in config
-  const env = createEnvWithPreset('vim');
+  test.use({ kirbyConfig: { keybindPreset: 'vim' } });
 
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
-
-  test('preset persists across app launch', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+  test('preset persists across app launch', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     // Since we pre-set vim in config.json, hints should show j/k
-    await expect(terminal.getByText('j/k', { strict: false })).toBeVisible();
-    // And settings should show Vim Losers
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Vim Losers', { strict: false })
-    ).toBeVisible();
+    await expect(kirby.term.getByText('j/k').first()).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Vim Losers').first()).toBeVisible();
   });
 });
 
 // ── Per-Binding Customization ──────────────────────────────────────
 
 test.describe('Keybindings — Per-Binding Rebind', () => {
-  const env = createIsolatedEnv();
+  test.use({ rows: 40 });
 
-  test.use({
-    rows: 40,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
+  test('can navigate bindings and enter rebind mode', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
 
-  test('can navigate bindings and enter rebind mode', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
 
-    // Open settings (normie: s)
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
-
-    // Enter controls sub-screen
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Navigate down', { strict: false })
-    ).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Navigate down').first()).toBeVisible();
 
     // First binding row should be selected (has › marker)
-    await expect(terminal.getByText(/›.*↓/g, { strict: false })).toBeVisible();
+    await expect(kirby.term.getByText(/›.*↓/).first()).toBeVisible();
 
     // Navigate down to Quit binding
-    terminal.write('j');
-    terminal.write('j');
-    await new Promise((r) => setTimeout(r, 300));
-
-    // Press Enter to rebind
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Press a key', { strict: false })
-    ).toBeVisible();
-  });
-
-  test('pressing a key rebinds the action', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
-
-    // Open controls sub-screen
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Navigate down', { strict: false })
-    ).toBeVisible();
-
-    // Navigate to Quit action (3rd binding: Down, Up, Quit)
-    terminal.write('j');
-    terminal.write('j');
-    await new Promise((r) => setTimeout(r, 300));
+    await kirby.term.type('j');
+    await kirby.term.type('j');
+    await kirby.term.page.waitForTimeout(300);
 
     // Enter rebind mode
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Press a key', { strict: false })
-    ).toBeVisible();
-
-    // Press 'z' to rebind quit to z
-    terminal.write('z');
-    await new Promise((r) => setTimeout(r, 500));
-
-    // Should exit rebind mode and show 'z' as the new key
-    await expect(terminal.getByText('z', { strict: false })).toBeVisible();
-    // The binding should be marked as custom with *
-    await expect(terminal.getByText('*', { strict: false })).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Press a key').first()).toBeVisible();
   });
 
-  test('Esc cancels rebind without changing', async ({ terminal }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+  test('pressing a key rebinds the action', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
 
-    // Open controls sub-screen
-    terminal.write('s');
-    await expect(
-      terminal.getByText('Controls', { strict: false })
-    ).toBeVisible();
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Navigate down', { strict: false })
-    ).toBeVisible();
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Navigate down').first()).toBeVisible();
+
+    // Navigate to Quit action (3rd binding: Down, Up, Quit)
+    await kirby.term.type('j');
+    await kirby.term.type('j');
+    await kirby.term.page.waitForTimeout(300);
+
+    // Enter rebind mode
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Press a key').first()).toBeVisible();
+
+    // Press 'z' to rebind quit to z
+    await kirby.term.type('z');
+    await kirby.term.page.waitForTimeout(500);
+
+    // Exit rebind mode, 'z' now shown as the new key
+    await expect(kirby.term.getByText('z').first()).toBeVisible();
+    // Binding marked as custom with *
+    await expect(kirby.term.getByText('*').first()).toBeVisible();
+  });
+
+  test('Esc cancels rebind without changing', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+
+    await kirby.term.type('s');
+    await expect(kirby.term.getByText('Controls').first()).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Navigate down').first()).toBeVisible();
 
     // Enter rebind mode on first binding
-    terminal.write('\r');
-    await expect(
-      terminal.getByText('Press a key', { strict: false })
-    ).toBeVisible();
+    await kirby.term.press('Enter');
+    await expect(kirby.term.getByText('Press a key').first()).toBeVisible();
 
     // Esc to cancel
-    terminal.keyEscape();
+    await kirby.term.press('Escape');
 
-    // Should return to normal controls view, no "Press a key" prompt
-    await expect(
-      terminal.getByText('Press a key', { strict: false })
-    ).not.toBeVisible({ timeout: 3_000 });
-    // Original binding still shown
-    await expect(terminal.getByText('↓', { strict: false })).toBeVisible();
+    // No "Press a key" prompt; original binding still shown
+    await expect(kirby.term.getByText('Press a key').first()).not.toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(kirby.term.getByText('↓').first()).toBeVisible();
   });
 });
 
 // ── Modifier key display ───────────────────────────────────────────
 
 test.describe('Keybindings — Modifier key display', () => {
-  const env = createIsolatedEnv();
-
-  test.use({
-    rows: 30,
-    columns: 100,
-    program: { file: 'node', args: [mainJs, env.dir] },
-    env: {
-      ...process.env,
-      HOME: env.home,
-      TERM: 'xterm-256color',
-      KIRBY_LOG: env.log,
-    },
-  });
-
   test('normie preset shows Shift+k for kill agent in sidebar hints', async ({
-    terminal,
+    kirby,
   }) => {
-    await expect(terminal.getByText('Kirby', { strict: false })).toBeVisible();
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     // Normie preset binds kill-agent to Shift+K, displayed as Shift+k
-    await expect(
-      terminal.getByText('Shift+k', { strict: false })
-    ).toBeVisible();
-    await expect(
-      terminal.getByText('kill agent', { strict: false })
-    ).toBeVisible();
+    await expect(kirby.term.getByText('Shift+k').first()).toBeVisible();
+    await expect(kirby.term.getByText('kill agent').first()).toBeVisible();
   });
 });

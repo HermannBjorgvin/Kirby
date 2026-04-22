@@ -1,0 +1,45 @@
+{
+  "name": "@kirby/cli-wterm-host",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "nx": {
+    "name": "cli-wterm-host",
+    "targets": {
+      "build": {
+        "executor": "nx:run-commands",
+        "outputs": [
+          "{projectRoot}/dist"
+        ],
+        "options": {
+          "command": "node build.mjs",
+          "cwd": "apps/cli-wterm-host"
+        }
+      },
+      "serve": {
+        "continuous": true,
+        "dependsOn": [
+          "build",
+          {
+            "projects": [
+              "cli"
+            ],
+            "target": "build"
+          }
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node apps/cli-wterm-host/dist/main.js"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@wterm/dom": "0.1.9",
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}

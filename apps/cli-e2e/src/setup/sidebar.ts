@@ -1,6 +1,6 @@
-import type { Terminal } from '@microsoft/tui-test/lib/terminal/term.js';
+import type { Page, Locator } from '@playwright/test';
 
-// Sidebar icon scheme (Sidebar.tsx):
+// Sidebar icon scheme (apps/cli/src/components/Sidebar.tsx):
 //   ◉  selected + running
 //   ◎  selected + stopped
 //   ●  not-selected + running
@@ -14,16 +14,22 @@ function escapeRegExp(s: string): string {
 }
 
 export function selectedItem(title: string): RegExp {
-  return new RegExp(`[${SELECTED}].*${escapeRegExp(title)}`, 'g');
+  return new RegExp(`[${SELECTED}].*${escapeRegExp(title)}`);
 }
 
 export function anyItem(title: string): RegExp {
-  return new RegExp(`[${ANY}].*${escapeRegExp(title)}`, 'g');
+  return new RegExp(`[${ANY}].*${escapeRegExp(title)}`);
 }
 
-export function sidebarLocator(terminal: Terminal, title: string) {
+// Scope the icon-then-title regex to a single .term-row. Without this,
+// Playwright's getByText(/regex/) matches against any element's combined
+// text, so `.*` bridges across rows — e.g. `/[◉◎].*Add color support/`
+// would spuriously match when `◉` sits next to a DIFFERENT session that
+// happens to appear before "Add color support" in the grid.
+export function sidebarLocator(page: Page, title: string) {
   return {
-    selected: () => terminal.getByText(selectedItem(title), { strict: false }),
-    any: () => terminal.getByText(anyItem(title), { strict: false }),
+    selected: (): Locator =>
+      page.locator('.term-row', { hasText: selectedItem(title) }),
+    any: (): Locator => page.locator('.term-row', { hasText: anyItem(title) }),
   };
 }

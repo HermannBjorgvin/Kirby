@@ -27,6 +27,18 @@ jobs:
 
       - run: npm ci
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - uses: nrwl/nx-set-shas@v4
 
       - run: npx nx affected -t lint test build typecheck e2e
+
+      - name: Upload Playwright test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-output
+          path: apps/cli-e2e/test-output
+          if-no-files-found: ignore
+          retention-days: 7

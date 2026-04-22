@@ -37,11 +37,9 @@ export function createPullRequest(
     `gh pr create --repo "${repoFullName}" --head "${branchName}" --title "e2e: ${branchName}" --body "Automated e2e test PR"`,
     { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
   );
-  // gh pr create prints the PR URL; extract number from it
   const match = output.trim().match(/\/pull\/(\d+)$/);
   if (match) return parseInt(match[1], 10);
 
-  // Fallback: query for it
   const prNum = execSync(
     `gh pr view "${branchName}" --repo "${repoFullName}" --json number -q .number`,
     { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }

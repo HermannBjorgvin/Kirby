@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kirby — wterm host</title>
+    <link rel="stylesheet" href="/terminal.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1e1e1e;
+        overflow: hidden;
+      }
+      #wterm-root {
+        position: fixed;
+        inset: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wterm-root" data-testid="wterm-root" tabindex="0"></div>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

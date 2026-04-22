@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 export function createTestRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'kirby-e2e-'));
+  const dir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-'));
   execSync('git init', { cwd: dir, stdio: 'pipe' });
   execSync('git config user.email "test@kirby.dev"', {
     cwd: dir,
@@ -26,6 +26,10 @@ export function cleanupTestRepo(dir: string): void {
   }
 }
 
+/**
+ * Register cleanup on process exit for module-scope tempdirs
+ * (used by integration tests that clone the real test repo once per file).
+ */
 export function registerCleanup(dir: string): void {
   let cleaned = false;
   const cleanup = () => {
@@ -33,7 +37,6 @@ export function registerCleanup(dir: string): void {
     cleaned = true;
     cleanupTestRepo(dir);
   };
-
   process.on('exit', cleanup);
   process.on('SIGINT', () => {
     cleanup();
