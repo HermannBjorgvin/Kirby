@@ -23,6 +23,14 @@ export interface PaneState {
   editingCommentId: string | null;
   editBuffer: string;
 
+  // Remote comment reply
+  replyingToThreadId: string | null;
+  replyBuffer: string;
+
+  // General comments pane
+  generalCommentsIndex: number;
+  generalCommentsScrollOffset: number;
+
   // Review confirm
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewInstruction: string;
@@ -39,6 +47,10 @@ export const initialState: PaneState = {
   pendingDeleteCommentId: null,
   editingCommentId: null,
   editBuffer: '',
+  replyingToThreadId: null,
+  replyBuffer: '',
+  generalCommentsIndex: 0,
+  generalCommentsScrollOffset: 0,
   reviewConfirm: null,
   reviewInstruction: '',
 };
@@ -63,6 +75,10 @@ export type PaneAction =
   | { type: 'SET_PENDING_DELETE_COMMENT_ID'; id: string | null }
   | { type: 'SET_EDITING_COMMENT_ID'; id: string | null }
   | { type: 'SET_EDIT_BUFFER'; updater: Updater<string> }
+  | { type: 'SET_REPLYING_TO_THREAD_ID'; id: string | null }
+  | { type: 'SET_REPLY_BUFFER'; updater: Updater<string> }
+  | { type: 'SET_GENERAL_COMMENTS_INDEX'; updater: Updater<number> }
+  | { type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET'; updater: Updater<number> }
   | {
       type: 'SET_REVIEW_CONFIRM';
       value: { pr: PullRequestInfo; selectedOption: number } | null;
@@ -106,6 +122,29 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
         ...state,
         editBuffer: resolve(action.updater, state.editBuffer),
       };
+    case 'SET_REPLYING_TO_THREAD_ID':
+      return { ...state, replyingToThreadId: action.id };
+    case 'SET_REPLY_BUFFER':
+      return {
+        ...state,
+        replyBuffer: resolve(action.updater, state.replyBuffer),
+      };
+    case 'SET_GENERAL_COMMENTS_INDEX':
+      return {
+        ...state,
+        generalCommentsIndex: resolve(
+          action.updater,
+          state.generalCommentsIndex
+        ),
+      };
+    case 'SET_GENERAL_COMMENTS_SCROLL_OFFSET':
+      return {
+        ...state,
+        generalCommentsScrollOffset: resolve(
+          action.updater,
+          state.generalCommentsScrollOffset
+        ),
+      };
     case 'SET_REVIEW_CONFIRM':
       return { ...state, reviewConfirm: action.value };
     case 'SET_REVIEW_INSTRUCTION':
@@ -129,6 +168,10 @@ export interface PaneActions {
   setPendingDeleteCommentId: (id: string | null) => void;
   setEditingCommentId: (id: string | null) => void;
   setEditBuffer: (updater: Updater<string>) => void;
+  setReplyingToThreadId: (id: string | null) => void;
+  setReplyBuffer: (updater: Updater<string>) => void;
+  setGeneralCommentsIndex: (updater: Updater<number>) => void;
+  setGeneralCommentsScrollOffset: (updater: Updater<number>) => void;
   setReviewConfirm: (
     value: { pr: PullRequestInfo; selectedOption: number } | null
   ) => void;
@@ -200,6 +243,14 @@ export function usePaneReducer(
         dispatch({ type: 'SET_EDITING_COMMENT_ID', id }),
       setEditBuffer: (updater) =>
         dispatch({ type: 'SET_EDIT_BUFFER', updater }),
+      setReplyingToThreadId: (id) =>
+        dispatch({ type: 'SET_REPLYING_TO_THREAD_ID', id }),
+      setReplyBuffer: (updater) =>
+        dispatch({ type: 'SET_REPLY_BUFFER', updater }),
+      setGeneralCommentsIndex: (updater) =>
+        dispatch({ type: 'SET_GENERAL_COMMENTS_INDEX', updater }),
+      setGeneralCommentsScrollOffset: (updater) =>
+        dispatch({ type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET', updater }),
       setReviewConfirm: (value) =>
         dispatch({ type: 'SET_REVIEW_CONFIRM', value }),
       setReviewInstruction: (updater) =>

@@ -1,5 +1,9 @@
 import type { DiffFile, ReviewComment, SidebarItem } from '../../types.js';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type {
+  PullRequestInfo,
+  RemoteCommentThread,
+  RemoteCommentReply,
+} from '@kirby/vcs-core';
 import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 import type { ConfigContextValue } from '../../context/ConfigContext.js';
 import type { SidebarContextValue } from '../../context/SidebarContext.js';
@@ -59,12 +63,22 @@ export interface CommentContext {
   selectedReviewPr: PullRequestInfo;
 }
 
+export interface RemoteCommentContext {
+  threads: RemoteCommentThread[];
+  replyToThread: (
+    threadId: string,
+    body: string
+  ) => Promise<RemoteCommentReply>;
+  toggleResolved: (threadId: string, resolved: boolean) => Promise<boolean>;
+}
+
 export interface DiffViewerHandlerCtx {
   pane: PaneModeValue;
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
   diffTotalLines: number;
   commentCtx?: CommentContext;
+  remoteCtx?: RemoteCommentContext;
   config: ConfigContextValue;
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;

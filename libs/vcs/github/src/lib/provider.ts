@@ -6,6 +6,9 @@ import type {
   BranchPrMap,
   PullRequestInfo,
   PullRequestReviewer,
+  PullRequestComments,
+  RemoteCommentThread,
+  RemoteCommentReply,
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
@@ -303,6 +306,242 @@ interface SearchMergedPrsResponse {
   };
 }
 
+// ── Comment threads GraphQL ──────────────────────────────────────────
+
+const FETCH_PR_THREADS_QUERY = `
+  query($owner: String!, $repo: String!, $prNumber: Int!, $threadCursor: String, $commentCursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $prNumber) {
+        reviewThreads(first: 100, after: $threadCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            isResolved
+            isOutdated
+            path
+            line
+            startLine
+            diffSide
+            comments(first: 100) {
+              nodes {
+                id
+                author { login }
+                body
+                createdAt
+                isMinimized
+              }
+            }
+          }
+        }
+        comments(first: 100, after: $commentCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            author { login }
+            body
+            createdAt
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface ThreadCommentNode {
+  id: string;
+  author: { login: string } | null;
+  body: string;
+  createdAt: string;
+  isMinimized?: boolean;
+}
+
+interface ReviewThreadNode {
+  id: string;
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string | null;
+  line: number | null;
+  startLine: number | null;
+  diffSide: 'LEFT' | 'RIGHT' | null;
+  comments: {
+    nodes: ThreadCommentNode[];
+  };
+}
+
+interface GeneralCommentNode {
+  id: string;
+  author: { login: string } | null;
+  body: string;
+  createdAt: string;
+}
+
+interface FetchPrThreadsResponse {
+  data: {
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: ReviewThreadNode[];
+        };
+        comments: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: GeneralCommentNode[];
+        };
+      };
+    };
+  };
+}
+
+function transformReviewThread(node: ReviewThreadNode): RemoteCommentThread {
+  return {
+    id: node.id,
+    file: node.path,
+    lineStart: node.startLine ?? node.line,
+    lineEnd: node.line,
+    side: node.diffSide === 'LEFT' ? 'LEFT' : 'RIGHT',
+    isResolved: node.isResolved,
+    isOutdated: node.isOutdated,
+    comments: node.comments.nodes.map(
+      (c): RemoteCommentReply => ({
+        id: c.id,
+        author: c.author?.login ?? 'unknown',
+        body: c.body,
+        createdAt: c.createdAt,
+        isMinimized: c.isMinimized,
+      })
+    ),
+  };
+}
+
+function transformGeneralComment(
+  node: GeneralCommentNode
+): RemoteCommentThread {
+  return {
+    id: node.id,
+    file: null,
+    lineStart: null,
+    lineEnd: null,
+    side: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    comments: [
+      {
+        id: node.id,
+        author: node.author?.login ?? 'unknown',
+        body: node.body,
+        createdAt: node.createdAt,
+      },
+    ],
+  };
+}
+
+async function fetchCommentThreadsGitHub(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<PullRequestComments> {
+  const threads: RemoteCommentThread[] = [];
+  const generalComments: RemoteCommentThread[] = [];
+  let threadCursor: string | undefined;
+  let commentCursor: string | undefined;
+  let needThreads = true;
+  let needComments = true;
+
+  // Paginate both review threads and general comments
+  while (needThreads || needComments) {
+    const variables: Record<string, string | number> = {
+      owner,
+      repo,
+      prNumber,
+    };
+    if (threadCursor) variables.threadCursor = threadCursor;
+    if (commentCursor) variables.commentCursor = commentCursor;
+
+    const result = (await ghGraphQL(
+      FETCH_PR_THREADS_QUERY,
+      variables
+    )) as FetchPrThreadsResponse;
+
+    const pr = result.data.repository.pullRequest;
+
+    // Process review threads
+    if (needThreads) {
+      for (const node of pr.reviewThreads.nodes) {
+        threads.push(transformReviewThread(node));
+      }
+      if (
+        pr.reviewThreads.pageInfo.hasNextPage &&
+        pr.reviewThreads.pageInfo.endCursor
+      ) {
+        threadCursor = pr.reviewThreads.pageInfo.endCursor;
+      } else {
+        needThreads = false;
+      }
+    }
+
+    // Process general comments
+    if (needComments) {
+      for (const node of pr.comments.nodes) {
+        generalComments.push(transformGeneralComment(node));
+      }
+      if (pr.comments.pageInfo.hasNextPage && pr.comments.pageInfo.endCursor) {
+        commentCursor = pr.comments.pageInfo.endCursor;
+      } else {
+        needComments = false;
+      }
+    }
+  }
+
+  return { threads, generalComments };
+}
+
+// ── Comment mutations ───────────────────────────────────────────────
+
+const REPLY_TO_THREAD_MUTATION = `
+  mutation($threadId: ID!, $body: String!) {
+    addPullRequestReviewComment(input: {
+      pullRequestReviewThreadId: $threadId
+      body: $body
+    }) {
+      comment {
+        id
+        body
+        createdAt
+        author { login }
+      }
+    }
+  }
+`;
+
+interface ReplyMutationResponse {
+  data: {
+    addPullRequestReviewComment: {
+      comment: {
+        id: string;
+        body: string;
+        createdAt: string;
+        author: { login: string } | null;
+      };
+    };
+  };
+}
+
+const RESOLVE_THREAD_MUTATION = `
+  mutation($threadId: ID!) {
+    resolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }
+`;
+
+const UNRESOLVE_THREAD_MUTATION = `
+  mutation($threadId: ID!) {
+    unresolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }
+`;
+
 // ── VcsProvider implementation ──────────────────────────────────────
 
 export const githubProvider: VcsProvider = {
@@ -430,5 +669,48 @@ export const githubProvider: VcsProvider = {
       if (branchSet.has(head)) matched.add(head);
     }
     return matched;
+  },
+
+  async fetchCommentThreads(
+    _auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<PullRequestComments> {
+    const { owner, repo } = project;
+    if (!owner || !repo) return { threads: [], generalComments: [] };
+    return fetchCommentThreadsGitHub(owner, repo, prId);
+  },
+
+  async replyToThread(
+    _auth: Record<string, string>,
+    _project: Record<string, string>,
+    _prId: number,
+    threadId: string,
+    body: string
+  ): Promise<RemoteCommentReply> {
+    const result = (await ghGraphQL(REPLY_TO_THREAD_MUTATION, {
+      threadId,
+      body,
+    })) as ReplyMutationResponse;
+    const c = result.data.addPullRequestReviewComment.comment;
+    return {
+      id: c.id,
+      author: c.author?.login ?? 'unknown',
+      body: c.body,
+      createdAt: c.createdAt,
+    };
+  },
+
+  async setThreadResolved(
+    _auth: Record<string, string>,
+    _project: Record<string, string>,
+    _prId: number,
+    threadId: string,
+    resolved: boolean
+  ): Promise<void> {
+    const mutation = resolved
+      ? RESOLVE_THREAD_MUTATION
+      : UNRESOLVE_THREAD_MUTATION;
+    await ghGraphQL(mutation, { threadId });
   },
 };

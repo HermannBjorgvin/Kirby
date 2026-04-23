@@ -16,9 +16,12 @@ export type {
   AnnotatedLine,
   InsertionMap,
   CommentPositionInfo,
+  RemoteInsertionMap,
 } from './lib/comment-renderer.js';
 export {
   computeInsertionMap,
+  computeRemoteInsertionMap,
   interleaveComments,
+  renderRemoteThread,
   getCommentPositions,
 } from './lib/comment-renderer.js';

@@ -76,6 +76,57 @@ export interface VcsProvider {
     project: Record<string, string>,
     branches: string[]
   ): Promise<Set<string>>;
+
+  /** Fetch all comment threads for a PR (inline + general) */
+  fetchCommentThreads?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<PullRequestComments>;
+
+  /** Reply to an existing comment thread */
+  replyToThread?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    threadId: string,
+    body: string
+  ): Promise<RemoteCommentReply>;
+
+  /** Resolve or reopen a comment thread */
+  setThreadResolved?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    threadId: string,
+    resolved: boolean
+  ): Promise<void>;
+}
+
+// ── Remote comment threads (fetched from VCS providers) ───────────
+
+export interface RemoteCommentReply {
+  id: string;
+  author: string; // display name (GitHub login / ADO displayName)
+  body: string;
+  createdAt: string; // ISO 8601
+  isMinimized?: boolean; // GitHub: minimized/hidden comments
+}
+
+export interface RemoteCommentThread {
+  id: string; // thread ID (GitHub: reviewThread node ID, ADO: thread id)
+  file: string | null; // null = general PR comment (not file-specific)
+  lineStart: number | null; // null for general comments
+  lineEnd: number | null;
+  side: 'LEFT' | 'RIGHT';
+  isResolved: boolean;
+  isOutdated: boolean; // true if code has changed since the comment
+  comments: RemoteCommentReply[]; // first entry = root comment, rest = replies
+}
+
+export interface PullRequestComments {
+  threads: RemoteCommentThread[]; // inline diff comments grouped by thread
+  generalComments: RemoteCommentThread[]; // top-level PR comments (not file-specific)
 }
 
 /** Key binding descriptor as stored in config (JSON-safe, no ink dependency) */

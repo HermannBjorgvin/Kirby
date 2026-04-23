@@ -64,8 +64,17 @@ export function DiffFileViewerContainer({
     [diffBundle.comments, pane.diffViewFile]
   );
 
+  const fileRemoteThreads = useMemo(
+    () => diffBundle.remote.threads.filter((t) => t.file === pane.diffViewFile),
+    [diffBundle.remote.threads, pane.diffViewFile]
+  );
+
   const interleaveResult = useMemo(() => {
-    if (!fileDiffData || fileComments.length === 0) return null;
+    if (
+      !fileDiffData ||
+      (fileComments.length === 0 && fileRemoteThreads.length === 0)
+    )
+      return null;
     return interleaveComments(
       fileDiffData.fileDiffLines,
       fileDiffData.rendered,
@@ -74,16 +83,22 @@ export function DiffFileViewerContainer({
       pane.selectedCommentId,
       pane.pendingDeleteCommentId,
       pane.editingCommentId,
-      pane.editBuffer
+      pane.editBuffer,
+      fileRemoteThreads,
+      pane.replyingToThreadId,
+      pane.replyBuffer
     );
   }, [
     fileDiffData,
     fileComments,
+    fileRemoteThreads,
     terminal.paneCols,
     pane.selectedCommentId,
     pane.pendingDeleteCommentId,
     pane.editingCommentId,
     pane.editBuffer,
+    pane.replyingToThreadId,
+    pane.replyBuffer,
   ]);
 
   const annotatedLines = useMemo(() => {
@@ -134,6 +149,11 @@ export function DiffFileViewerContainer({
               selectedReviewPr: selectedPr,
             }
           : undefined,
+        remoteCtx: {
+          threads: fileRemoteThreads,
+          replyToThread: diffBundle.remote.replyToThread,
+          toggleResolved: diffBundle.remote.toggleResolved,
+        },
         config: configCtx,
         sessions: sessionCtx,
         asyncOps,

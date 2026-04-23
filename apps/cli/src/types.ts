@@ -7,6 +7,7 @@ export type PaneMode =
   | 'pr-detail'
   | 'diff'
   | 'diff-file'
+  | 'comments'
   | 'confirm';
 
 export type ReviewCategory = 'needs-review' | 'waiting' | 'approved';

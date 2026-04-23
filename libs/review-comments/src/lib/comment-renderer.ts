@@ -1,5 +1,6 @@
 import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
+import type { RemoteCommentThread } from '@kirby/vcs-core';
 
 // ANSI color codes (matching diff-renderer conventions)
 const DIM = '\x1b[2m';
@@ -236,6 +237,257 @@ function buildHighlightSet(
   return highlighted;
 }
 
+// ── Remote thread rendering ─────────────────────────────────────────
+
+const BLUE = '\x1b[34m';
+
+function relativeTime(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+export function renderRemoteThread(
+  thread: RemoteCommentThread,
+  commentIndex: number,
+  paneCols: number,
+  selected: boolean,
+  replyMode?: boolean,
+  replyBuffer?: string
+): AnnotatedLine[] {
+  const borderColor = selected ? `${CYAN}${BOLD}` : `${BLUE}${DIM}`;
+  const bodyColor = selected ? '' : `${DIM}`;
+
+  const maxBodyWidth = Math.min(
+    MAX_BODY_WIDTH,
+    Math.max(20, paneCols - INDENT.length - 6)
+  );
+  const boxInnerWidth = maxBodyWidth + 2;
+  const lines: AnnotatedLine[] = [];
+
+  const rootComment = thread.comments[0];
+  if (!rootComment) return lines;
+
+  // Status indicators
+  const resolvedBadge = thread.isResolved ? `${GREEN} ✓ resolved${RESET}` : '';
+  const outdatedBadge = thread.isOutdated ? ` ${DIM}(outdated)${RESET}` : '';
+
+  // Header: author + status
+  let headerExtra = resolvedBadge + outdatedBadge;
+  if (selected && !replyMode) {
+    headerExtra += ` ${DIM}[r]eply [v]${
+      thread.isResolved ? 'reopen' : 'resolve'
+    }${RESET}`;
+  } else if (replyMode) {
+    headerExtra += ` ${CYAN}REPLY${RESET} ${DIM}[enter] send · [esc] cancel${RESET}`;
+  }
+
+  const authorDisplay = `${BOLD}${rootComment.author}${RESET}`;
+  const timeDisplay = `${DIM}${relativeTime(rootComment.createdAt)}${RESET}`;
+  const headerContent = ` ${authorDisplay} ${timeDisplay}${headerExtra} `;
+  const headerVisLen = visibleLength(headerContent);
+  const topFillLen = Math.max(0, boxInnerWidth - headerVisLen);
+
+  lines.push({
+    type: 'comment-header',
+    rendered: `${INDENT}${borderColor}┌─${RESET}${headerContent}${borderColor}${'─'.repeat(
+      topFillLen
+    )}┐${RESET}`,
+    commentId: thread.id,
+    commentIndex,
+  });
+
+  // Root comment body
+  const rootLines = rootComment.body.split('\n');
+  const allWrappedRoot: string[] = [];
+  for (const rawLine of rootLines) {
+    allWrappedRoot.push(...wrapText(rawLine, maxBodyWidth));
+  }
+
+  const showAll = selected;
+  const maxLines = showAll ? allWrappedRoot.length : 4;
+  const displayLines = allWrappedRoot.slice(0, maxLines);
+
+  for (const line of displayLines) {
+    const padded = padVisible(`${bodyColor}${line}${RESET}`, maxBodyWidth);
+    lines.push({
+      type: 'comment-body',
+      rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
+      commentId: thread.id,
+      commentIndex,
+    });
+  }
+
+  if (!showAll && allWrappedRoot.length > maxLines) {
+    const truncMsg = `${DIM}... ${
+      allWrappedRoot.length - maxLines
+    } more lines${RESET}`;
+    const padded = padVisible(truncMsg, maxBodyWidth);
+    lines.push({
+      type: 'comment-body',
+      rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
+      commentId: thread.id,
+      commentIndex,
+    });
+  }
+
+  // Replies (if any, after the root comment)
+  if (thread.comments.length > 1) {
+    for (let i = 1; i < thread.comments.length; i++) {
+      const reply = thread.comments[i];
+      // Reply separator
+      const replyAuthor = `${BOLD}${reply.author}${RESET}`;
+      const replyTime = `${DIM}${relativeTime(reply.createdAt)}${RESET}`;
+      const replyHeader = ` ${replyAuthor} ${replyTime} `;
+      const replyVisLen = visibleLength(replyHeader);
+      const replyFillLen = Math.max(0, boxInnerWidth - replyVisLen);
+
+      lines.push({
+        type: 'comment-body',
+        rendered: `${INDENT}${borderColor}├─${RESET}${replyHeader}${borderColor}${'─'.repeat(
+          replyFillLen
+        )}┤${RESET}`,
+        commentId: thread.id,
+        commentIndex,
+      });
+
+      // Reply body
+      const replyBodyLines = reply.body.split('\n');
+      for (const rawLine of replyBodyLines) {
+        const wrapped = wrapText(rawLine, maxBodyWidth);
+        const linesToShow = showAll ? wrapped : wrapped.slice(0, 3);
+        for (const seg of linesToShow) {
+          const padded = padVisible(`${bodyColor}${seg}${RESET}`, maxBodyWidth);
+          lines.push({
+            type: 'comment-body',
+            rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
+            commentId: thread.id,
+            commentIndex,
+          });
+        }
+      }
+    }
+  }
+
+  // Reply input area
+  if (replyMode && replyBuffer !== undefined) {
+    const replyHeader = ` ${CYAN}Your reply${RESET} `;
+    const replyVisLen = visibleLength(replyHeader);
+    const replyFillLen = Math.max(0, boxInnerWidth - replyVisLen);
+    lines.push({
+      type: 'comment-body',
+      rendered: `${INDENT}${borderColor}├─${RESET}${replyHeader}${borderColor}${'─'.repeat(
+        replyFillLen
+      )}┤${RESET}`,
+      commentId: thread.id,
+      commentIndex,
+    });
+
+    const editLines = replyBuffer.split('\n');
+    for (const rawLine of editLines) {
+      const wrapped = wrapText(rawLine || ' ', maxBodyWidth);
+      for (const seg of wrapped) {
+        const padded = padVisible(seg, maxBodyWidth);
+        lines.push({
+          type: 'comment-body',
+          rendered: `${INDENT}${borderColor}│${RESET}  ${padded} ${borderColor}│${RESET}`,
+          commentId: thread.id,
+          commentIndex,
+        });
+      }
+    }
+    // Cursor indicator
+    const lastIdx = lines.length - 1;
+    lines[lastIdx].rendered = lines[lastIdx].rendered.replace(
+      /│\x1b\[0m$/, // eslint-disable-line no-control-regex
+      `${CYAN}▏${RESET}${borderColor}│${RESET}`
+    );
+  }
+
+  // Bottom border
+  lines.push({
+    type: 'comment-body',
+    rendered: `${INDENT}${borderColor}└${'─'.repeat(
+      boxInnerWidth + 1
+    )}┘${RESET}`,
+    commentId: thread.id,
+    commentIndex,
+  });
+
+  return lines;
+}
+
+// ── Remote thread insertion mapping ────────────────────────────────
+
+export interface RemoteInsertionMap {
+  insertions: Map<number, RemoteCommentThread[]>;
+  outOfDiff: RemoteCommentThread[];
+}
+
+export function computeRemoteInsertionMap(
+  diffLines: DiffLine[],
+  threads: RemoteCommentThread[]
+): RemoteInsertionMap {
+  const newLineToIndex = new Map<number, number>();
+  for (let i = 0; i < diffLines.length; i++) {
+    const dl = diffLines[i];
+    if (dl.newLine != null) newLineToIndex.set(dl.newLine, i);
+  }
+
+  const oldLineToIndex = new Map<number, number>();
+  for (let i = 0; i < diffLines.length; i++) {
+    const dl = diffLines[i];
+    if (dl.oldLine != null) oldLineToIndex.set(dl.oldLine, i);
+  }
+
+  const insertions = new Map<number, RemoteCommentThread[]>();
+  const outOfDiff: RemoteCommentThread[] = [];
+
+  for (const thread of threads) {
+    if (thread.lineEnd == null) {
+      outOfDiff.push(thread);
+      continue;
+    }
+    const lineMap = thread.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
+    let insertAfter: number | undefined;
+
+    for (const targetLine of [
+      thread.lineEnd,
+      thread.lineStart ?? thread.lineEnd,
+    ]) {
+      if (lineMap.has(targetLine)) {
+        insertAfter = lineMap.get(targetLine);
+        break;
+      }
+    }
+
+    if (insertAfter === undefined) {
+      let closest = -1;
+      for (const [lineNum, idx] of lineMap) {
+        if (lineNum <= thread.lineEnd && idx > closest) {
+          closest = idx;
+        }
+      }
+      if (closest >= 0) insertAfter = closest;
+    }
+
+    if (insertAfter !== undefined) {
+      const existing = insertions.get(insertAfter) ?? [];
+      existing.push(thread);
+      insertions.set(insertAfter, existing);
+    } else {
+      outOfDiff.push(thread);
+    }
+  }
+
+  return { insertions, outOfDiff };
+}
+
 export interface InsertionMap {
   insertions: Map<number, ReviewComment[]>;
   outOfDiff: ReviewComment[];
@@ -303,9 +555,15 @@ export function interleaveComments(
   selectedCommentId: string | null,
   pendingDeleteCommentId?: string | null,
   editingCommentId?: string | null,
-  editBuffer?: string
+  editBuffer?: string,
+  remoteThreads?: RemoteCommentThread[],
+  replyingToThreadId?: string | null,
+  replyBuffer?: string
 ): { lines: AnnotatedLine[]; insertionMap: InsertionMap } {
-  if (comments.length === 0) {
+  const hasLocalComments = comments.length > 0;
+  const hasRemoteThreads = (remoteThreads ?? []).length > 0;
+
+  if (!hasLocalComments && !hasRemoteThreads) {
     return {
       lines: renderedDiffLines.map((line) => ({
         type: 'diff' as const,
@@ -324,19 +582,22 @@ export function interleaveComments(
   const insertionMap = computeInsertionMap(diffLines, comments);
   const { insertions, outOfDiff } = insertionMap;
 
+  // Compute remote thread positions
+  const remoteMap = hasRemoteThreads
+    ? computeRemoteInsertionMap(diffLines, remoteThreads!)
+    : {
+        insertions: new Map<number, RemoteCommentThread[]>(),
+        outOfDiff: [] as RemoteCommentThread[],
+      };
+
   // Build annotated lines
   const result: AnnotatedLine[] = [];
   let commentIdx = 0;
 
   for (let i = 0; i < renderedDiffLines.length; i++) {
     let rendered = renderedDiffLines[i];
-    // Apply yellow background highlight starting after the line-number gutter
-    // so it aligns with the comment box indent. Re-apply BG after every RESET
-    // so the background persists through the line's own ANSI codes.
     if (highlightSet.has(i)) {
-      // Find the char index where the gutter ends (after INDENT_LENGTH visible chars).
-      // If the line is too short (e.g. empty lines), skip highlighting entirely.
-      const GUTTER_CHARS = INDENT.length; // 13 visible chars
+      const GUTTER_CHARS = INDENT.length;
       let visCount = 0;
       let splitIdx = -1;
       for (let j = 0; j < rendered.length; j++) {
@@ -364,6 +625,7 @@ export function interleaveComments(
     }
     result.push({ type: 'diff', rendered });
 
+    // Local comments at this line
     const commentsHere = insertions.get(i);
     if (commentsHere) {
       for (const comment of commentsHere) {
@@ -383,9 +645,28 @@ export function interleaveComments(
         );
       }
     }
+
+    // Remote threads at this line
+    const threadsHere = remoteMap.insertions.get(i);
+    if (threadsHere) {
+      for (const thread of threadsHere) {
+        const selected = thread.id === selectedCommentId;
+        const isReplying = replyingToThreadId === thread.id;
+        result.push(
+          ...renderRemoteThread(
+            thread,
+            commentIdx++,
+            paneCols,
+            selected,
+            isReplying,
+            isReplying ? replyBuffer : undefined
+          )
+        );
+      }
+    }
   }
 
-  // Append out-of-diff comments at the end
+  // Append out-of-diff local comments at the end
   if (outOfDiff.length > 0) {
     result.push({
       type: 'diff',
@@ -410,6 +691,38 @@ export function interleaveComments(
           pendingDelete,
           isEditing,
           isEditing ? editBuffer : undefined
+        )
+      );
+    }
+  }
+
+  // Append out-of-diff remote threads at the end
+  if (remoteMap.outOfDiff.length > 0) {
+    result.push({
+      type: 'diff',
+      rendered: `\n${DIM}── remote comments on lines not in diff ──${RESET}`,
+    });
+    for (const thread of remoteMap.outOfDiff) {
+      const selected = thread.id === selectedCommentId;
+      const isReplying = replyingToThreadId === thread.id;
+      if (thread.lineEnd != null) {
+        result.push({
+          type: 'diff',
+          rendered: `${DIM}  line ${thread.lineStart ?? thread.lineEnd}${
+            thread.lineStart != null && thread.lineStart !== thread.lineEnd
+              ? `-${thread.lineEnd}`
+              : ''
+          }:${RESET}`,
+        });
+      }
+      result.push(
+        ...renderRemoteThread(
+          thread,
+          commentIdx++,
+          paneCols,
+          selected,
+          isReplying,
+          isReplying ? replyBuffer : undefined
         )
       );
     }

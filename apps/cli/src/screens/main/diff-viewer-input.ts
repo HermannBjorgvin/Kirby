@@ -92,6 +92,36 @@ export function handleDiffViewerInput(
     (c) => c.file === ctx.pane.diffViewFile
   );
 
+  // ── Reply mode for remote threads (exempt from keybind resolution) ──
+  if (ctx.pane.replyingToThreadId) {
+    if (key.escape) {
+      ctx.pane.setReplyingToThreadId(null);
+      ctx.pane.setReplyBuffer('');
+      return;
+    }
+    if (key.return) {
+      const threadId = ctx.pane.replyingToThreadId;
+      const body = ctx.pane.replyBuffer.trim();
+      if (body && ctx.remoteCtx) {
+        ctx.pane.setReplyingToThreadId(null);
+        ctx.pane.setReplyBuffer('');
+        ctx.sessions.flashStatus('Posting reply...');
+        ctx.remoteCtx
+          .replyToThread(threadId, body)
+          .then(() => {
+            ctx.sessions.flashStatus('Reply posted');
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            ctx.sessions.flashStatus(`Reply failed: ${msg}`);
+          });
+      }
+      return;
+    }
+    handleTextInput(input, key, ctx.pane.setReplyBuffer);
+    return;
+  }
+
   // ── Inline edit mode (exempt from keybind resolution) ──
   if (ctx.pane.editingCommentId) {
     if (key.escape) {
@@ -358,6 +388,71 @@ export function handleDiffViewerInput(
     timer.unref();
 
     ctx.sessions.flashStatus(`Opened comment in ${editor}`);
+    return;
+  }
+
+  // ── Remote thread actions ──────────────────────────────────────
+  const selectedRemoteThread = ctx.remoteCtx?.threads.find(
+    (t) => t.id === ctx.pane.selectedCommentId
+  );
+
+  // Reply to remote thread
+  if (input === 'r' && selectedRemoteThread && ctx.remoteCtx) {
+    ctx.pane.setReplyingToThreadId(selectedRemoteThread.id);
+    ctx.pane.setReplyBuffer('');
+    return;
+  }
+
+  // Resolve/reopen remote thread
+  if (input === 'v' && selectedRemoteThread && ctx.remoteCtx) {
+    const newResolved = !selectedRemoteThread.isResolved;
+    ctx.sessions.flashStatus(
+      newResolved ? 'Resolving thread...' : 'Reopening thread...'
+    );
+    ctx.remoteCtx
+      .toggleResolved(selectedRemoteThread.id, newResolved)
+      .then((success) => {
+        if (success) {
+          ctx.sessions.flashStatus(
+            newResolved ? 'Thread resolved' : 'Thread reopened'
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.sessions.flashStatus(`Failed: ${msg}`);
+      });
+    return;
+  }
+
+  // Navigate remote threads when no local comments selected
+  if (
+    action === 'diff-viewer.next-comment' &&
+    fileComments.length === 0 &&
+    ctx.remoteCtx &&
+    ctx.remoteCtx.threads.length > 0
+  ) {
+    const threads = ctx.remoteCtx.threads;
+    const currentIdx = threads.findIndex(
+      (t) => t.id === ctx.pane.selectedCommentId
+    );
+    const nextIdx = (currentIdx + 1) % threads.length;
+    ctx.pane.setSelectedCommentId(threads[nextIdx]!.id);
+    return;
+  }
+
+  if (
+    action === 'diff-viewer.prev-comment' &&
+    fileComments.length === 0 &&
+    ctx.remoteCtx &&
+    ctx.remoteCtx.threads.length > 0
+  ) {
+    const threads = ctx.remoteCtx.threads;
+    const currentIdx = threads.findIndex(
+      (t) => t.id === ctx.pane.selectedCommentId
+    );
+    const prevIdx = currentIdx <= 0 ? threads.length - 1 : currentIdx - 1;
+    ctx.pane.setSelectedCommentId(threads[prevIdx]!.id);
     return;
   }
 }

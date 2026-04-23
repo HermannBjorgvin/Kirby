@@ -1,5 +1,7 @@
 import { useDiffData } from './useDiffData.js';
 import { useReviewComments } from './useReviewComments.js';
+import { useRemoteComments } from './useRemoteComments.js';
+import { useConfig } from '../context/ConfigContext.js';
 
 // Single source of truth for PR diff data. Mounted once in MainContent
 // and threaded to both DiffFileListContainer and DiffFileViewerContainer
@@ -15,7 +17,14 @@ export function useDiffBundle(
 ) {
   const diff = useDiffData(prNumber, sourceBranch, targetBranch);
   const comments = useReviewComments(prNumber);
-  return { ...diff, comments };
+  const { provider, config } = useConfig();
+  const remote = useRemoteComments(
+    prNumber,
+    provider,
+    config.vendorAuth,
+    config.vendorProject
+  );
+  return { ...diff, comments, remote };
 }
 
 export type DiffBundle = ReturnType<typeof useDiffBundle>;

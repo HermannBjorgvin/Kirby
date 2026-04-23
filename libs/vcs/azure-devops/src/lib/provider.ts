@@ -4,6 +4,9 @@ import type {
   BranchPrMap,
   PullRequestInfo,
   PullRequestReviewer,
+  PullRequestComments,
+  RemoteCommentThread,
+  RemoteCommentReply,
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
@@ -330,6 +333,147 @@ async function getCachedIdentity(
   return identityCache;
 }
 
+// ── Comment thread helpers ──────────────────────────────────────────
+
+interface AdoThreadComment {
+  id?: number;
+  author?: { displayName?: string; uniqueName?: string };
+  content?: string;
+  publishedDate?: string;
+  commentType?: string;
+}
+
+interface AdoThread {
+  id?: number;
+  status?: string;
+  threadContext?: {
+    filePath?: string;
+    rightFileStart?: { line?: number };
+    rightFileEnd?: { line?: number };
+    leftFileStart?: { line?: number };
+    leftFileEnd?: { line?: number };
+  };
+  comments?: AdoThreadComment[];
+  properties?: Record<string, unknown>;
+}
+
+function adoStatusToResolved(status: string | undefined): boolean {
+  // ADO thread statuses: active=1, fixed=2, wontFix=3, closed=4, byDesign=5, pending=6
+  return status !== 'active' && status !== undefined;
+}
+
+function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
+  const humanComments = (thread.comments ?? []).filter(
+    (c) => c.commentType !== 'system'
+  );
+  if (humanComments.length === 0) return null;
+
+  const ctx = thread.threadContext;
+  const hasFile = ctx?.filePath != null;
+  const isLeftSide = ctx?.leftFileStart != null && ctx?.rightFileStart == null;
+
+  return {
+    id: String(thread.id ?? ''),
+    file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
+    lineStart: isLeftSide
+      ? ctx?.leftFileStart?.line ?? null
+      : ctx?.rightFileStart?.line ?? null,
+    lineEnd: isLeftSide
+      ? ctx?.leftFileEnd?.line ?? null
+      : ctx?.rightFileEnd?.line ?? null,
+    side: isLeftSide ? 'LEFT' : 'RIGHT',
+    isResolved: adoStatusToResolved(thread.status),
+    isOutdated: false, // ADO doesn't expose an "outdated" concept
+    comments: humanComments.map(
+      (c): RemoteCommentReply => ({
+        id: String(c.id ?? ''),
+        author: c.author?.displayName ?? c.author?.uniqueName ?? 'unknown',
+        body: c.content ?? '',
+        createdAt: c.publishedDate ?? '',
+      })
+    ),
+  };
+}
+
+async function fetchAdoCommentThreads(
+  config: AdoConfig,
+  prId: number
+): Promise<PullRequestComments> {
+  const url = `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`;
+  const res = await fetch(url, { headers: authHeaders(config.pat) });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as { value?: AdoThread[] };
+
+  const threads: RemoteCommentThread[] = [];
+  const generalComments: RemoteCommentThread[] = [];
+
+  for (const raw of data.value ?? []) {
+    const thread = transformAdoThread(raw);
+    if (!thread) continue;
+
+    if (thread.file === null) {
+      generalComments.push(thread);
+    } else {
+      threads.push(thread);
+    }
+  }
+
+  return { threads, generalComments };
+}
+
+async function replyToAdoThread(
+  config: AdoConfig,
+  prId: number,
+  threadId: string,
+  body: string
+): Promise<RemoteCommentReply> {
+  const url = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}/comments?api-version=7.1`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(config.pat),
+    body: JSON.stringify({
+      parentCommentId: 0,
+      content: body,
+      commentType: 1,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
+  }
+  const data = (await res.json()) as AdoThreadComment;
+  return {
+    id: String(data.id ?? ''),
+    author: data.author?.displayName ?? data.author?.uniqueName ?? 'unknown',
+    body: data.content ?? '',
+    createdAt: data.publishedDate ?? '',
+  };
+}
+
+async function setAdoThreadResolved(
+  config: AdoConfig,
+  prId: number,
+  threadId: string,
+  resolved: boolean
+): Promise<void> {
+  const url = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: authHeaders(config.pat),
+    body: JSON.stringify({
+      status: resolved ? 2 : 1, // 2 = fixed, 1 = active
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
+  }
+}
+
 // ── VcsProvider implementation ──────────────────────────────────────
 
 export const azureDevOpsProvider: VcsProvider = {
@@ -419,5 +563,36 @@ export const azureDevOpsProvider: VcsProvider = {
       if (branchSet.has(source)) matched.add(source);
     }
     return matched;
+  },
+
+  async fetchCommentThreads(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<PullRequestComments> {
+    const config = toAdoConfig(auth, project);
+    return fetchAdoCommentThreads(config, prId);
+  },
+
+  async replyToThread(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    threadId: string,
+    body: string
+  ): Promise<RemoteCommentReply> {
+    const config = toAdoConfig(auth, project);
+    return replyToAdoThread(config, prId, threadId, body);
+  },
+
+  async setThreadResolved(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    threadId: string,
+    resolved: boolean
+  ): Promise<void> {
+    const config = toAdoConfig(auth, project);
+    await setAdoThreadResolved(config, prId, threadId, resolved);
   },
 };
