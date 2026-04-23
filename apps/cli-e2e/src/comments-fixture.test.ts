@@ -52,6 +52,17 @@ test.describe('@integration Comments Fixture', () => {
   // Helper: select PR #38 in the sidebar, open the file list, navigate
   // the selection onto `src/undo.c` (which has 2 remote inline comments
   // — Makefile and other files have none), then open its diff.
+  //
+  // Robustness notes:
+  //  - The test repo is shared across integration runs; prior runs leak
+  //    sessions (e.g. #289 from nav-a test) into the sidebar, so the
+  //    item count varies. 40 `j` presses covers realistic layouts.
+  //  - Sidebar selection can drift after the initial "Add undo" match
+  //    because Kirby refreshes PR data after mount, which may reconcile
+  //    the selection back to its default anchor (first "Approved by
+  //    You" PR, #39 = AI solver). We detect this by checking for
+  //    `src/undo.c` in the opened file list — a file unique to #38 —
+  //    and retry from the sidebar if we opened the wrong PR.
   async function openPr38DiffFileWithComments(kirby: {
     term: {
       page: Page;
@@ -65,23 +76,43 @@ test.describe('@integration Comments Fixture', () => {
     ).toBeVisible({ timeout: 30_000 });
 
     const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
-    for (let i = 0; i < 20; i++) {
-      if ((await pr38.selected().count()) > 0) break;
-      await kirby.term.press('j');
+    const undoAny = kirby.term.page.locator('.term-row', {
+      hasText: /undo\.c/,
+    });
+
+    let opened = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      // Land on #38.
+      for (let i = 0; i < 40; i++) {
+        if ((await pr38.selected().count()) > 0) break;
+        await kirby.term.press('j');
+      }
+      // Fire `d` immediately — any `expect()` between selecting and
+      // pressing introduces a ~50ms await window where a pending PR
+      // data refresh can snap the selection to #39.
+      if ((await pr38.selected().count()) === 0) continue;
+      await kirby.term.press('d');
+
+      try {
+        // `undo.c` only appears in PR #38's file list, so it's a
+        // reliable "did we open the right PR" probe.
+        await undoAny.first().waitFor({ state: 'visible', timeout: 8_000 });
+        opened = true;
+        break;
+      } catch {
+        // Opened the wrong PR (selection drifted). Escape back and
+        // retry the sidebar navigation.
+        await kirby.term.press('Escape');
+      }
     }
-    await expect(pr38.selected().first()).toBeVisible();
+    if (!opened) {
+      throw new Error(
+        'Could not open PR #38 diff — sidebar selection never stuck on #38'
+      );
+    }
 
-    await kirby.term.press('d');
-    // Wait for the file list to populate — a .c file (e.g. src/undo.c)
-    // appears once the diff is fetched.
-    await kirby.term.page
-      .locator('.term-row', { hasText: /\.(c|h)\b/ })
-      .first()
-      .waitFor({ state: 'visible', timeout: 30_000 });
-
-    // Navigate the file-list selection to src/undo.c. The selected row
-    // carries the '›' prefix (see DiffFileList.tsx:44). Without this we
-    // open the default selection (Makefile), which has no comments.
+    // Navigate the file-list selection onto src/undo.c. The selected
+    // row carries the '›' prefix (DiffFileList.tsx:44).
     const undoSelected = kirby.term.page.locator('.term-row', {
       hasText: /›.*undo\.c/,
     });
