@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { DiffLine } from '@kirby/diff';
+import type { RemoteCommentThread } from '@kirby/vcs-core';
 import {
   type ReviewComment,
   computeInsertionMap,
+  computeRemoteInsertionMap,
   getCommentPositions,
   interleaveComments,
 } from '@kirby/review-comments';
@@ -276,5 +278,216 @@ describe('renderCommentBlock posting status', () => {
     const headerLine = annotated.find((l) => l.type === 'comment-header');
     expect(headerLine).toBeDefined();
     expect(headerLine!.rendered).toContain('✓');
+  });
+});
+
+// ── Remote thread rendering ───────────────────────────────────────
+
+function makeRemoteThread(
+  overrides: Partial<RemoteCommentThread> & { id: string }
+): RemoteCommentThread {
+  return {
+    id: overrides.id,
+    file: 'test.ts',
+    lineStart: 1,
+    lineEnd: 1,
+    side: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    comments: [
+      {
+        id: `${overrides.id}-root`,
+        author: 'alice',
+        body: 'remote comment',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe('computeRemoteInsertionMap', () => {
+  it('puts threads with null lineEnd in outOfDiff (general comments)', () => {
+    const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
+    const threads = [
+      makeRemoteThread({
+        id: 't1',
+        file: null,
+        lineStart: null,
+        lineEnd: null,
+      }),
+    ];
+    const map = computeRemoteInsertionMap(diffLines, threads);
+
+    expect(map.insertions.size).toBe(0);
+    expect(map.outOfDiff).toHaveLength(1);
+    expect(map.outOfDiff[0].id).toBe('t1');
+  });
+
+  it('maps RIGHT-side threads by newLine', () => {
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+      { oldLine: 3, newLine: 3 },
+    ]);
+    const threads = [
+      makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2, side: 'RIGHT' }),
+    ];
+    const map = computeRemoteInsertionMap(diffLines, threads);
+
+    expect(map.insertions.get(1)).toHaveLength(1);
+    expect(map.insertions.get(1)![0].id).toBe('t1');
+    expect(map.outOfDiff).toHaveLength(0);
+  });
+
+  it('maps LEFT-side threads by oldLine (pre-image positioning)', () => {
+    const diffLines = makeDiffLines([
+      { oldLine: 10, newLine: 1 },
+      { oldLine: 11, newLine: 2 },
+    ]);
+    const threads = [
+      makeRemoteThread({ id: 't1', lineStart: 10, lineEnd: 10, side: 'LEFT' }),
+    ];
+    const map = computeRemoteInsertionMap(diffLines, threads);
+
+    expect(map.insertions.get(0)).toHaveLength(1);
+    expect(map.outOfDiff).toHaveLength(0);
+  });
+
+  it('falls back to closest earlier line when exact match not found', () => {
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+    ]);
+    const threads = [
+      makeRemoteThread({ id: 't1', lineStart: 50, lineEnd: 50, side: 'RIGHT' }),
+    ];
+    const map = computeRemoteInsertionMap(diffLines, threads);
+
+    // closest newLine <= 50 in diff is newLine=2 at index 1
+    expect(map.insertions.get(1)).toHaveLength(1);
+    expect(map.outOfDiff).toHaveLength(0);
+  });
+
+  it('groups multiple threads on the same line', () => {
+    const diffLines = makeDiffLines([{ oldLine: 1, newLine: 5 }]);
+    const threads = [
+      makeRemoteThread({ id: 't1', lineStart: 5, lineEnd: 5 }),
+      makeRemoteThread({ id: 't2', lineStart: 5, lineEnd: 5 }),
+    ];
+    const map = computeRemoteInsertionMap(diffLines, threads);
+
+    expect(map.insertions.get(0)).toHaveLength(2);
+  });
+});
+
+describe('interleaveComments with remote threads', () => {
+  it('renders remote thread inline at its diff-line position', () => {
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+    ]);
+    const rendered = ['line1', 'line2'];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      [],
+      80,
+      null,
+      null,
+      null,
+      '',
+      threads
+    );
+
+    const headers = lines.filter((l) => l.type === 'comment-header');
+    expect(headers).toHaveLength(1);
+    // eslint-disable-next-line no-control-regex
+    const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    expect(strip(headers[0].rendered)).toContain('alice');
+  });
+
+  it('renders REPLY indicator and buffer text in reply mode', () => {
+    const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
+    const rendered = ['line1'];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 1, lineEnd: 1 })];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      [],
+      80,
+      't1', // selected
+      null,
+      null,
+      '',
+      threads,
+      't1', // replying to this thread
+      'my reply text'
+    );
+
+    // eslint-disable-next-line no-control-regex
+    const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const allText = lines.map((l) => strip(l.rendered)).join('\n');
+    expect(allText).toContain('REPLY');
+    expect(allText).toContain('my reply text');
+  });
+
+  it('does not render remote threads for resolved threads differently than expected (shows resolved badge)', () => {
+    const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
+    const rendered = ['line1'];
+    const threads = [
+      makeRemoteThread({
+        id: 't1',
+        lineStart: 1,
+        lineEnd: 1,
+        isResolved: true,
+      }),
+    ];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      [],
+      80,
+      null,
+      null,
+      null,
+      '',
+      threads
+    );
+
+    // eslint-disable-next-line no-control-regex
+    const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const allText = lines.map((l) => strip(l.rendered)).join('\n');
+    expect(allText).toContain('resolved');
+  });
+
+  it('renders both local and remote comments on the same diff', () => {
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+    ]);
+    const rendered = ['line1', 'line2'];
+    const locals = [makeComment({ id: 'c1', lineStart: 1, lineEnd: 1 })];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      locals,
+      80,
+      null,
+      null,
+      null,
+      '',
+      threads
+    );
+
+    const headers = lines.filter((l) => l.type === 'comment-header');
+    // One header for the local draft, one for the remote thread.
+    expect(headers).toHaveLength(2);
   });
 });

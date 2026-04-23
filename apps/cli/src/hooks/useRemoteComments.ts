@@ -16,7 +16,8 @@ export function useRemoteComments(
   prId: number | null,
   provider: VcsProvider | null,
   auth: Record<string, string>,
-  project: Record<string, string>
+  project: Record<string, string>,
+  onResolvedChange?: () => void
 ) {
   const [comments, setComments] = useState<PullRequestComments>(EMPTY_COMMENTS);
   const [loading, setLoading] = useState(false);
@@ -144,13 +145,17 @@ export function useRemoteComments(
             generalComments: updateThreads(cached.generalComments),
           });
         }
+        // Notify caller so PR-level state (e.g. activeCommentCount on the
+        // sidebar badge) can be refreshed without waiting for the next
+        // PR poll tick.
+        onResolvedChange?.();
         return true;
       } catch (err: unknown) {
         logError(`setThreadResolved [${provider.id}]`, err as Error);
         throw err;
       }
     },
-    [prId, provider, auth, project]
+    [prId, provider, auth, project, onResolvedChange]
   );
 
   return {

@@ -124,4 +124,37 @@ test.describe('@integration Comments Fixture', () => {
       kirby.term.getByText(/Reply (posted|failed)/).first()
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  test('Shift+C opens the general-comments pane and Esc returns to pr-detail', async ({
+    kirby,
+  }) => {
+    // Select PR #38 in the sidebar.
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(
+      kirby.term.getByText('Add undo feature with history stack').first()
+    ).toBeVisible({ timeout: 30_000 });
+
+    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    for (let i = 0; i < 20; i++) {
+      if ((await pr38.selected().count()) > 0) break;
+      await kirby.term.press('j');
+    }
+    await expect(pr38.selected().first()).toBeVisible();
+
+    // Open the general-comments pane (vim preset binds this to plain C).
+    await kirby.term.press('C');
+
+    // Either the pane lists PR comments (header "PR Comments") or it
+    // shows the empty state — both exercise the routing path.
+    await expect(
+      kirby.term.getByText(/PR Comments|No general comments/).first()
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Esc returns to pr-detail — the signature hint line is visible
+    // again ("press d to view diff").
+    await kirby.term.press('Escape');
+    await expect(
+      kirby.term.getByText('press d to view diff').first()
+    ).toBeVisible({ timeout: 5_000 });
+  });
 });
