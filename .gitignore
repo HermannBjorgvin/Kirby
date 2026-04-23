@@ -46,6 +46,7 @@ Thumbs.db
 .tmp/
 .kirby/
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 vitest.config.*.timestamp*
 tui-traces/
