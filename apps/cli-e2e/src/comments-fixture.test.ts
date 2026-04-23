@@ -68,11 +68,20 @@ function cleanupAccumulatedReplies(): void {
         };
       };
     };
+    // Match any of the test-marker shapes used over this feature's
+    // development — 'e2ereply' was the original prefix; 'zz' is the
+    // current one; '2ereply' matches the pollution left by runs where
+    // the leading 'e' of the old marker was dropped by the Ink input
+    // race. Sweeping all three keeps the thread clean.
+    const looksLikeE2eMarker = (body: string) =>
+      body.startsWith('e2ereply') ||
+      body.startsWith('2ereply') ||
+      body.startsWith('zz');
     const staleIds: string[] = [];
     for (const thread of parsed.data.repository.pullRequest.reviewThreads
       .nodes) {
       for (const c of thread.comments.nodes) {
-        if (c.body.startsWith('e2ereply')) staleIds.push(c.id);
+        if (looksLikeE2eMarker(c.body)) staleIds.push(c.id);
       }
     }
     for (const id of staleIds) {
@@ -276,18 +285,32 @@ test.describe('@integration Comments Fixture', () => {
     });
 
     // Unique marker — each CI run gets a distinct body so we can find
-    // our own reply among any accumulated from previous runs.
-    const marker = `e2ereply${Date.now().toString(36)}`;
+    // our own reply among any accumulated from previous runs. The
+    // prefix 'zz' is chosen because no single-key keybind in Kirby's
+    // diff-viewer binds to 'z'. Earlier markers starting with 'e'
+    // consistently lost their first character on CI: 'e' is bound to
+    // diff-viewer.edit-comment, and even after waiting for 'REPLY'
+    // visible, Ink's useInput callback briefly stays on the pre-reply
+    // closure so the first keystroke was consumed by the edit-comment
+    // action instead of being appended to the reply buffer. An unbound
+    // leading character side-steps that race.
+    const marker = `zz${Date.now().toString(36)}reply`;
 
     await kirby.term.press('r');
     await expect(kirby.term.getByText('REPLY').first()).toBeVisible({
       timeout: 5_000,
     });
+    // Also wait for the reply input area to render — its "Your reply"
+    // separator only appears once replyBuffer is initialized, which is
+    // a stronger signal that we're fully in reply mode than just the
+    // REPLY header label.
+    await expect(kirby.term.getByText('Your reply').first()).toBeVisible({
+      timeout: 5_000,
+    });
 
-    // Default typing delay is 80ms/key; `delay: 10` was too fast for
-    // the CI runner — some keystrokes got dropped and the marker sent
-    // to GitHub had missing characters, so searching for the exact
-    // marker later failed. 50ms is a safe middle ground.
+    // 50ms/key leaves enough settling time for each keystroke without
+    // pushing the test out past the network timeout. (10ms was too
+    // fast and dropped characters on CI under load.)
     await kirby.term.type(marker, { delay: 50 });
     await kirby.term.press('Enter');
 
