@@ -499,7 +499,7 @@ async function fetchCommentThreadsGitHub(
 
 const REPLY_TO_THREAD_MUTATION = `
   mutation($threadId: ID!, $body: String!) {
-    addPullRequestReviewComment(input: {
+    addPullRequestReviewThreadReply(input: {
       pullRequestReviewThreadId: $threadId
       body: $body
     }) {
@@ -515,7 +515,7 @@ const REPLY_TO_THREAD_MUTATION = `
 
 interface ReplyMutationResponse {
   data: {
-    addPullRequestReviewComment: {
+    addPullRequestReviewThreadReply: {
       comment: {
         id: string;
         body: string;
@@ -692,7 +692,7 @@ export const githubProvider: VcsProvider = {
       threadId,
       body,
     })) as ReplyMutationResponse;
-    const c = result.data.addPullRequestReviewComment.comment;
+    const c = result.data.addPullRequestReviewThreadReply.comment;
     return {
       id: c.id,
       author: c.author?.login ?? 'unknown',
