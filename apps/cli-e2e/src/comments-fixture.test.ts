@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
@@ -53,16 +53,31 @@ test.describe('@integration Comments Fixture', () => {
   // the selection onto `src/undo.c` (which has 2 remote inline comments
   // — Makefile and other files have none), then open its diff.
   //
-  // Robustness notes:
-  //  - The test repo is shared across integration runs; prior runs leak
-  //    sessions (e.g. #289 from nav-a test) into the sidebar, so the
-  //    item count varies. 40 `j` presses covers realistic layouts.
-  //  - Sidebar selection can drift after the initial "Add undo" match
-  //    because Kirby refreshes PR data after mount, which may reconcile
-  //    the selection back to its default anchor (first "Approved by
-  //    You" PR, #39 = AI solver). We detect this by checking for
-  //    `src/undo.c` in the opened file list — a file unique to #38 —
-  //    and retry from the sidebar if we opened the wrong PR.
+  // Key robustness detail: `page.keyboard.press` returns as soon as the
+  // key event is dispatched; it does NOT wait for Kirby to process the
+  // keystroke, emit new PTY output, and for wterm to re-render. A tight
+  // `for` loop that reads `.count()` after every `press('j')` therefore
+  // races the render pipeline — the naive loop would press 'j' dozens
+  // of times before seeing the selection update, overshooting the
+  // target. We use a per-press `waitFor` with a short timeout to let
+  // each render settle before deciding whether to press again.
+  async function pressUntilSelected(
+    kirby: { term: { press: (k: string) => Promise<void> } },
+    selectedLocator: Locator,
+    maxPresses: number
+  ): Promise<boolean> {
+    for (let i = 0; i <= maxPresses; i++) {
+      try {
+        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
+        return true;
+      } catch {
+        if (i === maxPresses) return false;
+        await kirby.term.press('j');
+      }
+    }
+    return false;
+  }
+
   async function openPr38DiffFileWithComments(kirby: {
     term: {
       page: Page;
@@ -76,51 +91,41 @@ test.describe('@integration Comments Fixture', () => {
     ).toBeVisible({ timeout: 30_000 });
 
     const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
-    const undoAny = kirby.term.page.locator('.term-row', {
-      hasText: /undo\.c/,
-    });
-
-    let opened = false;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      // Land on #38.
-      for (let i = 0; i < 40; i++) {
-        if ((await pr38.selected().count()) > 0) break;
-        await kirby.term.press('j');
-      }
-      // Fire `d` immediately — any `expect()` between selecting and
-      // pressing introduces a ~50ms await window where a pending PR
-      // data refresh can snap the selection to #39.
-      if ((await pr38.selected().count()) === 0) continue;
-      await kirby.term.press('d');
-
-      try {
-        // `undo.c` only appears in PR #38's file list, so it's a
-        // reliable "did we open the right PR" probe.
-        await undoAny.first().waitFor({ state: 'visible', timeout: 8_000 });
-        opened = true;
-        break;
-      } catch {
-        // Opened the wrong PR (selection drifted). Escape back and
-        // retry the sidebar navigation.
-        await kirby.term.press('Escape');
-      }
+    const landed = await pressUntilSelected(
+      { term: kirby.term },
+      pr38.selected().first(),
+      20
+    );
+    if (!landed) {
+      throw new Error('Could not land sidebar selection on PR #38');
     }
-    if (!opened) {
-      throw new Error(
-        'Could not open PR #38 diff — sidebar selection never stuck on #38'
-      );
-    }
+
+    await kirby.term.press('d');
+
+    // PR #38 modifies src/undo.c; other fixture PRs don't. So finding
+    // undo.c in the file list confirms we opened #38's diff and not a
+    // neighbour's (the failure mode under selection drift was opening
+    // #39's solver.c/solver.h). Longer timeout than the inner press
+    // loop — cold-diff fetches on CI can take 15-25s.
+    await kirby.term.page
+      .locator('.term-row', { hasText: /undo\.c/ })
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Navigate the file-list selection onto src/undo.c. The selected
-    // row carries the '›' prefix (DiffFileList.tsx:44).
-    const undoSelected = kirby.term.page.locator('.term-row', {
-      hasText: /›.*undo\.c/,
-    });
-    for (let i = 0; i < 20; i++) {
-      if ((await undoSelected.count()) > 0) break;
-      await kirby.term.press('j');
+    // row carries the '›' prefix (DiffFileList.tsx:44). Same race
+    // applies — use pressUntilSelected so each press settles.
+    const undoSelected = kirby.term.page
+      .locator('.term-row', { hasText: /›.*undo\.c/ })
+      .first();
+    const gotUndo = await pressUntilSelected(
+      { term: kirby.term },
+      undoSelected,
+      10
+    );
+    if (!gotUndo) {
+      throw new Error('Could not select src/undo.c in the file list');
     }
-    await expect(undoSelected.first()).toBeVisible();
 
     await kirby.term.press('Enter');
     await expect(
@@ -236,11 +241,14 @@ test.describe('@integration Comments Fixture', () => {
     ).toBeVisible({ timeout: 30_000 });
 
     const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
-    for (let i = 0; i < 20; i++) {
-      if ((await pr38.selected().count()) > 0) break;
-      await kirby.term.press('j');
+    const landed = await pressUntilSelected(
+      { term: kirby.term },
+      pr38.selected().first(),
+      20
+    );
+    if (!landed) {
+      throw new Error('Could not land sidebar selection on PR #38');
     }
-    await expect(pr38.selected().first()).toBeVisible();
 
     // Open the general-comments pane (vim preset binds this to plain C).
     await kirby.term.press('C');
