@@ -184,8 +184,15 @@ test.describe('@integration Comments Fixture', () => {
   }) => {
     await openPr38DiffFileWithComments({ term: kirby.term });
 
-    // c = next-comment in vim preset
+    // c = next-comment in vim preset. Wait for the selected-thread
+    // indicator ("[r]eply [v]resolve/reopen" hint in the thread header)
+    // before pressing 'v' — without this pause, the 'v' handler reads a
+    // stale selectedCommentId and doesn't find a thread to resolve.
     await kirby.term.press('c');
+    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+      timeout: 10_000,
+    });
+
     await kirby.term.press('v');
     await expect(
       kirby.term.getByText(/Resolving|Resolved|Reopening|Reopened/).first()
@@ -197,11 +204,15 @@ test.describe('@integration Comments Fixture', () => {
   }) => {
     await openPr38DiffFileWithComments({ term: kirby.term });
 
-    // Wait for remote comments to load, then select the first thread.
+    // Wait for remote comments to load, then select the first thread
+    // and wait for the selection to commit before pressing 'r'.
     await expect(kirby.term.getByText('kirby-test-runner').first()).toBeVisible(
       { timeout: 15_000 }
     );
     await kirby.term.press('c');
+    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Unique marker — each CI run gets a distinct body so we can find
     // our own reply among any accumulated from previous runs.
