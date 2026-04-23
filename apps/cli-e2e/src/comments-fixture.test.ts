@@ -39,6 +39,61 @@ if (hasGhToken) {
   });
 }
 
+// Each CI run's reply test leaves a new `e2ereply*`-body comment on
+// PR #38. Without cleanup, thread 1 grows unbounded — after a few
+// runs its rendered box is tall enough to scroll thread 2 below the
+// viewport, and subsequent tests that expect thread 2's body to be
+// visible start flaking.
+//
+// Sweep these out before every run. Tests 1/2 get a clean thread;
+// test 4 will add its own marker during execution (and the next run
+// will sweep it).
+function cleanupAccumulatedReplies(): void {
+  if (!hasGhToken) return;
+  try {
+    const listRes = execSync(
+      `gh api graphql -f query='{ repository(owner:"kirby-test-runner", name:"kirby-integration-test-repository") { pullRequest(number:38) { reviewThreads(first:10) { nodes { comments(last:20) { nodes { id body } } } } } } }'`,
+      { encoding: 'utf8' }
+    );
+    const parsed = JSON.parse(listRes) as {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: {
+                comments: { nodes: { id: string; body: string }[] };
+              }[];
+            };
+          };
+        };
+      };
+    };
+    const staleIds: string[] = [];
+    for (const thread of parsed.data.repository.pullRequest.reviewThreads
+      .nodes) {
+      for (const c of thread.comments.nodes) {
+        if (c.body.startsWith('e2ereply')) staleIds.push(c.id);
+      }
+    }
+    for (const id of staleIds) {
+      try {
+        execSync(
+          `gh api graphql -f query='mutation($id:ID!){deletePullRequestReviewComment(input:{id:$id}){clientMutationId}}' -f id=${id}`,
+          { stdio: 'pipe' }
+        );
+      } catch {
+        // Skip individual failures — best-effort cleanup.
+      }
+    }
+  } catch {
+    // Don't fail the test suite if the query itself errors.
+  }
+}
+
+if (hasGhToken) {
+  cleanupAccumulatedReplies();
+}
+
 test.describe('@integration Comments Fixture', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
