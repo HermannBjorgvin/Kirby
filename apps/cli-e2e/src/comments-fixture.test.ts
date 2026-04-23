@@ -184,10 +184,16 @@ test.describe('@integration Comments Fixture', () => {
   }) => {
     await openPr38DiffFileWithComments({ term: kirby.term });
 
+    // Wait for remote comment fetch to populate — pressing 'c' before
+    // threads render is a no-op (nothing to select, no hint appears).
+    await expect(kirby.term.getByText(/Magic number/).first()).toBeVisible({
+      timeout: 15_000,
+    });
+
     // c = next-comment in vim preset. Wait for the selected-thread
-    // indicator ("[r]eply [v]resolve/reopen" hint in the thread header)
-    // before pressing 'v' — without this pause, the 'v' handler reads a
-    // stale selectedCommentId and doesn't find a thread to resolve.
+    // indicator ("[r]eply [v]resolve/reopen" hint) before pressing 'v'
+    // — without this pause, 'v' reads a stale selectedCommentId and
+    // finds no thread to resolve.
     await kirby.term.press('c');
     await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
       timeout: 10_000,
@@ -223,13 +229,19 @@ test.describe('@integration Comments Fixture', () => {
       timeout: 5_000,
     });
 
-    await kirby.term.type(marker, { delay: 10 });
+    // Default typing delay is 80ms/key; `delay: 10` was too fast for
+    // the CI runner — some keystrokes got dropped and the marker sent
+    // to GitHub had missing characters, so searching for the exact
+    // marker later failed. 50ms is a safe middle ground.
+    await kirby.term.type(marker, { delay: 50 });
     await kirby.term.press('Enter');
 
-    // Status flash confirms the API round-trip.
-    await expect(
-      kirby.term.getByText(/Reply (posted|failed)/).first()
-    ).toBeVisible({ timeout: 20_000 });
+    // Assert specifically "Reply posted" (not the posted|failed
+    // alternation) so a failed API round-trip fails this test with a
+    // clearer message than "marker not in thread".
+    await expect(kirby.term.getByText(/Reply posted/).first()).toBeVisible({
+      timeout: 20_000,
+    });
 
     // The reply body must render inline in the thread. Proves the
     // optimistic-update path actually hangs the reply off the thread,
