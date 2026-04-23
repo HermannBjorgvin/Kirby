@@ -236,12 +236,19 @@ test.describe('@integration Comments Fixture', () => {
     await kirby.term.type(marker, { delay: 50 });
     await kirby.term.press('Enter');
 
-    // Assert specifically "Reply posted" (not the posted|failed
-    // alternation) so a failed API round-trip fails this test with a
-    // clearer message than "marker not in thread".
-    await expect(kirby.term.getByText(/Reply posted/).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    // Flash confirms the API round-trip completed. Allow either the
+    // success or failure message — a network stall on CI can easily
+    // push this past a strict 'Reply posted' match, and the stricter
+    // version hid the failure signal ("Reply posted" never shown,
+    // 20s timeout fired). 30s covers slow GitHub round-trips; a
+    // failure flash short-circuits the rest of the assertions.
+    const flashLocator = kirby.term.getByText(/Reply (posted|failed)/).first();
+    await expect(flashLocator).toBeVisible({ timeout: 30_000 });
+
+    // Guard: treat a failure flash as a hard test failure instead of
+    // silently swallowing it in the subsequent marker check.
+    const failureLocator = kirby.term.getByText(/Reply failed/).first();
+    await expect(failureLocator).not.toBeVisible();
 
     // The reply body must render inline in the thread. Proves the
     // optimistic-update path actually hangs the reply off the thread,
@@ -250,7 +257,7 @@ test.describe('@integration Comments Fixture', () => {
     // the root comment, so the "who posted" attribution shows on both
     // the root header and the reply separator row).
     await expect(kirby.term.getByText(new RegExp(marker)).first()).toBeVisible({
-      timeout: 10_000,
+      timeout: 15_000,
     });
   });
 
