@@ -97,42 +97,27 @@ export const CommentThreadCard = memo(function CommentThreadCard({
   );
 });
 
-// ── One-line preview ─────────────────────────────────────────────────
+// ── Layout estimation ────────────────────────────────────────────────
 
-interface CommentThreadLineProps {
-  thread: RemoteCommentThread;
-  /** Max visible character width for the line — used to truncate body. */
-  maxWidth: number;
-}
-
-export const CommentThreadLine = memo(function CommentThreadLine({
-  thread,
-  maxWidth,
-}: CommentThreadLineProps) {
+/**
+ * Estimate the row height of a <CommentThreadCard> so callers can reserve
+ * space without measuring the rendered output. The numbers mirror the
+ * card's structure: top border + author row + wrapped body (capped) +
+ * per-reply block + marginBottom. It's conservative — real renders may
+ * be shorter when the body is short, but we'd rather over-reserve than
+ * have comment cards push file rows off-screen.
+ */
+export function estimateCardRows(thread: RemoteCommentThread): number {
   const root = thread.comments[0];
-  if (!root) return null;
-  const stamp = relativeTime(root.createdAt);
-  const replies = thread.comments.length - 1;
-  const suffix =
-    replies > 0 ? ` · ${replies} repl${replies === 1 ? 'y' : 'ies'}` : '';
-  // Collapse newlines so the preview stays on one line.
-  const body = root.body.replace(/\s+/g, ' ').trim();
-  const header = `${root.author} · ${stamp}${suffix}: `;
-  const bodyBudget = Math.max(10, maxWidth - header.length - 2);
-  const preview =
-    body.length > bodyBudget ? `${body.slice(0, bodyBudget - 1)}…` : body;
-
-  return (
-    <Text>
-      <Text dimColor>• </Text>
-      <Text bold>{root.author}</Text>
-      <Text dimColor>
-        {' · '}
-        {stamp}
-        {suffix}
-        {': '}
-      </Text>
-      <Text>{preview}</Text>
-    </Text>
+  if (!root) return 0;
+  const BODY_LINE_CAP = 4;
+  const rootBodyLines = Math.min(
+    BODY_LINE_CAP,
+    Math.max(1, root.body.split('\n').length)
   );
-});
+  // border-top + author row + body + border-bottom + marginBottom
+  const rootRows = 2 + 1 + rootBodyLines + 1;
+  // per reply: author row + body (1 line approx) + marginTop gap
+  const replyRows = Math.max(0, thread.comments.length - 1) * 3;
+  return rootRows + replyRows;
+}

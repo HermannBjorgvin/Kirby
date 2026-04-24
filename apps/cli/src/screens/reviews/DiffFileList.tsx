@@ -8,7 +8,10 @@ import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
 import { computeScrollWindow } from '../../utils/scroll-window.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { CommentThreadLine } from '../../components/CommentThread.js';
+import {
+  CommentThreadCard,
+  estimateCardRows,
+} from '../../components/CommentThread.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -205,13 +208,39 @@ export const DiffFileList = memo(function DiffFileList({
     [treeMode, displayFiles]
   );
 
-  // Reserve space for the PR-comments footer when we have any:
-  // header line + up to 3 preview lines + "+N more" tail.
-  const generalCount = generalComments?.length ?? 0;
-  const generalShown = Math.min(3, generalCount);
-  const generalOverflow = generalCount > generalShown;
-  const generalRows =
-    generalCount > 0 ? 1 + generalShown + (generalOverflow ? 1 : 0) : 0;
+  // PR-comments footer: render full <CommentThreadCard>s below the file
+  // list, capped so the block never claims more than ~half the pane —
+  // otherwise a chatty PR would shove the file list off-screen.
+  const generalThreads = useMemo(
+    () => generalComments ?? [],
+    [generalComments]
+  );
+  const { shownGeneral, generalRows, generalOverflowCount } = useMemo(() => {
+    if (generalThreads.length === 0) {
+      return {
+        shownGeneral: [] as RemoteCommentThread[],
+        generalRows: 0,
+        generalOverflowCount: 0,
+      };
+    }
+    const maxFooterRows = Math.max(6, Math.floor(paneRows / 2));
+    const shown: RemoteCommentThread[] = [];
+    // +1 for the "PR Comments (N)" heading
+    let rows = 1;
+    for (const thread of generalThreads) {
+      const cost = estimateCardRows(thread);
+      if (rows + cost > maxFooterRows) break;
+      rows += cost;
+      shown.push(thread);
+    }
+    const overflow = generalThreads.length - shown.length;
+    if (overflow > 0) rows += 1; // "+N more" tail
+    return {
+      shownGeneral: shown,
+      generalRows: rows,
+      generalOverflowCount: overflow,
+    };
+  }, [generalThreads, paneRows]);
 
   // Chrome: title + divider + hints + optional warning + optional skipped header
   const chromeRows = 4 + generalRows;
@@ -319,21 +348,17 @@ export const DiffFileList = memo(function DiffFileList({
       )}
       {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
 
-      {generalCount > 0 && (
+      {generalThreads.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text bold color="blue">
-            PR Comments ({generalCount})
+            PR Comments ({generalThreads.length})
           </Text>
-          {generalComments!.slice(0, generalShown).map((thread) => (
-            <CommentThreadLine
-              key={thread.id}
-              thread={thread}
-              maxWidth={maxWidth}
-            />
+          {shownGeneral.map((thread) => (
+            <CommentThreadCard key={thread.id} thread={thread} />
           ))}
-          {generalOverflow && (
+          {generalOverflowCount > 0 && (
             <Text dimColor>
-              … +{generalCount - generalShown} more (Shift+C for full view)
+              … +{generalOverflowCount} more (Shift+C for full view)
             </Text>
           )}
         </Box>
