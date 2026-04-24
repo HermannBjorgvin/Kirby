@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
+import { Spinner } from '@inkjs/ui';
 import type { AnnotatedLine } from '@kirby/review-comments';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 
@@ -72,17 +73,25 @@ export const DiffViewer = memo(function DiffViewer({
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
-      <Text bold color="blue">
-        {filename}
-        {loading && <Text color="yellow"> loading diff...</Text>}
-        {!loading && totalLines > 0 && (
-          <Text dimColor>
-            {' '}
-            ({scrollOffset + 1}-
-            {Math.min(scrollOffset + viewportHeight, totalLines)}/{totalLines})
-          </Text>
+      <Box gap={1}>
+        <Text bold color="blue">
+          {filename}
+          {!loading && totalLines > 0 && (
+            <Text dimColor>
+              {' '}
+              ({scrollOffset + 1}-
+              {Math.min(scrollOffset + viewportHeight, totalLines)}/{totalLines}
+              )
+            </Text>
+          )}
+        </Text>
+        {loading && (
+          <>
+            <Spinner />
+            <Text color="yellow">loading diff...</Text>
+          </>
         )}
-      </Text>
+      </Box>
       <Text dimColor>{'─'.repeat(Math.min(40, paneCols - 2))}</Text>
 
       {!loading && totalLines === 0 && (

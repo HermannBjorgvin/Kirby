@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
+import { Spinner } from '@inkjs/ui';
 import type { ReviewComment } from '../../types.js';
 import type { DiffFile } from '@kirby/diff';
 import { partitionFiles } from '@kirby/diff';
@@ -148,10 +149,17 @@ export const DiffFileList = memo(function DiffFileList({
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
-      <Text bold color="blue">
-        Files Changed ({files.length})
-        {loading && <Text color="yellow"> loading...</Text>}
-      </Text>
+      <Box gap={1}>
+        <Text bold color="blue">
+          Files Changed ({files.length})
+        </Text>
+        {loading && (
+          <>
+            <Spinner />
+            <Text color="yellow">loading...</Text>
+          </>
+        )}
+      </Box>
       <Text dimColor>{'─'.repeat(Math.min(40, maxWidth))}</Text>
 
       {error && <Text color="red">Error: {error}</Text>}
