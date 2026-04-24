@@ -764,9 +764,12 @@ export function getCommentPositions(
   insertionMap: InsertionMap,
   comments: ReviewComment[]
 ): Map<string, CommentPositionInfo> {
+  // Note: we do NOT short-circuit on `comments.length === 0`. The scan
+  // below also picks up remote-thread headers (they share the
+  // `comment-header` annotated line type), so files with only remote
+  // threads still need their positions tracked — used by scrollToComment
+  // to center the viewport on the selected thread.
   const positions = new Map<string, CommentPositionInfo>();
-  if (comments.length === 0) return positions;
-
   const { newLineToIndex, oldLineToIndex } = insertionMap;
 
   // Map: diffLine index → first annotated line index for that diff line

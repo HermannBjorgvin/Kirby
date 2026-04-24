@@ -186,7 +186,10 @@ export function DiffFileViewerContainer({
   const sectionAnchors = interleaveResult?.sectionAnchors ?? [0];
 
   const commentPositions = useMemo(() => {
-    if (!interleaveResult || fileComments.length === 0) return new Map();
+    if (!interleaveResult) return new Map();
+    // Run even when fileComments is empty — getCommentPositions also
+    // captures remote-thread headers, which scrollToComment needs so
+    // Shift+↑/↓ can follow the selection on remote-only files.
     return getCommentPositions(
       interleaveResult.lines,
       interleaveResult.insertionMap,

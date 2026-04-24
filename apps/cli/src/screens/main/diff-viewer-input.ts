@@ -274,7 +274,7 @@ export function handleDiffViewerInput(
     const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % navPool.length;
     const next = navPool[nextIdx]!;
     ctx.pane.setSelectedCommentId(next.id);
-    if (next.kind === 'local') scrollToComment(next.id, ctx, maxScroll);
+    scrollToComment(next.id, ctx, maxScroll);
     return;
   }
   if (action === 'diff-viewer.prev-comment' && navPool.length > 0) {
@@ -284,7 +284,7 @@ export function handleDiffViewerInput(
     const prevIdx = currentIdx <= 0 ? navPool.length - 1 : currentIdx - 1;
     const prev = navPool[prevIdx]!;
     ctx.pane.setSelectedCommentId(prev.id);
-    if (prev.kind === 'local') scrollToComment(prev.id, ctx, maxScroll);
+    scrollToComment(prev.id, ctx, maxScroll);
     return;
   }
 
