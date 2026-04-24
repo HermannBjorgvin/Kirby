@@ -148,6 +148,9 @@ export interface AppConfig {
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
   autoHideSidebar?: boolean;
+  /** Render the diff file list as a collapsed folder tree instead of
+   *  a flat path list. Opt-in; defaults to flat for backwards compat. */
+  diffFileListTree?: boolean;
   mergePollInterval?: number; // ms, default 3600000, min 300000
   editor?: string;
   worktreePath?: string;

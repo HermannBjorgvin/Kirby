@@ -109,6 +109,13 @@ export function buildSettingsFields(
       presets: BOOL_PRESETS_ON_FIRST,
       configBag: 'global',
     },
+    {
+      label: 'Diff File List Tree',
+      key: 'diffFileListTree',
+      description: 'Group PR files by directory in the diff file list',
+      presets: BOOL_PRESETS_ON_FIRST,
+      configBag: 'global',
+    },
   ];
 
   if (provider) {

@@ -42,7 +42,8 @@ function coerceConfigValue(
   if (
     key === 'autoDeleteOnMerge' ||
     key === 'autoRebase' ||
-    key === 'autoHideSidebar'
+    key === 'autoHideSidebar' ||
+    key === 'diffFileListTree'
   ) {
     return value === 'true';
   }
