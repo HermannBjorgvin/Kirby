@@ -70,6 +70,10 @@ export interface RemoteCommentContext {
     body: string
   ) => Promise<RemoteCommentReply>;
   toggleResolved: (threadId: string, resolved: boolean) => Promise<boolean>;
+  /** Force-refetch remote threads. Used after posting a local comment
+   *  so the newly-created remote thread replaces the now-hidden posted
+   *  local one without waiting for the user to navigate away and back. */
+  refresh: () => void;
 }
 
 export interface DiffViewerHandlerCtx {

@@ -153,6 +153,7 @@ export function DiffFileViewerContainer({
           threads: fileRemoteThreads,
           replyToThread: diffBundle.remote.replyToThread,
           toggleResolved: diffBundle.remote.toggleResolved,
+          refresh: diffBundle.remote.refresh,
         },
         config: configCtx,
         sessions: sessionCtx,

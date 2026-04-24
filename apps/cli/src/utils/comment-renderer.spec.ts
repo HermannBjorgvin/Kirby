@@ -261,24 +261,11 @@ describe('renderCommentBlock posting status', () => {
     expect(headerLine!.rendered).toContain('⏳');
   });
 
-  it('shows ✓ indicator for posted status', () => {
-    const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
-    const rendered = ['line1'];
-    const comments = [
-      makeComment({ id: 'c1', lineStart: 1, lineEnd: 1, status: 'posted' }),
-    ];
-
-    const { lines: annotated } = interleaveComments(
-      diffLines,
-      rendered,
-      comments,
-      80,
-      null
-    );
-    const headerLine = annotated.find((l) => l.type === 'comment-header');
-    expect(headerLine).toBeDefined();
-    expect(headerLine!.rendered).toContain('✓');
-  });
+  // Note: posted-status local comments are no longer rendered at all
+  // — they're superseded by the remote thread returned from
+  // fetchCommentThreads. See
+  // `hides local comments with status "posted"` in the
+  // `interleaveComments with remote threads` block below.
 });
 
 // ── Remote thread rendering ───────────────────────────────────────
@@ -488,6 +475,80 @@ describe('interleaveComments with remote threads', () => {
 
     const headers = lines.filter((l) => l.type === 'comment-header');
     // One header for the local draft, one for the remote thread.
+    expect(headers).toHaveLength(2);
+  });
+
+  it('hides local comments with status "posted" — remote thread is the single source of truth after posting', () => {
+    // Regression test for the double-render bug: after posting, the
+    // local copy stays in .kirby-comments.json (audit trail) but
+    // fetchCommentThreads returns the same comment as a
+    // RemoteCommentThread. Rendering both would show the box twice.
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+    ]);
+    const rendered = ['line1', 'line2'];
+    const posted = [
+      makeComment({
+        id: 'c1',
+        lineStart: 2,
+        lineEnd: 2,
+        status: 'posted',
+      }),
+    ];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      posted,
+      80,
+      null,
+      null,
+      null,
+      '',
+      threads
+    );
+
+    const headers = lines.filter((l) => l.type === 'comment-header');
+    // Only the remote thread header — the posted local is filtered.
+    expect(headers).toHaveLength(1);
+  });
+
+  it('still renders draft local comments alongside remote threads', () => {
+    // Guardrail on the posted-filter: drafts must still show so the
+    // user can see their unposted work-in-progress.
+    const diffLines = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+    ]);
+    const rendered = ['line1', 'line2'];
+    const locals = [
+      makeComment({ id: 'c-draft', lineStart: 1, lineEnd: 1, status: 'draft' }),
+      makeComment({
+        id: 'c-posted',
+        lineStart: 1,
+        lineEnd: 1,
+        status: 'posted',
+      }),
+    ];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
+
+    const { lines } = interleaveComments(
+      diffLines,
+      rendered,
+      locals,
+      80,
+      null,
+      null,
+      null,
+      '',
+      threads
+    );
+
+    const headers = lines.filter((l) => l.type === 'comment-header');
+    // The draft local + the remote thread — the posted local is
+    // filtered out.
     expect(headers).toHaveLength(2);
   });
 });

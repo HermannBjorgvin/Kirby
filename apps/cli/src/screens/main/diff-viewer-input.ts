@@ -88,8 +88,12 @@ export function handleDiffViewerInput(
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
   const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  // Posted local comments are rendered via the remote-thread path
+  // (see interleaveComments) to avoid double-rendering. Skip them
+  // here too so keyboard navigation (c/prev/next, v, r, p) doesn't
+  // land on an invisible local entry.
   const fileComments = (ctx.commentCtx?.comments ?? []).filter(
-    (c) => c.file === ctx.pane.diffViewFile
+    (c) => c.file === ctx.pane.diffViewFile && c.status !== 'posted'
   );
 
   // ── Reply mode for remote threads (exempt from keybind resolution) ──
@@ -320,6 +324,12 @@ export function handleDiffViewerInput(
       try {
         await postReviewComments([comment], postCtx);
         ctx.sessions.flashStatus('Comment posted');
+        // Refetch remote threads so the newly-created remote thread
+        // for this comment shows up in the diff viewer — the local
+        // copy is now `status: 'posted'` and filtered from render, so
+        // without this refresh there'd be a visual gap until the user
+        // re-opened the PR.
+        ctx.remoteCtx?.refresh();
         const freshComments = readComments(prId).filter(
           (c) => c.file === ctx.pane.diffViewFile
         );

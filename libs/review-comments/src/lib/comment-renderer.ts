@@ -560,6 +560,13 @@ export function interleaveComments(
   replyingToThreadId?: string | null,
   replyBuffer?: string
 ): { lines: AnnotatedLine[]; insertionMap: InsertionMap } {
+  // Drop posted local comments from the render pipeline: once a local
+  // comment has been pushed to the remote, its `status` flips to
+  // 'posted' but the entry stays in .kirby-comments.json as an audit
+  // trail. The same comment is then also served back by
+  // fetchCommentThreads as a RemoteCommentThread, so rendering both
+  // would duplicate the box for a single logical comment.
+  comments = comments.filter((c) => c.status !== 'posted');
   const hasLocalComments = comments.length > 0;
   const hasRemoteThreads = (remoteThreads ?? []).length > 0;
 
