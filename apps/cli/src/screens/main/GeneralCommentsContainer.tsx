@@ -1,7 +1,7 @@
 import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
 import { useSessionActions } from '../../context/SessionContext.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
@@ -26,39 +26,16 @@ export function GeneralCommentsContainer({
   const generalComments = diffBundle.remote.generalComments;
   const viewportHeight = Math.max(1, terminal.paneRows - 2);
   const { flashStatus } = useSessionActions();
-  const replyingThread = pane.replyingToThreadId
-    ? generalComments.find((t) => t.id === pane.replyingToThreadId)
-    : undefined;
-
   useInput(
     (input, key) => {
-      // ── Reply mode (exempt from normal navigation) ──
-      if (replyingThread) {
-        if (key.escape) {
-          pane.setReplyingToThreadId(null);
-          pane.setReplyBuffer('');
-          return;
-        }
-        if (key.return) {
-          const threadId = replyingThread.id;
-          const body = pane.replyBuffer.trim();
-          if (body) {
-            flashStatus('Posting reply...');
-            diffBundle.remote
-              .replyToThread(threadId, body)
-              .then(() => {
-                pane.setReplyingToThreadId(null);
-                pane.setReplyBuffer('');
-                flashStatus('Reply posted');
-              })
-              .catch((err: unknown) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                flashStatus(`Reply failed: ${msg}`);
-              });
-          }
-          return;
-        }
-        handleTextInput(input, key, pane.setReplyBuffer);
+      // Reply mode bypass (Esc/Enter/text) — see apps/cli/src/utils/reply-mode.ts
+      if (
+        handleReplyModeInput(input, key, {
+          pane,
+          flashStatus,
+          replyToThread: diffBundle.remote.replyToThread,
+        })
+      ) {
         return;
       }
 

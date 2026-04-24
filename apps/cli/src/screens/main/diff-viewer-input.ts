@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import type { ReviewComment } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import {
   readComments,
   removeComment,
@@ -96,33 +97,15 @@ export function handleDiffViewerInput(
     (c) => c.file === ctx.pane.diffViewFile && c.status !== 'posted'
   );
 
-  // ── Reply mode for remote threads (exempt from keybind resolution) ──
-  if (ctx.pane.replyingToThreadId) {
-    if (key.escape) {
-      ctx.pane.setReplyingToThreadId(null);
-      ctx.pane.setReplyBuffer('');
-      return;
-    }
-    if (key.return) {
-      const threadId = ctx.pane.replyingToThreadId;
-      const body = ctx.pane.replyBuffer.trim();
-      if (body && ctx.remoteCtx) {
-        ctx.sessions.flashStatus('Posting reply...');
-        ctx.remoteCtx
-          .replyToThread(threadId, body)
-          .then(() => {
-            ctx.pane.setReplyingToThreadId(null);
-            ctx.pane.setReplyBuffer('');
-            ctx.sessions.flashStatus('Reply posted');
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            ctx.sessions.flashStatus(`Reply failed: ${msg}`);
-          });
-      }
-      return;
-    }
-    handleTextInput(input, key, ctx.pane.setReplyBuffer);
+  // Reply mode bypass (Esc/Enter/text) — see apps/cli/src/utils/reply-mode.ts
+  if (
+    ctx.remoteCtx &&
+    handleReplyModeInput(input, key, {
+      pane: ctx.pane,
+      flashStatus: ctx.sessions.flashStatus,
+      replyToThread: ctx.remoteCtx.replyToThread,
+    })
+  ) {
     return;
   }
 

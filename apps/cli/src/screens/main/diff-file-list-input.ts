@@ -1,6 +1,6 @@
 import type { Key } from 'ink';
 import { getDisplayFiles } from '@kirby/diff';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 
 // Comment-nav semantics mirror the diff viewer's merged nav pool: cycle
@@ -21,36 +21,16 @@ export function handleDiffFileListInput(
   key: Key,
   ctx: DiffFileListHandlerCtx
 ): void {
-  // ── Reply mode (exempt from keybind resolution) ─────────────────
-  //
-  // Mirrors diff-viewer-input.ts so typing `r`, `v`, Shift+arrows etc.
-  // inside a reply doesn't trigger the equivalent file-list action.
-  if (ctx.pane.replyingToThreadId) {
-    if (key.escape) {
-      ctx.pane.setReplyingToThreadId(null);
-      ctx.pane.setReplyBuffer('');
-      return;
-    }
-    if (key.return) {
-      const threadId = ctx.pane.replyingToThreadId;
-      const body = ctx.pane.replyBuffer.trim();
-      if (body) {
-        ctx.sessions.flashStatus('Posting reply...');
-        ctx.remoteCtx
-          .replyToThread(threadId, body)
-          .then(() => {
-            ctx.pane.setReplyingToThreadId(null);
-            ctx.pane.setReplyBuffer('');
-            ctx.sessions.flashStatus('Reply posted');
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            ctx.sessions.flashStatus(`Reply failed: ${msg}`);
-          });
-      }
-      return;
-    }
-    handleTextInput(input, key, ctx.pane.setReplyBuffer);
+  // Reply mode bypass (Esc/Enter/text) — short-circuits keybind
+  // dispatch so typing `r`, `v`, Shift+arrows etc. doesn't fire their
+  // action while the user is composing a reply.
+  if (
+    handleReplyModeInput(input, key, {
+      pane: ctx.pane,
+      flashStatus: ctx.sessions.flashStatus,
+      replyToThread: ctx.remoteCtx.replyToThread,
+    })
+  ) {
     return;
   }
 
