@@ -333,6 +333,102 @@ async function getCachedIdentity(
   return identityCache;
 }
 
+// ── @mention resolution (GUID → display name) ──────────────────────
+//
+// ADO's REST API returns comment bodies with raw `@<GUID>` tokens
+// where the web UI renders `@<Display Name>`. Kirby post-processes
+// fetched comment bodies: extracts mention GUIDs, batch-resolves them
+// against the ADO Identities API, caches the results, and substitutes
+// the tokens inline before handing off to the renderer.
+//
+// Fallback: if the API call fails OR a specific GUID doesn't resolve,
+// the original `@<GUID>` stays put. Better to show the UUID than to
+// silently drop the reference.
+
+const MENTION_GUID_RE =
+  /@<([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>/gi;
+
+/** Extract unique mention GUIDs from a comment body, lowercased. */
+export function extractMentionGuids(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(MENTION_GUID_RE)) {
+    seen.add(m[1]!.toLowerCase());
+  }
+  return [...seen];
+}
+
+/**
+ * Substitute `@<guid>` tokens with `@<displayName>` using the provided
+ * cache. Unresolved GUIDs stay intact (the whole `@<GUID>` token,
+ * including the angle brackets) so no reference silently disappears.
+ */
+export function rewriteMentions(
+  text: string,
+  cache: Map<string, string>
+): string {
+  return text.replace(MENTION_GUID_RE, (orig, guid: string) => {
+    const name = cache.get(guid.toLowerCase());
+    return name ? `@${name}` : orig;
+  });
+}
+
+// Module-level cache shared across provider calls. TTL matches the
+// identity cache above — identities change rarely and a stale name is
+// a better failure mode than a rate-limited API.
+const mentionCache = new Map<string, string>();
+let mentionCacheFetchedAt = 0;
+const MENTION_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/** Test helper — resets the module-level cache. */
+export function _clearMentionCacheForTests(): void {
+  mentionCache.clear();
+  mentionCacheFetchedAt = 0;
+}
+
+interface AdoIdentity {
+  id?: string;
+  providerDisplayName?: string;
+  customDisplayName?: string;
+}
+
+/**
+ * Batch-resolve GUIDs via ADO's Identities API
+ * (https://vssps.dev.azure.com/{org}/_apis/identities). Updates the
+ * module-level cache in place. Unresolved GUIDs are NOT cached, so a
+ * later retry has a chance to pick them up.
+ */
+async function resolveMentionNames(
+  config: AdoConfig,
+  guids: string[]
+): Promise<void> {
+  if (guids.length === 0) return;
+  if (Date.now() - mentionCacheFetchedAt > MENTION_CACHE_TTL_MS) {
+    mentionCache.clear();
+    mentionCacheFetchedAt = Date.now();
+  }
+  const uncached = guids.filter((g) => !mentionCache.has(g));
+  if (uncached.length === 0) return;
+
+  const url = `https://vssps.dev.azure.com/${
+    config.org
+  }/_apis/identities?identityIds=${uncached.join(',')}&api-version=7.1`;
+  try {
+    const res = await fetch(url, { headers: authHeaders(config.pat) });
+    if (!res.ok) return;
+    const data = (await res.json()) as { value?: AdoIdentity[] };
+    for (const identity of data.value ?? []) {
+      const id = identity.id?.toLowerCase();
+      const name =
+        identity.providerDisplayName ?? identity.customDisplayName ?? '';
+      if (id && name) mentionCache.set(id, name);
+    }
+    if (mentionCacheFetchedAt === 0) mentionCacheFetchedAt = Date.now();
+  } catch {
+    // Network failure — leave cache as-is. `rewriteMentions` falls back
+    // to the original `@<GUID>` for anything it can't resolve.
+  }
+}
+
 // ── Comment thread helpers ──────────────────────────────────────────
 
 interface AdoThreadComment {
@@ -425,6 +521,33 @@ async function fetchAdoCommentThreads(
     } else {
       threads.push(thread);
     }
+  }
+
+  // Collect mention GUIDs across every comment body in one sweep so
+  // the Identities API gets a single batched call per poll. Rewrite
+  // bodies in place once the cache is warm.
+  const allGuids = new Set<string>();
+  const collect = (t: RemoteCommentThread): void => {
+    for (const c of t.comments) {
+      for (const g of extractMentionGuids(c.body)) allGuids.add(g);
+    }
+  };
+  threads.forEach(collect);
+  generalComments.forEach(collect);
+
+  if (allGuids.size > 0) {
+    await resolveMentionNames(config, [...allGuids]);
+    const rewriteThread = (t: RemoteCommentThread): RemoteCommentThread => ({
+      ...t,
+      comments: t.comments.map((c) => ({
+        ...c,
+        body: rewriteMentions(c.body, mentionCache),
+      })),
+    });
+    return {
+      threads: threads.map(rewriteThread),
+      generalComments: generalComments.map(rewriteThread),
+    };
   }
 
   return { threads, generalComments };
