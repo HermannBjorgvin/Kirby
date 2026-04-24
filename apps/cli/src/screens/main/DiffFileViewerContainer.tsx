@@ -5,10 +5,6 @@ import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
-  renderCommentBlock,
-  renderRemoteThread,
-  spliceCommentBlock,
-  type AnnotatedLine,
 } from '@kirby/review-comments';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useSessionActions } from '../../context/SessionContext.js';
@@ -35,6 +31,13 @@ interface DiffFileViewerContainerProps {
 // and routes diff-viewer keypresses. Mounted by MainContent when
 // paneMode === 'diff-file'. Diff data flows in via `diffBundle` from
 // MainContent so the viewer shares state with the list container.
+//
+// Since M2: threads ride in `annotatedLines` as `{type:'thread-*'}`
+// entries carrying the object, not pre-rendered ANSI. The Ink
+// <DiffViewer> branches on type and renders real components for
+// threads — so live edit/reply buffers flow through props and only
+// re-render the one card whose props changed, no spliceCommentBlock
+// overlay needed.
 export function DiffFileViewerContainer({
   pane,
   terminal,
@@ -60,9 +63,6 @@ export function DiffFileViewerContainer({
     ? diffBundle.fileDiffs.get(pane.diffViewFile) ?? null
     : null;
 
-  // Parse + render just this file's diff. Payload is kilobytes, not
-  // megabytes, so the parse cost is negligible and re-runs on terminal
-  // resize are imperceptible.
   const fileDiffData = useMemo(() => {
     if (!pane.diffViewFile || !fileDiffText) return null;
     const parsed = parseUnifiedDiff(fileDiffText);
@@ -85,10 +85,11 @@ export function DiffFileViewerContainer({
     [diffBundle.remote.threads, pane.diffViewFile]
   );
 
-  // Structural interleave — excludes `editBuffer` / `replyBuffer` from
-  // deps so typing into an edit or reply doesn't re-interleave the
-  // whole file. The placeholder block rendered here gets replaced via
-  // spliceCommentBlock below on every keystroke, which is O(1 block).
+  // Interleave only needs structural state: thread positions don't
+  // depend on edit/reply buffers anymore — those flow through to the
+  // Ink card components as props. The memo re-runs on selection /
+  // editing-id changes because those affect highlight semantics
+  // (selected diff-line highlighting).
   const interleaveResult = useMemo(() => {
     if (
       !fileDiffData ||
@@ -101,12 +102,12 @@ export function DiffFileViewerContainer({
       fileComments,
       terminal.paneCols,
       pane.selectedCommentId,
-      pane.pendingDeleteCommentId,
-      pane.editingCommentId,
-      '',
+      null,
+      null,
+      undefined,
       fileRemoteThreads,
-      pane.replyingToThreadId,
-      ''
+      null,
+      undefined
     );
   }, [
     fileDiffData,
@@ -114,82 +115,22 @@ export function DiffFileViewerContainer({
     fileRemoteThreads,
     terminal.paneCols,
     pane.selectedCommentId,
-    pane.pendingDeleteCommentId,
-    pane.editingCommentId,
-    pane.replyingToThreadId,
   ]);
 
   const annotatedLines = useMemo(() => {
-    let lines: AnnotatedLine[];
-    if (interleaveResult) {
-      lines = interleaveResult.lines;
-    } else if (fileDiffData) {
-      lines = fileDiffData.rendered.map((line) => ({
-        type: 'diff' as const,
-        rendered: line,
-      }));
-    } else {
-      lines = [];
-    }
-
-    // Overlay live edit/reply buffer content on just the active block.
-    // Re-runs on every keystroke but only re-renders one block + one
-    // array copy — O(viewport) not O(file).
-    if (pane.editingCommentId) {
-      const idx = fileComments.findIndex((c) => c.id === pane.editingCommentId);
-      const comment = fileComments[idx];
-      if (comment) {
-        const block = renderCommentBlock(
-          comment,
-          idx,
-          terminal.paneCols,
-          comment.id === pane.selectedCommentId,
-          false,
-          true,
-          pane.editBuffer
-        );
-        lines = spliceCommentBlock(lines, comment.id, block);
-      }
-    }
-    if (pane.replyingToThreadId) {
-      const idx = fileRemoteThreads.findIndex(
-        (t) => t.id === pane.replyingToThreadId
-      );
-      const thread = fileRemoteThreads[idx];
-      if (thread) {
-        const block = renderRemoteThread(
-          thread,
-          idx,
-          terminal.paneCols,
-          thread.id === pane.selectedCommentId,
-          true,
-          pane.replyBuffer
-        );
-        lines = spliceCommentBlock(lines, thread.id, block);
-      }
-    }
-    return lines;
-  }, [
-    interleaveResult,
-    fileDiffData,
-    fileComments,
-    fileRemoteThreads,
-    terminal.paneCols,
-    pane.editingCommentId,
-    pane.editBuffer,
-    pane.replyingToThreadId,
-    pane.replyBuffer,
-    pane.selectedCommentId,
-  ]);
+    if (interleaveResult) return interleaveResult.lines;
+    if (!fileDiffData) return [];
+    return fileDiffData.rendered.map((line) => ({
+      type: 'diff' as const,
+      rendered: line,
+    }));
+  }, [interleaveResult, fileDiffData]);
 
   const diffTotalLines = annotatedLines.length;
   const sectionAnchors = interleaveResult?.sectionAnchors ?? [0];
 
   const commentPositions = useMemo(() => {
     if (!interleaveResult) return new Map();
-    // Run even when fileComments is empty — getCommentPositions also
-    // captures remote-thread headers, which scrollToComment needs so
-    // Shift+↑/↓ can follow the selection on remote-only files.
     return getCommentPositions(
       interleaveResult.lines,
       interleaveResult.insertionMap,
@@ -252,6 +193,12 @@ export function DiffFileViewerContainer({
       paneCols={terminal.paneCols}
       loading={fileDiffLoading}
       hasSections={sectionAnchors.length > 1}
+      selectedCommentId={pane.selectedCommentId}
+      pendingDeleteCommentId={pane.pendingDeleteCommentId}
+      editingCommentId={pane.editingCommentId}
+      editBuffer={pane.editBuffer}
+      replyingToThreadId={pane.replyingToThreadId}
+      replyBuffer={pane.replyBuffer}
     />
   );
 }

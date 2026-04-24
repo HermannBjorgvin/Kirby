@@ -3,6 +3,10 @@ import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import type { AnnotatedLine } from '@kirby/review-comments';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
+import {
+  CommentThreadCard,
+  LocalCommentCard,
+} from '../../components/CommentThread.js';
 
 // Separate component to isolate context subscription from memo'd parent
 function DiffViewerHints({
@@ -68,6 +72,12 @@ export const DiffViewer = memo(function DiffViewer({
   paneCols,
   loading,
   hasSections = false,
+  selectedCommentId,
+  pendingDeleteCommentId,
+  editingCommentId,
+  editBuffer,
+  replyingToThreadId,
+  replyBuffer,
 }: {
   filename: string;
   annotatedLines: AnnotatedLine[];
@@ -76,6 +86,12 @@ export const DiffViewer = memo(function DiffViewer({
   paneCols: number;
   loading: boolean;
   hasSections?: boolean;
+  selectedCommentId?: string | null;
+  pendingDeleteCommentId?: string | null;
+  editingCommentId?: string | null;
+  editBuffer?: string;
+  replyingToThreadId?: string | null;
+  replyBuffer?: string;
 }) {
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
@@ -87,7 +103,9 @@ export const DiffViewer = memo(function DiffViewer({
   const atTop = scrollOffset === 0;
   const atBottom = scrollOffset + viewportHeight >= totalLines;
 
-  const hasComments = annotatedLines.some((l) => l.type === 'comment-header');
+  const hasComments = annotatedLines.some(
+    (l) => l.type === 'thread-remote' || l.type === 'thread-local'
+  );
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -119,11 +137,39 @@ export const DiffViewer = memo(function DiffViewer({
       {visibleLines.length > 0 && (
         <Box flexDirection="column">
           {!atTop && <Text dimColor>↑ {scrollOffset} lines above</Text>}
-          {visibleLines.map((line, i) => (
-            <Text key={scrollOffset + i} wrap="truncate">
-              {line.rendered}
-            </Text>
-          ))}
+          {visibleLines.map((line, i) => {
+            const key = scrollOffset + i;
+            if (line.type === 'diff') {
+              return (
+                <Text key={key} wrap="truncate">
+                  {line.rendered}
+                </Text>
+              );
+            }
+            if (line.type === 'thread-remote') {
+              return (
+                <CommentThreadCard
+                  key={`r:${line.thread.id}`}
+                  thread={line.thread}
+                  selected={selectedCommentId === line.thread.id}
+                  replyingToThreadId={replyingToThreadId}
+                  replyBuffer={replyBuffer}
+                />
+              );
+            }
+            return (
+              <LocalCommentCard
+                key={`l:${line.comment.id}`}
+                comment={line.comment}
+                selected={selectedCommentId === line.comment.id}
+                pendingDelete={pendingDeleteCommentId === line.comment.id}
+                editing={editingCommentId === line.comment.id}
+                editBuffer={
+                  editingCommentId === line.comment.id ? editBuffer : undefined
+                }
+              />
+            );
+          })}
           {!atBottom && (
             <Text dimColor>
               ↓ {totalLines - scrollOffset - viewportHeight} lines below

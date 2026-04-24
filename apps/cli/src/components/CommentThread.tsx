@@ -1,18 +1,17 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { ReviewComment } from '@kirby/review-comments';
 
-// Shared Ink-based renderings for remote comment threads.
+// Shared Ink-based renderings for remote threads AND local drafts.
 //
-// Consumers today:
+// Consumers:
 //   - GeneralCommentsPane (Shift+C)       → <CommentThreadCard>
-//   - DiffFileList PR-comments footer     → <CommentThreadLine>
+//   - DiffFileList PR-comments footer     → <CommentThreadCard>
+//   - DiffViewer inline (M2 unification)  → <CommentThreadCard> for
+//     remote threads, <LocalCommentCard> for local drafts.
 //
-// The diff viewer goes a different route: it renders ANSI-annotated
-// lines through @kirby/review-comments so threads can interleave with
-// diff rows under a single scroll offset. That pipeline stays on the
-// `renderRemoteThread` helper in the lib; this file is only for the
-// Ink-primitive surfaces.
+// Single component per kind everywhere — no more ANSI/Ink split.
 
 export function relativeTime(isoDate: string): string {
   const diff = Date.now() - new Date(isoDate).getTime();
@@ -96,6 +95,95 @@ export const CommentThreadCard = memo(function CommentThreadCard({
           <Text dimColor>Your reply · [enter] post · [esc] cancel</Text>
           <Text>{replyBuffer ?? ''}▍</Text>
         </Box>
+      )}
+    </Box>
+  );
+});
+
+// ── Local comment card (draft / unposted) ───────────────────────────
+
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: 'red',
+  major: 'yellow',
+  minor: 'cyan',
+  nit: 'gray',
+};
+
+const STATUS_MARK: Record<string, { char: string; color: string }> = {
+  posting: { char: '⏳', color: 'yellow' },
+  posted: { char: '✓', color: 'green' },
+};
+
+interface LocalCommentCardProps {
+  comment: ReviewComment;
+  /** Highlight + expand body when selected. */
+  selected?: boolean;
+  /** When true, show the delete-confirm prompt header. */
+  pendingDelete?: boolean;
+  /** When true, render `editBuffer` as the body with a cursor. */
+  editing?: boolean;
+  editBuffer?: string;
+}
+
+export const LocalCommentCard = memo(function LocalCommentCard({
+  comment,
+  selected = false,
+  pendingDelete = false,
+  editing = false,
+  editBuffer,
+}: LocalCommentCardProps) {
+  const severityColor = SEVERITY_COLOR[comment.severity] ?? 'gray';
+  const statusMark = STATUS_MARK[comment.status];
+  // Collapse body to 4 lines when not selected (same policy the ANSI
+  // renderer used, preserved for visual continuity).
+  const bodyLines = comment.body.split('\n');
+  const MAX_COLLAPSED = 4;
+  const shownLines =
+    selected || editing ? bodyLines : bodyLines.slice(0, MAX_COLLAPSED);
+  const truncated = !selected && !editing && bodyLines.length > MAX_COLLAPSED;
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={selected ? 'yellow' : 'gray'}
+      marginBottom={1}
+      paddingX={1}
+    >
+      <Box>
+        <Text bold color={severityColor}>
+          [{comment.severity}]
+        </Text>
+        {statusMark && <Text color={statusMark.color}> {statusMark.char}</Text>}
+        {pendingDelete && <Text color="red"> Delete? [y]es [n]o</Text>}
+        {selected && !editing && !pendingDelete && (
+          <Text dimColor> [e]dit [x]delete [p]ost</Text>
+        )}
+        {editing && (
+          <Text>
+            <Text color="cyan"> EDITING</Text>
+            <Text dimColor> [esc] save · [ctrl+c] cancel</Text>
+          </Text>
+        )}
+      </Box>
+      {editing ? (
+        <Text>
+          {editBuffer ?? ''}
+          <Text color="cyan">▍</Text>
+        </Text>
+      ) : (
+        <>
+          {shownLines.map((line, i) => (
+            <Text key={i} wrap="wrap">
+              {line || ' '}
+            </Text>
+          ))}
+          {truncated && (
+            <Text dimColor>
+              … {bodyLines.length - MAX_COLLAPSED} more lines
+            </Text>
+          )}
+        </>
       )}
     </Box>
   );
