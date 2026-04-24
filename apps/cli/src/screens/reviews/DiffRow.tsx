@@ -68,20 +68,25 @@ export const DiffRow = memo(function DiffRow({
   const prefixColor =
     line.type === 'add' ? 'green' : line.type === 'remove' ? 'red' : undefined;
 
-  // Budget: gutter(9) + space + prefix(1) + content. Truncate content to
-  // fit in `paneCols`. We measure in visible chars because cli-highlight
-  // emits ANSI colors that don't occupy columns.
+  // Truncate PLAIN text to fit the pane before highlighting so the
+  // output string never exceeds paneCols in visible width. Avoids a
+  // class of bugs where Ink's own `wrap="truncate"` cuts in the middle
+  // of a cli-highlight escape sequence, leaving the terminal in an
+  // open-SGR state that eats the leading chars of the next row.
+  // Budget: paneCols - gutter(9) - prefix-space(2) - 1 slack.
   const contentBudget = Math.max(1, paneCols - gutter.length - 3);
   const trimmed =
     line.content.length > contentBudget
       ? line.content.slice(0, contentBudget - 1) + '…'
       : line.content;
-  const highlightedContent = highlightContent(trimmed, language);
+  // `highlightContent` returns ANSI-colored text. We trail it with an
+  // explicit reset even though cli-highlight generally closes its own
+  // runs — defense in depth, costs nothing.
+  const highlightedContent = `${highlightContent(trimmed, language)}\x1b[0m`;
 
   // `highlighted` (selected-comment reference) used to be a yellow ANSI
   // splice. Now it's just a bolder gutter — avoids ANSI bg conflicts
-  // with the syntax-highlighted content, and the highlighting is still
-  // visible at a glance.
+  // with the syntax-highlighted content.
   return (
     <Box>
       <Text
@@ -92,7 +97,7 @@ export const DiffRow = memo(function DiffRow({
         {gutter}
       </Text>
       <Text color={prefixColor}> {prefix}</Text>
-      <Text wrap="truncate">{highlightedContent}</Text>
+      <Text>{highlightedContent}</Text>
     </Box>
   );
 });
