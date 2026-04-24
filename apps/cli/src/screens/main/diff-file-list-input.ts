@@ -41,20 +41,6 @@ export function handleDiffFileListInput(
     return;
   }
 
-  if (action === 'diff-file-list.view-comments-pane') {
-    // Jump to the dedicated Shift+C pane. If the user was hovering a
-    // specific comment in the footer, preselect it there so the
-    // transition feels continuous.
-    const commentIdxIfSelected =
-      ctx.pane.diffFileIndex >= ctx.fileCount
-        ? ctx.pane.diffFileIndex - ctx.fileCount
-        : 0;
-    ctx.pane.setGeneralCommentsIndex(commentIdxIfSelected);
-    ctx.pane.setGeneralCommentsScrollOffset(0);
-    ctx.pane.setPaneMode('comments');
-    return;
-  }
-
   if (action === 'diff-file-list.toggle-skipped') {
     ctx.pane.setShowSkipped((v) => !v);
     ctx.pane.setDiffFileIndex(0);

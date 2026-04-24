@@ -299,11 +299,6 @@ export const ACTIONS = [
     label: 'Resolve/reopen thread',
     context: 'diff-file-list',
   },
-  {
-    id: 'diff-file-list.view-comments-pane',
-    label: 'Open dedicated PR comments pane',
-    context: 'diff-file-list',
-  },
 
   // ── Diff Viewer ──
   {
@@ -467,7 +462,6 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-file-list.reply-to-thread': [{ input: 'r' }],
     'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
-    'diff-file-list.view-comments-pane': [{ input: 'C', shift: true }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ flags: { downArrow: true } }],
@@ -568,9 +562,6 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-file-list.reply-to-thread': [{ input: 'r' }],
     'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
-    // Vim preset already uses 'C' for prev-comment in this context, so
-    // Shift+C can't also mean "open comments pane" — vim users can
-    // Esc back to sidebar and press C there. Intentionally unbound.
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ input: 'j' }, { flags: { downArrow: true } }],
