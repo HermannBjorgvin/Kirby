@@ -329,6 +329,16 @@ export const ACTIONS = [
     label: 'Edit in editor',
     context: 'diff-viewer',
   },
+  {
+    id: 'diff-viewer.reply-to-thread',
+    label: 'Reply to thread',
+    context: 'diff-viewer',
+  },
+  {
+    id: 'diff-viewer.toggle-thread-resolved',
+    label: 'Resolve/reopen thread',
+    context: 'diff-viewer',
+  },
   { id: 'diff-viewer.back', label: 'Back', context: 'diff-viewer' },
 
   // ── Controls ──
@@ -420,6 +430,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.edit-comment': [{ input: 'e' }],
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E', shift: true }],
+    'diff-viewer.reply-to-thread': [{ input: 'r' }],
+    'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
 
     // Controls
@@ -516,6 +528,8 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-viewer.edit-comment': [{ input: 'e' }],
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E' }],
+    'diff-viewer.reply-to-thread': [{ input: 'r' }],
+    'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
 
     // Controls

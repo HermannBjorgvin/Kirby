@@ -18,11 +18,15 @@ export const GeneralCommentsPane = memo(function GeneralCommentsPane({
   selectedIndex,
   scrollOffset,
   paneRows,
+  replyingToThreadId,
+  replyBuffer,
 }: {
   comments: RemoteCommentThread[];
   selectedIndex: number;
   scrollOffset: number;
   paneRows: number;
+  replyingToThreadId?: string | null;
+  replyBuffer?: string;
 }) {
   if (comments.length === 0) {
     return (
@@ -43,10 +47,7 @@ export const GeneralCommentsPane = memo(function GeneralCommentsPane({
     <Box flexDirection="column" paddingLeft={1}>
       <Box>
         <Text bold>PR Comments ({comments.length})</Text>
-        <Text dimColor>
-          {' '}
-          [esc] back · [j/k] navigate · [r] reply · [v] resolve
-        </Text>
+        <Text dimColor> [esc] back · [j/k] navigate · [r] reply</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
         {visibleComments.map((thread, idx) => {
@@ -87,6 +88,19 @@ export const GeneralCommentsPane = memo(function GeneralCommentsPane({
                       </Text>
                     </Box>
                   ))}
+                </Box>
+              )}
+              {replyingToThreadId === thread.id && (
+                <Box
+                  flexDirection="column"
+                  marginTop={1}
+                  marginLeft={2}
+                  borderStyle="round"
+                  borderColor="cyan"
+                  paddingX={1}
+                >
+                  <Text dimColor>Your reply · [enter] post · [esc] cancel</Text>
+                  <Text>{replyBuffer ?? ''}▍</Text>
                 </Box>
               )}
             </Box>

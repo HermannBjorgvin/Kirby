@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useDiffData } from './useDiffData.js';
 import { useReviewComments } from './useReviewComments.js';
 import { useRemoteComments } from './useRemoteComments.js';
@@ -19,13 +20,18 @@ export function useDiffBundle(
   const diff = useDiffData(prNumber, sourceBranch, targetBranch);
   const comments = useReviewComments(prNumber);
   const { provider, config } = useConfig();
-  const { refreshPr } = useSessionActions();
+  const { refreshPr, flashStatus } = useSessionActions();
+  const onFetchError = useCallback(
+    (msg: string) => flashStatus(`Failed to load comments: ${msg}`),
+    [flashStatus]
+  );
   const remote = useRemoteComments(
     prNumber,
     provider,
     config.vendorAuth,
     config.vendorProject,
-    refreshPr
+    refreshPr,
+    onFetchError
   );
   return { ...diff, comments, remote };
 }

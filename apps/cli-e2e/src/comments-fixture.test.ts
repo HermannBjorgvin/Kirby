@@ -50,9 +50,15 @@ if (hasGhToken) {
 // will sweep it).
 function cleanupAccumulatedReplies(): void {
   if (!hasGhToken) return;
+  const [owner, name] = TEST_REPO.split('/');
+  if (!owner || !name) return;
+  // Defensive: only pass safe identifier chars into the inline query
+  // string since we're templating into a single-quoted shell arg.
+  const safeId = /^[A-Za-z0-9._-]+$/;
+  if (!safeId.test(owner) || !safeId.test(name)) return;
   try {
     const listRes = execSync(
-      `gh api graphql -f query='{ repository(owner:"kirby-test-runner", name:"kirby-integration-test-repository") { pullRequest(number:38) { reviewThreads(first:10) { nodes { comments(last:20) { nodes { id body } } } } } } }'`,
+      `gh api graphql -f query='{ repository(owner:"${owner}", name:"${name}") { pullRequest(number:38) { reviewThreads(first:10) { nodes { comments(last:20) { nodes { id body } } } } } } }'`,
       { encoding: 'utf8' }
     );
     const parsed = JSON.parse(listRes) as {

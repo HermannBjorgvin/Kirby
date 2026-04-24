@@ -359,7 +359,14 @@ interface AdoThread {
 
 function adoStatusToResolved(status: string | undefined): boolean {
   // ADO thread statuses: active=1, fixed=2, wontFix=3, closed=4, byDesign=5, pending=6
-  return status !== 'active' && status !== undefined;
+  // Only fixed/wontFix/closed/byDesign are genuinely resolved; pending means
+  // the author hasn't decided yet and should be treated as open.
+  return (
+    status === 'fixed' ||
+    status === 'wontFix' ||
+    status === 'closed' ||
+    status === 'byDesign'
+  );
 }
 
 function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {

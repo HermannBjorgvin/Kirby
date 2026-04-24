@@ -107,12 +107,12 @@ export function handleDiffViewerInput(
       const threadId = ctx.pane.replyingToThreadId;
       const body = ctx.pane.replyBuffer.trim();
       if (body && ctx.remoteCtx) {
-        ctx.pane.setReplyingToThreadId(null);
-        ctx.pane.setReplyBuffer('');
         ctx.sessions.flashStatus('Posting reply...');
         ctx.remoteCtx
           .replyToThread(threadId, body)
           .then(() => {
+            ctx.pane.setReplyingToThreadId(null);
+            ctx.pane.setReplyBuffer('');
             ctx.sessions.flashStatus('Reply posted');
           })
           .catch((err: unknown) => {
@@ -231,41 +231,60 @@ export function handleDiffViewerInput(
     return;
   }
 
-  // Comment navigation
-  if (action === 'diff-viewer.next-comment' && fileComments.length > 0) {
-    const nextId = findAdjacentCommentId(
-      'next',
-      ctx.pane.selectedCommentId,
-      fileComments,
-      ctx.commentCtx?.positions
+  // Comment navigation — walks a single pool merging local drafts and
+  // remote threads, sorted by line. Without this, a single draft gates
+  // off remote threads entirely (next/prev short-circuit on
+  // fileComments.length > 0) and remote threads become unreachable.
+  const fileRemoteThreads = ctx.remoteCtx?.threads ?? [];
+  const navPool: { id: string; lineStart: number; kind: 'local' | 'remote' }[] =
+    [
+      ...fileComments.map((c) => ({
+        id: c.id,
+        lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
+        kind: 'local' as const,
+      })),
+      ...fileRemoteThreads.map((t) => ({
+        id: t.id,
+        lineStart: t.lineStart ?? Number.POSITIVE_INFINITY,
+        kind: 'remote' as const,
+      })),
+    ].sort((a, b) => a.lineStart - b.lineStart);
+
+  if (action === 'diff-viewer.next-comment' && navPool.length > 0) {
+    const currentIdx = navPool.findIndex(
+      (e) => e.id === ctx.pane.selectedCommentId
     );
-    if (nextId) {
-      ctx.pane.setSelectedCommentId(nextId);
-      scrollToComment(nextId, ctx, maxScroll);
-    }
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % navPool.length;
+    const next = navPool[nextIdx]!;
+    ctx.pane.setSelectedCommentId(next.id);
+    if (next.kind === 'local') scrollToComment(next.id, ctx, maxScroll);
     return;
   }
-  if (action === 'diff-viewer.prev-comment' && fileComments.length > 0) {
-    const prevId = findAdjacentCommentId(
-      'prev',
-      ctx.pane.selectedCommentId,
-      fileComments,
-      ctx.commentCtx?.positions
+  if (action === 'diff-viewer.prev-comment' && navPool.length > 0) {
+    const currentIdx = navPool.findIndex(
+      (e) => e.id === ctx.pane.selectedCommentId
     );
-    if (prevId) {
-      ctx.pane.setSelectedCommentId(prevId);
-      scrollToComment(prevId, ctx, maxScroll);
-    }
+    const prevIdx = currentIdx <= 0 ? navPool.length - 1 : currentIdx - 1;
+    const prev = navPool[prevIdx]!;
+    ctx.pane.setSelectedCommentId(prev.id);
+    if (prev.kind === 'local') scrollToComment(prev.id, ctx, maxScroll);
     return;
   }
 
-  // Comment actions
+  // Comment actions — only apply when the selected id refers to a local
+  // draft. Without this guard, pressing 'x' while a remote thread is
+  // selected enters an invisible delete-confirm trap (renderRemoteThread
+  // draws no y/n prompt).
+  const selectedLocal = ctx.pane.selectedCommentId
+    ? fileComments.find((c) => c.id === ctx.pane.selectedCommentId)
+    : undefined;
+
   if (
     action === 'diff-viewer.delete-comment' &&
-    ctx.pane.selectedCommentId &&
+    selectedLocal &&
     ctx.commentCtx
   ) {
-    ctx.pane.setPendingDeleteCommentId(ctx.pane.selectedCommentId);
+    ctx.pane.setPendingDeleteCommentId(selectedLocal.id);
     return;
   }
 
@@ -406,15 +425,21 @@ export function handleDiffViewerInput(
     (t) => t.id === ctx.pane.selectedCommentId
   );
 
-  // Reply to remote thread
-  if (input === 'r' && selectedRemoteThread && ctx.remoteCtx) {
+  if (
+    action === 'diff-viewer.reply-to-thread' &&
+    selectedRemoteThread &&
+    ctx.remoteCtx
+  ) {
     ctx.pane.setReplyingToThreadId(selectedRemoteThread.id);
     ctx.pane.setReplyBuffer('');
     return;
   }
 
-  // Resolve/reopen remote thread
-  if (input === 'v' && selectedRemoteThread && ctx.remoteCtx) {
+  if (
+    action === 'diff-viewer.toggle-thread-resolved' &&
+    selectedRemoteThread &&
+    ctx.remoteCtx
+  ) {
     const newResolved = !selectedRemoteThread.isResolved;
     ctx.sessions.flashStatus(
       newResolved ? 'Resolving thread...' : 'Reopening thread...'
@@ -432,37 +457,6 @@ export function handleDiffViewerInput(
         const msg = err instanceof Error ? err.message : String(err);
         ctx.sessions.flashStatus(`Failed: ${msg}`);
       });
-    return;
-  }
-
-  // Navigate remote threads when no local comments selected
-  if (
-    action === 'diff-viewer.next-comment' &&
-    fileComments.length === 0 &&
-    ctx.remoteCtx &&
-    ctx.remoteCtx.threads.length > 0
-  ) {
-    const threads = ctx.remoteCtx.threads;
-    const currentIdx = threads.findIndex(
-      (t) => t.id === ctx.pane.selectedCommentId
-    );
-    const nextIdx = (currentIdx + 1) % threads.length;
-    ctx.pane.setSelectedCommentId(threads[nextIdx]!.id);
-    return;
-  }
-
-  if (
-    action === 'diff-viewer.prev-comment' &&
-    fileComments.length === 0 &&
-    ctx.remoteCtx &&
-    ctx.remoteCtx.threads.length > 0
-  ) {
-    const threads = ctx.remoteCtx.threads;
-    const currentIdx = threads.findIndex(
-      (t) => t.id === ctx.pane.selectedCommentId
-    );
-    const prevIdx = currentIdx <= 0 ? threads.length - 1 : currentIdx - 1;
-    ctx.pane.setSelectedCommentId(threads[prevIdx]!.id);
     return;
   }
 }

@@ -17,13 +17,19 @@ export function useRemoteComments(
   provider: VcsProvider | null,
   auth: Record<string, string>,
   project: Record<string, string>,
-  onResolvedChange?: () => void
+  onResolvedChange?: () => void,
+  onFetchError?: (message: string) => void
 ) {
   const [comments, setComments] = useState<PullRequestComments>(EMPTY_COMMENTS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const activePrIdRef = useRef<number | null>(null);
   const cacheRef = useRef<Map<number, PullRequestComments>>(new Map());
+  // Stabilize onFetchError across renders so it doesn't cycle
+  // fetchComments' deps (which would re-fire the effect on every render).
+  const onFetchErrorRef = useRef(onFetchError);
+  onFetchErrorRef.current = onFetchError;
 
   const fetchComments = useCallback(
     async (forceRefresh = false) => {
@@ -45,31 +51,43 @@ export function useRemoteComments(
       setError(null);
       try {
         const result = await provider.fetchCommentThreads(auth, project, prId);
-        if (mountedRef.current) {
-          cacheRef.current.set(prId, result);
+        // Cache unconditionally — it's keyed by the closured prId so it's
+        // correct even if the user has moved on. Only commit to visible
+        // state if this response still matches the active PR.
+        cacheRef.current.set(prId, result);
+        if (mountedRef.current && activePrIdRef.current === prId) {
           setComments(result);
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         logError(`fetchCommentThreads [${provider.id}]`, err as Error);
-        if (mountedRef.current) {
+        if (mountedRef.current && activePrIdRef.current === prId) {
           setError(msg);
+          onFetchErrorRef.current?.(msg);
         }
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current && activePrIdRef.current === prId) {
+          setLoading(false);
+        }
       }
     },
     [prId, provider, auth, project]
   );
 
-  // Fetch when PR changes
+  // Track mount lifetime separately from prId changes so an in-flight
+  // fetch for a stale PR can't overwrite the newly-selected PR's state.
   useEffect(() => {
     mountedRef.current = true;
-    fetchComments();
     return () => {
       mountedRef.current = false;
     };
-  }, [fetchComments]);
+  }, []);
+
+  // Fetch when PR changes
+  useEffect(() => {
+    activePrIdRef.current = prId;
+    fetchComments();
+  }, [fetchComments, prId]);
 
   const refresh = useCallback(() => {
     fetchComments(true);
