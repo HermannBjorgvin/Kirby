@@ -6,6 +6,8 @@ import { useKeybindResolve } from '../../context/KeybindContext.js';
 import {
   CommentThreadCard,
   LocalCommentCard,
+  CARD_MAX_WIDTH,
+  CARD_INDENT,
 } from '../../components/CommentThread.js';
 
 // Separate component to isolate context subscription from memo'd parent
@@ -146,6 +148,14 @@ export const DiffViewer = memo(function DiffViewer({
                 </Text>
               );
             }
+            // Cap card width + indent so threads align with the diff
+            // gutter, matching the visual layout the old ANSI renderer
+            // shipped. The cap uses `min(paneCols - gutter, CARD_MAX_WIDTH)`
+            // so narrow panes still render usable cards.
+            const cardWidth = Math.max(
+              20,
+              Math.min(CARD_MAX_WIDTH, paneCols - CARD_INDENT - 2)
+            );
             if (line.type === 'thread-remote') {
               return (
                 <CommentThreadCard
@@ -154,6 +164,8 @@ export const DiffViewer = memo(function DiffViewer({
                   selected={selectedCommentId === line.thread.id}
                   replyingToThreadId={replyingToThreadId}
                   replyBuffer={replyBuffer}
+                  maxWidth={cardWidth}
+                  indent={CARD_INDENT}
                 />
               );
             }
@@ -167,6 +179,8 @@ export const DiffViewer = memo(function DiffViewer({
                 editBuffer={
                   editingCommentId === line.comment.id ? editBuffer : undefined
                 }
+                maxWidth={cardWidth}
+                indent={CARD_INDENT}
               />
             );
           })}

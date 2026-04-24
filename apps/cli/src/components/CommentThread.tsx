@@ -33,20 +33,40 @@ interface CommentThreadCardProps {
   /** Reply-input overlay for the Shift+C pane */
   replyingToThreadId?: string | null;
   replyBuffer?: string;
+  /**
+   * Cap the card's visible width. When set, the card renders inside a
+   * fixed-width Box so it doesn't stretch to the full pane width —
+   * matches the ANSI predecessor that capped at ~80 cols so threads sit
+   * next to the diff code rather than dominating the viewport.
+   * Undefined = flex (pane fills the card, used by GeneralCommentsPane).
+   */
+  maxWidth?: number;
+  /**
+   * Left indent (in cells). Matches the diff renderer's gutter so the
+   * card starts where the code content does. Default 0.
+   */
+  indent?: number;
 }
+
+// Constants that mirror the previous ANSI renderer's visual language —
+// kept so card width + indent line up with diff row content.
+export const CARD_MAX_WIDTH = 80;
+export const CARD_INDENT = 13;
 
 export const CommentThreadCard = memo(function CommentThreadCard({
   thread,
   selected = false,
   replyingToThreadId,
   replyBuffer,
+  maxWidth,
+  indent,
 }: CommentThreadCardProps) {
   const rootComment = thread.comments[0];
   if (!rootComment) return null;
 
   const isReplying = replyingToThreadId === thread.id;
 
-  return (
+  const card = (
     <Box
       flexDirection="column"
       // Always frame the card — a gray border when unselected keeps the
@@ -57,13 +77,26 @@ export const CommentThreadCard = memo(function CommentThreadCard({
       borderColor={selected ? 'cyan' : 'gray'}
       marginBottom={1}
       paddingX={1}
+      {...(maxWidth !== undefined ? { width: maxWidth } : {})}
     >
       <Box>
-        <Text bold color={selected ? 'cyan' : undefined}>
+        <Text bold color={selected ? 'cyan' : 'blue'}>
           {rootComment.author}
         </Text>
         <Text dimColor> · {relativeTime(rootComment.createdAt)}</Text>
         {thread.isResolved && <Text color="green"> ✓ resolved</Text>}
+        {thread.isOutdated && <Text dimColor> (outdated)</Text>}
+        {selected && !isReplying && (
+          <Text dimColor>
+            {'  '}[r]eply [v]{thread.isResolved ? 'reopen' : 'resolve'}
+          </Text>
+        )}
+        {isReplying && (
+          <>
+            <Text color="cyan">{'  '}REPLY</Text>
+            <Text dimColor> [enter] send · [esc] cancel</Text>
+          </>
+        )}
       </Box>
       <Text wrap="wrap">{rootComment.body}</Text>
       {thread.comments.length > 1 && (
@@ -71,14 +104,12 @@ export const CommentThreadCard = memo(function CommentThreadCard({
           {thread.comments.slice(1).map((reply) => (
             <Box key={reply.id} flexDirection="column" marginLeft={2}>
               <Box>
-                <Text bold dimColor>
+                <Text bold color="blue">
                   {reply.author}
                 </Text>
                 <Text dimColor> · {relativeTime(reply.createdAt)}</Text>
               </Box>
-              <Text wrap="wrap" dimColor>
-                {reply.body}
-              </Text>
+              <Text wrap="wrap">{reply.body}</Text>
             </Box>
           ))}
         </Box>
@@ -92,12 +123,24 @@ export const CommentThreadCard = memo(function CommentThreadCard({
           borderColor="cyan"
           paddingX={1}
         >
-          <Text dimColor>Your reply · [enter] post · [esc] cancel</Text>
           <Text>{replyBuffer ?? ''}▍</Text>
         </Box>
       )}
     </Box>
   );
+
+  // Indent the card so it lines up with the diff gutter when requested.
+  // Rendered as a sibling <Box> that consumes `indent` columns; keeps
+  // the card's own padding/border math simple.
+  if (indent && indent > 0) {
+    return (
+      <Box>
+        <Box width={indent} flexShrink={0} />
+        {card}
+      </Box>
+    );
+  }
+  return card;
 });
 
 // ── Local comment card (draft / unposted) ───────────────────────────
@@ -123,6 +166,10 @@ interface LocalCommentCardProps {
   /** When true, render `editBuffer` as the body with a cursor. */
   editing?: boolean;
   editBuffer?: string;
+  /** See CommentThreadCard.maxWidth. */
+  maxWidth?: number;
+  /** See CommentThreadCard.indent. */
+  indent?: number;
 }
 
 export const LocalCommentCard = memo(function LocalCommentCard({
@@ -131,39 +178,40 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   pendingDelete = false,
   editing = false,
   editBuffer,
+  maxWidth,
+  indent,
 }: LocalCommentCardProps) {
   const severityColor = SEVERITY_COLOR[comment.severity] ?? 'gray';
   const statusMark = STATUS_MARK[comment.status];
-  // Collapse body to 4 lines when not selected (same policy the ANSI
-  // renderer used, preserved for visual continuity).
   const bodyLines = comment.body.split('\n');
   const MAX_COLLAPSED = 4;
   const shownLines =
     selected || editing ? bodyLines : bodyLines.slice(0, MAX_COLLAPSED);
   const truncated = !selected && !editing && bodyLines.length > MAX_COLLAPSED;
 
-  return (
+  const card = (
     <Box
       flexDirection="column"
       borderStyle="round"
       borderColor={selected ? 'yellow' : 'gray'}
       marginBottom={1}
       paddingX={1}
+      {...(maxWidth !== undefined ? { width: maxWidth } : {})}
     >
       <Box>
         <Text bold color={severityColor}>
           [{comment.severity}]
         </Text>
         {statusMark && <Text color={statusMark.color}> {statusMark.char}</Text>}
-        {pendingDelete && <Text color="red"> Delete? [y]es [n]o</Text>}
+        {pendingDelete && <Text color="red">{'  '}Delete? [y]es [n]o</Text>}
         {selected && !editing && !pendingDelete && (
-          <Text dimColor> [e]dit [x]delete [p]ost</Text>
+          <Text dimColor>{'  '}[e]dit [x]delete [p]ost</Text>
         )}
         {editing && (
-          <Text>
-            <Text color="cyan"> EDITING</Text>
+          <>
+            <Text color="cyan">{'  '}EDITING</Text>
             <Text dimColor> [esc] save · [ctrl+c] cancel</Text>
-          </Text>
+          </>
         )}
       </Box>
       {editing ? (
@@ -187,6 +235,16 @@ export const LocalCommentCard = memo(function LocalCommentCard({
       )}
     </Box>
   );
+
+  if (indent && indent > 0) {
+    return (
+      <Box>
+        <Box width={indent} flexShrink={0} />
+        {card}
+      </Box>
+    );
+  }
+  return card;
 });
 
 // ── Layout estimation ────────────────────────────────────────────────
