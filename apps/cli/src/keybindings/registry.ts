@@ -269,6 +269,36 @@ export const ACTIONS = [
     context: 'diff-file-list',
   },
   { id: 'diff-file-list.open', label: 'Open file', context: 'diff-file-list' },
+  {
+    id: 'diff-file-list.next-comment',
+    label: 'Next PR comment',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.prev-comment',
+    label: 'Previous PR comment',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.next-section',
+    label: 'Next section',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.prev-section',
+    label: 'Previous section',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.reply-to-thread',
+    label: 'Reply to thread',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.toggle-thread-resolved',
+    label: 'Resolve/reopen thread',
+    context: 'diff-file-list',
+  },
 
   // ── Diff Viewer ──
   {
@@ -424,6 +454,14 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-file-list.navigate-up': [{ flags: { upArrow: true } }],
     'diff-file-list.toggle-skipped': [{ input: 's' }],
     'diff-file-list.open': [{ flags: { return: true } }],
+    'diff-file-list.next-comment': [
+      { shift: true, flags: { downArrow: true } },
+    ],
+    'diff-file-list.prev-comment': [{ shift: true, flags: { upArrow: true } }],
+    'diff-file-list.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
+    'diff-file-list.reply-to-thread': [{ input: 'r' }],
+    'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ flags: { downArrow: true } }],
@@ -518,6 +556,12 @@ export const VIM_PRESET: KeybindPreset = {
     ],
     'diff-file-list.toggle-skipped': [{ input: 's' }],
     'diff-file-list.open': [{ flags: { return: true } }],
+    'diff-file-list.next-comment': [{ input: 'c' }],
+    'diff-file-list.prev-comment': [{ input: 'C' }],
+    'diff-file-list.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
+    'diff-file-list.reply-to-thread': [{ input: 'r' }],
+    'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ input: 'j' }, { flags: { downArrow: true } }],

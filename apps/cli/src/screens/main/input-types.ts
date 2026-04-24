@@ -56,12 +56,21 @@ export interface DiffFileListHandlerCtx {
   /** How many file rows precede the comment footer. Indices ≥ this
    *  value select a footer comment instead of a file. */
   fileCount: number;
-  /** Threads actually rendered in the footer, in display order. Enter
-   *  on an index past the files opens the Shift+C pane at this
-   *  thread's position within the full generalComments list. */
+  /** Threads actually rendered in the footer, in display order.
+   *  `r`/Enter on one enters inline reply mode; `v` toggles resolved. */
   shownGeneralComments: RemoteCommentThread[];
   loadDiffText: () => Promise<void>;
   keybinds: KeybindResolveValue;
+  /** Reply/resolve delegate — same primitives used by the diff viewer
+   *  and the Shift+C pane so the footer behaves identically. */
+  remoteCtx: {
+    replyToThread: (
+      threadId: string,
+      body: string
+    ) => Promise<RemoteCommentReply>;
+    toggleResolved: (threadId: string, resolved: boolean) => Promise<boolean>;
+  };
+  sessions: SessionActionsContextValue;
 }
 
 export interface CommentContext {

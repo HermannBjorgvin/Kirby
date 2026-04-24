@@ -4,6 +4,7 @@ import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
+import { useSessionActions } from '../../context/SessionContext.js';
 import { planCommentFooter } from '../../components/CommentThread.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
@@ -28,6 +29,7 @@ export function DiffFileListContainer({
   diffBundle,
 }: DiffFileListContainerProps) {
   const keybinds = useKeybindResolve();
+  const sessions = useSessionActions();
   const { config } = useConfig();
   const treeMode = config.diffFileListTree === true;
 
@@ -83,6 +85,11 @@ export function DiffFileListContainer({
         shownGeneralComments: shownGeneral,
         loadDiffText: diffBundle.loadDiffText,
         keybinds,
+        sessions,
+        remoteCtx: {
+          replyToThread: diffBundle.remote.replyToThread,
+          toggleResolved: diffBundle.remote.toggleResolved,
+        },
       });
     },
     { isActive: !terminalFocused }
@@ -101,6 +108,8 @@ export function DiffFileListContainer({
       treeMode={treeMode}
       generalComments={generalThreads}
       selectedCommentIndex={selectedCommentIndex}
+      replyingToThreadId={pane.replyingToThreadId}
+      replyBuffer={pane.replyBuffer}
     />
   );
 }
