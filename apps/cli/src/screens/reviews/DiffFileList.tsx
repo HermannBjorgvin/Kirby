@@ -249,21 +249,16 @@ export const DiffFileList = memo(function DiffFileList({
     [treeMode, displayFiles]
   );
 
-  // PR-comments footer: render full <CommentThreadCard>s below the file
-  // list, capped so the block never claims more than ~half the pane.
-  // Uses the shared planCommentFooter so nav bounds and render stay
-  // in sync.
+  // PR-comments footer: render every general-comment thread below the
+  // file list. No cap — if the content overflows the pane Ink clips
+  // it, and the Shift+C pane remains the scroll-friendly alternative.
   const generalThreads = useMemo(
     () => generalComments ?? [],
     [generalComments]
   );
-  const {
-    shown: shownGeneral,
-    rows: generalRows,
-    overflow: generalOverflowCount,
-  } = useMemo(
-    () => planCommentFooter(generalThreads, paneRows),
-    [generalThreads, paneRows]
+  const { shown: shownGeneral, rows: generalRows } = useMemo(
+    () => planCommentFooter(generalThreads),
+    [generalThreads]
   );
 
   // Chrome: title + divider + hints + optional warning + optional skipped header
@@ -389,11 +384,6 @@ export const DiffFileList = memo(function DiffFileList({
               replyBuffer={replyBuffer}
             />
           ))}
-          {generalOverflowCount > 0 && (
-            <Text dimColor>
-              … +{generalOverflowCount} more (Shift+C for full view)
-            </Text>
-          )}
         </Box>
       )}
 

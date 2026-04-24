@@ -274,36 +274,23 @@ export function estimateCardRows(thread: RemoteCommentThread): number {
 
 /**
  * Shared layout decision for the diff-file-list PR-comments footer.
- * Given the full thread list and the pane's row budget, returns the
- * prefix that fits (≤ half the pane) plus the reserved row count and
- * the overflow tail.
+ * Returns every thread (no artificial cap) along with the estimated
+ * total rows they'd occupy so the container can reserve space for the
+ * scroll window.
  *
- * Having the container and the renderer call the same helper keeps
- * navigation bounds (set by the container) and the rendered cards (by
- * the list) in sync — j/k never stops on a thread that isn't drawn.
+ * Earlier versions capped at half-pane height with a "+N more
+ * (Shift+C for full view)" tail; that felt arbitrary and the tail
+ * hint didn't actually do anything from the file-list context.
+ * Rendering everything lets Ink's overflow clip naturally and j/k
+ * through comments stays consistent with what's drawn.
  */
-export function planCommentFooter(
-  threads: RemoteCommentThread[],
-  paneRows: number
-): {
+export function planCommentFooter(threads: RemoteCommentThread[]): {
   shown: RemoteCommentThread[];
   rows: number;
-  overflow: number;
 } {
-  if (threads.length === 0) {
-    return { shown: [], rows: 0, overflow: 0 };
-  }
-  const maxFooterRows = Math.max(6, Math.floor(paneRows / 2));
-  const shown: RemoteCommentThread[] = [];
+  if (threads.length === 0) return { shown: [], rows: 0 };
   // +1 for the "PR Comments (N)" heading
   let rows = 1;
-  for (const thread of threads) {
-    const cost = estimateCardRows(thread);
-    if (rows + cost > maxFooterRows) break;
-    rows += cost;
-    shown.push(thread);
-  }
-  const overflow = threads.length - shown.length;
-  if (overflow > 0) rows += 1; // "+N more" tail
-  return { shown, rows, overflow };
+  for (const thread of threads) rows += estimateCardRows(thread);
+  return { shown: threads, rows };
 }

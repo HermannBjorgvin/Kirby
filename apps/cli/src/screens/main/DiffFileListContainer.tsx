@@ -61,8 +61,8 @@ export function DiffFileListContainer({
   // land on an invisible card.
   const generalThreads = diffBundle.remote.generalComments;
   const { shown: shownGeneral } = useMemo(
-    () => planCommentFooter(generalThreads, terminal.paneRows),
-    [generalThreads, terminal.paneRows]
+    () => planCommentFooter(generalThreads),
+    [generalThreads]
   );
   const diffDisplayCount = fileCount + shownGeneral.length;
 
