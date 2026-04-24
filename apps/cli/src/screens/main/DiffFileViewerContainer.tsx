@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
@@ -43,21 +43,33 @@ export function DiffFileViewerContainer({
   const keybinds = useKeybindResolve();
   const asyncOps = useAsyncOps();
 
-  // Parse the whole diff once per `diffText`; the per-file slice below
-  // then just does a Map.get(). Without this split, the parse re-ran on
-  // every file open and every terminal resize.
-  const parsedDiff = useMemo(
-    () => (diffBundle.diffText ? parseUnifiedDiff(diffBundle.diffText) : null),
-    [diffBundle.diffText]
-  );
+  // Trigger a per-file diff fetch on file open. Cached internally
+  // by useDiffData, so navigating back and forth is free.
+  const { loadFileDiff } = diffBundle;
+  useEffect(() => {
+    if (pane.diffViewFile) {
+      loadFileDiff(pane.diffViewFile);
+    }
+  }, [pane.diffViewFile, loadFileDiff]);
 
+  const fileDiffText = pane.diffViewFile
+    ? diffBundle.fileDiffs.get(pane.diffViewFile) ?? null
+    : null;
+
+  // Parse + render just this file's diff. Payload is kilobytes, not
+  // megabytes, so the parse cost is negligible and re-runs on terminal
+  // resize are imperceptible.
   const fileDiffData = useMemo(() => {
-    if (!pane.diffViewFile || !parsedDiff) return null;
-    const fileDiffLines = parsedDiff.get(pane.diffViewFile);
+    if (!pane.diffViewFile || !fileDiffText) return null;
+    const parsed = parseUnifiedDiff(fileDiffText);
+    const fileDiffLines = parsed.get(pane.diffViewFile);
     if (!fileDiffLines) return null;
     const rendered = renderDiffLines(fileDiffLines, terminal.paneCols);
     return { fileDiffLines, rendered };
-  }, [pane.diffViewFile, parsedDiff, terminal.paneCols]);
+  }, [pane.diffViewFile, fileDiffText, terminal.paneCols]);
+
+  const fileDiffLoading =
+    diffBundle.fileDiffLoading === pane.diffViewFile && !fileDiffData;
 
   const fileComments = useMemo(
     () => diffBundle.comments.filter((c) => c.file === pane.diffViewFile),
@@ -173,7 +185,7 @@ export function DiffFileViewerContainer({
       scrollOffset={pane.diffScrollOffset}
       paneRows={terminal.paneRows}
       paneCols={terminal.paneCols}
-      loading={diffBundle.diffLoading}
+      loading={fileDiffLoading}
     />
   );
 }

@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DiffFile } from '../types.js';
-import { resolveRef, fetchDiffText } from '../utils/diff-fetcher.js';
+import {
+  resolveRef,
+  fetchDiffText,
+  fetchFileDiffText,
+} from '../utils/diff-fetcher.js';
 
 const execFile = promisify(execFileCb);
 
@@ -143,8 +147,13 @@ export function useDiffData(
   const [error, setError] = useState<string | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [fileDiffs, setFileDiffs] = useState<Map<string, string>>(new Map());
+  const [fileDiffLoading, setFileDiffLoading] = useState<string | null>(null);
   const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
   const diffCacheRef = useRef<Map<number, string>>(new Map());
+  // Per-file diff cache keyed by `${prNumber}:${filename}` so reopening
+  // a file after switching back from the list is instant.
+  const fileDiffCacheRef = useRef<Map<string, string>>(new Map());
 
   const loadFiles = useCallback(async () => {
     if (!prNumber || !sourceBranch || !targetBranch) return;
@@ -208,17 +217,58 @@ export function useDiffData(
     } else {
       setFiles([]);
       setDiffText(null);
+      setFileDiffs(new Map());
     }
   }, [prNumber, loadFiles]);
 
-  // Auto-prefetch diff text as soon as the file list lands. By the time
-  // the user hits Enter on a file the text is usually already cached,
-  // turning the open from "loading diff..." into instant.
-  useEffect(() => {
-    if (!prNumber || files.length === 0) return;
-    if (diffCacheRef.current.has(prNumber)) return;
-    loadDiffText();
-  }, [prNumber, files.length, loadDiffText]);
+  // Fetch a single file's diff on demand. Cached per (prNumber, filename)
+  // so revisiting a file is instant. Replaces the old whole-PR prefetch:
+  // `git diff -U99999` across a 30-file PR produces multi-megabyte output
+  // that blocked the viewer for seconds; scoping to one file keeps it
+  // sub-100 ms.
+  const loadFileDiff = useCallback(
+    async (filename: string) => {
+      if (!prNumber || !sourceBranch || !targetBranch || !filename) return;
+      const key = `${prNumber}:${filename}`;
+      const cached = fileDiffCacheRef.current.get(key);
+      if (cached !== undefined) {
+        setFileDiffs((prev) => {
+          if (prev.get(filename) === cached) return prev;
+          const next = new Map(prev);
+          next.set(filename, cached);
+          return next;
+        });
+        return;
+      }
+
+      const entry = cacheRef.current.get(prNumber);
+      const preResolved = entry
+        ? { sourceRef: entry.sourceRef, targetRef: entry.targetRef }
+        : undefined;
+
+      setFileDiffLoading(filename);
+      try {
+        const text = await fetchFileDiffText(
+          sourceBranch,
+          targetBranch,
+          filename,
+          preResolved
+        );
+        fileDiffCacheRef.current.set(key, text);
+        setFileDiffs((prev) => {
+          const next = new Map(prev);
+          next.set(filename, text);
+          return next;
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+      } finally {
+        setFileDiffLoading((cur) => (cur === filename ? null : cur));
+      }
+    },
+    [prNumber, sourceBranch, targetBranch]
+  );
 
   return {
     files,
@@ -226,7 +276,10 @@ export function useDiffData(
     error,
     diffText,
     diffLoading,
+    fileDiffs,
+    fileDiffLoading,
     loadDiffText,
     loadFiles,
+    loadFileDiff,
   };
 }
