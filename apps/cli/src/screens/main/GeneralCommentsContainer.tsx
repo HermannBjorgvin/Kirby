@@ -72,6 +72,26 @@ export function GeneralCommentsContainer({
         }
         return;
       }
+      if (input === 'v' && count > 0) {
+        const target = generalComments[pane.generalCommentsIndex];
+        if (!target) return;
+        const newResolved = !target.isResolved;
+        flashStatus(
+          newResolved ? 'Resolving thread...' : 'Reopening thread...'
+        );
+        diffBundle.remote
+          .toggleResolved(target.id, newResolved)
+          .then((success) => {
+            if (success) {
+              flashStatus(newResolved ? 'Thread resolved' : 'Thread reopened');
+            }
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            flashStatus(`Failed: ${msg}`);
+          });
+        return;
+      }
     },
     { isActive: !terminalFocused }
   );

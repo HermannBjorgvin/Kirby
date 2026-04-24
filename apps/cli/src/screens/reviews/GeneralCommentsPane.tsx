@@ -37,7 +37,10 @@ export const GeneralCommentsPane = memo(function GeneralCommentsPane({
     <Box flexDirection="column" paddingLeft={1}>
       <Box>
         <Text bold>PR Comments ({comments.length})</Text>
-        <Text dimColor> [esc] back · [j/k] navigate · [r] reply</Text>
+        <Text dimColor>
+          {' '}
+          [esc] back · [j/k] navigate · [r] reply · [v] resolve
+        </Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
         {visibleComments.map((thread, idx) => {
