@@ -4,6 +4,7 @@ import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
+import { planCommentFooter } from '../../components/CommentThread.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
@@ -48,9 +49,29 @@ export function DiffFileListContainer({
     () => partitionFiles(orderedFiles),
     [orderedFiles]
   );
-  const diffDisplayCount = pane.showSkipped
+  const fileCount = pane.showSkipped
     ? diffNormalFiles.length + diffSkippedFiles.length
     : diffNormalFiles.length;
+
+  // j/k walks files first, then extends into the rendered PR-comments
+  // footer. `shown` has to match what DiffFileList will actually draw
+  // (same planCommentFooter call there), otherwise selection could
+  // land on an invisible card.
+  const generalThreads = diffBundle.remote.generalComments;
+  const { shown: shownGeneral } = useMemo(
+    () => planCommentFooter(generalThreads, terminal.paneRows),
+    [generalThreads, terminal.paneRows]
+  );
+  const diffDisplayCount = fileCount + shownGeneral.length;
+
+  // Selection breakdown: indices [0, fileCount) select a file; indices
+  // [fileCount, diffDisplayCount) select a footer comment (offset by
+  // -fileCount). selectedCommentIndex is undefined when a file is
+  // highlighted so the list component knows to leave cards unselected.
+  const selectedCommentIndex =
+    pane.diffFileIndex >= fileCount
+      ? pane.diffFileIndex - fileCount
+      : undefined;
 
   useInput(
     (input, key) => {
@@ -58,6 +79,8 @@ export function DiffFileListContainer({
         pane,
         diffFiles: orderedFiles,
         diffDisplayCount,
+        fileCount,
+        shownGeneralComments: shownGeneral,
         loadDiffText: diffBundle.loadDiffText,
         keybinds,
       });
@@ -76,7 +99,8 @@ export function DiffFileListContainer({
       showSkipped={pane.showSkipped}
       comments={diffBundle.comments}
       treeMode={treeMode}
-      generalComments={diffBundle.remote.generalComments}
+      generalComments={generalThreads}
+      selectedCommentIndex={selectedCommentIndex}
     />
   );
 }

@@ -30,6 +30,18 @@ export function handleDiffFileListInput(
   }
 
   if (action === 'diff-file-list.open' && ctx.diffDisplayCount > 0) {
+    // Index past the file rows selects a footer PR-comment card.
+    // Enter there opens the Shift+C pane focused on that thread.
+    if (ctx.pane.diffFileIndex >= ctx.fileCount) {
+      const commentIdx = ctx.pane.diffFileIndex - ctx.fileCount;
+      const thread = ctx.shownGeneralComments[commentIdx];
+      if (thread) {
+        ctx.pane.setGeneralCommentsIndex(commentIdx);
+        ctx.pane.setGeneralCommentsScrollOffset(0);
+        ctx.pane.setPaneMode('comments');
+      }
+      return;
+    }
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);
     const file = displayFiles[ctx.pane.diffFileIndex];
     if (file) {

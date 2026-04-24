@@ -10,7 +10,7 @@ import { computeScrollWindow } from '../../utils/scroll-window.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import {
   CommentThreadCard,
-  estimateCardRows,
+  planCommentFooter,
 } from '../../components/CommentThread.js';
 
 function statusBadge(status: DiffFile['status']): {
@@ -170,6 +170,7 @@ export const DiffFileList = memo(function DiffFileList({
   comments,
   treeMode = false,
   generalComments,
+  selectedCommentIndex,
 }: {
   files: DiffFile[];
   selectedIndex: number;
@@ -181,6 +182,9 @@ export const DiffFileList = memo(function DiffFileList({
   comments?: ReviewComment[];
   treeMode?: boolean;
   generalComments?: RemoteCommentThread[];
+  /** Index into the rendered PR-comments footer that is currently
+   *  highlighted (undefined = selection is on a file row instead). */
+  selectedCommentIndex?: number;
 }) {
   const displayFiles = useMemo(() => {
     const { normal, skipped } = partitionFiles(files);
@@ -209,38 +213,21 @@ export const DiffFileList = memo(function DiffFileList({
   );
 
   // PR-comments footer: render full <CommentThreadCard>s below the file
-  // list, capped so the block never claims more than ~half the pane —
-  // otherwise a chatty PR would shove the file list off-screen.
+  // list, capped so the block never claims more than ~half the pane.
+  // Uses the shared planCommentFooter so nav bounds and render stay
+  // in sync.
   const generalThreads = useMemo(
     () => generalComments ?? [],
     [generalComments]
   );
-  const { shownGeneral, generalRows, generalOverflowCount } = useMemo(() => {
-    if (generalThreads.length === 0) {
-      return {
-        shownGeneral: [] as RemoteCommentThread[],
-        generalRows: 0,
-        generalOverflowCount: 0,
-      };
-    }
-    const maxFooterRows = Math.max(6, Math.floor(paneRows / 2));
-    const shown: RemoteCommentThread[] = [];
-    // +1 for the "PR Comments (N)" heading
-    let rows = 1;
-    for (const thread of generalThreads) {
-      const cost = estimateCardRows(thread);
-      if (rows + cost > maxFooterRows) break;
-      rows += cost;
-      shown.push(thread);
-    }
-    const overflow = generalThreads.length - shown.length;
-    if (overflow > 0) rows += 1; // "+N more" tail
-    return {
-      shownGeneral: shown,
-      generalRows: rows,
-      generalOverflowCount: overflow,
-    };
-  }, [generalThreads, paneRows]);
+  const {
+    shown: shownGeneral,
+    rows: generalRows,
+    overflow: generalOverflowCount,
+  } = useMemo(
+    () => planCommentFooter(generalThreads, paneRows),
+    [generalThreads, paneRows]
+  );
 
   // Chrome: title + divider + hints + optional warning + optional skipped header
   const chromeRows = 4 + generalRows;
@@ -353,8 +340,15 @@ export const DiffFileList = memo(function DiffFileList({
           <Text bold color="blue">
             PR Comments ({generalThreads.length})
           </Text>
-          {shownGeneral.map((thread) => (
-            <CommentThreadCard key={thread.id} thread={thread} />
+          {shownGeneral.map((thread, idx) => (
+            <CommentThreadCard
+              key={thread.id}
+              thread={thread}
+              selected={
+                selectedCommentIndex !== undefined &&
+                selectedCommentIndex === idx
+              }
+            />
           ))}
           {generalOverflowCount > 0 && (
             <Text dimColor>

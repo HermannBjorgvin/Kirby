@@ -51,7 +51,15 @@ export interface DeleteConfirmHandlerCtx {
 export interface DiffFileListHandlerCtx {
   pane: PaneModeValue;
   diffFiles: DiffFile[];
+  /** Total j/k steps — fileCount + shownGeneralComments.length */
   diffDisplayCount: number;
+  /** How many file rows precede the comment footer. Indices ≥ this
+   *  value select a footer comment instead of a file. */
+  fileCount: number;
+  /** Threads actually rendered in the footer, in display order. Enter
+   *  on an index past the files opens the Shift+C pane at this
+   *  thread's position within the full generalComments list. */
+  shownGeneralComments: RemoteCommentThread[];
   loadDiffText: () => Promise<void>;
   keybinds: KeybindResolveValue;
 }

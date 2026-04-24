@@ -50,8 +50,12 @@ export const CommentThreadCard = memo(function CommentThreadCard({
   return (
     <Box
       flexDirection="column"
-      borderStyle={selected ? 'round' : undefined}
-      borderColor={selected ? 'cyan' : undefined}
+      // Always frame the card — a gray border when unselected keeps the
+      // shape consistent across the Shift+C pane (where one card is
+      // always selected) and the file-list footer (where none is). The
+      // selected variant swaps in cyan for visual emphasis.
+      borderStyle="round"
+      borderColor={selected ? 'cyan' : 'gray'}
       marginBottom={1}
       paddingX={1}
     >
@@ -120,4 +124,40 @@ export function estimateCardRows(thread: RemoteCommentThread): number {
   // per reply: author row + body (1 line approx) + marginTop gap
   const replyRows = Math.max(0, thread.comments.length - 1) * 3;
   return rootRows + replyRows;
+}
+
+/**
+ * Shared layout decision for the diff-file-list PR-comments footer.
+ * Given the full thread list and the pane's row budget, returns the
+ * prefix that fits (≤ half the pane) plus the reserved row count and
+ * the overflow tail.
+ *
+ * Having the container and the renderer call the same helper keeps
+ * navigation bounds (set by the container) and the rendered cards (by
+ * the list) in sync — j/k never stops on a thread that isn't drawn.
+ */
+export function planCommentFooter(
+  threads: RemoteCommentThread[],
+  paneRows: number
+): {
+  shown: RemoteCommentThread[];
+  rows: number;
+  overflow: number;
+} {
+  if (threads.length === 0) {
+    return { shown: [], rows: 0, overflow: 0 };
+  }
+  const maxFooterRows = Math.max(6, Math.floor(paneRows / 2));
+  const shown: RemoteCommentThread[] = [];
+  // +1 for the "PR Comments (N)" heading
+  let rows = 1;
+  for (const thread of threads) {
+    const cost = estimateCardRows(thread);
+    if (rows + cost > maxFooterRows) break;
+    rows += cost;
+    shown.push(thread);
+  }
+  const overflow = threads.length - shown.length;
+  if (overflow > 0) rows += 1; // "+N more" tail
+  return { shown, rows, overflow };
 }
