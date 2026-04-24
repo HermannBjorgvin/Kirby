@@ -2,31 +2,29 @@ import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 
-// ANSI color codes used on diff-row rendering (only diff rows stay on
-// the ANSI pipeline; threads are Ink components — see <CommentThreadCard>
-// and <LocalCommentCard> in apps/cli/src/components/CommentThread.tsx).
+// Dim ANSI — only used for the separator rows below (`── comments on
+// lines not in diff ──` etc.). Diff rows themselves no longer carry
+// pre-rendered ANSI; the renderer component owns their presentation.
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
-// Warm yellow-tinted background for referenced lines (applied after the gutter)
-const BG_HIGHLIGHT = '\x1b[48;5;58m';
 
 // ── AnnotatedLine schema ──────────────────────────────────────────
 //
-// One entry per rendered viewport row. Diff rows carry the
-// pre-rendered ANSI string (fast to ship into <Text>). Thread rows
-// carry the underlying thread / comment object — the Ink renderer
-// decides how to present them (selected state, reply overlay, etc.)
-// via <CommentThreadCard> / <LocalCommentCard> props.
+// One entry per viewport row. Each variant carries the minimal
+// structured data the renderer needs to draw it — no pre-baked ANSI
+// strings for diff rows anymore. Moving the "selected line" highlight
+// off an ANSI splice and onto a boolean prop kills a long-standing
+// rendering-boundary bug where the splice would chop a trailing char
+// from the content.
 //
 // Chunky-scroll trade-off: each thread occupies ONE annotated-line
 // slot, not N physical rows. Stepping `scrollOffset` by 1 jumps past
 // a whole thread. Acceptable because threads render in full inside
-// the viewport, and the overhead of physical-row virtualization is
-// unjustified for the current scale. See plan
-// `/home/hermann/.claude/plans/sleepy-greeting-thimble.md` for the
-// documented decision.
+// the viewport; physical-row virtualization isn't justified at this
+// scale. See plan `/home/hermann/.claude/plans/sleepy-greeting-thimble.md`.
 export type AnnotatedLine =
-  | { type: 'diff'; rendered: string }
+  | { type: 'diff'; line: DiffLine; highlighted: boolean }
+  | { type: 'separator'; rendered: string }
   | {
       type: 'thread-remote';
       thread: RemoteCommentThread;
@@ -196,16 +194,9 @@ export function computeInsertionMap(
 
 export function interleaveComments(
   diffLines: DiffLine[],
-  renderedDiffLines: string[],
   comments: ReviewComment[],
-  _paneCols: number,
   selectedCommentId: string | null,
-  _pendingDeleteCommentId?: string | null,
-  _editingCommentId?: string | null,
-  _editBuffer?: string,
   remoteThreads?: RemoteCommentThread[],
-  _replyingToThreadId?: string | null,
-  _replyBuffer?: string,
   generalComments?: RemoteCommentThread[]
 ): {
   lines: AnnotatedLine[];
@@ -218,7 +209,6 @@ export function interleaveComments(
   // trail. The same comment is also served back by fetchCommentThreads
   // as a RemoteCommentThread, so rendering both would duplicate the box.
   comments = comments.filter((c) => c.status !== 'posted');
-  const hasLocalComments = comments.length > 0;
   const hasRemoteThreads = (remoteThreads ?? []).length > 0;
   const hasGeneralComments = (generalComments ?? []).length > 0;
 
@@ -233,17 +223,6 @@ export function interleaveComments(
         outOfDiff: [] as RemoteCommentThread[],
       };
 
-  if (!hasLocalComments && !hasRemoteThreads && !hasGeneralComments) {
-    return {
-      lines: renderedDiffLines.map((line) => ({
-        type: 'diff' as const,
-        rendered: line,
-      })),
-      insertionMap,
-      sectionAnchors: [0],
-    };
-  }
-
   const highlightSet = buildHighlightSet(
     diffLines,
     comments,
@@ -254,36 +233,12 @@ export function interleaveComments(
   const sectionAnchors: number[] = [0];
   let commentIndex = 0;
 
-  for (let i = 0; i < renderedDiffLines.length; i++) {
-    let rendered = renderedDiffLines[i];
-    if (highlightSet.has(i)) {
-      const GUTTER_CHARS = 13; // diff-renderer gutter width
-      let visCount = 0;
-      let splitIdx = -1;
-      for (let j = 0; j < rendered.length; j++) {
-        if (rendered[j] === '\x1b') {
-          const end = rendered.indexOf('m', j);
-          if (end !== -1) {
-            j = end;
-            continue;
-          }
-        }
-        visCount++;
-        if (visCount > GUTTER_CHARS) {
-          splitIdx = j;
-          break;
-        }
-      }
-      if (splitIdx >= 0) {
-        const gutter = rendered.slice(0, splitIdx);
-        const content = rendered.slice(splitIdx);
-        rendered = `${gutter}${BG_HIGHLIGHT}${content.replaceAll(
-          RESET,
-          `${RESET}${BG_HIGHLIGHT}`
-        )}${RESET}`;
-      }
-    }
-    result.push({ type: 'diff', rendered });
+  for (let i = 0; i < diffLines.length; i++) {
+    result.push({
+      type: 'diff',
+      line: diffLines[i],
+      highlighted: highlightSet.has(i),
+    });
 
     const commentsHere = localInsertions.get(i);
     if (commentsHere) {
@@ -312,12 +267,12 @@ export function interleaveComments(
   if (localOutOfDiff.length > 0) {
     sectionAnchors.push(result.length);
     result.push({
-      type: 'diff',
+      type: 'separator',
       rendered: `\n${DIM}── comments on lines not in diff ──${RESET}`,
     });
     for (const comment of localOutOfDiff) {
       result.push({
-        type: 'diff',
+        type: 'separator',
         rendered: `${DIM}  line ${comment.lineStart}${
           comment.lineStart !== comment.lineEnd ? `-${comment.lineEnd}` : ''
         }:${RESET}`,
@@ -334,13 +289,13 @@ export function interleaveComments(
   if (remoteMap.outOfDiff.length > 0) {
     sectionAnchors.push(result.length);
     result.push({
-      type: 'diff',
+      type: 'separator',
       rendered: `\n${DIM}── remote comments on lines not in diff ──${RESET}`,
     });
     for (const thread of remoteMap.outOfDiff) {
       if (thread.lineEnd != null) {
         result.push({
-          type: 'diff',
+          type: 'separator',
           rendered: `${DIM}  line ${thread.lineStart ?? thread.lineEnd}${
             thread.lineStart != null && thread.lineStart !== thread.lineEnd
               ? `-${thread.lineEnd}`
@@ -360,7 +315,7 @@ export function interleaveComments(
   if (hasGeneralComments) {
     sectionAnchors.push(result.length);
     result.push({
-      type: 'diff',
+      type: 'separator',
       rendered: `\n${DIM}── general PR comments ──${RESET}`,
     });
     for (const thread of generalComments!) {

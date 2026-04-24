@@ -3,11 +3,8 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
+import { parseUnifiedDiff } from '@kirby/diff';
 import { interleaveComments, type ReviewComment } from '@kirby/review-comments';
-
-// BG_HIGHLIGHT ANSI code used by comment-renderer
-const BG_HIGHLIGHT = '\x1b[48;5;58m';
 
 function makeComment(
   overrides: Partial<ReviewComment> & { id: string }
@@ -87,25 +84,24 @@ describe('diff-fetcher integration', () => {
       makeComment({ id: 'c1', lineStart: 5, lineEnd: 7, file: 'test.txt' }),
     ];
 
-    const renderedDiffLines = renderDiffLines(diffLines!, 120);
     const { lines: annotated } = interleaveComments(
       diffLines!,
-      renderedDiffLines,
       comments,
-      80,
       'c1' // selected
     );
 
-    // Should have BG_HIGHLIGHT on the referenced lines
+    // Three diff rows should be flagged `highlighted` because the
+    // selected comment references them.
     const highlightedLines = annotated.filter(
-      (l) => l.type === 'diff' && l.rendered.includes(BG_HIGHLIGHT)
+      (l) => l.type === 'diff' && l.highlighted
     );
     expect(highlightedLines.length).toBe(3);
 
-    // Comment header should NOT be in "out of diff" section
+    // No "out of diff" separator should appear — the referenced lines
+    // exist in the diff and the comment is anchored inline.
     const outOfDiffMarker = annotated.find(
       (l) =>
-        l.type === 'diff' &&
+        l.type === 'separator' &&
         l.rendered.includes('comments on lines not in diff')
     );
     expect(outOfDiffMarker).toBeUndefined();
@@ -127,25 +123,16 @@ describe('diff-fetcher integration', () => {
       }),
     ];
 
-    const renderedDiffLines = diffLines.map((dl) => dl.content);
-    const { lines: annotated } = interleaveComments(
-      diffLines,
-      renderedDiffLines,
-      comments,
-      80,
-      'c1'
-    );
+    const { lines: annotated } = interleaveComments(diffLines, comments, 'c1');
 
-    // Should have BG_HIGHLIGHT on 3 lines
     const highlightedLines = annotated.filter(
-      (l) => l.type === 'diff' && l.rendered.includes(BG_HIGHLIGHT)
+      (l) => l.type === 'diff' && l.highlighted
     );
     expect(highlightedLines.length).toBe(3);
 
-    // Comment should not be in "out of diff"
     const outOfDiffMarker = annotated.find(
       (l) =>
-        l.type === 'diff' &&
+        l.type === 'separator' &&
         l.rendered.includes('comments on lines not in diff')
     );
     expect(outOfDiffMarker).toBeUndefined();

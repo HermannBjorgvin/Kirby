@@ -9,6 +9,8 @@ import {
   CARD_MAX_WIDTH,
   CARD_INDENT,
 } from '../../components/CommentThread.js';
+import { DiffRow } from './DiffRow.js';
+import { languageFromFilename } from '../../utils/language.js';
 
 // Separate component to isolate context subscription from memo'd parent
 function DiffViewerHints({
@@ -109,6 +111,8 @@ export const DiffViewer = memo(function DiffViewer({
     (l) => l.type === 'thread-remote' || l.type === 'thread-local'
   );
 
+  const language = languageFromFilename(filename);
+
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
       <Box gap={1}>
@@ -142,6 +146,17 @@ export const DiffViewer = memo(function DiffViewer({
           {visibleLines.map((line, i) => {
             const key = scrollOffset + i;
             if (line.type === 'diff') {
+              return (
+                <DiffRow
+                  key={key}
+                  line={line.line}
+                  highlighted={line.highlighted}
+                  language={language}
+                  paneCols={paneCols}
+                />
+              );
+            }
+            if (line.type === 'separator') {
               return (
                 <Text key={key} wrap="truncate">
                   {line.rendered}

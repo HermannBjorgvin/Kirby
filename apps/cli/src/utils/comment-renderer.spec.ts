@@ -123,18 +123,11 @@ describe('interleaveComments — annotated-line schema', () => {
       { oldLine: 1, newLine: 1 },
       { oldLine: 2, newLine: 2 },
     ]);
-    const rendered = ['line1', 'line2'];
     const comments = [
       makeComment({ id: 'c1', lineStart: 2, lineEnd: 2, body: 'body' }),
     ];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      comments,
-      80,
-      null
-    );
+    const { lines } = interleaveComments(diffLines, comments, null);
 
     const localEntries = lines.filter((l) => l.type === 'thread-local');
     expect(localEntries).toHaveLength(1);
@@ -148,26 +141,9 @@ describe('interleaveComments — annotated-line schema', () => {
       { oldLine: 1, newLine: 1 },
       { oldLine: 2, newLine: 2 },
     ]);
-    const rendered = ['line1', 'line2'];
-    const threads = [
-      makeRemoteThread({
-        id: 't1',
-        lineStart: 2,
-        lineEnd: 2,
-      }),
-    ];
+    const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      [],
-      80,
-      null,
-      null,
-      null,
-      '',
-      threads
-    );
+    const { lines } = interleaveComments(diffLines, [], null, threads);
 
     const remoteEntries = lines.filter((l) => l.type === 'thread-remote');
     expect(remoteEntries).toHaveLength(1);
@@ -182,20 +158,9 @@ describe('interleaveComments — annotated-line schema', () => {
       { oldLine: 2, newLine: 2 },
       { oldLine: 3, newLine: 3 },
     ]);
-    const rendered = ['line1', 'line2', 'line3'];
     const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      [],
-      80,
-      null,
-      null,
-      null,
-      '',
-      threads
-    );
+    const { lines } = interleaveComments(diffLines, [], null, threads);
 
     // Order should be: diff0, diff1, thread-remote, diff2
     expect(lines).toHaveLength(4);
@@ -205,15 +170,15 @@ describe('interleaveComments — annotated-line schema', () => {
     expect(lines[3].type).toBe('diff');
   });
 
-  it('diff-typed entries keep their pre-rendered ANSI string in `rendered`', () => {
+  it('diff-typed entries carry the structured DiffLine (no pre-rendered ANSI)', () => {
     const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
-    const rendered = ['hello'];
-    const { lines } = interleaveComments(diffLines, rendered, [], 80, null);
+    const { lines } = interleaveComments(diffLines, [], null);
 
     const diffEntries = lines.filter((l) => l.type === 'diff');
     expect(diffEntries).toHaveLength(1);
     if (diffEntries[0].type !== 'diff') throw new Error('expected diff');
-    expect(diffEntries[0].rendered).toBe('hello');
+    expect(diffEntries[0].line).toBe(diffLines[0]);
+    expect(diffEntries[0].highlighted).toBe(false);
   });
 
   it('hides local comments with status "posted" — regression guard', () => {
@@ -221,7 +186,6 @@ describe('interleaveComments — annotated-line schema', () => {
       { oldLine: 1, newLine: 1 },
       { oldLine: 2, newLine: 2 },
     ]);
-    const rendered = ['line1', 'line2'];
     const posted = [
       makeComment({
         id: 'c1',
@@ -232,21 +196,13 @@ describe('interleaveComments — annotated-line schema', () => {
     ];
     const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      posted,
-      80,
-      null,
-      null,
-      null,
-      '',
-      threads
-    );
+    const { lines } = interleaveComments(diffLines, posted, null, threads);
 
     // Only the remote thread should be an annotated entry; the posted
     // local is filtered out to avoid double-rendering.
-    const threadEntries = lines.filter((l) => l.type !== 'diff');
+    const threadEntries = lines.filter(
+      (l) => l.type === 'thread-local' || l.type === 'thread-remote'
+    );
     expect(threadEntries).toHaveLength(1);
     expect(threadEntries[0].type).toBe('thread-remote');
   });
@@ -256,7 +212,6 @@ describe('interleaveComments — annotated-line schema', () => {
       { oldLine: 1, newLine: 1 },
       { oldLine: 2, newLine: 2 },
     ]);
-    const rendered = ['line1', 'line2'];
     const locals = [
       makeComment({ id: 'c-draft', lineStart: 1, lineEnd: 1, status: 'draft' }),
       makeComment({
@@ -268,17 +223,7 @@ describe('interleaveComments — annotated-line schema', () => {
     ];
     const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      locals,
-      80,
-      null,
-      null,
-      null,
-      '',
-      threads
-    );
+    const { lines } = interleaveComments(diffLines, locals, null, threads);
 
     const localEntries = lines.filter((l) => l.type === 'thread-local');
     const remoteEntries = lines.filter((l) => l.type === 'thread-remote');
@@ -290,7 +235,6 @@ describe('interleaveComments — annotated-line schema', () => {
 
   it('appends a general-comments section at the end when generalComments provided', () => {
     const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
-    const rendered = ['line1'];
     const general = [
       makeRemoteThread({
         id: 'g1',
@@ -302,16 +246,9 @@ describe('interleaveComments — annotated-line schema', () => {
 
     const { lines, sectionAnchors } = interleaveComments(
       diffLines,
-      rendered,
       [],
-      80,
       null,
-      null,
-      null,
-      '',
       undefined,
-      null,
-      '',
       general
     );
 
@@ -333,10 +270,9 @@ describe('getCommentPositions (new schema)', () => {
       { oldLine: 2, newLine: 2 },
       { oldLine: 3, newLine: 3 },
     ]);
-    const rendered = ['line1', 'line2', 'line3'];
     const comments = [makeComment({ id: 'c1', lineStart: 2, lineEnd: 2 })];
 
-    const result = interleaveComments(diffLines, rendered, comments, 80, null);
+    const result = interleaveComments(diffLines, comments, null);
     const positions = getCommentPositions(
       result.lines,
       result.insertionMap,
@@ -359,20 +295,9 @@ describe('getCommentPositions (new schema)', () => {
       { oldLine: 1, newLine: 1 },
       { oldLine: 2, newLine: 2 },
     ]);
-    const rendered = ['line1', 'line2'];
     const threads = [makeRemoteThread({ id: 't1', lineStart: 2, lineEnd: 2 })];
 
-    const result = interleaveComments(
-      diffLines,
-      rendered,
-      [],
-      80,
-      null,
-      null,
-      null,
-      '',
-      threads
-    );
+    const result = interleaveComments(diffLines, [], null, threads);
     const positions = getCommentPositions(
       result.lines,
       result.insertionMap,
@@ -384,58 +309,34 @@ describe('getCommentPositions (new schema)', () => {
   });
 });
 
-// ── Highlighting on diff rows (unchanged behavior) ──────────────────
-
-const BG_HIGHLIGHT = '\x1b[48;5;58m';
-
-function renderWithGutter(lineNum: number, content: string): string {
-  const old = String(lineNum).padStart(4);
-  const nw = String(lineNum).padStart(4);
-  return `${old}:${nw}  ${content}`;
-}
+// ── Highlighting flag on diff rows ────────────────────────────────
 
 describe('interleaveComments highlighting', () => {
-  it('highlights referenced diff lines when a local comment is selected', () => {
+  it('flags referenced diff lines with highlighted=true when a local comment is selected', () => {
     const diffLines = makeDiffLines(
       Array.from({ length: 10 }, (_, i) => ({
         oldLine: i + 1,
         newLine: i + 1,
       }))
     );
-    const rendered = diffLines.map((_, i) =>
-      renderWithGutter(i + 1, `line ${i + 1}`)
-    );
     const comments = [makeComment({ id: 'c1', lineStart: 3, lineEnd: 5 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      comments,
-      80,
-      'c1'
-    );
+    const { lines } = interleaveComments(diffLines, comments, 'c1');
 
     const highlightedDiffLines = lines.filter(
-      (l) => l.type === 'diff' && l.rendered.includes(BG_HIGHLIGHT)
+      (l) => l.type === 'diff' && l.highlighted
     );
     expect(highlightedDiffLines).toHaveLength(3);
   });
 
   it('does not highlight when the selected comment is out-of-diff', () => {
     const diffLines = makeDiffLines([{ oldLine: 1, newLine: 1 }]);
-    const rendered = [renderWithGutter(1, 'only line')];
     const comments = [makeComment({ id: 'c1', lineStart: 99, lineEnd: 99 })];
 
-    const { lines } = interleaveComments(
-      diffLines,
-      rendered,
-      comments,
-      80,
-      'c1'
-    );
+    const { lines } = interleaveComments(diffLines, comments, 'c1');
 
     const highlightedDiffLines = lines.filter(
-      (l) => l.type === 'diff' && l.rendered.includes(BG_HIGHLIGHT)
+      (l) => l.type === 'diff' && l.highlighted
     );
     expect(highlightedDiffLines).toHaveLength(0);
   });

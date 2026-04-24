@@ -123,6 +123,7 @@
     "@kirby/vcs-github": "*",
     "@kirby/worktree-manager": "*",
     "@mishieck/ink-titled-box": "0.4.2",
+    "cli-highlight": "^2.1.11",
     "ink": "^6.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4"

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
+import { parseUnifiedDiff } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
@@ -68,9 +68,8 @@ export function DiffFileViewerContainer({
     const parsed = parseUnifiedDiff(fileDiffText);
     const fileDiffLines = parsed.get(pane.diffViewFile);
     if (!fileDiffLines) return null;
-    const rendered = renderDiffLines(fileDiffLines, terminal.paneCols);
-    return { fileDiffLines, rendered };
-  }, [pane.diffViewFile, fileDiffText, terminal.paneCols]);
+    return { fileDiffLines };
+  }, [pane.diffViewFile, fileDiffText]);
 
   const fileDiffLoading =
     diffBundle.fileDiffLoading === pane.diffViewFile && !fileDiffData;
@@ -86,45 +85,24 @@ export function DiffFileViewerContainer({
   );
 
   // Interleave only needs structural state: thread positions don't
-  // depend on edit/reply buffers anymore — those flow through to the
-  // Ink card components as props. The memo re-runs on selection /
-  // editing-id changes because those affect highlight semantics
-  // (selected diff-line highlighting).
+  // depend on edit/reply buffers — those flow through to the Ink card
+  // components as props. The memo re-runs on selection / editing-id
+  // changes because selection drives the highlight boolean on each
+  // referenced diff row.
   const interleaveResult = useMemo(() => {
-    if (
-      !fileDiffData ||
-      (fileComments.length === 0 && fileRemoteThreads.length === 0)
-    )
-      return null;
+    if (!fileDiffData) return null;
     return interleaveComments(
       fileDiffData.fileDiffLines,
-      fileDiffData.rendered,
       fileComments,
-      terminal.paneCols,
       pane.selectedCommentId,
-      null,
-      null,
-      undefined,
-      fileRemoteThreads,
-      null,
-      undefined
+      fileRemoteThreads
     );
-  }, [
-    fileDiffData,
-    fileComments,
-    fileRemoteThreads,
-    terminal.paneCols,
-    pane.selectedCommentId,
-  ]);
+  }, [fileDiffData, fileComments, fileRemoteThreads, pane.selectedCommentId]);
 
-  const annotatedLines = useMemo(() => {
-    if (interleaveResult) return interleaveResult.lines;
-    if (!fileDiffData) return [];
-    return fileDiffData.rendered.map((line) => ({
-      type: 'diff' as const,
-      rendered: line,
-    }));
-  }, [interleaveResult, fileDiffData]);
+  const annotatedLines = useMemo(
+    () => interleaveResult?.lines ?? [],
+    [interleaveResult]
+  );
 
   const diffTotalLines = annotatedLines.length;
   const sectionAnchors = interleaveResult?.sectionAnchors ?? [0];
