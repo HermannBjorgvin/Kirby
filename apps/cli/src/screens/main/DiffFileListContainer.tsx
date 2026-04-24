@@ -76,6 +76,7 @@ export function DiffFileListContainer({
       showSkipped={pane.showSkipped}
       comments={diffBundle.comments}
       treeMode={treeMode}
+      generalComments={diffBundle.remote.generalComments}
     />
   );
 }

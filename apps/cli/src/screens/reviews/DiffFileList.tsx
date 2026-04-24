@@ -3,10 +3,12 @@ import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import type { ReviewComment } from '../../types.js';
 import type { DiffFile } from '@kirby/diff';
+import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
 import { computeScrollWindow } from '../../utils/scroll-window.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
+import { CommentThreadLine } from '../../components/CommentThread.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -164,6 +166,7 @@ export const DiffFileList = memo(function DiffFileList({
   showSkipped,
   comments,
   treeMode = false,
+  generalComments,
 }: {
   files: DiffFile[];
   selectedIndex: number;
@@ -174,6 +177,7 @@ export const DiffFileList = memo(function DiffFileList({
   showSkipped: boolean;
   comments?: ReviewComment[];
   treeMode?: boolean;
+  generalComments?: RemoteCommentThread[];
 }) {
   const displayFiles = useMemo(() => {
     const { normal, skipped } = partitionFiles(files);
@@ -201,8 +205,16 @@ export const DiffFileList = memo(function DiffFileList({
     [treeMode, displayFiles]
   );
 
+  // Reserve space for the PR-comments footer when we have any:
+  // header line + up to 3 preview lines + "+N more" tail.
+  const generalCount = generalComments?.length ?? 0;
+  const generalShown = Math.min(3, generalCount);
+  const generalOverflow = generalCount > generalShown;
+  const generalRows =
+    generalCount > 0 ? 1 + generalShown + (generalOverflow ? 1 : 0) : 0;
+
   // Chrome: title + divider + hints + optional warning + optional skipped header
-  const chromeRows = 4;
+  const chromeRows = 4 + generalRows;
   const maxVisible = Math.max(1, paneRows - chromeRows);
   // In tree mode, total visual rows = files + directories. Otherwise
   // it's just files. Scroll window is computed against the selected
@@ -306,6 +318,26 @@ export const DiffFileList = memo(function DiffFileList({
         <Text dimColor>{skipped.length} skipped (binary/lock/generated)</Text>
       )}
       {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
+
+      {generalCount > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold color="blue">
+            PR Comments ({generalCount})
+          </Text>
+          {generalComments!.slice(0, generalShown).map((thread) => (
+            <CommentThreadLine
+              key={thread.id}
+              thread={thread}
+              maxWidth={maxWidth}
+            />
+          ))}
+          {generalOverflow && (
+            <Text dimColor>
+              … +{generalCount - generalShown} more (Shift+C for full view)
+            </Text>
+          )}
+        </Box>
+      )}
 
       <DiffFileListHints />
     </Box>
