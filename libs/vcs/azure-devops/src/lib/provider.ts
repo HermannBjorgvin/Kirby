@@ -429,6 +429,34 @@ async function replyToAdoThread(
   threadId: string,
   body: string
 ): Promise<RemoteCommentReply> {
+  // Resolve the root comment's ID so we can attach the reply to it
+  // properly. ADO uses `parentCommentId` to render threading in the
+  // web UI: `0` means "this IS the root comment of the thread", so
+  // passing `0` for a reply makes it show up as an additional top-
+  // level comment rather than as a reply underneath the original.
+  // That's invisible in Kirby (flat rendering) but visible — and
+  // confusing — to anyone reviewing the PR in ADO's web UI.
+  const threadUrl = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
+  const threadRes = await fetch(threadUrl, {
+    headers: authHeaders(config.pat),
+  });
+  if (!threadRes.ok) {
+    throw new Error(
+      `ADO API error ${threadRes.status}: ${threadRes.statusText}`
+    );
+  }
+  const thread = (await threadRes.json()) as AdoThread;
+  const rootComment = (thread.comments ?? []).find(
+    (c) => c.commentType !== 'system'
+  );
+  // Fallback to 0 if we somehow can't find a non-system root (e.g. a
+  // thread that only contains system comments): posting still works,
+  // just without nesting.
+  const parentCommentId =
+    typeof rootComment?.id === 'number' ? rootComment.id : 0;
+
   const url = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}/comments?api-version=7.1`;
@@ -436,7 +464,7 @@ async function replyToAdoThread(
     method: 'POST',
     headers: authHeaders(config.pat),
     body: JSON.stringify({
-      parentCommentId: 0,
+      parentCommentId,
       content: body,
       commentType: 1,
     }),
