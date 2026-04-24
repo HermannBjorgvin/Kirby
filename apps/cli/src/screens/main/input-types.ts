@@ -81,6 +81,10 @@ export interface DiffViewerHandlerCtx {
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
   diffTotalLines: number;
+  /** Annotated-line indices where a navigable section begins. Used by
+   * the Ctrl+↑/↓ section-jump action. First entry is always 0 (diff
+   * start); later entries mark out-of-diff comment groups when present. */
+  sectionAnchors: number[];
   commentCtx?: CommentContext;
   remoteCtx?: RemoteCommentContext;
   config: ConfigContextValue;

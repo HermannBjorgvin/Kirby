@@ -559,7 +559,11 @@ export function interleaveComments(
   remoteThreads?: RemoteCommentThread[],
   replyingToThreadId?: string | null,
   replyBuffer?: string
-): { lines: AnnotatedLine[]; insertionMap: InsertionMap } {
+): {
+  lines: AnnotatedLine[];
+  insertionMap: InsertionMap;
+  sectionAnchors: number[];
+} {
   // Drop posted local comments from the render pipeline: once a local
   // comment has been pushed to the remote, its `status` flips to
   // 'posted' but the entry stays in .kirby-comments.json as an audit
@@ -577,6 +581,7 @@ export function interleaveComments(
         rendered: line,
       })),
       insertionMap: computeInsertionMap(diffLines, comments),
+      sectionAnchors: [0],
     };
   }
 
@@ -597,8 +602,11 @@ export function interleaveComments(
         outOfDiff: [] as RemoteCommentThread[],
       };
 
-  // Build annotated lines
+  // Build annotated lines. `sectionAnchors` records the starting
+  // annotated-line index of each navigable section — diff itself, then
+  // each of the two out-of-diff comment groups when they're present.
   const result: AnnotatedLine[] = [];
+  const sectionAnchors: number[] = [0];
   let commentIdx = 0;
 
   for (let i = 0; i < renderedDiffLines.length; i++) {
@@ -675,6 +683,7 @@ export function interleaveComments(
 
   // Append out-of-diff local comments at the end
   if (outOfDiff.length > 0) {
+    sectionAnchors.push(result.length);
     result.push({
       type: 'diff',
       rendered: `\n${DIM}── comments on lines not in diff ──${RESET}`,
@@ -705,6 +714,7 @@ export function interleaveComments(
 
   // Append out-of-diff remote threads at the end
   if (remoteMap.outOfDiff.length > 0) {
+    sectionAnchors.push(result.length);
     result.push({
       type: 'diff',
       rendered: `\n${DIM}── remote comments on lines not in diff ──${RESET}`,
@@ -735,7 +745,7 @@ export function interleaveComments(
     }
   }
 
-  return { lines: result, insertionMap };
+  return { lines: result, insertionMap, sectionAnchors };
 }
 
 export interface CommentPositionInfo {

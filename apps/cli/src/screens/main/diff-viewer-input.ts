@@ -203,6 +203,23 @@ export function handleDiffViewerInput(
     return;
   }
 
+  // Section jump — Ctrl+↑/↓. Anchors are sorted annotated-line indices
+  // where a navigable section starts (diff, out-of-diff comments, etc.).
+  if (action === 'diff-viewer.next-section') {
+    const cur = ctx.pane.diffScrollOffset;
+    const next = ctx.sectionAnchors.find((a) => a > cur);
+    if (next !== undefined) {
+      ctx.pane.setDiffScrollOffset(Math.min(next, maxScroll));
+    }
+    return;
+  }
+  if (action === 'diff-viewer.prev-section') {
+    const cur = ctx.pane.diffScrollOffset;
+    const prev = [...ctx.sectionAnchors].reverse().find((a) => a < cur);
+    ctx.pane.setDiffScrollOffset(prev ?? 0);
+    return;
+  }
+
   // File navigation
   if (action === 'diff-viewer.next-file') {
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);

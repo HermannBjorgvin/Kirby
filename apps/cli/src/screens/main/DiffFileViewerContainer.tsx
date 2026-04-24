@@ -183,6 +183,7 @@ export function DiffFileViewerContainer({
   ]);
 
   const diffTotalLines = annotatedLines.length;
+  const sectionAnchors = interleaveResult?.sectionAnchors ?? [0];
 
   const commentPositions = useMemo(() => {
     if (!interleaveResult || fileComments.length === 0) return new Map();
@@ -213,6 +214,7 @@ export function DiffFileViewerContainer({
         diffFiles: diffBundle.files,
         terminal,
         diffTotalLines,
+        sectionAnchors,
         commentCtx: selectedPr
           ? {
               comments: diffBundle.comments,
@@ -246,6 +248,7 @@ export function DiffFileViewerContainer({
       paneRows={terminal.paneRows}
       paneCols={terminal.paneCols}
       loading={fileDiffLoading}
+      hasSections={sectionAnchors.length > 1}
     />
   );
 }

@@ -5,7 +5,13 @@ import type { AnnotatedLine } from '@kirby/review-comments';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 
 // Separate component to isolate context subscription from memo'd parent
-function DiffViewerHints({ hasComments }: { hasComments: boolean }) {
+function DiffViewerHints({
+  hasComments,
+  hasSections,
+}: {
+  hasComments: boolean;
+  hasSections: boolean;
+}) {
   const kb = useKeybindResolve();
   const scrollKeys = kb.getHintKeys('diff-viewer.scroll-down');
   const halfPageKeys = kb.getHintKeys('diff-viewer.half-page-down');
@@ -15,6 +21,8 @@ function DiffViewerHints({ hasComments }: { hasComments: boolean }) {
   const prevFileKeys = kb.getHintKeys('diff-viewer.prev-file');
   const nextCommentKeys = kb.getHintKeys('diff-viewer.next-comment');
   const prevCommentKeys = kb.getHintKeys('diff-viewer.prev-comment');
+  const nextSectionKeys = kb.getHintKeys('diff-viewer.next-section');
+  const prevSectionKeys = kb.getHintKeys('diff-viewer.prev-section');
   const backKeys = kb.getHintKeys('diff-viewer.back');
 
   return (
@@ -38,6 +46,14 @@ function DiffViewerHints({ hasComments }: { hasComments: boolean }) {
             comments ·{' '}
           </>
         )}
+        {hasSections && (
+          <>
+            <Text color="cyan">
+              {nextSectionKeys}/{prevSectionKeys}
+            </Text>{' '}
+            sections ·{' '}
+          </>
+        )}
         <Text color="cyan">{backKeys}</Text> back
       </Text>
     </Box>
@@ -51,6 +67,7 @@ export const DiffViewer = memo(function DiffViewer({
   paneRows,
   paneCols,
   loading,
+  hasSections = false,
 }: {
   filename: string;
   annotatedLines: AnnotatedLine[];
@@ -58,6 +75,7 @@ export const DiffViewer = memo(function DiffViewer({
   paneRows: number;
   paneCols: number;
   loading: boolean;
+  hasSections?: boolean;
 }) {
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
@@ -114,7 +132,7 @@ export const DiffViewer = memo(function DiffViewer({
         </Box>
       )}
 
-      <DiffViewerHints hasComments={hasComments} />
+      <DiffViewerHints hasComments={hasComments} hasSections={hasSections} />
     </Box>
   );
 });
