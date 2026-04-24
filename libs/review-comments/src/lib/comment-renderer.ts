@@ -79,7 +79,7 @@ function padVisible(str: string, targetWidth: number): string {
   return str + ' '.repeat(targetWidth - visible);
 }
 
-function renderCommentBlock(
+export function renderCommentBlock(
   comment: ReviewComment,
   commentIndex: number,
   paneCols: number,
@@ -793,4 +793,38 @@ export function getCommentPositions(
   }
 
   return positions;
+}
+
+/**
+ * Replace the contiguous range of annotated lines tagged with the given
+ * commentId with a freshly-rendered block. Returns a new array.
+ *
+ * Used by the diff viewer to keep `interleaveComments` memoised without
+ * the editBuffer/replyBuffer content as a dep: we render the full diff
+ * with a "placeholder" block for the editing target, then splice the
+ * live-buffer-aware block in as a cheap post-pass on every keystroke.
+ * The expensive walk over the whole file's diff + every comment only
+ * runs when structural state changes.
+ */
+export function spliceCommentBlock(
+  baseLines: AnnotatedLine[],
+  commentId: string,
+  newBlock: AnnotatedLine[]
+): AnnotatedLine[] {
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < baseLines.length; i++) {
+    if (baseLines[i].commentId === commentId) {
+      if (start === -1) start = i;
+      end = i;
+    } else if (start !== -1) {
+      break;
+    }
+  }
+  if (start === -1) return baseLines;
+  return [
+    ...baseLines.slice(0, start),
+    ...newBlock,
+    ...baseLines.slice(end + 1),
+  ];
 }

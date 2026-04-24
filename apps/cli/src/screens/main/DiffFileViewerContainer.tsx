@@ -5,6 +5,10 @@ import { parseUnifiedDiff, renderDiffLines } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
+  renderCommentBlock,
+  renderRemoteThread,
+  spliceCommentBlock,
+  type AnnotatedLine,
 } from '@kirby/review-comments';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { useSessionActions } from '../../context/SessionContext.js';
@@ -81,6 +85,10 @@ export function DiffFileViewerContainer({
     [diffBundle.remote.threads, pane.diffViewFile]
   );
 
+  // Structural interleave — excludes `editBuffer` / `replyBuffer` from
+  // deps so typing into an edit or reply doesn't re-interleave the
+  // whole file. The placeholder block rendered here gets replaced via
+  // spliceCommentBlock below on every keystroke, which is O(1 block).
   const interleaveResult = useMemo(() => {
     if (
       !fileDiffData ||
@@ -95,10 +103,10 @@ export function DiffFileViewerContainer({
       pane.selectedCommentId,
       pane.pendingDeleteCommentId,
       pane.editingCommentId,
-      pane.editBuffer,
+      '',
       fileRemoteThreads,
       pane.replyingToThreadId,
-      pane.replyBuffer
+      ''
     );
   }, [
     fileDiffData,
@@ -108,19 +116,71 @@ export function DiffFileViewerContainer({
     pane.selectedCommentId,
     pane.pendingDeleteCommentId,
     pane.editingCommentId,
-    pane.editBuffer,
     pane.replyingToThreadId,
-    pane.replyBuffer,
   ]);
 
   const annotatedLines = useMemo(() => {
-    if (interleaveResult) return interleaveResult.lines;
-    if (!fileDiffData) return [];
-    return fileDiffData.rendered.map((line) => ({
-      type: 'diff' as const,
-      rendered: line,
-    }));
-  }, [interleaveResult, fileDiffData]);
+    let lines: AnnotatedLine[];
+    if (interleaveResult) {
+      lines = interleaveResult.lines;
+    } else if (fileDiffData) {
+      lines = fileDiffData.rendered.map((line) => ({
+        type: 'diff' as const,
+        rendered: line,
+      }));
+    } else {
+      lines = [];
+    }
+
+    // Overlay live edit/reply buffer content on just the active block.
+    // Re-runs on every keystroke but only re-renders one block + one
+    // array copy — O(viewport) not O(file).
+    if (pane.editingCommentId) {
+      const idx = fileComments.findIndex((c) => c.id === pane.editingCommentId);
+      const comment = fileComments[idx];
+      if (comment) {
+        const block = renderCommentBlock(
+          comment,
+          idx,
+          terminal.paneCols,
+          comment.id === pane.selectedCommentId,
+          false,
+          true,
+          pane.editBuffer
+        );
+        lines = spliceCommentBlock(lines, comment.id, block);
+      }
+    }
+    if (pane.replyingToThreadId) {
+      const idx = fileRemoteThreads.findIndex(
+        (t) => t.id === pane.replyingToThreadId
+      );
+      const thread = fileRemoteThreads[idx];
+      if (thread) {
+        const block = renderRemoteThread(
+          thread,
+          idx,
+          terminal.paneCols,
+          thread.id === pane.selectedCommentId,
+          true,
+          pane.replyBuffer
+        );
+        lines = spliceCommentBlock(lines, thread.id, block);
+      }
+    }
+    return lines;
+  }, [
+    interleaveResult,
+    fileDiffData,
+    fileComments,
+    fileRemoteThreads,
+    terminal.paneCols,
+    pane.editingCommentId,
+    pane.editBuffer,
+    pane.replyingToThreadId,
+    pane.replyBuffer,
+    pane.selectedCommentId,
+  ]);
 
   const diffTotalLines = annotatedLines.length;
 

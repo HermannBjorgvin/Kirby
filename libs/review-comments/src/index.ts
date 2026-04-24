@@ -22,6 +22,8 @@ export {
   computeInsertionMap,
   computeRemoteInsertionMap,
   interleaveComments,
+  renderCommentBlock,
   renderRemoteThread,
   getCommentPositions,
+  spliceCommentBlock,
 } from './lib/comment-renderer.js';
