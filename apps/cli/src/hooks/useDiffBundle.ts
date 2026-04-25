@@ -7,11 +7,10 @@ import { useSessionActions } from '../context/SessionContext.js';
 
 // Single source of truth for PR diff data. Mounted once in MainContent
 // and threaded to both DiffFileListContainer and DiffFileViewerContainer
-// so they share the same `diffText`, `files`, in-memory cache, and
-// `fs.watch`-backed comment stream. Without this, each container mounted
-// its own useDiffData + useReviewComments — loadDiffText() would populate
-// the list's state, then the list would unmount and the viewer would
-// remount with fresh (empty) state, showing "(no diff for this file)".
+// so they share the same `files`, per-file diff cache, and `fs.watch`-
+// backed comment stream. Without this, each container mounted its own
+// useDiffData + useReviewComments — the list and viewer would each
+// re-fetch, and switching between them would clear in-memory caches.
 export function useDiffBundle(
   prNumber: number | null,
   sourceBranch: string,

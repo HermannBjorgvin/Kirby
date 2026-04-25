@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DiffFile } from '../types.js';
-import {
-  resolveRef,
-  fetchDiffText,
-  fetchFileDiffText,
-} from '../utils/diff-fetcher.js';
+import { resolveRef, fetchFileDiffText } from '../utils/diff-fetcher.js';
 
 const execFile = promisify(execFileCb);
 
@@ -145,12 +141,9 @@ export function useDiffData(
   const [files, setFiles] = useState<DiffFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [diffText, setDiffText] = useState<string | null>(null);
-  const [diffLoading, setDiffLoading] = useState(false);
   const [fileDiffs, setFileDiffs] = useState<Map<string, string>>(new Map());
   const [fileDiffLoading, setFileDiffLoading] = useState<string | null>(null);
   const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
-  const diffCacheRef = useRef<Map<number, string>>(new Map());
   // Per-file diff cache keyed by `${prNumber}:${filename}` so reopening
   // a file after switching back from the list is instant.
   const fileDiffCacheRef = useRef<Map<string, string>>(new Map());
@@ -180,43 +173,12 @@ export function useDiffData(
     }
   }, [prNumber, sourceBranch, targetBranch]);
 
-  const loadDiffText = useCallback(async () => {
-    if (!prNumber || !sourceBranch || !targetBranch) return;
-
-    const cached = diffCacheRef.current.get(prNumber);
-    if (cached) {
-      setDiffText(cached);
-      setDiffLoading(false);
-      return;
-    }
-
-    // Reuse refs resolved by loadFiles if available — saves two
-    // `git rev-parse --verify` execs per PR open.
-    const entry = cacheRef.current.get(prNumber);
-    const preResolved = entry
-      ? { sourceRef: entry.sourceRef, targetRef: entry.targetRef }
-      : undefined;
-
-    setDiffLoading(true);
-    try {
-      const text = await fetchDiffText(sourceBranch, targetBranch, preResolved);
-      diffCacheRef.current.set(prNumber, text);
-      setDiffText(text);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-    } finally {
-      setDiffLoading(false);
-    }
-  }, [prNumber, sourceBranch, targetBranch]);
-
   // Auto-load files when prNumber changes.
   useEffect(() => {
     if (prNumber) {
       loadFiles();
     } else {
       setFiles([]);
-      setDiffText(null);
       setFileDiffs(new Map());
     }
   }, [prNumber, loadFiles]);
@@ -274,11 +236,8 @@ export function useDiffData(
     files,
     loading,
     error,
-    diffText,
-    diffLoading,
     fileDiffs,
     fileDiffLoading,
-    loadDiffText,
     loadFiles,
     loadFileDiff,
   };

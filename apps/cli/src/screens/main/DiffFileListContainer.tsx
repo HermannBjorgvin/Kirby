@@ -83,7 +83,6 @@ export function DiffFileListContainer({
         diffDisplayCount,
         fileCount,
         shownGeneralComments: shownGeneral,
-        loadDiffText: diffBundle.loadDiffText,
         keybinds,
         sessions,
         remoteCtx: {

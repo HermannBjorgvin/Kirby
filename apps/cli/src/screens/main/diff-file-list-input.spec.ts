@@ -201,9 +201,6 @@ function makeCtx(overrides: {
     fileCount: files.length,
     diffDisplayCount: files.length + shownGeneralComments.length,
     shownGeneralComments,
-    loadDiffText: vi.fn(async () => {
-      // no-op
-    }),
     keybinds: {
       resolve: (input, key, context) =>
         resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),

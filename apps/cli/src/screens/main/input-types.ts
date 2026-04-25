@@ -59,7 +59,6 @@ export interface DiffFileListHandlerCtx {
   /** Threads actually rendered in the footer, in display order.
    *  `r`/Enter on one enters inline reply mode; `v` toggles resolved. */
   shownGeneralComments: RemoteCommentThread[];
-  loadDiffText: () => Promise<void>;
   keybinds: KeybindResolveValue;
   /** Reply/resolve delegate — same primitives used by the diff viewer
    *  and the Shift+C pane so the footer behaves identically. */

@@ -151,7 +151,6 @@ export function handleDiffFileListInput(
       ctx.pane.setDiffViewFile(file.filename);
       ctx.pane.setDiffScrollOffset(0);
       ctx.pane.setPaneMode('diff-file');
-      ctx.loadDiffText();
     }
     return;
   }
