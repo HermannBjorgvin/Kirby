@@ -312,6 +312,34 @@ describe('diff-file-list handler — section jumps', () => {
     handleDiffFileListInput('', makeKey({ upArrow: true, ctrl: true }), ctx);
     expect(pane.diffFileIndex).toBe(0);
   });
+
+  // Regression: next-section used to fall through to clampToLastComment
+  // when there were no comments — landing the cursor on the last file
+  // unexpectedly instead of staying put.
+  it('Ctrl+Down with no comments is a no-op', () => {
+    const pane = makePane({ diffFileIndex: 0 });
+    const files = [makeFile('a.ts'), makeFile('b.ts')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: [],
+    });
+    handleDiffFileListInput('', makeKey({ downArrow: true, ctrl: true }), ctx);
+    expect(pane.diffFileIndex).toBe(0);
+  });
+
+  it('Ctrl+Up from a file (no comments) is a no-op', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const files = [makeFile('a.ts'), makeFile('b.ts')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: [],
+    });
+    handleDiffFileListInput('', makeKey({ upArrow: true, ctrl: true }), ctx);
+    // Cursor stays where it was — no comments means no section to leave.
+    expect(pane.diffFileIndex).toBe(1);
+  });
 });
 
 // ── reply-to-thread ──────────────────────────────────────────────

@@ -81,23 +81,23 @@ export function handleDiffFileListInput(
   }
 
   // ── Section jump (Ctrl+↑/↓) ─────────────────────────────────────
+  // Two sections in this pane: files and general comments. Ctrl+↓
+  // from files jumps to the first comment; from comments it lands on
+  // the last comment (stays within the current section). Ctrl+↑
+  // always lands on the first file. With no comments at all, both are
+  // no-ops since there's only one section to live in.
   if (action === 'diff-file-list.next-section') {
-    if (ctx.pane.diffFileIndex < ctx.fileCount && commentCount > 0) {
+    if (commentCount === 0) return;
+    if (ctx.pane.diffFileIndex < ctx.fileCount) {
       clampToFirstComment(ctx);
     } else {
-      // already in comments — jump to last comment (stays within the
-      // current section; mirrors diff-viewer "next-section" landing on
-      // the section start but we only have one comment section here)
       clampToLastComment(ctx);
     }
     return;
   }
   if (action === 'diff-file-list.prev-section') {
-    if (ctx.pane.diffFileIndex >= ctx.fileCount) {
-      ctx.pane.setDiffFileIndex(0);
-    } else {
-      ctx.pane.setDiffFileIndex(0);
-    }
+    if (commentCount === 0) return;
+    ctx.pane.setDiffFileIndex(0);
     return;
   }
 
