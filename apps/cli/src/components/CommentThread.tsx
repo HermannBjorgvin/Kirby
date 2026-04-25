@@ -79,16 +79,24 @@ export const CommentThreadCard = memo(function CommentThreadCard({
       paddingX={1}
       {...(maxWidth !== undefined ? { width: maxWidth } : {})}
     >
-      <Box>
+      {/*
+        Header is one logical line — collapse into a single <Text> with
+        nested color spans so Ink's text-measure pipeline keeps every
+        span on one row and truncates on overflow. Sibling <Text> nodes
+        in a row Box would each get a flex-shrunk column allocation and
+        wrap individually, producing a 2-row mangled header
+        ("kirby-test-run | er", " · 2h | ago", "[r]eply | [v]reopen").
+      */}
+      <Text wrap="truncate-end">
         <Text bold color={selected ? 'cyan' : 'blue'}>
           {rootComment.author}
         </Text>
-        <Text dimColor> · {relativeTime(rootComment.createdAt)}</Text>
-        {thread.isResolved && <Text color="green"> ✓ resolved</Text>}
-        {thread.isOutdated && <Text dimColor> (outdated)</Text>}
+        <Text dimColor>{` · ${relativeTime(rootComment.createdAt)}`}</Text>
+        {thread.isResolved && <Text color="green">{' ✓ resolved'}</Text>}
+        {thread.isOutdated && <Text dimColor>{' (outdated)'}</Text>}
         {selected && !isReplying && (
           <Text dimColor>
-            {'  '}[r]eply
+            {'  [r]eply'}
             {thread.canResolve
               ? ` [v]${thread.isResolved ? 'reopen' : 'resolve'}`
               : ''}
@@ -96,22 +104,22 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         )}
         {isReplying && (
           <>
-            <Text color="cyan">{'  '}REPLY</Text>
-            <Text dimColor> [enter] send · [esc] cancel</Text>
+            <Text color="cyan">{'  REPLY'}</Text>
+            <Text dimColor>{' [enter] send · [esc] cancel'}</Text>
           </>
         )}
-      </Box>
+      </Text>
       <Text wrap="wrap">{rootComment.body}</Text>
       {thread.comments.length > 1 && (
         <Box flexDirection="column" marginTop={1}>
           {thread.comments.slice(1).map((reply) => (
             <Box key={reply.id} flexDirection="column" marginLeft={2}>
-              <Box>
+              <Text wrap="truncate-end">
                 <Text bold color="blue">
                   {reply.author}
                 </Text>
-                <Text dimColor> · {relativeTime(reply.createdAt)}</Text>
-              </Box>
+                <Text dimColor>{` · ${relativeTime(reply.createdAt)}`}</Text>
+              </Text>
               <Text wrap="wrap">{reply.body}</Text>
             </Box>
           ))}
@@ -201,22 +209,27 @@ export const LocalCommentCard = memo(function LocalCommentCard({
       paddingX={1}
       {...(maxWidth !== undefined ? { width: maxWidth } : {})}
     >
-      <Box>
+      {/* See note in <CommentThreadCard> — single <Text> keeps the
+          header on one row and truncates on overflow rather than
+          flex-shrinking each span into a wrapping column. */}
+      <Text wrap="truncate-end">
         <Text bold color={severityColor}>
           [{comment.severity}]
         </Text>
-        {statusMark && <Text color={statusMark.color}> {statusMark.char}</Text>}
-        {pendingDelete && <Text color="red">{'  '}Delete? [y]es [n]o</Text>}
+        {statusMark && (
+          <Text color={statusMark.color}>{` ${statusMark.char}`}</Text>
+        )}
+        {pendingDelete && <Text color="red">{'  Delete? [y]es [n]o'}</Text>}
         {selected && !editing && !pendingDelete && (
-          <Text dimColor>{'  '}[e]dit [x]delete [p]ost</Text>
+          <Text dimColor>{'  [e]dit [x]delete [p]ost'}</Text>
         )}
         {editing && (
           <>
-            <Text color="cyan">{'  '}EDITING</Text>
-            <Text dimColor> [esc] save · [ctrl+c] cancel</Text>
+            <Text color="cyan">{'  EDITING'}</Text>
+            <Text dimColor>{' [esc] save · [ctrl+c] cancel'}</Text>
           </>
         )}
-      </Box>
+      </Text>
       {editing ? (
         <Text>
           {editBuffer ?? ''}
