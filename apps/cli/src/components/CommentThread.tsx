@@ -273,19 +273,56 @@ export const LocalCommentCard = memo(function LocalCommentCard({
  * be shorter when the body is short, but we'd rather over-reserve than
  * have comment cards push file rows off-screen.
  */
-export function estimateCardRows(thread: RemoteCommentThread): number {
+export function estimateCardRows(
+  thread: RemoteCommentThread,
+  contentWidth?: number
+): number {
   const root = thread.comments[0];
   if (!root) return 0;
-  const BODY_LINE_CAP = 4;
-  const rootBodyLines = Math.min(
-    BODY_LINE_CAP,
-    Math.max(1, root.body.split('\n').length)
-  );
-  // border-top + author row + body + border-bottom + marginBottom
-  const rootRows = 2 + 1 + rootBodyLines + 1;
-  // per reply: author row + body (1 line approx) + marginTop gap
-  const replyRows = Math.max(0, thread.comments.length - 1) * 3;
+  // border-top + header + body + border-bottom + marginBottom = 2 + 1 + N + 1
+  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
+  // per reply: header + body + marginTop gap
+  const replyRows = thread.comments.slice(1).reduce((sum, c) => {
+    return sum + 1 + estimateBodyRows(c.body, contentWidth) + 1;
+  }, 0);
   return rootRows + replyRows;
+}
+
+/**
+ * Estimate how many rows a body string occupies after wrap. When
+ * `contentWidth` is unknown the number falls back to a 4-line cap that
+ * matches the pre-2026 behavior — fine for the file-list footer where
+ * the cap stays approximately right, but DiffViewer's row-budget slice
+ * passes a real width so long-bodied threads aren't undercounted.
+ */
+export function estimateBodyRows(body: string, contentWidth?: number): number {
+  const naturalLines = Math.max(1, body.split('\n').length);
+  if (contentWidth && contentWidth > 0) {
+    const wrapped = Math.max(
+      1,
+      Math.ceil(body.length / Math.max(1, contentWidth))
+    );
+    return Math.max(naturalLines, wrapped);
+  }
+  return Math.min(4, naturalLines);
+}
+
+/**
+ * Mirror of `estimateCardRows` for local drafts. Selected/editing cards
+ * show the full body; collapsed cards cap at 4 lines (matching the
+ * runtime MAX_COLLAPSED in <LocalCommentCard>).
+ */
+export function estimateLocalCardRows(
+  comment: ReviewComment,
+  contentWidth?: number,
+  selected = false
+): number {
+  const naturalLines = Math.max(1, comment.body.split('\n').length);
+  const bodyRows = selected
+    ? estimateBodyRows(comment.body, contentWidth)
+    : Math.min(4, naturalLines);
+  // border-top + header + body + border-bottom + marginBottom
+  return 2 + 1 + bodyRows + 1;
 }
 
 /**

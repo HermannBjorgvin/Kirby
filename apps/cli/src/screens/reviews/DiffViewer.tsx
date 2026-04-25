@@ -8,6 +8,8 @@ import {
   LocalCommentCard,
   CARD_MAX_WIDTH,
   CARD_INDENT,
+  estimateCardRows,
+  estimateLocalCardRows,
 } from '../../components/CommentThread.js';
 import { DiffRow } from './DiffRow.js';
 import { languageFromFilename } from '../../utils/language.js';
@@ -99,13 +101,42 @@ export const DiffViewer = memo(function DiffViewer({
 }) {
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
-  const visibleLines = annotatedLines.slice(
-    scrollOffset,
-    scrollOffset + viewportHeight
+  const cardWidth = Math.max(
+    20,
+    Math.min(CARD_MAX_WIDTH, paneCols - CARD_INDENT - 2)
   );
+  // Card content area = card width minus borders (2) and paddingX (2).
+  const cardContentWidth = Math.max(1, cardWidth - 4);
+
+  // Slice annotated lines by accumulated PHYSICAL rows, not by slot
+  // count. Each diff/separator line is one physical row, but a card
+  // renders many — so the previous slot-based slice would pack
+  // `paneRows-3` slots into a paneRows-row pane, and Yoga would
+  // collapse the overflow by overlaying the last card's bottom border
+  // on its body and dropping the header row. With long-bodied threads
+  // near the bottom of a long file that produced the
+  // `[v]reopen`-floating-outside-the-card glitch users reported.
+  const visibleLines: AnnotatedLine[] = [];
+  let rowsUsed = 0;
+  for (let i = scrollOffset; i < annotatedLines.length; i++) {
+    const entry = annotatedLines[i]!;
+    const r =
+      entry.type === 'thread-remote'
+        ? estimateCardRows(entry.thread, cardContentWidth)
+        : entry.type === 'thread-local'
+        ? estimateLocalCardRows(
+            entry.comment,
+            cardContentWidth,
+            selectedCommentId === entry.comment.id
+          )
+        : 1;
+    if (rowsUsed + r > viewportHeight && visibleLines.length > 0) break;
+    visibleLines.push(entry);
+    rowsUsed += r;
+  }
   const totalLines = annotatedLines.length;
   const atTop = scrollOffset === 0;
-  const atBottom = scrollOffset + viewportHeight >= totalLines;
+  const atBottom = scrollOffset + visibleLines.length >= totalLines;
 
   const hasComments = annotatedLines.some(
     (l) => l.type === 'thread-remote' || l.type === 'thread-local'
@@ -163,14 +194,6 @@ export const DiffViewer = memo(function DiffViewer({
                 </Text>
               );
             }
-            // Cap card width + indent so threads align with the diff
-            // gutter, matching the visual layout the old ANSI renderer
-            // shipped. The cap uses `min(paneCols - gutter, CARD_MAX_WIDTH)`
-            // so narrow panes still render usable cards.
-            const cardWidth = Math.max(
-              20,
-              Math.min(CARD_MAX_WIDTH, paneCols - CARD_INDENT - 2)
-            );
             if (line.type === 'thread-remote') {
               return (
                 <CommentThreadCard
