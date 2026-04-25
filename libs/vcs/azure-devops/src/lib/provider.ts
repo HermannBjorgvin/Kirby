@@ -439,15 +439,31 @@ interface AdoThreadComment {
   commentType?: string;
 }
 
+interface AdoLineRef {
+  line?: number;
+}
+
 interface AdoThread {
   id?: number;
   status?: string;
   threadContext?: {
     filePath?: string;
-    rightFileStart?: { line?: number };
-    rightFileEnd?: { line?: number };
-    leftFileStart?: { line?: number };
-    leftFileEnd?: { line?: number };
+    rightFileStart?: AdoLineRef;
+    rightFileEnd?: AdoLineRef;
+    leftFileStart?: AdoLineRef;
+    leftFileEnd?: AdoLineRef;
+  };
+  /** Iteration-tracking metadata. When the diff has changed since
+   *  the comment was made and ADO can't track the line forward, the
+   *  current `threadContext` lines may be null while the originals
+   *  here remain — same idea as GitHub's `originalLine`. */
+  pullRequestThreadContext?: {
+    trackingCriteria?: {
+      origLeftFileStart?: AdoLineRef;
+      origLeftFileEnd?: AdoLineRef;
+      origRightFileStart?: AdoLineRef;
+      origRightFileEnd?: AdoLineRef;
+    };
   };
   comments?: AdoThreadComment[];
   properties?: Record<string, unknown>;
@@ -473,20 +489,40 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
 
   const ctx = thread.threadContext;
   const hasFile = ctx?.filePath != null;
-  const isLeftSide = ctx?.leftFileStart != null && ctx?.rightFileStart == null;
+  const orig = thread.pullRequestThreadContext?.trackingCriteria;
+
+  // Resolve current vs. original line refs per side. ADO can keep
+  // `threadContext` populated across iterations, but when the line a
+  // thread was anchored to is removed in a later push, the current
+  // ref goes null and only `trackingCriteria.orig*` survives. Mirrors
+  // GitHub's `originalLine` fallback so outdated threads still render
+  // inline at the line they were originally placed on.
+  const leftStart = ctx?.leftFileStart?.line ?? orig?.origLeftFileStart?.line;
+  const leftEnd = ctx?.leftFileEnd?.line ?? orig?.origLeftFileEnd?.line;
+  const rightStart =
+    ctx?.rightFileStart?.line ?? orig?.origRightFileStart?.line;
+  const rightEnd = ctx?.rightFileEnd?.line ?? orig?.origRightFileEnd?.line;
+
+  // Side selection: LEFT when the thread is anchored to a deleted/old
+  // line (left side has a ref, right side doesn't) — same heuristic
+  // as before, but applied to the resolved (current OR original) refs.
+  const isLeftSide = leftStart != null && rightStart == null;
+
+  // We hit the outdated path when the current threadContext was null
+  // and we had to read from trackingCriteria. Set isOutdated so the
+  // card shows the dim "(outdated)" tag.
+  const usedFallback =
+    (ctx?.leftFileStart?.line == null && leftStart != null) ||
+    (ctx?.rightFileStart?.line == null && rightStart != null);
 
   return {
     id: String(thread.id ?? ''),
     file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
-    lineStart: isLeftSide
-      ? ctx?.leftFileStart?.line ?? null
-      : ctx?.rightFileStart?.line ?? null,
-    lineEnd: isLeftSide
-      ? ctx?.leftFileEnd?.line ?? null
-      : ctx?.rightFileEnd?.line ?? null,
+    lineStart: isLeftSide ? leftStart ?? null : rightStart ?? null,
+    lineEnd: isLeftSide ? leftEnd ?? null : rightEnd ?? null,
     side: isLeftSide ? 'LEFT' : 'RIGHT',
     isResolved: adoStatusToResolved(thread.status),
-    isOutdated: false, // ADO doesn't expose an "outdated" concept
+    isOutdated: usedFallback,
     // All ADO threads (inline + general) share the same thread
     // resource and support status transitions.
     canResolve: true,
