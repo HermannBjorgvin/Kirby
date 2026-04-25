@@ -322,6 +322,8 @@ const FETCH_PR_THREADS_QUERY = `
             path
             line
             startLine
+            originalLine
+            originalStartLine
             diffSide
             comments(first: 100) {
               nodes {
@@ -363,6 +365,8 @@ interface ReviewThreadNode {
   path: string | null;
   line: number | null;
   startLine: number | null;
+  originalLine: number | null;
+  originalStartLine: number | null;
   diffSide: 'LEFT' | 'RIGHT' | null;
   comments: {
     nodes: ThreadCommentNode[];
@@ -395,11 +399,19 @@ interface FetchPrThreadsResponse {
 }
 
 function transformReviewThread(node: ReviewThreadNode): RemoteCommentThread {
+  // For outdated threads GitHub returns `line: null` because the
+  // commented line no longer exists at HEAD. Fall back to
+  // `originalLine` so the thread can still be placed inline at the
+  // line it was originally anchored to — otherwise it would land in
+  // the "comments on lines not in diff" tail and be invisible to
+  // anyone who doesn't scroll past the file.
+  const effectiveLine = node.line ?? node.originalLine;
+  const effectiveStart = node.startLine ?? node.originalStartLine;
   return {
     id: node.id,
     file: node.path,
-    lineStart: node.startLine ?? node.line,
-    lineEnd: node.line,
+    lineStart: effectiveStart ?? effectiveLine,
+    lineEnd: effectiveLine,
     side: node.diffSide === 'LEFT' ? 'LEFT' : 'RIGHT',
     isResolved: node.isResolved,
     isOutdated: node.isOutdated,
