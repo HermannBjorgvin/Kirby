@@ -487,6 +487,9 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
     side: isLeftSide ? 'LEFT' : 'RIGHT',
     isResolved: adoStatusToResolved(thread.status),
     isOutdated: false, // ADO doesn't expose an "outdated" concept
+    // All ADO threads (inline + general) share the same thread
+    // resource and support status transitions.
+    canResolve: true,
     comments: humanComments.map(
       (c): RemoteCommentReply => ({
         id: String(c.id ?? ''),
@@ -736,21 +739,22 @@ export const azureDevOpsProvider: VcsProvider = {
     auth: Record<string, string>,
     project: Record<string, string>,
     prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     body: string
   ): Promise<RemoteCommentReply> {
     const config = toAdoConfig(auth, project);
-    return replyToAdoThread(config, prId, threadId, body);
+    return replyToAdoThread(config, prId, thread.id, body);
   },
 
   async setThreadResolved(
     auth: Record<string, string>,
     project: Record<string, string>,
     prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     resolved: boolean
   ): Promise<void> {
+    if (!thread.canResolve) return;
     const config = toAdoConfig(auth, project);
-    await setAdoThreadResolved(config, prId, threadId, resolved);
+    await setAdoThreadResolved(config, prId, thread.id, resolved);
   },
 };

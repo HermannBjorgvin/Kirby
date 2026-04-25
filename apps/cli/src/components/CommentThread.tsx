@@ -88,7 +88,10 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         {thread.isOutdated && <Text dimColor> (outdated)</Text>}
         {selected && !isReplying && (
           <Text dimColor>
-            {'  '}[r]eply [v]{thread.isResolved ? 'reopen' : 'resolve'}
+            {'  '}[r]eply
+            {thread.canResolve
+              ? ` [v]${thread.isResolved ? 'reopen' : 'resolve'}`
+              : ''}
           </Text>
         )}
         {isReplying && (

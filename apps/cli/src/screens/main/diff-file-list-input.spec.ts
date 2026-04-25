@@ -56,6 +56,7 @@ function makeThread(id: string, body = 'hi'): RemoteCommentThread {
     side: 'RIGHT',
     isResolved: false,
     isOutdated: false,
+    canResolve: true,
     comments: [
       {
         id: `${id}-root`,

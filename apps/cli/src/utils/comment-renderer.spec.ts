@@ -54,6 +54,7 @@ function makeRemoteThread(
     side: 'RIGHT',
     isResolved: false,
     isOutdated: false,
+    canResolve: true,
     comments: [
       {
         id: `${overrides.id}-root`,

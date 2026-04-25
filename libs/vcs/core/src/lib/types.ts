@@ -84,21 +84,26 @@ export interface VcsProvider {
     prId: number
   ): Promise<PullRequestComments>;
 
-  /** Reply to an existing comment thread */
+  /** Reply to an existing comment thread. The thread is passed (not just
+   *  the id) so providers can dispatch on `replyKind` — GitHub review
+   *  threads use one mutation, GitHub issue comments (general PR
+   *  comments) use another. */
   replyToThread?(
     auth: Record<string, string>,
     project: Record<string, string>,
     prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     body: string
   ): Promise<RemoteCommentReply>;
 
-  /** Resolve or reopen a comment thread */
+  /** Resolve or reopen a comment thread. Callers should check
+   *  `thread.canResolve` first — for thread kinds that don't support
+   *  resolution (e.g. GitHub issue comments) this call is a no-op. */
   setThreadResolved?(
     auth: Record<string, string>,
     project: Record<string, string>,
     prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     resolved: boolean
   ): Promise<void>;
 }
@@ -114,13 +119,27 @@ export interface RemoteCommentReply {
 }
 
 export interface RemoteCommentThread {
-  id: string; // thread ID (GitHub: reviewThread node ID, ADO: thread id)
+  id: string; // thread ID (GitHub: reviewThread or IssueComment node ID, ADO: thread id)
   file: string | null; // null = general PR comment (not file-specific)
   lineStart: number | null; // null for general comments
   lineEnd: number | null;
   side: 'LEFT' | 'RIGHT';
   isResolved: boolean;
   isOutdated: boolean; // true if code has changed since the comment
+  /** Whether the backing remote type supports `setThreadResolved`.
+   *  GitHub issue-comments (general PR comments) don't; review threads
+   *  and all ADO threads do. UI uses this to suppress the [v]resolve
+   *  hint and skip the no-op mutation. */
+  canResolve: boolean;
+  /** Provider-specific hint used at reply time to pick the right
+   *  mutation. GitHub review threads use the thread id directly; GitHub
+   *  issue comments need the PR node id as the comment subject. ADO
+   *  just uses thread id. */
+  replyKind?: 'github-issue-comment';
+  /** For `replyKind === 'github-issue-comment'`, the GraphQL node id
+   *  of the PullRequest the comment lives on (used as `subjectId` of
+   *  the `addComment` mutation). Undefined for other kinds. */
+  replySubjectId?: string;
   comments: RemoteCommentReply[]; // first entry = root comment, rest = replies
 }
 

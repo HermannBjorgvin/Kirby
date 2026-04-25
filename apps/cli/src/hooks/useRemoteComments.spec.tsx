@@ -23,6 +23,7 @@ function makeThread(
     side: 'RIGHT',
     isResolved: false,
     isOutdated: false,
+    canResolve: true,
     comments: [
       {
         id: `${overrides.id}-c1`,
@@ -199,7 +200,12 @@ describe('useRemoteComments', () => {
   });
 
   it('replyToThread re-throws provider errors so callers can .catch them', async () => {
-    const payload: PullRequestComments = { threads: [], generalComments: [] };
+    // Provider needs the thread in state so the hook can find it before
+    // dispatching to provider.replyToThread.
+    const payload: PullRequestComments = {
+      threads: [makeThread({ id: 't1' })],
+      generalComments: [],
+    };
     const provider = {
       id: 'github',
       fetchCommentThreads: vi.fn().mockResolvedValue(payload),
@@ -207,7 +213,7 @@ describe('useRemoteComments', () => {
     } as unknown as VcsProvider;
 
     const { outRef, unmount } = mountProbe(42, provider);
-    await flush();
+    await waitForState(outRef, (v) => v.threads.length === 1);
 
     await expect(outRef.current!.replyToThread('t1', 'x')).rejects.toThrow(
       'network boom'
@@ -218,15 +224,16 @@ describe('useRemoteComments', () => {
   it('toggleResolved re-throws provider errors and does not fire onResolvedChange', async () => {
     const provider = {
       id: 'github',
-      fetchCommentThreads: vi
-        .fn()
-        .mockResolvedValue({ threads: [], generalComments: [] }),
+      fetchCommentThreads: vi.fn().mockResolvedValue({
+        threads: [makeThread({ id: 't1' })],
+        generalComments: [],
+      }),
       setThreadResolved: vi.fn().mockRejectedValue(new Error('forbidden')),
     } as unknown as VcsProvider;
     const onResolvedChange = vi.fn();
 
     const { outRef, unmount } = mountProbe(42, provider, onResolvedChange);
-    await flush();
+    await waitForState(outRef, (v) => v.threads.length === 1);
 
     await expect(outRef.current!.toggleResolved('t1', true)).rejects.toThrow(
       'forbidden'

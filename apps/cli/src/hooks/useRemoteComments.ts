@@ -98,12 +98,19 @@ export function useRemoteComments(
       if (!prId || !provider?.replyToThread) {
         throw new Error('Reply not available — no provider or PR');
       }
+      // Look up the thread by id — providers branch on its `replyKind`
+      // to pick the right mutation (GitHub review-thread vs issue-comment).
+      const all = [...comments.threads, ...comments.generalComments];
+      const thread = all.find((t) => t.id === threadId);
+      if (!thread) {
+        throw new Error(`Reply failed: thread ${threadId} not found`);
+      }
       try {
         const reply = await provider.replyToThread(
           auth,
           project,
           prId,
-          threadId,
+          thread,
           body
         );
         // Optimistically update the local state
@@ -131,20 +138,18 @@ export function useRemoteComments(
         throw err;
       }
     },
-    [prId, provider, auth, project]
+    [prId, provider, auth, project, comments]
   );
 
   const toggleResolved = useCallback(
     async (threadId: string, resolved: boolean): Promise<boolean> => {
       if (!prId || !provider?.setThreadResolved) return false;
+      const all = [...comments.threads, ...comments.generalComments];
+      const thread = all.find((t) => t.id === threadId);
+      if (!thread) return false;
+      if (!thread.canResolve) return false;
       try {
-        await provider.setThreadResolved(
-          auth,
-          project,
-          prId,
-          threadId,
-          resolved
-        );
+        await provider.setThreadResolved(auth, project, prId, thread, resolved);
         // Optimistically update the local state
         const updateThreads = (
           threads: RemoteCommentThread[]
@@ -173,7 +178,7 @@ export function useRemoteComments(
         throw err;
       }
     },
-    [prId, provider, auth, project, onResolvedChange]
+    [prId, provider, auth, project, onResolvedChange, comments]
   );
 
   return {

@@ -312,6 +312,7 @@ const FETCH_PR_THREADS_QUERY = `
   query($owner: String!, $repo: String!, $prNumber: Int!, $threadCursor: String, $commentCursor: String) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $prNumber) {
+        id
         reviewThreads(first: 100, after: $threadCursor) {
           pageInfo { hasNextPage endCursor }
           nodes {
@@ -379,6 +380,7 @@ interface FetchPrThreadsResponse {
   data: {
     repository: {
       pullRequest: {
+        id: string;
         reviewThreads: {
           pageInfo: { hasNextPage: boolean; endCursor: string | null };
           nodes: ReviewThreadNode[];
@@ -401,6 +403,7 @@ function transformReviewThread(node: ReviewThreadNode): RemoteCommentThread {
     side: node.diffSide === 'LEFT' ? 'LEFT' : 'RIGHT',
     isResolved: node.isResolved,
     isOutdated: node.isOutdated,
+    canResolve: true,
     comments: node.comments.nodes.map(
       (c): RemoteCommentReply => ({
         id: c.id,
@@ -414,7 +417,8 @@ function transformReviewThread(node: ReviewThreadNode): RemoteCommentThread {
 }
 
 function transformGeneralComment(
-  node: GeneralCommentNode
+  node: GeneralCommentNode,
+  prNodeId: string
 ): RemoteCommentThread {
   return {
     id: node.id,
@@ -424,6 +428,13 @@ function transformGeneralComment(
     side: 'RIGHT',
     isResolved: false,
     isOutdated: false,
+    // GitHub issue comments have no resolve concept.
+    canResolve: false,
+    // Replies need the PR node id as the `subjectId` of the
+    // `addComment` mutation (you can't reply to the comment itself —
+    // you add another comment to the same subject).
+    replyKind: 'github-issue-comment',
+    replySubjectId: prNodeId,
     comments: [
       {
         id: node.id,
@@ -482,7 +493,7 @@ async function fetchCommentThreadsGitHub(
     // Process general comments
     if (needComments) {
       for (const node of pr.comments.nodes) {
-        generalComments.push(transformGeneralComment(node));
+        generalComments.push(transformGeneralComment(node, pr.id));
       }
       if (pr.comments.pageInfo.hasNextPage && pr.comments.pageInfo.endCursor) {
         commentCursor = pr.comments.pageInfo.endCursor;
@@ -513,6 +524,25 @@ const REPLY_TO_THREAD_MUTATION = `
   }
 `;
 
+// General PR comments (GitHub issue-comment nodes) aren't on a review
+// thread — replying means adding a sibling comment to the same PR
+// subject. `subjectId` is the PR's GraphQL node id, captured at fetch
+// time into the thread's `replySubjectId` field.
+const ADD_PR_COMMENT_MUTATION = `
+  mutation($subjectId: ID!, $body: String!) {
+    addComment(input: { subjectId: $subjectId, body: $body }) {
+      commentEdge {
+        node {
+          id
+          body
+          createdAt
+          author { login }
+        }
+      }
+    }
+  }
+`;
+
 interface ReplyMutationResponse {
   data: {
     addPullRequestReviewThreadReply: {
@@ -521,6 +551,21 @@ interface ReplyMutationResponse {
         body: string;
         createdAt: string;
         author: { login: string } | null;
+      };
+    };
+  };
+}
+
+interface AddCommentMutationResponse {
+  data: {
+    addComment: {
+      commentEdge: {
+        node: {
+          id: string;
+          body: string;
+          createdAt: string;
+          author: { login: string } | null;
+        };
       };
     };
   };
@@ -685,11 +730,29 @@ export const githubProvider: VcsProvider = {
     _auth: Record<string, string>,
     _project: Record<string, string>,
     _prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     body: string
   ): Promise<RemoteCommentReply> {
+    if (thread.replyKind === 'github-issue-comment') {
+      if (!thread.replySubjectId) {
+        throw new Error(
+          'Cannot reply to GitHub issue comment: missing replySubjectId'
+        );
+      }
+      const result = (await ghGraphQL(ADD_PR_COMMENT_MUTATION, {
+        subjectId: thread.replySubjectId,
+        body,
+      })) as AddCommentMutationResponse;
+      const c = result.data.addComment.commentEdge.node;
+      return {
+        id: c.id,
+        author: c.author?.login ?? 'unknown',
+        body: c.body,
+        createdAt: c.createdAt,
+      };
+    }
     const result = (await ghGraphQL(REPLY_TO_THREAD_MUTATION, {
-      threadId,
+      threadId: thread.id,
       body,
     })) as ReplyMutationResponse;
     const c = result.data.addPullRequestReviewThreadReply.comment;
@@ -705,12 +768,13 @@ export const githubProvider: VcsProvider = {
     _auth: Record<string, string>,
     _project: Record<string, string>,
     _prId: number,
-    threadId: string,
+    thread: RemoteCommentThread,
     resolved: boolean
   ): Promise<void> {
+    if (!thread.canResolve) return;
     const mutation = resolved
       ? RESOLVE_THREAD_MUTATION
       : UNRESOLVE_THREAD_MUTATION;
-    await ghGraphQL(mutation, { threadId });
+    await ghGraphQL(mutation, { threadId: thread.id });
   },
 };
