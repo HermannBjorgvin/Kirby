@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { parseUnifiedDiff } from '@kirby/diff';
@@ -116,8 +116,68 @@ export function DiffFileViewerContainer({
     );
   }, [interleaveResult, fileComments]);
 
+  // Auto-select + scroll-into-view the first comment when a file with
+  // remote threads / local drafts is opened. Without this the user has
+  // to press Shift+↓ once just to land on a comment that's typically
+  // far down the file — and because the scroll jump on the first press
+  // can move multiple cards out of view, it looks like "select →
+  // deselect" rather than "moved to thread N+1".
+  //
+  // Tracked per-file: the auto-select fires once per file change. If
+  // the user clears selection with Esc inside the same file, we do NOT
+  // re-select — they explicitly opted out.
+  const autoSelectedFileRef = useRef<string | null>(null);
+  const { setSelectedCommentId, setDiffScrollOffset } = pane;
+  useEffect(() => {
+    const file = pane.diffViewFile;
+    if (!file) return;
+    // Already auto-selected for this file — don't re-fire (e.g. when
+    // the user cleared selection with Esc, we honor that).
+    if (autoSelectedFileRef.current === file) return;
+    // Build the same nav pool diff-viewer-input uses (sorted by line)
+    // so the "first comment" matches what Shift+↓ would walk to.
+    const navPool: { id: string; lineStart: number }[] = [
+      ...fileComments.map((c) => ({
+        id: c.id,
+        lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
+      })),
+      ...fileRemoteThreads.map((t) => ({
+        id: t.id,
+        lineStart: t.lineStart ?? Number.POSITIVE_INFINITY,
+      })),
+    ].sort((a, b) => a.lineStart - b.lineStart);
+    // Wait for at least one comment / thread to load before arming the
+    // ref. Remote threads arrive async on file open so the first paint
+    // may have an empty pool — skipping that pass means we still
+    // auto-select once the data lands.
+    if (navPool.length === 0) return;
+    autoSelectedFileRef.current = file;
+    const first = navPool[0]!;
+    setSelectedCommentId(first.id);
+    // Scroll the viewport so the first comment is in view. The scroll
+    // target mirrors `scrollToComment` in diff-viewer-input — pin two
+    // rows above the comment's annotated index for a bit of code
+    // context.
+    const info = commentPositions.get(first.id);
+    if (info) {
+      const viewportHeight = Math.max(1, terminal.paneRows - 3);
+      const maxScroll = Math.max(0, diffTotalLines - viewportHeight);
+      setDiffScrollOffset(
+        Math.min(Math.max(0, info.refStartLine - 2), maxScroll)
+      );
+    }
+  }, [
+    pane.diffViewFile,
+    fileComments,
+    fileRemoteThreads,
+    commentPositions,
+    diffTotalLines,
+    terminal.paneRows,
+    setSelectedCommentId,
+    setDiffScrollOffset,
+  ]);
+
   // ── Scroll wheel ────────────────────────────────────────────────
-  const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(
     (delta: number) => {
       const viewportHeight = Math.max(1, terminal.paneRows - 3);
