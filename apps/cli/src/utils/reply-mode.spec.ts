@@ -151,4 +151,75 @@ describe('handleReplyModeInput', () => {
     expect(handleReplyModeInput('i', makeKey(), deps)).toBe(true);
     expect(pane.replyBuffer).toBe('hi');
   });
+
+  // Regression: double-Enter while a previous post is in flight used to
+  // fire `replyToThread` twice, posting duplicate replies. Guard the
+  // in-flight thread id so the second Enter is a no-op until the first
+  // resolves.
+  it('double-Enter while a previous post is in flight only fires one mutation', async () => {
+    const pane = makePane({
+      replyingToThreadId: 't1',
+      replyBuffer: 'hello',
+    });
+    let resolveFirst: (v: unknown) => void = () => undefined;
+    const replyToThread = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveFirst = res;
+        })
+    );
+    const flashStatus = vi.fn();
+    const deps: ReplyModeDeps = { pane, flashStatus, replyToThread };
+
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    expect(replyToThread).toHaveBeenCalledTimes(1);
+
+    resolveFirst({
+      id: 'r',
+      author: 'me',
+      body: 'hello',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(replyToThread).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: user posts reply on T1, hits Esc before it resolves,
+  // starts new reply on T2 — the first resolve must NOT clear T2's
+  // state. The success handler reads `pane.replyingToThreadId` lazily
+  // and only clears when it still matches the posted thread id.
+  it('resolution of a stale post does not clobber a new reply mode', async () => {
+    const pane = makePane({
+      replyingToThreadId: 't1',
+      replyBuffer: 'first',
+    });
+    let resolveFirst: (v: unknown) => void = () => undefined;
+    const replyToThread = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveFirst = res;
+        })
+    );
+    const flashStatus = vi.fn();
+    const deps: ReplyModeDeps = { pane, flashStatus, replyToThread };
+
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    // User cancels and starts fresh on a different thread.
+    handleReplyModeInput('', makeKey({ escape: true }), deps);
+    pane.setReplyingToThreadId('t2');
+    pane.setReplyBuffer('second');
+
+    resolveFirst({
+      id: 'r1',
+      author: 'me',
+      body: 'first',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // T2's reply mode should still be intact.
+    expect(pane.replyingToThreadId).toBe('t2');
+    expect(pane.replyBuffer).toBe('second');
+  });
 });
