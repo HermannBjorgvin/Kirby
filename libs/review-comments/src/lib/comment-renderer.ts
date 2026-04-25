@@ -437,3 +437,194 @@ export function getCommentPositions(
 
   return positions;
 }
+
+// ── Row estimation + row map ───────────────────────────────────────
+//
+// These were previously in `apps/cli/src/components/CommentThread.tsx`
+// alongside the rendering components. They've moved here because:
+// 1. They're pure functions over the renderer's data types and need
+//    no React context.
+// 2. The new `buildRowMap` belongs here (it operates on AnnotatedLine
+//    streams that this module produces) and needs them.
+// 3. Keeping them next to the data shape they describe lets all
+//    consumers — the diff viewer's row-based scroll model, the file
+//    list footer's `planCommentFooter`, and any future surface —
+//    share one source of truth.
+
+/**
+ * Estimate how many rows a body string occupies after wrap. When
+ * `contentWidth` is unknown the number falls back to a 4-line cap
+ * (matches the file-list footer's pre-2026 behaviour); the diff
+ * viewer's row map always passes a real width so long-bodied threads
+ * aren't undercounted.
+ */
+export function estimateBodyRows(body: string, contentWidth?: number): number {
+  const naturalLines = Math.max(1, body.split('\n').length);
+  if (contentWidth && contentWidth > 0) {
+    const wrapped = Math.max(
+      1,
+      Math.ceil(body.length / Math.max(1, contentWidth))
+    );
+    return Math.max(naturalLines, wrapped);
+  }
+  return Math.min(4, naturalLines);
+}
+
+/**
+ * Estimate the row height of a `<CommentThreadCard>` so callers can
+ * reserve space without measuring the rendered output. Always counts
+ * the full thread (root + every reply) — the card no longer collapses
+ * replies when not selected.
+ *
+ * Numbers mirror the card's structure: top border + author row +
+ * wrapped body + bottom border + marginBottom = `4 + bodyRows`.
+ * Per-reply: header + body + marginTop gap.
+ */
+export function estimateCardRows(
+  thread: RemoteCommentThread,
+  contentWidth?: number
+): number {
+  const root = thread.comments[0];
+  if (!root) return 0;
+  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
+  const replyRows = thread.comments.slice(1).reduce((sum, c) => {
+    return sum + 1 + estimateBodyRows(c.body, contentWidth) + 1;
+  }, 0);
+  return rootRows + replyRows;
+}
+
+/**
+ * Mirror of `estimateCardRows` for local drafts. Selected/editing
+ * cards show the full body; collapsed cards cap at 4 lines (matching
+ * the runtime `MAX_COLLAPSED` in `<LocalCommentCard>`).
+ */
+export function estimateLocalCardRows(
+  comment: ReviewComment,
+  contentWidth?: number,
+  selected = false
+): number {
+  const naturalLines = Math.max(1, comment.body.split('\n').length);
+  const bodyRows = selected
+    ? estimateBodyRows(comment.body, contentWidth)
+    : Math.min(4, naturalLines);
+  // border-top + header + body + border-bottom + marginBottom
+  return 2 + 1 + bodyRows + 1;
+}
+
+/**
+ * Extra rows reserved when a thread card has its reply input open.
+ * The input box renders as a bordered Box (~3 rows) plus the
+ * marginTop gap between body and input = 4 rows. Used by `buildRowMap`
+ * so the row map's totals stay correct while the user composes.
+ */
+export const REPLY_INPUT_ROWS = 4;
+
+/**
+ * Extra rows reserved when a local-draft card is in `editing` state.
+ * Editing replaces the body Text with an input that may run a row or
+ * two longer than the static body, so we reserve a couple of slack
+ * rows on top of the selected-body estimate. Conservative.
+ */
+export const EDIT_INPUT_SLACK_ROWS = 2;
+
+export interface RowMapEntry {
+  /** First physical row of this entry, measured from the top of the file diff. */
+  rowStart: number;
+  /** How many physical rows this entry consumes when rendered. */
+  rowSpan: number;
+}
+
+export interface RowMap {
+  /** 1:1 with the annotated-line stream it was built from. */
+  positions: RowMapEntry[];
+  /** Sum of every `rowSpan` — the row-unit equivalent of `annotatedLines.length`. */
+  totalRows: number;
+  /** Section anchors translated from slot indices to physical row offsets. */
+  sectionAnchorRows: number[];
+}
+
+export interface BuildRowMapInputs {
+  annotatedLines: AnnotatedLine[];
+  /** Slot indices of section starts, as returned by `interleaveComments`. */
+  sectionAnchors: number[];
+  /** Card content width (after borders + paddingX). Pass the rendered width. */
+  contentWidth: number;
+  /** Active reply-mode thread id — its row span gets `REPLY_INPUT_ROWS` extra. */
+  replyingToThreadId?: string | null;
+  /** Active local-edit comment id — its row span gets `EDIT_INPUT_SLACK_ROWS` extra. */
+  editingCommentId?: string | null;
+  /**
+   * Currently selected comment id. Only affects `<LocalCommentCard>`'s
+   * body-collapse decision (selected drafts show the full body, others
+   * cap at 4 lines). Remote thread cards always render fully expanded.
+   */
+  selectedCommentId?: string | null;
+}
+
+/**
+ * Single source of truth for physical row positions across the diff
+ * viewer's annotated-line stream. The diff viewer's scroll model
+ * advances one ROW at a time but cards are atomic React components —
+ * this map lets the slicer know which entries intersect the viewport
+ * and where to clip the first one's top so partial cards render
+ * cleanly via `marginTop={-topClip}`.
+ *
+ * Pure function: deterministic given inputs, no I/O. Cheap enough to
+ * recompute via `useMemo` on each render. Re-runs when reply / edit
+ * state changes (those bump card heights) or when the terminal
+ * resizes (contentWidth changes).
+ */
+export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
+  const {
+    annotatedLines,
+    sectionAnchors,
+    contentWidth,
+    replyingToThreadId,
+    editingCommentId,
+    selectedCommentId,
+  } = inputs;
+
+  const positions: RowMapEntry[] = new Array(annotatedLines.length);
+  let cursor = 0;
+  for (let i = 0; i < annotatedLines.length; i++) {
+    const entry = annotatedLines[i]!;
+    let span = 1;
+    if (entry.type === 'thread-remote') {
+      span = estimateCardRows(entry.thread, contentWidth);
+      if (entry.thread.id === replyingToThreadId) {
+        span += REPLY_INPUT_ROWS;
+      }
+    } else if (entry.type === 'thread-local') {
+      span = estimateLocalCardRows(
+        entry.comment,
+        contentWidth,
+        selectedCommentId === entry.comment.id
+      );
+      if (entry.comment.id === editingCommentId) {
+        span += EDIT_INPUT_SLACK_ROWS;
+      }
+    }
+    positions[i] = { rowStart: cursor, rowSpan: span };
+    cursor += span;
+  }
+  const totalRows = cursor;
+
+  // sectionAnchors are slot indices into annotatedLines. Translate
+  // each to its physical row by looking up the corresponding entry's
+  // rowStart. An anchor that points past the end of the stream maps
+  // to totalRows (i.e. "the bottom"); an empty stream collapses to
+  // [0].
+  const sectionAnchorRows: number[] = [];
+  for (const anchor of sectionAnchors) {
+    if (anchor <= 0) {
+      sectionAnchorRows.push(0);
+    } else if (anchor >= positions.length) {
+      sectionAnchorRows.push(totalRows);
+    } else {
+      sectionAnchorRows.push(positions[anchor]!.rowStart);
+    }
+  }
+  if (sectionAnchorRows.length === 0) sectionAnchorRows.push(0);
+
+  return { positions, totalRows, sectionAnchorRows };
+}

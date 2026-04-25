@@ -76,7 +76,12 @@ function scrollToComment(
   if (!positions) return;
   const info = positions.get(commentId);
   if (!info) return;
-  const scrollTarget = Math.max(0, info.refStartLine - 2);
+  // info.refStartLine is a slot index — translate to a physical row
+  // via the row map before scrolling. Pin two rows above for code
+  // context.
+  const rowEntry = ctx.rowMap.positions[info.refStartLine];
+  if (!rowEntry) return;
+  const scrollTarget = Math.max(0, rowEntry.rowStart - 2);
   ctx.pane.setDiffScrollOffset(Math.min(scrollTarget, maxScroll));
 }
 
@@ -88,7 +93,9 @@ export function handleDiffViewerInput(
   ctx: DiffViewerHandlerCtx
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  // diffTotalRows is the row-count total now — `scrollOffset` is a
+  // physical row offset, not a slot index.
+  const maxScroll = Math.max(0, ctx.diffTotalRows - viewportHeight);
   // Posted local comments are rendered via the remote-thread path
   // (see interleaveComments) to avoid double-rendering. Skip them
   // here too so keyboard navigation (c/prev/next, v, r, p) doesn't
@@ -186,11 +193,11 @@ export function handleDiffViewerInput(
     return;
   }
 
-  // Section jump — Ctrl+↑/↓. Anchors are sorted annotated-line indices
+  // Section jump — Ctrl+↑/↓. Anchors are sorted physical-row offsets
   // where a navigable section starts (diff, out-of-diff comments, etc.).
   if (action === 'diff-viewer.next-section') {
     const cur = ctx.pane.diffScrollOffset;
-    const next = ctx.sectionAnchors.find((a) => a > cur);
+    const next = ctx.sectionAnchorRows.find((a) => a > cur);
     if (next !== undefined) {
       ctx.pane.setDiffScrollOffset(Math.min(next, maxScroll));
     }
@@ -198,7 +205,7 @@ export function handleDiffViewerInput(
   }
   if (action === 'diff-viewer.prev-section') {
     const cur = ctx.pane.diffScrollOffset;
-    const prev = [...ctx.sectionAnchors].reverse().find((a) => a < cur);
+    const prev = [...ctx.sectionAnchorRows].reverse().find((a) => a < cur);
     ctx.pane.setDiffScrollOffset(prev ?? 0);
     return;
   }

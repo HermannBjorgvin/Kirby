@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment } from '@kirby/review-comments';
+import { estimateCardRows, type ReviewComment } from '@kirby/review-comments';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //
@@ -110,7 +110,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         )}
       </Text>
       <Text wrap="wrap">{rootComment.body}</Text>
-      {thread.comments.length > 1 && selected && (
+      {thread.comments.length > 1 && (
         <Box flexDirection="column" marginTop={1}>
           {thread.comments.slice(1).map((reply) => (
             <Box key={reply.id} flexDirection="column" marginLeft={2}>
@@ -124,16 +124,6 @@ export const CommentThreadCard = memo(function CommentThreadCard({
             </Box>
           ))}
         </Box>
-      )}
-      {thread.comments.length > 1 && !selected && (
-        // Collapse replies when the card isn't selected — keeps the
-        // viewport from being dominated by long threads. The user
-        // selects the card (Shift+↓) to expand. Without this a single
-        // thread with replies eats enough rows that the next card
-        // gets row-budget-clipped off the bottom of the viewport.
-        <Text dimColor>{`  +${thread.comments.length - 1} ${
-          thread.comments.length - 1 === 1 ? 'reply' : 'replies'
-        }`}</Text>
       )}
       {isReplying && (
         <Box
@@ -272,73 +262,6 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   }
   return card;
 });
-
-// ── Layout estimation ────────────────────────────────────────────────
-
-/**
- * Estimate the row height of a <CommentThreadCard> so callers can reserve
- * space without measuring the rendered output. The numbers mirror the
- * card's structure: top border + author row + wrapped body (capped) +
- * per-reply block + marginBottom. It's conservative — real renders may
- * be shorter when the body is short, but we'd rather over-reserve than
- * have comment cards push file rows off-screen.
- */
-export function estimateCardRows(
-  thread: RemoteCommentThread,
-  contentWidth?: number,
-  selected = false
-): number {
-  const root = thread.comments[0];
-  if (!root) return 0;
-  // border-top + header + body + border-bottom + marginBottom = 2 + 1 + N + 1
-  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
-  // Replies are only rendered when the card is selected — see the
-  // CommentThreadCard branch. Collapsed cards just show a one-line
-  // "+N replies" hint, which is part of the rootRows body area
-  // already (no extra rows reserved here).
-  if (!selected) return rootRows;
-  const replyRows = thread.comments.slice(1).reduce((sum, c) => {
-    return sum + 1 + estimateBodyRows(c.body, contentWidth) + 1;
-  }, 0);
-  return rootRows + replyRows;
-}
-
-/**
- * Estimate how many rows a body string occupies after wrap. When
- * `contentWidth` is unknown the number falls back to a 4-line cap that
- * matches the pre-2026 behavior — fine for the file-list footer where
- * the cap stays approximately right, but DiffViewer's row-budget slice
- * passes a real width so long-bodied threads aren't undercounted.
- */
-export function estimateBodyRows(body: string, contentWidth?: number): number {
-  const naturalLines = Math.max(1, body.split('\n').length);
-  if (contentWidth && contentWidth > 0) {
-    const wrapped = Math.max(
-      1,
-      Math.ceil(body.length / Math.max(1, contentWidth))
-    );
-    return Math.max(naturalLines, wrapped);
-  }
-  return Math.min(4, naturalLines);
-}
-
-/**
- * Mirror of `estimateCardRows` for local drafts. Selected/editing cards
- * show the full body; collapsed cards cap at 4 lines (matching the
- * runtime MAX_COLLAPSED in <LocalCommentCard>).
- */
-export function estimateLocalCardRows(
-  comment: ReviewComment,
-  contentWidth?: number,
-  selected = false
-): number {
-  const naturalLines = Math.max(1, comment.body.split('\n').length);
-  const bodyRows = selected
-    ? estimateBodyRows(comment.body, contentWidth)
-    : Math.min(4, naturalLines);
-  // border-top + header + body + border-bottom + marginBottom
-  return 2 + 1 + bodyRows + 1;
-}
 
 /**
  * Shared layout decision for the diff-file-list PR-comments footer.

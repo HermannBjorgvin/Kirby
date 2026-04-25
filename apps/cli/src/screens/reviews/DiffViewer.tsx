@@ -8,9 +8,8 @@ import {
   LocalCommentCard,
   CARD_MAX_WIDTH,
   CARD_INDENT,
-  estimateCardRows,
-  estimateLocalCardRows,
 } from '../../components/CommentThread.js';
+import type { RowMap } from '@kirby/review-comments';
 import { DiffRow } from './DiffRow.js';
 import { languageFromFilename } from '../../utils/language.js';
 
@@ -73,6 +72,7 @@ function DiffViewerHints({
 export const DiffViewer = memo(function DiffViewer({
   filename,
   annotatedLines,
+  rowMap,
   scrollOffset,
   paneRows,
   paneCols,
@@ -87,6 +87,9 @@ export const DiffViewer = memo(function DiffViewer({
 }: {
   filename: string;
   annotatedLines: AnnotatedLine[];
+  /** Physical-row layout for `annotatedLines`. Built by `buildRowMap`. */
+  rowMap: RowMap;
+  /** Physical row offset of the viewport's top edge. */
   scrollOffset: number;
   paneRows: number;
   paneCols: number;
@@ -105,42 +108,41 @@ export const DiffViewer = memo(function DiffViewer({
     20,
     Math.min(CARD_MAX_WIDTH, paneCols - CARD_INDENT - 2)
   );
-  // Card content area = card width minus borders (2) and paddingX (2).
-  const cardContentWidth = Math.max(1, cardWidth - 4);
 
-  // Slice annotated lines by accumulated PHYSICAL rows, not by slot
-  // count. Each diff/separator line is one physical row, but a card
-  // renders many — so the previous slot-based slice would pack
-  // `paneRows-3` slots into a paneRows-row pane, and Yoga would
-  // collapse the overflow by overlaying the last card's bottom border
-  // on its body and dropping the header row. With long-bodied threads
-  // near the bottom of a long file that produced the
-  // `[v]reopen`-floating-outside-the-card glitch users reported.
-  const visibleLines: AnnotatedLine[] = [];
-  let rowsUsed = 0;
-  for (let i = scrollOffset; i < annotatedLines.length; i++) {
-    const entry = annotatedLines[i]!;
-    const r =
-      entry.type === 'thread-remote'
-        ? estimateCardRows(
-            entry.thread,
-            cardContentWidth,
-            selectedCommentId === entry.thread.id
-          )
-        : entry.type === 'thread-local'
-        ? estimateLocalCardRows(
-            entry.comment,
-            cardContentWidth,
-            selectedCommentId === entry.comment.id
-          )
-        : 1;
-    if (rowsUsed + r > viewportHeight && visibleLines.length > 0) break;
-    visibleLines.push(entry);
-    rowsUsed += r;
+  // Row-based slice: pick every entry whose [rowStart, rowStart+rowSpan]
+  // overlaps the viewport's [scrollOffset, scrollOffset+viewportHeight]
+  // range. The first overlapping entry may have its top clipped — we
+  // render it inside a Box with marginTop={-topClip} so the visible
+  // portion aligns with scrollOffset. The probe in commit history
+  // (apps/cli/src/_probe/ink-clip.tsx) confirmed Ink/Yoga handles this
+  // cleanly with `flexShrink={0}` on each child + `overflow="hidden"`
+  // on the parent.
+  const viewportTop = scrollOffset;
+  const viewportBottom = scrollOffset + viewportHeight;
+  const visibleEntries: {
+    entry: AnnotatedLine;
+    sourceIndex: number;
+    topClip: number;
+  }[] = [];
+  for (let i = 0; i < annotatedLines.length; i++) {
+    const pos = rowMap.positions[i];
+    if (!pos) continue;
+    const top = pos.rowStart;
+    const bottom = pos.rowStart + pos.rowSpan;
+    if (bottom <= viewportTop) continue;
+    if (top >= viewportBottom) break;
+    visibleEntries.push({
+      entry: annotatedLines[i]!,
+      sourceIndex: i,
+      topClip: Math.max(0, viewportTop - top),
+    });
   }
-  const totalLines = annotatedLines.length;
+
+  const totalRows = rowMap.totalRows;
   const atTop = scrollOffset === 0;
-  const atBottom = scrollOffset + visibleLines.length >= totalLines;
+  const atBottom = scrollOffset + viewportHeight >= totalRows;
+  const rowsAbove = scrollOffset;
+  const rowsBelow = Math.max(0, totalRows - (scrollOffset + viewportHeight));
 
   const hasComments = annotatedLines.some(
     (l) => l.type === 'thread-remote' || l.type === 'thread-local'
@@ -148,17 +150,71 @@ export const DiffViewer = memo(function DiffViewer({
 
   const language = languageFromFilename(filename);
 
+  // Reserve one viewport row for each scroll indicator we'll render
+  // (↑ / ↓), so the body region stays bounded by `viewportHeight` even
+  // when the indicators occupy a row. Without this the indicators
+  // would push entries past the bottom edge.
+  const indicatorRows = (atTop ? 0 : 1) + (atBottom ? 0 : 1);
+  const bodyHeight = Math.max(1, viewportHeight - indicatorRows);
+
+  function renderEntry(line: AnnotatedLine, key: string | number) {
+    if (line.type === 'diff') {
+      return (
+        <DiffRow
+          key={key}
+          line={line.line}
+          highlighted={line.highlighted}
+          language={language}
+          paneCols={paneCols}
+        />
+      );
+    }
+    if (line.type === 'separator') {
+      return (
+        <Text key={key} wrap="truncate">
+          {line.rendered}
+        </Text>
+      );
+    }
+    if (line.type === 'thread-remote') {
+      return (
+        <CommentThreadCard
+          key={`r:${line.thread.id}`}
+          thread={line.thread}
+          selected={selectedCommentId === line.thread.id}
+          replyingToThreadId={replyingToThreadId}
+          replyBuffer={replyBuffer}
+          maxWidth={cardWidth}
+          indent={CARD_INDENT}
+        />
+      );
+    }
+    return (
+      <LocalCommentCard
+        key={`l:${line.comment.id}`}
+        comment={line.comment}
+        selected={selectedCommentId === line.comment.id}
+        pendingDelete={pendingDeleteCommentId === line.comment.id}
+        editing={editingCommentId === line.comment.id}
+        editBuffer={
+          editingCommentId === line.comment.id ? editBuffer : undefined
+        }
+        maxWidth={cardWidth}
+        indent={CARD_INDENT}
+      />
+    );
+  }
+
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
       <Box gap={1}>
         <Text bold color="blue">
           {filename}
-          {!loading && totalLines > 0 && (
+          {!loading && totalRows > 0 && (
             <Text dimColor>
               {' '}
-              ({scrollOffset + 1}-
-              {Math.min(scrollOffset + viewportHeight, totalLines)}/{totalLines}
-              )
+              (rows {scrollOffset + 1}-
+              {Math.min(scrollOffset + viewportHeight, totalRows)}/{totalRows})
             </Text>
           )}
         </Text>
@@ -171,67 +227,42 @@ export const DiffViewer = memo(function DiffViewer({
       </Box>
       <Text dimColor>{'─'.repeat(Math.min(40, paneCols - 2))}</Text>
 
-      {!loading && totalLines === 0 && (
+      {!loading && totalRows === 0 && (
         <Text dimColor>(no diff for this file)</Text>
       )}
 
-      {visibleLines.length > 0 && (
-        <Box flexDirection="column">
-          {!atTop && <Text dimColor>↑ {scrollOffset} lines above</Text>}
-          {visibleLines.map((line, i) => {
-            const key = scrollOffset + i;
-            if (line.type === 'diff') {
+      {visibleEntries.length > 0 && (
+        <>
+          {!atTop && <Text dimColor>↑ {rowsAbove} rows above</Text>}
+          <Box
+            flexDirection="column"
+            height={bodyHeight}
+            overflow="hidden"
+            flexShrink={0}
+          >
+            {visibleEntries.map(({ entry, sourceIndex, topClip }, i) => {
+              const key = `${sourceIndex}`;
+              const node = renderEntry(entry, key);
+              // First entry may be partly above the viewport — shift
+              // it up by `topClip` rows. flexShrink={0} prevents Yoga
+              // from squeezing the entry to fit (which previously
+              // caused the bottom-border-overlay corruption).
+              if (i === 0 && topClip > 0) {
+                return (
+                  <Box key={`clip:${key}`} flexShrink={0} marginTop={-topClip}>
+                    {node}
+                  </Box>
+                );
+              }
               return (
-                <DiffRow
-                  key={key}
-                  line={line.line}
-                  highlighted={line.highlighted}
-                  language={language}
-                  paneCols={paneCols}
-                />
+                <Box key={`wrap:${key}`} flexShrink={0}>
+                  {node}
+                </Box>
               );
-            }
-            if (line.type === 'separator') {
-              return (
-                <Text key={key} wrap="truncate">
-                  {line.rendered}
-                </Text>
-              );
-            }
-            if (line.type === 'thread-remote') {
-              return (
-                <CommentThreadCard
-                  key={`r:${line.thread.id}`}
-                  thread={line.thread}
-                  selected={selectedCommentId === line.thread.id}
-                  replyingToThreadId={replyingToThreadId}
-                  replyBuffer={replyBuffer}
-                  maxWidth={cardWidth}
-                  indent={CARD_INDENT}
-                />
-              );
-            }
-            return (
-              <LocalCommentCard
-                key={`l:${line.comment.id}`}
-                comment={line.comment}
-                selected={selectedCommentId === line.comment.id}
-                pendingDelete={pendingDeleteCommentId === line.comment.id}
-                editing={editingCommentId === line.comment.id}
-                editBuffer={
-                  editingCommentId === line.comment.id ? editBuffer : undefined
-                }
-                maxWidth={cardWidth}
-                indent={CARD_INDENT}
-              />
-            );
-          })}
-          {!atBottom && (
-            <Text dimColor>
-              ↓ {totalLines - scrollOffset - viewportHeight} lines below
-            </Text>
-          )}
-        </Box>
+            })}
+          </Box>
+          {!atBottom && <Text dimColor>↓ {rowsBelow} rows below</Text>}
+        </>
       )}
 
       <DiffViewerHints hasComments={hasComments} hasSections={hasSections} />

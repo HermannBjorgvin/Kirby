@@ -17,10 +17,19 @@ export type {
   InsertionMap,
   CommentPositionInfo,
   RemoteInsertionMap,
+  RowMap,
+  RowMapEntry,
+  BuildRowMapInputs,
 } from './lib/comment-renderer.js';
 export {
   computeInsertionMap,
   computeRemoteInsertionMap,
   interleaveComments,
   getCommentPositions,
+  buildRowMap,
+  estimateBodyRows,
+  estimateCardRows,
+  estimateLocalCardRows,
+  REPLY_INPUT_ROWS,
+  EDIT_INPUT_SLACK_ROWS,
 } from './lib/comment-renderer.js';

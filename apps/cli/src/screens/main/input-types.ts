@@ -22,7 +22,7 @@ import type {
   TerminalLayout,
 } from '../../input-handlers.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { CommentPositionInfo } from '@kirby/review-comments';
+import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
 
 // ── Context slice types ──────────────────────────────────────────
 
@@ -96,11 +96,17 @@ export interface DiffViewerHandlerCtx {
   pane: PaneModeValue;
   diffFiles: DiffFile[];
   terminal: TerminalLayout;
-  diffTotalLines: number;
-  /** Annotated-line indices where a navigable section begins. Used by
-   * the Ctrl+↑/↓ section-jump action. First entry is always 0 (diff
-   * start); later entries mark out-of-diff comment groups when present. */
-  sectionAnchors: number[];
+  /** Total physical rows in the rendered diff stream. Cards span N
+   *  rows each, so this is bigger than `annotatedLines.length`. */
+  diffTotalRows: number;
+  /** Physical-row layout for the annotated stream. `scrollToComment`,
+   *  next/prev-comment, and the auto-select effect read row positions
+   *  from here when translating slot indices into scroll offsets. */
+  rowMap: RowMap;
+  /** Physical row offsets where a navigable section begins. Used by
+   *  the Ctrl+↑/↓ section-jump action. First entry is always 0 (diff
+   *  start); later entries mark out-of-diff comment groups. */
+  sectionAnchorRows: number[];
   commentCtx?: CommentContext;
   remoteCtx?: RemoteCommentContext;
   config: ConfigContextValue;

@@ -5,8 +5,10 @@ import { parseUnifiedDiff } from '@kirby/diff';
 import {
   interleaveComments,
   getCommentPositions,
+  buildRowMap,
 } from '@kirby/review-comments';
 import { DiffViewer } from '../reviews/DiffViewer.js';
+import { CARD_INDENT, CARD_MAX_WIDTH } from '../../components/CommentThread.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
@@ -104,8 +106,36 @@ export function DiffFileViewerContainer({
     [interleaveResult]
   );
 
-  const diffTotalLines = annotatedLines.length;
-  const sectionAnchors = interleaveResult?.sectionAnchors ?? [0];
+  // Card width math, mirrored in DiffViewer. The row map needs the
+  // card content width to estimate body wrap accurately.
+  const cardWidth = Math.max(
+    20,
+    Math.min(CARD_MAX_WIDTH, terminal.paneCols - CARD_INDENT - 2)
+  );
+  const cardContentWidth = Math.max(1, cardWidth - 4);
+
+  const rowMap = useMemo(
+    () =>
+      buildRowMap({
+        annotatedLines,
+        sectionAnchors: interleaveResult?.sectionAnchors ?? [0],
+        contentWidth: cardContentWidth,
+        replyingToThreadId: pane.replyingToThreadId,
+        editingCommentId: pane.editingCommentId,
+        selectedCommentId: pane.selectedCommentId,
+      }),
+    [
+      annotatedLines,
+      interleaveResult?.sectionAnchors,
+      cardContentWidth,
+      pane.replyingToThreadId,
+      pane.editingCommentId,
+      pane.selectedCommentId,
+    ]
+  );
+
+  const diffTotalRows = rowMap.totalRows;
+  const sectionAnchorRows = rowMap.sectionAnchorRows;
 
   const commentPositions = useMemo(() => {
     if (!interleaveResult) return new Map();
@@ -154,24 +184,28 @@ export function DiffFileViewerContainer({
     autoSelectedFileRef.current = file;
     const first = navPool[0]!;
     setSelectedCommentId(first.id);
-    // Scroll the viewport so the first comment is in view. The scroll
-    // target mirrors `scrollToComment` in diff-viewer-input — pin two
-    // rows above the comment's annotated index for a bit of code
-    // context.
+    // Scroll so the first comment is in view. The scroll target
+    // mirrors `scrollToComment` in diff-viewer-input — translate the
+    // refStartLine slot index to a physical row via the row map and
+    // pin two rows above for a bit of code context.
     const info = commentPositions.get(first.id);
     if (info) {
-      const viewportHeight = Math.max(1, terminal.paneRows - 3);
-      const maxScroll = Math.max(0, diffTotalLines - viewportHeight);
-      setDiffScrollOffset(
-        Math.min(Math.max(0, info.refStartLine - 2), maxScroll)
-      );
+      const rowEntry = rowMap.positions[info.refStartLine];
+      if (rowEntry) {
+        const viewportHeight = Math.max(1, terminal.paneRows - 3);
+        const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
+        setDiffScrollOffset(
+          Math.min(Math.max(0, rowEntry.rowStart - 2), maxScroll)
+        );
+      }
     }
   }, [
     pane.diffViewFile,
     fileComments,
     fileRemoteThreads,
     commentPositions,
-    diffTotalLines,
+    rowMap,
+    diffTotalRows,
     terminal.paneRows,
     setSelectedCommentId,
     setDiffScrollOffset,
@@ -181,10 +215,10 @@ export function DiffFileViewerContainer({
   const handleScrollWheel = useCallback(
     (delta: number) => {
       const viewportHeight = Math.max(1, terminal.paneRows - 3);
-      const maxScroll = Math.max(0, diffTotalLines - viewportHeight);
+      const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
       setDiffScrollOffset((o) => Math.max(0, Math.min(o + delta, maxScroll)));
     },
-    [terminal.paneRows, diffTotalLines, setDiffScrollOffset]
+    [terminal.paneRows, diffTotalRows, setDiffScrollOffset]
   );
   useScrollWheel(!terminalFocused, handleScrollWheel);
 
@@ -195,8 +229,9 @@ export function DiffFileViewerContainer({
         pane,
         diffFiles: diffBundle.files,
         terminal,
-        diffTotalLines,
-        sectionAnchors,
+        diffTotalRows,
+        rowMap,
+        sectionAnchorRows,
         commentCtx: selectedPr
           ? {
               comments: diffBundle.comments,
@@ -226,11 +261,12 @@ export function DiffFileViewerContainer({
     <DiffViewer
       filename={pane.diffViewFile}
       annotatedLines={annotatedLines}
+      rowMap={rowMap}
       scrollOffset={pane.diffScrollOffset}
       paneRows={terminal.paneRows}
       paneCols={terminal.paneCols}
       loading={fileDiffLoading}
-      hasSections={sectionAnchors.length > 1}
+      hasSections={sectionAnchorRows.length > 1}
       selectedCommentId={pane.selectedCommentId}
       pendingDeleteCommentId={pane.pendingDeleteCommentId}
       editingCommentId={pane.editingCommentId}

@@ -8,6 +8,9 @@ import {
   computeRemoteInsertionMap,
   getCommentPositions,
   interleaveComments,
+  buildRowMap,
+  estimateCardRows,
+  REPLY_INPUT_ROWS,
 } from '@kirby/review-comments';
 
 // Milestone 2 of the UX-parity plan: threads render as Ink cards. The
@@ -386,5 +389,147 @@ describe('computeRemoteInsertionMap', () => {
     const map = computeRemoteInsertionMap(diffLines, threads);
 
     expect(map.insertions.get(0)).toHaveLength(2);
+  });
+});
+
+// ── buildRowMap ──────────────────────────────────────────────────
+//
+// Row map is the bridge between the slot-indexed annotated stream
+// produced by `interleaveComments` and the row-indexed scroll model
+// the diff viewer uses. Each entry's rowStart must equal the sum of
+// all preceding rowSpans; totalRows must equal the sum of every span;
+// sectionAnchorRows must follow the slot indices through to their
+// row positions.
+
+describe('buildRowMap', () => {
+  it('maps an all-diff stream 1:1 with rowSpan=1', () => {
+    const annotated: AnnotatedLine[] = makeDiffLines([
+      { oldLine: 1, newLine: 1 },
+      { oldLine: 2, newLine: 2 },
+      { oldLine: 3, newLine: 3 },
+    ]).map((line) => ({ type: 'diff' as const, line, highlighted: false }));
+    const map = buildRowMap({
+      annotatedLines: annotated,
+      sectionAnchors: [0],
+      contentWidth: 60,
+    });
+    expect(map.totalRows).toBe(3);
+    expect(map.positions.map((p) => p.rowStart)).toEqual([0, 1, 2]);
+    expect(map.positions.map((p) => p.rowSpan)).toEqual([1, 1, 1]);
+    expect(map.sectionAnchorRows).toEqual([0]);
+  });
+
+  it('counts a thread-remote entry with the same span as estimateCardRows', () => {
+    const thread = makeRemoteThread({
+      id: 't1',
+      lineStart: 1,
+      lineEnd: 1,
+      comments: [
+        {
+          id: 'r0',
+          author: 'a',
+          body: 'short body',
+          createdAt: '',
+        },
+        {
+          id: 'r1',
+          author: 'b',
+          body: 'reply body that wraps to several lines '.repeat(4),
+          createdAt: '',
+        },
+      ],
+    });
+    const annotated: AnnotatedLine[] = [
+      {
+        type: 'diff',
+        line: { type: 'context', content: 'x', oldLine: 1, newLine: 1 },
+        highlighted: false,
+      },
+      { type: 'thread-remote', thread, commentIndex: 0 },
+      {
+        type: 'diff',
+        line: { type: 'context', content: 'x', oldLine: 2, newLine: 2 },
+        highlighted: false,
+      },
+    ];
+    const contentWidth = 40;
+    const expectedThreadRows = estimateCardRows(thread, contentWidth);
+    const map = buildRowMap({
+      annotatedLines: annotated,
+      sectionAnchors: [0],
+      contentWidth,
+    });
+    expect(map.positions[0]!.rowStart).toBe(0);
+    expect(map.positions[0]!.rowSpan).toBe(1);
+    expect(map.positions[1]!.rowStart).toBe(1);
+    expect(map.positions[1]!.rowSpan).toBe(expectedThreadRows);
+    expect(map.positions[2]!.rowStart).toBe(1 + expectedThreadRows);
+    expect(map.positions[2]!.rowSpan).toBe(1);
+    expect(map.totalRows).toBe(2 + expectedThreadRows);
+  });
+
+  it('adds REPLY_INPUT_ROWS for the active reply-mode thread', () => {
+    const thread = makeRemoteThread({
+      id: 't1',
+      lineStart: 1,
+      lineEnd: 1,
+    });
+    const annotated: AnnotatedLine[] = [
+      { type: 'thread-remote', thread, commentIndex: 0 },
+    ];
+    const baseline = buildRowMap({
+      annotatedLines: annotated,
+      sectionAnchors: [0],
+      contentWidth: 40,
+    });
+    const replying = buildRowMap({
+      annotatedLines: annotated,
+      sectionAnchors: [0],
+      contentWidth: 40,
+      replyingToThreadId: 't1',
+    });
+    expect(replying.totalRows - baseline.totalRows).toBe(REPLY_INPUT_ROWS);
+  });
+
+  it('translates section anchors from slot indices to row offsets', () => {
+    const thread = makeRemoteThread({
+      id: 't1',
+      lineStart: 1,
+      lineEnd: 1,
+    });
+    const annotated: AnnotatedLine[] = [
+      {
+        type: 'diff',
+        line: { type: 'context', content: 'x', oldLine: 1, newLine: 1 },
+        highlighted: false,
+      },
+      { type: 'thread-remote', thread, commentIndex: 0 },
+      {
+        type: 'separator',
+        rendered: '── out of diff ──',
+      },
+    ];
+    const contentWidth = 40;
+    const threadRows = estimateCardRows(thread, contentWidth);
+    const map = buildRowMap({
+      annotatedLines: annotated,
+      sectionAnchors: [0, 2],
+      contentWidth,
+    });
+    // Anchor 0 → first entry → row 0
+    // Anchor 2 → third entry (the separator), which sits after the
+    // diff (1 row) + the thread (threadRows). Its rowStart = 1 + threadRows.
+    expect(map.sectionAnchorRows).toEqual([0, 1 + threadRows]);
+  });
+
+  it('produces totalRows=0 and a [0] anchor list for an empty stream', () => {
+    const map = buildRowMap({
+      annotatedLines: [],
+      sectionAnchors: [],
+      contentWidth: 40,
+    });
+    expect(map.totalRows).toBe(0);
+    expect(map.positions).toEqual([]);
+    expect(map.sectionAnchorRows).toEqual([0]);
   });
 });
