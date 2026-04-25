@@ -122,7 +122,11 @@ export const DiffViewer = memo(function DiffViewer({
     const entry = annotatedLines[i]!;
     const r =
       entry.type === 'thread-remote'
-        ? estimateCardRows(entry.thread, cardContentWidth)
+        ? estimateCardRows(
+            entry.thread,
+            cardContentWidth,
+            selectedCommentId === entry.thread.id
+          )
         : entry.type === 'thread-local'
         ? estimateLocalCardRows(
             entry.comment,

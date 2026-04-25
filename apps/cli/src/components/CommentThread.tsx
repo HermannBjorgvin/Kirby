@@ -110,7 +110,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         )}
       </Text>
       <Text wrap="wrap">{rootComment.body}</Text>
-      {thread.comments.length > 1 && (
+      {thread.comments.length > 1 && selected && (
         <Box flexDirection="column" marginTop={1}>
           {thread.comments.slice(1).map((reply) => (
             <Box key={reply.id} flexDirection="column" marginLeft={2}>
@@ -124,6 +124,16 @@ export const CommentThreadCard = memo(function CommentThreadCard({
             </Box>
           ))}
         </Box>
+      )}
+      {thread.comments.length > 1 && !selected && (
+        // Collapse replies when the card isn't selected — keeps the
+        // viewport from being dominated by long threads. The user
+        // selects the card (Shift+↓) to expand. Without this a single
+        // thread with replies eats enough rows that the next card
+        // gets row-budget-clipped off the bottom of the viewport.
+        <Text dimColor>{`  +${thread.comments.length - 1} ${
+          thread.comments.length - 1 === 1 ? 'reply' : 'replies'
+        }`}</Text>
       )}
       {isReplying && (
         <Box
@@ -275,13 +285,18 @@ export const LocalCommentCard = memo(function LocalCommentCard({
  */
 export function estimateCardRows(
   thread: RemoteCommentThread,
-  contentWidth?: number
+  contentWidth?: number,
+  selected = false
 ): number {
   const root = thread.comments[0];
   if (!root) return 0;
   // border-top + header + body + border-bottom + marginBottom = 2 + 1 + N + 1
   const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
-  // per reply: header + body + marginTop gap
+  // Replies are only rendered when the card is selected — see the
+  // CommentThreadCard branch. Collapsed cards just show a one-line
+  // "+N replies" hint, which is part of the rootRows body area
+  // already (no extra rows reserved here).
+  if (!selected) return rootRows;
   const replyRows = thread.comments.slice(1).reduce((sum, c) => {
     return sum + 1 + estimateBodyRows(c.body, contentWidth) + 1;
   }, 0);
