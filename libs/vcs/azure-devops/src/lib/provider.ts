@@ -593,14 +593,45 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
     (ctx?.leftFileStart?.line == null && leftStart != null) ||
     (ctx?.rightFileStart?.line == null && rightStart != null);
 
+  // ADO sometimes returns a file-anchored thread with NO line refs
+  // anywhere — `threadContext` has `filePath` but every `*FileStart/End`
+  // is undefined, and `pullRequestThreadContext.trackingCriteria` (which
+  // would carry the originals) is omitted. The docs note trackingCriteria
+  // is "not returned/sent if not needed", and ADO's heuristic for "not
+  // needed" doesn't always match the user's intuition.
+  //
+  // Without a fallback these threads land in the out-of-diff tail and
+  // the user has to scroll the whole file to find them. Treat as an
+  // outdated file-level thread: anchor to line 1 (-U99999 always has it
+  // as a context line) and flag isOutdated so the card surfaces with
+  // the dim "(outdated)" tag at the top of the file diff.
+  const fileLevelOnly =
+    hasFile &&
+    leftStart == null &&
+    leftEnd == null &&
+    rightStart == null &&
+    rightEnd == null;
+
+  const resolvedLineStart = fileLevelOnly
+    ? 1
+    : isLeftSide
+    ? leftStart ?? null
+    : rightStart ?? null;
+  const resolvedLineEnd = fileLevelOnly
+    ? 1
+    : isLeftSide
+    ? leftEnd ?? null
+    : rightEnd ?? null;
+  const resolvedSide = fileLevelOnly ? 'RIGHT' : isLeftSide ? 'LEFT' : 'RIGHT';
+
   const result: RemoteCommentThread = {
     id: String(thread.id ?? ''),
     file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
-    lineStart: isLeftSide ? leftStart ?? null : rightStart ?? null,
-    lineEnd: isLeftSide ? leftEnd ?? null : rightEnd ?? null,
-    side: isLeftSide ? 'LEFT' : 'RIGHT',
+    lineStart: resolvedLineStart,
+    lineEnd: resolvedLineEnd,
+    side: resolvedSide,
     isResolved: adoStatusToResolved(thread.status),
-    isOutdated: usedFallback,
+    isOutdated: usedFallback || fileLevelOnly,
     // All ADO threads (inline + general) share the same thread
     // resource and support status transitions.
     canResolve: true,
@@ -629,6 +660,7 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
         rightEnd,
         isLeftSide,
         usedFallback,
+        fileLevelOnly,
       },
       output: {
         file: result.file,
