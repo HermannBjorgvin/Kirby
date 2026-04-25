@@ -13,6 +13,9 @@
   "references": [
     {
       "path": "../core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../logger/tsconfig.lib.json"
     }
   ],
   "exclude": [

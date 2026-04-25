@@ -1,6 +1,7 @@
 import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
+import { log } from '@kirby/logger';
 
 // Dim ANSI — only used for the separator rows below (`── comments on
 // lines not in diff ──` etc.). Diff rows themselves no longer carry
@@ -94,6 +95,18 @@ export function computeRemoteInsertionMap(
   for (const thread of threads) {
     if (thread.lineEnd == null) {
       outOfDiff.push(thread);
+      log(
+        'warn',
+        'placement.remoteThread',
+        `thread ${thread.id} has null lineEnd → out-of-diff (transformer didn't resolve a line)`,
+        {
+          file: thread.file,
+          side: thread.side,
+          lineStart: thread.lineStart,
+          lineEnd: thread.lineEnd,
+          isOutdated: thread.isOutdated,
+        }
+      );
       continue;
     }
     const lineMap = thread.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
@@ -123,8 +136,33 @@ export function computeRemoteInsertionMap(
       const existing = insertions.get(insertAfter) ?? [];
       existing.push(thread);
       insertions.set(insertAfter, existing);
+      log(
+        'info',
+        'placement.remoteThread',
+        `thread ${thread.id} placed inline after diff index ${insertAfter}`,
+        {
+          file: thread.file,
+          side: thread.side,
+          lineStart: thread.lineStart,
+          lineEnd: thread.lineEnd,
+          isOutdated: thread.isOutdated,
+        }
+      );
     } else {
       outOfDiff.push(thread);
+      log(
+        'warn',
+        'placement.remoteThread',
+        `thread ${thread.id} pushed to out-of-diff (no matching diff line)`,
+        {
+          file: thread.file,
+          side: thread.side,
+          lineStart: thread.lineStart,
+          lineEnd: thread.lineEnd,
+          isOutdated: thread.isOutdated,
+          diffLineCount: diffLines.length,
+        }
+      );
     }
   }
 

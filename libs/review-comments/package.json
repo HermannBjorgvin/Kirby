@@ -20,5 +20,7 @@
       "scope:review-comments"
     ]
   },
-  "dependencies": {}
+  "dependencies": {
+    "@kirby/logger": "*"
+  }
 }

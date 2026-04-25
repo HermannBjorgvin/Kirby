@@ -12,6 +12,7 @@ import type {
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
+import { logNetwork } from '@kirby/logger';
 
 // ── gh CLI transport ──────────────────────────────────────────────
 
@@ -28,10 +29,29 @@ function extractErrorMessage(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Compact identifier for a GraphQL query — first non-blank line. Lets
+ * the network log distinguish e.g. SEARCH_PRS_QUERY from
+ * FETCH_PR_THREADS_QUERY without dumping the whole query body.
+ */
+function summarizeQuery(query: string): string {
+  return query.trim().split('\n')[0]?.slice(0, 80) ?? 'query';
+}
+
 export async function ghGraphQL(
   query: string,
   variables: Record<string, string | number>
 ): Promise<unknown> {
+  const startedAt = Date.now();
+  const querySummary = summarizeQuery(query);
+  logNetwork('github.network', `→ gh graphql ${querySummary}`, {
+    variables: Object.fromEntries(
+      Object.entries(variables).map(([k, v]) => [
+        k,
+        typeof v === 'string' && v.length > 60 ? `${v.slice(0, 60)}…` : v,
+      ])
+    ),
+  });
   try {
     const args = ['api', 'graphql', '-f', `query=${query}`];
     for (const [key, val] of Object.entries(variables)) {
@@ -42,8 +62,20 @@ export async function ghGraphQL(
       }
     }
     const { stdout } = await execFile('gh', args);
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'github.network',
+      `← gh graphql ${querySummary} (${durationMs}ms, ${stdout.length} bytes)`
+    );
     return JSON.parse(stdout);
   } catch (err: unknown) {
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'github.network',
+      `× gh graphql ${querySummary} (${durationMs}ms) — ${extractErrorMessage(
+        err
+      )}`
+    );
     throw new Error(`gh graphql error: ${extractErrorMessage(err)}`);
   }
 }

@@ -10,6 +10,7 @@ import type {
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
+import { log, logNetwork } from '@kirby/logger';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
@@ -42,6 +43,51 @@ function authHeaders(pat: string): Record<string, string> {
 
 function baseUrl(config: AdoConfig): string {
   return `https://dev.azure.com/${config.org}/${config.project}/_apis/git/repositories/${config.repo}`;
+}
+
+/**
+ * fetch wrapper that emits one debug-level log per request +
+ * response. URLs are passed through verbatim (they don't carry the
+ * PAT — that lives in the Authorization header which is never
+ * logged). Response bodies are NOT included; only status + size +
+ * (optional) caller-supplied summary. Gated behind
+ * `KIRBY_LOG_LEVEL=debug` so day-to-day runs stay quiet.
+ */
+async function tracedFetch(
+  context: string,
+  url: string,
+  init?: RequestInit & { bodyForLog?: unknown }
+): Promise<Response> {
+  const startedAt = Date.now();
+  const method = (init?.method ?? 'GET').toUpperCase();
+  logNetwork('ado.network', `→ ${method} ${url}`, {
+    body: init?.bodyForLog,
+  });
+  try {
+    const res = await fetch(url, init);
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'ado.network',
+      `← ${res.status} ${method} ${url} (${durationMs}ms)`,
+      {
+        ok: res.ok,
+        statusText: res.statusText,
+        context,
+      }
+    );
+    return res;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'ado.network',
+      `× ${method} ${url} (${durationMs}ms) — fetch failed`,
+      {
+        context,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    );
+    throw err;
+  }
 }
 
 function toAdoConfig(
@@ -481,11 +527,43 @@ function adoStatusToResolved(status: string | undefined): boolean {
   );
 }
 
+/**
+ * Sanitized snapshot of an ADO thread for diagnostic logging. Strips
+ * comment bodies (reviewer text, noisy) and author names (PII), keeping
+ * only the structural fields needed to reproduce a placement bug. Set
+ * `KIRBY_LOG=/path/to/log` to capture; safe to share in bug reports.
+ */
+function sanitizeAdoThreadForLog(thread: AdoThread): unknown {
+  return {
+    id: thread.id,
+    status: thread.status,
+    threadContext: thread.threadContext
+      ? {
+          filePath: thread.threadContext.filePath,
+          leftFileStart: thread.threadContext.leftFileStart,
+          leftFileEnd: thread.threadContext.leftFileEnd,
+          rightFileStart: thread.threadContext.rightFileStart,
+          rightFileEnd: thread.threadContext.rightFileEnd,
+        }
+      : null,
+    pullRequestThreadContext: thread.pullRequestThreadContext ?? null,
+    commentTypes: (thread.comments ?? []).map((c) => c.commentType ?? 'text'),
+  };
+}
+
 function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
   const humanComments = (thread.comments ?? []).filter(
     (c) => c.commentType !== 'system'
   );
-  if (humanComments.length === 0) return null;
+  if (humanComments.length === 0) {
+    log(
+      'info',
+      'ado.transformThread',
+      `thread ${thread.id} dropped (no human comments)`,
+      { raw: sanitizeAdoThreadForLog(thread) }
+    );
+    return null;
+  }
 
   const ctx = thread.threadContext;
   const hasFile = ctx?.filePath != null;
@@ -515,7 +593,7 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
     (ctx?.leftFileStart?.line == null && leftStart != null) ||
     (ctx?.rightFileStart?.line == null && rightStart != null);
 
-  return {
+  const result: RemoteCommentThread = {
     id: String(thread.id ?? ''),
     file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
     lineStart: isLeftSide ? leftStart ?? null : rightStart ?? null,
@@ -535,6 +613,35 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
       })
     ),
   };
+
+  log(
+    'info',
+    'ado.transformThread',
+    `thread ${thread.id} → ${result.side} ${result.file}:${
+      result.lineStart ?? '?'
+    }-${result.lineEnd ?? '?'} outdated=${result.isOutdated}`,
+    {
+      raw: sanitizeAdoThreadForLog(thread),
+      resolved: {
+        leftStart,
+        leftEnd,
+        rightStart,
+        rightEnd,
+        isLeftSide,
+        usedFallback,
+      },
+      output: {
+        file: result.file,
+        lineStart: result.lineStart,
+        lineEnd: result.lineEnd,
+        side: result.side,
+        isOutdated: result.isOutdated,
+        isResolved: result.isResolved,
+      },
+    }
+  );
+
+  return result;
 }
 
 async function fetchAdoCommentThreads(
@@ -542,11 +649,19 @@ async function fetchAdoCommentThreads(
   prId: number
 ): Promise<PullRequestComments> {
   const url = `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
+  const res = await tracedFetch('fetchAdoCommentThreads', url, {
+    headers: authHeaders(config.pat),
+  });
   if (!res.ok) {
     throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
   }
   const data = (await res.json()) as { value?: AdoThread[] };
+  const rawCount = (data.value ?? []).length;
+  log(
+    'info',
+    'ado.fetchThreads',
+    `PR ${prId}: ${rawCount} raw threads from ADO`
+  );
 
   const threads: RemoteCommentThread[] = [];
   const generalComments: RemoteCommentThread[] = [];
@@ -561,6 +676,24 @@ async function fetchAdoCommentThreads(
       threads.push(thread);
     }
   }
+
+  log(
+    'info',
+    'ado.fetchThreads',
+    `PR ${prId}: transform output → ${threads.length} file threads, ${generalComments.length} general`,
+    {
+      fileThreads: threads.map((t) => ({
+        id: t.id,
+        file: t.file,
+        side: t.side,
+        lineStart: t.lineStart,
+        lineEnd: t.lineEnd,
+        isOutdated: t.isOutdated,
+        isResolved: t.isResolved,
+      })),
+      generalCount: generalComments.length,
+    }
+  );
 
   // Collect mention GUIDs across every comment body in one sweep so
   // the Identities API gets a single batched call per poll. Rewrite
@@ -608,9 +741,13 @@ async function replyToAdoThread(
   const threadUrl = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
-  const threadRes = await fetch(threadUrl, {
-    headers: authHeaders(config.pat),
-  });
+  const threadRes = await tracedFetch(
+    'replyToAdoThread:resolveRoot',
+    threadUrl,
+    {
+      headers: authHeaders(config.pat),
+    }
+  );
   if (!threadRes.ok) {
     throw new Error(
       `ADO API error ${threadRes.status}: ${threadRes.statusText}`
@@ -629,7 +766,7 @@ async function replyToAdoThread(
   const url = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}/comments?api-version=7.1`;
-  const res = await fetch(url, {
+  const res = await tracedFetch('replyToAdoThread:postComment', url, {
     method: 'POST',
     headers: authHeaders(config.pat),
     body: JSON.stringify({
@@ -637,6 +774,7 @@ async function replyToAdoThread(
       content: body,
       commentType: 1,
     }),
+    bodyForLog: { parentCommentId, contentLength: body.length, commentType: 1 },
   });
   if (!res.ok) {
     throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
@@ -659,12 +797,13 @@ async function setAdoThreadResolved(
   const url = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
-  const res = await fetch(url, {
+  const res = await tracedFetch('setAdoThreadResolved', url, {
     method: 'PATCH',
     headers: authHeaders(config.pat),
     body: JSON.stringify({
       status: resolved ? 2 : 1, // 2 = fixed, 1 = active
     }),
+    bodyForLog: { status: resolved ? 2 : 1, resolved },
   });
   if (!res.ok) {
     throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
