@@ -10,18 +10,18 @@ export async function createSession(
   term: KirbyTerm,
   branchName: string
 ): Promise<void> {
-  // Retry typing 'c' until the branch picker actually opens. A single
-  // 'c' can be lost if focus is in transition: an immediately preceding
-  // Ctrl+Space (\x00) and the 'c' can arrive in a bunched stdin event,
-  // and Ink's sidebar useInput is still inactive in that tick — so the
-  // 'c' is dispatched against the terminal-focused context and dropped.
-  // Re-typing once focus has fully landed lets the next 'c' through.
+  // One 'c' can be lost when it bunches into the same stdin chunk as
+  // a preceding Ctrl+Space — the escape fires but Ink's sidebar
+  // useInput is still inactive in that React tick, so the 'c' is
+  // dispatched against the terminal-focused context and dropped. One
+  // retry on the next render cycle is enough; if it takes more than
+  // that, something else is broken.
   await expect(async () => {
     await term.type('c');
     await expect(term.getByText('Branch Picker')).toBeVisible({
-      timeout: 1_500,
+      timeout: 1_000,
     });
-  }).toPass({ timeout: 8_000, intervals: [500] });
+  }).toPass({ timeout: 2_500, intervals: [400] });
   await term.type(branchName);
   await expect(term.getByText(/\(new branch\)/).first()).toBeVisible({
     timeout: 5_000,
