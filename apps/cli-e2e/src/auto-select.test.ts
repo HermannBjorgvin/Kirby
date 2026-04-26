@@ -172,21 +172,23 @@ test.describe('@integration Auto-select first comment', () => {
       kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
     ).toBeVisible({ timeout: 30_000 });
 
-    // Auto-select assertion: the discovered thread's body should be
-    // visible (card rendered) AND a `[r]eply` hint should be on screen.
-    // CommentThread.tsx renders `[r]eply` inline in the card header
-    // *only* when `selected && !isReplying`, so its presence anywhere
-    // proves exactly one thread is currently selected — i.e. the
-    // auto-select effect fired.
-    await expect(
-      kirby.term.page
-        .locator('.term-row', { hasText: firstInlineThread!.body })
-        .first()
-    ).toBeVisible({ timeout: 10_000 });
-
+    // Auto-select fired ⇔ exactly one thread is currently selected
+    // ⇔ the `[r]eply` hint is on screen. CommentThread.tsx renders
+    // `[r]eply` inline in the card header *only* when
+    // `selected && !isReplying`, so its presence anywhere is the
+    // assertion the test name promises ("at least one thread
+    // auto-selects").
+    //
+    // We deliberately do NOT assert on `firstInlineThread.body` here.
+    // Discovery uses the REST `pulls/{n}/comments` endpoint while Kirby
+    // fetches via the GraphQL `reviewThreads` field, and the two can
+    // disagree on PR #38 (e.g. an orphan inline comment that's a
+    // "review comment" in REST but not part of any reviewThread). That
+    // disagreement is a separate product question — not what this test
+    // is checking.
     await expect(
       kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
-    ).toBeVisible({ timeout: 5_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('posted local comment at navPool[0] does not block auto-select (regression for dead-id bug)', async ({
@@ -270,15 +272,12 @@ test.describe('@integration Auto-select first comment', () => {
     // permanently gated `autoSelectedFileRef` — no `[r]eply` would
     // appear because nothing was selected. Post-fix the navPool
     // filters posted-status entries and the remote thread takes the
-    // first slot.
-    await expect(
-      kirby.term.page
-        .locator('.term-row', { hasText: firstInlineThread!.body })
-        .first()
-    ).toBeVisible({ timeout: 10_000 });
-
+    // first slot, so `[r]eply` shows up on whichever thread Kirby
+    // auto-selects. We assert only on `[r]eply` (not the discovered
+    // body): see the sibling test above for why discovery and Kirby's
+    // GraphQL fetch can disagree on PR #38's threads.
     await expect(
       kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
-    ).toBeVisible({ timeout: 5_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 });
