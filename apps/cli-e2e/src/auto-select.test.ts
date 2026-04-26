@@ -2,8 +2,10 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { Locator } from '@playwright/test';
 import { test, expect } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
+import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
@@ -86,6 +88,26 @@ test.describe('@integration Auto-select first comment', () => {
     cols: 140,
   });
 
+  // Race-tolerant sidebar selection helper. page.keyboard.press returns
+  // before wterm re-renders the new selection, so a tight count-based
+  // loop overshoots — wait for visibility per press instead.
+  async function pressUntilSelected(
+    kirby: { term: { press: (k: string) => Promise<void> } },
+    selectedLocator: Locator,
+    maxPresses: number
+  ): Promise<boolean> {
+    for (let i = 0; i <= maxPresses; i++) {
+      try {
+        await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
+        return true;
+      } catch {
+        if (i === maxPresses) return false;
+        await kirby.term.press('j');
+      }
+    }
+    return false;
+  }
+
   test('opens PR #38 file with inline comments — at least one thread auto-selects', async ({
     kirby,
   }) => {
@@ -100,10 +122,15 @@ test.describe('@integration Auto-select first comment', () => {
     ).toBeVisible({ timeout: 30_000 });
 
     // Walk to PR #38 row (PRs sit after worktrees; press j until the
-    // PR title row shows the selection icon — easier than counting).
-    for (let i = 0; i < 30; i++) {
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    // sidebar selection icon lands on the row).
+    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const landed = await pressUntilSelected(
+      { term: kirby.term },
+      pr38.selected().first(),
+      30
+    );
+    if (!landed) {
+      throw new Error('Could not land sidebar selection on PR #38');
     }
 
     // Open the PR's file list.
@@ -204,9 +231,14 @@ test.describe('@integration Auto-select first comment', () => {
       kirby.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    for (let i = 0; i < 30; i++) {
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const landed = await pressUntilSelected(
+      { term: kirby.term },
+      pr38.selected().first(),
+      30
+    );
+    if (!landed) {
+      throw new Error('Could not land sidebar selection on PR #38');
     }
     await kirby.term.press('d');
     await kirby.term.page
