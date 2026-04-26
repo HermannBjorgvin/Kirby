@@ -4,6 +4,8 @@ import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
 import { useNavState, useNavActions } from '../../context/NavContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
+import { useInactiveAlertWatcher } from '../../hooks/useInactiveAlertWatcher.js';
+import { dequeueOldest } from '../../inactive-alerts.js';
 import {
   useBranchPickerState,
   useBranchPickerActions,
@@ -190,6 +192,20 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
       }
     : terminal;
 
+  useInactiveAlertWatcher(sidebar.sessionNameForTerminal);
+
+  const jumpEnabled = configCtx.config.jumpToInactiveOnEscape !== false;
+  const onTerminalEscape = useCallback(() => {
+    if (jumpEnabled) {
+      const next = dequeueOldest();
+      if (next != null) {
+        sidebar.selectByKey(`session:${next}`);
+        return; // stay terminal-focused; selection drives which PTY shows
+      }
+    }
+    nav.setFocus('sidebar');
+  }, [jumpEnabled, sidebar, nav]);
+
   return (
     <>
       {!sidebarHidden && (
@@ -209,7 +225,7 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
           terminalFocused={terminalFocused}
           sessionNameForTerminal={sidebar.sessionNameForTerminal}
           selectedPr={sidebar.selectedPr}
-          onFocusSidebar={() => nav.setFocus('sidebar')}
+          onFocusSidebar={onTerminalEscape}
         />
       </Pane>
     </>
