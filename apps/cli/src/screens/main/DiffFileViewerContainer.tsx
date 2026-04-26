@@ -223,6 +223,39 @@ export function DiffFileViewerContainer({
     setDiffScrollOffset,
   ]);
 
+  // After a reply posts the row map grows; if the new reply lands
+  // below the current viewport the user can't see what they just
+  // posted. The reply-mode success handler sets
+  // `pane.pendingScrollThreadId`; we wait for `commentPositions` /
+  // `rowMap` to reflect the post-reply layout, then scroll the
+  // thread's bottom into view (one row of breathing room) and clear
+  // the pending id.
+  const { setPendingScrollThreadId } = pane;
+  useEffect(() => {
+    const tid = pane.pendingScrollThreadId;
+    if (!tid) return;
+    const info = commentPositions.get(tid);
+    if (!info) return;
+    const rowEntry = rowMap.positions[info.headerLine];
+    if (!rowEntry) return;
+    const viewportHeight = Math.max(1, terminal.paneRows - 3);
+    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
+    const threadEndRow = rowEntry.rowStart + rowEntry.rowSpan - 1;
+    const minScrollOffset = Math.max(0, threadEndRow - viewportHeight + 2);
+    setDiffScrollOffset((cur) =>
+      Math.min(Math.max(cur, minScrollOffset), maxScroll)
+    );
+    setPendingScrollThreadId(null);
+  }, [
+    pane.pendingScrollThreadId,
+    commentPositions,
+    rowMap,
+    diffTotalRows,
+    terminal.paneRows,
+    setDiffScrollOffset,
+    setPendingScrollThreadId,
+  ]);
+
   // ── Scroll wheel ────────────────────────────────────────────────
   const handleScrollWheel = useCallback(
     (delta: number) => {

@@ -36,6 +36,11 @@ export interface ReplyModeDeps {
     threadId: string,
     body: string
   ) => Promise<RemoteCommentReply>;
+  // Fired after a successful post completes and pane state has been
+  // cleared. The diff-viewer wires this up so a freshly-appended reply
+  // gets scrolled into view; other surfaces (file-list, general
+  // comments pane) leave it unset.
+  onReplyPosted?: (threadId: string) => void;
 }
 
 /**
@@ -49,7 +54,7 @@ export function handleReplyModeInput(
   key: Key,
   deps: ReplyModeDeps
 ): boolean {
-  const { pane, flashStatus, replyToThread } = deps;
+  const { pane, flashStatus, replyToThread, onReplyPosted } = deps;
   if (!pane.replyingToThreadId) return false;
 
   if (key.escape) {
@@ -72,6 +77,11 @@ export function handleReplyModeInput(
           if (pane.replyingToThreadId === threadId) {
             pane.setReplyingToThreadId(null);
             pane.setReplyBuffer('');
+            // Only auto-scroll when the user is still on the same
+            // thread. If they've moved on (e.g. typed Esc and started
+            // a fresh reply elsewhere), yanking the viewport back to
+            // the original thread's bottom would interrupt them.
+            onReplyPosted?.(threadId);
           }
           flashStatus('Reply posted');
         })

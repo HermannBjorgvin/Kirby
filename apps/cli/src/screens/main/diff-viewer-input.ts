@@ -108,6 +108,12 @@ export function handleDiffViewerInput(
       pane: ctx.pane,
       flashStatus: ctx.sessions.flashStatus,
       replyToThread: ctx.remoteCtx.replyToThread,
+      // After the post resolves, mark the thread for scroll-into-view.
+      // Container's effect runs once the row map reflects the appended
+      // reply, then clears this id (see DiffFileViewerContainer).
+      onReplyPosted: (threadId) => {
+        ctx.pane.setPendingScrollThreadId(threadId);
+      },
     })
   ) {
     return;

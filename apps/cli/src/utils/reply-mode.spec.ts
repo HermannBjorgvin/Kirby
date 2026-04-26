@@ -69,6 +69,7 @@ function makeDeps(overrides: Partial<ReplyModeDeps> = {}): ReplyModeDeps & {
     pane: overrides.pane ?? makePane(),
     flashStatus: overrides.flashStatus ?? flashStatus,
     replyToThread: overrides.replyToThread ?? replyToThread,
+    onReplyPosted: overrides.onReplyPosted,
     ...({ replyToThread, flashStatus } as object),
   } as ReplyModeDeps & {
     replyToThread: ReturnType<typeof vi.fn>;
@@ -183,6 +184,70 @@ describe('handleReplyModeInput', () => {
     });
     await new Promise((r) => setTimeout(r, 0));
     expect(replyToThread).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onReplyPosted with the threadId after a successful post', async () => {
+    const pane = makePane({ replyingToThreadId: 't1', replyBuffer: 'hello' });
+    const onReplyPosted = vi.fn();
+    const deps = makeDeps({ pane, onReplyPosted });
+
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onReplyPosted).toHaveBeenCalledTimes(1);
+    expect(onReplyPosted).toHaveBeenCalledWith('t1');
+  });
+
+  it('does not fire onReplyPosted when the post fails', async () => {
+    const pane = makePane({ replyingToThreadId: 't1', replyBuffer: 'hello' });
+    const replyToThread = vi.fn().mockRejectedValue(new Error('network'));
+    const onReplyPosted = vi.fn();
+    const deps: ReplyModeDeps = {
+      pane,
+      flashStatus: vi.fn(),
+      replyToThread,
+      onReplyPosted,
+    };
+
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onReplyPosted).not.toHaveBeenCalled();
+  });
+
+  it('does not fire onReplyPosted when the user switched threads mid-flight', async () => {
+    const pane = makePane({ replyingToThreadId: 't1', replyBuffer: 'first' });
+    let resolveFirst: (v: unknown) => void = () => undefined;
+    const replyToThread = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveFirst = res;
+        })
+    );
+    const onReplyPosted = vi.fn();
+    const deps: ReplyModeDeps = {
+      pane,
+      flashStatus: vi.fn(),
+      replyToThread,
+      onReplyPosted,
+    };
+
+    handleReplyModeInput('', makeKey({ return: true }), deps);
+    handleReplyModeInput('', makeKey({ escape: true }), deps);
+    pane.setReplyingToThreadId('t2');
+    pane.setReplyBuffer('second');
+
+    resolveFirst({
+      id: 'r1',
+      author: 'me',
+      body: 'first',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Auto-scroll to T1 would yank the user away from their fresh
+    // T2 reply — must be suppressed.
+    expect(onReplyPosted).not.toHaveBeenCalled();
   });
 
   // Regression: user posts reply on T1, hits Esc before it resolves,
