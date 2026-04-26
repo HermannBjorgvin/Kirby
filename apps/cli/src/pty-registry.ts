@@ -1,4 +1,6 @@
 import { PtySession, TerminalEmulator } from '@kirby/terminal';
+import * as activity from './activity.js';
+import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
 export interface PtyEntry {
   pty: PtySession;
@@ -22,6 +24,8 @@ export function spawnSession(
   if (existing) {
     existing.pty.dispose();
     existing.emu.dispose();
+    activity.detach(name);
+    removeInactiveAlert(name);
     registry.delete(name);
   }
 
@@ -38,6 +42,7 @@ export function spawnSession(
     entry.exitCode = code;
   });
 
+  activity.attach(name, pty);
   registry.set(name, entry);
   return entry;
 }
@@ -55,15 +60,19 @@ export function killSession(name: string): void {
   if (entry) {
     entry.pty.dispose();
     entry.emu.dispose();
+    activity.detach(name);
+    removeInactiveAlert(name);
     registry.delete(name);
   }
 }
 
 /** Kill all PTY sessions. Called on process exit to prevent orphaned children. */
 export function killAll(): void {
-  for (const entry of registry.values()) {
+  for (const [name, entry] of registry.entries()) {
     entry.pty.dispose();
     entry.emu.dispose();
+    activity.detach(name);
+    removeInactiveAlert(name);
   }
   registry.clear();
 }
