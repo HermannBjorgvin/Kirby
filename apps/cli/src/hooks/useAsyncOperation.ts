@@ -10,7 +10,8 @@ export type OperationName =
   | 'start-session'
   | 'open-editor'
   | 'refresh-pr'
-  | 'post-comment';
+  | 'post-comment'
+  | 'load-pr-files';
 
 // ── Module-local store ───────────────────────────────────────────
 //
@@ -69,9 +70,40 @@ export function isRunning(name: OperationName): boolean {
   return inFlight.has(name);
 }
 
+// Ref-counted variant of `run` for ops that can legitimately overlap
+// (e.g. loading diffs for different PRs). The op stays in `inFlight`
+// while at least one caller is active. Returned function is the "end"
+// callback — call it exactly once, ideally in a `finally`.
+const refCounts = new Map<OperationName, number>();
+
+export function beginOp(name: OperationName): () => void {
+  const cur = refCounts.get(name) ?? 0;
+  refCounts.set(name, cur + 1);
+  if (cur === 0) {
+    inFlight = new Set(inFlight);
+    inFlight.add(name);
+    notify();
+  }
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    const c = refCounts.get(name) ?? 0;
+    if (c <= 1) {
+      refCounts.delete(name);
+      inFlight = new Set(inFlight);
+      inFlight.delete(name);
+      notify();
+    } else {
+      refCounts.set(name, c - 1);
+    }
+  };
+}
+
 /** Test-only: drop all in-flight operations and notify subscribers. */
 export function __resetAsyncOperationsForTest(): void {
   inFlight = new Set();
+  refCounts.clear();
   notify();
 }
 

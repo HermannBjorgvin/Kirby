@@ -4,6 +4,7 @@
 dist
 tmp
 out-tsc
+*.tsbuildinfo
 
 # dependencies
 node_modules
@@ -54,3 +55,6 @@ tui-traces/
 test-output
 test-results
 playwright-report
+
+# Playwright MCP browser session output (manual interactive QA)
+.playwright-mcp/

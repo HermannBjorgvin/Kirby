@@ -66,7 +66,8 @@ export function MainContent({
   const diffBundle = useDiffBundle(
     selectedPr?.id ?? null,
     selectedPr?.sourceBranch ?? '',
-    selectedPr?.targetBranch ?? ''
+    selectedPr?.targetBranch ?? '',
+    selectedPr?.headSha
   );
 
   const screenType: ScreenType = (() => {

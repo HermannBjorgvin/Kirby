@@ -14,9 +14,10 @@ import { useSessionActions } from '../context/SessionContext.js';
 export function useDiffBundle(
   prNumber: number | null,
   sourceBranch: string,
-  targetBranch: string
+  targetBranch: string,
+  headSha: string | undefined
 ) {
-  const diff = useDiffData(prNumber, sourceBranch, targetBranch);
+  const diff = useDiffData(prNumber, sourceBranch, targetBranch, headSha);
   const comments = useReviewComments(prNumber);
   const { provider, config } = useConfig();
   const { refreshPr, flashStatus } = useSessionActions();

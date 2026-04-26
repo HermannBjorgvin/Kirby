@@ -18,6 +18,7 @@ const OP_LABELS: Partial<Record<OperationName, string>> = {
   'open-editor': 'Opening editor',
   'refresh-pr': 'Refreshing PRs',
   'post-comment': 'Posting comment',
+  'load-pr-files': 'Loading PR files',
 };
 
 // Width reservation for the spinner + label. Roughly enough for the

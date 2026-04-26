@@ -3,6 +3,7 @@ import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { DiffFile } from '../types.js';
 import { resolveRef, fetchFileDiffText } from '../utils/diff-fetcher.js';
+import { beginOp } from './useAsyncOperation.js';
 
 const execFile = promisify(execFileCb);
 
@@ -24,23 +25,68 @@ function mapNameStatus(letter: string): DiffFile['status'] {
   }
 }
 
-async function fetchAllFiles(
+// 5 min — target branches (typically `main`) move slowly and a small
+// staleness window is acceptable for diff display. The compare ref
+// is still `targetRef...sourceRef`, so a slightly old base just shifts
+// the diff line range, doesn't break correctness.
+const TARGET_FETCH_TTL_MS = 5 * 60 * 1000;
+const targetFetchedAt = new Map<string, number>();
+
+async function localRefSha(ref: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFile('git', ['rev-parse', '--verify', ref]);
+    return stdout.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Test-only: drop the target-fetch TTL bookkeeping so each spec
+ *  starts from a clean slate. The map is module-level (intentionally
+ *  process-scoped so warm opens stay warm across MainTabBody remounts),
+ *  which means tests would otherwise leak state between cases.  */
+export function __resetTargetFetchTtlForTest(): void {
+  targetFetchedAt.clear();
+}
+
+export async function fetchAllFiles(
   sourceBranch: string,
-  targetBranch: string
+  targetBranch: string,
+  expectedSourceSha: string | undefined
 ): Promise<{ files: DiffFile[]; sourceRef: string; targetRef: string }> {
-  // Try to fetch latest from remote (tolerate failures for branches
-  // that already exist locally, e.g. via worktrees)
+  // Source: skip the network round-trip when local `origin/<source>`
+  // already matches the PR's reported head SHA. Falls through to
+  // `git fetch` when the SHA is unknown, the local ref is missing,
+  // or the local ref is behind.
+  const localSourceSha = await localRefSha(`origin/${sourceBranch}`);
+  const sourceFresh =
+    !!expectedSourceSha && localSourceSha === expectedSourceSha;
+
+  // Target: no head SHA available, so use a TTL. First fetch per
+  // target per process always runs; later opens within the window
+  // skip it.
+  const lastTargetFetch = targetFetchedAt.get(targetBranch) ?? 0;
+  const targetFresh = Date.now() - lastTargetFetch < TARGET_FETCH_TTL_MS;
+
   await Promise.all([
-    execFile('git', ['fetch', 'origin', sourceBranch], {
-      timeout: 30_000,
-    }).catch(() => {
-      /* branch may already exist locally */
-    }),
-    execFile('git', ['fetch', 'origin', targetBranch], {
-      timeout: 30_000,
-    }).catch(() => {
-      /* branch may already exist locally */
-    }),
+    sourceFresh
+      ? Promise.resolve()
+      : execFile('git', ['fetch', 'origin', sourceBranch], {
+          timeout: 30_000,
+        }).catch(() => {
+          /* branch may already exist locally */
+        }),
+    targetFresh
+      ? Promise.resolve()
+      : execFile('git', ['fetch', 'origin', targetBranch], {
+          timeout: 30_000,
+        })
+          .then(() => {
+            targetFetchedAt.set(targetBranch, Date.now());
+          })
+          .catch(() => {
+            /* branch may already exist locally */
+          }),
   ]);
 
   const [sourceRef, targetRef] = await Promise.all([
@@ -136,22 +182,31 @@ interface FilesCacheEntry {
 export function useDiffData(
   prNumber: number | null,
   sourceBranch: string,
-  targetBranch: string
+  targetBranch: string,
+  headSha: string | undefined
 ) {
   const [files, setFiles] = useState<DiffFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileDiffs, setFileDiffs] = useState<Map<string, string>>(new Map());
   const [fileDiffLoading, setFileDiffLoading] = useState<string | null>(null);
-  const cacheRef = useRef<Map<number, FilesCacheEntry>>(new Map());
-  // Per-file diff cache keyed by `${prNumber}:${filename}` so reopening
-  // a file after switching back from the list is instant.
+  // Caches scoped to the current mount — MainTabBody remounts on every
+  // sidebar-item switch, which is intentional: switching to another
+  // worktree/PR should re-check freshness. Within a single mount,
+  // navigating between files of the same PR stays instant.
+  //
+  // Keys include `headSha` so a force-push or new commit during the
+  // mount naturally invalidates. `unknown` falls back to
+  // PR-number-only behaviour when the provider didn't give us a head
+  // SHA (some ADO edge cases).
+  const filesCacheRef = useRef<Map<string, FilesCacheEntry>>(new Map());
   const fileDiffCacheRef = useRef<Map<string, string>>(new Map());
+  const cacheKey = prNumber ? `${prNumber}:${headSha ?? 'unknown'}` : null;
 
   const loadFiles = useCallback(async () => {
-    if (!prNumber || !sourceBranch || !targetBranch) return;
+    if (!prNumber || !sourceBranch || !targetBranch || !cacheKey) return;
 
-    const cached = cacheRef.current.get(prNumber);
+    const cached = filesCacheRef.current.get(cacheKey);
     if (cached) {
       setFiles(cached.files);
       setError(null);
@@ -161,19 +216,21 @@ export function useDiffData(
 
     setLoading(true);
     setError(null);
+    const endOp = beginOp('load-pr-files');
     try {
-      const result = await fetchAllFiles(sourceBranch, targetBranch);
-      cacheRef.current.set(prNumber, result);
+      const result = await fetchAllFiles(sourceBranch, targetBranch, headSha);
+      filesCacheRef.current.set(cacheKey, result);
       setFiles(result.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
+      endOp();
       setLoading(false);
     }
-  }, [prNumber, sourceBranch, targetBranch]);
+  }, [prNumber, sourceBranch, targetBranch, headSha, cacheKey]);
 
-  // Auto-load files when prNumber changes.
+  // Auto-load files when prNumber or headSha changes.
   useEffect(() => {
     if (prNumber) {
       loadFiles();
@@ -190,8 +247,9 @@ export function useDiffData(
   // sub-100 ms.
   const loadFileDiff = useCallback(
     async (filename: string) => {
-      if (!prNumber || !sourceBranch || !targetBranch || !filename) return;
-      const key = `${prNumber}:${filename}`;
+      if (!prNumber || !sourceBranch || !targetBranch || !filename || !cacheKey)
+        return;
+      const key = `${cacheKey}:${filename}`;
       const cached = fileDiffCacheRef.current.get(key);
       if (cached !== undefined) {
         setFileDiffs((prev) => {
@@ -203,7 +261,7 @@ export function useDiffData(
         return;
       }
 
-      const entry = cacheRef.current.get(prNumber);
+      const entry = filesCacheRef.current.get(cacheKey);
       const preResolved = entry
         ? { sourceRef: entry.sourceRef, targetRef: entry.targetRef }
         : undefined;
@@ -229,7 +287,7 @@ export function useDiffData(
         setFileDiffLoading((cur) => (cur === filename ? null : cur));
       }
     },
-    [prNumber, sourceBranch, targetBranch]
+    [prNumber, sourceBranch, targetBranch, cacheKey]
   );
 
   return {

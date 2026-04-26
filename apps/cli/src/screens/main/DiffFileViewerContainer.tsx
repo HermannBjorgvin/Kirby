@@ -166,11 +166,20 @@ export function DiffFileViewerContainer({
     if (autoSelectedFileRef.current === file) return;
     // Build the same nav pool diff-viewer-input uses (sorted by line)
     // so the "first comment" matches what Shift+↓ would walk to.
+    // Posted local comments are rendered via the remote-thread path
+    // (interleaveComments filters them out at libs/review-comments
+    // /comment-renderer.ts:249), so their ids never appear in
+    // `commentPositions`. Including them here would put a dead id at
+    // navPool[0] for any thread that was authored from kirby, and the
+    // rowEntry guard would silently bail forever — exactly the bug
+    // we're fixing.
     const navPool: { id: string; lineStart: number }[] = [
-      ...fileComments.map((c) => ({
-        id: c.id,
-        lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
-      })),
+      ...fileComments
+        .filter((c) => c.status !== 'posted')
+        .map((c) => ({
+          id: c.id,
+          lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
+        })),
       ...fileRemoteThreads.map((t) => ({
         id: t.id,
         lineStart: t.lineStart ?? Number.POSITIVE_INFINITY,
@@ -181,24 +190,27 @@ export function DiffFileViewerContainer({
     // may have an empty pool — skipping that pass means we still
     // auto-select once the data lands.
     if (navPool.length === 0) return;
-    autoSelectedFileRef.current = file;
     const first = navPool[0]!;
-    setSelectedCommentId(first.id);
-    // Scroll so the first comment is in view. The scroll target
-    // mirrors `scrollToComment` in diff-viewer-input — translate the
-    // refStartLine slot index to a physical row via the row map and
-    // pin two rows above for a bit of code context.
+    // Scroll target mirrors `scrollToComment` in diff-viewer-input —
+    // translate the refStartLine slot index to a physical row via the
+    // row map and pin two rows above for a bit of code context.
+    // commentPositions/rowMap depend on the parsed diff text, which
+    // loads async via `loadFileDiff`. If comments arrived first the
+    // first effect pass has nothing to scroll to — bail and let the
+    // diff-text render fire us again. Without this gate we'd arm the
+    // ref now, the next pass would be blocked, and the user would see
+    // a selection that never scrolled into view.
     const info = commentPositions.get(first.id);
-    if (info) {
-      const rowEntry = rowMap.positions[info.refStartLine];
-      if (rowEntry) {
-        const viewportHeight = Math.max(1, terminal.paneRows - 3);
-        const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-        setDiffScrollOffset(
-          Math.min(Math.max(0, rowEntry.rowStart - 2), maxScroll)
-        );
-      }
-    }
+    const rowEntry = info ? rowMap.positions[info.refStartLine] : undefined;
+    if (!rowEntry) return;
+
+    autoSelectedFileRef.current = file;
+    setSelectedCommentId(first.id);
+    const viewportHeight = Math.max(1, terminal.paneRows - 3);
+    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
+    setDiffScrollOffset(
+      Math.min(Math.max(0, rowEntry.rowStart - 2), maxScroll)
+    );
   }, [
     pane.diffViewFile,
     fileComments,
