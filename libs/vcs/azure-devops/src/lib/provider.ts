@@ -10,6 +10,7 @@ import type {
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
+import { sanitizeBody } from '@kirby/vcs-core';
 import { log, logNetwork } from '@kirby/logger';
 
 // ── Internal ADO types ─────────────────────────────────────────────
@@ -639,7 +640,7 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
       (c): RemoteCommentReply => ({
         id: String(c.id ?? ''),
         author: c.author?.displayName ?? c.author?.uniqueName ?? 'unknown',
-        body: c.content ?? '',
+        body: sanitizeBody(c.content ?? ''),
         createdAt: c.publishedDate ?? '',
       })
     ),
@@ -815,7 +816,7 @@ async function replyToAdoThread(
   return {
     id: String(data.id ?? ''),
     author: data.author?.displayName ?? data.author?.uniqueName ?? 'unknown',
-    body: data.content ?? '',
+    body: sanitizeBody(data.content ?? ''),
     createdAt: data.publishedDate ?? '',
   };
 }

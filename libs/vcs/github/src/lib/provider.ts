@@ -12,6 +12,7 @@ import type {
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
+import { sanitizeBody } from '@kirby/vcs-core';
 import { logNetwork } from '@kirby/logger';
 
 // ── gh CLI transport ──────────────────────────────────────────────
@@ -452,7 +453,7 @@ function transformReviewThread(node: ReviewThreadNode): RemoteCommentThread {
       (c): RemoteCommentReply => ({
         id: c.id,
         author: c.author?.login ?? 'unknown',
-        body: c.body,
+        body: sanitizeBody(c.body),
         createdAt: c.createdAt,
         isMinimized: c.isMinimized,
       })
@@ -483,7 +484,7 @@ function transformGeneralComment(
       {
         id: node.id,
         author: node.author?.login ?? 'unknown',
-        body: node.body,
+        body: sanitizeBody(node.body),
         createdAt: node.createdAt,
       },
     ],
@@ -791,7 +792,7 @@ export const githubProvider: VcsProvider = {
       return {
         id: c.id,
         author: c.author?.login ?? 'unknown',
-        body: c.body,
+        body: sanitizeBody(c.body),
         createdAt: c.createdAt,
       };
     }
@@ -803,7 +804,7 @@ export const githubProvider: VcsProvider = {
     return {
       id: c.id,
       author: c.author?.login ?? 'unknown',
-      body: c.body,
+      body: sanitizeBody(c.body),
       createdAt: c.createdAt,
     };
   },
