@@ -9,7 +9,47 @@ import { mkdtempSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { cleanupTestRepo, createTestRepo } from '../setup/git-repo.js';
+
+// ── fakeAgentCommand ───────────────────────────────────────────────
+
+export interface FakeAgentOpts {
+  banner?: string;
+  bursts?: number | 'inf';
+  burstMs?: number;
+  burstBytes?: number;
+  idleMs?: number;
+  silent?: boolean;
+  echo?: boolean;
+  echoDelayMs?: number;
+  exitAfterMs?: number;
+}
+
+const FAKE_AGENT_PATH = fileURLToPath(
+  new URL('./fake-agent.mjs', import.meta.url)
+);
+
+/**
+ * Returns a shell command (suitable for `kirbyConfig.aiCommand`) that
+ * spawns the fake-agent harness with the given scenario. See
+ * `fake-agent.mjs` for the full flag reference.
+ */
+export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
+  const flags: string[] = [];
+  if (opts.banner != null) flags.push(`--banner=${opts.banner}`);
+  if (opts.bursts != null) flags.push(`--bursts=${opts.bursts}`);
+  if (opts.burstMs != null) flags.push(`--burst-ms=${opts.burstMs}`);
+  if (opts.burstBytes != null) flags.push(`--burst-bytes=${opts.burstBytes}`);
+  if (opts.idleMs != null) flags.push(`--idle-ms=${opts.idleMs}`);
+  if (opts.silent) flags.push('--silent');
+  if (opts.echo) flags.push('--echo');
+  if (opts.echoDelayMs != null)
+    flags.push(`--echo-delay-ms=${opts.echoDelayMs}`);
+  if (opts.exitAfterMs != null)
+    flags.push(`--exit-after-ms=${opts.exitAfterMs}`);
+  return ['node', FAKE_AGENT_PATH, ...flags].join(' ');
+}
 
 export interface KirbyOptions {
   kirbyConfig?: Record<string, unknown>;
