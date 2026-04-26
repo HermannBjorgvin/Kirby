@@ -2,6 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Chrome only",
+      "url": "http://localhost:5174",
+      "webRoot": "${workspaceFolder}/apps/cli-wterm-host/src/public",
+      "sourceMaps": true,
+      "runtimeArgs": [
+        "--remote-debugging-port=9222",
+        "--user-data-dir=${workspaceFolder}/.vscode/chrome",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--hide-crash-restore-bubble"
+      ]
+    },
+    {
       "type": "node",
       "request": "launch",
       "name": "Debug cli with Nx",
