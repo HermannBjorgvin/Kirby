@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import type { ReviewComment } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
+import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
   readComments,
   removeComment,
@@ -12,9 +12,6 @@ import {
   type CommentPositionInfo,
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
-import { writeFileSync, readFileSync, watch } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -397,31 +394,15 @@ export function handleDiffViewerInput(
       return;
     }
 
-    const tmpFile = join(tmpdir(), `kirby-comment-${comment.id}.md`);
-    writeFileSync(tmpFile, comment.body, 'utf8');
-
-    spawn(editor, [tmpFile], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
-
     const prId = ctx.commentCtx!.prId;
-    const commentId = comment.id;
-    const watcher = watch(tmpFile, () => {
-      try {
-        const newBody = readFileSync(tmpFile, 'utf8');
-        if (newBody !== comment.body) {
-          updateComment(prId, commentId, { body: newBody });
-        }
-      } catch {
-        // File may be temporarily unavailable during save
-      }
+    openCommentInEditor({
+      commentId: comment.id,
+      initialBody: comment.body,
+      editor,
+      onUpdate: (newBody) => {
+        updateComment(prId, comment.id, { body: newBody });
+      },
     });
-
-    const timer = setTimeout(() => {
-      watcher.close();
-    }, 30 * 60 * 1000);
-    timer.unref();
 
     ctx.sessions.flashStatus(`Opened comment in ${editor}`);
     return;
