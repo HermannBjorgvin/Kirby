@@ -10,8 +10,18 @@ export async function createSession(
   term: KirbyTerm,
   branchName: string
 ): Promise<void> {
-  await term.type('c');
-  await expect(term.getByText('Branch Picker')).toBeVisible({ timeout: 5_000 });
+  // Retry typing 'c' until the branch picker actually opens. A single
+  // 'c' can be lost if focus is in transition: an immediately preceding
+  // Ctrl+Space (\x00) and the 'c' can arrive in a bunched stdin event,
+  // and Ink's sidebar useInput is still inactive in that tick — so the
+  // 'c' is dispatched against the terminal-focused context and dropped.
+  // Re-typing once focus has fully landed lets the next 'c' through.
+  await expect(async () => {
+    await term.type('c');
+    await expect(term.getByText('Branch Picker')).toBeVisible({
+      timeout: 1_500,
+    });
+  }).toPass({ timeout: 8_000, intervals: [500] });
   await term.type(branchName);
   await expect(term.getByText(/\(new branch\)/).first()).toBeVisible({
     timeout: 5_000,

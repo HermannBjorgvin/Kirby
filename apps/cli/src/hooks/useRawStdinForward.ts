@@ -35,9 +35,18 @@ export function useRawStdinForward(
 
     const handler = (data: Buffer) => {
       const str = data.toString('utf-8');
-      if (str === '\x00') {
-        // Ctrl+Space → return to sidebar
+      // Ctrl+Space (\x00) → escape back to the sidebar. Match anywhere
+      // in the buffer, not just str === '\x00': under load (esp. CI
+      // runners and PTY readahead) multiple keystrokes can arrive in
+      // one stdin chunk, so '\x00c' would have slipped through and
+      // pushed every byte — including 'c' — into the PTY.
+      const escIdx = str.indexOf('\x00');
+      if (escIdx !== -1) {
         onEscape();
+        // Drop the rest of the chunk: focus is moving away from the
+        // terminal, so any further bytes in this event were typed by a
+        // user who has already escaped. Forwarding them to the PTY
+        // would leak keystrokes into the agent.
         return;
       }
 
