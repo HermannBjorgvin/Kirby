@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { RemoteCommentThread } from '@kirby/vcs-core';
 import {
   parseGitHubRemoteUrl,
   mapReviewState,
@@ -521,6 +522,410 @@ describe('githubProvider', () => {
       const secondArgs = mockExecFile.mock.calls[1]![1] as string[];
       const cursorArg = secondArgs.find((a: string) => a.startsWith('cursor='));
       expect(cursorArg).toBe('cursor=cursor-abc');
+    });
+  });
+
+  // ── Comment sync ─────────────────────────────────────────────────
+
+  function findQueryArg(callIndex = 0): string {
+    const args = mockExecFile.mock.calls[callIndex]![1] as string[];
+    const q = args.find((a: string) => a.startsWith('query='));
+    return q ?? '';
+  }
+
+  describe('fetchCommentThreads', () => {
+    beforeEach(() => mockExecFile.mockReset());
+
+    it('returns one review thread + one general comment from a single page', async () => {
+      ghSuccess({
+        data: {
+          repository: {
+            pullRequest: {
+              id: 'PR_NODE_ID',
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: 'thread-1',
+                    isResolved: false,
+                    isOutdated: false,
+                    path: 'src/foo.ts',
+                    line: 12,
+                    startLine: null,
+                    originalLine: 12,
+                    originalStartLine: null,
+                    diffSide: 'RIGHT',
+                    comments: {
+                      nodes: [
+                        {
+                          id: 'c-1',
+                          author: { login: 'alice' },
+                          body: 'looks good',
+                          createdAt: '2026-01-01T00:00:00Z',
+                          isMinimized: false,
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+              comments: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: 'general-1',
+                    author: { login: 'bob' },
+                    body: 'overall LGTM',
+                    createdAt: '2026-01-01T00:00:00Z',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+
+      const result = await githubProvider.fetchCommentThreads!(
+        {},
+        { owner: 'o', repo: 'r' },
+        42
+      );
+
+      expect(result.threads).toHaveLength(1);
+      expect(result.threads[0]).toMatchObject({
+        id: 'thread-1',
+        file: 'src/foo.ts',
+        lineStart: 12,
+        lineEnd: 12,
+        side: 'RIGHT',
+        isOutdated: false,
+        canResolve: true,
+      });
+      expect(result.threads[0]!.comments[0]!.body).toBe('looks good');
+
+      expect(result.generalComments).toHaveLength(1);
+      expect(result.generalComments[0]).toMatchObject({
+        id: 'general-1',
+        replyKind: 'github-issue-comment',
+        replySubjectId: 'PR_NODE_ID',
+        canResolve: false,
+      });
+    });
+
+    it('falls back to originalLine when an outdated thread has line=null', async () => {
+      ghSuccess({
+        data: {
+          repository: {
+            pullRequest: {
+              id: 'PR_NODE_ID',
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: 'thread-outdated',
+                    isResolved: false,
+                    isOutdated: true,
+                    path: 'src/foo.ts',
+                    line: null,
+                    startLine: null,
+                    originalLine: 7,
+                    originalStartLine: null,
+                    diffSide: 'RIGHT',
+                    comments: { nodes: [] },
+                  },
+                ],
+              },
+              comments: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [],
+              },
+            },
+          },
+        },
+      });
+
+      const result = await githubProvider.fetchCommentThreads!(
+        {},
+        { owner: 'o', repo: 'r' },
+        42
+      );
+
+      expect(result.threads[0]).toMatchObject({
+        id: 'thread-outdated',
+        lineStart: 7,
+        lineEnd: 7,
+        isOutdated: true,
+      });
+    });
+
+    it('strips ANSI escape sequences from comment bodies', async () => {
+      ghSuccess({
+        data: {
+          repository: {
+            pullRequest: {
+              id: 'PR_NODE_ID',
+              reviewThreads: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: 't',
+                    isResolved: false,
+                    isOutdated: false,
+                    path: 'a.ts',
+                    line: 1,
+                    startLine: null,
+                    originalLine: 1,
+                    originalStartLine: null,
+                    diffSide: 'RIGHT',
+                    comments: {
+                      nodes: [
+                        {
+                          id: 'c',
+                          author: { login: 'a' },
+                          body: 'BEFORE[2J[HAFTER',
+                          createdAt: '',
+                          isMinimized: false,
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+              comments: {
+                pageInfo: { hasNextPage: false, endCursor: null },
+                nodes: [
+                  {
+                    id: 'g',
+                    author: { login: 'b' },
+                    body: '[31mred[0m text',
+                    createdAt: '',
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+
+      const result = await githubProvider.fetchCommentThreads!(
+        {},
+        { owner: 'o', repo: 'r' },
+        1
+      );
+
+      expect(result.threads[0]!.comments[0]!.body).toBe('BEFOREAFTER');
+      expect(result.generalComments[0]!.comments[0]!.body).toBe('red text');
+    });
+  });
+
+  describe('replyToThread', () => {
+    beforeEach(() => mockExecFile.mockReset());
+
+    it('uses addPullRequestReviewThreadReply for review threads', async () => {
+      ghSuccess({
+        data: {
+          addPullRequestReviewThreadReply: {
+            comment: {
+              id: 'reply-1',
+              body: 'thanks',
+              createdAt: '2026-01-01T00:00:00Z',
+              author: { login: 'alice' },
+            },
+          },
+        },
+      });
+
+      const reply = await githubProvider.replyToThread!(
+        {},
+        {},
+        42,
+        {
+          id: 'thread-1',
+          file: 'a.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          side: 'RIGHT',
+          isResolved: false,
+          isOutdated: false,
+          canResolve: true,
+          comments: [],
+        },
+        'thanks'
+      );
+
+      expect(reply).toEqual({
+        id: 'reply-1',
+        author: 'alice',
+        body: 'thanks',
+        createdAt: '2026-01-01T00:00:00Z',
+      });
+
+      expect(findQueryArg()).toContain('addPullRequestReviewThreadReply');
+    });
+
+    it('uses addComment with replySubjectId for issue-comment threads', async () => {
+      ghSuccess({
+        data: {
+          addComment: {
+            commentEdge: {
+              node: {
+                id: 'comment-1',
+                body: 'reply body',
+                createdAt: '2026-01-01T00:00:00Z',
+                author: { login: 'bob' },
+              },
+            },
+          },
+        },
+      });
+
+      const reply = await githubProvider.replyToThread!(
+        {},
+        {},
+        42,
+        {
+          id: 'general-1',
+          file: null,
+          lineStart: null,
+          lineEnd: null,
+          side: 'RIGHT',
+          isResolved: false,
+          isOutdated: false,
+          canResolve: false,
+          replyKind: 'github-issue-comment',
+          replySubjectId: 'PR_NODE_ID',
+          comments: [],
+        },
+        'reply body'
+      );
+
+      expect(reply.id).toBe('comment-1');
+      expect(reply.body).toBe('reply body');
+      expect(findQueryArg()).toContain('addComment');
+
+      const args = mockExecFile.mock.calls[0]![1] as string[];
+      expect(args).toContain('subjectId=PR_NODE_ID');
+    });
+
+    it('throws when an issue-comment thread is missing replySubjectId', async () => {
+      await expect(
+        githubProvider.replyToThread!(
+          {},
+          {},
+          42,
+          {
+            id: 'general-1',
+            file: null,
+            lineStart: null,
+            lineEnd: null,
+            side: 'RIGHT',
+            isResolved: false,
+            isOutdated: false,
+            canResolve: false,
+            replyKind: 'github-issue-comment',
+            // replySubjectId intentionally omitted
+            comments: [],
+          },
+          'oops'
+        )
+      ).rejects.toThrow(/replySubjectId/);
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it('strips ANSI from the reply body returned by GitHub', async () => {
+      ghSuccess({
+        data: {
+          addPullRequestReviewThreadReply: {
+            comment: {
+              id: 'reply-1',
+              body: 'plain[2Jpoison',
+              createdAt: '',
+              author: { login: 'a' },
+            },
+          },
+        },
+      });
+
+      const reply = await githubProvider.replyToThread!(
+        {},
+        {},
+        42,
+        {
+          id: 'thread-1',
+          file: 'a.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          side: 'RIGHT',
+          isResolved: false,
+          isOutdated: false,
+          canResolve: true,
+          comments: [],
+        },
+        'thanks'
+      );
+
+      expect(reply.body).toBe('plainpoison');
+    });
+  });
+
+  describe('setThreadResolved', () => {
+    beforeEach(() => mockExecFile.mockReset());
+
+    function makeThread(canResolve: boolean): RemoteCommentThread {
+      return {
+        id: 'thread-1',
+        file: 'a.ts',
+        lineStart: 1,
+        lineEnd: 1,
+        side: 'RIGHT',
+        isResolved: false,
+        isOutdated: false,
+        canResolve,
+        comments: [],
+      };
+    }
+
+    it('uses resolveReviewThread when resolved=true', async () => {
+      ghSuccess({
+        data: {
+          resolveReviewThread: { thread: { id: 't', isResolved: true } },
+        },
+      });
+      await githubProvider.setThreadResolved!(
+        {},
+        {},
+        42,
+        makeThread(true),
+        true
+      );
+      expect(findQueryArg()).toContain('resolveReviewThread');
+    });
+
+    it('uses unresolveReviewThread when resolved=false', async () => {
+      ghSuccess({
+        data: {
+          unresolveReviewThread: { thread: { id: 't', isResolved: false } },
+        },
+      });
+      await githubProvider.setThreadResolved!(
+        {},
+        {},
+        42,
+        makeThread(true),
+        false
+      );
+      expect(findQueryArg()).toContain('unresolveReviewThread');
+    });
+
+    it('skips the mutation when canResolve is false', async () => {
+      await githubProvider.setThreadResolved!(
+        {},
+        {},
+        42,
+        makeThread(false),
+        true
+      );
+      expect(mockExecFile).not.toHaveBeenCalled();
     });
   });
 });
