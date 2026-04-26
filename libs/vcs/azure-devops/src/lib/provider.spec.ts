@@ -12,6 +12,9 @@ import {
   fetchAuthenticatedUserEmail,
   fetchMyTeamIds,
   enrichReviewersWithTeamMembership,
+  extractMentionGuids,
+  rewriteMentions,
+  _clearMentionCacheForTests,
 } from './provider.js';
 
 // Mock global fetch
@@ -687,6 +690,276 @@ describe('azureDevOpsProvider', () => {
         createdByDisplayName: '',
         url: 'https://dev.azure.com/myorg/myproject/_git/myrepo/pullrequest/43',
       });
+    });
+  });
+
+  // ── Mention rewriting ─────────────────────────────────────────
+  //
+  // ADO's REST API returns raw `@<GUID>` tokens in comment bodies
+  // instead of the display names the web UI renders. Kirby
+  // post-processes each body via the Identities API and replaces
+  // resolved GUIDs inline; unresolved ones stay intact so nothing
+  // silently disappears.
+
+  describe('extractMentionGuids', () => {
+    it('picks up a single @<guid> mention', () => {
+      const guids = extractMentionGuids(
+        'ping @<12345678-1234-1234-1234-123456789012> pls review'
+      );
+      expect(guids).toEqual(['12345678-1234-1234-1234-123456789012']);
+    });
+
+    it('dedupes repeats', () => {
+      const g = '12345678-1234-1234-1234-123456789012';
+      const guids = extractMentionGuids(`hi @<${g}> and also @<${g}>`);
+      expect(guids).toEqual([g]);
+    });
+
+    it('returns [] for text without mentions', () => {
+      expect(extractMentionGuids('just a plain comment')).toEqual([]);
+    });
+
+    it('is case-insensitive on hex digits', () => {
+      const guids = extractMentionGuids(
+        '@<12345678-ABCD-1234-1234-123456789ABC>'
+      );
+      expect(guids).toEqual(['12345678-abcd-1234-1234-123456789abc']);
+    });
+
+    it('ignores bracketed non-GUID content', () => {
+      expect(extractMentionGuids('@<not-a-guid> and @<foo>')).toEqual([]);
+    });
+  });
+
+  describe('rewriteMentions', () => {
+    const g1 = '11111111-1111-1111-1111-111111111111';
+    const g2 = '22222222-2222-2222-2222-222222222222';
+
+    it('substitutes @<guid> with @<displayName> when resolved', () => {
+      const cache = new Map([[g1, 'Alice Smith']]);
+      expect(rewriteMentions(`hey @<${g1}> check`, cache)).toBe(
+        'hey @Alice Smith check'
+      );
+    });
+
+    it('leaves unresolved guids intact', () => {
+      const cache = new Map<string, string>();
+      expect(rewriteMentions(`hey @<${g1}>`, cache)).toBe(`hey @<${g1}>`);
+    });
+
+    it('handles multiple different mentions', () => {
+      const cache = new Map([
+        [g1, 'Alice'],
+        [g2, 'Bob'],
+      ]);
+      expect(rewriteMentions(`@<${g1}> and @<${g2}>`, cache)).toBe(
+        '@Alice and @Bob'
+      );
+    });
+
+    it('rewrites repeated mentions of the same user', () => {
+      const cache = new Map([[g1, 'Alice']]);
+      expect(rewriteMentions(`@<${g1}> @<${g1}>`, cache)).toBe('@Alice @Alice');
+    });
+
+    it('leaves comment bodies without mentions unchanged', () => {
+      const cache = new Map([[g1, 'Alice']]);
+      expect(rewriteMentions('plain text', cache)).toBe('plain text');
+    });
+  });
+
+  describe('fetchCommentThreads @mention resolution', () => {
+    beforeEach(() => {
+      mockFetch.mockReset();
+      _clearMentionCacheForTests();
+    });
+
+    const alice = '11111111-1111-1111-1111-111111111111';
+    const bob = '22222222-2222-2222-2222-222222222222';
+
+    it('replaces @<guid> with @displayName using the Identities API', async () => {
+      // 1) threads response
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          value: [
+            {
+              id: 1,
+              status: 'active',
+              threadContext: {
+                filePath: '/src/foo.ts',
+                rightFileStart: { line: 10 },
+                rightFileEnd: { line: 10 },
+              },
+              comments: [
+                {
+                  id: 11,
+                  commentType: 'text',
+                  content: `hi @<${alice}> please look`,
+                  author: { displayName: 'Me' },
+                  publishedDate: '2026-04-24T00:00:00Z',
+                },
+                {
+                  id: 12,
+                  commentType: 'text',
+                  content: `cc @<${bob}> too`,
+                  author: { displayName: 'Me' },
+                  publishedDate: '2026-04-24T00:01:00Z',
+                },
+              ],
+            },
+          ],
+        })
+      );
+      // 2) identities batch response
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          value: [
+            { id: alice, providerDisplayName: 'Alice Smith' },
+            { id: bob, providerDisplayName: 'Bob Jones' },
+          ],
+        })
+      );
+
+      const result = await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 't' },
+        testProject,
+        1
+      );
+
+      const thread = result.threads[0];
+      expect(thread.comments[0].body).toBe('hi @Alice Smith please look');
+      expect(thread.comments[1].body).toBe('cc @Bob Jones too');
+
+      // Second call should be the identities API, batching both guids
+      const identityCall = mockFetch.mock.calls[1][0] as string;
+      expect(identityCall).toContain('/identities?identityIds=');
+      expect(identityCall).toContain(alice);
+      expect(identityCall).toContain(bob);
+    });
+
+    it('leaves original @<guid> intact when the Identities API fails', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          value: [
+            {
+              id: 1,
+              status: 'active',
+              threadContext: {
+                filePath: '/src/foo.ts',
+                rightFileStart: { line: 1 },
+                rightFileEnd: { line: 1 },
+              },
+              comments: [
+                {
+                  id: 1,
+                  commentType: 'text',
+                  content: `@<${alice}> please`,
+                  author: { displayName: 'Me' },
+                  publishedDate: '2026-04-24T00:00:00Z',
+                },
+              ],
+            },
+          ],
+        })
+      );
+      // identities call errors
+      mockFetch.mockResolvedValueOnce(jsonResponse({}, 500));
+
+      const result = await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 't' },
+        testProject,
+        1
+      );
+
+      // The original token survives the failure — comment still renders,
+      // user sees the unresolved GUID, no hard crash.
+      expect(result.threads[0].comments[0].body).toBe(`@<${alice}> please`);
+    });
+
+    it('skips the Identities API entirely when no mentions are present', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          value: [
+            {
+              id: 1,
+              status: 'active',
+              threadContext: {
+                filePath: '/src/foo.ts',
+                rightFileStart: { line: 1 },
+                rightFileEnd: { line: 1 },
+              },
+              comments: [
+                {
+                  id: 1,
+                  commentType: 'text',
+                  content: 'no mentions here',
+                  author: { displayName: 'Me' },
+                  publishedDate: '2026-04-24T00:00:00Z',
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 't' },
+        testProject,
+        1
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses cached display names on the next fetch (no second Identities call)', async () => {
+      const threadsResponse = {
+        value: [
+          {
+            id: 1,
+            status: 'active',
+            threadContext: {
+              filePath: '/src/foo.ts',
+              rightFileStart: { line: 1 },
+              rightFileEnd: { line: 1 },
+            },
+            comments: [
+              {
+                id: 1,
+                commentType: 'text',
+                content: `@<${alice}> hi`,
+                author: { displayName: 'Me' },
+                publishedDate: '2026-04-24T00:00:00Z',
+              },
+            ],
+          },
+        ],
+      };
+
+      // First fetch: threads + identities
+      mockFetch.mockResolvedValueOnce(jsonResponse(threadsResponse));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          value: [{ id: alice, providerDisplayName: 'Alice' }],
+        })
+      );
+
+      await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 't' },
+        testProject,
+        1
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      // Second fetch: only threads — alice is cached
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValueOnce(jsonResponse(threadsResponse));
+      const result = await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 't' },
+        testProject,
+        1
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.threads[0].comments[0].body).toBe('@Alice hi');
     });
   });
 });

@@ -151,13 +151,36 @@ GH_TOKEN=<fine-grained-PAT> npx nx e2e:integration cli-e2e
 
 **Fixture PRs in the test repo** (used by `reviews-fixture.test.ts`):
 
-| PR  | Branch                      | Title                               | CI     | Review (by kirby-test-runner)         |
-| --- | --------------------------- | ----------------------------------- | ------ | ------------------------------------- |
-| #37 | `fixture/add-color-support` | Add color support for tile values   | passes | Approved                              |
-| #38 | `fixture/add-undo-feature`  | Add undo feature with history stack | passes | Changes requested (3 inline comments) |
-| #39 | `fixture/add-ai-solver`     | Add AI solver for auto-play mode    | fails  | Approved (1 suggestion comment)       |
+| PR   | Branch                      | Title                                  | CI     | Review (by kirby-test-runner)                                                          |
+| ---- | --------------------------- | -------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| #37  | `fixture/add-color-support` | Add color support for tile values      | passes | Approved                                                                               |
+| #38  | `fixture/add-undo-feature`  | Add undo feature with history stack    | passes | Changes requested (3 inline comments)                                                  |
+| #39  | `fixture/add-ai-solver`     | Add AI solver for auto-play mode       | fails  | Approved (1 suggestion comment)                                                        |
+| #322 | `fixture/outdated-thread`   | Outdated thread fixture (do not merge) | n/a    | 2 outdated inline comments (by HermannBjorgvin) + kirby-test-runner involvement marker |
 
 These PRs are permanent fixtures — tests only read them, never modify. The test repo contains a C 2048 game project.
+
+PR #322 is an exception in shape: it has two commits where the second
+rewrites the function the review comment was anchored to, so GitHub
+flags the thread `isOutdated: true` with `line: null` and only
+`originalLine` set. Used by `outdated-thread.test.ts` to verify the
+diff viewer renders outdated threads inline at their `originalLine`
+instead of dropping them into the "comments on lines not in diff" tail.
+
+PR #322 was authored by HermannBjorgvin and the outdated review
+comments are by HermannBjorgvin too. Kirby's PR sidebar uses GitHub
+search with `involves:${username}`, which would normally exclude this
+PR for `kirby-test-runner`. To keep #322 visible to the test runner
+without changing the production query, a one-time
+`kirby-test-runner`-authored review-comment marker was posted on the
+PR. If the marker is ever lost, restore it with:
+
+```bash
+GH_TOKEN=<integration-pat> gh api \
+  repos/kirby-test-runner/kirby-integration-test-repository/pulls/322/reviews \
+  -f event=COMMENT \
+  -f body="kirby-test-runner involvement marker — keeps PR #322 visible to the involves: sidebar query for the outdated-thread fixture test."
+```
 
 **CI pipelines:**
 

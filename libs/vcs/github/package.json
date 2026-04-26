@@ -21,6 +21,7 @@
     ]
   },
   "dependencies": {
+    "@kirby/logger": "*",
     "@kirby/vcs-core": "*"
   }
 }

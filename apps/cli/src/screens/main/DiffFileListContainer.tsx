@@ -3,6 +3,9 @@ import { useInput } from 'ink';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
+import { useSessionActions } from '../../context/SessionContext.js';
+import { planCommentFooter } from '../../components/CommentThread.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
@@ -26,23 +29,66 @@ export function DiffFileListContainer({
   diffBundle,
 }: DiffFileListContainerProps) {
   const keybinds = useKeybindResolve();
+  const sessions = useSessionActions();
+  const { config } = useConfig();
+  const treeMode = config.diffFileListTree === true;
+
+  // In tree mode, sort files alphabetically by path so siblings group
+  // under the same dir. Hoisted here so the ordering is shared with
+  // the input handler — selection index must point at the same file
+  // the renderer highlights.
+  const orderedFiles = useMemo(
+    () =>
+      treeMode
+        ? [...diffBundle.files].sort((a, b) =>
+            a.filename.localeCompare(b.filename)
+          )
+        : diffBundle.files,
+    [diffBundle.files, treeMode]
+  );
 
   const { normal: diffNormalFiles, skipped: diffSkippedFiles } = useMemo(
-    () => partitionFiles(diffBundle.files),
-    [diffBundle.files]
+    () => partitionFiles(orderedFiles),
+    [orderedFiles]
   );
-  const diffDisplayCount = pane.showSkipped
+  const fileCount = pane.showSkipped
     ? diffNormalFiles.length + diffSkippedFiles.length
     : diffNormalFiles.length;
+
+  // j/k walks files first, then extends into the rendered PR-comments
+  // footer. `shown` has to match what DiffFileList will actually draw
+  // (same planCommentFooter call there), otherwise selection could
+  // land on an invisible card.
+  const generalThreads = diffBundle.remote.generalComments;
+  const { shown: shownGeneral } = useMemo(
+    () => planCommentFooter(generalThreads),
+    [generalThreads]
+  );
+  const diffDisplayCount = fileCount + shownGeneral.length;
+
+  // Selection breakdown: indices [0, fileCount) select a file; indices
+  // [fileCount, diffDisplayCount) select a footer comment (offset by
+  // -fileCount). selectedCommentIndex is undefined when a file is
+  // highlighted so the list component knows to leave cards unselected.
+  const selectedCommentIndex =
+    pane.diffFileIndex >= fileCount
+      ? pane.diffFileIndex - fileCount
+      : undefined;
 
   useInput(
     (input, key) => {
       handleDiffFileListInput(input, key, {
         pane,
-        diffFiles: diffBundle.files,
+        diffFiles: orderedFiles,
         diffDisplayCount,
-        loadDiffText: diffBundle.loadDiffText,
+        fileCount,
+        shownGeneralComments: shownGeneral,
         keybinds,
+        sessions,
+        remoteCtx: {
+          replyToThread: diffBundle.remote.replyToThread,
+          toggleResolved: diffBundle.remote.toggleResolved,
+        },
       });
     },
     { isActive: !terminalFocused }
@@ -50,7 +96,7 @@ export function DiffFileListContainer({
 
   return (
     <DiffFileList
-      files={diffBundle.files}
+      files={orderedFiles}
       selectedIndex={pane.diffFileIndex}
       paneRows={terminal.paneRows}
       paneCols={terminal.paneCols}
@@ -58,6 +104,11 @@ export function DiffFileListContainer({
       error={diffBundle.error}
       showSkipped={pane.showSkipped}
       comments={diffBundle.comments}
+      treeMode={treeMode}
+      generalComments={generalThreads}
+      selectedCommentIndex={selectedCommentIndex}
+      replyingToThreadId={pane.replyingToThreadId}
+      replyBuffer={pane.replyBuffer}
     />
   );
 }

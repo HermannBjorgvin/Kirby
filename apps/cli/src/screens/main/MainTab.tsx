@@ -119,7 +119,12 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
     }
 
     // Diff input is handled by DiffPane's own useInput
-    if (pane.paneMode === 'diff' || pane.paneMode === 'diff-file') return;
+    if (
+      pane.paneMode === 'diff' ||
+      pane.paneMode === 'diff-file' ||
+      pane.paneMode === 'comments'
+    )
+      return;
 
     handleSidebarInput(input, key, {
       nav,

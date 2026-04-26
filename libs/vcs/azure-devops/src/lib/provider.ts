@@ -4,9 +4,14 @@ import type {
   BranchPrMap,
   PullRequestInfo,
   PullRequestReviewer,
+  PullRequestComments,
+  RemoteCommentThread,
+  RemoteCommentReply,
   ReviewDecision,
   BuildStatusState,
 } from '@kirby/vcs-core';
+import { sanitizeBody } from '@kirby/vcs-core';
+import { log, logNetwork } from '@kirby/logger';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
@@ -39,6 +44,51 @@ function authHeaders(pat: string): Record<string, string> {
 
 function baseUrl(config: AdoConfig): string {
   return `https://dev.azure.com/${config.org}/${config.project}/_apis/git/repositories/${config.repo}`;
+}
+
+/**
+ * fetch wrapper that emits one debug-level log per request +
+ * response. URLs are passed through verbatim (they don't carry the
+ * PAT — that lives in the Authorization header which is never
+ * logged). Response bodies are NOT included; only status + size +
+ * (optional) caller-supplied summary. Gated behind
+ * `KIRBY_LOG_LEVEL=debug` so day-to-day runs stay quiet.
+ */
+async function tracedFetch(
+  context: string,
+  url: string,
+  init?: RequestInit & { bodyForLog?: unknown }
+): Promise<Response> {
+  const startedAt = Date.now();
+  const method = (init?.method ?? 'GET').toUpperCase();
+  logNetwork('ado.network', `→ ${method} ${url}`, {
+    body: init?.bodyForLog,
+  });
+  try {
+    const res = await fetch(url, init);
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'ado.network',
+      `← ${res.status} ${method} ${url} (${durationMs}ms)`,
+      {
+        ok: res.ok,
+        statusText: res.statusText,
+        context,
+      }
+    );
+    return res;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    logNetwork(
+      'ado.network',
+      `× ${method} ${url} (${durationMs}ms) — fetch failed`,
+      {
+        context,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    );
+    throw err;
+  }
 }
 
 function toAdoConfig(
@@ -330,6 +380,469 @@ async function getCachedIdentity(
   return identityCache;
 }
 
+// ── @mention resolution (GUID → display name) ──────────────────────
+//
+// ADO's REST API returns comment bodies with raw `@<GUID>` tokens
+// where the web UI renders `@<Display Name>`. Kirby post-processes
+// fetched comment bodies: extracts mention GUIDs, batch-resolves them
+// against the ADO Identities API, caches the results, and substitutes
+// the tokens inline before handing off to the renderer.
+//
+// Fallback: if the API call fails OR a specific GUID doesn't resolve,
+// the original `@<GUID>` stays put. Better to show the UUID than to
+// silently drop the reference.
+
+const MENTION_GUID_RE =
+  /@<([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})>/gi;
+
+/** Extract unique mention GUIDs from a comment body, lowercased. */
+export function extractMentionGuids(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(MENTION_GUID_RE)) {
+    seen.add(m[1]!.toLowerCase());
+  }
+  return [...seen];
+}
+
+/**
+ * Substitute `@<guid>` tokens with `@<displayName>` using the provided
+ * cache. Unresolved GUIDs stay intact (the whole `@<GUID>` token,
+ * including the angle brackets) so no reference silently disappears.
+ */
+export function rewriteMentions(
+  text: string,
+  cache: Map<string, string>
+): string {
+  return text.replace(MENTION_GUID_RE, (orig, guid: string) => {
+    const name = cache.get(guid.toLowerCase());
+    return name ? `@${name}` : orig;
+  });
+}
+
+// Module-level cache shared across provider calls. TTL matches the
+// identity cache above — identities change rarely and a stale name is
+// a better failure mode than a rate-limited API.
+const mentionCache = new Map<string, string>();
+let mentionCacheFetchedAt = 0;
+const MENTION_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/** Test helper — resets the module-level cache. */
+export function _clearMentionCacheForTests(): void {
+  mentionCache.clear();
+  mentionCacheFetchedAt = 0;
+}
+
+interface AdoIdentity {
+  id?: string;
+  providerDisplayName?: string;
+  customDisplayName?: string;
+}
+
+/**
+ * Batch-resolve GUIDs via ADO's Identities API
+ * (https://vssps.dev.azure.com/{org}/_apis/identities). Updates the
+ * module-level cache in place. Unresolved GUIDs are NOT cached, so a
+ * later retry has a chance to pick them up.
+ */
+async function resolveMentionNames(
+  config: AdoConfig,
+  guids: string[]
+): Promise<void> {
+  if (guids.length === 0) return;
+  if (Date.now() - mentionCacheFetchedAt > MENTION_CACHE_TTL_MS) {
+    mentionCache.clear();
+    mentionCacheFetchedAt = Date.now();
+  }
+  const uncached = guids.filter((g) => !mentionCache.has(g));
+  if (uncached.length === 0) return;
+
+  const url = `https://vssps.dev.azure.com/${
+    config.org
+  }/_apis/identities?identityIds=${uncached.join(',')}&api-version=7.1`;
+  try {
+    const res = await fetch(url, { headers: authHeaders(config.pat) });
+    if (!res.ok) return;
+    const data = (await res.json()) as { value?: AdoIdentity[] };
+    for (const identity of data.value ?? []) {
+      const id = identity.id?.toLowerCase();
+      const name =
+        identity.providerDisplayName ?? identity.customDisplayName ?? '';
+      if (id && name) mentionCache.set(id, name);
+    }
+    if (mentionCacheFetchedAt === 0) mentionCacheFetchedAt = Date.now();
+  } catch {
+    // Network failure — leave cache as-is. `rewriteMentions` falls back
+    // to the original `@<GUID>` for anything it can't resolve.
+  }
+}
+
+// ── Comment thread helpers ──────────────────────────────────────────
+
+interface AdoThreadComment {
+  id?: number;
+  author?: { displayName?: string; uniqueName?: string };
+  content?: string;
+  publishedDate?: string;
+  commentType?: string;
+}
+
+interface AdoLineRef {
+  line?: number;
+}
+
+interface AdoThread {
+  id?: number;
+  status?: string;
+  threadContext?: {
+    filePath?: string;
+    rightFileStart?: AdoLineRef;
+    rightFileEnd?: AdoLineRef;
+    leftFileStart?: AdoLineRef;
+    leftFileEnd?: AdoLineRef;
+  };
+  /** Iteration-tracking metadata. When the diff has changed since
+   *  the comment was made and ADO can't track the line forward, the
+   *  current `threadContext` lines may be null while the originals
+   *  here remain — same idea as GitHub's `originalLine`. */
+  pullRequestThreadContext?: {
+    trackingCriteria?: {
+      origLeftFileStart?: AdoLineRef;
+      origLeftFileEnd?: AdoLineRef;
+      origRightFileStart?: AdoLineRef;
+      origRightFileEnd?: AdoLineRef;
+    };
+  };
+  comments?: AdoThreadComment[];
+  properties?: Record<string, unknown>;
+}
+
+function adoStatusToResolved(status: string | undefined): boolean {
+  // ADO thread statuses: active=1, fixed=2, wontFix=3, closed=4, byDesign=5, pending=6
+  // Only fixed/wontFix/closed/byDesign are genuinely resolved; pending means
+  // the author hasn't decided yet and should be treated as open.
+  return (
+    status === 'fixed' ||
+    status === 'wontFix' ||
+    status === 'closed' ||
+    status === 'byDesign'
+  );
+}
+
+/**
+ * Sanitized snapshot of an ADO thread for diagnostic logging. Strips
+ * comment bodies (reviewer text, noisy) and author names (PII), keeping
+ * only the structural fields needed to reproduce a placement bug. Set
+ * `KIRBY_LOG=/path/to/log` to capture; safe to share in bug reports.
+ */
+function sanitizeAdoThreadForLog(thread: AdoThread): unknown {
+  return {
+    id: thread.id,
+    status: thread.status,
+    threadContext: thread.threadContext
+      ? {
+          filePath: thread.threadContext.filePath,
+          leftFileStart: thread.threadContext.leftFileStart,
+          leftFileEnd: thread.threadContext.leftFileEnd,
+          rightFileStart: thread.threadContext.rightFileStart,
+          rightFileEnd: thread.threadContext.rightFileEnd,
+        }
+      : null,
+    pullRequestThreadContext: thread.pullRequestThreadContext ?? null,
+    commentTypes: (thread.comments ?? []).map((c) => c.commentType ?? 'text'),
+  };
+}
+
+function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
+  const humanComments = (thread.comments ?? []).filter(
+    (c) => c.commentType !== 'system'
+  );
+  if (humanComments.length === 0) {
+    log(
+      'info',
+      'ado.transformThread',
+      `thread ${thread.id} dropped (no human comments)`,
+      { raw: sanitizeAdoThreadForLog(thread) }
+    );
+    return null;
+  }
+
+  const ctx = thread.threadContext;
+  const hasFile = ctx?.filePath != null;
+  const orig = thread.pullRequestThreadContext?.trackingCriteria;
+
+  // Resolve current vs. original line refs per side. ADO can keep
+  // `threadContext` populated across iterations, but when the line a
+  // thread was anchored to is removed in a later push, the current
+  // ref goes null and only `trackingCriteria.orig*` survives. Mirrors
+  // GitHub's `originalLine` fallback so outdated threads still render
+  // inline at the line they were originally placed on.
+  const leftStart = ctx?.leftFileStart?.line ?? orig?.origLeftFileStart?.line;
+  const leftEnd = ctx?.leftFileEnd?.line ?? orig?.origLeftFileEnd?.line;
+  const rightStart =
+    ctx?.rightFileStart?.line ?? orig?.origRightFileStart?.line;
+  const rightEnd = ctx?.rightFileEnd?.line ?? orig?.origRightFileEnd?.line;
+
+  // Side selection: LEFT when the thread is anchored to a deleted/old
+  // line (left side has a ref, right side doesn't) — same heuristic
+  // as before, but applied to the resolved (current OR original) refs.
+  const isLeftSide = leftStart != null && rightStart == null;
+
+  // We hit the outdated path when the current threadContext was null
+  // and we had to read from trackingCriteria. Set isOutdated so the
+  // card shows the dim "(outdated)" tag.
+  const usedFallback =
+    (ctx?.leftFileStart?.line == null && leftStart != null) ||
+    (ctx?.rightFileStart?.line == null && rightStart != null);
+
+  // ADO sometimes returns a file-anchored thread with NO line refs
+  // anywhere — `threadContext` has `filePath` but every `*FileStart/End`
+  // is undefined, and `pullRequestThreadContext.trackingCriteria` (which
+  // would carry the originals) is omitted. The docs note trackingCriteria
+  // is "not returned/sent if not needed", and ADO's heuristic for "not
+  // needed" doesn't always match the user's intuition.
+  //
+  // Without a fallback these threads land in the out-of-diff tail and
+  // the user has to scroll the whole file to find them. Treat as an
+  // outdated file-level thread: anchor to line 1 (-U99999 always has it
+  // as a context line) and flag isOutdated so the card surfaces with
+  // the dim "(outdated)" tag at the top of the file diff.
+  const fileLevelOnly =
+    hasFile &&
+    leftStart == null &&
+    leftEnd == null &&
+    rightStart == null &&
+    rightEnd == null;
+
+  const resolvedLineStart = fileLevelOnly
+    ? 1
+    : isLeftSide
+    ? leftStart ?? null
+    : rightStart ?? null;
+  const resolvedLineEnd = fileLevelOnly
+    ? 1
+    : isLeftSide
+    ? leftEnd ?? null
+    : rightEnd ?? null;
+  const resolvedSide = fileLevelOnly ? 'RIGHT' : isLeftSide ? 'LEFT' : 'RIGHT';
+
+  const result: RemoteCommentThread = {
+    id: String(thread.id ?? ''),
+    file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
+    lineStart: resolvedLineStart,
+    lineEnd: resolvedLineEnd,
+    side: resolvedSide,
+    isResolved: adoStatusToResolved(thread.status),
+    isOutdated: usedFallback || fileLevelOnly,
+    // All ADO threads (inline + general) share the same thread
+    // resource and support status transitions.
+    canResolve: true,
+    comments: humanComments.map(
+      (c): RemoteCommentReply => ({
+        id: String(c.id ?? ''),
+        author: c.author?.displayName ?? c.author?.uniqueName ?? 'unknown',
+        body: sanitizeBody(c.content ?? ''),
+        createdAt: c.publishedDate ?? '',
+      })
+    ),
+  };
+
+  log(
+    'info',
+    'ado.transformThread',
+    `thread ${thread.id} → ${result.side} ${result.file}:${
+      result.lineStart ?? '?'
+    }-${result.lineEnd ?? '?'} outdated=${result.isOutdated}`,
+    {
+      raw: sanitizeAdoThreadForLog(thread),
+      resolved: {
+        leftStart,
+        leftEnd,
+        rightStart,
+        rightEnd,
+        isLeftSide,
+        usedFallback,
+        fileLevelOnly,
+      },
+      output: {
+        file: result.file,
+        lineStart: result.lineStart,
+        lineEnd: result.lineEnd,
+        side: result.side,
+        isOutdated: result.isOutdated,
+        isResolved: result.isResolved,
+      },
+    }
+  );
+
+  return result;
+}
+
+async function fetchAdoCommentThreads(
+  config: AdoConfig,
+  prId: number
+): Promise<PullRequestComments> {
+  const url = `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`;
+  const res = await tracedFetch('fetchAdoCommentThreads', url, {
+    headers: authHeaders(config.pat),
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as { value?: AdoThread[] };
+  const rawCount = (data.value ?? []).length;
+  log(
+    'info',
+    'ado.fetchThreads',
+    `PR ${prId}: ${rawCount} raw threads from ADO`
+  );
+
+  const threads: RemoteCommentThread[] = [];
+  const generalComments: RemoteCommentThread[] = [];
+
+  for (const raw of data.value ?? []) {
+    const thread = transformAdoThread(raw);
+    if (!thread) continue;
+
+    if (thread.file === null) {
+      generalComments.push(thread);
+    } else {
+      threads.push(thread);
+    }
+  }
+
+  log(
+    'info',
+    'ado.fetchThreads',
+    `PR ${prId}: transform output → ${threads.length} file threads, ${generalComments.length} general`,
+    {
+      fileThreads: threads.map((t) => ({
+        id: t.id,
+        file: t.file,
+        side: t.side,
+        lineStart: t.lineStart,
+        lineEnd: t.lineEnd,
+        isOutdated: t.isOutdated,
+        isResolved: t.isResolved,
+      })),
+      generalCount: generalComments.length,
+    }
+  );
+
+  // Collect mention GUIDs across every comment body in one sweep so
+  // the Identities API gets a single batched call per poll. Rewrite
+  // bodies in place once the cache is warm.
+  const allGuids = new Set<string>();
+  const collect = (t: RemoteCommentThread): void => {
+    for (const c of t.comments) {
+      for (const g of extractMentionGuids(c.body)) allGuids.add(g);
+    }
+  };
+  threads.forEach(collect);
+  generalComments.forEach(collect);
+
+  if (allGuids.size > 0) {
+    await resolveMentionNames(config, [...allGuids]);
+    const rewriteThread = (t: RemoteCommentThread): RemoteCommentThread => ({
+      ...t,
+      comments: t.comments.map((c) => ({
+        ...c,
+        body: rewriteMentions(c.body, mentionCache),
+      })),
+    });
+    return {
+      threads: threads.map(rewriteThread),
+      generalComments: generalComments.map(rewriteThread),
+    };
+  }
+
+  return { threads, generalComments };
+}
+
+async function replyToAdoThread(
+  config: AdoConfig,
+  prId: number,
+  threadId: string,
+  body: string
+): Promise<RemoteCommentReply> {
+  // Resolve the root comment's ID so we can attach the reply to it
+  // properly. ADO uses `parentCommentId` to render threading in the
+  // web UI: `0` means "this IS the root comment of the thread", so
+  // passing `0` for a reply makes it show up as an additional top-
+  // level comment rather than as a reply underneath the original.
+  // That's invisible in Kirby (flat rendering) but visible — and
+  // confusing — to anyone reviewing the PR in ADO's web UI.
+  const threadUrl = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
+  const threadRes = await tracedFetch(
+    'replyToAdoThread:resolveRoot',
+    threadUrl,
+    {
+      headers: authHeaders(config.pat),
+    }
+  );
+  if (!threadRes.ok) {
+    throw new Error(
+      `ADO API error ${threadRes.status}: ${threadRes.statusText}`
+    );
+  }
+  const thread = (await threadRes.json()) as AdoThread;
+  const rootComment = (thread.comments ?? []).find(
+    (c) => c.commentType !== 'system'
+  );
+  // Fallback to 0 if we somehow can't find a non-system root (e.g. a
+  // thread that only contains system comments): posting still works,
+  // just without nesting.
+  const parentCommentId =
+    typeof rootComment?.id === 'number' ? rootComment.id : 0;
+
+  const url = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}/comments?api-version=7.1`;
+  const res = await tracedFetch('replyToAdoThread:postComment', url, {
+    method: 'POST',
+    headers: authHeaders(config.pat),
+    body: JSON.stringify({
+      parentCommentId,
+      content: body,
+      commentType: 1,
+    }),
+    bodyForLog: { parentCommentId, contentLength: body.length, commentType: 1 },
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
+  }
+  const data = (await res.json()) as AdoThreadComment;
+  return {
+    id: String(data.id ?? ''),
+    author: data.author?.displayName ?? data.author?.uniqueName ?? 'unknown',
+    body: sanitizeBody(data.content ?? ''),
+    createdAt: data.publishedDate ?? '',
+  };
+}
+
+async function setAdoThreadResolved(
+  config: AdoConfig,
+  prId: number,
+  threadId: string,
+  resolved: boolean
+): Promise<void> {
+  const url = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
+  const res = await tracedFetch('setAdoThreadResolved', url, {
+    method: 'PATCH',
+    headers: authHeaders(config.pat),
+    body: JSON.stringify({
+      status: resolved ? 2 : 1, // 2 = fixed, 1 = active
+    }),
+    bodyForLog: { status: resolved ? 2 : 1, resolved },
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
+  }
+}
+
 // ── VcsProvider implementation ──────────────────────────────────────
 
 export const azureDevOpsProvider: VcsProvider = {
@@ -419,5 +932,37 @@ export const azureDevOpsProvider: VcsProvider = {
       if (branchSet.has(source)) matched.add(source);
     }
     return matched;
+  },
+
+  async fetchCommentThreads(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<PullRequestComments> {
+    const config = toAdoConfig(auth, project);
+    return fetchAdoCommentThreads(config, prId);
+  },
+
+  async replyToThread(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    thread: RemoteCommentThread,
+    body: string
+  ): Promise<RemoteCommentReply> {
+    const config = toAdoConfig(auth, project);
+    return replyToAdoThread(config, prId, thread.id, body);
+  },
+
+  async setThreadResolved(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    thread: RemoteCommentThread,
+    resolved: boolean
+  ): Promise<void> {
+    if (!thread.canResolve) return;
+    const config = toAdoConfig(auth, project);
+    await setAdoThreadResolved(config, prId, thread.id, resolved);
   },
 };

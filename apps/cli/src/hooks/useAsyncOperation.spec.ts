@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   run,
   isRunning,
+  beginOp,
   __resetAsyncOperationsForTest,
 } from './useAsyncOperation.js';
 
@@ -93,5 +94,92 @@ describe('useAsyncOperation (module store)', () => {
     ).rejects.toThrow('boom');
 
     expect(isRunning('sync')).toBe(false);
+  });
+});
+
+describe('beginOp (refcounted)', () => {
+  beforeEach(() => {
+    __resetAsyncOperationsForTest();
+  });
+
+  it('marks op in flight, end() clears it', () => {
+    expect(isRunning('load-pr-files')).toBe(false);
+    const end = beginOp('load-pr-files');
+    expect(isRunning('load-pr-files')).toBe(true);
+    end();
+    expect(isRunning('load-pr-files')).toBe(false);
+  });
+
+  it('two concurrent beginOp calls keep the op in flight until both end', () => {
+    // Regression guard — the previous `runAsyncOp('load-pr-files', fn)`
+    // dedup'd this case and silently dropped the second call, leaving
+    // the post-headSha-arrival cache key with no fetched data and
+    // showing "0 files". `beginOp` must allow overlap.
+    const end1 = beginOp('load-pr-files');
+    const end2 = beginOp('load-pr-files');
+    expect(isRunning('load-pr-files')).toBe(true);
+
+    end1();
+    // First end shouldn't clear — second caller is still active.
+    expect(isRunning('load-pr-files')).toBe(true);
+
+    end2();
+    expect(isRunning('load-pr-files')).toBe(false);
+  });
+
+  it('end() called twice is a no-op', () => {
+    // Async finally blocks can run twice in pathological cases (e.g.
+    // both a thrown error path and a manual cleanup). Idempotent end
+    // protects the refcount from going negative.
+    const end1 = beginOp('load-pr-files');
+    const end2 = beginOp('load-pr-files');
+    end1();
+    end1(); // double-end on the first
+    expect(isRunning('load-pr-files')).toBe(true);
+    end2();
+    expect(isRunning('load-pr-files')).toBe(false);
+  });
+
+  it('different op names refcount independently', () => {
+    const endA = beginOp('load-pr-files');
+    const endB = beginOp('refresh-pr');
+    expect(isRunning('load-pr-files')).toBe(true);
+    expect(isRunning('refresh-pr')).toBe(true);
+
+    endA();
+    expect(isRunning('load-pr-files')).toBe(false);
+    expect(isRunning('refresh-pr')).toBe(true);
+
+    endB();
+    expect(isRunning('refresh-pr')).toBe(false);
+  });
+
+  it('does not dedup like run() — both invocations succeed', async () => {
+    // Mixing the two APIs in one test makes the contrast explicit:
+    // run() drops the second concurrent call, beginOp() doesn't.
+    let runFnCalls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+
+    const first = run('sync', () => {
+      runFnCalls++;
+      return gate;
+    });
+    await run('sync', async () => {
+      runFnCalls++;
+    });
+    expect(runFnCalls).toBe(1); // run() dedup'd
+
+    release();
+    await first;
+
+    // Now the same scenario with beginOp — both calls are accepted.
+    const end1 = beginOp('load-pr-files');
+    const end2 = beginOp('load-pr-files');
+    expect(isRunning('load-pr-files')).toBe(true);
+    end1();
+    expect(isRunning('load-pr-files')).toBe(true);
+    end2();
+    expect(isRunning('load-pr-files')).toBe(false);
   });
 });

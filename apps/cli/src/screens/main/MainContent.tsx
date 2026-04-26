@@ -7,6 +7,7 @@ import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { TerminalPane } from './TerminalPane.js';
 import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
+import { GeneralCommentsContainer } from './GeneralCommentsContainer.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { useDiffBundle } from '../../hooks/useDiffBundle.js';
@@ -32,7 +33,8 @@ type ScreenType =
   | 'terminal'
   | 'prDetail'
   | 'diff'
-  | 'diffFile';
+  | 'diffFile'
+  | 'comments';
 
 // Pure router for the main content pane. Renders exactly one of the
 // mutually-exclusive sub-panes based on modal and pane-mode state, in
@@ -64,7 +66,8 @@ export function MainContent({
   const diffBundle = useDiffBundle(
     selectedPr?.id ?? null,
     selectedPr?.sourceBranch ?? '',
-    selectedPr?.targetBranch ?? ''
+    selectedPr?.targetBranch ?? '',
+    selectedPr?.headSha
   );
 
   const screenType: ScreenType = (() => {
@@ -75,6 +78,7 @@ export function MainContent({
     if (pane.paneMode === 'pr-detail') return 'prDetail';
     if (pane.paneMode === 'diff') return 'diff';
     if (pane.paneMode === 'diff-file') return 'diffFile';
+    if (pane.paneMode === 'comments') return 'comments';
     return 'terminal';
   })();
 
@@ -139,6 +143,15 @@ export function MainContent({
           pane={pane}
           terminal={terminal}
           selectedPr={selectedPr}
+          terminalFocused={terminalFocused}
+          diffBundle={diffBundle}
+        />
+      );
+    case 'comments':
+      return (
+        <GeneralCommentsContainer
+          pane={pane}
+          terminal={terminal}
           terminalFocused={terminalFocused}
           diffBundle={diffBundle}
         />

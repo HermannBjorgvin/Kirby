@@ -162,6 +162,14 @@ export const ACTIONS = [
     vcsOnly: true,
   },
   {
+    id: 'sidebar.view-comments',
+    label: 'View PR comments',
+    context: 'sidebar',
+    hintLabel: 'view PR comments',
+    showInHints: true,
+    vcsOnly: true,
+  },
+  {
     id: 'sidebar.start-session',
     label: 'Start/focus session',
     context: 'sidebar',
@@ -261,6 +269,36 @@ export const ACTIONS = [
     context: 'diff-file-list',
   },
   { id: 'diff-file-list.open', label: 'Open file', context: 'diff-file-list' },
+  {
+    id: 'diff-file-list.next-comment',
+    label: 'Next PR comment',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.prev-comment',
+    label: 'Previous PR comment',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.next-section',
+    label: 'Next section',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.prev-section',
+    label: 'Previous section',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.reply-to-thread',
+    label: 'Reply to thread',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.toggle-thread-resolved',
+    label: 'Resolve/reopen thread',
+    context: 'diff-file-list',
+  },
 
   // ── Diff Viewer ──
   {
@@ -302,6 +340,16 @@ export const ACTIONS = [
     context: 'diff-viewer',
   },
   {
+    id: 'diff-viewer.next-section',
+    label: 'Next section',
+    context: 'diff-viewer',
+  },
+  {
+    id: 'diff-viewer.prev-section',
+    label: 'Previous section',
+    context: 'diff-viewer',
+  },
+  {
     id: 'diff-viewer.delete-comment',
     label: 'Delete comment',
     context: 'diff-viewer',
@@ -319,6 +367,16 @@ export const ACTIONS = [
   {
     id: 'diff-viewer.editor-edit',
     label: 'Edit in editor',
+    context: 'diff-viewer',
+  },
+  {
+    id: 'diff-viewer.reply-to-thread',
+    label: 'Reply to thread',
+    context: 'diff-viewer',
+  },
+  {
+    id: 'diff-viewer.toggle-thread-resolved',
+    label: 'Resolve/reopen thread',
     context: 'diff-viewer',
   },
   { id: 'diff-viewer.back', label: 'Back', context: 'diff-viewer' },
@@ -359,6 +417,7 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.open-editor': [{ input: 'E', shift: true }],
     'sidebar.sync-origin': [{ input: 'f' }],
     'sidebar.view-diff': [{ input: 'd' }],
+    'sidebar.view-comments': [{ input: 'C', shift: true }],
     'sidebar.start-session': [{ flags: { return: true } }],
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
     'sidebar.toggle-hints': [{ input: '?' }],
@@ -395,6 +454,14 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-file-list.navigate-up': [{ flags: { upArrow: true } }],
     'diff-file-list.toggle-skipped': [{ input: 's' }],
     'diff-file-list.open': [{ flags: { return: true } }],
+    'diff-file-list.next-comment': [
+      { shift: true, flags: { downArrow: true } },
+    ],
+    'diff-file-list.prev-comment': [{ shift: true, flags: { upArrow: true } }],
+    'diff-file-list.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
+    'diff-file-list.reply-to-thread': [{ input: 'r' }],
+    'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ flags: { downArrow: true } }],
@@ -407,10 +474,14 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.prev-file': [{ flags: { leftArrow: true } }],
     'diff-viewer.next-comment': [{ shift: true, flags: { downArrow: true } }],
     'diff-viewer.prev-comment': [{ shift: true, flags: { upArrow: true } }],
+    'diff-viewer.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-viewer.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-viewer.delete-comment': [{ flags: { delete: true } }],
     'diff-viewer.edit-comment': [{ input: 'e' }],
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E', shift: true }],
+    'diff-viewer.reply-to-thread': [{ input: 'r' }],
+    'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
 
     // Controls
@@ -442,6 +513,7 @@ export const VIM_PRESET: KeybindPreset = {
     'sidebar.open-editor': [{ input: '.' }],
     'sidebar.sync-origin': [{ input: 'g' }],
     'sidebar.view-diff': [{ input: 'd' }],
+    'sidebar.view-comments': [{ input: 'C' }],
     'sidebar.start-session': [{ flags: { return: true } }],
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
     'sidebar.toggle-hints': [{ input: '?' }],
@@ -484,6 +556,12 @@ export const VIM_PRESET: KeybindPreset = {
     ],
     'diff-file-list.toggle-skipped': [{ input: 's' }],
     'diff-file-list.open': [{ flags: { return: true } }],
+    'diff-file-list.next-comment': [{ input: 'c' }],
+    'diff-file-list.prev-comment': [{ input: 'C' }],
+    'diff-file-list.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
+    'diff-file-list.reply-to-thread': [{ input: 'r' }],
+    'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ input: 'j' }, { flags: { downArrow: true } }],
@@ -502,10 +580,14 @@ export const VIM_PRESET: KeybindPreset = {
       { input: 'C' },
       { flags: { leftArrow: true } },
     ],
+    'diff-viewer.next-section': [{ ctrl: true, flags: { downArrow: true } }],
+    'diff-viewer.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-viewer.delete-comment': [{ input: 'x' }],
     'diff-viewer.edit-comment': [{ input: 'e' }],
     'diff-viewer.post-comment': [{ input: 'p' }],
     'diff-viewer.editor-edit': [{ input: 'E' }],
+    'diff-viewer.reply-to-thread': [{ input: 'r' }],
+    'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
 
     // Controls

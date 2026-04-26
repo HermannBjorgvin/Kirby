@@ -10,7 +10,15 @@ export function parseUnifiedDiff(diffText: string): Map<string, DiffLine[]> {
   let oldLine = 0;
   let newLine = 0;
 
-  for (const rawLine of diffText.split('\n')) {
+  for (const splitLine of diffText.split('\n')) {
+    // Strip any trailing CR — CRLF source files leave \r on every
+    // diff line, which when rendered drives wterm's cursor back to
+    // column 0 mid-row and overlays the next row's content visually
+    // (the "&&duction'" / ",d," mangling users reported).
+    const rawLine =
+      splitLine.length > 0 && splitLine.charCodeAt(splitLine.length - 1) === 13
+        ? splitLine.slice(0, -1)
+        : splitLine;
     // New file header: diff --git a/path b/path
     if (rawLine.startsWith('diff --git ')) {
       if (currentFile) {

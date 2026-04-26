@@ -36,7 +36,12 @@ export function getMainFocused(s: FocusState): boolean {
   if (s.branchPickerCreating) return true;
   if (s.settingsOpen) return true;
   if (s.reviewConfirmActive) return true;
-  if (s.paneMode === 'diff' || s.paneMode === 'diff-file') return true;
+  if (
+    s.paneMode === 'diff' ||
+    s.paneMode === 'diff-file' ||
+    s.paneMode === 'comments'
+  )
+    return true;
   return s.navFocus === 'terminal';
 }
 

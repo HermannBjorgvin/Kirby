@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../types.js';
 import { getItemKey, getPrFromItem, isItemActive } from '../types.js';
@@ -36,6 +36,42 @@ export function resolveSelectedIndex(
   const idx = items.findIndex((item) => getItemKey(item) === selectedKey);
   if (idx >= 0) return idx;
   return Math.min(Math.max(0, lastValidIndex), items.length - 1);
+}
+
+/**
+ * Translate a `session:${name}` key to a `review:${prId}` key when
+ * the session is hidden from the sessions list because its branch
+ * has a review PR (see `buildSidebarItems` — sessions whose branch
+ * is in any of `categorizedReviews` are skipped, and only the
+ * `review-pr` row is shown). Returns the input key unchanged for
+ * non-session keys or for sessions whose row IS rendered as
+ * `session`.
+ *
+ * Without this translation, callers like the branch picker call
+ * `selectByKey('session:${name}')` after creating a session, the
+ * key matches no item, and `resolveSelectedIndex` falls back to
+ * `lastValidIndex` — which lands on whatever neighboring row
+ * happens to share that index (a brittle coincidence that breaks
+ * whenever the sidebar shape shifts).
+ */
+export function translateSelectKey(
+  key: string,
+  sessionBranchMap: Map<string, string>,
+  sessionPrMap: Map<string, PullRequestInfo>,
+  categorizedReviews: CategorizedReviews
+): string {
+  if (!key.startsWith('session:')) return key;
+  const sessionName = key.slice('session:'.length);
+  const branch = sessionBranchMap.get(sessionName);
+  const pr = sessionPrMap.get(sessionName);
+  if (!branch || !pr) return key;
+  const isReviewBranch =
+    categorizedReviews.needsReview.some((p) => p.sourceBranch === branch) ||
+    categorizedReviews.waitingForAuthor.some(
+      (p) => p.sourceBranch === branch
+    ) ||
+    categorizedReviews.approvedByYou.some((p) => p.sourceBranch === branch);
+  return isReviewBranch ? `review:${pr.id}` : key;
 }
 
 export interface SidebarContextValue {
@@ -131,9 +167,23 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     : branchToSessionName(selectedItem.pr.sourceBranch);
 
   // ── Navigation helpers ───────────────────────────────────────────
-  const selectByKey = useCallback((key: string) => {
-    setSelectedKey(key);
-  }, []);
+  const selectByKey = useCallback(
+    (key: string) => {
+      setSelectedKey(
+        translateSelectKey(
+          key,
+          sessionCtx.sessionBranchMap,
+          sessionCtx.sessionPrMap,
+          sessionCtx.categorizedReviews
+        )
+      );
+    },
+    [
+      sessionCtx.sessionBranchMap,
+      sessionCtx.sessionPrMap,
+      sessionCtx.categorizedReviews,
+    ]
+  );
 
   const moveSelection = useCallback(
     (offset: number) => {

@@ -4,6 +4,7 @@
 dist
 tmp
 out-tsc
+*.tsbuildinfo
 
 # dependencies
 node_modules
@@ -46,6 +47,7 @@ Thumbs.db
 .tmp/
 .kirby/
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 vitest.config.*.timestamp*
 tui-traces/
@@ -53,3 +55,6 @@ tui-traces/
 test-output
 test-results
 playwright-report
+
+# Playwright MCP browser session output (manual interactive QA)
+.playwright-mcp/

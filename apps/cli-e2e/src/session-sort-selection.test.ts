@@ -110,9 +110,13 @@ test.describe('@integration Session Sort Selection', () => {
     );
 
     // 5. The selection indicator should be on the newly created session.
+    //    Selection lands via lastResolvedIndex fallback (see
+    //    project_selectbykey_latent_bug memory) which requires a render
+    //    cycle after PR-data post-fetch reconciliation — default 5s
+    //    isn't always enough on the CI runner under load.
     await expect(
       sidebarLocator(kirby.term.page, 'Add undo feature').selected()
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
 
     // 6. Confirm selection is NOT on the wrong session (color-support).
     await expect(

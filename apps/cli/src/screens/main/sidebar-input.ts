@@ -240,6 +240,17 @@ export function handleSidebarInput(
     return;
   }
 
+  // View PR comments
+  if (action === 'sidebar.view-comments' && selectedItem) {
+    const pr = getPrFromItem(selectedItem);
+    if (pr) {
+      pane.setPaneMode('comments');
+      pane.setGeneralCommentsIndex(0);
+      pane.setGeneralCommentsScrollOffset(0);
+    }
+    return;
+  }
+
   // Navigate
   if (action === 'sidebar.navigate-down') {
     sidebar.moveSelection(1);

@@ -1,7 +1,8 @@
-import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import type { ReviewComment } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleReplyModeInput } from '../../utils/reply-mode.js';
+import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
   readComments,
   removeComment,
@@ -11,9 +12,6 @@ import {
   type CommentPositionInfo,
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
-import { writeFileSync, readFileSync, watch } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -75,7 +73,12 @@ function scrollToComment(
   if (!positions) return;
   const info = positions.get(commentId);
   if (!info) return;
-  const scrollTarget = Math.max(0, info.refStartLine - 2);
+  // info.refStartLine is a slot index — translate to a physical row
+  // via the row map before scrolling. Pin two rows above for code
+  // context.
+  const rowEntry = ctx.rowMap.positions[info.refStartLine];
+  if (!rowEntry) return;
+  const scrollTarget = Math.max(0, rowEntry.rowStart - 2);
   ctx.pane.setDiffScrollOffset(Math.min(scrollTarget, maxScroll));
 }
 
@@ -87,10 +90,34 @@ export function handleDiffViewerInput(
   ctx: DiffViewerHandlerCtx
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
-  const maxScroll = Math.max(0, ctx.diffTotalLines - viewportHeight);
+  // diffTotalRows is the row-count total now — `scrollOffset` is a
+  // physical row offset, not a slot index.
+  const maxScroll = Math.max(0, ctx.diffTotalRows - viewportHeight);
+  // Posted local comments are rendered via the remote-thread path
+  // (see interleaveComments) to avoid double-rendering. Skip them
+  // here too so keyboard navigation (c/prev/next, v, r, p) doesn't
+  // land on an invisible local entry.
   const fileComments = (ctx.commentCtx?.comments ?? []).filter(
-    (c) => c.file === ctx.pane.diffViewFile
+    (c) => c.file === ctx.pane.diffViewFile && c.status !== 'posted'
   );
+
+  // Reply mode bypass (Esc/Enter/text) — see apps/cli/src/utils/reply-mode.ts
+  if (
+    ctx.remoteCtx &&
+    handleReplyModeInput(input, key, {
+      pane: ctx.pane,
+      flashStatus: ctx.sessions.flashStatus,
+      replyToThread: ctx.remoteCtx.replyToThread,
+      // After the post resolves, mark the thread for scroll-into-view.
+      // Container's effect runs once the row map reflects the appended
+      // reply, then clears this id (see DiffFileViewerContainer).
+      onReplyPosted: (threadId) => {
+        ctx.pane.setPendingScrollThreadId(threadId);
+      },
+    })
+  ) {
+    return;
+  }
 
   // ── Inline edit mode (exempt from keybind resolution) ──
   if (ctx.pane.editingCommentId) {
@@ -169,6 +196,23 @@ export function handleDiffViewerInput(
     return;
   }
 
+  // Section jump — Ctrl+↑/↓. Anchors are sorted physical-row offsets
+  // where a navigable section starts (diff, out-of-diff comments, etc.).
+  if (action === 'diff-viewer.next-section') {
+    const cur = ctx.pane.diffScrollOffset;
+    const next = ctx.sectionAnchorRows.find((a) => a > cur);
+    if (next !== undefined) {
+      ctx.pane.setDiffScrollOffset(Math.min(next, maxScroll));
+    }
+    return;
+  }
+  if (action === 'diff-viewer.prev-section') {
+    const cur = ctx.pane.diffScrollOffset;
+    const prev = [...ctx.sectionAnchorRows].reverse().find((a) => a < cur);
+    ctx.pane.setDiffScrollOffset(prev ?? 0);
+    return;
+  }
+
   // File navigation
   if (action === 'diff-viewer.next-file') {
     const displayFiles = getDisplayFiles(ctx.diffFiles, ctx.pane.showSkipped);
@@ -197,41 +241,60 @@ export function handleDiffViewerInput(
     return;
   }
 
-  // Comment navigation
-  if (action === 'diff-viewer.next-comment' && fileComments.length > 0) {
-    const nextId = findAdjacentCommentId(
-      'next',
-      ctx.pane.selectedCommentId,
-      fileComments,
-      ctx.commentCtx?.positions
+  // Comment navigation — walks a single pool merging local drafts and
+  // remote threads, sorted by line. Without this, a single draft gates
+  // off remote threads entirely (next/prev short-circuit on
+  // fileComments.length > 0) and remote threads become unreachable.
+  const fileRemoteThreads = ctx.remoteCtx?.threads ?? [];
+  const navPool: { id: string; lineStart: number; kind: 'local' | 'remote' }[] =
+    [
+      ...fileComments.map((c) => ({
+        id: c.id,
+        lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
+        kind: 'local' as const,
+      })),
+      ...fileRemoteThreads.map((t) => ({
+        id: t.id,
+        lineStart: t.lineStart ?? Number.POSITIVE_INFINITY,
+        kind: 'remote' as const,
+      })),
+    ].sort((a, b) => a.lineStart - b.lineStart);
+
+  if (action === 'diff-viewer.next-comment' && navPool.length > 0) {
+    const currentIdx = navPool.findIndex(
+      (e) => e.id === ctx.pane.selectedCommentId
     );
-    if (nextId) {
-      ctx.pane.setSelectedCommentId(nextId);
-      scrollToComment(nextId, ctx, maxScroll);
-    }
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % navPool.length;
+    const next = navPool[nextIdx]!;
+    ctx.pane.setSelectedCommentId(next.id);
+    scrollToComment(next.id, ctx, maxScroll);
     return;
   }
-  if (action === 'diff-viewer.prev-comment' && fileComments.length > 0) {
-    const prevId = findAdjacentCommentId(
-      'prev',
-      ctx.pane.selectedCommentId,
-      fileComments,
-      ctx.commentCtx?.positions
+  if (action === 'diff-viewer.prev-comment' && navPool.length > 0) {
+    const currentIdx = navPool.findIndex(
+      (e) => e.id === ctx.pane.selectedCommentId
     );
-    if (prevId) {
-      ctx.pane.setSelectedCommentId(prevId);
-      scrollToComment(prevId, ctx, maxScroll);
-    }
+    const prevIdx = currentIdx <= 0 ? navPool.length - 1 : currentIdx - 1;
+    const prev = navPool[prevIdx]!;
+    ctx.pane.setSelectedCommentId(prev.id);
+    scrollToComment(prev.id, ctx, maxScroll);
     return;
   }
 
-  // Comment actions
+  // Comment actions — only apply when the selected id refers to a local
+  // draft. Without this guard, pressing 'x' while a remote thread is
+  // selected enters an invisible delete-confirm trap (renderRemoteThread
+  // draws no y/n prompt).
+  const selectedLocal = ctx.pane.selectedCommentId
+    ? fileComments.find((c) => c.id === ctx.pane.selectedCommentId)
+    : undefined;
+
   if (
     action === 'diff-viewer.delete-comment' &&
-    ctx.pane.selectedCommentId &&
+    selectedLocal &&
     ctx.commentCtx
   ) {
-    ctx.pane.setPendingDeleteCommentId(ctx.pane.selectedCommentId);
+    ctx.pane.setPendingDeleteCommentId(selectedLocal.id);
     return;
   }
 
@@ -290,6 +353,12 @@ export function handleDiffViewerInput(
       try {
         await postReviewComments([comment], postCtx);
         ctx.sessions.flashStatus('Comment posted');
+        // Refetch remote threads so the newly-created remote thread
+        // for this comment shows up in the diff viewer — the local
+        // copy is now `status: 'posted'` and filtered from render, so
+        // without this refresh there'd be a visual gap until the user
+        // re-opened the PR.
+        ctx.remoteCtx?.refresh();
         const freshComments = readComments(prId).filter(
           (c) => c.file === ctx.pane.diffViewFile
         );
@@ -331,33 +400,57 @@ export function handleDiffViewerInput(
       return;
     }
 
-    const tmpFile = join(tmpdir(), `kirby-comment-${comment.id}.md`);
-    writeFileSync(tmpFile, comment.body, 'utf8');
-
-    spawn(editor, [tmpFile], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
-
     const prId = ctx.commentCtx!.prId;
-    const commentId = comment.id;
-    const watcher = watch(tmpFile, () => {
-      try {
-        const newBody = readFileSync(tmpFile, 'utf8');
-        if (newBody !== comment.body) {
-          updateComment(prId, commentId, { body: newBody });
-        }
-      } catch {
-        // File may be temporarily unavailable during save
-      }
+    openCommentInEditor({
+      commentId: comment.id,
+      initialBody: comment.body,
+      editor,
+      onUpdate: (newBody) => {
+        updateComment(prId, comment.id, { body: newBody });
+      },
     });
 
-    const timer = setTimeout(() => {
-      watcher.close();
-    }, 30 * 60 * 1000);
-    timer.unref();
-
     ctx.sessions.flashStatus(`Opened comment in ${editor}`);
+    return;
+  }
+
+  // ── Remote thread actions ──────────────────────────────────────
+  const selectedRemoteThread = ctx.remoteCtx?.threads.find(
+    (t) => t.id === ctx.pane.selectedCommentId
+  );
+
+  if (
+    action === 'diff-viewer.reply-to-thread' &&
+    selectedRemoteThread &&
+    ctx.remoteCtx
+  ) {
+    ctx.pane.setReplyingToThreadId(selectedRemoteThread.id);
+    ctx.pane.setReplyBuffer('');
+    return;
+  }
+
+  if (
+    action === 'diff-viewer.toggle-thread-resolved' &&
+    selectedRemoteThread &&
+    ctx.remoteCtx
+  ) {
+    const newResolved = !selectedRemoteThread.isResolved;
+    ctx.sessions.flashStatus(
+      newResolved ? 'Resolving thread...' : 'Reopening thread...'
+    );
+    ctx.remoteCtx
+      .toggleResolved(selectedRemoteThread.id, newResolved)
+      .then((success) => {
+        if (success) {
+          ctx.sessions.flashStatus(
+            newResolved ? 'Thread resolved' : 'Thread reopened'
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.sessions.flashStatus(`Failed: ${msg}`);
+      });
     return;
   }
 }
