@@ -149,12 +149,15 @@ test.describe('@integration Auto-select first comment', () => {
     await fileRow.waitFor({ state: 'visible', timeout: 10_000 });
 
     // Walk the diff-list selection down until our target file row is
-    // selected (carries the leading `›` marker). Up to fileCount tries.
+    // selected (carries the leading `›` marker). Use chained string
+    // filters — wrapping fileBasename in a RegExp would treat `.c`'s
+    // dot as a metachar and falsely match neighbouring `.h` files in
+    // the same PR (e.g. PR #38 ships both undo.c and undo.h).
     for (let i = 0; i < 40; i++) {
       const selected = kirby.term.page
-        .locator('.term-row', {
-          hasText: new RegExp(`›[^\\n]*${fileBasename}`),
-        })
+        .locator('.term-row')
+        .filter({ hasText: '›' })
+        .filter({ hasText: fileBasename })
         .first();
       if ((await selected.count()) > 0) break;
       await kirby.term.press('j');
