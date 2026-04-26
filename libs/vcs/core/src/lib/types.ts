@@ -167,6 +167,12 @@ export interface AppConfig {
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
   autoHideSidebar?: boolean;
+  /** When the user presses Ctrl+Space (escape from terminal) and there
+   *  are sessions in the inactive-alert queue, jump focus to the next
+   *  alerting session instead of returning to the sidebar. Defaults to
+   *  true; set to false to keep the original "Ctrl+Space → sidebar"
+   *  behavior. */
+  jumpToInactiveOnEscape?: boolean;
   /** Render the diff file list as a collapsed folder tree instead of
    *  a flat path list. Opt-in; defaults to flat for backwards compat. */
   diffFileListTree?: boolean;

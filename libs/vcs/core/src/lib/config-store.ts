@@ -46,6 +46,7 @@ interface RawGlobalConfig {
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
   autoHideSidebar?: boolean;
+  jumpToInactiveOnEscape?: boolean;
   mergePollInterval?: number;
   editor?: string;
   worktreePath?: string;
@@ -137,6 +138,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     autoDeleteOnMerge: global.autoDeleteOnMerge,
     autoRebase: global.autoRebase,
     autoHideSidebar: global.autoHideSidebar,
+    jumpToInactiveOnEscape: global.jumpToInactiveOnEscape,
     mergePollInterval: global.mergePollInterval,
     editor: project.editor ?? global.editor,
     worktreePath: global.worktreePath,

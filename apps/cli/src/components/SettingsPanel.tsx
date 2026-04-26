@@ -110,6 +110,14 @@ export function buildSettingsFields(
       configBag: 'global',
     },
     {
+      label: 'Jump to Inactive Session on Ctrl+Space',
+      key: 'jumpToInactiveOnEscape',
+      description:
+        'When agents go idle, queue them and jump on Ctrl+Space instead of returning to the sidebar',
+      presets: BOOL_PRESETS_ON_FIRST,
+      configBag: 'global',
+    },
+    {
       label: 'Diff File List Tree',
       key: 'diffFileListTree',
       description: 'Group PR files by directory in the diff file list',
