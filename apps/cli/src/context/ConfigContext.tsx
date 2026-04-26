@@ -43,6 +43,7 @@ function coerceConfigValue(
     key === 'autoDeleteOnMerge' ||
     key === 'autoRebase' ||
     key === 'autoHideSidebar' ||
+    key === 'jumpToInactiveOnEscape' ||
     key === 'diffFileListTree'
   ) {
     return value === 'true';
