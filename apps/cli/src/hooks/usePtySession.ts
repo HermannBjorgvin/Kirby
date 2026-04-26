@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { MouseTrackingMode } from '@kirby/terminal';
 import { getSession } from '../pty-registry.js';
 import type { PtyEntry } from '../pty-registry.js';
+import { noteInput } from '../activity.js';
 
 export function usePtySession(
   sessionName: string | null,
@@ -77,14 +78,17 @@ export function usePtySession(
     }
   }, [paneCols, paneRows, scheduleRender]);
 
-  const write = useCallback((data: string) => {
-    const entry = entryRef.current;
-    if (entry && !entry.exited) {
+  const write = useCallback(
+    (data: string) => {
+      const entry = entryRef.current;
+      if (!entry || entry.exited || !sessionName) return;
       // Reset scroll position on user input
       scrollOffsetRef.current = 0;
+      noteInput(sessionName);
       entry.pty.write(data);
-    }
-  }, []);
+    },
+    [sessionName]
+  );
 
   const scrollUp = useCallback(() => {
     const entry = entryRef.current;
