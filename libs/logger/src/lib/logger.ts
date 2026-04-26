@@ -22,6 +22,29 @@ function resolveMinLevel(): number {
 
 const minLevel = resolveMinLevel();
 
+/**
+ * Format `data` as a single-line string for log output. Errors get
+ * `message\nstack`; everything else goes through `JSON.stringify`.
+ *
+ * `JSON.stringify` throws on circular references, BigInt values, and
+ * objects whose `toJSON` throws — none of which should tear down the
+ * caller (e.g. `tracedFetch` would lose a reply mutation if a single
+ * log line crashed). Fall back to `String(data)` so we always produce
+ * something writable.
+ */
+export function safeStringify(data: unknown): string {
+  if (data instanceof Error) return `${data.message}\n${data.stack ?? ''}`;
+  try {
+    return JSON.stringify(data);
+  } catch {
+    try {
+      return String(data);
+    } catch {
+      return '[unserializable]';
+    }
+  }
+}
+
 export function log(
   level: LogLevel,
   context: string,
@@ -31,13 +54,11 @@ export function log(
   if (!logPath) return;
   if (LEVEL_RANK[level] < minLevel) return;
   const ts = new Date().toISOString();
-  const serialized =
-    data instanceof Error
-      ? `${data.message}\n${data.stack ?? ''}`
-      : JSON.stringify(data);
   const line =
     data !== undefined
-      ? `${ts} [${level.toUpperCase()}] ${context}: ${message} ${serialized}`
+      ? `${ts} [${level.toUpperCase()}] ${context}: ${message} ${safeStringify(
+          data
+        )}`
       : `${ts} [${level.toUpperCase()}] ${context}: ${message}`;
   appendFileSync(logPath, line + '\n');
 }
