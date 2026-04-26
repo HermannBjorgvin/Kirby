@@ -28,12 +28,13 @@ interface ModalProps {
 // Yoga gets a concrete rectangle to lay out inside.
 //
 // ── Painting ───────────────────────────────────────────────────────
-// We don't set a `backgroundColor`. Ink renders character cells, and
-// when the modal's content paints (border chars, text, padding), it
-// fully overwrites whatever was in those cells before — so there's
-// no transparency to worry about within the modal's footprint. The
-// area outside the modal isn't covered, but that's intended: the
-// underlying app stays visible behind the centered dialog.
+// This wrapper does NOT paint a background — the area outside the
+// centered dialog stays as-is so the underlying app is visible behind
+// it. The dialog itself MUST set its own `backgroundColor` (e.g. on
+// the Pane it renders), otherwise Ink leaves the dialog's blank
+// padding/gap cells transparent and underlying text bleeds through
+// inside the dialog footprint. (Border chars and explicit text DO
+// overwrite their cells, but blank padding does not.)
 //
 // ── Input layering ─────────────────────────────────────────────────
 // Ink has NO z-index hit-testing — input is routed via `useInput`,

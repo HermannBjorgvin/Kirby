@@ -123,11 +123,26 @@ export function handleSidebarInput(
               branch,
               sessionName,
               reason: check.reason,
+              mode: 'type-branch',
             });
             ctx.deleteConfirm.setConfirmInput('');
           } else {
             ctx.sessions.flashStatus(`Cannot delete: ${check.reason}`);
           }
+          return;
+        }
+        // Branch is git-clean, but if the agent's PTY is still alive
+        // it carries in-memory state (plans, prompts, tool history)
+        // that would be lost. Surface a lightweight Y/N prompt so the
+        // user can't blow away an active session by accident.
+        if (hasSession(sessionName)) {
+          ctx.deleteConfirm.setConfirmDelete({
+            branch,
+            sessionName,
+            reason: 'session is active — agent process will be killed',
+            mode: 'yes-no',
+          });
+          ctx.deleteConfirm.setConfirmInput('');
           return;
         }
         await ctx.sessions.performDelete(sessionName, branch);
