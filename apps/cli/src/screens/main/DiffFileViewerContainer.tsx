@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { parseUnifiedDiff } from '@kirby/diff';
@@ -17,6 +17,8 @@ import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useAutoSelectFirstComment } from '../../hooks/useAutoSelectFirstComment.js';
+import { usePendingThreadScrollIntoView } from '../../hooks/usePendingThreadScrollIntoView.js';
 import { handleDiffViewerInput } from './main-input.js';
 
 interface DiffFileViewerContainerProps {
@@ -146,117 +148,30 @@ export function DiffFileViewerContainer({
     );
   }, [interleaveResult, fileComments]);
 
-  // Auto-select + scroll-into-view the first comment when a file with
-  // remote threads / local drafts is opened. Without this the user has
-  // to press Shift+↓ once just to land on a comment that's typically
-  // far down the file — and because the scroll jump on the first press
-  // can move multiple cards out of view, it looks like "select →
-  // deselect" rather than "moved to thread N+1".
-  //
-  // Tracked per-file: the auto-select fires once per file change. If
-  // the user clears selection with Esc inside the same file, we do NOT
-  // re-select — they explicitly opted out.
-  const autoSelectedFileRef = useRef<string | null>(null);
-  const { setSelectedCommentId, setDiffScrollOffset } = pane;
-  useEffect(() => {
-    const file = pane.diffViewFile;
-    if (!file) return;
-    // Already auto-selected for this file — don't re-fire (e.g. when
-    // the user cleared selection with Esc, we honor that).
-    if (autoSelectedFileRef.current === file) return;
-    // Build the same nav pool diff-viewer-input uses (sorted by line)
-    // so the "first comment" matches what Shift+↓ would walk to.
-    // Posted local comments are rendered via the remote-thread path
-    // (interleaveComments filters them out at libs/review-comments
-    // /comment-renderer.ts:249), so their ids never appear in
-    // `commentPositions`. Including them here would put a dead id at
-    // navPool[0] for any thread that was authored from kirby, and the
-    // rowEntry guard would silently bail forever — exactly the bug
-    // we're fixing.
-    const navPool: { id: string; lineStart: number }[] = [
-      ...fileComments
-        .filter((c) => c.status !== 'posted')
-        .map((c) => ({
-          id: c.id,
-          lineStart: c.lineStart ?? Number.POSITIVE_INFINITY,
-        })),
-      ...fileRemoteThreads.map((t) => ({
-        id: t.id,
-        lineStart: t.lineStart ?? Number.POSITIVE_INFINITY,
-      })),
-    ].sort((a, b) => a.lineStart - b.lineStart);
-    // Wait for at least one comment / thread to load before arming the
-    // ref. Remote threads arrive async on file open so the first paint
-    // may have an empty pool — skipping that pass means we still
-    // auto-select once the data lands.
-    if (navPool.length === 0) return;
-    const first = navPool[0]!;
-    // Scroll target mirrors `scrollToComment` in diff-viewer-input —
-    // translate the refStartLine slot index to a physical row via the
-    // row map and pin two rows above for a bit of code context.
-    // commentPositions/rowMap depend on the parsed diff text, which
-    // loads async via `loadFileDiff`. If comments arrived first the
-    // first effect pass has nothing to scroll to — bail and let the
-    // diff-text render fire us again. Without this gate we'd arm the
-    // ref now, the next pass would be blocked, and the user would see
-    // a selection that never scrolled into view.
-    const info = commentPositions.get(first.id);
-    const rowEntry = info ? rowMap.positions[info.refStartLine] : undefined;
-    if (!rowEntry) return;
-
-    autoSelectedFileRef.current = file;
-    setSelectedCommentId(first.id);
-    const viewportHeight = Math.max(1, terminal.paneRows - 3);
-    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-    setDiffScrollOffset(
-      Math.min(Math.max(0, rowEntry.rowStart - 2), maxScroll)
-    );
-  }, [
-    pane.diffViewFile,
+  useAutoSelectFirstComment({
+    file: pane.diffViewFile,
     fileComments,
     fileRemoteThreads,
     commentPositions,
     rowMap,
     diffTotalRows,
-    terminal.paneRows,
-    setSelectedCommentId,
-    setDiffScrollOffset,
-  ]);
+    paneRows: terminal.paneRows,
+    setSelectedCommentId: pane.setSelectedCommentId,
+    setDiffScrollOffset: pane.setDiffScrollOffset,
+  });
 
-  // After a reply posts the row map grows; if the new reply lands
-  // below the current viewport the user can't see what they just
-  // posted. The reply-mode success handler sets
-  // `pane.pendingScrollThreadId`; we wait for `commentPositions` /
-  // `rowMap` to reflect the post-reply layout, then scroll the
-  // thread's bottom into view (one row of breathing room) and clear
-  // the pending id.
-  const { setPendingScrollThreadId } = pane;
-  useEffect(() => {
-    const tid = pane.pendingScrollThreadId;
-    if (!tid) return;
-    const info = commentPositions.get(tid);
-    if (!info) return;
-    const rowEntry = rowMap.positions[info.headerLine];
-    if (!rowEntry) return;
-    const viewportHeight = Math.max(1, terminal.paneRows - 3);
-    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-    const threadEndRow = rowEntry.rowStart + rowEntry.rowSpan - 1;
-    const minScrollOffset = Math.max(0, threadEndRow - viewportHeight + 2);
-    setDiffScrollOffset((cur) =>
-      Math.min(Math.max(cur, minScrollOffset), maxScroll)
-    );
-    setPendingScrollThreadId(null);
-  }, [
-    pane.pendingScrollThreadId,
+  usePendingThreadScrollIntoView({
+    pendingThreadId: pane.pendingScrollThreadId,
     commentPositions,
     rowMap,
     diffTotalRows,
-    terminal.paneRows,
-    setDiffScrollOffset,
-    setPendingScrollThreadId,
-  ]);
+    paneRows: terminal.paneRows,
+    setDiffScrollOffset: pane.setDiffScrollOffset,
+    setPendingScrollThreadId: pane.setPendingScrollThreadId,
+  });
 
   // ── Scroll wheel ────────────────────────────────────────────────
+  const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(
     (delta: number) => {
       const viewportHeight = Math.max(1, terminal.paneRows - 3);
