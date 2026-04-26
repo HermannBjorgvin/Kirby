@@ -1,6 +1,6 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
 import { sidebarLocator } from './setup/sidebar.js';
-import { createSession } from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 // Both sessions run the same fake-agent (aiCommand is global). We rely
 // on the active→idle edge being detected after the 4s burst plus the
@@ -25,6 +25,7 @@ test.describe('Activity queue (Ctrl+Space, setting on)', () => {
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
     await kirby.term.write('\x00');
+    await waitForSidebarFocused(kirby.term);
 
     // Session B: created next, focus moves here. We Tab into it so its
     // PTY starts (otherwise Ctrl+Space wouldn't intercept — escape only
@@ -69,6 +70,7 @@ test.describe('Activity queue (Ctrl+Space, setting off)', () => {
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
     await kirby.term.write('\x00');
+    await waitForSidebarFocused(kirby.term);
 
     await createSession(kirby.term, 'second');
     await kirby.term.press('Tab');

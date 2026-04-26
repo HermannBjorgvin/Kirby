@@ -1,5 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import { createSession } from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 // `autoHideSidebar: false` keeps the sidebar visible while the terminal
 // is focused, so we can assert against a row that isn't currently
@@ -26,8 +26,11 @@ test.describe('Activity spinner', () => {
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
-    // 3. Ctrl+Space escapes back to the sidebar.
+    // 3. Ctrl+Space escapes back to the sidebar. Wait for the focus
+    //    change to actually land before continuing — see
+    //    waitForSidebarFocused for why.
     await kirby.term.write('\x00');
+    await waitForSidebarFocused(kirby.term);
 
     // 4. Create session B (silent). Selection moves to B; A is no longer
     //    selected, so the activity indicator on A is now eligible to

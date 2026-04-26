@@ -1,5 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import { createSession } from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 test.use({
   kirbyConfig: {
@@ -25,6 +25,7 @@ test.describe('Activity toast', () => {
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
     await kirby.term.write('\x00');
+    await waitForSidebarFocused(kirby.term);
 
     // 2. Create a second session ("idle") so busy is no longer the
     //    currently-viewed session — that suppression rule is what we're
