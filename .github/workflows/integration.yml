@@ -51,6 +51,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
           TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-runner/kirby-integration-test-repository' }}
+          # Wire Kirby's logger to the file the "Upload debug logs"
+          # step below already publishes. cli-wterm-host forwards
+          # process.env into every spawned Kirby PTY
+          # (apps/cli-wterm-host/src/main.ts:70), so this lands in
+          # every test's Kirby instance with no fixture changes.
+          KIRBY_LOG: /tmp/kirby-integ-debug.log
+          KIRBY_LOG_LEVEL: debug
 
       - name: Upload debug logs
         if: always()
