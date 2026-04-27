@@ -12,6 +12,12 @@
   "include": ["src/**/*.ts"],
   "references": [
     {
+      "path": "../vcs/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../diff/tsconfig.lib.json"
+    },
+    {
       "path": "../logger/tsconfig.lib.json"
     }
   ],

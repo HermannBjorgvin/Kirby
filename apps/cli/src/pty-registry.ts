@@ -1,5 +1,6 @@
-import { PtySession, TerminalEmulator } from '@kirby/terminal';
-import type { SessionBackend } from '@kirby/terminal';
+import { TerminalEmulator } from '@kirby/terminal';
+import type { SessionBackend, SessionBackendFactory } from '@kirby/terminal';
+import { createPtyBackendFactory } from '@kirby/terminal-pty';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
@@ -11,6 +12,17 @@ export interface PtyEntry {
 }
 
 const registry = new Map<string, PtyEntry>();
+
+let activeFactory: SessionBackendFactory = createPtyBackendFactory();
+
+/** Swap the backend factory used by future spawnSession() calls. The
+ *  composition root (apps/cli/src/session-backend.ts in Phase 4) calls
+ *  this when the user picks a different terminal backend. Existing
+ *  sessions in the registry are unaffected — switching is gated to
+ *  empty-registry by the Settings UI guard. */
+export function setSessionBackendFactory(factory: SessionBackendFactory): void {
+  activeFactory = factory;
+}
 
 export function spawnSession(
   name: string,
@@ -30,7 +42,7 @@ export function spawnSession(
     registry.delete(name);
   }
 
-  const pty = new PtySession(cmd, args, { cols, rows, cwd });
+  const pty = activeFactory({ name, cmd, args, cols, rows, cwd });
   const emu = new TerminalEmulator(cols, rows);
   const entry: PtyEntry = { pty, emu, exited: false };
 
@@ -56,10 +68,17 @@ export function hasSession(name: string): boolean {
   return registry.has(name);
 }
 
+export function hasAnySession(): boolean {
+  return registry.size > 0;
+}
+
+/** Explicit teardown — used when the user removes a worktree or kills
+ *  a session. Calls the backend's `kill()` so persistent backends
+ *  (tmux) terminate the underlying session, not just detach. */
 export function killSession(name: string): void {
   const entry = registry.get(name);
   if (entry) {
-    entry.pty.dispose();
+    entry.pty.kill();
     entry.emu.dispose();
     activity.detach(name);
     removeInactiveAlert(name);
@@ -67,7 +86,10 @@ export function killSession(name: string): void {
   }
 }
 
-/** Kill all PTY sessions. Called on process exit to prevent orphaned children. */
+/** Soft cleanup — used on Kirby process exit. Calls the backend's
+ *  `dispose()` so tmux sessions survive and can be reattached on the
+ *  next launch. For the direct PTY backend this is the same as kill().
+ */
 export function killAll(): void {
   for (const [name, entry] of registry.entries()) {
     entry.pty.dispose();
