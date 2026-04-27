@@ -149,19 +149,22 @@ test.describe('@integration Auto-select first comment', () => {
     await fileRow.waitFor({ state: 'visible', timeout: 10_000 });
 
     // Walk the diff-list selection down until our target file row is
-    // selected (carries the leading `›` marker). Use chained string
-    // filters — wrapping fileBasename in a RegExp would treat `.c`'s
-    // dot as a metachar and falsely match neighbouring `.h` files in
-    // the same PR (e.g. PR #38 ships both undo.c and undo.h).
-    for (let i = 0; i < 40; i++) {
-      const selected = kirby.term.page
-        .locator('.term-row')
-        .filter({ hasText: '›' })
-        .filter({ hasText: fileBasename })
-        .first();
-      if ((await selected.count()) > 0) break;
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    // selected (carries the leading `›` marker). Reuse pressUntilSelected
+    // — it waits for the selected-row locator per press instead of
+    // `count() > 0` + sleep, which races wterm's render and can fire
+    // Enter before the cursor finishes moving.
+    const fileSelected = kirby.term.page
+      .locator('.term-row')
+      .filter({ hasText: '›' })
+      .filter({ hasText: fileBasename })
+      .first();
+    const fileLanded = await pressUntilSelected(
+      { term: kirby.term },
+      fileSelected,
+      40
+    );
+    if (!fileLanded) {
+      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
     }
 
     await kirby.term.press('Enter');
@@ -252,22 +255,22 @@ test.describe('@integration Auto-select first comment', () => {
       .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Walk the diff-list selection down until our target file row is
-    // selected (carries the leading `›` marker). Use chained string
-    // filters — wrapping fileBasename in a RegExp would treat `.c`'s
-    // dot as a metachar and falsely match neighbouring `.h` files in
-    // the same PR (e.g. PR #38 ships both undo.c and undo.h), so
-    // `.first()` could land on undo.h while the cursor sits on undo.c.
-    // Same fix as the sibling test above (see commit d16c79f).
+    // selected (carries the leading `›` marker). Same race-tolerant
+    // helper as the sibling test above — see comment there for why
+    // chained string filters and pressUntilSelected matter.
     const fileBasename = firstInlineThread!.path.split('/').pop()!;
-    for (let i = 0; i < 40; i++) {
-      const selected = kirby.term.page
-        .locator('.term-row')
-        .filter({ hasText: '›' })
-        .filter({ hasText: fileBasename })
-        .first();
-      if ((await selected.count()) > 0) break;
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    const fileSelected = kirby.term.page
+      .locator('.term-row')
+      .filter({ hasText: '›' })
+      .filter({ hasText: fileBasename })
+      .first();
+    const fileLanded = await pressUntilSelected(
+      { term: kirby.term },
+      fileSelected,
+      40
+    );
+    if (!fileLanded) {
+      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
     }
     await kirby.term.press('Enter');
 
