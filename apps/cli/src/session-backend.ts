@@ -1,0 +1,50 @@
+/**
+ * Composition root for the session backend.
+ *
+ * This is the only place that knows about both backends, the
+ * `kirby-` session-name prefix, and the project hash used to
+ * disambiguate sessions across repos. Every Kirby-specific naming
+ * decision lives here — the backend libs (`@kirby/terminal-pty`,
+ * `@kirby/terminal-tmux`) are deliberately ignorant of all of it.
+ */
+import { execFileSync } from 'node:child_process';
+import type { SessionBackendFactory } from '@kirby/terminal';
+import { createPtyBackendFactory } from '@kirby/terminal-pty';
+import { createTmuxBackendFactory } from '@kirby/terminal-tmux';
+import type { AppConfig } from '@kirby/vcs-core';
+import { projectKey } from '@kirby/vcs-core';
+import { setSessionBackendFactory } from './pty-registry.js';
+
+/** Resolve the git toplevel of the repo Kirby is running in. Cached on
+ *  first call — Kirby is anchored to one repo per process. */
+let cachedRepoRoot: string | null = null;
+export function getRepoRoot(): string {
+  if (cachedRepoRoot) return cachedRepoRoot;
+  cachedRepoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    encoding: 'utf8',
+  }).trim();
+  return cachedRepoRoot;
+}
+
+/** Application policy: build a SessionBackendFactory configured for
+ *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
+ *  baked in here — neither backend lib knows about it. */
+export function buildSessionBackendFactory(
+  config: AppConfig,
+  repoRoot: string
+): SessionBackendFactory {
+  if (config.terminalBackend === 'tmux') {
+    return createTmuxBackendFactory({
+      sessionPrefix: `kirby-${projectKey(repoRoot)}-`,
+    });
+  }
+  return createPtyBackendFactory();
+}
+
+/** Apply the resolved factory to the registry. Call this on startup
+ *  and whenever `config.terminalBackend` changes (which the Settings
+ *  UI gates to empty-registry). */
+export function applySessionBackend(config: AppConfig): void {
+  const factory = buildSessionBackendFactory(config, getRepoRoot());
+  setSessionBackendFactory(factory);
+}
