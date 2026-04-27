@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MIN_ACTIVE_MS } from './activity-config.js';
 
-// Capture every PtySession / TerminalEmulator the registry constructs so
-// a test can drive the exit callback and inspect disposal.
+// Capture every session backend / TerminalEmulator the registry constructs
+// so a test can drive the exit callback and inspect disposal.
 const { ptys, emus } = vi.hoisted(() => ({
   ptys: [] as MockPty[],
   emus: [] as MockEmu[],
@@ -14,6 +14,7 @@ class MockPty {
   write = vi.fn();
   resize = vi.fn();
   dispose = vi.fn();
+  kill = vi.fn();
   onData = (cb: (s: string) => void) => this.dataCbs.push(cb);
   offData = (cb: (s: string) => void) => {
     this.dataCbs = this.dataCbs.filter((f) => f !== cb);
@@ -42,14 +43,17 @@ class MockEmu {
 }
 
 vi.mock('@kirby/terminal', () => ({
-  PtySession: function MockPtySession() {
-    const m = new MockPty();
-    ptys.push(m);
-    return m as unknown as object;
-  },
   TerminalEmulator: function MockTerminalEmulator() {
     const m = new MockEmu();
     emus.push(m);
+    return m as unknown as object;
+  },
+}));
+
+vi.mock('@kirby/terminal-pty', () => ({
+  createPtyBackendFactory: () => () => {
+    const m = new MockPty();
+    ptys.push(m);
     return m as unknown as object;
   },
 }));
