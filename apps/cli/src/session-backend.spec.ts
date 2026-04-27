@@ -1,15 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppConfig } from '@kirby/vcs-core';
+import type { TmuxStatus } from '@kirby/terminal-tmux';
 
-const { ptyFactorySpy, tmuxFactorySpy, SENTINEL_PTY, SENTINEL_TMUX } =
-  vi.hoisted(() => {
-    return {
-      ptyFactorySpy: vi.fn(),
-      tmuxFactorySpy: vi.fn(),
-      SENTINEL_PTY: Symbol('pty-factory'),
-      SENTINEL_TMUX: Symbol('tmux-factory'),
-    };
-  });
+const {
+  ptyFactorySpy,
+  tmuxFactorySpy,
+  isTmuxAvailableMock,
+  SENTINEL_PTY,
+  SENTINEL_TMUX,
+} = vi.hoisted(() => {
+  return {
+    ptyFactorySpy: vi.fn(),
+    tmuxFactorySpy: vi.fn(),
+    isTmuxAvailableMock: vi.fn<[], Promise<TmuxStatus>>(),
+    SENTINEL_PTY: Symbol('pty-factory'),
+    SENTINEL_TMUX: Symbol('tmux-factory'),
+  };
+});
 
 vi.mock('@kirby/terminal-pty', () => ({
   createPtyBackendFactory: () => {
@@ -22,12 +29,16 @@ vi.mock('@kirby/terminal-tmux', () => ({
     tmuxFactorySpy(opts);
     return SENTINEL_TMUX;
   },
+  isTmuxAvailable: () => isTmuxAvailableMock(),
 }));
 vi.mock('@kirby/vcs-core', () => ({
   projectKey: (cwd: string) => `hash(${cwd})`,
 }));
 
-import { buildSessionBackendFactory } from './session-backend.js';
+import {
+  buildSessionBackendFactory,
+  probeTmuxAvailability,
+} from './session-backend.js';
 
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -37,9 +48,20 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   ptyFactorySpy.mockReset();
   tmuxFactorySpy.mockReset();
+  isTmuxAvailableMock.mockReset();
+  // Reset module-level cachedTmuxStatus to a known "available" state so
+  // tests that don't care about the probe see the un-fallback path.
+  // Tests asserting the fallback re-call probeTmuxAvailability with an
+  // "unavailable" mock to override.
+  isTmuxAvailableMock.mockResolvedValueOnce({
+    available: true,
+    version: '3.4',
+  });
+  await probeTmuxAvailability();
+  isTmuxAvailableMock.mockReset();
 });
 
 describe('buildSessionBackendFactory', () => {
@@ -86,5 +108,20 @@ describe('buildSessionBackendFactory', () => {
     expect(tmuxFactorySpy.mock.calls[1]?.[0]?.sessionPrefix).toBe(
       'kirby-hash(/repo/b)-'
     );
+  });
+
+  it('falls back to PTY when "tmux" requested but probe says unavailable', async () => {
+    isTmuxAvailableMock.mockResolvedValueOnce({
+      available: false,
+      reason: 'tmux binary not found on PATH',
+      installHint: 'brew install tmux',
+    });
+    await probeTmuxAvailability();
+    const factory = buildSessionBackendFactory(
+      makeConfig({ terminalBackend: 'tmux' }),
+      '/repo'
+    );
+    expect(factory).toBe(SENTINEL_PTY);
+    expect(tmuxFactorySpy).not.toHaveBeenCalled();
   });
 });

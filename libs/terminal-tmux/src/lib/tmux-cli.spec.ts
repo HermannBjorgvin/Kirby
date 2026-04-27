@@ -5,12 +5,7 @@ vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
-import {
-  tmuxHasSession,
-  tmuxKillSession,
-  tmuxNewSession,
-  tmuxVersion,
-} from './tmux-cli.js';
+import { tmuxHasSession, tmuxKillSession, tmuxVersion } from './tmux-cli.js';
 
 const mockedExec = vi.mocked(execFileSync);
 
@@ -33,60 +28,6 @@ describe('tmuxVersion', () => {
       throw err;
     });
     expect(() => tmuxVersion()).toThrow();
-  });
-});
-
-describe('tmuxNewSession', () => {
-  it('runs `new-session -A -d` with all the expected flags', () => {
-    mockedExec.mockReturnValueOnce('' as unknown as Buffer);
-    const result = tmuxNewSession({
-      name: 'kirby-foo',
-      cwd: '/tmp/foo',
-      cols: 100,
-      rows: 30,
-      cmd: '/bin/sh',
-      args: ['-c', 'claude'],
-    });
-    expect(result.exitCode).toBe(0);
-    const call = mockedExec.mock.calls[0]!;
-    expect(call[0]).toBe('tmux');
-    expect(call[1]).toEqual([
-      'new-session',
-      '-A',
-      '-d',
-      '-s',
-      'kirby-foo',
-      '-c',
-      '/tmp/foo',
-      '-x',
-      '100',
-      '-y',
-      '30',
-      '/bin/sh',
-      '-c',
-      'claude',
-    ]);
-  });
-
-  it('returns the non-zero exit code instead of throwing', () => {
-    mockedExec.mockImplementationOnce(() => {
-      const err = Object.assign(new Error('exit'), {
-        status: 2,
-        stdout: '',
-        stderr: 'nope',
-      });
-      throw err;
-    });
-    const result = tmuxNewSession({
-      name: 'foo',
-      cwd: '/x',
-      cols: 80,
-      rows: 24,
-      cmd: 'true',
-      args: [],
-    });
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toBe('nope');
   });
 });
 

@@ -226,7 +226,7 @@ libs/terminal-pty/               — Direct PTY backend (node-pty)
 libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
-  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.','/' → '-', length cap)
+  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
 ```
 

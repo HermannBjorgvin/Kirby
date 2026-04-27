@@ -30,29 +30,6 @@ export function getRepoRoot(): string {
   return cachedRepoRoot;
 }
 
-/** Application policy: build a SessionBackendFactory configured for
- *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
- *  baked in here — neither backend lib knows about it. */
-export function buildSessionBackendFactory(
-  config: AppConfig,
-  repoRoot: string
-): SessionBackendFactory {
-  if (config.terminalBackend === 'tmux') {
-    return createTmuxBackendFactory({
-      sessionPrefix: `kirby-${projectKey(repoRoot)}-`,
-    });
-  }
-  return createPtyBackendFactory();
-}
-
-/** Apply the resolved factory to the registry. Call this on startup
- *  and whenever `config.terminalBackend` changes (which the Settings
- *  UI gates to empty-registry). */
-export function applySessionBackend(config: AppConfig): void {
-  const factory = buildSessionBackendFactory(config, getRepoRoot());
-  setSessionBackendFactory(factory);
-}
-
 // ── Tmux availability cache ─────────────────────────────────────
 //
 // The Settings UI guard runs synchronously inside an Ink input
@@ -73,4 +50,36 @@ export async function probeTmuxAvailability(): Promise<void> {
  *  render — startup awaits it). */
 export function getTmuxAvailability(): TmuxStatus | null {
   return cachedTmuxStatus;
+}
+
+/** Application policy: build a SessionBackendFactory configured for
+ *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
+ *  baked in here — neither backend lib knows about it.
+ *
+ *  Startup fallback: if the user's saved config requests tmux but the
+ *  cached probe says tmux is unavailable, silently fall back to PTY.
+ *  Without this, a config saved on a machine that has since lost tmux
+ *  would explode at first session-spawn with ENOENT. The Settings UI
+ *  already shows "Tmux (not installed)" so the user can re-pick. */
+export function buildSessionBackendFactory(
+  config: AppConfig,
+  repoRoot: string
+): SessionBackendFactory {
+  if (config.terminalBackend === 'tmux') {
+    if (cachedTmuxStatus && !cachedTmuxStatus.available) {
+      return createPtyBackendFactory();
+    }
+    return createTmuxBackendFactory({
+      sessionPrefix: `kirby-${projectKey(repoRoot)}-`,
+    });
+  }
+  return createPtyBackendFactory();
+}
+
+/** Apply the resolved factory to the registry. Call this on startup
+ *  and whenever `config.terminalBackend` changes (which the Settings
+ *  UI gates to empty-registry). */
+export function applySessionBackend(config: AppConfig): void {
+  const factory = buildSessionBackendFactory(config, getRepoRoot());
+  setSessionBackendFactory(factory);
 }

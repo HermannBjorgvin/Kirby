@@ -46,7 +46,10 @@ export function spawnSession(
   cwd: string,
   env?: Record<string, string | undefined>
 ): PtyEntry {
-  // Kill existing session with same name if any
+  // Respawn under the same name: dispose (soft) the prior entry. On
+  // tmux this detaches without killing, so the new spawn's `-A` flag
+  // re-attaches to the same tmux session — preserving its scrollback.
+  // On the direct PTY backend dispose === kill.
   const existing = registry.get(name);
   if (existing) {
     existing.pty.dispose();
