@@ -60,6 +60,7 @@ function App() {
         <DeleteConfirmModal
           branch={deleteConfirm.confirmDelete.branch}
           reason={deleteConfirm.confirmDelete.reason}
+          mode={deleteConfirm.confirmDelete.mode}
           confirmInput={deleteConfirm.confirmInput}
         />
       )}

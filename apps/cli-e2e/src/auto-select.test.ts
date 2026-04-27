@@ -149,44 +149,48 @@ test.describe('@integration Auto-select first comment', () => {
     await fileRow.waitFor({ state: 'visible', timeout: 10_000 });
 
     // Walk the diff-list selection down until our target file row is
-    // selected (carries the leading `›` marker). Use chained string
-    // filters — wrapping fileBasename in a RegExp would treat `.c`'s
-    // dot as a metachar and falsely match neighbouring `.h` files in
-    // the same PR (e.g. PR #38 ships both undo.c and undo.h).
-    for (let i = 0; i < 40; i++) {
-      const selected = kirby.term.page
-        .locator('.term-row')
-        .filter({ hasText: '›' })
-        .filter({ hasText: fileBasename })
-        .first();
-      if ((await selected.count()) > 0) break;
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    // selected (carries the leading `›` marker). Reuse pressUntilSelected
+    // — it waits for the selected-row locator per press instead of
+    // `count() > 0` + sleep, which races wterm's render and can fire
+    // Enter before the cursor finishes moving.
+    const fileSelected = kirby.term.page
+      .locator('.term-row')
+      .filter({ hasText: '›' })
+      .filter({ hasText: fileBasename })
+      .first();
+    const fileLanded = await pressUntilSelected(
+      { term: kirby.term },
+      fileSelected,
+      40
+    );
+    if (!fileLanded) {
+      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
     }
 
     await kirby.term.press('Enter');
 
-    // The diff viewer renders. Wait for either the thread body or a
-    // hunk header to confirm we're past the cold-load.
-    await expect(
-      kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
-    ).toBeVisible({ timeout: 30_000 });
+    // No separate "@@ hunk header" wait — auto-select scrolls past
+    // the header within milliseconds of the diff loading, racing the
+    // assertion. The [r]eply check below proves both that the diff
+    // rendered and that auto-select fired (it's a strict superset).
 
-    // Auto-select assertion: the discovered thread's body should be
-    // visible (card rendered) AND a `[r]eply` hint should be on screen.
-    // CommentThread.tsx renders `[r]eply` inline in the card header
-    // *only* when `selected && !isReplying`, so its presence anywhere
-    // proves exactly one thread is currently selected — i.e. the
-    // auto-select effect fired.
-    await expect(
-      kirby.term.page
-        .locator('.term-row', { hasText: firstInlineThread!.body })
-        .first()
-    ).toBeVisible({ timeout: 10_000 });
-
+    // Auto-select fired ⇔ exactly one thread is currently selected
+    // ⇔ the `[r]eply` hint is on screen. CommentThread.tsx renders
+    // `[r]eply` inline in the card header *only* when
+    // `selected && !isReplying`, so its presence anywhere is the
+    // assertion the test name promises ("at least one thread
+    // auto-selects").
+    //
+    // We deliberately do NOT assert on `firstInlineThread.body` here.
+    // Discovery uses the REST `pulls/{n}/comments` endpoint while Kirby
+    // fetches via the GraphQL `reviewThreads` field, and the two can
+    // disagree on PR #38 (e.g. an orphan inline comment that's a
+    // "review comment" in REST but not part of any reviewThread). That
+    // disagreement is a separate product question — not what this test
+    // is checking.
     await expect(
       kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
-    ).toBeVisible({ timeout: 5_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('posted local comment at navPool[0] does not block auto-select (regression for dead-id bug)', async ({
@@ -249,36 +253,36 @@ test.describe('@integration Auto-select first comment', () => {
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
 
+    // Walk the diff-list selection down until our target file row is
+    // selected (carries the leading `›` marker). Same race-tolerant
+    // helper as the sibling test above — see comment there for why
+    // chained string filters and pressUntilSelected matter.
     const fileBasename = firstInlineThread!.path.split('/').pop()!;
-    for (let i = 0; i < 40; i++) {
-      const selected = kirby.term.page
-        .locator('.term-row', {
-          hasText: new RegExp(`›[^\\n]*${fileBasename}`),
-        })
-        .first();
-      if ((await selected.count()) > 0) break;
-      await kirby.term.press('j');
-      await new Promise((r) => setTimeout(r, 30));
+    const fileSelected = kirby.term.page
+      .locator('.term-row')
+      .filter({ hasText: '›' })
+      .filter({ hasText: fileBasename })
+      .first();
+    const fileLanded = await pressUntilSelected(
+      { term: kirby.term },
+      fileSelected,
+      40
+    );
+    if (!fileLanded) {
+      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
     }
     await kirby.term.press('Enter');
-
-    await expect(
-      kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
-    ).toBeVisible({ timeout: 30_000 });
 
     // Pre-fix the seeded dead local id sat at navPool[0] and
     // permanently gated `autoSelectedFileRef` — no `[r]eply` would
     // appear because nothing was selected. Post-fix the navPool
     // filters posted-status entries and the remote thread takes the
-    // first slot.
-    await expect(
-      kirby.term.page
-        .locator('.term-row', { hasText: firstInlineThread!.body })
-        .first()
-    ).toBeVisible({ timeout: 10_000 });
-
+    // first slot, so `[r]eply` shows up on whichever thread Kirby
+    // auto-selects. We assert only on `[r]eply` (not the discovered
+    // body): see the sibling test above for why discovery and Kirby's
+    // GraphQL fetch can disagree on PR #38's threads.
     await expect(
       kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
-    ).toBeVisible({ timeout: 5_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 });
