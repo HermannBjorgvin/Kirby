@@ -78,8 +78,14 @@ export function buildSessionBackendFactory(
 
 /** Apply the resolved factory to the registry. Call this on startup
  *  and whenever `config.terminalBackend` changes (which the Settings
- *  UI gates to empty-registry). */
+ *  UI gates to empty-registry).
+ *
+ *  Resolves `repoRoot` lazily so the default PTY backend doesn't pay
+ *  a `git rev-parse` fork on every boot — and, more importantly,
+ *  doesn't throw an unhandled error from inside `useEffect` when
+ *  Kirby is launched outside a git working tree. */
 export function applySessionBackend(config: AppConfig): void {
-  const factory = buildSessionBackendFactory(config, getRepoRoot());
+  const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : '';
+  const factory = buildSessionBackendFactory(config, repoRoot);
   setSessionBackendFactory(factory);
 }
