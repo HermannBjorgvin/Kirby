@@ -16,6 +16,9 @@
   ],
   "references": [
     {
+      "path": "../../libs/terminal-tmux/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/diff/tsconfig.lib.json"
     },
     {

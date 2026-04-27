@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { render, Box, useApp } from 'ink';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
@@ -8,6 +8,7 @@ import { ToastContainer } from './components/ToastContainer.js';
 import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
+import { applySessionBackend } from './session-backend.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { NavProvider, useNavState } from './context/NavContext.js';
@@ -33,6 +34,18 @@ function App() {
   const deleteConfirm = useDeleteConfirmState();
   const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+
+  // Wire the active terminal backend factory into pty-registry whenever
+  // the config selection changes. The Settings UI gates this to empty
+  // registry, so existing sessions are never stranded on a stale factory.
+  const terminalBackend = config.terminalBackend;
+  useEffect(() => {
+    applySessionBackend({ ...config, terminalBackend });
+    // Only react to backend changes; other config edits don't need to
+    // rebuild the factory. Capturing config in scope is fine — the
+    // factory only reads `terminalBackend`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terminalBackend]);
 
   const showOnboarding =
     !onboardingComplete && !!config.vendor && !!provider && !vcsConfigured;
