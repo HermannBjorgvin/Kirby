@@ -72,7 +72,14 @@ export function hasSession(name: string): boolean {
 }
 
 export function hasAnySession(): boolean {
-  return registry.size > 0;
+  // Exited entries linger in the registry until the user removes the
+  // worktree (or hits the kill-agent shortcut). Treat them as absent
+  // here so the Settings backend-switch guard doesn't refuse a switch
+  // just because a long-dead `claude /quit` left a tombstone behind.
+  for (const entry of registry.values()) {
+    if (!entry.exited) return true;
+  }
+  return false;
 }
 
 /** Explicit teardown — used when the user removes a worktree or kills
