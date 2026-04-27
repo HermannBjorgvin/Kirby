@@ -22,6 +22,8 @@
     ]
   },
   "dependencies": {
+    "@kirby/terminal": "*",
+    "@kirby/terminal-pty": "*",
     "tslib": "^2.3.0"
   }
 }
