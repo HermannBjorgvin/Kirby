@@ -195,6 +195,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ptyAlive: activePty != null }));
+    return;
+  }
+
   if (req.method !== 'GET') {
     res.writeHead(405).end('method not allowed');
     return;

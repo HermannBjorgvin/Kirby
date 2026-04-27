@@ -28,6 +28,15 @@ const providers: VcsProvider[] = [azureDevOpsProvider, githubProvider];
 
 function App() {
   const { exit } = useApp();
+  // Ink's exit() only unmounts the React tree — it does not stop child
+  // processes. Active PTYs (running agents) keep node-pty handles open,
+  // so the Node event loop never drains and the process hangs after
+  // pressing 'q'. Tear down PTYs first, then force-exit. (#56)
+  const handleExit = () => {
+    killAll();
+    exit();
+    process.exit(0);
+  };
   const { config, provider, vcsConfigured } = useConfig();
   const nav = useNavState();
   const deleteConfirm = useDeleteConfirmState();
@@ -53,7 +62,7 @@ function App() {
         <MainTab
           terminalFocused={terminalFocused}
           showOnboarding={showOnboarding}
-          exit={exit}
+          exit={handleExit}
         />
       </Box>
       {deleteConfirm.confirmDelete && (
