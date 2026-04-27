@@ -217,9 +217,17 @@ apps/cli-e2e/                    — E2E tests (@playwright/test)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
 libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
-libs/terminal/                   — PTY session + terminal emulation (node-pty + @xterm/headless)
-  src/lib/pty-session.ts         — node-pty wrapper
+libs/terminal/                   — Terminal emulator (renderer) + SessionBackend interface
   src/lib/terminal-emulator.ts   — @xterm/headless wrapper with ANSI rendering
+  src/lib/session-backend.ts     — SessionSpec, SessionBackend, SessionBackendFactory contract
+libs/terminal-pty/               — Direct PTY backend (node-pty)
+  src/lib/pty-session.ts         — node-pty wrapper (PtySession)
+  src/lib/pty-backend.ts         — createPtyBackendFactory()
+libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
+  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands
+  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
+  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.','/' → '-', length cap)
+  src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
 ```
 
 ## Known Decisions & Learnings
@@ -234,6 +242,9 @@ libs/terminal/                   — PTY session + terminal emulation (node-pty 
 - **NX inline config vs `project.json`:** our apps (`cli`, `cli-wterm-host`, `cli-e2e`) all use inline `"nx": { "name": "...", "targets": {...} }` in `package.json`. Generators default to this in recent Nx, and it keeps the project definition next to its deps. `cli-e2e` defines its `e2e` and `e2e:integration` targets explicitly rather than relying on `@nx/playwright/plugin` inference — we removed that plugin from `nx.json` because (a) we're the only Playwright project and (b) explicit config is easier to reason about (e.g. `e2e` running `playwright test --grep-invert @integration`).
 - **Avoid nested platform-split build targets.** Original `cli-wterm-host` had `build-server` (node, `@nx/esbuild`) + `build-client` (browser, custom script) + `build` (noop) with `dependsOn` ordering to work around `@nx/esbuild`'s output-path cleaning. One `build.mjs` running both esbuild invocations is simpler and avoids the ordering bug.
 - **Playwright `outputDir` + Nx `outputs` must agree** or nx caching works with stale artifacts. We pin `outputDir: './test-output/playwright/output'` and set matching `outputs` in the `e2e` target.
+- **Pluggable terminal backend.** `libs/terminal` only owns the `SessionBackend` interface and the xterm renderer; `libs/terminal-pty` and `libs/terminal-tmux` are interchangeable backends both implementing that interface. `apps/cli/src/session-backend.ts` is the _only_ place the literal `'kirby-'` prefix appears — it composes `kirby-${projectKey(repoRoot)}-${branch}` for the tmux session name. The libs themselves know nothing about Kirby, branches, or projects. To add a future backend (SSH, Docker exec…), implement `SessionBackend` in a new lib and add a branch to `buildSessionBackendFactory`.
+- **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
+- **Switching backends is gated to no-active-sessions.** `apps/cli/src/input-handlers.ts:canApplyFieldChange` blocks the `terminalBackend` toggle whenever `hasAnySession()` is true and refuses a switch to tmux when `getTmuxAvailability()` reports unavailable (with the install hint). Without this guard, sessions would be stranded on a stale backend factory.
 
 ## PR Reviews via CLI
 
