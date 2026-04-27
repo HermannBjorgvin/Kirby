@@ -42,34 +42,6 @@ export function tmuxVersion(): string {
   return execFileSync('tmux', ['-V'], { encoding: 'utf8' }).trim();
 }
 
-/** Idempotent session create. With `-A` tmux attaches if the session
- *  already exists rather than erroring, so we don't need a separate
- *  has-session check. `-d` keeps the new session detached. */
-export function tmuxNewSession(opts: {
-  name: string;
-  cwd: string;
-  cols: number;
-  rows: number;
-  cmd: string;
-  args: string[];
-}): TmuxRunResult {
-  return runTmux([
-    'new-session',
-    '-A',
-    '-d',
-    '-s',
-    opts.name,
-    '-c',
-    opts.cwd,
-    '-x',
-    String(opts.cols),
-    '-y',
-    String(opts.rows),
-    opts.cmd,
-    ...opts.args,
-  ]);
-}
-
 /** Hard teardown — kills the named tmux session and all its panes. */
 export function tmuxKillSession(name: string): TmuxRunResult {
   return runTmux(['kill-session', '-t', name]);

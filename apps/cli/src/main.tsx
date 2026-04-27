@@ -43,7 +43,7 @@ function App() {
   // registry, so existing sessions are never stranded on a stale factory.
   const terminalBackend = config.terminalBackend;
   useEffect(() => {
-    applySessionBackend({ ...config, terminalBackend });
+    applySessionBackend(config);
     // Only react to backend changes; other config edits don't need to
     // rebuild the factory. Capturing config in scope is fine — the
     // factory only reads `terminalBackend`.
@@ -111,10 +111,10 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Fire the tmux probe in the background — the Settings UI reads the
-// cached result synchronously. We don't await: by the time a user
-// opens settings the probe has long since resolved.
-void probeTmuxAvailability();
+// Resolve the tmux probe before render so applySessionBackend's
+// startup fallback (tmux requested but unavailable → PTY) sees a
+// populated cache. Probe is memoized; ~ms cost on `tmux -V`.
+await probeTmuxAvailability();
 
 render(
   <ConfigProvider providers={providers}>
