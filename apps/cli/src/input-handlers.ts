@@ -22,6 +22,44 @@ import {
   buildControlsRows,
   getBindingRows,
 } from './keybindings/controls-data.js';
+import { hasAnySession } from './pty-registry.js';
+import { getTmuxAvailability } from './session-backend.js';
+import type { SettingsField } from './components/SettingsPanel.js';
+
+/** Guard for `terminalBackend` field changes. Returns true if the
+ *  caller should proceed with the write; returns false (and flashes
+ *  a status) if the change is blocked. Both gates live here so the
+ *  cycle-left/cycle-right and edit-toggle paths share the same
+ *  policy.
+ *
+ *  Gates:
+ *  - Active sessions: switching backend mid-session would strand
+ *    existing sessions on a stale factory.
+ *  - Tmux availability: refusing a switch to tmux when the binary
+ *    is missing surfaces the install hint instead of failing later
+ *    at session-spawn time. */
+function canApplyFieldChange(
+  field: SettingsField,
+  value: string | undefined,
+  ctx: SettingsHandlerCtx
+): boolean {
+  if (field.key !== 'terminalBackend') return true;
+  if (hasAnySession()) {
+    ctx.sessions.flashStatus(
+      'Close all sessions before switching terminal backend.'
+    );
+    return false;
+  }
+  if (value === 'tmux') {
+    const status = getTmuxAvailability();
+    if (status && !status.available) {
+      const hint = status.installHint ? ` — try \`${status.installHint}\`` : '';
+      ctx.sessions.flashStatus(`tmux not installed${hint}`);
+      return false;
+    }
+  }
+  return true;
+}
 
 // ── Shared context slice types ────────────────────────────────────
 
@@ -98,7 +136,10 @@ export function handleSettingsInput(
       if (field.key === 'keybindPreset' && preset.value) {
         ctx.keybinds.setPreset(preset.value);
       } else {
-        ctx.config.updateField(field, preset.value ?? undefined);
+        const value = preset.value ?? undefined;
+        if (canApplyFieldChange(field, value, ctx)) {
+          ctx.config.updateField(field, value);
+        }
       }
     }
     return;
@@ -119,7 +160,10 @@ export function handleSettingsInput(
       const effectiveValue = currentValue || namedPresets[0]!.value;
       let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
       idx = (idx + 1) % namedPresets.length;
-      ctx.config.updateField(field, namedPresets[idx]!.value ?? undefined);
+      const value = namedPresets[idx]!.value ?? undefined;
+      if (canApplyFieldChange(field, value, ctx)) {
+        ctx.config.updateField(field, value);
+      }
       return;
     }
     ctx.settings.setEditingField(field.key);
