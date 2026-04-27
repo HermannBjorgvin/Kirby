@@ -169,11 +169,10 @@ test.describe('@integration Auto-select first comment', () => {
 
     await kirby.term.press('Enter');
 
-    // The diff viewer renders. Wait for either the thread body or a
-    // hunk header to confirm we're past the cold-load.
-    await expect(
-      kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
-    ).toBeVisible({ timeout: 30_000 });
+    // No separate "@@ hunk header" wait — auto-select scrolls past
+    // the header within milliseconds of the diff loading, racing the
+    // assertion. The [r]eply check below proves both that the diff
+    // rendered and that auto-select fired (it's a strict superset).
 
     // Auto-select fired ⇔ exactly one thread is currently selected
     // ⇔ the `[r]eply` hint is on screen. CommentThread.tsx renders
@@ -273,10 +272,6 @@ test.describe('@integration Auto-select first comment', () => {
       throw new Error(`Could not land diff-list selection on ${fileBasename}`);
     }
     await kirby.term.press('Enter');
-
-    await expect(
-      kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
-    ).toBeVisible({ timeout: 30_000 });
 
     // Pre-fix the seeded dead local id sat at navPool[0] and
     // permanently gated `autoSelectedFileRef` — no `[r]eply` would
