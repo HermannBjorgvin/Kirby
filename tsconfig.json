@@ -35,6 +35,9 @@
     },
     {
       "path": "./apps/cli-e2e"
+    },
+    {
+      "path": "./libs/terminal-pty"
     }
   ]
 }
