@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { createSession } from './setup/sessions.js';
 
 // ── Default Preset (Normie) ────────────────────────────────────────
 
@@ -234,6 +235,32 @@ test.describe('Keybindings — Hint Toggle', () => {
     await kirby.term.type('?');
     await expect(kirby.term.getByText('hide hints').first()).toBeVisible();
     await expect(kirby.term.getByText('quit').first()).toBeVisible();
+  });
+
+  test('collapsed hints survive sidebar navigation', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+
+    // Two sidebar items so j/k actually changes selection.
+    await createSession(kirby.term, 'first');
+    await createSession(kirby.term, 'second');
+
+    // Collapse hints.
+    await kirby.term.type('?');
+    await expect(kirby.term.getByText('show hints').first()).toBeVisible();
+
+    // Navigate the sidebar — used to remount MainTabBody and reset
+    // hintsHidden, restoring the full hint list.
+    await kirby.term.press('ArrowUp');
+    await kirby.term.press('ArrowDown');
+
+    // Hints should still be collapsed.
+    await expect(kirby.term.getByText('show hints').first()).toBeVisible();
+    await expect(kirby.term.getByText('hide hints').first()).not.toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(kirby.term.getByText('quit').first()).not.toBeVisible({
+      timeout: 3_000,
+    });
   });
 });
 
