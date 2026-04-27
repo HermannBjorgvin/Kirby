@@ -1,9 +1,10 @@
 import { PtySession, TerminalEmulator } from '@kirby/terminal';
+import type { SessionBackend } from '@kirby/terminal';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
 export interface PtyEntry {
-  pty: PtySession;
+  pty: SessionBackend;
   emu: TerminalEmulator;
   exited: boolean;
   exitCode?: number;
