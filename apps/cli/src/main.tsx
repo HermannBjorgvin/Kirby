@@ -8,7 +8,10 @@ import { ToastContainer } from './components/ToastContainer.js';
 import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
-import { applySessionBackend } from './session-backend.js';
+import {
+  applySessionBackend,
+  probeTmuxAvailability,
+} from './session-backend.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { NavProvider, useNavState } from './context/NavContext.js';
@@ -107,6 +110,11 @@ process.on('SIGTERM', () => {
   killAll();
   process.exit(0);
 });
+
+// Fire the tmux probe in the background — the Settings UI reads the
+// cached result synchronously. We don't await: by the time a user
+// opens settings the probe has long since resolved.
+void probeTmuxAvailability();
 
 render(
   <ConfigProvider providers={providers}>

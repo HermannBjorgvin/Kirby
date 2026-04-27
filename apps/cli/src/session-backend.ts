@@ -10,7 +10,11 @@
 import { execFileSync } from 'node:child_process';
 import type { SessionBackendFactory } from '@kirby/terminal';
 import { createPtyBackendFactory } from '@kirby/terminal-pty';
-import { createTmuxBackendFactory } from '@kirby/terminal-tmux';
+import {
+  createTmuxBackendFactory,
+  isTmuxAvailable,
+  type TmuxStatus,
+} from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey } from '@kirby/vcs-core';
 import { setSessionBackendFactory } from './pty-registry.js';
@@ -47,4 +51,26 @@ export function buildSessionBackendFactory(
 export function applySessionBackend(config: AppConfig): void {
   const factory = buildSessionBackendFactory(config, getRepoRoot());
   setSessionBackendFactory(factory);
+}
+
+// ── Tmux availability cache ─────────────────────────────────────
+//
+// The Settings UI guard runs synchronously inside an Ink input
+// handler, so it can't await a Promise. We probe tmux once at
+// startup and stash the result here for the handler to read.
+
+let cachedTmuxStatus: TmuxStatus | null = null;
+
+/** Run the tmux availability probe and cache the result. Call once
+ *  at startup. Subsequent calls re-await the same memoized
+ *  Promise from `@kirby/terminal-tmux`'s `isTmuxAvailable()`. */
+export async function probeTmuxAvailability(): Promise<void> {
+  cachedTmuxStatus = await isTmuxAvailable();
+}
+
+/** Synchronously read the cached tmux status. Returns `null` if the
+ *  probe hasn't completed yet (extremely unlikely after the first
+ *  render — startup awaits it). */
+export function getTmuxAvailability(): TmuxStatus | null {
+  return cachedTmuxStatus;
 }
