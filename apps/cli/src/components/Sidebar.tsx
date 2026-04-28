@@ -149,6 +149,9 @@ const SessionItemRow = memo(function SessionItemRow({
                 merged
               </Text>
             ) : null}
+            {session.state === 'rebasing' ? (
+              <Text color="yellow"> rebasing</Text>
+            ) : null}
           </Text>
         </Box>
         <Box flexShrink={0} marginLeft={1} width={1}>
