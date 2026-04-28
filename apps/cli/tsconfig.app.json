@@ -16,6 +16,9 @@
   ],
   "references": [
     {
+      "path": "../../libs/terminal-tmux/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/diff/tsconfig.lib.json"
     },
     {
@@ -32,6 +35,9 @@
     },
     {
       "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/terminal-pty/tsconfig.lib.json"
     },
     {
       "path": "../../libs/terminal/tsconfig.lib.json"

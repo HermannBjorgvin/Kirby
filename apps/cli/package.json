@@ -118,6 +118,8 @@
     "@inkjs/ui": "^2.0.0",
     "@kirby/logger": "*",
     "@kirby/terminal": "*",
+    "@kirby/terminal-pty": "*",
+    "@kirby/terminal-tmux": "*",
     "@kirby/vcs-azure-devops": "*",
     "@kirby/vcs-core": "*",
     "@kirby/vcs-github": "*",
