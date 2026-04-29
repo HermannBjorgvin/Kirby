@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useInput } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
+import { SessionTabBar } from '../../components/SessionTabBar.js';
 import { useNavState, useNavActions } from '../../context/NavContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import { useInactiveAlertWatcher } from '../../hooks/useInactiveAlertWatcher.js';
@@ -240,6 +241,7 @@ function MainTabBody({
         />
       )}
       <Pane focused={mainFocused} title={paneTitle} flexGrow={1}>
+        <SessionTabBar />
         <MainContent
           pane={pane}
           terminal={effectiveTerminal}
