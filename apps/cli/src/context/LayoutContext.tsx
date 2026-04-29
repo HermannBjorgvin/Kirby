@@ -18,12 +18,17 @@ const PANE_BORDER_ROWS = 2; // top + bottom border
 // above-content title.
 const PANE_TITLE_ROWS = 0;
 const PANE_BORDER_COLS = 2; // left + right border
+// Active-sessions tab bar (SessionTabBar) sits at the top of the main
+// pane interior. Always reserved (even when empty) so the PTY size is
+// stable as sessions come and go.
+const TAB_BAR_ROWS = 1;
 
 export const LAYOUT = {
   SIDEBAR_WIDTH,
   PANE_BORDER_ROWS,
   PANE_TITLE_ROWS,
   PANE_BORDER_COLS,
+  TAB_BAR_ROWS,
 } as const;
 
 export interface TerminalLayout {
@@ -44,7 +49,10 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   const { rows: termRows, cols: termCols } = useTerminalDimensions();
 
   const paneCols = Math.max(20, termCols - SIDEBAR_WIDTH - PANE_BORDER_COLS);
-  const paneRows = Math.max(5, termRows - PANE_BORDER_ROWS - PANE_TITLE_ROWS);
+  const paneRows = Math.max(
+    5,
+    termRows - PANE_BORDER_ROWS - PANE_TITLE_ROWS - TAB_BAR_ROWS
+  );
 
   // One memo, not two — the outer object's identity only changes when
   // any of paneCols / paneRows / termRows / termCols changes, and
