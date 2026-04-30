@@ -1,8 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Key } from 'ink';
-import { handleSidebarInput } from './sidebar-input.js';
 import type { SidebarInputCtx } from './input-types.js';
 import type { SidebarItem } from '../../types.js';
+
+// Mock the PTY registry — handleSidebarInput's tab-switch path now
+// orders running tabs by spawn time. The default `getSpawnedAt` mock
+// returns nothing; individual tests set spawnedAtMap to control order.
+let spawnedAtMap = new Map<string, number>();
+vi.mock('../../pty-registry.js', () => ({
+  getSpawnedAt: (name: string) => spawnedAtMap.get(name),
+  hasSession: () => false,
+  killSession: vi.fn(),
+}));
+
+const { handleSidebarInput } = await import('./sidebar-input.js');
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -40,6 +51,16 @@ function sessionItem(name: string, running = true): SidebarItem {
 }
 
 function buildCtx(items: SidebarItem[], action: string | null) {
+  // Default: assign spawn times in declared item order so existing
+  // tests' "Nth running session" assertions hold under spawn-order
+  // sort. Individual tests can override via setSpawnOrder.
+  spawnedAtMap = new Map();
+  let t = 1;
+  for (const item of items) {
+    if (item.kind === 'session' && item.session.running) {
+      spawnedAtMap.set(item.session.name, t++);
+    }
+  }
   const sidebar = {
     items,
     selectedIndex: 0,
@@ -154,6 +175,29 @@ describe('handleSidebarInput — sidebar.switch-tab-N', () => {
 
     expect(sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
       'session:alpha'
+    );
+  });
+
+  it('uses spawn order, not items array order, for the digit lookup', () => {
+    // Items declared alpha → beta → gamma, but the user spawned them
+    // in a different order: gamma first, then alpha, then beta.
+    const items: SidebarItem[] = [
+      sessionItem('alpha', true),
+      sessionItem('beta', true),
+      sessionItem('gamma', true),
+    ];
+    const { ctx, sidebar } = buildCtx(items, 'sidebar.switch-tab-1');
+    spawnedAtMap = new Map([
+      ['gamma', 100],
+      ['alpha', 200],
+      ['beta', 300],
+    ]);
+
+    handleSidebarInput('1', makeKey(), ctx);
+
+    // Tab 1 = first-spawned = gamma
+    expect(sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
+      'session:gamma'
     );
   });
 });
