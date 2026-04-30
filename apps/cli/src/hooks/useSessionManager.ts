@@ -29,6 +29,7 @@ export function useSessionManager(
       filtered.push({
         name,
         running: hasPtySession(name),
+        ...(wt.state ? { state: wt.state } : {}),
       });
     }
     setSessions(filtered);
