@@ -8,8 +8,9 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import { hasSession, killSession } from '../../pty-registry.js';
+import { getSpawnedAt, hasSession, killSession } from '../../pty-registry.js';
 import { getItemKey, getPrFromItem } from '../../types.js';
+import { orderRunningTabs } from '../../utils/running-tabs.js';
 import type { SidebarInputCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
 import { resolveEditorTarget } from './editor-target.js';
@@ -80,15 +81,15 @@ export function handleSidebarInput(
   }
 
   // Active-session tab switch (digits 1..9, 0 = tab 10)
-  // Selects the Nth running session in sidebar order and jumps focus
-  // straight into the terminal — mirrors the focus-terminal happy path
-  // above (setPaneMode + setReconnectKey + setFocus).
+  // Selects the Nth running session in spawn-time order so the digit
+  // matches what's shown in the SessionTabBar and the sidebar prefix.
+  // Then jumps focus straight into the terminal — mirrors the
+  // focus-terminal happy path above (setPaneMode + setReconnectKey +
+  // setFocus).
   const tabMatch = action?.match(/^sidebar\.switch-tab-(\d+)$/);
   if (tabMatch) {
     const n = Number(tabMatch[1]);
-    const target = ctx.sidebar.items.filter(
-      (it) => it.kind === 'session' && it.session.running
-    )[n - 1];
+    const target = orderRunningTabs(ctx.sidebar.items, getSpawnedAt)[n - 1];
     if (target) {
       ctx.sidebar.selectByKey(getItemKey(target));
       ctx.pane.setPaneMode('terminal');

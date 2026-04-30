@@ -7,12 +7,16 @@ import type { SidebarItem, AgentSession } from '../types.js';
 import type { SidebarContextValue } from '../context/SidebarContext.js';
 import type { SessionDataContextValue } from '../context/SessionContext.js';
 
-// Stub the two hooks the component reads. Each test installs its own
-// values via setSidebarValue / setSessionValue before rendering — this
-// avoids spinning up the full provider tree (which pulls live git
-// state, PR fetching, etc.).
+// Stub the hooks/registries the component reads. Each test installs
+// its own values before rendering — this avoids spinning up the full
+// provider tree (which pulls live git state, PR fetching, etc.).
 let sidebarValue: Partial<SidebarContextValue> = {};
 let sessionValue: Partial<SessionDataContextValue> = {};
+// Maps session name → ms-since-epoch spawn time. Drives spawn-order
+// sort. Tests that don't care about ordering omit names from this map
+// (they sort to the end via Infinity but with all infinities the sort
+// is a no-op, so order matches `items` declaration).
+let spawnedAtMap = new Map<string, number>();
 
 vi.mock('../context/SidebarContext.js', () => ({
   useSidebar: () => sidebarValue,
@@ -20,6 +24,10 @@ vi.mock('../context/SidebarContext.js', () => ({
 
 vi.mock('../context/SessionContext.js', () => ({
   useSessionData: () => sessionValue,
+}));
+
+vi.mock('../pty-registry.js', () => ({
+  getSpawnedAt: (name: string) => spawnedAtMap.get(name),
 }));
 
 // Imported AFTER vi.mock — required so the mocks are wired in.
@@ -60,6 +68,21 @@ function setSidebar(items: SidebarItem[], selectedIndex = 0) {
     items,
     selectedIndex,
   };
+  // By default, give each running session a monotonically increasing
+  // spawn time matching its declared order — so the tab bar's spawn
+  // order matches the items array order. Individual tests can override
+  // by calling setSpawnOrder directly after.
+  spawnedAtMap = new Map();
+  let t = 1;
+  for (const item of items) {
+    if (item.kind === 'session' && item.session.running) {
+      spawnedAtMap.set(item.session.name, t++);
+    }
+  }
+}
+
+function setSpawnOrder(order: string[]) {
+  spawnedAtMap = new Map(order.map((name, i) => [name, i + 1]));
 }
 
 function setSessions(prMap: Map<string, PullRequestInfo>) {
@@ -71,6 +94,7 @@ function setSessions(prMap: Map<string, PullRequestInfo>) {
 beforeEach(() => {
   sidebarValue = {};
   sessionValue = {};
+  spawnedAtMap = new Map();
 });
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -115,16 +139,28 @@ describe('SessionTabBar', () => {
     expect(text).toContain('2 beta');
   });
 
-  it('truncates long branch names with an ellipsis', () => {
+  it('middle-truncates long branch names at a 16-char cap', () => {
     setSidebar([
       makeSessionItem('this-is-a-very-long-branch-name', { running: true }),
     ]);
     setSessions(new Map());
 
     const text = stripAnsi(render(<SessionTabBar />).lastFrame() ?? '');
-    // 10-char cap with trailing ellipsis: "1 this-is-a…"
-    expect(text).toContain('1 this-is-a…');
-    expect(text).not.toContain('long-branch-name');
+    // 16-char cap, middle ellipsis: head=8 ('this-is-'), tail=7
+    // ('ch-name'). Full label "1 this-is-…ch-name".
+    expect(text).toContain('1 this-is-…ch-name');
+    // Sanity: the dropped middle ('a-very-long-bran') is not present.
+    expect(text).not.toContain('a-very-long');
+  });
+
+  it('renders short names whole when they fit under the cap', () => {
+    setSidebar([
+      makeSessionItem('short-name', { running: true }), // 10 chars
+    ]);
+    setSessions(new Map());
+    const text = stripAnsi(render(<SessionTabBar />).lastFrame() ?? '');
+    expect(text).toContain('1 short-name');
+    expect(text).not.toContain('…');
   });
 
   it('uses 0 as the digit for the 10th tab', () => {
@@ -151,6 +187,24 @@ describe('SessionTabBar', () => {
     expect(text).toContain('+3');
     expect(text).not.toContain('s11');
     expect(text).not.toContain('s13');
+  });
+
+  it('orders tabs by spawn time, not items array order', () => {
+    // Items declared in alphabetical order…
+    setSidebar([
+      makeSessionItem('alpha', { running: true }),
+      makeSessionItem('beta', { running: true }),
+      makeSessionItem('gamma', { running: true }),
+    ]);
+    setSessions(new Map());
+    // …but the user spawned them in a different order: gamma first,
+    // then alpha, then beta. Tabs should reflect spawn order.
+    setSpawnOrder(['gamma', 'alpha', 'beta']);
+
+    const text = stripAnsi(render(<SessionTabBar />).lastFrame() ?? '');
+    expect(text).toContain('1 gamma');
+    expect(text).toContain('2 alpha');
+    expect(text).toContain('3 beta');
   });
 
   it('marks the currently-selected session tab with inverse styling', () => {

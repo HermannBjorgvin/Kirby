@@ -7,6 +7,12 @@ export interface PtyEntry {
   emu: TerminalEmulator;
   exited: boolean;
   exitCode?: number;
+  /** ms-since-epoch when this entry was added to the registry. Drives
+   *  the active-sessions tab bar's stable spawn-order sort. Restarting
+   *  a session via `spawnSession` (which kills the old entry first)
+   *  produces a fresh value, so the restarted tab moves to the end of
+   *  the bar — matching browser-tab semantics. */
+  spawnedAt: number;
 }
 
 const registry = new Map<string, PtyEntry>();
@@ -31,7 +37,7 @@ export function spawnSession(
 
   const pty = new PtySession(cmd, args, { cols, rows, cwd });
   const emu = new TerminalEmulator(cols, rows);
-  const entry: PtyEntry = { pty, emu, exited: false };
+  const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };
 
   pty.onData((data) => {
     void emu.write(data);
@@ -53,6 +59,13 @@ export function getSession(name: string): PtyEntry | undefined {
 
 export function hasSession(name: string): boolean {
   return registry.has(name);
+}
+
+/** Return the spawn time (ms-since-epoch) for the named session, or
+ *  undefined if no PTY entry exists. Used by the tab bar's spawn-order
+ *  sort. Per-entry-immutable, so safe to read during render. */
+export function getSpawnedAt(name: string): number | undefined {
+  return registry.get(name)?.spawnedAt;
 }
 
 export function killSession(name: string): void {

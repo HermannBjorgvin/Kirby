@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useInput } from 'ink';
+import { useInput, Box } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
 import { SessionTabBar } from '../../components/SessionTabBar.js';
+import { useRunningTabs } from '../../hooks/useRunningTabs.js';
 import { useNavState, useNavActions } from '../../context/NavContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import { useInactiveAlertWatcher } from '../../hooks/useInactiveAlertWatcher.js';
@@ -110,6 +111,7 @@ function MainTabBody({
   const configCtx = useConfig();
   const keybinds = useKeybinds();
   const sidebar = useSidebar();
+  const { numbers: tabNumbers } = useRunningTabs();
 
   const pane = usePaneReducer(
     sidebar.selectedItem,
@@ -238,19 +240,22 @@ function MainTabBody({
           termRows={layout.termRows}
           focused={sidebarFocused}
           hintsHidden={hintsHidden}
+          tabNumbers={tabNumbers}
         />
       )}
-      <Pane focused={mainFocused} title={paneTitle} flexGrow={1}>
+      <Box flexDirection="column" flexGrow={1}>
         <SessionTabBar />
-        <MainContent
-          pane={pane}
-          terminal={effectiveTerminal}
-          terminalFocused={terminalFocused}
-          sessionNameForTerminal={sidebar.sessionNameForTerminal}
-          selectedPr={sidebar.selectedPr}
-          onFocusSidebar={onTerminalEscape}
-        />
-      </Pane>
+        <Pane focused={mainFocused} title={paneTitle} flexGrow={1}>
+          <MainContent
+            pane={pane}
+            terminal={effectiveTerminal}
+            terminalFocused={terminalFocused}
+            sessionNameForTerminal={sidebar.sessionNameForTerminal}
+            selectedPr={sidebar.selectedPr}
+            onFocusSidebar={onTerminalEscape}
+          />
+        </Pane>
+      </Box>
     </>
   );
 }
