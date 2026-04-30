@@ -13,6 +13,7 @@ import { useActivityStatus, useFlashPhase } from '../hooks/useActivity.js';
 import { noteSeen } from '../activity.js';
 import { remove as removeInactiveAlert } from '../inactive-alerts.js';
 import { LAYOUT } from '../context/LayoutContext.js';
+import { tabDigit } from '../utils/running-tabs.js';
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ const SessionItemRow = memo(function SessionItemRow({
   isMerged,
   conflictCount,
   vcsConfigured,
+  tabNumber,
 }: {
   session: AgentSession;
   selected: boolean;
@@ -91,6 +93,8 @@ const SessionItemRow = memo(function SessionItemRow({
   isMerged: boolean;
   conflictCount: number | undefined;
   vcsConfigured: boolean;
+  /** 1..10 if this session has a quick-switch tab; undefined otherwise. */
+  tabNumber: number | undefined;
 }) {
   // Single icon column: selected state (◉ ring) overrides, otherwise
   // running state (● filled green / ○ hollow gray). Saves 2 chars vs.
@@ -137,6 +141,11 @@ const SessionItemRow = memo(function SessionItemRow({
       <Box>
         <Box flexGrow={1} flexShrink={1} minWidth={0}>
           <Text wrap="truncate">
+            {tabNumber != null ? (
+              <Text color="cyan" bold>
+                {tabDigit(tabNumber)}{' '}
+              </Text>
+            ) : null}
             <Text color={iconColor}>{icon} </Text>
             {showFlash ? (
               <FlashingTitle bold={selected}>{title}</FlashingTitle>
@@ -272,6 +281,10 @@ export interface SidebarProps {
   focused: boolean;
   conflictsLoading?: boolean;
   hintsHidden?: boolean;
+  /** session-name → 1..10 quick-switch tab number for currently-running
+   *  sessions in the active-sessions tab bar. Sessions outside the
+   *  bar's 10-tab cap are absent from the map. */
+  tabNumbers: Map<string, number>;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -281,6 +294,7 @@ export const Sidebar = memo(function Sidebar({
   termRows,
   focused,
   hintsHidden = false,
+  tabNumbers,
 }: SidebarProps) {
   const { vcsConfigured } = useConfig();
   const keybinds = useKeybindResolve();
@@ -474,6 +488,7 @@ export const Sidebar = memo(function Sidebar({
           isMerged={item.isMerged}
           conflictCount={item.conflictCount}
           vcsConfigured={vcsConfigured}
+          tabNumber={tabNumbers.get(item.session.name)}
         />
       );
     }

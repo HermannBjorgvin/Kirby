@@ -189,6 +189,62 @@ export const ACTIONS = [
     showInHints: true,
   },
 
+  // ── Active-session tab switching ──
+  // Bound to digits 1..9 and 0 (= tab 10). Selects the Nth running
+  // session in the active-sessions tab bar and jumps focus into the
+  // terminal in one shot. `showInHints: false` so the 10 entries don't
+  // blow the sidebar's keybind footer.
+  {
+    id: 'sidebar.switch-tab-1',
+    label: 'Switch to active tab 1',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-2',
+    label: 'Switch to active tab 2',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-3',
+    label: 'Switch to active tab 3',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-4',
+    label: 'Switch to active tab 4',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-5',
+    label: 'Switch to active tab 5',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-6',
+    label: 'Switch to active tab 6',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-7',
+    label: 'Switch to active tab 7',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-8',
+    label: 'Switch to active tab 8',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-9',
+    label: 'Switch to active tab 9',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.switch-tab-10',
+    label: 'Switch to active tab 10',
+    context: 'sidebar',
+  },
+
   // ── Settings ──
   {
     id: 'settings.navigate-down',
@@ -422,6 +478,18 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
     'sidebar.toggle-hints': [{ input: '?' }],
 
+    // Active-session tab switching (digits, with 0 = tab 10)
+    'sidebar.switch-tab-1': [{ input: '1' }],
+    'sidebar.switch-tab-2': [{ input: '2' }],
+    'sidebar.switch-tab-3': [{ input: '3' }],
+    'sidebar.switch-tab-4': [{ input: '4' }],
+    'sidebar.switch-tab-5': [{ input: '5' }],
+    'sidebar.switch-tab-6': [{ input: '6' }],
+    'sidebar.switch-tab-7': [{ input: '7' }],
+    'sidebar.switch-tab-8': [{ input: '8' }],
+    'sidebar.switch-tab-9': [{ input: '9' }],
+    'sidebar.switch-tab-10': [{ input: '0' }],
+
     // Settings
     'settings.navigate-down': [{ flags: { downArrow: true } }],
     'settings.navigate-up': [{ flags: { upArrow: true } }],
@@ -517,6 +585,18 @@ export const VIM_PRESET: KeybindPreset = {
     'sidebar.start-session': [{ flags: { return: true } }],
     'sidebar.focus-terminal': [{ flags: { tab: true } }],
     'sidebar.toggle-hints': [{ input: '?' }],
+
+    // Active-session tab switching (digits, with 0 = tab 10)
+    'sidebar.switch-tab-1': [{ input: '1' }],
+    'sidebar.switch-tab-2': [{ input: '2' }],
+    'sidebar.switch-tab-3': [{ input: '3' }],
+    'sidebar.switch-tab-4': [{ input: '4' }],
+    'sidebar.switch-tab-5': [{ input: '5' }],
+    'sidebar.switch-tab-6': [{ input: '6' }],
+    'sidebar.switch-tab-7': [{ input: '7' }],
+    'sidebar.switch-tab-8': [{ input: '8' }],
+    'sidebar.switch-tab-9': [{ input: '9' }],
+    'sidebar.switch-tab-10': [{ input: '0' }],
 
     // Settings (same as normie — transient modal)
     'settings.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
