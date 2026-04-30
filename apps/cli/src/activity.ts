@@ -10,6 +10,7 @@ import {
   INPUT_ECHO_MS,
   MIN_ACTIVE_MS,
   MIN_DATA_BYTES,
+  RESIZE_ECHO_MS,
 } from './activity-config.js';
 
 interface SessionActivity {
@@ -19,6 +20,8 @@ interface SessionActivity {
   lastDataAt: number | null;
   /** Last keystroke we forwarded to the PTY. */
   lastInputAt: number;
+  /** Last time we resized the PTY. */
+  lastResizeAt: number;
   /** Start of the current active streak, or null when idle. */
   activeSince: number | null;
   /** Wall time the user last viewed this session. */
@@ -42,6 +45,7 @@ export function attach(name: string, pty: PtySession): void {
     // would have suppressed the first emit when Date.now() happened to
     // read 0 (fake timers in tests; never in real life).
     lastInputAt: Number.NEGATIVE_INFINITY,
+    lastResizeAt: Number.NEGATIVE_INFINITY,
     activeSince: null,
     lastSeenAt: Date.now(),
     dispose: () => undefined,
@@ -54,6 +58,10 @@ export function attach(name: string, pty: PtySession): void {
     // sent — that's the terminal echoing the keystroke back, not the
     // agent doing work.
     if (t - state.lastInputAt < INPUT_ECHO_MS) return;
+    // Suppress data that arrived within the resize window — the shell
+    // redraws its UI in response to SIGWINCH, not because the agent is
+    // producing new output.
+    if (t - state.lastResizeAt < RESIZE_ECHO_MS) return;
     // Open a new active streak when this is either the first ever data
     // or the previous streak had time to lapse into idle.
     if (
@@ -92,6 +100,11 @@ export function detach(name: string): void {
 export function noteInput(name: string): void {
   const state = sessions.get(name);
   if (state) state.lastInputAt = Date.now();
+}
+
+export function noteResize(name: string): void {
+  const state = sessions.get(name);
+  if (state) state.lastResizeAt = Date.now();
 }
 
 /** Acknowledge that the user has seen everything the session has

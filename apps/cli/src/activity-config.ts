@@ -11,6 +11,11 @@ export const MIN_DATA_BYTES = 4;
 // turns out to be a problem in the wild.
 export const INPUT_ECHO_MS = 50;
 
+// When the terminal is resized, the shell/app redraws its output to fit
+// the new dimensions. This output is not agent activity — suppress data
+// arriving within this window after a resize event.
+export const RESIZE_ECHO_MS = 1000;
+
 // "Needs attention" flashing: a session that produced output for at
 // least MIN_ACTIVE_MS and then went idle without the user looking at
 // it flashes its title between gray and white at FLASH_INTERVAL_MS.
