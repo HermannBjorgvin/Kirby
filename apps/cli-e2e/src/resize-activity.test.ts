@@ -61,8 +61,6 @@ test.describe('Resize does not trigger activity', () => {
     // 7. Ctrl+Space from 'other' should NOT jump to 'resized' (queue
     //    should be empty) — it should just focus the sidebar.
     await kirby.term.write('\x00');
-    await expect(kirby.term.getByText(/ctrl\+space to exit/)).not.toBeVisible({
-      timeout: 5_000,
-    });
+    await waitForSidebarFocused(kirby.term);
   });
 });
