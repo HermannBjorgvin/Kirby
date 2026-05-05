@@ -9,6 +9,7 @@ import {
 } from '../context/ModalContext.js';
 import { useSessionActions } from '../context/SessionContext.js';
 import { handleSettingsInput } from '../input-handlers.js';
+import { getTmuxAvailability } from '../session-backend.js';
 
 export interface SettingsField {
   label: string;
@@ -59,6 +60,24 @@ export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Normie defaults', value: 'normie' },
   { name: 'Vim Losers', value: 'vim' },
 ];
+
+/** Build the terminal backend presets, retagging the tmux option with
+ *  "(not installed)" if the startup probe found tmux missing. The
+ *  underlying value stays `'tmux'` so the displayed label is purely
+ *  informational — the input handler still gates the actual selection
+ *  via canApplyFieldChange. */
+function terminalBackendPresets(): {
+  name: string;
+  value: string | null;
+}[] {
+  const status = getTmuxAvailability();
+  const tmuxLabel =
+    status && !status.available ? 'Tmux (not installed)' : 'Tmux';
+  return [
+    { name: 'PTY (default)', value: 'pty' },
+    { name: tmuxLabel, value: 'tmux' },
+  ];
+}
 
 /** Build the settings field list dynamically from the active provider */
 export function buildSettingsFields(
@@ -122,6 +141,14 @@ export function buildSettingsFields(
       key: 'diffFileListTree',
       description: 'Group PR files by directory in the diff file list',
       presets: BOOL_PRESETS_ON_FIRST,
+      configBag: 'global',
+    },
+    {
+      label: 'Terminal Backend',
+      key: 'terminalBackend',
+      description:
+        'Persists sessions across Kirby restarts. Requires tmux installed. Cannot be changed while sessions are active.',
+      presets: terminalBackendPresets(),
       configBag: 'global',
     },
   ];

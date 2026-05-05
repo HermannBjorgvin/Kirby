@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { PtySession } from '@kirby/terminal';
+import type { SessionBackend } from '@kirby/terminal';
 import {
   __resetForTests,
   attach,
@@ -35,8 +35,8 @@ class MockPty {
   exit(code = 0) {
     this.exitCb?.(code);
   }
-  asPty(): PtySession {
-    return this as unknown as PtySession;
+  asPty(): SessionBackend {
+    return this as unknown as SessionBackend;
   }
 }
 
