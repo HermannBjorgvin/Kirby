@@ -11,7 +11,11 @@ import {
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
+import {
+  killSession,
+  hasSession as hasPtySession,
+  onSessionExit,
+} from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -68,8 +72,17 @@ export function useSessionManager(
       reloadConfig();
     }
 
+    // Refresh sidebar state when an agent PTY exits on its own — flips
+    // the row's running indicator (green → gray) without waiting for
+    // the user to touch the session.
+    const unsubscribe = onSessionExit(() => {
+      if (cancelled) return;
+      void refreshSessions();
+    });
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
