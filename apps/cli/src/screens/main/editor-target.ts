@@ -1,5 +1,6 @@
 import {
   branchToSessionName,
+  worktreeSessionName,
   type WorktreeInfo,
 } from '@kirby/worktree-manager';
 import type { SidebarItem } from '../../types.js';
@@ -32,7 +33,7 @@ export async function resolveEditorTarget(
 
   const worktrees = await deps.listWorktrees();
   const existing = worktrees.find(
-    (w) => branchToSessionName(w.branch) === sessionName
+    (w) => worktreeSessionName(w) === sessionName
   );
   if (existing) return existing.path;
 

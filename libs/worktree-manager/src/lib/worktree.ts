@@ -5,7 +5,7 @@
  * used by the TUI to give each Claude session its own checkout.
  */
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { log } from '@kirby/logger';
 import { exec } from './exec.js';
 
@@ -103,6 +103,19 @@ export interface WorktreeInfo {
 /** Convert a git branch name to a safe session identifier (replace / with -) */
 export function branchToSessionName(branch: string): string {
   return branch.replace(/\//g, '-');
+}
+
+/**
+ * Stable session name for a worktree.
+ *
+ * Branch worktrees use the branch-derived name. A detached-HEAD
+ * worktree has no branch, so we fall back to its directory name —
+ * without this fallback `branchToSessionName('')` yields an empty
+ * string, which renders as a blank sidebar row and can't be matched
+ * back to its worktree to start a session.
+ */
+export function worktreeSessionName(wt: WorktreeInfo): string {
+  return wt.branch ? branchToSessionName(wt.branch) : basename(wt.path);
 }
 
 /** Convert a branch name to its worktree relative directory */
