@@ -44,7 +44,7 @@ function actionExists(id: string): boolean {
 function resolveInPreset(
   input: string,
   key: Key,
-  context: 'diff-file-list' | 'diff-viewer',
+  context: 'diff-file-list' | 'diff-viewer' | 'sidebar',
   preset: KeybindPreset
 ): string | null {
   return resolveAction(input, key, context, preset.bindings, ACTIONS);
@@ -267,5 +267,96 @@ describe('registry — diff-file-list comment actions', () => {
         ).toBeNull();
       }
     );
+  });
+});
+
+// ── Active-session tab switching ──────────────────────────────────
+//
+// Digits 1..9 + 0 (= tab 10) select the Nth running session in the
+// SessionTabBar and jump focus into the terminal. These tests lock
+// the digits → action ID mapping in both presets.
+
+describe('registry — sidebar.switch-tab-* (active-session tabs)', () => {
+  const tabIds: ActionId[] = [
+    'sidebar.switch-tab-1',
+    'sidebar.switch-tab-2',
+    'sidebar.switch-tab-3',
+    'sidebar.switch-tab-4',
+    'sidebar.switch-tab-5',
+    'sidebar.switch-tab-6',
+    'sidebar.switch-tab-7',
+    'sidebar.switch-tab-8',
+    'sidebar.switch-tab-9',
+    'sidebar.switch-tab-10',
+  ];
+
+  it.each(tabIds)('registers %s in ACTIONS', (id) => {
+    expect(actionExists(id)).toBe(true);
+  });
+
+  it.each(tabIds)('binds %s in Normie preset', (id) => {
+    expect(NORMIE_PRESET.bindings[id]?.length).toBeGreaterThan(0);
+  });
+
+  it.each(tabIds)('binds %s in Vim preset', (id) => {
+    expect(VIM_PRESET.bindings[id]?.length).toBeGreaterThan(0);
+  });
+
+  // Digit ↔ tab mapping (1..9 are sequential; 0 is tab 10)
+  const digitMap: { input: string; id: ActionId }[] = [
+    { input: '1', id: 'sidebar.switch-tab-1' },
+    { input: '2', id: 'sidebar.switch-tab-2' },
+    { input: '3', id: 'sidebar.switch-tab-3' },
+    { input: '4', id: 'sidebar.switch-tab-4' },
+    { input: '5', id: 'sidebar.switch-tab-5' },
+    { input: '6', id: 'sidebar.switch-tab-6' },
+    { input: '7', id: 'sidebar.switch-tab-7' },
+    { input: '8', id: 'sidebar.switch-tab-8' },
+    { input: '9', id: 'sidebar.switch-tab-9' },
+    { input: '0', id: 'sidebar.switch-tab-10' },
+  ];
+
+  describe('Normie preset digit mappings', () => {
+    it.each(digitMap)('$input → $id', ({ input, id }) => {
+      expect(resolveInPreset(input, makeKey(), 'sidebar', NORMIE_PRESET)).toBe(
+        id
+      );
+    });
+  });
+
+  describe('Vim preset digit mappings', () => {
+    it.each(digitMap)('$input → $id', ({ input, id }) => {
+      expect(resolveInPreset(input, makeKey(), 'sidebar', VIM_PRESET)).toBe(id);
+    });
+  });
+
+  // Conflict guard within sidebar context: each digit binding must
+  // resolve to exactly one action.
+  describe('no conflicts within sidebar context', () => {
+    it.each(digitMap)('Normie $input does not conflict', ({ input, id }) => {
+      expect(
+        findConflict(
+          input,
+          makeKey(),
+          'sidebar',
+          NORMIE_PRESET.bindings,
+          ACTIONS,
+          id
+        )
+      ).toBeNull();
+    });
+
+    it.each(digitMap)('Vim $input does not conflict', ({ input, id }) => {
+      expect(
+        findConflict(
+          input,
+          makeKey(),
+          'sidebar',
+          VIM_PRESET.bindings,
+          ACTIONS,
+          id
+        )
+      ).toBeNull();
+    });
   });
 });
