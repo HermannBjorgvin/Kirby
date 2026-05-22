@@ -11,6 +11,20 @@ export interface PtyEntry {
 
 const registry = new Map<string, PtyEntry>();
 
+type SessionExitListener = (name: string, code: number) => void;
+const exitListeners: SessionExitListener[] = [];
+
+/** Register a callback that fires when any session's process exits. */
+export function onSessionExit(cb: SessionExitListener): void {
+  exitListeners.push(cb);
+}
+
+/** Remove a previously registered session-exit callback. */
+export function offSessionExit(cb: SessionExitListener): void {
+  const idx = exitListeners.indexOf(cb);
+  if (idx >= 0) exitListeners.splice(idx, 1);
+}
+
 export function spawnSession(
   name: string,
   cmd: string,
@@ -40,6 +54,9 @@ export function spawnSession(
   pty.onExit((code) => {
     entry.exited = true;
     entry.exitCode = code;
+    for (const listener of exitListeners) {
+      listener(name, code);
+    }
   });
 
   activity.attach(name, pty);
@@ -52,7 +69,8 @@ export function getSession(name: string): PtyEntry | undefined {
 }
 
 export function hasSession(name: string): boolean {
-  return registry.has(name);
+  const entry = registry.get(name);
+  return entry != null && !entry.exited;
 }
 
 export function killSession(name: string): void {

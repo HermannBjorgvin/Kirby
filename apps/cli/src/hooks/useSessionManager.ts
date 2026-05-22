@@ -11,7 +11,12 @@ import {
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
+import {
+  killSession,
+  hasSession as hasPtySession,
+  onSessionExit,
+  offSessionExit,
+} from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -73,6 +78,15 @@ export function useSessionManager(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-derive running state when any PTY process exits on its own
+  useEffect(() => {
+    const handleExit = () => {
+      void refreshSessions();
+    };
+    onSessionExit(handleExit);
+    return () => offSessionExit(handleExit);
+  }, [refreshSessions]);
 
   return {
     sessions,
