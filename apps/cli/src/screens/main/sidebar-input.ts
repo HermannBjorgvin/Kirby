@@ -6,6 +6,7 @@ import {
   listAllBranches,
   listWorktrees,
   branchToSessionName,
+  worktreeSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
 import { hasSession, killSession } from '../../pty-registry.js';
@@ -47,7 +48,7 @@ export function handleSidebarInput(
         if (selectedItem.kind === 'session') {
           const worktrees = await listWorktrees();
           const wt = worktrees.find(
-            (w) => branchToSessionName(w.branch) === selectedItem.session.name
+            (w) => worktreeSessionName(w) === selectedItem.session.name
           );
           if (!wt) return;
           startAiSession(
@@ -110,9 +111,7 @@ export function handleSidebarInput(
         : branchToSessionName(selectedItem.pr.sourceBranch);
     ctx.asyncOps.run('check-delete', async () => {
       const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
+      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
       const branch = wt?.branch;
       if (branch) {
         const check = await canRemoveBranch(branch);
@@ -196,9 +195,7 @@ export function handleSidebarInput(
     const sessionName = selectedItem.session.name;
     ctx.asyncOps.run('rebase', async () => {
       const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
+      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
       if (!wt) {
         ctx.sessions.flashStatus('No worktree found for selected session');
         return;
@@ -309,7 +306,7 @@ export function handleSidebarInput(
       ctx.asyncOps.run('start-session', async () => {
         const worktrees = await listWorktrees();
         const wt = worktrees.find(
-          (w) => branchToSessionName(w.branch) === selectedItem.session.name
+          (w) => worktreeSessionName(w) === selectedItem.session.name
         );
         if (!wt) return;
         startAiSession(

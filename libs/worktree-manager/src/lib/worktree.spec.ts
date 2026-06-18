@@ -17,6 +17,7 @@ import {
   resetMainBranchCache,
   resetWorktreeResolver,
   branchToSessionName,
+  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from './worktree.js';
@@ -267,6 +268,30 @@ describe('parseWorktrees', () => {
     expect(result[2]).toEqual({
       path: '/home/user/repo/.claude/worktrees/fix-bug',
       branch: 'fix/bug',
+      bare: false,
+    });
+  });
+
+  it('should parse a detached-HEAD worktree with an empty branch', () => {
+    // A detached worktree has no `branch refs/heads/...` line — git
+    // emits a `detached` marker instead. The block must still be
+    // returned (with branch === '') so it shows up in the sidebar.
+    const output = [
+      'worktree /home/user/repo',
+      'HEAD abc123',
+      'branch refs/heads/main',
+      '',
+      'worktree /home/user/repo/.claude/worktrees/master-test-temp',
+      'HEAD f6d61737bd',
+      'detached',
+      '',
+    ].join('\n');
+
+    const result = parseWorktrees(output);
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({
+      path: '/home/user/repo/.claude/worktrees/master-test-temp',
+      branch: '',
       bare: false,
     });
   });
@@ -756,6 +781,28 @@ describe('branchToSessionName', () => {
 
   it('should handle empty string', () => {
     expect(branchToSessionName('')).toBe('');
+  });
+});
+
+describe('worktreeSessionName', () => {
+  it('uses the branch-derived name when a branch is present', () => {
+    expect(
+      worktreeSessionName({
+        path: '/repo/.claude/worktrees/feature-auth',
+        branch: 'feature/auth',
+        bare: false,
+      })
+    ).toBe('feature-auth');
+  });
+
+  it('falls back to the directory name for a detached worktree', () => {
+    expect(
+      worktreeSessionName({
+        path: '/repo/.claude/worktrees/master-test-temp',
+        branch: '',
+        bare: false,
+      })
+    ).toBe('master-test-temp');
   });
 });
 

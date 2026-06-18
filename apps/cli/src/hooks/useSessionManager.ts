@@ -4,7 +4,7 @@ import {
   deleteBranch,
   listAllBranches,
   listWorktrees,
-  branchToSessionName,
+  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
@@ -25,7 +25,7 @@ export function useSessionManager(
     const worktrees = await listWorktrees();
     const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
-      const name = branchToSessionName(wt.branch);
+      const name = worktreeSessionName(wt);
       filtered.push({
         name,
         running: hasPtySession(name),

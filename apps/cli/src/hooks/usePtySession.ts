@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { MouseTrackingMode } from '@kirby/terminal';
 import { getSession } from '../pty-registry.js';
 import type { PtyEntry } from '../pty-registry.js';
-import { noteInput } from '../activity.js';
+import { noteInput, noteResize } from '../activity.js';
 
 export function usePtySession(
   sessionName: string | null,
@@ -72,11 +72,12 @@ export function usePtySession(
   useEffect(() => {
     const entry = entryRef.current;
     if (entry && !entry.exited) {
+      if (sessionName) noteResize(sessionName);
       entry.pty.resize(paneCols, paneRows);
       entry.emu.resize(paneCols, paneRows);
       scheduleRender();
     }
-  }, [paneCols, paneRows, scheduleRender]);
+  }, [paneCols, paneRows, scheduleRender, sessionName]);
 
   const write = useCallback(
     (data: string) => {

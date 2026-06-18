@@ -7,6 +7,15 @@ import { beginOp } from './useAsyncOperation.js';
 
 const execFile = promisify(execFileCb);
 
+/**
+ * Environment variables that prevent git/SSH from prompting for auth.
+ * Mirrors the same constant in @kirby/worktree-manager's exec.ts.
+ */
+const GIT_NO_PROMPT_ENV = {
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes',
+};
+
 function mapNameStatus(letter: string): DiffFile['status'] {
   const code = letter.charAt(0);
   switch (code) {
@@ -73,6 +82,7 @@ export async function fetchAllFiles(
       ? Promise.resolve()
       : execFile('git', ['fetch', 'origin', sourceBranch], {
           timeout: 30_000,
+          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
         }).catch(() => {
           /* branch may already exist locally */
         }),
@@ -80,6 +90,7 @@ export async function fetchAllFiles(
       ? Promise.resolve()
       : execFile('git', ['fetch', 'origin', targetBranch], {
           timeout: 30_000,
+          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
         })
           .then(() => {
             targetFetchedAt.set(targetBranch, Date.now());
