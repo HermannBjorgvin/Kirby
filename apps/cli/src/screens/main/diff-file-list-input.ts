@@ -1,6 +1,8 @@
 import type { Key } from 'ink';
 import { getDisplayFiles } from '@kirby/diff';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
+import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
+import { planItemKey, snapshotRemote } from '../../plan/plan-types.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 
 // Comment-nav semantics mirror the diff viewer's merged nav pool: cycle
@@ -29,6 +31,17 @@ export function handleDiffFileListInput(
       pane: ctx.pane,
       flashStatus: ctx.sessions.flashStatus,
       replyToThread: ctx.remoteCtx.replyToThread,
+    })
+  ) {
+    return;
+  }
+
+  // Plan annotation mode bypass — same contract as reply mode.
+  if (
+    handlePlanAnnotateInput(input, key, {
+      pane: ctx.pane,
+      plan: ctx.plan,
+      prId: ctx.prId,
     })
   ) {
     return;
@@ -131,6 +144,37 @@ export function handleDiffFileListInput(
         const msg = err instanceof Error ? err.message : String(err);
         ctx.sessions.flashStatus(`Failed: ${msg}`);
       });
+    return;
+  }
+
+  // ── Plan ("add-to-cart") actions on the selected comment ────────
+  if (action === 'diff-file-list.plan-toggle') {
+    if (selectedCommentIdx < 0 || ctx.prId == null) return;
+    const thread = ctx.shownGeneralComments[selectedCommentIdx];
+    if (!thread) return;
+    const added = ctx.plan.toggle(ctx.prId, snapshotRemote(thread));
+    ctx.sessions.flashStatus(added ? 'Added to plan' : 'Removed from plan');
+    return;
+  }
+  if (action === 'diff-file-list.plan-annotate') {
+    if (selectedCommentIdx < 0 || ctx.prId == null) return;
+    const thread = ctx.shownGeneralComments[selectedCommentIdx];
+    if (!thread) return;
+    const item = snapshotRemote(thread);
+    ctx.plan.add(ctx.prId, item);
+    ctx.pane.setAnnotatingPlanKey(planItemKey(item.kind, item.id));
+    ctx.pane.setAnnotationBuffer(item.annotation ?? '');
+    return;
+  }
+  if (action === 'diff-file-list.plan-checkout') {
+    if (ctx.prId == null || ctx.plan.count(ctx.prId) === 0) {
+      ctx.sessions.flashStatus('Plan is empty');
+      return;
+    }
+    ctx.pane.setPriorPaneMode('diff');
+    ctx.pane.setPlanCheckoutIndex(0);
+    ctx.pane.setPlanCheckoutTarget(null);
+    ctx.pane.setPaneMode('plan-checkout');
     return;
   }
 

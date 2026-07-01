@@ -11,6 +11,7 @@ import {
   CommentThreadCard,
   planCommentFooter,
 } from '../../components/CommentThread.js';
+import { planItemKey } from '../../plan/plan-types.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -205,6 +206,9 @@ export const DiffFileList = memo(function DiffFileList({
   selectedCommentIndex,
   replyingToThreadId,
   replyBuffer,
+  inPlanKeys,
+  annotatingPlanKey,
+  annotationBuffer,
 }: {
   files: DiffFile[];
   selectedIndex: number;
@@ -221,6 +225,11 @@ export const DiffFileList = memo(function DiffFileList({
   selectedCommentIndex?: number;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
+  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  inPlanKeys?: Map<string, boolean>;
+  /** Plan key currently being annotated (Shift+A composer target). */
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
 }) {
   const displayFiles = useMemo(() => {
     const { normal, skipped } = partitionFiles(files);
@@ -363,18 +372,34 @@ export const DiffFileList = memo(function DiffFileList({
           <Text bold color="blue">
             PR Comments ({generalThreads.length})
           </Text>
-          {shownGeneral.map((thread, idx) => (
-            <CommentThreadCard
-              key={thread.id}
-              thread={thread}
-              selected={
-                selectedCommentIndex !== undefined &&
-                selectedCommentIndex === idx
-              }
-              replyingToThreadId={replyingToThreadId}
-              replyBuffer={replyBuffer}
-            />
-          ))}
+          {shownGeneral.map((thread, idx) => {
+            const pKey = planItemKey('remote', thread.id);
+            return (
+              <Box key={thread.id} flexDirection="column">
+                <CommentThreadCard
+                  thread={thread}
+                  selected={
+                    selectedCommentIndex !== undefined &&
+                    selectedCommentIndex === idx
+                  }
+                  replyingToThreadId={replyingToThreadId}
+                  replyBuffer={replyBuffer}
+                  inPlan={inPlanKeys?.has(pKey) ?? false}
+                  hasAnnotation={inPlanKeys?.get(pKey) === true}
+                />
+                {annotatingPlanKey === pKey && (
+                  <Box marginLeft={2} marginBottom={1}>
+                    <Box borderStyle="round" borderColor="green" paddingX={1}>
+                      <Text>
+                        <Text color="green">{'note '}</Text>
+                        {annotationBuffer ?? ''}▍
+                      </Text>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
         </Box>
       )}
 

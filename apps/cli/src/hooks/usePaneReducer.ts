@@ -41,6 +41,18 @@ export interface PaneState {
   // Review confirm
   reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
   reviewInstruction: string;
+
+  // Plan checkout ("add-to-cart")
+  // Where Esc returns from the checkout pane.
+  priorPaneMode: PaneMode;
+  // Selected row in the checkout checklist.
+  planCheckoutIndex: number;
+  // planItemKey of the item whose annotation is being edited (in the
+  // diff viewer Shift+A composer or the checkout pane), or null.
+  annotatingPlanKey: string | null;
+  annotationBuffer: string;
+  // In State A (running agent) the checkout pane asks inject vs restart.
+  planCheckoutTarget: 'inject' | 'new-session' | null;
 }
 
 export const initialState: PaneState = {
@@ -61,6 +73,11 @@ export const initialState: PaneState = {
   generalCommentsScrollOffset: 0,
   reviewConfirm: null,
   reviewInstruction: '',
+  priorPaneMode: 'terminal',
+  planCheckoutIndex: 0,
+  annotatingPlanKey: null,
+  annotationBuffer: '',
+  planCheckoutTarget: null,
 };
 
 // ── Actions ──────────────────────────────────────────────────────
@@ -92,7 +109,15 @@ export type PaneAction =
       type: 'SET_REVIEW_CONFIRM';
       value: { pr: PullRequestInfo; selectedOption: number } | null;
     }
-  | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> };
+  | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> }
+  | { type: 'SET_PRIOR_PANE_MODE'; mode: PaneMode }
+  | { type: 'SET_PLAN_CHECKOUT_INDEX'; updater: Updater<number> }
+  | { type: 'SET_ANNOTATING_PLAN_KEY'; key: string | null }
+  | { type: 'SET_ANNOTATION_BUFFER'; updater: Updater<string> }
+  | {
+      type: 'SET_PLAN_CHECKOUT_TARGET';
+      value: 'inject' | 'new-session' | null;
+    };
 
 export function paneReducer(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
@@ -163,6 +188,22 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
         ...state,
         reviewInstruction: resolve(action.updater, state.reviewInstruction),
       };
+    case 'SET_PRIOR_PANE_MODE':
+      return { ...state, priorPaneMode: action.mode };
+    case 'SET_PLAN_CHECKOUT_INDEX':
+      return {
+        ...state,
+        planCheckoutIndex: resolve(action.updater, state.planCheckoutIndex),
+      };
+    case 'SET_ANNOTATING_PLAN_KEY':
+      return { ...state, annotatingPlanKey: action.key };
+    case 'SET_ANNOTATION_BUFFER':
+      return {
+        ...state,
+        annotationBuffer: resolve(action.updater, state.annotationBuffer),
+      };
+    case 'SET_PLAN_CHECKOUT_TARGET':
+      return { ...state, planCheckoutTarget: action.value };
   }
 }
 
@@ -188,6 +229,11 @@ export interface PaneActions {
     value: { pr: PullRequestInfo; selectedOption: number } | null
   ) => void;
   setReviewInstruction: (updater: Updater<string>) => void;
+  setPriorPaneMode: (mode: PaneMode) => void;
+  setPlanCheckoutIndex: (updater: Updater<number>) => void;
+  setAnnotatingPlanKey: (key: string | null) => void;
+  setAnnotationBuffer: (updater: Updater<string>) => void;
+  setPlanCheckoutTarget: (value: 'inject' | 'new-session' | null) => void;
 }
 
 /** Combined type for input handlers: read state + call setters. */
@@ -269,6 +315,16 @@ export function usePaneReducer(
         dispatch({ type: 'SET_REVIEW_CONFIRM', value }),
       setReviewInstruction: (updater) =>
         dispatch({ type: 'SET_REVIEW_INSTRUCTION', updater }),
+      setPriorPaneMode: (mode) =>
+        dispatch({ type: 'SET_PRIOR_PANE_MODE', mode }),
+      setPlanCheckoutIndex: (updater) =>
+        dispatch({ type: 'SET_PLAN_CHECKOUT_INDEX', updater }),
+      setAnnotatingPlanKey: (key) =>
+        dispatch({ type: 'SET_ANNOTATING_PLAN_KEY', key }),
+      setAnnotationBuffer: (updater) =>
+        dispatch({ type: 'SET_ANNOTATION_BUFFER', updater }),
+      setPlanCheckoutTarget: (value) =>
+        dispatch({ type: 'SET_PLAN_CHECKOUT_TARGET', value }),
     }),
     []
   );

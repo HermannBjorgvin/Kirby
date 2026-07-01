@@ -13,6 +13,8 @@ import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
+import { usePlan } from '../../context/PlanContext.js';
+import { planItemKey } from '../../plan/plan-types.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
@@ -53,6 +55,22 @@ export function DiffFileViewerContainer({
   const configCtx = useConfig();
   const keybinds = useKeybindResolve();
   const asyncOps = useAsyncOps();
+  const plan = usePlan();
+
+  // Set of `${kind}:${id}` keys for comments already in this PR's plan.
+  // Recomputed on any plan change (plan.snapshot identity) and threaded
+  // to the cards as booleans so their memoization stays stable.
+  const prId = selectedPr?.id;
+  const inPlanKeys = useMemo(() => {
+    const m = new Map<string, boolean>();
+    if (prId != null) {
+      for (const i of plan.list(prId)) {
+        m.set(planItemKey(i.kind, i.id), !!i.annotation);
+      }
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- plan.snapshot drives freshness
+  }, [prId, plan.snapshot]);
 
   // Trigger a per-file diff fetch on file open. Cached internally
   // by useDiffData, so navigating back and forth is free.
@@ -210,6 +228,7 @@ export function DiffFileViewerContainer({
         sessions: sessionCtx,
         asyncOps,
         keybinds,
+        plan,
       });
     },
     { isActive: !terminalFocused }
@@ -233,6 +252,9 @@ export function DiffFileViewerContainer({
       editBuffer={pane.editBuffer}
       replyingToThreadId={pane.replyingToThreadId}
       replyBuffer={pane.replyBuffer}
+      inPlanKeys={inPlanKeys}
+      annotatingPlanKey={pane.annotatingPlanKey}
+      annotationBuffer={pane.annotationBuffer}
     />
   );
 }

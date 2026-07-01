@@ -133,6 +133,7 @@ export function MainContent({
         <DiffFileListContainer
           pane={pane}
           terminal={terminal}
+          selectedPr={selectedPr}
           terminalFocused={terminalFocused}
           diffBundle={diffBundle}
         />

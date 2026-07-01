@@ -10,8 +10,25 @@ import {
   CARD_INDENT,
 } from '../../components/CommentThread.js';
 import type { RowMap } from '@kirby/review-comments';
+import { planItemKey } from '../../plan/plan-types.js';
 import { DiffRow } from './DiffRow.js';
 import { languageFromFilename } from '../../utils/language.js';
+
+// Inline single-line note composer shown under a card while the user
+// is annotating its plan item (Shift+A). Mirrors the reply composer's
+// look but in green to match the plan badge.
+function PlanAnnotateInput({ buffer }: { buffer: string }) {
+  return (
+    <Box marginLeft={CARD_INDENT + 2} marginBottom={1}>
+      <Box borderStyle="round" borderColor="green" paddingX={1}>
+        <Text>
+          <Text color="green">{'note '}</Text>
+          {buffer}▍
+        </Text>
+      </Box>
+    </Box>
+  );
+}
 
 // Separate component to isolate context subscription from memo'd parent
 function DiffViewerHints({
@@ -84,6 +101,9 @@ export const DiffViewer = memo(function DiffViewer({
   editBuffer,
   replyingToThreadId,
   replyBuffer,
+  inPlanKeys,
+  annotatingPlanKey,
+  annotationBuffer,
 }: {
   filename: string;
   annotatedLines: AnnotatedLine[];
@@ -101,6 +121,11 @@ export const DiffViewer = memo(function DiffViewer({
   editBuffer?: string;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
+  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  inPlanKeys?: Map<string, boolean>;
+  /** Plan key currently being annotated (Shift+A composer target). */
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
 }) {
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
@@ -177,31 +202,49 @@ export const DiffViewer = memo(function DiffViewer({
       );
     }
     if (line.type === 'thread-remote') {
+      const pKey = planItemKey('remote', line.thread.id);
+      const inPlan = inPlanKeys?.has(pKey) ?? false;
       return (
-        <CommentThreadCard
-          key={`r:${line.thread.id}`}
-          thread={line.thread}
-          selected={selectedCommentId === line.thread.id}
-          replyingToThreadId={replyingToThreadId}
-          replyBuffer={replyBuffer}
-          maxWidth={cardWidth}
-          indent={CARD_INDENT}
-        />
+        <>
+          <CommentThreadCard
+            key={`r:${line.thread.id}`}
+            thread={line.thread}
+            selected={selectedCommentId === line.thread.id}
+            replyingToThreadId={replyingToThreadId}
+            replyBuffer={replyBuffer}
+            maxWidth={cardWidth}
+            indent={CARD_INDENT}
+            inPlan={inPlan}
+            hasAnnotation={inPlanKeys?.get(pKey) === true}
+          />
+          {annotatingPlanKey === pKey && (
+            <PlanAnnotateInput buffer={annotationBuffer ?? ''} />
+          )}
+        </>
       );
     }
+    const pKey = planItemKey('local', line.comment.id);
+    const inPlan = inPlanKeys?.has(pKey) ?? false;
     return (
-      <LocalCommentCard
-        key={`l:${line.comment.id}`}
-        comment={line.comment}
-        selected={selectedCommentId === line.comment.id}
-        pendingDelete={pendingDeleteCommentId === line.comment.id}
-        editing={editingCommentId === line.comment.id}
-        editBuffer={
-          editingCommentId === line.comment.id ? editBuffer : undefined
-        }
-        maxWidth={cardWidth}
-        indent={CARD_INDENT}
-      />
+      <>
+        <LocalCommentCard
+          key={`l:${line.comment.id}`}
+          comment={line.comment}
+          selected={selectedCommentId === line.comment.id}
+          pendingDelete={pendingDeleteCommentId === line.comment.id}
+          editing={editingCommentId === line.comment.id}
+          editBuffer={
+            editingCommentId === line.comment.id ? editBuffer : undefined
+          }
+          maxWidth={cardWidth}
+          indent={CARD_INDENT}
+          inPlan={inPlan}
+          hasAnnotation={inPlanKeys?.get(pKey) === true}
+        />
+        {annotatingPlanKey === pKey && (
+          <PlanAnnotateInput buffer={annotationBuffer ?? ''} />
+        )}
+      </>
     );
   }
 

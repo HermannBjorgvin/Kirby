@@ -41,6 +41,7 @@ export type InputContext =
   | 'confirm-delete'
   | 'diff-file-list'
   | 'diff-viewer'
+  | 'plan-checkout'
   | 'controls';
 
 /** A bindable action in the application */
@@ -299,6 +300,27 @@ export const ACTIONS = [
     label: 'Resolve/reopen thread',
     context: 'diff-file-list',
   },
+  {
+    id: 'diff-file-list.plan-toggle',
+    label: 'Add/remove comment in plan',
+    context: 'diff-file-list',
+    hintLabel: 'add to plan',
+    showInHints: true,
+    vcsOnly: true,
+  },
+  {
+    id: 'diff-file-list.plan-annotate',
+    label: 'Add to plan with note',
+    context: 'diff-file-list',
+  },
+  {
+    id: 'diff-file-list.plan-checkout',
+    label: 'Checkout plan',
+    context: 'diff-file-list',
+    hintLabel: 'checkout plan',
+    showInHints: true,
+    vcsOnly: true,
+  },
 
   // ── Diff Viewer ──
   {
@@ -379,7 +401,52 @@ export const ACTIONS = [
     label: 'Resolve/reopen thread',
     context: 'diff-viewer',
   },
+  {
+    id: 'diff-viewer.plan-toggle',
+    label: 'Add/remove comment in plan',
+    context: 'diff-viewer',
+    hintLabel: 'add to plan',
+    showInHints: true,
+    vcsOnly: true,
+  },
+  {
+    id: 'diff-viewer.plan-annotate',
+    label: 'Add to plan with note',
+    context: 'diff-viewer',
+  },
+  {
+    id: 'diff-viewer.plan-checkout',
+    label: 'Checkout plan',
+    context: 'diff-viewer',
+    hintLabel: 'checkout plan',
+    showInHints: true,
+    vcsOnly: true,
+  },
   { id: 'diff-viewer.back', label: 'Back', context: 'diff-viewer' },
+
+  // ── Plan Checkout ──
+  {
+    id: 'plan-checkout.navigate-down',
+    label: 'Navigate down',
+    context: 'plan-checkout',
+  },
+  {
+    id: 'plan-checkout.navigate-up',
+    label: 'Navigate up',
+    context: 'plan-checkout',
+  },
+  {
+    id: 'plan-checkout.toggle-include',
+    label: 'Include/exclude item',
+    context: 'plan-checkout',
+  },
+  {
+    id: 'plan-checkout.annotate',
+    label: 'Edit item note',
+    context: 'plan-checkout',
+  },
+  { id: 'plan-checkout.send', label: 'Send to agent', context: 'plan-checkout' },
+  { id: 'plan-checkout.back', label: 'Back', context: 'plan-checkout' },
 
   // ── Controls ──
   { id: 'controls.navigate-down', label: 'Navigate down', context: 'controls' },
@@ -462,6 +529,9 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-file-list.reply-to-thread': [{ input: 'r' }],
     'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
+    'diff-file-list.plan-toggle': [{ input: 'a' }],
+    'diff-file-list.plan-annotate': [{ input: 'A', shift: true }],
+    'diff-file-list.plan-checkout': [{ input: 'c' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ flags: { downArrow: true } }],
@@ -482,7 +552,18 @@ export const NORMIE_PRESET: KeybindPreset = {
     'diff-viewer.editor-edit': [{ input: 'E', shift: true }],
     'diff-viewer.reply-to-thread': [{ input: 'r' }],
     'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
+    'diff-viewer.plan-toggle': [{ input: 'a' }],
+    'diff-viewer.plan-annotate': [{ input: 'A', shift: true }],
+    'diff-viewer.plan-checkout': [{ input: 'c' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
+
+    // Plan Checkout
+    'plan-checkout.navigate-down': [{ flags: { downArrow: true } }],
+    'plan-checkout.navigate-up': [{ flags: { upArrow: true } }],
+    'plan-checkout.toggle-include': [{ input: ' ' }],
+    'plan-checkout.annotate': [{ input: 'a' }],
+    'plan-checkout.send': [{ flags: { return: true } }],
+    'plan-checkout.back': [{ flags: { escape: true } }],
 
     // Controls
     'controls.navigate-down': [{ flags: { downArrow: true } }],
@@ -562,6 +643,9 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-file-list.prev-section': [{ ctrl: true, flags: { upArrow: true } }],
     'diff-file-list.reply-to-thread': [{ input: 'r' }],
     'diff-file-list.toggle-thread-resolved': [{ input: 'v' }],
+    'diff-file-list.plan-toggle': [{ input: 'a' }],
+    'diff-file-list.plan-annotate': [{ input: 'A' }],
+    'diff-file-list.plan-checkout': [{ input: 'o' }],
 
     // Diff Viewer
     'diff-viewer.scroll-down': [{ input: 'j' }, { flags: { downArrow: true } }],
@@ -588,7 +672,20 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-viewer.editor-edit': [{ input: 'E' }],
     'diff-viewer.reply-to-thread': [{ input: 'r' }],
     'diff-viewer.toggle-thread-resolved': [{ input: 'v' }],
+    // Vim binds `c`/`C` to next/prev-comment, so checkout uses `o`
+    // ("check-o-ut") to avoid clobbering comment navigation.
+    'diff-viewer.plan-toggle': [{ input: 'a' }],
+    'diff-viewer.plan-annotate': [{ input: 'A' }],
+    'diff-viewer.plan-checkout': [{ input: 'o' }],
     'diff-viewer.back': [{ flags: { escape: true } }],
+
+    // Plan Checkout
+    'plan-checkout.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
+    'plan-checkout.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
+    'plan-checkout.toggle-include': [{ input: ' ' }],
+    'plan-checkout.annotate': [{ input: 'a' }],
+    'plan-checkout.send': [{ flags: { return: true } }],
+    'plan-checkout.back': [{ flags: { escape: true } }],
 
     // Controls
     'controls.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
