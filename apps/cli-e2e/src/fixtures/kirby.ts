@@ -24,6 +24,7 @@ export interface FakeAgentOpts {
   echo?: boolean;
   echoDelayMs?: number;
   exitAfterMs?: number;
+  exitOnInput?: boolean;
 }
 
 const FAKE_AGENT_PATH = fileURLToPath(
@@ -48,6 +49,7 @@ export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
     flags.push(`--echo-delay-ms=${opts.echoDelayMs}`);
   if (opts.exitAfterMs != null)
     flags.push(`--exit-after-ms=${opts.exitAfterMs}`);
+  if (opts.exitOnInput) flags.push('--exit-on-input');
   return ['node', FAKE_AGENT_PATH, ...flags].join(' ');
 }
 
