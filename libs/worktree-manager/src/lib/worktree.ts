@@ -384,8 +384,9 @@ export function recoverRebaseBranch(worktreePath: string): string | null {
  * recovered from `rebase-{merge,apply}/head-name` and `state` is set
  * to `'rebasing'`. True orphans (detached, no recoverable branch —
  * e.g. branch was deleted under the worktree, or `git worktree add`
- * was run with a SHA) are filtered out: they collide on the empty
- * session key and have no actionable identity inside Kirby.
+ * was run with a SHA) are kept with an empty `branch`; consumers name
+ * them via `worktreeSessionName` (directory basename) so they render
+ * in the sidebar and can host a session by their directory name.
  */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
   try {
@@ -405,11 +406,12 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
       if (rebaseBranch) {
         recovered.push({ ...w, branch: rebaseBranch, state: 'rebasing' });
       } else {
-        log(
-          'warn',
-          'listWorktrees',
-          `skipping orphan detached worktree ${w.path}`
-        );
+        // True orphan (detached, no rebase in progress — e.g. a
+        // `git worktree add --detach <SHA>`). Keep it with an empty
+        // branch: consumers name it via `worktreeSessionName`, which
+        // falls back to the directory basename, so it renders in the
+        // sidebar and can host a session by its directory name.
+        recovered.push(w);
       }
     }
     return recovered;

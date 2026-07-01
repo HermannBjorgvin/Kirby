@@ -492,7 +492,7 @@ describe('listWorktrees', () => {
     expect(result[0]!.state).toBe('rebasing');
   });
 
-  it('should drop true orphan detached worktrees with no recoverable branch', async () => {
+  it('should keep true orphan detached worktrees with an empty branch', async () => {
     const orphan = `${cwd}/.claude/worktrees/master-test-temp`;
     const attached = `${cwd}/.claude/worktrees/feature-auth`;
     mockExec.mockResolvedValueOnce(
@@ -516,9 +516,17 @@ describe('listWorktrees', () => {
       throw new Error(`ENOENT: ${p}`);
     }) as unknown as typeof readFileSync);
 
+    // The orphan has no rebase in progress, so no branch is recovered.
+    // It is still listed (branch: '') and gets its identity from the
+    // directory basename via worktreeSessionName.
     const result = await listWorktrees();
-    expect(result).toHaveLength(1);
-    expect(result[0]!.path).toBe(attached);
+    expect(result).toHaveLength(2);
+    const orphanResult = result.find((w) => w.path === orphan);
+    expect(orphanResult).toEqual({ path: orphan, branch: '', bare: false });
+    expect(worktreeSessionName(orphanResult!)).toBe('master-test-temp');
+    expect(result.find((w) => w.path === attached)!.branch).toBe(
+      'feature/auth'
+    );
   });
 });
 

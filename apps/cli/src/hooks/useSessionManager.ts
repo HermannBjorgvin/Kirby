@@ -33,7 +33,10 @@ export function useSessionManager(
       });
     }
     setSessions(filtered);
-    setWorktreeBranches(worktrees.map((wt) => wt.branch));
+    // Detached-HEAD orphans have an empty branch; drop them here so the
+    // merged/conflict git queries (countConflicts, fetchMergedBranches)
+    // never run against an empty ref.
+    setWorktreeBranches(worktrees.map((wt) => wt.branch).filter(Boolean));
     return filtered;
   }, []);
 
