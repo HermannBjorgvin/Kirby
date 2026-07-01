@@ -1,10 +1,23 @@
 {
-  "name": "@kirby/cli",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@hermannbjorgvin/kirby",
+  "version": "1.0.0-beta.1",
+  "description": "A TUI workflow manager for git worktrees",
+  "author": "Hermann Bjorgvin",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "kirby": "./main.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HermannBjorgvin/kirby.git",
+    "directory": "apps/cli"
   },
   "nx": {
     "name": "cli",
@@ -97,6 +110,19 @@
         "executor": "nx:run-commands",
         "options": {
           "command": "chmod +x apps/cli/dist/main.js && npm install -g ./apps/cli/dist"
+        }
+      },
+      "publish": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "commands": [
+            "node apps/cli/scripts/prepare-publish.mjs",
+            "npm publish --tag beta apps/cli/dist"
+          ],
+          "parallel": false
         }
       },
       "serve": {
