@@ -100,44 +100,107 @@ describe('CommentThreadCard — header overflow', () => {
   });
 });
 
-describe('in-plan badge', () => {
-  it('shows the ◉ badge on a remote card when in plan (no note)', () => {
+describe('plan-action hint ([a/A])', () => {
+  it('renders no plan badge — plan membership shows via the hint only', () => {
+    // The old green ◉/✎ badge was dropped; unselected in-plan cards
+    // intentionally carry no plan marker text.
     const { lastFrame } = render(
       <CommentThreadCard thread={makeThread()} inPlan maxWidth={80} />
-    );
-    const visible = stripAnsi(lastFrame() ?? '');
-    expect(visible).toContain('◉ plan');
-    expect(visible).not.toContain('✎');
-  });
-
-  it('shows the ✎ badge when the plan item is annotated', () => {
-    const { lastFrame } = render(
-      <CommentThreadCard thread={makeThread()} inPlan hasAnnotation maxWidth={80} />
-    );
-    expect(stripAnsi(lastFrame() ?? '')).toContain('✎ plan');
-  });
-
-  it('shows no badge when not in plan', () => {
-    const { lastFrame } = render(
-      <CommentThreadCard thread={makeThread()} maxWidth={80} />
     );
     expect(stripAnsi(lastFrame() ?? '')).not.toContain('plan');
   });
 
-  it('renders the badge on a local card too', () => {
-    const { lastFrame } = render(
-      <LocalCommentCard comment={makeReview()} inPlan maxWidth={80} />
-    );
-    expect(stripAnsi(lastFrame() ?? '')).toContain('◉ plan');
+  it('tints the border green on an unselected in-plan card', () => {
+    // [32m = green SGR; nothing else on this card is green
+    // (isResolved is false), so its presence means the border tint.
+    const inPlanFrame = render(
+      <CommentThreadCard thread={makeThread()} inPlan maxWidth={80} />
+    ).lastFrame();
+    const plainFrame = render(
+      <CommentThreadCard thread={makeThread()} maxWidth={80} />
+    ).lastFrame();
+    expect(inPlanFrame).toContain('[32m');
+    expect(plainFrame).not.toContain('[32m');
   });
 
-  it('keeps the badge on the header row (single line)', () => {
+  it('keeps the selection color when a selected card is in plan', () => {
     const { lastFrame } = render(
       <CommentThreadCard thread={makeThread()} selected inPlan maxWidth={80} />
     );
-    const rows = stripAnsi(lastFrame() ?? '').split('\n');
-    const headerRow = rows.find((r) => r.includes('plan'))!;
-    expect(headerRow).toContain('alice');
+    // Cyan (36) border wins over the green plan tint.
+    expect(lastFrame()).toContain('[36m╭');
+  });
+
+  it('shows the add hint on a selected remote card not yet in plan', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard
+        thread={makeThread()}
+        selected
+        planHint
+        maxWidth={80}
+      />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('[a/A]dd to draft plan');
+  });
+
+  it('switches to remove/annotate when the remote card is in plan', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard
+        thread={makeThread()}
+        selected
+        planHint
+        inPlan
+        maxWidth={80}
+      />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('[a] remove [A] annotate');
+    expect(visible).not.toContain('[a/A]dd');
+  });
+
+  it('shows no plan hint without planHint (Shift+C pane)', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} selected maxWidth={80} />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).not.toContain('[a/A]dd');
+    expect(visible).not.toContain('[a] remove');
+  });
+
+  it('shows no plan hint on an unselected card', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} planHint maxWidth={80} />
+    );
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('[a/A]dd');
+  });
+
+  it('shows the add hint on a selected local card not yet in plan', () => {
+    const { lastFrame } = render(
+      <LocalCommentCard
+        comment={makeReview()}
+        selected
+        planHint
+        maxWidth={80}
+      />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('[a/A]dd to draft plan');
+  });
+
+  it('switches to remove/annotate when the local card is in plan', () => {
+    const { lastFrame } = render(
+      <LocalCommentCard
+        comment={makeReview()}
+        selected
+        planHint
+        inPlan
+        maxWidth={80}
+      />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('[a] remove [A] annotate');
+    expect(visible).not.toContain('[a/A]dd');
   });
 });
 

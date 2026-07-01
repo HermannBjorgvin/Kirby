@@ -145,7 +145,7 @@ export const DiffViewer = memo(function DiffViewer({
   editBuffer?: string;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
-  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  /** Keys (`${kind}:${id}`) of comments queued in the plan. */
   inPlanKeys?: Map<string, boolean>;
   /** Plan key currently being annotated (Shift+A composer target). */
   annotatingPlanKey?: string | null;
@@ -247,7 +247,7 @@ export const DiffViewer = memo(function DiffViewer({
           maxWidth={cardWidth}
           indent={CARD_INDENT}
           inPlan={inPlanKeys?.has(pKey) ?? false}
-          hasAnnotation={inPlanKeys?.get(pKey) === true}
+          planHint
         />
       );
     }
@@ -274,7 +274,7 @@ export const DiffViewer = memo(function DiffViewer({
         maxWidth={cardWidth}
         indent={CARD_INDENT}
         inPlan={inPlanKeys?.has(pKey) ?? false}
-        hasAnnotation={inPlanKeys?.get(pKey) === true}
+        planHint
       />
     );
   }
