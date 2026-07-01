@@ -8,6 +8,7 @@ import { TerminalPane } from './TerminalPane.js';
 import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import { GeneralCommentsContainer } from './GeneralCommentsContainer.js';
+import { PlanCheckoutContainer } from './PlanCheckoutContainer.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { useDiffBundle } from '../../hooks/useDiffBundle.js';
@@ -34,7 +35,8 @@ type ScreenType =
   | 'prDetail'
   | 'diff'
   | 'diffFile'
-  | 'comments';
+  | 'comments'
+  | 'planCheckout';
 
 // Pure router for the main content pane. Renders exactly one of the
 // mutually-exclusive sub-panes based on modal and pane-mode state, in
@@ -79,6 +81,7 @@ export function MainContent({
     if (pane.paneMode === 'diff') return 'diff';
     if (pane.paneMode === 'diff-file') return 'diffFile';
     if (pane.paneMode === 'comments') return 'comments';
+    if (pane.paneMode === 'plan-checkout') return 'planCheckout';
     return 'terminal';
   })();
 
@@ -155,6 +158,15 @@ export function MainContent({
           terminal={terminal}
           terminalFocused={terminalFocused}
           diffBundle={diffBundle}
+        />
+      );
+    case 'planCheckout':
+      return (
+        <PlanCheckoutContainer
+          pane={pane}
+          terminal={terminal}
+          selectedPr={selectedPr}
+          terminalFocused={terminalFocused}
         />
       );
   }

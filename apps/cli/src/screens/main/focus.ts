@@ -39,7 +39,8 @@ export function getMainFocused(s: FocusState): boolean {
   if (
     s.paneMode === 'diff' ||
     s.paneMode === 'diff-file' ||
-    s.paneMode === 'comments'
+    s.paneMode === 'comments' ||
+    s.paneMode === 'plan-checkout'
   )
     return true;
   return s.navFocus === 'terminal';
@@ -89,6 +90,7 @@ export function getPaneTitle(s: PaneTitleState): string {
   if (s.paneMode === 'pr-detail') return 'Pull Request';
   if (s.paneMode === 'diff' || s.paneMode === 'diff-file')
     return 'Files Changed';
+  if (s.paneMode === 'plan-checkout') return 'Plan Checkout';
 
   const agent = resolvePresetName(s.aiCommand, AI_PRESETS, 'Agent');
   const label = s.prTitle || s.sessionName;

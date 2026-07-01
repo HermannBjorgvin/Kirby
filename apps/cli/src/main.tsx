@@ -6,6 +6,7 @@ import { githubProvider } from '@kirby/vcs-github';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { ToastContainer } from './components/ToastContainer.js';
 import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
+import { PlanIndicator } from './components/PlanIndicator.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { settlePendingRuns } from './hooks/useAsyncOperation.js';
@@ -13,6 +14,7 @@ import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { NavProvider, useNavState } from './context/NavContext.js';
 import { AsyncOpsProvider } from './context/AsyncOpsContext.js';
+import { PlanProvider } from './context/PlanContext.js';
 import { LayoutProvider, useLayout } from './context/LayoutContext.js';
 import { ModalProvider } from './context/ModalContext.js';
 import { useDeleteConfirmState } from './context/ModalContext.js';
@@ -92,6 +94,7 @@ function App() {
         />
       )}
       <AsyncOpsIndicator />
+      <PlanIndicator />
       <ToastContainer />
     </Box>
   );
@@ -129,15 +132,17 @@ render(
       <LayoutProvider>
         <NavProvider>
           <AsyncOpsProvider>
-            <ModalProvider>
-              <ToastProvider>
-                <SessionProvider>
-                  <SidebarProvider>
-                    <App />
-                  </SidebarProvider>
-                </SessionProvider>
-              </ToastProvider>
-            </ModalProvider>
+            <PlanProvider>
+              <ModalProvider>
+                <ToastProvider>
+                  <SessionProvider>
+                    <SidebarProvider>
+                      <App />
+                    </SidebarProvider>
+                  </SessionProvider>
+                </ToastProvider>
+              </ModalProvider>
+            </PlanProvider>
           </AsyncOpsProvider>
         </NavProvider>
       </LayoutProvider>

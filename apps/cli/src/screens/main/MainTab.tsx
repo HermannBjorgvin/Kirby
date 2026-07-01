@@ -145,7 +145,8 @@ function MainTabBody({
     if (
       pane.paneMode === 'diff' ||
       pane.paneMode === 'diff-file' ||
-      pane.paneMode === 'comments'
+      pane.paneMode === 'comments' ||
+      pane.paneMode === 'plan-checkout'
     )
       return;
 
