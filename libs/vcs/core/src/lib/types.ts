@@ -157,10 +157,26 @@ export interface KeyDescriptorConfig {
   meta?: boolean;
 }
 
+/**
+ * The AI agents Kirby knows how to drive natively (blank / seed /
+ * continue with per-agent capabilities). A hidden `test` runner exists
+ * in the CLI registry for e2e tests but is intentionally NOT part of
+ * this public union — it is never written to a user's config.
+ */
+export type AgentId = 'claude' | 'copilot' | 'codex' | 'gemini' | 'opencode';
+
 export interface AppConfig {
   email?: string;
   prPollInterval?: number;
+  /**
+   * Legacy raw agent command (run via `sh -c`). Still honored: when
+   * `agentId` is unset it is mapped back to a known agent, and any
+   * unrecognized command routes to the hidden test runner (used by the
+   * e2e harness). New configs should prefer `agentId`.
+   */
   aiCommand?: string;
+  /** Selected AI agent. Takes precedence over `aiCommand` when set. */
+  agentId?: AgentId;
   vendor?: string;
   vendorAuth: Record<string, string>;
   vendorProject: Record<string, string>;
