@@ -11,6 +11,7 @@ import {
   CommentThreadCard,
   planCommentFooter,
 } from '../../components/CommentThread.js';
+import { planItemKey } from '../../plan/plan-types.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -205,6 +206,9 @@ export const DiffFileList = memo(function DiffFileList({
   selectedCommentIndex,
   replyingToThreadId,
   replyBuffer,
+  inPlanKeys,
+  annotatingPlanKey,
+  annotationBuffer,
 }: {
   files: DiffFile[];
   selectedIndex: number;
@@ -221,6 +225,11 @@ export const DiffFileList = memo(function DiffFileList({
   selectedCommentIndex?: number;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
+  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  inPlanKeys?: Map<string, boolean>;
+  /** Plan key currently being annotated (Shift+A composer target). */
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
 }) {
   const displayFiles = useMemo(() => {
     const { normal, skipped } = partitionFiles(files);
@@ -363,18 +372,47 @@ export const DiffFileList = memo(function DiffFileList({
           <Text bold color="blue">
             PR Comments ({generalThreads.length})
           </Text>
-          {shownGeneral.map((thread, idx) => (
-            <CommentThreadCard
-              key={thread.id}
-              thread={thread}
-              selected={
-                selectedCommentIndex !== undefined &&
-                selectedCommentIndex === idx
-              }
-              replyingToThreadId={replyingToThreadId}
-              replyBuffer={replyBuffer}
-            />
-          ))}
+          {shownGeneral.map((thread, idx) => {
+            const pKey = planItemKey('remote', thread.id);
+            // While annotating, the composer takes the card's slot.
+            if (annotatingPlanKey === pKey) {
+              return (
+                <Box
+                  key={thread.id}
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderColor="green"
+                  marginBottom={1}
+                  paddingX={1}
+                >
+                  <Text wrap="truncate-end">
+                    <Text bold color="green">
+                      EDITING NOTE
+                    </Text>
+                    <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+                  </Text>
+                  <Text wrap="wrap">
+                    {annotationBuffer ?? ''}
+                    <Text color="green">▍</Text>
+                  </Text>
+                </Box>
+              );
+            }
+            return (
+              <CommentThreadCard
+                key={thread.id}
+                thread={thread}
+                selected={
+                  selectedCommentIndex !== undefined &&
+                  selectedCommentIndex === idx
+                }
+                replyingToThreadId={replyingToThreadId}
+                replyBuffer={replyBuffer}
+                inPlan={inPlanKeys?.has(pKey) ?? false}
+                hasAnnotation={inPlanKeys?.get(pKey) === true}
+              />
+            );
+          })}
         </Box>
       )}
 

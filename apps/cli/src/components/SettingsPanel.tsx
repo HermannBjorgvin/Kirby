@@ -9,6 +9,7 @@ import {
 } from '../context/ModalContext.js';
 import { useSessionActions } from '../context/SessionContext.js';
 import { handleSettingsInput } from '../input-handlers.js';
+import { AGENTS } from '../agents/registry.js';
 
 export interface SettingsField {
   label: string;
@@ -22,13 +23,12 @@ export interface SettingsField {
   action?: 'open-controls';
 }
 
-export const AI_PRESETS: { name: string; value: string | null }[] = [
-  { name: 'Claude', value: 'claude --continue || claude' },
-  { name: 'Codex', value: 'codex' },
-  { name: 'Gemini', value: 'gemini' },
-  { name: 'Copilot', value: 'copilot' },
-  { name: 'Custom', value: null },
-];
+// One preset per registered agent (the hidden test-runner agent is not
+// in AGENTS, so it never surfaces here). The stored value is the agent
+// id, resolved back to a launch spec by the agent registry.
+export const AI_PRESETS: { name: string; value: string | null }[] = AGENTS.map(
+  (a) => ({ name: a.name, value: a.id })
+);
 
 export const BOOL_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Off', value: 'false' },
@@ -75,7 +75,7 @@ export function buildSettingsFields(
     },
     {
       label: 'AI Tool',
-      key: 'aiCommand',
+      key: 'agentId',
       presets: AI_PRESETS,
       configBag: 'global',
     },

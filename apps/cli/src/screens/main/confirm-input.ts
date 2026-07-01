@@ -1,6 +1,7 @@
 import type { Key } from 'ink';
 import { createWorktree } from '@kirby/worktree-manager';
-import { spawnSession, hasSession } from '../../pty-registry.js';
+import { hasSession } from '../../pty-registry.js';
+import { launchSession } from '../../session/launch-session.js';
 import { getPrFromItem } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { ConfirmHandlerCtx } from './input-types.js';
@@ -14,10 +15,9 @@ async function startReviewSession(
   const pr = getPrFromItem(ctx.selectedItem);
   if (!pr) return;
 
-  let prompt =
-    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
-    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
-    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
+  // Reusable how-to guidance (installed as a system prompt for agents
+  // that support it, e.g. Claude; folded into the prompt otherwise).
+  const guidance =
     `To add review comments, use this command:\n` +
     `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
     `Rules:\n` +
@@ -25,11 +25,17 @@ async function startReviewSession(
     `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
     `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
     `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
-    `- Comments appear live in the reviewer's diff viewer\n\n` +
+    `- Comments appear live in the reviewer's diff viewer`;
+
+  // The per-PR task prompt.
+  let task =
+    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
+    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
+    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
     `Review all changed files thoroughly. Add comments for any issues found.`;
 
   if (additionalInstruction) {
-    prompt +=
+    task +=
       ` ADDITIONAL USER INSTRUCTION (overrides previous where applicable): ` +
       additionalInstruction;
   }
@@ -42,17 +48,22 @@ async function startReviewSession(
     return;
   }
 
-  const safePrompt = prompt.replace(/['"]/g, '');
-  const command = `claude --continue || claude '${safePrompt}'`;
-
-  spawnSession(
-    ctx.sessionNameForTerminal,
-    '/bin/sh',
-    ['-c', command],
-    ctx.terminal.paneCols,
-    ctx.terminal.paneRows,
-    worktreePath
-  );
+  // Resume an existing review conversation in this worktree if one
+  // exists, otherwise seed a fresh session with the review prompt. The
+  // prompt is delivered as argv/env by the launcher — never composed
+  // into a shell string — so quotes in the PR title survive intact.
+  launchSession({
+    name: ctx.sessionNameForTerminal,
+    cwd: worktreePath,
+    cols: ctx.terminal.paneCols,
+    rows: ctx.terminal.paneRows,
+    config: ctx.config.config,
+    request: {
+      intent: 'continue-or-seed',
+      prompt: task,
+      systemGuidance: guidance,
+    },
+  });
 }
 
 const CONFIRM_OPTIONS = 4;

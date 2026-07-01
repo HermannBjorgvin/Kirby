@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
 import { useInput } from 'ink';
+import type { PullRequestInfo } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
+import { usePlan } from '../../context/PlanContext.js';
+import { planItemKey } from '../../plan/plan-types.js';
 import { planCommentFooter } from '../../components/CommentThread.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
@@ -14,6 +17,7 @@ import { handleDiffFileListInput } from './main-input.js';
 interface DiffFileListContainerProps {
   pane: PaneModeValue;
   terminal: TerminalLayout;
+  selectedPr: PullRequestInfo | undefined;
   terminalFocused: boolean;
   diffBundle: DiffBundle;
 }
@@ -25,13 +29,27 @@ interface DiffFileListContainerProps {
 export function DiffFileListContainer({
   pane,
   terminal,
+  selectedPr,
   terminalFocused,
   diffBundle,
 }: DiffFileListContainerProps) {
   const keybinds = useKeybindResolve();
   const sessions = useSessionActions();
+  const plan = usePlan();
   const { config } = useConfig();
   const treeMode = config.diffFileListTree === true;
+
+  const prId = selectedPr?.id;
+  const inPlanKeys = useMemo(() => {
+    const m = new Map<string, boolean>();
+    if (prId != null) {
+      for (const i of plan.list(prId)) {
+        m.set(planItemKey(i.kind, i.id), !!i.annotation);
+      }
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- plan.snapshot drives freshness
+  }, [prId, plan.snapshot]);
 
   // In tree mode, sort files alphabetically by path so siblings group
   // under the same dir. Hoisted here so the ordering is shared with
@@ -89,6 +107,8 @@ export function DiffFileListContainer({
           replyToThread: diffBundle.remote.replyToThread,
           toggleResolved: diffBundle.remote.toggleResolved,
         },
+        plan,
+        prId,
       });
     },
     { isActive: !terminalFocused }
@@ -109,6 +129,9 @@ export function DiffFileListContainer({
       selectedCommentIndex={selectedCommentIndex}
       replyingToThreadId={pane.replyingToThreadId}
       replyBuffer={pane.replyBuffer}
+      inPlanKeys={inPlanKeys}
+      annotatingPlanKey={pane.annotatingPlanKey}
+      annotationBuffer={pane.annotationBuffer}
     />
   );
 }

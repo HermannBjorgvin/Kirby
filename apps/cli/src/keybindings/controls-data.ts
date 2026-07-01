@@ -11,6 +11,7 @@ const CONTEXT_LABELS: Record<InputContext, string> = {
   'confirm-delete': 'Confirm Delete',
   'diff-file-list': 'Diff File List',
   'diff-viewer': 'Diff Viewer',
+  'plan-checkout': 'Plan Checkout',
   controls: 'Controls',
 };
 
@@ -18,6 +19,7 @@ const CONTEXT_ORDER: InputContext[] = [
   'sidebar',
   'diff-viewer',
   'diff-file-list',
+  'plan-checkout',
   'settings',
   'branch-picker',
   'confirm',

@@ -46,6 +46,17 @@ interface CommentThreadCardProps {
    * card starts where the code content does. Default 0.
    */
   indent?: number;
+  /** Show the "in plan" badge (comment is queued in the PR plan). */
+  inPlan?: boolean;
+  /** Whether the queued plan item carries a note (badge uses ✎). */
+  hasAnnotation?: boolean;
+}
+
+/** Single-line "in plan" badge shared by both card kinds. */
+function PlanBadge({ hasAnnotation }: { hasAnnotation?: boolean }) {
+  return (
+    <Text color="green">{hasAnnotation ? '  ✎ plan' : '  ◉ plan'}</Text>
+  );
 }
 
 // Constants that mirror the previous ANSI renderer's visual language —
@@ -60,6 +71,8 @@ export const CommentThreadCard = memo(function CommentThreadCard({
   replyBuffer,
   maxWidth,
   indent,
+  inPlan = false,
+  hasAnnotation = false,
 }: CommentThreadCardProps) {
   const rootComment = thread.comments[0];
   if (!rootComment) return null;
@@ -94,6 +107,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         <Text dimColor>{` · ${relativeTime(rootComment.createdAt)}`}</Text>
         {thread.isResolved && <Text color="green">{' ✓ resolved'}</Text>}
         {thread.isOutdated && <Text dimColor>{' (outdated)'}</Text>}
+        {inPlan && <PlanBadge hasAnnotation={hasAnnotation} />}
         {selected && !isReplying && (
           <Text dimColor>
             {'  [r]eply'}
@@ -181,6 +195,10 @@ interface LocalCommentCardProps {
   maxWidth?: number;
   /** See CommentThreadCard.indent. */
   indent?: number;
+  /** Show the "in plan" badge (comment is queued in the PR plan). */
+  inPlan?: boolean;
+  /** Whether the queued plan item carries a note (badge uses ✎). */
+  hasAnnotation?: boolean;
 }
 
 export const LocalCommentCard = memo(function LocalCommentCard({
@@ -191,6 +209,8 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   editBuffer,
   maxWidth,
   indent,
+  inPlan = false,
+  hasAnnotation = false,
 }: LocalCommentCardProps) {
   const severityColor = SEVERITY_COLOR[comment.severity] ?? 'gray';
   const statusMark = STATUS_MARK[comment.status];
@@ -220,6 +240,7 @@ export const LocalCommentCard = memo(function LocalCommentCard({
           <Text color={statusMark.color}>{` ${statusMark.char}`}</Text>
         )}
         {pendingDelete && <Text color="red">{'  Delete? [y]es [n]o'}</Text>}
+        {inPlan && <PlanBadge hasAnnotation={hasAnnotation} />}
         {selected && !editing && !pendingDelete && (
           <Text dimColor>{'  [e]dit [x]delete [p]ost'}</Text>
         )}

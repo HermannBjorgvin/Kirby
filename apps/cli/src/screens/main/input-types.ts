@@ -23,6 +23,7 @@ import type {
 } from '../../input-handlers.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
+import type { PlanValue } from '../../context/PlanContext.js';
 
 // ── Context slice types ──────────────────────────────────────────
 
@@ -70,6 +71,10 @@ export interface DiffFileListHandlerCtx {
     toggleResolved: (threadId: string, resolved: boolean) => Promise<boolean>;
   };
   sessions: SessionActionsContextValue;
+  /** Per-PR plan store ("add-to-cart"). */
+  plan: PlanValue;
+  /** PR id for plan keying; undefined until PR data resolves. */
+  prId?: number;
 }
 
 export interface CommentContext {
@@ -113,6 +118,21 @@ export interface DiffViewerHandlerCtx {
   sessions: SessionActionsContextValue;
   asyncOps: AsyncOpsValue;
   keybinds: KeybindResolveValue;
+  /** Per-PR plan store ("add-to-cart"). */
+  plan: PlanValue;
+}
+
+export interface PlanCheckoutHandlerCtx {
+  pane: PaneModeValue;
+  plan: PlanValue;
+  selectedPr: PullRequestInfo | undefined;
+  terminal: TerminalLayout;
+  asyncOps: AsyncOpsValue;
+  sessions: SessionActionsContextValue;
+  sidebar: SidebarContextValue;
+  nav: NavValue;
+  keybinds: KeybindResolveValue;
+  config: ConfigContextValue;
 }
 
 export interface ConfirmHandlerCtx {

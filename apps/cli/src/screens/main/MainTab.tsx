@@ -19,6 +19,7 @@ import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
+import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
 import { getItemKey } from '../../types.js';
 import { handleConfirmInput, handleSidebarInput } from './main-input.js';
@@ -145,7 +146,8 @@ function MainTabBody({
     if (
       pane.paneMode === 'diff' ||
       pane.paneMode === 'diff-file' ||
-      pane.paneMode === 'comments'
+      pane.paneMode === 'comments' ||
+      pane.paneMode === 'plan-checkout'
     )
       return;
 
@@ -189,6 +191,7 @@ function MainTabBody({
     settingsOpen: settings.settingsOpen,
     controlsOpen: settings.controlsOpen,
     reviewConfirmActive: pane.reviewConfirm !== null,
+    agentId: configCtx.config.agentId,
     aiCommand: configCtx.config.aiCommand,
     prTitle: sidebar.selectedPr?.title,
     sessionName: sidebar.sessionNameForTerminal,
@@ -212,6 +215,7 @@ function MainTabBody({
         paneRows: terminal.paneRows,
       }
     : terminal;
+  const showPlanIndicator = pane.paneMode !== 'plan-checkout';
 
   useInactiveAlertWatcher(sidebar.sessionNameForTerminal);
 
@@ -249,6 +253,7 @@ function MainTabBody({
           onFocusSidebar={onTerminalEscape}
         />
       </Pane>
+      <TopRightOverlay showPlanIndicator={showPlanIndicator} />
     </>
   );
 }

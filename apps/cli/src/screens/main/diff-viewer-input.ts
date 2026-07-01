@@ -12,6 +12,13 @@ import {
   type CommentPositionInfo,
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
+import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
+import {
+  planItemKey,
+  snapshotLocal,
+  snapshotRemote,
+} from '../../plan/plan-types.js';
+import type { PlanItem } from '../../plan/plan-types.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -156,6 +163,17 @@ export function handleDiffViewerInput(
       ctx.pane.setPendingDeleteCommentId(null);
       return;
     }
+    return;
+  }
+
+  // ── Plan annotation mode (exempt from keybind resolution) ──
+  if (
+    handlePlanAnnotateInput(input, key, {
+      pane: ctx.pane,
+      plan: ctx.plan,
+      prId: ctx.commentCtx?.prId,
+    })
+  ) {
     return;
   }
 
@@ -451,6 +469,47 @@ export function handleDiffViewerInput(
         const msg = err instanceof Error ? err.message : String(err);
         ctx.sessions.flashStatus(`Failed: ${msg}`);
       });
+    return;
+  }
+
+  // ── Plan ("add-to-cart") actions ────────────────────────────────
+  // Resolve the selected comment to a snapshot — a local draft or a
+  // remote thread. Both feed the same per-PR plan.
+  const prId = ctx.commentCtx?.prId;
+  const planTarget: PlanItem | null = selectedLocal
+    ? snapshotLocal(selectedLocal)
+    : selectedRemoteThread
+    ? snapshotRemote(selectedRemoteThread)
+    : null;
+
+  if (action === 'diff-viewer.plan-toggle' && planTarget && prId != null) {
+    const added = ctx.plan.toggle(prId, planTarget);
+    ctx.sessions.flashStatus(added ? 'Added to plan' : 'Removed from plan');
+    return;
+  }
+
+  if (action === 'diff-viewer.plan-annotate' && planTarget && prId != null) {
+    // Add immediately (cart feedback), then open the note composer
+    // pre-filled with any existing note so re-annotating never blanks it.
+    const key = planItemKey(planTarget.kind, planTarget.id);
+    const existing = ctx.plan
+      .list(prId)
+      .find((i) => planItemKey(i.kind, i.id) === key)?.annotation;
+    ctx.plan.add(prId, planTarget);
+    ctx.pane.setAnnotatingPlanKey(key);
+    ctx.pane.setAnnotationBuffer(existing ?? '');
+    return;
+  }
+
+  if (action === 'diff-viewer.plan-checkout') {
+    if (prId == null || ctx.plan.count(prId) === 0) {
+      ctx.sessions.flashStatus('Plan is empty');
+      return;
+    }
+    ctx.pane.setPriorPaneMode('diff-file');
+    ctx.pane.setPlanCheckoutIndex(0);
+    ctx.pane.setPlanCheckoutTarget(null);
+    ctx.pane.setPaneMode('plan-checkout');
     return;
   }
 }

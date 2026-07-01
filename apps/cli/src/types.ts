@@ -8,7 +8,8 @@ export type PaneMode =
   | 'diff'
   | 'diff-file'
   | 'comments'
-  | 'confirm';
+  | 'confirm'
+  | 'plan-checkout';
 
 export type ReviewCategory = 'needs-review' | 'waiting' | 'approved';
 

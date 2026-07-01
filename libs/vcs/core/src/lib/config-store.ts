@@ -3,7 +3,12 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import type { AppConfig, KeyDescriptorConfig, VcsProvider } from './types.js';
+import type {
+  AgentId,
+  AppConfig,
+  KeyDescriptorConfig,
+  VcsProvider,
+} from './types.js';
 
 const WM_DIR = join(homedir(), '.kirby');
 const GLOBAL_CONFIG_PATH = join(WM_DIR, 'config.json');
@@ -42,6 +47,7 @@ interface RawGlobalConfig {
   pat?: string;
   prPollInterval?: number;
   aiCommand?: string;
+  agentId?: AgentId;
   vendorAuth?: Record<string, Record<string, string>>;
   autoDeleteOnMerge?: boolean;
   autoRebase?: boolean;
@@ -132,6 +138,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     email: project.email,
     prPollInterval: global.prPollInterval,
     aiCommand: global.aiCommand,
+    agentId: global.agentId,
     vendor,
     vendorAuth,
     vendorProject,

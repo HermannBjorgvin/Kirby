@@ -10,8 +10,49 @@ import {
   CARD_INDENT,
 } from '../../components/CommentThread.js';
 import type { RowMap } from '@kirby/review-comments';
+import { planItemKey } from '../../plan/plan-types.js';
 import { DiffRow } from './DiffRow.js';
 import { languageFromFilename } from '../../utils/language.js';
+
+// Note composer shown while annotating a plan item (Shift+A). Rendered
+// *in place of* the comment card so it occupies the same slot — the card
+// is briefly obscured, which keeps the layout stable and works on small
+// terminals. Mirrors the card's indent + width so it lines up 1:1.
+function PlanAnnotateInput({
+  buffer,
+  width,
+}: {
+  buffer: string;
+  width: number;
+}) {
+  const box = (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="green"
+      marginBottom={1}
+      paddingX={1}
+      width={width}
+    >
+      <Text wrap="truncate-end">
+        <Text bold color="green">
+          EDITING NOTE
+        </Text>
+        <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+      </Text>
+      <Text wrap="wrap">
+        {buffer}
+        <Text color="green">▍</Text>
+      </Text>
+    </Box>
+  );
+  return (
+    <Box>
+      <Box width={CARD_INDENT} flexShrink={0} />
+      {box}
+    </Box>
+  );
+}
 
 // Separate component to isolate context subscription from memo'd parent
 function DiffViewerHints({
@@ -84,6 +125,9 @@ export const DiffViewer = memo(function DiffViewer({
   editBuffer,
   replyingToThreadId,
   replyBuffer,
+  inPlanKeys,
+  annotatingPlanKey,
+  annotationBuffer,
 }: {
   filename: string;
   annotatedLines: AnnotatedLine[];
@@ -101,6 +145,11 @@ export const DiffViewer = memo(function DiffViewer({
   editBuffer?: string;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
+  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  inPlanKeys?: Map<string, boolean>;
+  /** Plan key currently being annotated (Shift+A composer target). */
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
 }) {
   // Chrome: header + divider + hints = 3 lines
   const viewportHeight = Math.max(1, paneRows - 3);
@@ -177,6 +226,17 @@ export const DiffViewer = memo(function DiffViewer({
       );
     }
     if (line.type === 'thread-remote') {
+      const pKey = planItemKey('remote', line.thread.id);
+      // While annotating this item, the composer takes the card's slot.
+      if (annotatingPlanKey === pKey) {
+        return (
+          <PlanAnnotateInput
+            key={`ann:r:${line.thread.id}`}
+            buffer={annotationBuffer ?? ''}
+            width={cardWidth}
+          />
+        );
+      }
       return (
         <CommentThreadCard
           key={`r:${line.thread.id}`}
@@ -186,6 +246,18 @@ export const DiffViewer = memo(function DiffViewer({
           replyBuffer={replyBuffer}
           maxWidth={cardWidth}
           indent={CARD_INDENT}
+          inPlan={inPlanKeys?.has(pKey) ?? false}
+          hasAnnotation={inPlanKeys?.get(pKey) === true}
+        />
+      );
+    }
+    const pKey = planItemKey('local', line.comment.id);
+    if (annotatingPlanKey === pKey) {
+      return (
+        <PlanAnnotateInput
+          key={`ann:l:${line.comment.id}`}
+          buffer={annotationBuffer ?? ''}
+          width={cardWidth}
         />
       );
     }
@@ -201,6 +273,8 @@ export const DiffViewer = memo(function DiffViewer({
         }
         maxWidth={cardWidth}
         indent={CARD_INDENT}
+        inPlan={inPlanKeys?.has(pKey) ?? false}
+        hasAnnotation={inPlanKeys?.get(pKey) === true}
       />
     );
   }

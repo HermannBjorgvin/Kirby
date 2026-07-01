@@ -30,7 +30,8 @@ export function spawnSession(
   args: string[],
   cols: number,
   rows: number,
-  cwd: string
+  cwd: string,
+  env?: Record<string, string | undefined>
 ): PtyEntry {
   // Kill existing session with same name if any
   const existing = registry.get(name);
@@ -42,7 +43,15 @@ export function spawnSession(
     registry.delete(name);
   }
 
-  const pty = new PtySession(cmd, args, { cols, rows, cwd });
+  const pty = new PtySession(cmd, args, {
+    cols,
+    rows,
+    cwd,
+    // Merge over the current environment — never replace it, or the
+    // child loses PATH/HOME/etc. `env` carries only seed additions
+    // (e.g. KIRBY_SEED_PROMPT for the `continue || seed` path).
+    env: env ? { ...process.env, ...env } : undefined,
+  });
   const emu = new TerminalEmulator(cols, rows);
   const entry: PtyEntry = { pty, emu, exited: false };
 
