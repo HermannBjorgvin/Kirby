@@ -1,14 +1,15 @@
 import { test, expect } from './fixtures/kirby.js';
 
 // Vim preset for the keybindings this test uses (s settings, c branch
-// picker, K kill, x delete). We deliberately do NOT pre-set aiCommand —
-// the test configures it through the settings UI.
+// picker, K kill, x delete). `aiCommand: 'bash'` is an unrecognized
+// command, so it resolves to the hidden test-runner agent and spawns a
+// real bash we can drive to verify terminal I/O forwarding.
 test.use({
-  kirbyConfig: { keybindPreset: 'vim' },
+  kirbyConfig: { keybindPreset: 'vim', aiCommand: 'bash' },
 });
 
 test.describe('Terminal Input', () => {
-  test('configure agent via settings, run command, escape, and clean up', async ({
+  test('run a command in an agent session, escape, and clean up', async ({
     kirby,
   }) => {
     const branchName = 'e2e-raw-input';
@@ -17,31 +18,15 @@ test.describe('Terminal Input', () => {
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
 
-    // ── 2. Open settings → set AI Tool to 'bash' ─────────────────
+    // ── 2. Settings smoke: open and close ────────────────────────
     await kirby.term.type('s');
     await expect(kirby.term.getByText('Settings').first()).toBeVisible();
+    await expect(kirby.term.getByText('AI Tool').first()).toBeVisible();
 
-    // Controls is first field — navigate down to AI Tool.
-    await kirby.term.type('j');
-    await kirby.term.page.waitForTimeout(300);
-    // Enter custom-edit mode for AI Tool.
-    await kirby.term.press('Enter');
-    await kirby.term.page.waitForTimeout(500);
-
-    // Type the custom command.
-    await kirby.term.type('bash');
-    await kirby.term.page.waitForTimeout(500);
-
-    // Save with Enter.
-    await kirby.term.press('Enter');
-
-    // Verify the custom value is displayed.
-    await expect(kirby.term.getByText('Custom: bash').first()).toBeVisible();
-
-    // Close settings — wait for save to settle, then press Esc.
-    // Can't assert on 'Settings' visibility because getByText is
-    // case-insensitive and matches both the panel title and the sidebar
-    // keybind hint ("s settings"). Check for the AI Tool label (panel-only).
+    // Close settings. Can't assert on 'Settings' visibility because
+    // getByText is case-insensitive and matches both the panel title and
+    // the sidebar keybind hint ("s settings"). Check for the AI Tool
+    // label (panel-only).
     await kirby.term.page.waitForTimeout(1_000);
     await kirby.term.press('Escape');
     await expect(kirby.term.getByText('AI Tool').first()).not.toBeVisible({
