@@ -42,19 +42,15 @@ class MockEmu {
 }
 
 vi.mock('@kirby/terminal', () => ({
-  PtySession: class {
-    constructor() {
-      const m = new MockPty();
-      ptys.push(m);
-      return m as unknown as object;
-    }
+  PtySession: function MockPtySession() {
+    const m = new MockPty();
+    ptys.push(m);
+    return m as unknown as object;
   },
-  TerminalEmulator: class {
-    constructor() {
-      const m = new MockEmu();
-      emus.push(m);
-      return m as unknown as object;
-    }
+  TerminalEmulator: function MockTerminalEmulator() {
+    const m = new MockEmu();
+    emus.push(m);
+    return m as unknown as object;
   },
 }));
 
