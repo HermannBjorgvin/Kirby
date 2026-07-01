@@ -293,3 +293,38 @@ This adds the blocking status without duplicating any inline comments.
 - **Don't use `gh pr review`** for inline comments — it only supports a single body comment, not per-line annotations
 - **Line numbers come from the new file**, not diff positions — count from the `@@` hunk headers to get them right
 - **Heredoc quoting matters** — use `<<'EOF'` (quoted) to prevent shell expansion inside the JSON body
+
+## Publishing to NPM
+
+Published as `@hermannbjorgvin/kirby`. All releases are beta-only and published manually from a local machine — there is no CI workflow for this.
+
+Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
+
+### One-time setup
+
+- `npm login` on your machine. `npm whoami` must resolve to an account that owns the `@hermannbjorgvin` scope.
+
+### How to publish a beta version
+
+1. Bump the version in `apps/cli/package.json`. Every version must end in `-beta.N`:
+   - Patch: `0.0.1-beta.2` or `0.0.2-beta.1`
+   - Minor: `0.1.0-beta.1`
+   - Major: `1.0.0-beta.1`
+
+2. Commit the bump:
+   ```bash
+   git commit apps/cli/package.json -m "chore: bump kirby to 0.0.1-beta.2"
+   ```
+
+3. Publish:
+   ```bash
+   npx nx run cli:publish
+   ```
+
+   This runs `build` → `node apps/cli/scripts/prepare-publish.mjs` → `npm publish --tag beta apps/cli/dist`. The `--tag beta` flag keeps the release off the default `latest` dist-tag so users must explicitly opt in with `@beta`.
+
+### Build details
+
+`npx nx build cli` bundles all workspace libs (`@kirby/*`) and npm deps into a single `apps/cli/dist/main.js` with a `#!/usr/bin/env node` shebang. Only `node-pty` is kept external (it's a native module).
+
+The build copies the source `apps/cli/package.json` into `dist/` via its `assets` config — that copy is fine for `install-global` but carries workspace `@kirby/*` deps that don't exist on the npm registry. So `apps/cli/scripts/prepare-publish.mjs` rewrites `dist/package.json` just before publishing, keeping only the fields needed for npm (name, version, bin, etc.) and `node-pty` as the sole runtime dependency.
