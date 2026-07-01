@@ -4,9 +4,6 @@ import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
-import { ToastContainer } from './components/ToastContainer.js';
-import { AsyncOpsIndicator } from './components/AsyncOpsIndicator.js';
-import { PlanIndicator } from './components/PlanIndicator.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { settlePendingRuns } from './hooks/useAsyncOperation.js';
@@ -93,9 +90,6 @@ function App() {
           confirmInput={deleteConfirm.confirmInput}
         />
       )}
-      <AsyncOpsIndicator />
-      <PlanIndicator />
-      <ToastContainer />
     </Box>
   );
 }

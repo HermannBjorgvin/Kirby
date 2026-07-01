@@ -374,30 +374,43 @@ export const DiffFileList = memo(function DiffFileList({
           </Text>
           {shownGeneral.map((thread, idx) => {
             const pKey = planItemKey('remote', thread.id);
+            // While annotating, the composer takes the card's slot.
+            if (annotatingPlanKey === pKey) {
+              return (
+                <Box
+                  key={thread.id}
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderColor="green"
+                  marginBottom={1}
+                  paddingX={1}
+                >
+                  <Text wrap="truncate-end">
+                    <Text bold color="green">
+                      EDITING NOTE
+                    </Text>
+                    <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+                  </Text>
+                  <Text wrap="wrap">
+                    {annotationBuffer ?? ''}
+                    <Text color="green">▍</Text>
+                  </Text>
+                </Box>
+              );
+            }
             return (
-              <Box key={thread.id} flexDirection="column">
-                <CommentThreadCard
-                  thread={thread}
-                  selected={
-                    selectedCommentIndex !== undefined &&
-                    selectedCommentIndex === idx
-                  }
-                  replyingToThreadId={replyingToThreadId}
-                  replyBuffer={replyBuffer}
-                  inPlan={inPlanKeys?.has(pKey) ?? false}
-                  hasAnnotation={inPlanKeys?.get(pKey) === true}
-                />
-                {annotatingPlanKey === pKey && (
-                  <Box marginLeft={2} marginBottom={1}>
-                    <Box borderStyle="round" borderColor="green" paddingX={1}>
-                      <Text>
-                        <Text color="green">{'note '}</Text>
-                        {annotationBuffer ?? ''}▍
-                      </Text>
-                    </Box>
-                  </Box>
-                )}
-              </Box>
+              <CommentThreadCard
+                key={thread.id}
+                thread={thread}
+                selected={
+                  selectedCommentIndex !== undefined &&
+                  selectedCommentIndex === idx
+                }
+                replyingToThreadId={replyingToThreadId}
+                replyBuffer={replyBuffer}
+                inPlan={inPlanKeys?.has(pKey) ?? false}
+                hasAnnotation={inPlanKeys?.get(pKey) === true}
+              />
             );
           })}
         </Box>

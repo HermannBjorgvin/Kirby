@@ -14,18 +14,42 @@ import { planItemKey } from '../../plan/plan-types.js';
 import { DiffRow } from './DiffRow.js';
 import { languageFromFilename } from '../../utils/language.js';
 
-// Inline single-line note composer shown under a card while the user
-// is annotating its plan item (Shift+A). Mirrors the reply composer's
-// look but in green to match the plan badge.
-function PlanAnnotateInput({ buffer }: { buffer: string }) {
-  return (
-    <Box marginLeft={CARD_INDENT + 2} marginBottom={1}>
-      <Box borderStyle="round" borderColor="green" paddingX={1}>
-        <Text>
-          <Text color="green">{'note '}</Text>
-          {buffer}▍
+// Note composer shown while annotating a plan item (Shift+A). Rendered
+// *in place of* the comment card so it occupies the same slot — the card
+// is briefly obscured, which keeps the layout stable and works on small
+// terminals. Mirrors the card's indent + width so it lines up 1:1.
+function PlanAnnotateInput({
+  buffer,
+  width,
+}: {
+  buffer: string;
+  width: number;
+}) {
+  const box = (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="green"
+      marginBottom={1}
+      paddingX={1}
+      width={width}
+    >
+      <Text wrap="truncate-end">
+        <Text bold color="green">
+          EDITING NOTE
         </Text>
-      </Box>
+        <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+      </Text>
+      <Text wrap="wrap">
+        {buffer}
+        <Text color="green">▍</Text>
+      </Text>
+    </Box>
+  );
+  return (
+    <Box>
+      <Box width={CARD_INDENT} flexShrink={0} />
+      {box}
     </Box>
   );
 }
@@ -203,48 +227,55 @@ export const DiffViewer = memo(function DiffViewer({
     }
     if (line.type === 'thread-remote') {
       const pKey = planItemKey('remote', line.thread.id);
-      const inPlan = inPlanKeys?.has(pKey) ?? false;
-      return (
-        <>
-          <CommentThreadCard
-            key={`r:${line.thread.id}`}
-            thread={line.thread}
-            selected={selectedCommentId === line.thread.id}
-            replyingToThreadId={replyingToThreadId}
-            replyBuffer={replyBuffer}
-            maxWidth={cardWidth}
-            indent={CARD_INDENT}
-            inPlan={inPlan}
-            hasAnnotation={inPlanKeys?.get(pKey) === true}
+      // While annotating this item, the composer takes the card's slot.
+      if (annotatingPlanKey === pKey) {
+        return (
+          <PlanAnnotateInput
+            key={`ann:r:${line.thread.id}`}
+            buffer={annotationBuffer ?? ''}
+            width={cardWidth}
           />
-          {annotatingPlanKey === pKey && (
-            <PlanAnnotateInput buffer={annotationBuffer ?? ''} />
-          )}
-        </>
+        );
+      }
+      return (
+        <CommentThreadCard
+          key={`r:${line.thread.id}`}
+          thread={line.thread}
+          selected={selectedCommentId === line.thread.id}
+          replyingToThreadId={replyingToThreadId}
+          replyBuffer={replyBuffer}
+          maxWidth={cardWidth}
+          indent={CARD_INDENT}
+          inPlan={inPlanKeys?.has(pKey) ?? false}
+          hasAnnotation={inPlanKeys?.get(pKey) === true}
+        />
       );
     }
     const pKey = planItemKey('local', line.comment.id);
-    const inPlan = inPlanKeys?.has(pKey) ?? false;
-    return (
-      <>
-        <LocalCommentCard
-          key={`l:${line.comment.id}`}
-          comment={line.comment}
-          selected={selectedCommentId === line.comment.id}
-          pendingDelete={pendingDeleteCommentId === line.comment.id}
-          editing={editingCommentId === line.comment.id}
-          editBuffer={
-            editingCommentId === line.comment.id ? editBuffer : undefined
-          }
-          maxWidth={cardWidth}
-          indent={CARD_INDENT}
-          inPlan={inPlan}
-          hasAnnotation={inPlanKeys?.get(pKey) === true}
+    if (annotatingPlanKey === pKey) {
+      return (
+        <PlanAnnotateInput
+          key={`ann:l:${line.comment.id}`}
+          buffer={annotationBuffer ?? ''}
+          width={cardWidth}
         />
-        {annotatingPlanKey === pKey && (
-          <PlanAnnotateInput buffer={annotationBuffer ?? ''} />
-        )}
-      </>
+      );
+    }
+    return (
+      <LocalCommentCard
+        key={`l:${line.comment.id}`}
+        comment={line.comment}
+        selected={selectedCommentId === line.comment.id}
+        pendingDelete={pendingDeleteCommentId === line.comment.id}
+        editing={editingCommentId === line.comment.id}
+        editBuffer={
+          editingCommentId === line.comment.id ? editBuffer : undefined
+        }
+        maxWidth={cardWidth}
+        indent={CARD_INDENT}
+        inPlan={inPlanKeys?.has(pKey) ?? false}
+        hasAnnotation={inPlanKeys?.get(pKey) === true}
+      />
     );
   }
 

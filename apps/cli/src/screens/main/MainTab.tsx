@@ -19,6 +19,7 @@ import { useSessionActions } from '../../context/SessionContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
+import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
 import { getItemKey } from '../../types.js';
 import { handleConfirmInput, handleSidebarInput } from './main-input.js';
@@ -250,6 +251,7 @@ function MainTabBody({
           onFocusSidebar={onTerminalEscape}
         />
       </Pane>
+      <TopRightOverlay hidePlanIndicator={pane.paneMode === 'plan-checkout'} />
     </>
   );
 }
