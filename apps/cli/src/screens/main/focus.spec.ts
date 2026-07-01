@@ -121,7 +121,7 @@ describe('getPaneTitle', () => {
     );
 
     expect(
-      getPaneTitle({ ...baseTitle, aiCommand: 'gh copilot', sessionName: 'x' })
+      getPaneTitle({ ...baseTitle, aiCommand: 'copilot', sessionName: 'x' })
     ).toBe('\u{1F916} Copilot \u2014 x');
   });
 
