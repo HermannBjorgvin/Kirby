@@ -24,10 +24,12 @@ const EDGE_GUTTER = 2;
 const TOP_ROW = 1;
 
 interface TopRightOverlayProps {
-  hidePlanIndicator?: boolean;
+  showPlanIndicator?: boolean;
 }
 
-export function TopRightOverlay({ hidePlanIndicator }: TopRightOverlayProps) {
+export function TopRightOverlay({
+  showPlanIndicator = true,
+}: TopRightOverlayProps) {
   const { termCols, termRows } = useLayout();
 
   return (
@@ -49,7 +51,7 @@ export function TopRightOverlay({ hidePlanIndicator }: TopRightOverlayProps) {
         gap={1}
       >
         <AsyncOpsContent />
-        {!hidePlanIndicator && <PlanIndicatorSection />}
+        {showPlanIndicator && <PlanIndicatorSection />}
         <ToastStack />
       </Box>
     </Box>

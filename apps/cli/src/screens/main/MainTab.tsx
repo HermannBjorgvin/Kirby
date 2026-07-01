@@ -214,6 +214,7 @@ function MainTabBody({
         paneRows: terminal.paneRows,
       }
     : terminal;
+  const showPlanIndicator = pane.paneMode !== 'plan-checkout';
 
   useInactiveAlertWatcher(sidebar.sessionNameForTerminal);
 
@@ -251,7 +252,7 @@ function MainTabBody({
           onFocusSidebar={onTerminalEscape}
         />
       </Pane>
-      <TopRightOverlay hidePlanIndicator={pane.paneMode === 'plan-checkout'} />
+      <TopRightOverlay showPlanIndicator={showPlanIndicator} />
     </>
   );
 }
