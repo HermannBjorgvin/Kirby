@@ -3,6 +3,7 @@ import {
   run,
   isRunning,
   beginOp,
+  settlePendingRuns,
   __resetAsyncOperationsForTest,
 } from './useAsyncOperation.js';
 
@@ -29,6 +30,47 @@ describe('useAsyncOperation (module store)', () => {
     await running;
 
     expect(isRunning('sync')).toBe(false);
+  });
+
+  it('settlePendingRuns waits for an in-flight run and resolves after it finishes', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const op = run('delete', () => gate);
+
+    let settled = false;
+    const settling = settlePendingRuns().then(() => {
+      settled = true;
+    });
+
+    // Flush microtasks — the guard must still be pending while the op runs.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release();
+    await op;
+    await settling;
+    expect(settled).toBe(true);
+  });
+
+  it('settlePendingRuns resolves immediately when nothing is in flight', async () => {
+    await expect(settlePendingRuns()).resolves.toBeUndefined();
+  });
+
+  it('settlePendingRuns still resolves when the in-flight run rejects', async () => {
+    let reject!: (e: unknown) => void;
+    const gate = new Promise<void>((_, r) => {
+      reject = r;
+    });
+    // Attach a catch so the rejection isn't unhandled once it settles.
+    const op = run('delete', () => gate).catch(() => undefined);
+
+    const settling = settlePendingRuns();
+    reject(new Error('boom'));
+    await op;
+    await expect(settling).resolves.toBeUndefined();
   });
 
   it('collapses a second concurrent run of the same op', async () => {
