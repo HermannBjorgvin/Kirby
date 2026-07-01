@@ -269,3 +269,101 @@ describe('registry — diff-file-list comment actions', () => {
     );
   });
 });
+
+// ── Plan ("add-to-cart") bindings ─────────────────────────────────
+
+// Synthesize a keypress from a descriptor so we can feed real bindings
+// back through the resolver. Mirrors how Ink reports keys: uppercase
+// letters carry an implicit shift.
+function keypressFromDescriptor(desc: {
+  input?: string;
+  flags?: Record<string, boolean>;
+  ctrl?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+}): { input: string; key: Key } {
+  const key = makeKey({
+    ...(desc.flags ?? {}),
+    ctrl: desc.ctrl === true,
+    meta: desc.meta === true,
+    shift:
+      desc.shift === true ||
+      (desc.input !== undefined && /[A-Z]/.test(desc.input)),
+  });
+  return { input: desc.input ?? '', key };
+}
+
+describe('registry — plan bindings', () => {
+  const requiredActions: ActionId[] = [
+    'diff-viewer.plan-toggle',
+    'diff-viewer.plan-annotate',
+    'diff-viewer.plan-checkout',
+    'diff-file-list.plan-toggle',
+    'diff-file-list.plan-annotate',
+    'diff-file-list.plan-checkout',
+    'plan-checkout.navigate-down',
+    'plan-checkout.navigate-up',
+    'plan-checkout.toggle-include',
+    'plan-checkout.annotate',
+    'plan-checkout.send',
+    'plan-checkout.back',
+  ];
+
+  it.each(requiredActions)('registers %s in ACTIONS', (id) => {
+    expect(actionExists(id)).toBe(true);
+  });
+
+  it('Normie: a=add, Shift+A=annotate, c=checkout in the diff viewer', () => {
+    expect(resolveInPreset('a', makeKey(), 'diff-viewer', NORMIE_PRESET)).toBe(
+      'diff-viewer.plan-toggle'
+    );
+    expect(
+      resolveInPreset('A', makeKey({ shift: true }), 'diff-viewer', NORMIE_PRESET)
+    ).toBe('diff-viewer.plan-annotate');
+    expect(resolveInPreset('c', makeKey(), 'diff-viewer', NORMIE_PRESET)).toBe(
+      'diff-viewer.plan-checkout'
+    );
+  });
+
+  it('Vim: checkout is o (c stays next-comment)', () => {
+    expect(resolveInPreset('o', makeKey(), 'diff-viewer', VIM_PRESET)).toBe(
+      'diff-viewer.plan-checkout'
+    );
+    // Regression: vim `c` must still be comment nav, not checkout.
+    expect(resolveInPreset('c', makeKey(), 'diff-viewer', VIM_PRESET)).toBe(
+      'diff-viewer.next-comment'
+    );
+  });
+
+  // Exhaustive guard: every binding in every context/preset must resolve
+  // to exactly one action (no intra-context collisions). Catches future
+  // key clashes automatically, including the vim `c`/checkout trap.
+  const CONTEXTS = [
+    'sidebar',
+    'settings',
+    'branch-picker',
+    'confirm',
+    'confirm-delete',
+    'diff-file-list',
+    'diff-viewer',
+    'plan-checkout',
+    'controls',
+  ] as const;
+
+  for (const preset of [NORMIE_PRESET, VIM_PRESET]) {
+    for (const context of CONTEXTS) {
+      const contextActions = ACTIONS.filter((a) => a.context === context);
+      for (const action of contextActions) {
+        const descriptors = preset.bindings[action.id] ?? [];
+        for (const [di, desc] of descriptors.entries()) {
+          it(`${preset.id}/${context}: ${action.id}[${di}] has no conflict`, () => {
+            const { input, key } = keypressFromDescriptor(desc);
+            expect(
+              findConflict(input, key, context, preset.bindings, ACTIONS, action.id)
+            ).toBeNull();
+          });
+        }
+      }
+    }
+  }
+});

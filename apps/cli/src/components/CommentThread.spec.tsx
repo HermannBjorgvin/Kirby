@@ -100,6 +100,47 @@ describe('CommentThreadCard — header overflow', () => {
   });
 });
 
+describe('in-plan badge', () => {
+  it('shows the ◉ badge on a remote card when in plan (no note)', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} inPlan maxWidth={80} />
+    );
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('◉ plan');
+    expect(visible).not.toContain('✎');
+  });
+
+  it('shows the ✎ badge when the plan item is annotated', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} inPlan hasAnnotation maxWidth={80} />
+    );
+    expect(stripAnsi(lastFrame() ?? '')).toContain('✎ plan');
+  });
+
+  it('shows no badge when not in plan', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} maxWidth={80} />
+    );
+    expect(stripAnsi(lastFrame() ?? '')).not.toContain('plan');
+  });
+
+  it('renders the badge on a local card too', () => {
+    const { lastFrame } = render(
+      <LocalCommentCard comment={makeReview()} inPlan maxWidth={80} />
+    );
+    expect(stripAnsi(lastFrame() ?? '')).toContain('◉ plan');
+  });
+
+  it('keeps the badge on the header row (single line)', () => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={makeThread()} selected inPlan maxWidth={80} />
+    );
+    const rows = stripAnsi(lastFrame() ?? '').split('\n');
+    const headerRow = rows.find((r) => r.includes('plan'))!;
+    expect(headerRow).toContain('alice');
+  });
+});
+
 describe('LocalCommentCard — header overflow', () => {
   it('renders the header on a single row when selected with full hints', () => {
     const comment = makeReview({

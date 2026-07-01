@@ -28,6 +28,44 @@ function locationLabel(item: PlanItem): string {
   return slash >= 0 ? base.slice(slash + 1) : base;
 }
 
+// Pure presentational box — the titled "Plan (N)" list. Split out from
+// the absolute-positioning wrapper so it can be unit-tested without the
+// full-screen overlay (which ink-testing-library can't render in
+// isolation).
+export function PlanIndicatorContent({ items }: { items: PlanItem[] }) {
+  const visible = items.slice(0, MAX_ROWS);
+  const overflow = items.length - visible.length;
+  // Content width inside the bordered box (border 2 + paddingX 2).
+  const contentWidth = INDICATOR_WIDTH - 4;
+
+  return (
+    <Box
+      marginTop={TOP_OFFSET}
+      marginRight={EDGE_GUTTER}
+      width={INDICATOR_WIDTH}
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="green"
+      paddingX={1}
+    >
+      <Text bold color="green">
+        Plan ({items.length})
+      </Text>
+      {visible.map((item) => (
+        <Text key={`${item.kind}:${item.id}`} wrap="truncate-end">
+          {item.annotation ? (
+            <Text color="green">{'✎ '}</Text>
+          ) : (
+            <Text dimColor>{'• '}</Text>
+          )}
+          {truncate(`${locationLabel(item)} ${item.body}`, contentWidth - 2)}
+        </Text>
+      ))}
+      {overflow > 0 && <Text dimColor>+{overflow} more</Text>}
+    </Box>
+  );
+}
+
 export function PlanIndicator() {
   const plan = usePlan();
   const { selectedPr } = useSidebar();
@@ -35,11 +73,6 @@ export function PlanIndicator() {
 
   const items = selectedPr ? plan.list(selectedPr.id) : [];
   if (items.length === 0) return null;
-
-  const visible = items.slice(0, MAX_ROWS);
-  const overflow = items.length - visible.length;
-  // Content width inside the bordered box (border 2 + paddingX 2).
-  const contentWidth = INDICATOR_WIDTH - 4;
 
   return (
     <Box
@@ -52,33 +85,7 @@ export function PlanIndicator() {
       alignItems="flex-start"
       justifyContent="flex-end"
     >
-      <Box
-        marginTop={TOP_OFFSET}
-        marginRight={EDGE_GUTTER}
-        width={INDICATOR_WIDTH}
-        flexDirection="column"
-        borderStyle="round"
-        borderColor="green"
-        paddingX={1}
-      >
-        <Text bold color="green">
-          Plan ({items.length})
-        </Text>
-        {visible.map((item) => (
-          <Text key={`${item.kind}:${item.id}`} wrap="truncate-end">
-            {item.annotation ? (
-              <Text color="green">{'✎ '}</Text>
-            ) : (
-              <Text dimColor>{'• '}</Text>
-            )}
-            {truncate(
-              `${locationLabel(item)} ${item.body}`,
-              contentWidth - 2
-            )}
-          </Text>
-        ))}
-        {overflow > 0 && <Text dimColor>+{overflow} more</Text>}
-      </Box>
+      <PlanIndicatorContent items={items} />
     </Box>
   );
 }
