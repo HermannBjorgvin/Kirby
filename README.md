@@ -1,87 +1,58 @@
 # 😸 Kirby
 
-A terminal UI for managing multiple AI coding sessions across git worktrees, with integrated GitHub and Azure DevOps pull request tracking.
+A terminal UI for running AI coding agents across git worktrees, with pull request status and code review built in.
+
+Kirby started as a way to solve my own workflow. I spend my working hours in a large monorepo, usually with several features and reviews in flight at once, and I wanted one place to manage the worktrees and agent sessions that go with them and to help me automate PR reviews while remaining familiar with the source code. It's early and still moving fast, @minigod and I have been using it as our daily worktree manager and now I feel it is feature complete enough to share with others who might have a similar workflow.
 
 ## Features
 
-- **Session management** — create, kill, and delete worktree-based AI coding sessions from a single TUI
-- **PR tracking** — view open, draft, and merged pull requests alongside your active sessions
-- **Code reviews** — see PRs where you're a reviewer, grouped by status (needs review, waiting for author, approved)
-- **Branch sync** — automatic merge detection, conflict counting, auto-delete of merged branches, one-key rebase
-- **Configurable AI tool** — switch between Claude, Codex, Gemini, Copilot, or a custom command
-- **Settings panel** — auto-detect VCS provider, configure sync intervals, and set project preferences
+### Worktree management
 
-## Screenshot
+- **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session. Spin them up, switch between them, and tear them down without stashing or disturbing your main checkout. Built for monorepos where several features are in progress at the same time.
+- **PR status next to every worktree** - the sidebar shows each branch's pull request state inline: open, draft, or merged, CI result, review status, and conflict count against the base. Most worktree tools stop at the branch name; Kirby tells you where the branch actually stands.
+- **GitHub and Azure DevOps** - both supported today. Support for other providers can be added via pull request.
+- **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and rebases onto the base with one key.
 
-The sidebar shows active PR's and lets you create a new agent session and worktree based on the branch.
-<img width="1682" height="1518" alt="image" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
+### Review automations - draft reviews and draft plans
 
-## Configuration
+- **Agent-drafted reviews** - point an agent at a pull request and have it review the diff. It leaves inline draft comments that show up right in the diff viewer, and you pick which ones to actually post and which to drop. You stay the author of record; the agent just does the first pass.
+- **Plan comments into a cart** - the other direction: on a PR you're resolving, select the review comments you want to address, optionally annotate each with a note on how you want it handled, and add them to a draft plan like you're shopping on eBay. Then when you are happy you can go to checkout and send the plan to a new session and the agent gets to work.
+- **Review in the terminal** - browse a PR's files and diffs, read comment threads, reply, and resolve or reopen threads without leaving the TUI.
 
-Press `s` to open the settings panel. From there you can configure the VCS provider, AI tool, sync intervals, and auto-behaviors (auto-delete merged branches, auto-rebase). Press `a` to auto-detect project settings from the git remote.
+### Customizable and Agent agnostic
+
+- **Pick your agent** - Claude, Codex, Gemini, Copilot, or OpenCode, configurable per project.
+- **Customizable keybindings** - Normie and Vim presets out of the box, remappable from the Controls panel.
+
+> Kirby is early-stage software. It works well enough that we rely on it every day, but expect rough edges and breaking changes.
 
 ## Prerequisites
 
-- Node.js 20+
 - git
-- `gh` CLI (for GitHub provider)
+- For GitHub: the `gh` CLI, authenticated
+- For Azure DevOps: a personal access token with repo and pull request access
 
 ## Installation
 
-### Global install (recommended)
+### Global install (no NPM package yet)
 
 Build a self-contained bundle and install the `kirby` command globally:
 
 ```sh
-npm install
+npm ci
 npx nx install-global cli
 ```
 
-Then run from any project directory:
+Then run `kirby` from any project directory.
 
-```sh
-kirby
-kirby /path/to/project
-```
+## Configuration
 
-### Development
+On first run in a new project, an onboarding wizard walks you through connecting your VCS provider. After that, press the settings key (`s` by default) to change the provider, AI agent, sync intervals, and auto-behaviors (auto-delete merged branches, auto-rebase). Auto-detect fills in project settings from the git remote.
 
-```sh
-npm install
-npx nx serve cli
-```
+Keybindings are remappable. Kirby ships with a Normie preset and a Vim preset; open the Controls panel to switch presets or rebind individual actions.
 
-## Testing
+## Screenshot
 
-### Unit & Component Tests
+The sidebar lists your branches with their PR status and lets you start an agent session and worktree from any of them.
 
-```sh
-npx nx test worktree-manager   # library unit tests
-npx nx test cli                # CLI unit + integration tests (vitest)
-```
-
-### E2E Tests
-
-E2E tests drive Kirby in headless Chromium via `@playwright/test` and the `apps/cli-wterm-host/` bridge (which runs Kirby in a PTY and streams it over WebSocket to `@wterm/dom`).
-
-```sh
-npx nx e2e cli-e2e
-```
-
-This runs fast startup/navigation tests. Integration tests that hit GitHub are **skipped** unless `GH_TOKEN` is set.
-
-### Integration Tests
-
-Integration tests exercise real GitHub operations — creating branches, PRs, merging, and verifying auto-delete behavior.
-
-```sh
-GH_TOKEN=<fine-grained-PAT> npx nx e2e:integration cli-e2e
-```
-
-The PAT needs **Contents: R/W** and **Pull requests: R/W** scoped to the test repo. By default the tests use `kirby-test-runner/kirby-integration-test-repository` — override with `TEST_REPO=owner/repo`.
-
-In CI, integration tests run in a separate **Integration Tests** workflow (`.github/workflows/integration.yml`) using the `INTEGRATION_TEST_PAT` repo secret.
-
-## License
-
-MIT
+<img alt="image" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
