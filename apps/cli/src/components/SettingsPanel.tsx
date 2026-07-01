@@ -26,7 +26,7 @@ export const AI_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Claude', value: 'claude --continue || claude' },
   { name: 'Codex', value: 'codex' },
   { name: 'Gemini', value: 'gemini' },
-  { name: 'Copilot', value: 'gh copilot' },
+  { name: 'Copilot', value: 'copilot' },
   { name: 'Custom', value: null },
 ];
 
