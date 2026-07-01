@@ -170,10 +170,33 @@ describe('activity', () => {
     }
 
     pty.exit(0);
-    expect(snapshot('s1')).toEqual({ active: false, flashing: true });
+    expect(snapshot('s1')).toEqual({
+      active: false,
+      flashing: true,
+      exited: true,
+    });
 
     noteSeen('s1');
     expect(snapshot('s1').flashing).toBe(false);
+  });
+
+  it('exposes exited without collapsing to QUIET even when not flashing', () => {
+    // A short-lived agent: one brief burst (streak below MIN_ACTIVE_MS),
+    // then idle, then exit. It never qualifies to flash, but the
+    // inactive-alert watcher still needs `exited` to tell "the agent
+    // finished" apart from "the agent is idle, waiting on you".
+    const pty = new MockPty();
+    attach('s1', pty.asPty());
+
+    pty.emit('xxxx');
+    vi.advanceTimersByTime(ACTIVITY_IDLE_MS + 1); // lapse into idle
+    pty.exit(0);
+
+    expect(snapshot('s1')).toEqual({
+      active: false,
+      flashing: false,
+      exited: true,
+    });
   });
 
   it('re-attach with the same name clears flashing carried over from the previous PTY', () => {

@@ -41,10 +41,15 @@ export function useInactiveAlertWatcher(currentlyViewed: string | null): void {
       const prev = prevActive.current;
       const next = new Map<string, boolean>();
       for (const s of sessionsRef.current) {
-        const cur = snapshot(s.name).active;
+        const snap = snapshot(s.name);
+        const cur = snap.active;
         next.set(s.name, cur);
         const wasActive = prev.get(s.name) === true;
-        if (wasActive && !cur && s.name !== viewedRef.current) {
+        // An exited agent's active→idle transition is "the agent
+        // finished", not "the agent is waiting on you" — don't toast it
+        // or add it to the Escape-jump queue (the registry's onExit also
+        // removes any alert that was already queued before it exited).
+        if (wasActive && !cur && !snap.exited && s.name !== viewedRef.current) {
           flash(`${s.name} is idle`, 'info');
           if (jumpEnabledRef.current) enqueueAlert(s.name);
         }

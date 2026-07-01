@@ -27,6 +27,12 @@ export type OperationName =
 let inFlight = new Set<OperationName>();
 const listeners = new Set<() => void>();
 
+// Live promises for every `run()` op currently executing. Quit awaits
+// these so a force-exit doesn't abort a mid-flight git mutation
+// (worktree create/delete, rebase) and leave junk on disk. Read ops via
+// beginOp (diff loads) aren't tracked — aborting them loses nothing.
+const pendingRuns = new Set<Promise<void>>();
+
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
   return () => {
@@ -56,13 +62,31 @@ export async function run(
   inFlight = new Set(inFlight);
   inFlight.add(name);
   notify();
+  const task = (async () => {
+    try {
+      await fn();
+    } finally {
+      inFlight = new Set(inFlight);
+      inFlight.delete(name);
+      notify();
+    }
+  })();
+  pendingRuns.add(task);
   try {
-    await fn();
+    await task;
   } finally {
-    inFlight = new Set(inFlight);
-    inFlight.delete(name);
-    notify();
+    pendingRuns.delete(task);
   }
+}
+
+/**
+ * Resolves once every `run()` op in flight at call time has settled
+ * (fulfilled or rejected). Ops started afterwards are not awaited. Quit
+ * uses this — bounded by its own grace timeout — so a git mutation can
+ * finish before the process force-exits.
+ */
+export async function settlePendingRuns(): Promise<void> {
+  await Promise.allSettled([...pendingRuns]);
 }
 
 /** Stable function — always reads the latest module-local set. */
@@ -104,6 +128,7 @@ export function beginOp(name: OperationName): () => void {
 export function __resetAsyncOperationsForTest(): void {
   inFlight = new Set();
   refCounts.clear();
+  pendingRuns.clear();
   notify();
 }
 

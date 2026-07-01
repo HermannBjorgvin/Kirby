@@ -11,7 +11,7 @@ import {
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, hasSession as hasPtySession } from '../pty-registry.js';
+import { killSession, isSessionAlive, onSessionExit } from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -28,7 +28,7 @@ export function useSessionManager(
       const name = worktreeSessionName(wt);
       filtered.push({
         name,
-        running: hasPtySession(name),
+        running: isSessionAlive(name),
         ...(wt.state ? { state: wt.state } : {}),
       });
     }
@@ -72,8 +72,21 @@ export function useSessionManager(
       reloadConfig();
     }
 
+    // Flip the row's running indicator (green → gray) when an agent PTY
+    // exits on its own. An exit changes nothing about the worktree list,
+    // so flip the one session's flag in place rather than shelling out
+    // to git via refreshSessions() — several agents exiting at once
+    // would otherwise spawn a listWorktrees() storm to update one bool.
+    const unsubscribe = onSessionExit((name) => {
+      if (cancelled) return;
+      setSessions((prev) =>
+        prev.map((s) => (s.name === name ? { ...s, running: false } : s))
+      );
+    });
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

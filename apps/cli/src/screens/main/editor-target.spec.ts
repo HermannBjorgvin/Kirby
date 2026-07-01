@@ -60,9 +60,7 @@ describe('resolveEditorTarget', () => {
       kind: 'orphan-pr',
       pr: makePr({ sourceBranch: 'feature/foo' }),
     };
-    const createWorktree = vi
-      .fn()
-      .mockResolvedValue('/wt/feature-foo');
+    const createWorktree = vi.fn().mockResolvedValue('/wt/feature-foo');
     const path = await resolveEditorTarget(item, {
       listWorktrees: async () => [],
       createWorktree,
@@ -77,9 +75,7 @@ describe('resolveEditorTarget', () => {
       pr: makePr({ sourceBranch: 'feature/bar' }),
       category: 'needs-review',
     };
-    const createWorktree = vi
-      .fn()
-      .mockResolvedValue('/wt/feature-bar');
+    const createWorktree = vi.fn().mockResolvedValue('/wt/feature-bar');
     const path = await resolveEditorTarget(item, {
       listWorktrees: async () => [],
       createWorktree,

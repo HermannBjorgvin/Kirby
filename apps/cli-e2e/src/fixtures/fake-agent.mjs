@@ -37,6 +37,9 @@
 //   --echo                 echo stdin back after --echo-delay-ms
 //   --echo-delay-ms=<n>    echo delay (default 0)
 //   --exit-after-ms=<n>    self-exit after N ms (default never)
+//   --exit-on-input        self-exit on the first byte of stdin (lets a
+//                          test end the agent deterministically, only
+//                          after it has observed the running state)
 
 const args = parseArgs(process.argv.slice(2));
 const banner = args.banner ?? 'kirby-fake-agent-ready';
@@ -49,6 +52,7 @@ const echoDelayMs = parseInt(args['echo-delay-ms'] ?? '0', 10);
 const exitAfterMs = args['exit-after-ms']
   ? parseInt(args['exit-after-ms'], 10)
   : null;
+const exitOnInput = !!args['exit-on-input'];
 
 const timers = new Set();
 const setTimer = (fn, ms) => {
@@ -88,9 +92,16 @@ process.on('SIGHUP', shutdown);
 
 process.stdout.write(banner + '\n');
 
-if (echo) {
+if (echo || exitOnInput) {
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.on('data', (chunk) => {
+    // exit-on-input wins: the first byte ends the agent. Resuming stdin
+    // also keeps the event loop alive until that byte arrives, so
+    // --silent --exit-on-input needs no keepAlive timer.
+    if (exitOnInput) {
+      shutdown();
+      return;
+    }
     setTimer(() => process.stdout.write(chunk), echoDelayMs);
   });
   process.stdin.resume();
