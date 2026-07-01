@@ -1,6 +1,6 @@
 {
   "name": "@hermannbjorgvin/kirby",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "A TUI workflow manager for git worktrees",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
@@ -39,6 +39,7 @@
             "esm"
           ],
           "bundle": true,
+          "thirdParty": true,
           "external": [
             "node-pty"
           ],
@@ -50,7 +51,10 @@
           ],
           "esbuildOptions": {
             "banner": {
-              "js": "#!/usr/bin/env node"
+              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);"
+            },
+            "alias": {
+              "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
             },
             "sourcemap": true,
             "outExtension": {
@@ -63,7 +67,10 @@
           "production": {
             "esbuildOptions": {
               "banner": {
-                "js": "#!/usr/bin/env node"
+                "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);"
+              },
+              "alias": {
+                "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
               },
               "sourcemap": false,
               "outExtension": {
