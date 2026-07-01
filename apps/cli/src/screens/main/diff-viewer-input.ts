@@ -13,7 +13,11 @@ import {
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import { planItemKey, snapshotLocal, snapshotRemote } from '../../plan/plan-types.js';
+import {
+  planItemKey,
+  snapshotLocal,
+  snapshotRemote,
+} from '../../plan/plan-types.js';
 import type { PlanItem } from '../../plan/plan-types.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
@@ -485,10 +489,15 @@ export function handleDiffViewerInput(
   }
 
   if (action === 'diff-viewer.plan-annotate' && planTarget && prId != null) {
-    // Add immediately (cart feedback), then open the note composer.
+    // Add immediately (cart feedback), then open the note composer
+    // pre-filled with any existing note so re-annotating never blanks it.
+    const key = planItemKey(planTarget.kind, planTarget.id);
+    const existing = ctx.plan
+      .list(prId)
+      .find((i) => planItemKey(i.kind, i.id) === key)?.annotation;
     ctx.plan.add(prId, planTarget);
-    ctx.pane.setAnnotatingPlanKey(planItemKey(planTarget.kind, planTarget.id));
-    ctx.pane.setAnnotationBuffer(planTarget.annotation ?? '');
+    ctx.pane.setAnnotatingPlanKey(key);
+    ctx.pane.setAnnotationBuffer(existing ?? '');
     return;
   }
 

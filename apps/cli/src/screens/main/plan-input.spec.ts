@@ -23,7 +23,17 @@ import {
 } from '../../plan/plan-store.js';
 
 const PR_ID = 1;
-const plan = { snapshot: new Map(), add, remove, has, toggle, annotate, list, count, clear };
+const plan = {
+  snapshot: new Map(),
+  add,
+  remove,
+  has,
+  toggle,
+  annotate,
+  list,
+  count,
+  clear,
+};
 
 function makeKey(overrides: Partial<Key> = {}): Key {
   return {
@@ -52,8 +62,11 @@ function makeKey(overrides: Partial<Key> = {}): Key {
 }
 
 const keybinds = {
-  resolve: (input: string, key: Key, context: 'diff-viewer' | 'diff-file-list') =>
-    resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
+  resolve: (
+    input: string,
+    key: Key,
+    context: 'diff-viewer' | 'diff-file-list'
+  ) => resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
 } as unknown as DiffViewerHandlerCtx['keybinds'];
 
 function localDraft(id = 'd1'): ReviewComment {
@@ -81,7 +94,12 @@ function remoteThread(id = 't1'): RemoteCommentThread {
     isOutdated: false,
     canResolve: true,
     comments: [
-      { id: `${id}-root`, author: 'alice', body: 'root', createdAt: '2026-01-01' },
+      {
+        id: `${id}-root`,
+        author: 'alice',
+        body: 'root',
+        createdAt: '2026-01-01',
+      },
     ],
   };
 }
@@ -110,7 +128,10 @@ function makePane(initial: Record<string, unknown> = {}) {
       if (prop.startsWith('set')) {
         const field = prop[3]!.toLowerCase() + prop.slice(4);
         return (v: unknown) => {
-          t[field] = typeof v === 'function' ? (v as (p: unknown) => unknown)(t[field]) : v;
+          t[field] =
+            typeof v === 'function'
+              ? (v as (p: unknown) => unknown)(t[field])
+              : v;
         };
       }
       return t[prop];
@@ -173,6 +194,23 @@ describe('diff-viewer plan actions', () => {
     );
   });
 
+  it('`Shift+A` on an annotated item pre-fills the composer and keeps the note', () => {
+    add(PR_ID, {
+      kind: 'local',
+      id: 'd1',
+      file: 'a.ts',
+      line: 5,
+      body: 'b',
+      severity: 'minor',
+    });
+    annotate(PR_ID, 'local', 'd1', 'existing note');
+    const pane = makePane({ selectedCommentId: 'd1' });
+    handleDiffViewerInput('A', makeKey({ shift: true }), viewerCtx(pane));
+    const state = pane as unknown as Record<string, unknown>;
+    expect(state.annotationBuffer).toBe('existing note');
+    expect(list(PR_ID)[0]!.annotation).toBe('existing note');
+  });
+
   it('annotation mode: typing then Enter stores the note', () => {
     add(PR_ID, {
       kind: 'local',
@@ -192,7 +230,9 @@ describe('diff-viewer plan actions', () => {
     handleDiffViewerInput('i', makeKey(), ctx);
     handleDiffViewerInput('', makeKey({ return: true }), ctx);
     expect(list(PR_ID)[0]!.annotation).toBe('hi');
-    expect((pane as unknown as Record<string, unknown>).annotatingPlanKey).toBeNull();
+    expect(
+      (pane as unknown as Record<string, unknown>).annotatingPlanKey
+    ).toBeNull();
   });
 
   it('`c` opens the checkout pane when the plan is non-empty', () => {

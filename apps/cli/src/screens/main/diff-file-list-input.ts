@@ -161,9 +161,13 @@ export function handleDiffFileListInput(
     const thread = ctx.shownGeneralComments[selectedCommentIdx];
     if (!thread) return;
     const item = snapshotRemote(thread);
+    const key = planItemKey(item.kind, item.id);
+    const existing = ctx.plan
+      .list(ctx.prId)
+      .find((i) => planItemKey(i.kind, i.id) === key)?.annotation;
     ctx.plan.add(ctx.prId, item);
-    ctx.pane.setAnnotatingPlanKey(planItemKey(item.kind, item.id));
-    ctx.pane.setAnnotationBuffer(item.annotation ?? '');
+    ctx.pane.setAnnotatingPlanKey(key);
+    ctx.pane.setAnnotationBuffer(existing ?? '');
     return;
   }
   if (action === 'diff-file-list.plan-checkout') {

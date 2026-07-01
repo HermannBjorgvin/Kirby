@@ -12,7 +12,10 @@ import {
   __resetPlanStoreForTest,
 } from './plan-store.js';
 
-function remote(id: string, over: Partial<RemotePlanItem> = {}): RemotePlanItem {
+function remote(
+  id: string,
+  over: Partial<RemotePlanItem> = {}
+): RemotePlanItem {
   return {
     kind: 'remote',
     id,
@@ -77,6 +80,22 @@ describe('plan-store', () => {
     expect(list(1)[0].annotation).toBe('use useMemo');
     annotate(1, 'remote', 't1', '   ');
     expect(list(1)[0].annotation).toBeUndefined();
+  });
+
+  it('re-adding an item preserves its existing annotation', () => {
+    add(1, remote('t1', { body: 'old' }));
+    annotate(1, 'remote', 't1', 'keep me');
+    // Re-snapshot from a fresh (annotation-less) source.
+    add(1, remote('t1', { body: 'new' }));
+    expect(list(1)[0].annotation).toBe('keep me');
+    expect(list(1)[0].body).toBe('new');
+  });
+
+  it('re-adding with an explicit annotation overrides the stored one', () => {
+    add(1, remote('t1'));
+    annotate(1, 'remote', 't1', 'old note');
+    add(1, remote('t1', { annotation: 'new note' }));
+    expect(list(1)[0].annotation).toBe('new note');
   });
 
   it('annotate is a no-op for a missing item', () => {

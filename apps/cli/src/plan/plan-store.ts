@@ -41,15 +41,22 @@ function setItems(prId: number, items: PlanItem[]): void {
 /**
  * Add (or re-snapshot) an item. If an item with the same identity
  * (kind + id) already exists it is replaced in place, preserving order
- * — this keeps the snapshot fresh without reordering the cart.
+ * — this keeps the snapshot fresh without reordering the cart. An
+ * existing user annotation is preserved when the incoming snapshot
+ * carries none, so re-adding an item never silently drops its note.
  */
 export function add(prId: number, item: PlanItem): void {
   const cur = plans.get(prId) ?? [];
   const key = planItemKey(item.kind, item.id);
   const idx = cur.findIndex((i) => planItemKey(i.kind, i.id) === key);
   const next = cur.slice();
-  if (idx >= 0) next[idx] = item;
-  else next.push(item);
+  if (idx >= 0) {
+    const prev = next[idx]!;
+    next[idx] =
+      item.annotation === undefined && prev.annotation !== undefined
+        ? { ...item, annotation: prev.annotation }
+        : item;
+  } else next.push(item);
   setItems(prId, next);
 }
 
