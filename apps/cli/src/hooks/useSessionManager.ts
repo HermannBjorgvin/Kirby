@@ -72,12 +72,16 @@ export function useSessionManager(
       reloadConfig();
     }
 
-    // Refresh sidebar state when an agent PTY exits on its own — flips
-    // the row's running indicator (green → gray) without waiting for
-    // the user to touch the session.
-    const unsubscribe = onSessionExit(() => {
+    // Flip the row's running indicator (green → gray) when an agent PTY
+    // exits on its own. An exit changes nothing about the worktree list,
+    // so flip the one session's flag in place rather than shelling out
+    // to git via refreshSessions() — several agents exiting at once
+    // would otherwise spawn a listWorktrees() storm to update one bool.
+    const unsubscribe = onSessionExit((name) => {
       if (cancelled) return;
-      void refreshSessions();
+      setSessions((prev) =>
+        prev.map((s) => (s.name === name ? { ...s, running: false } : s))
+      );
     });
 
     return () => {
