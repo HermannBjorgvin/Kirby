@@ -5,6 +5,10 @@
 // keeps the bundle self-contained; the no-op methods match the two calls in
 // ink's devtools.js.
 export default {
-  initialize() {},
-  connectToDevTools() {},
+  initialize() {
+    // intentionally empty — devtools are never connected in the bundled CLI
+  },
+  connectToDevTools() {
+    // intentionally empty — devtools are never connected in the bundled CLI
+  },
 };
