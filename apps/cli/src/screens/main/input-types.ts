@@ -132,6 +132,7 @@ export interface PlanCheckoutHandlerCtx {
   sidebar: SidebarContextValue;
   nav: NavValue;
   keybinds: KeybindResolveValue;
+  config: ConfigContextValue;
 }
 
 export interface ConfirmHandlerCtx {

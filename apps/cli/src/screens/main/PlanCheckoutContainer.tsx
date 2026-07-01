@@ -8,6 +8,7 @@ import { useSidebar } from '../../context/SidebarContext.js';
 import { useNavState, useNavActions } from '../../context/NavContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import { usePlan } from '../../context/PlanContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { handlePlanCheckoutInput } from './main-input.js';
@@ -40,6 +41,7 @@ export function PlanCheckoutContainer({
   );
   const asyncOps = useAsyncOps();
   const plan = usePlan();
+  const config = useConfig();
 
   const prId = selectedPr?.id;
   const items = prId != null ? plan.list(prId) : [];
@@ -56,6 +58,7 @@ export function PlanCheckoutContainer({
         sidebar,
         nav,
         keybinds,
+        config,
       });
     },
     { isActive: !terminalFocused }

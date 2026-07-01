@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
 
-// Mock the PTY registry and worktree manager so the orchestrator's
-// branching is observable without spawning real processes.
+// Mock the launcher + registry so the orchestrator's branching is
+// observable without spawning real processes.
 const hasSession = vi.fn();
-const getSession = vi.fn();
-const spawnSession = vi.fn();
 vi.mock('../pty-registry.js', () => ({
   hasSession: (n: string) => hasSession(n),
-  getSession: (n: string) => getSession(n),
-  spawnSession: (...a: unknown[]) => spawnSession(...a),
+}));
+
+const launchSession = vi.fn();
+const deliverToRunningSession = vi.fn();
+vi.mock('./launch-session.js', () => ({
+  launchSession: (...a: unknown[]) => launchSession(...a),
+  deliverToRunningSession: (...a: unknown[]) => deliverToRunningSession(...a),
 }));
 
 const branchToSessionName = vi.fn((b: string) => `sess-${b}`);
@@ -19,9 +22,10 @@ vi.mock('@kirby/worktree-manager', () => ({
   createWorktree: (b: string) => createWorktree(b),
 }));
 
-import { checkoutPlan } from './checkout-orchestrator.js';
+import { checkoutPlan } from './checkout-plan.js';
 
 const pr = { id: 7, sourceBranch: 'feature/x' } as PullRequestInfo;
+const config = { vendorAuth: {}, vendorProject: {} } as AppConfig;
 
 function deps(mode: 'inject' | 'new-session', flashStatus = vi.fn()) {
   return {
@@ -30,6 +34,7 @@ function deps(mode: 'inject' | 'new-session', flashStatus = vi.fn()) {
     paneCols: 80,
     paneRows: 24,
     mode,
+    config,
     flashStatus,
   };
 }
@@ -40,46 +45,49 @@ describe('checkoutPlan', () => {
     createWorktree.mockResolvedValue('/wt/feature-x');
   });
 
-  it('State A / inject: writes to the running PTY, never spawns', async () => {
+  it('State A / inject: delivers to the running session, never spawns', async () => {
     hasSession.mockReturnValue(true);
-    const write = vi.fn();
-    getSession.mockReturnValue({ pty: { write }, exited: false });
+    deliverToRunningSession.mockReturnValue(true);
 
     const result = await checkoutPlan(deps('inject'));
 
     expect(result).toBe('injected');
-    expect(write).toHaveBeenCalledTimes(1);
-    // Prompt is submitted with a trailing carriage return, no shell-quoting.
-    expect(write).toHaveBeenCalledWith(expect.stringMatching(/\r$/));
-    expect(spawnSession).not.toHaveBeenCalled();
+    expect(deliverToRunningSession).toHaveBeenCalledWith(
+      'sess-feature/x',
+      expect.stringContaining('Resolve these PR review comments')
+    );
+    expect(launchSession).not.toHaveBeenCalled();
     expect(createWorktree).not.toHaveBeenCalled();
   });
 
-  it('State A / inject: fails when the session has exited', async () => {
+  it('State A / inject: fails when the session is no longer alive', async () => {
     hasSession.mockReturnValue(true);
-    getSession.mockReturnValue({ pty: { write: vi.fn() }, exited: true });
+    deliverToRunningSession.mockReturnValue(false);
     const flash = vi.fn();
 
     const result = await checkoutPlan(deps('inject', flash));
 
     expect(result).toBe('failed');
-    expect(spawnSession).not.toHaveBeenCalled();
+    expect(launchSession).not.toHaveBeenCalled();
     expect(flash).toHaveBeenCalled();
   });
 
-  it('State A / new-session: respawns in the existing worktree', async () => {
+  it('State A / new-session: respawns in the existing worktree with the seed intent', async () => {
     hasSession.mockReturnValue(true);
 
     const result = await checkoutPlan(deps('new-session'));
 
     expect(result).toBe('spawned');
     expect(createWorktree).toHaveBeenCalledWith('feature/x');
-    expect(spawnSession).toHaveBeenCalledTimes(1);
-    const args = spawnSession.mock.calls[0];
-    expect(args[0]).toBe('sess-feature/x');
-    // Seed command must NOT use --continue (else the plan is swallowed).
-    expect(args[2][1]).not.toContain('--continue');
-    expect(args[2][1]).toContain("claude '");
+    expect(launchSession).toHaveBeenCalledTimes(1);
+    const arg = launchSession.mock.calls[0][0];
+    expect(arg.name).toBe('sess-feature/x');
+    expect(arg.cwd).toBe('/wt/feature-x');
+    // Must seed (deliver the plan), never continue.
+    expect(arg.request).toEqual({
+      intent: 'seed',
+      prompt: expect.stringContaining('Resolve these PR review comments'),
+    });
   });
 
   it('States B/C: no running agent → create worktree + spawn', async () => {
@@ -89,8 +97,8 @@ describe('checkoutPlan', () => {
 
     expect(result).toBe('spawned');
     expect(createWorktree).toHaveBeenCalledWith('feature/x');
-    expect(spawnSession).toHaveBeenCalledTimes(1);
-    expect(spawnSession.mock.calls[0][5]).toBe('/wt/feature-x');
+    expect(launchSession).toHaveBeenCalledTimes(1);
+    expect(launchSession.mock.calls[0][0].cwd).toBe('/wt/feature-x');
   });
 
   it('fails when the worktree cannot be created', async () => {
@@ -101,17 +109,15 @@ describe('checkoutPlan', () => {
     const result = await checkoutPlan(deps('new-session', flash));
 
     expect(result).toBe('failed');
-    expect(spawnSession).not.toHaveBeenCalled();
+    expect(launchSession).not.toHaveBeenCalled();
     expect(flash).toHaveBeenCalled();
   });
 
-  it('sanitizes quotes in the seed command', async () => {
+  it('passes the prompt through verbatim — no quote stripping', async () => {
     hasSession.mockReturnValue(false);
 
     await checkoutPlan({ ...deps('new-session'), prompt: `it's "quoted"` });
 
-    const cmd = spawnSession.mock.calls[0][2][1] as string;
-    expect(cmd).not.toContain('"');
-    expect(cmd).toBe("claude 'its quoted'");
+    expect(launchSession.mock.calls[0][0].request.prompt).toBe(`it's "quoted"`);
   });
 });

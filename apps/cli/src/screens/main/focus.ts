@@ -10,8 +10,8 @@
 //      that the sidebar is NOT focused in those cases.
 
 import type { Focus, PaneMode } from '../../types.js';
-import { resolvePresetName } from '../../utils/resolve-preset-name.js';
-import { AI_PRESETS } from '../../components/SettingsPanel.js';
+import type { AgentId, AppConfig } from '@kirby/vcs-core';
+import { resolveAgent } from '../../agents/registry.js';
 
 export interface FocusState {
   navFocus: Focus;
@@ -62,6 +62,7 @@ export interface PaneTitleState {
   settingsOpen: boolean;
   controlsOpen: boolean;
   reviewConfirmActive: boolean;
+  agentId: AgentId | undefined;
   aiCommand: string | undefined;
   prTitle: string | undefined;
   sessionName: string | null;
@@ -92,7 +93,14 @@ export function getPaneTitle(s: PaneTitleState): string {
     return 'Files Changed';
   if (s.paneMode === 'plan-checkout') return 'Plan Checkout';
 
-  const agent = resolvePresetName(s.aiCommand, AI_PRESETS, 'Agent');
+  // Resolve the display name through the agent registry so it honors an
+  // explicit agentId or a legacy aiCommand. The hidden test runner (and
+  // any unrecognized command) shows the generic "Agent".
+  const resolved = resolveAgent({
+    agentId: s.agentId,
+    aiCommand: s.aiCommand,
+  } as AppConfig);
+  const agent = resolved.hidden ? 'Agent' : resolved.name;
   const label = s.prTitle || s.sessionName;
   const base = label
     ? `\u{1F916} ${agent} \u2014 ${label}`

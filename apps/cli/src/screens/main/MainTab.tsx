@@ -191,6 +191,7 @@ function MainTabBody({
     settingsOpen: settings.settingsOpen,
     controlsOpen: settings.controlsOpen,
     reviewConfirmActive: pane.reviewConfirm !== null,
+    agentId: configCtx.config.agentId,
     aiCommand: configCtx.config.aiCommand,
     prTitle: sidebar.selectedPr?.title,
     sessionName: sidebar.sessionNameForTerminal,

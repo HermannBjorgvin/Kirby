@@ -6,11 +6,9 @@ import {
   fetchRemote,
   branchToSessionName,
 } from '@kirby/worktree-manager';
-import { spawnSession } from '../../pty-registry.js';
+import { launchSession } from '../../session/launch-session.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
-
-const DEFAULT_AI_COMMAND = 'claude --continue || claude';
 
 export function startAiSession(
   name: string,
@@ -19,8 +17,17 @@ export function startAiSession(
   cwd: string,
   config: AppConfig
 ) {
-  const cmd = config.aiCommand || DEFAULT_AI_COMMAND;
-  spawnSession(name, '/bin/sh', ['-c', cmd], cols, rows, cwd);
+  // Resume a prior conversation in this worktree if there is one, else
+  // start blank. The configured agent decides whether continue is even
+  // possible (only Claude, currently) — everyone else starts blank.
+  launchSession({
+    name,
+    cwd,
+    cols,
+    rows,
+    config,
+    request: { intent: 'continue-or-blank' },
+  });
 }
 
 export function handleBranchPickerInput(

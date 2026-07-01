@@ -22,6 +22,7 @@ const baseTitle: PaneTitleState = {
   settingsOpen: false,
   controlsOpen: false,
   reviewConfirmActive: false,
+  agentId: undefined,
   aiCommand: undefined,
   prTitle: undefined,
   sessionName: null,

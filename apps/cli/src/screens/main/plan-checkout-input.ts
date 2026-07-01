@@ -2,7 +2,7 @@ import type { Key } from 'ink';
 import { hasSession } from '../../pty-registry.js';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import { checkoutPlan } from '../../plan/checkout-orchestrator.js';
+import { checkoutPlan } from '../../session/checkout-plan.js';
 import { composePlanPrompt } from '../../plan/prompt-composer.js';
 import { planItemKey } from '../../plan/plan-types.js';
 import type { PlanCheckoutHandlerCtx } from './input-types.js';
@@ -24,9 +24,7 @@ export function handlePlanCheckoutInput(
   const prId = selectedPr?.id;
 
   // ── 1. Annotation composer ──
-  if (
-    handlePlanAnnotateInput(input, key, { pane, plan, prId })
-  ) {
+  if (handlePlanAnnotateInput(input, key, { pane, plan, prId })) {
     return;
   }
 
@@ -134,6 +132,7 @@ function runCheckout(
       paneCols: ctx.terminal.paneCols,
       paneRows: ctx.terminal.paneRows,
       mode,
+      config: ctx.config.config,
       flashStatus: ctx.sessions.flashStatus,
     });
     if (result === 'failed') {
