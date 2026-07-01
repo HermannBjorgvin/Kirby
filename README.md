@@ -4,6 +4,14 @@ A terminal UI for running AI coding agents across git worktrees, with pull reque
 
 Kirby started as a way to solve my own workflow. I spend my working hours in a large monorepo, usually with several features and reviews in flight at once, and I wanted one place to manage the worktrees and agent sessions that go with them and to help me automate PR reviews while remaining familiar with the source code. It's early and still moving fast, @minigod and I have been using it as our daily worktree manager and now I feel it is feature complete enough to share with others who might have a similar workflow.
 
+## Installation
+
+```sh
+npm install -g @hermannbjorgvin/kirby
+```
+
+Then run `kirby` from any project directory.
+
 ## Features
 
 ### Worktree management
@@ -31,19 +39,6 @@ Kirby started as a way to solve my own workflow. I spend my working hours in a l
 - git
 - For GitHub: the `gh` CLI, authenticated
 - For Azure DevOps: a personal access token with repo and pull request access
-
-## Installation
-
-### Global install (no NPM package yet)
-
-Build a self-contained bundle and install the `kirby` command globally:
-
-```sh
-npm ci
-npx nx install-global cli
-```
-
-Then run `kirby` from any project directory.
 
 ## Configuration
 
