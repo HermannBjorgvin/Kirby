@@ -13,9 +13,10 @@ const registry = new Map<string, PtyEntry>();
 
 // Subscribers notified when an agent PTY exits on its own (Ctrl-D twice
 // in claude, the agent crashing, etc.). React-side state derives the
-// sidebar's "running" indicator from `hasSession`, so we need to push a
-// refresh — the registry would otherwise still report the dead session
-// as alive until the user touches it.
+// sidebar's "running" indicator from `isSessionAlive`, so we push a
+// refresh on exit — the derived state would otherwise keep showing the
+// session as running until the user next touched it. (The entry itself
+// stays in the registry so its final frame remains viewable.)
 const exitSubscribers = new Set<(name: string) => void>();
 
 export function onSessionExit(cb: (name: string) => void): () => void {
@@ -52,17 +53,21 @@ export function spawnSession(
   pty.onExit((code) => {
     entry.exited = true;
     entry.exitCode = code;
-    // The agent died. Drop it from the registry so `hasSession` stops
-    // reporting it as alive, then notify subscribers so React state can
-    // refresh and flip the sidebar indicator from green to gray. We
-    // intentionally leave `emu` alive here — usePtySession may still
-    // hold a ref and render a final "process exited" frame; disposing
-    // it now would crash that render. Cleanup falls to killSession or
-    // the next spawnSession with the same name.
+    // The agent exited on its own. Keep the entry in the registry: its
+    // final output frame + exit code stay viewable (usePtySession
+    // renders them off `entry.exited`) and the row keeps flashing
+    // "unseen output". `isSessionAlive` now returns false, so the
+    // sidebar running indicator flips green → gray once subscribers
+    // refresh. We deliberately do NOT detach activity here — activity
+    // tracks the exit via its own onExit handler, and detaching would
+    // wipe the state the flash depends on. We DO drop any pending
+    // inactive-alert (a session that had gone idle, was enqueued, then
+    // exited shouldn't remain an Escape-jump target). Disposing
+    // pty/emu and detaching activity falls to killSession or the next
+    // same-name spawnSession — both of which can now still reach the
+    // entry because it stays in the registry.
     if (registry.get(name) === entry) {
-      activity.detach(name);
       removeInactiveAlert(name);
-      registry.delete(name);
       for (const sub of [...exitSubscribers]) sub(name);
     }
   });
@@ -78,6 +83,18 @@ export function getSession(name: string): PtyEntry | undefined {
 
 export function hasSession(name: string): boolean {
   return registry.has(name);
+}
+
+/**
+ * True only while the PTY is still running. A self-exited session stays
+ * in the registry (so its final frame + exit code remain viewable), so
+ * `hasSession` alone can't distinguish "present" from "alive". The
+ * sidebar running indicator and any "the agent process will be killed"
+ * guard derive from this.
+ */
+export function isSessionAlive(name: string): boolean {
+  const entry = registry.get(name);
+  return entry !== undefined && !entry.exited;
 }
 
 export function killSession(name: string): void {

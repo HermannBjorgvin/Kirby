@@ -170,7 +170,11 @@ describe('activity', () => {
     }
 
     pty.exit(0);
-    expect(snapshot('s1')).toEqual({ active: false, flashing: true });
+    expect(snapshot('s1')).toEqual({
+      active: false,
+      flashing: true,
+      exited: true,
+    });
 
     noteSeen('s1');
     expect(snapshot('s1').flashing).toBe(false);

@@ -7,7 +7,7 @@ import {
   branchToSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import { hasSession, killSession } from '../../pty-registry.js';
+import { hasSession, isSessionAlive, killSession } from '../../pty-registry.js';
 import { getPrFromItem } from '../../types.js';
 import type { SidebarInputCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
@@ -134,8 +134,10 @@ export function handleSidebarInput(
         // Branch is git-clean, but if the agent's PTY is still alive
         // it carries in-memory state (plans, prompts, tool history)
         // that would be lost. Surface a lightweight Y/N prompt so the
-        // user can't blow away an active session by accident.
-        if (hasSession(sessionName)) {
+        // user can't blow away an active session by accident. A session
+        // whose agent already exited has no live process/state to lose,
+        // so it deletes without the prompt.
+        if (isSessionAlive(sessionName)) {
           ctx.deleteConfirm.setConfirmDelete({
             branch,
             sessionName,

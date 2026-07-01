@@ -13,7 +13,7 @@ import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
 import {
   killSession,
-  hasSession as hasPtySession,
+  isSessionAlive,
   onSessionExit,
 } from '../pty-registry.js';
 
@@ -32,7 +32,7 @@ export function useSessionManager(
       const name = branchToSessionName(wt.branch);
       filtered.push({
         name,
-        running: hasPtySession(name),
+        running: isSessionAlive(name),
       });
     }
     setSessions(filtered);

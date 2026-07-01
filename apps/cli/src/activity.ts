@@ -107,6 +107,12 @@ export interface ActivitySnapshot {
   /** Session ran for at least MIN_ACTIVE_MS, then went idle, and the
    * user hasn't looked at it since the most recent output. */
   flashing: boolean;
+  /** The PTY has exited. The session is no longer "waiting on the
+   * user" — it's done — so the inactive-alert watcher must not treat
+   * its active→idle transition as a "needs attention" event. Optional
+   * so existing `{ active, flashing }` literals (QUIET, tests) still
+   * satisfy the type; absent is treated as "not exited". */
+  exited?: boolean;
 }
 
 const QUIET: ActivitySnapshot = { active: false, flashing: false };
@@ -125,5 +131,11 @@ export function snapshot(name: string): ActivitySnapshot {
     state.activeSince != null ? state.lastDataAt - state.activeSince : 0;
   const flashing =
     !active && streakMs >= MIN_ACTIVE_MS && state.lastDataAt > state.lastSeenAt;
-  return active === false && flashing === false ? QUIET : { active, flashing };
+  // Don't collapse an exited session to QUIET: callers (the inactive-
+  // alert watcher) need to see `exited` to suppress the spurious
+  // "needs attention" enqueue that its active→idle transition triggers.
+  // Omit `exited` entirely when false so the common (live-session)
+  // shape stays a plain { active, flashing }.
+  if (active === false && flashing === false && !state.exited) return QUIET;
+  return state.exited ? { active, flashing, exited: true } : { active, flashing };
 }
