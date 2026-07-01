@@ -5,11 +5,15 @@ import type { DiffFile } from '@kirby/diff';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
-import { computeScrollWindow } from '../../utils/scroll-window.js';
+import {
+  computeScrollWindow,
+  computeSpanScrollWindow,
+} from '../../utils/scroll-window.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import {
   CommentThreadCard,
   planCommentFooter,
+  CARD_MAX_WIDTH,
 } from '../../components/CommentThread.js';
 import { planItemKey } from '../../plan/plan-types.js';
 
@@ -225,7 +229,7 @@ export const DiffFileList = memo(function DiffFileList({
   selectedCommentIndex?: number;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
-  /** Map of `${kind}:${id}` → hasAnnotation for comments in the plan. */
+  /** Keys (`${kind}:${id}`) of comments queued in the plan. */
   inPlanKeys?: Map<string, boolean>;
   /** Plan key currently being annotated (Shift+A composer target). */
   annotatingPlanKey?: string | null;
@@ -257,26 +261,54 @@ export const DiffFileList = memo(function DiffFileList({
     [treeMode, displayFiles]
   );
 
-  // PR-comments footer: render every general-comment thread below the
-  // file list. No cap — if the content overflows the pane Ink clips
-  // it, and the Shift+C pane remains the scroll-friendly alternative.
+  const maxWidth = Math.max(20, paneCols - 2);
+  // Footer cards are capped like the diff viewer's so long bodies wrap
+  // at a readable width AND the row estimates (which are width-based)
+  // match what actually renders. Interior text width = card width
+  // minus border (2) + paddingX (2).
+  const cardWidth = Math.min(CARD_MAX_WIDTH, maxWidth);
+  const cardContentWidth = Math.max(1, cardWidth - 4);
+
+  // PR-comments footer: every thread stays j/k-selectable; the footer
+  // renders a scrollable window of cards around the selection instead
+  // of drawing all of them (which used to Yoga-squeeze the cards into
+  // border soup once they exceeded the pane).
   const generalThreads = useMemo(
     () => generalComments ?? [],
     [generalComments]
   );
-  const { shown: shownGeneral, rows: generalRows } = useMemo(
-    () => planCommentFooter(generalThreads),
-    [generalThreads]
+  const { shown: shownGeneral, spans: generalSpans } = useMemo(
+    () =>
+      planCommentFooter(generalThreads, cardContentWidth, replyingToThreadId),
+    [generalThreads, cardContentWidth, replyingToThreadId]
   );
 
-  // Chrome: title + divider + hints + optional warning + optional skipped header
-  const chromeRows = 4 + generalRows;
-  const maxVisible = Math.max(1, paneRows - chromeRows);
   // In tree mode, total visual rows = files + directories. Otherwise
   // it's just files. Scroll window is computed against the selected
   // row's position in the visual stream so dir headers above scroll
   // out naturally with the file.
   const totalVisualRows = treeRows ? treeRows.length : displayFiles.length;
+
+  // ── Row budget ──────────────────────────────────────────────────
+  // Chrome: title + divider + hints (marginTop + row) + optional
+  // skipped note. The remainder is split between the file list and
+  // the comments footer: the list keeps up to half the pane (but no
+  // more than it needs), the footer gets the rest capped by its own
+  // need. footerRows includes the footer's marginTop + heading.
+  const skippedNoteRows = skipped.length > 0 ? 1 : 0;
+  const available = Math.max(1, paneRows - 4 - skippedNoteRows);
+  const footerNeed =
+    shownGeneral.length > 0
+      ? 2 + generalSpans.reduce((sum, s) => sum + s, 0)
+      : 0;
+  // Even an empty list draws one row ("(no files)").
+  const fileNeed = Math.max(1, totalVisualRows);
+  const fileReserved = Math.min(fileNeed, Math.ceil(available / 2));
+  const footerRows =
+    footerNeed > 0
+      ? Math.min(footerNeed, Math.max(0, available - fileReserved))
+      : 0;
+  const maxVisible = Math.max(1, available - footerRows);
   const selectedVisualIndex = treeRows
     ? (() => {
         const hit = treeRows.findIndex(
@@ -301,7 +333,20 @@ export const DiffFileList = memo(function DiffFileList({
     ? treeRows.slice(windowStart, windowStart + Math.max(1, listRows))
     : null;
 
-  const maxWidth = Math.max(20, paneCols - 2);
+  // Card-granularity scroll window over the footer, anchored on the
+  // selected card (top of the list when selection is on a file row).
+  const footerWindow = computeSpanScrollWindow({
+    spans: generalSpans,
+    selectedIndex: selectedCommentIndex ?? 0,
+    budgetRows: Math.max(0, footerRows - 2),
+  });
+  const footerIndicatorRows =
+    (footerWindow.aboveCount > 0 ? 1 : 0) +
+    (footerWindow.belowCount > 0 ? 1 : 0);
+  // Fixed clip box for the cards: even when a card's row estimate is
+  // off by a little, the overflow is cut here instead of letting Yoga
+  // squeeze every card in the column.
+  const footerCardBoxRows = Math.max(1, footerRows - 2 - footerIndicatorRows);
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -367,52 +412,72 @@ export const DiffFileList = memo(function DiffFileList({
       )}
       {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
 
-      {generalThreads.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
+      {shownGeneral.length > 0 && footerRows >= 2 && (
+        <Box flexDirection="column" marginTop={1} flexShrink={0}>
           <Text bold color="blue">
             PR Comments ({generalThreads.length})
           </Text>
-          {shownGeneral.map((thread, idx) => {
-            const pKey = planItemKey('remote', thread.id);
-            // While annotating, the composer takes the card's slot.
-            if (annotatingPlanKey === pKey) {
-              return (
-                <Box
-                  key={thread.id}
-                  flexDirection="column"
-                  borderStyle="round"
-                  borderColor="green"
-                  marginBottom={1}
-                  paddingX={1}
-                >
-                  <Text wrap="truncate-end">
-                    <Text bold color="green">
-                      EDITING NOTE
-                    </Text>
-                    <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
-                  </Text>
-                  <Text wrap="wrap">
-                    {annotationBuffer ?? ''}
-                    <Text color="green">▍</Text>
-                  </Text>
-                </Box>
-              );
-            }
-            return (
-              <CommentThreadCard
-                key={thread.id}
-                thread={thread}
-                selected={
-                  selectedCommentIndex !== undefined &&
-                  selectedCommentIndex === idx
+          {footerWindow.aboveCount > 0 && (
+            <Text dimColor>↑ {footerWindow.aboveCount} more</Text>
+          )}
+          <Box
+            flexDirection="column"
+            height={footerCardBoxRows}
+            overflow="hidden"
+            flexShrink={0}
+          >
+            {shownGeneral
+              .slice(footerWindow.start, footerWindow.end)
+              .map((thread, i) => {
+                const idx = footerWindow.start + i;
+                const pKey = planItemKey('remote', thread.id);
+                // While annotating, the composer takes the card's slot.
+                if (annotatingPlanKey === pKey) {
+                  return (
+                    <Box key={thread.id} flexShrink={0}>
+                      <Box
+                        flexDirection="column"
+                        borderStyle="round"
+                        borderColor="green"
+                        marginBottom={1}
+                        paddingX={1}
+                        width={cardWidth}
+                      >
+                        <Text wrap="truncate-end">
+                          <Text bold color="green">
+                            EDITING NOTE
+                          </Text>
+                          <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+                        </Text>
+                        <Text wrap="wrap">
+                          {annotationBuffer ?? ''}
+                          <Text color="green">▍</Text>
+                        </Text>
+                      </Box>
+                    </Box>
+                  );
                 }
-                replyingToThreadId={replyingToThreadId}
-                replyBuffer={replyBuffer}
-                inPlan={inPlanKeys?.has(pKey) ?? false}
-                hasAnnotation={inPlanKeys?.get(pKey) === true}
-              />
-            );
-          })}
+                return (
+                  <Box key={thread.id} flexShrink={0}>
+                    <CommentThreadCard
+                      thread={thread}
+                      selected={
+                        selectedCommentIndex !== undefined &&
+                        selectedCommentIndex === idx
+                      }
+                      replyingToThreadId={replyingToThreadId}
+                      replyBuffer={replyBuffer}
+                      maxWidth={cardWidth}
+                      inPlan={inPlanKeys?.has(pKey) ?? false}
+                      planHint
+                    />
+                  </Box>
+                );
+              })}
+          </Box>
+          {footerWindow.belowCount > 0 && (
+            <Text dimColor>↓ {footerWindow.belowCount} more</Text>
+          )}
         </Box>
       )}
 
