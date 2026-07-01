@@ -4,8 +4,8 @@
  * Manages .claude/worktrees/ directory for per-branch worktrees
  * used by the TUI to give each Claude session its own checkout.
  */
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { log } from '@kirby/logger';
 import { exec } from './exec.js';
 
@@ -98,11 +98,30 @@ export interface WorktreeInfo {
   path: string;
   branch: string; // short branch name (no refs/heads/)
   bare: boolean;
+  /**
+   * Transient git state. `'rebasing'` means the worktree is mid-rebase
+   * (HEAD detached, branch recovered from rebase-merge/rebase-apply
+   * head-name). Absent means a normal attached checkout.
+   */
+  state?: 'rebasing';
 }
 
 /** Convert a git branch name to a safe session identifier (replace / with -) */
 export function branchToSessionName(branch: string): string {
   return branch.replace(/\//g, '-');
+}
+
+/**
+ * Stable session name for a worktree.
+ *
+ * Branch worktrees use the branch-derived name. A detached-HEAD
+ * worktree has no branch, so we fall back to its directory name —
+ * without this fallback `branchToSessionName('')` yields an empty
+ * string, which renders as a blank sidebar row and can't be matched
+ * back to its worktree to start a session.
+ */
+export function worktreeSessionName(wt: WorktreeInfo): string {
+  return wt.branch ? branchToSessionName(wt.branch) : basename(wt.path);
 }
 
 /** Convert a branch name to its worktree relative directory */
@@ -315,17 +334,87 @@ export function parseWorktrees(output: string): WorktreeInfo[] {
 }
 
 /**
+ * For a detached-HEAD worktree, try to recover the logical branch from
+ * an in-progress rebase. Git stores the original branch in
+ * `<gitdir>/rebase-merge/head-name` (interactive) or
+ * `<gitdir>/rebase-apply/head-name` (non-interactive) as
+ * `refs/heads/<branch>`. Returns `null` if the worktree is not
+ * mid-rebase or anything is unreadable.
+ *
+ * Without this, every consumer that keys off `branchToSessionName(wt.branch)`
+ * (sidebar items, session keys, PR linkage) collapses on the empty
+ * string and the sidebar gets stuck on duplicate empty rows.
+ */
+export function recoverRebaseBranch(worktreePath: string): string | null {
+  try {
+    // The worktree's `.git` is a file containing `gitdir: <path>`
+    // pointing into the main repo's `.git/worktrees/<name>` directory.
+    const dotGit = readFileSync(join(worktreePath, '.git'), 'utf8');
+    const match = dotGit.match(/^gitdir:\s*(.+)$/m);
+    if (!match) return null;
+    const rawGitdir = match[1]!.trim();
+    const gitdir = isAbsolute(rawGitdir)
+      ? rawGitdir
+      : resolve(worktreePath, rawGitdir);
+
+    for (const sub of ['rebase-merge', 'rebase-apply']) {
+      try {
+        const headName = readFileSync(
+          join(gitdir, sub, 'head-name'),
+          'utf8'
+        ).trim();
+        if (headName.startsWith('refs/heads/')) {
+          return headName.slice('refs/heads/'.length);
+        }
+      } catch {
+        // No rebase of this kind in progress; try the next one.
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * List git worktrees under .claude/worktrees/ for the current repo.
  * Skips the main worktree and bare entries.
+ *
+ * Detached-HEAD worktrees: if a rebase is in progress, the branch is
+ * recovered from `rebase-{merge,apply}/head-name` and `state` is set
+ * to `'rebasing'`. True orphans (detached, no recoverable branch —
+ * e.g. branch was deleted under the worktree, or `git worktree add`
+ * was run with a SHA) are kept with an empty `branch`; consumers name
+ * them via `worktreeSessionName` (directory basename) so they render
+ * in the sidebar and can host a session by their directory name.
  */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
   try {
     const { stdout } = await exec('git worktree list --porcelain', {
       encoding: 'utf8',
     });
-    return parseWorktrees(stdout).filter(
+    const owned = parseWorktrees(stdout).filter(
       (w) => !w.bare && activeResolver.owns(w.path)
     );
+    const recovered: WorktreeInfo[] = [];
+    for (const w of owned) {
+      if (w.branch !== '') {
+        recovered.push(w);
+        continue;
+      }
+      const rebaseBranch = recoverRebaseBranch(w.path);
+      if (rebaseBranch) {
+        recovered.push({ ...w, branch: rebaseBranch, state: 'rebasing' });
+      } else {
+        // True orphan (detached, no rebase in progress — e.g. a
+        // `git worktree add --detach <SHA>`). Keep it with an empty
+        // branch: consumers name it via `worktreeSessionName`, which
+        // falls back to the directory basename, so it renders in the
+        // sidebar and can host a session by its directory name.
+        recovered.push(w);
+      }
+    }
+    return recovered;
   } catch (e) {
     log('error', 'listWorktrees', 'git worktree list failed', e);
     return [];

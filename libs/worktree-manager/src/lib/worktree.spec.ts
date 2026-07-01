@@ -17,10 +17,11 @@ import {
   resetMainBranchCache,
   resetWorktreeResolver,
   branchToSessionName,
+  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from './worktree.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 vi.mock('./exec.js', () => ({
   exec: vi.fn(),
@@ -28,12 +29,16 @@ vi.mock('./exec.js', () => ({
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => false),
+  readFileSync: vi.fn(() => {
+    throw new Error('readFileSync not mocked for this test');
+  }),
 }));
 
 import { exec } from './exec.js';
 
 const mockExec = vi.mocked(exec);
 const mockExistsSync = vi.mocked(existsSync);
+const mockReadFileSync = vi.mocked(readFileSync);
 
 function resolve(stdout = '') {
   return { stdout, stderr: '' };
@@ -267,6 +272,30 @@ describe('parseWorktrees', () => {
     });
   });
 
+  it('should parse a detached-HEAD worktree with an empty branch', () => {
+    // A detached worktree has no `branch refs/heads/...` line — git
+    // emits a `detached` marker instead. The block must still be
+    // returned (with branch === '') so it shows up in the sidebar.
+    const output = [
+      'worktree /home/user/repo',
+      'HEAD abc123',
+      'branch refs/heads/main',
+      '',
+      'worktree /home/user/repo/.claude/worktrees/master-test-temp',
+      'HEAD f6d61737bd',
+      'detached',
+      '',
+    ].join('\n');
+
+    const result = parseWorktrees(output);
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({
+      path: '/home/user/repo/.claude/worktrees/master-test-temp',
+      branch: '',
+      bare: false,
+    });
+  });
+
   it('should handle bare worktrees', () => {
     const output = ['worktree /home/user/repo', 'HEAD abc123', 'bare', ''].join(
       '\n'
@@ -401,6 +430,103 @@ describe('listWorktrees', () => {
     const result = await listWorktrees();
     expect(result).toHaveLength(1);
     expect(result[0]!.branch).toBe('feature/auth');
+  });
+
+  it('should recover branch from rebase-merge for detached worktrees', async () => {
+    const wtPath = `${cwd}/.claude/worktrees/feature-tables`;
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          `worktree ${cwd}`,
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+          `worktree ${wtPath}`,
+          'HEAD def456',
+          'detached',
+          '',
+        ].join('\n')
+      )
+    );
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${wtPath}/.git`) {
+        return `gitdir: ${cwd}/.git/worktrees/feature-tables\n`;
+      }
+      if (p === `${cwd}/.git/worktrees/feature-tables/rebase-merge/head-name`) {
+        return 'refs/heads/feature/hmi-tables-component\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    const result = await listWorktrees();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      path: wtPath,
+      branch: 'feature/hmi-tables-component',
+      bare: false,
+      state: 'rebasing',
+    });
+  });
+
+  it('should recover branch from rebase-apply when rebase-merge missing', async () => {
+    const wtPath = `${cwd}/.claude/worktrees/feature-am`;
+    mockExec.mockResolvedValueOnce(
+      resolve([`worktree ${wtPath}`, 'HEAD def456', 'detached', ''].join('\n'))
+    );
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${wtPath}/.git`) {
+        return `gitdir: ${cwd}/.git/worktrees/feature-am\n`;
+      }
+      if (p.endsWith('/rebase-merge/head-name')) {
+        throw new Error('ENOENT');
+      }
+      if (p === `${cwd}/.git/worktrees/feature-am/rebase-apply/head-name`) {
+        return 'refs/heads/feature/am-flow\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    const result = await listWorktrees();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.branch).toBe('feature/am-flow');
+    expect(result[0]!.state).toBe('rebasing');
+  });
+
+  it('should keep true orphan detached worktrees with an empty branch', async () => {
+    const orphan = `${cwd}/.claude/worktrees/master-test-temp`;
+    const attached = `${cwd}/.claude/worktrees/feature-auth`;
+    mockExec.mockResolvedValueOnce(
+      resolve(
+        [
+          `worktree ${orphan}`,
+          'HEAD abc123',
+          'detached',
+          '',
+          `worktree ${attached}`,
+          'HEAD def456',
+          'branch refs/heads/feature/auth',
+          '',
+        ].join('\n')
+      )
+    );
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${orphan}/.git`) {
+        return `gitdir: ${cwd}/.git/worktrees/master-test-temp\n`;
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    // The orphan has no rebase in progress, so no branch is recovered.
+    // It is still listed (branch: '') and gets its identity from the
+    // directory basename via worktreeSessionName.
+    const result = await listWorktrees();
+    expect(result).toHaveLength(2);
+    const orphanResult = result.find((w) => w.path === orphan);
+    expect(orphanResult).toEqual({ path: orphan, branch: '', bare: false });
+    expect(worktreeSessionName(orphanResult!)).toBe('master-test-temp');
+    expect(result.find((w) => w.path === attached)!.branch).toBe(
+      'feature/auth'
+    );
   });
 });
 
@@ -663,6 +789,28 @@ describe('branchToSessionName', () => {
 
   it('should handle empty string', () => {
     expect(branchToSessionName('')).toBe('');
+  });
+});
+
+describe('worktreeSessionName', () => {
+  it('uses the branch-derived name when a branch is present', () => {
+    expect(
+      worktreeSessionName({
+        path: '/repo/.claude/worktrees/feature-auth',
+        branch: 'feature/auth',
+        bare: false,
+      })
+    ).toBe('feature-auth');
+  });
+
+  it('falls back to the directory name for a detached worktree', () => {
+    expect(
+      worktreeSessionName({
+        path: '/repo/.claude/worktrees/master-test-temp',
+        branch: '',
+        bare: false,
+      })
+    ).toBe('master-test-temp');
   });
 });
 

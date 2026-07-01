@@ -2,15 +2,18 @@ import { spawn } from 'node:child_process';
 import type { Key } from 'ink';
 import {
   canRemoveBranch,
+  createWorktree,
   listAllBranches,
   listWorktrees,
   branchToSessionName,
+  worktreeSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
 import { hasSession, isSessionAlive, killSession } from '../../pty-registry.js';
 import { getPrFromItem } from '../../types.js';
 import type { SidebarInputCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
+import { resolveEditorTarget } from './editor-target.js';
 
 export function handleSidebarInput(
   input: string,
@@ -45,7 +48,7 @@ export function handleSidebarInput(
         if (selectedItem.kind === 'session') {
           const worktrees = await listWorktrees();
           const wt = worktrees.find(
-            (w) => branchToSessionName(w.branch) === selectedItem.session.name
+            (w) => worktreeSessionName(w) === selectedItem.session.name
           );
           if (!wt) return;
           startAiSession(
@@ -108,9 +111,7 @@ export function handleSidebarInput(
         : branchToSessionName(selectedItem.pr.sourceBranch);
     ctx.asyncOps.run('check-delete', async () => {
       const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
+      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
       const branch = wt?.branch;
       if (branch) {
         const check = await canRemoveBranch(branch);
@@ -196,9 +197,7 @@ export function handleSidebarInput(
     const sessionName = selectedItem.session.name;
     ctx.asyncOps.run('rebase', async () => {
       const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
+      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
       if (!wt) {
         ctx.sessions.flashStatus('No worktree found for selected session');
         return;
@@ -215,17 +214,21 @@ export function handleSidebarInput(
     return;
   }
 
-  // Open in editor
-  if (action === 'sidebar.open-editor' && selectedItem?.kind === 'session') {
-    const sessionName = selectedItem.session.name;
+  // Open in editor — also works on PR rows; the worktree is checked
+  // out on demand so Shift+E doesn't require pressing 'c' first.
+  if (action === 'sidebar.open-editor' && selectedItem) {
+    const item = selectedItem;
     ctx.asyncOps.run('open-editor', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find(
-        (w) => branchToSessionName(w.branch) === sessionName
-      );
-      if (!wt) {
+      const wtPath = await resolveEditorTarget(item, {
+        listWorktrees,
+        createWorktree,
+      });
+      if (!wtPath) {
         ctx.sessions.flashStatus('No worktree found for selected session');
         return;
+      }
+      if (item.kind !== 'session') {
+        await ctx.sessions.refreshSessions();
       }
       const editor =
         ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
@@ -233,7 +236,7 @@ export function handleSidebarInput(
         ctx.sessions.flashStatus('No editor configured — set one in settings');
         return;
       }
-      spawn(editor, [wt.path], { detached: true, stdio: 'ignore' }).unref();
+      spawn(editor, [wtPath], { detached: true, stdio: 'ignore' }).unref();
       ctx.sessions.flashStatus(`Opened in ${editor}`);
     });
     return;
@@ -305,7 +308,7 @@ export function handleSidebarInput(
       ctx.asyncOps.run('start-session', async () => {
         const worktrees = await listWorktrees();
         const wt = worktrees.find(
-          (w) => branchToSessionName(w.branch) === selectedItem.session.name
+          (w) => worktreeSessionName(w) === selectedItem.session.name
         );
         if (!wt) return;
         startAiSession(

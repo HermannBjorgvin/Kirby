@@ -50,6 +50,8 @@ export function isItemActive(item: SidebarItem): boolean {
 export interface AgentSession {
   name: string;
   running: boolean;
+  /** Mirrors `WorktreeInfo.state` — set when the worktree is mid-rebase. */
+  state?: 'rebasing';
 }
 
 export type { DiffFile, FileCategory } from '@kirby/diff';

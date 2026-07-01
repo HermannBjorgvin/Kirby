@@ -4,18 +4,14 @@ import {
   deleteBranch,
   listAllBranches,
   listWorktrees,
-  branchToSessionName,
+  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import {
-  killSession,
-  isSessionAlive,
-  onSessionExit,
-} from '../pty-registry.js';
+import { killSession, isSessionAlive, onSessionExit } from '../pty-registry.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -29,14 +25,18 @@ export function useSessionManager(
     const worktrees = await listWorktrees();
     const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
-      const name = branchToSessionName(wt.branch);
+      const name = worktreeSessionName(wt);
       filtered.push({
         name,
         running: isSessionAlive(name),
+        ...(wt.state ? { state: wt.state } : {}),
       });
     }
     setSessions(filtered);
-    setWorktreeBranches(worktrees.map((wt) => wt.branch));
+    // Detached-HEAD orphans have an empty branch; drop them here so the
+    // merged/conflict git queries (countConflicts, fetchMergedBranches)
+    // never run against an empty ref.
+    setWorktreeBranches(worktrees.map((wt) => wt.branch).filter(Boolean));
     return filtered;
   }, []);
 

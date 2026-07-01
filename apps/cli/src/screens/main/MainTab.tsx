@@ -36,6 +36,9 @@ interface MainTabProps {
 // changes. Without this guard the selected-item remount would briefly
 // tear down the only useInput in the tree, flipping raw-mode off and
 // causing character echo in the terminal.
+//
+// hintsHidden lives here, not in MainTabBody — the body remounts on
+// every sidebar selection change, which would reset the toggle.
 export function MainTab(props: MainTabProps) {
   useInput(() => {
     // Intentionally empty — see comment above.
@@ -46,14 +49,35 @@ export function MainTab(props: MainTabProps) {
     ? getItemKey(sidebar.selectedItem)
     : 'empty';
 
-  return <MainTabBody key={itemKey} {...props} />;
+  const [hintsHidden, setHintsHidden] = useState(false);
+  const toggleHints = useCallback(() => setHintsHidden((v) => !v), []);
+
+  return (
+    <MainTabBody
+      key={itemKey}
+      {...props}
+      hintsHidden={hintsHidden}
+      toggleHints={toggleHints}
+    />
+  );
+}
+
+interface MainTabBodyProps extends MainTabProps {
+  hintsHidden: boolean;
+  toggleHints: () => void;
 }
 
 // MainTabBody owns the pane state + the real input router. React
 // unmounts and remounts it whenever `itemKey` changes (see MainTab
 // above), so `usePaneReducer`'s lazy initializer picks a fresh pane
 // mode via defaultPaneMode() — no render-time setState to reset.
-function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
+function MainTabBody({
+  terminalFocused,
+  showOnboarding,
+  exit,
+  hintsHidden,
+  toggleHints,
+}: MainTabBodyProps) {
   const navState = useNavState();
   const navActions = useNavActions();
   const nav = useMemo(
@@ -90,9 +114,6 @@ function MainTabBody({ terminalFocused, showOnboarding, exit }: MainTabProps) {
     sidebar.selectedItem,
     sidebar.sessionNameForTerminal
   );
-
-  const [hintsHidden, setHintsHidden] = useState(false);
-  const toggleHints = useCallback(() => setHintsHidden((v) => !v), []);
 
   // ── Input handling (modals + sidebar) ──────────────────────────
   useInput((input, key) => {
