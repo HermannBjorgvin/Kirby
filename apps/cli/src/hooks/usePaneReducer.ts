@@ -15,6 +15,11 @@ export interface PaneState {
   diffFileIndex: number;
   diffViewFile: string | null;
   diffScrollOffset: number;
+  // Top row of the diff-file-list unified viewport (file rows +
+  // comment cards in one stream). Stepped row-wise by j/k so cards
+  // taller than the viewport scroll into view before selection moves
+  // past them.
+  diffListScrollRow: number;
   showSkipped: boolean;
 
   // Comment editing
@@ -61,6 +66,7 @@ export const initialState: PaneState = {
   diffFileIndex: 0,
   diffViewFile: null,
   diffScrollOffset: 0,
+  diffListScrollRow: 0,
   showSkipped: false,
   selectedCommentId: null,
   pendingDeleteCommentId: null,
@@ -95,6 +101,7 @@ export type PaneAction =
   | { type: 'SET_DIFF_FILE_INDEX'; updater: Updater<number> }
   | { type: 'SET_DIFF_VIEW_FILE'; file: string | null }
   | { type: 'SET_DIFF_SCROLL_OFFSET'; updater: Updater<number> }
+  | { type: 'SET_DIFF_LIST_SCROLL_ROW'; updater: Updater<number> }
   | { type: 'SET_SHOW_SKIPPED'; updater: Updater<boolean> }
   | { type: 'SET_SELECTED_COMMENT_ID'; id: string | null }
   | { type: 'SET_PENDING_DELETE_COMMENT_ID'; id: string | null }
@@ -139,6 +146,11 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
       return {
         ...state,
         diffScrollOffset: resolve(action.updater, state.diffScrollOffset),
+      };
+    case 'SET_DIFF_LIST_SCROLL_ROW':
+      return {
+        ...state,
+        diffListScrollRow: resolve(action.updater, state.diffListScrollRow),
       };
     case 'SET_SHOW_SKIPPED':
       return {
@@ -215,6 +227,7 @@ export interface PaneActions {
   setDiffFileIndex: (updater: Updater<number>) => void;
   setDiffViewFile: (file: string | null) => void;
   setDiffScrollOffset: (updater: Updater<number>) => void;
+  setDiffListScrollRow: (updater: Updater<number>) => void;
   setShowSkipped: (updater: Updater<boolean>) => void;
   setSelectedCommentId: (id: string | null) => void;
   setPendingDeleteCommentId: (id: string | null) => void;
@@ -291,6 +304,8 @@ export function usePaneReducer(
       setDiffViewFile: (file) => dispatch({ type: 'SET_DIFF_VIEW_FILE', file }),
       setDiffScrollOffset: (updater) =>
         dispatch({ type: 'SET_DIFF_SCROLL_OFFSET', updater }),
+      setDiffListScrollRow: (updater) =>
+        dispatch({ type: 'SET_DIFF_LIST_SCROLL_ROW', updater }),
       setShowSkipped: (updater) =>
         dispatch({ type: 'SET_SHOW_SKIPPED', updater }),
       setSelectedCommentId: (id) =>

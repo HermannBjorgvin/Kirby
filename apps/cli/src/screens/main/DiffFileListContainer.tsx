@@ -3,6 +3,8 @@ import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
+import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
+import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
@@ -84,6 +86,61 @@ export function DiffFileListContainer({
   );
   const diffDisplayCount = fileCount + shownGeneral.length;
 
+  // Unified-list viewport geometry — the same computation DiffFileList
+  // runs for rendering, so the input handler scrolls exactly what is
+  // drawn.
+  const displayFiles = useMemo(
+    () =>
+      pane.showSkipped
+        ? [...diffNormalFiles, ...diffSkippedFiles]
+        : diffNormalFiles,
+    [diffNormalFiles, diffSkippedFiles, pane.showSkipped]
+  );
+  const layout = useMemo(
+    () =>
+      computeDiffListLayout({
+        paneRows: terminal.paneRows,
+        paneCols: terminal.paneCols,
+        displayFiles,
+        treeMode,
+        skippedCount: diffSkippedFiles.length,
+        threads: generalThreads,
+        // Buffers included so spans track the compose input growing as
+        // the user types — the scroll-sync hook keeps it in view.
+        compose: {
+          replyingToThreadId: pane.replyingToThreadId,
+          replyBuffer: pane.replyBuffer,
+          annotatingPlanKey: pane.annotatingPlanKey,
+          annotationBuffer: pane.annotationBuffer,
+        },
+      }),
+    [
+      terminal.paneRows,
+      terminal.paneCols,
+      displayFiles,
+      treeMode,
+      diffSkippedFiles.length,
+      generalThreads,
+      pane.replyingToThreadId,
+      pane.replyBuffer,
+      pane.annotatingPlanKey,
+      pane.annotationBuffer,
+    ]
+  );
+
+  // Post-render scroll corrections: keep an open compose input in
+  // view, anchor the viewport when item sizes change upstream, and
+  // reveal a freshly-posted reply.
+  useDiffListScrollSync({
+    layout,
+    selectedIndex: pane.diffFileIndex,
+    composing:
+      pane.replyingToThreadId != null || pane.annotatingPlanKey != null,
+    pendingScrollThreadId: pane.pendingScrollThreadId,
+    setDiffListScrollRow: pane.setDiffListScrollRow,
+    setPendingScrollThreadId: pane.setPendingScrollThreadId,
+  });
+
   // Selection breakdown: indices [0, fileCount) select a file; indices
   // [fileCount, diffDisplayCount) select a footer comment (offset by
   // -fileCount). selectedCommentIndex is undefined when a file is
@@ -101,6 +158,8 @@ export function DiffFileListContainer({
         diffDisplayCount,
         fileCount,
         shownGeneralComments: shownGeneral,
+        listSpans: layout.spans,
+        listViewportRows: layout.viewportRows,
         keybinds,
         sessions,
         remoteCtx: {
@@ -127,6 +186,7 @@ export function DiffFileListContainer({
       treeMode={treeMode}
       generalComments={generalThreads}
       selectedCommentIndex={selectedCommentIndex}
+      scrollRow={pane.diffListScrollRow}
       replyingToThreadId={pane.replyingToThreadId}
       replyBuffer={pane.replyBuffer}
       inPlanKeys={inPlanKeys}

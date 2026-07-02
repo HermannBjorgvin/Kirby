@@ -5,12 +5,13 @@ import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { renderWithProviders } from '../../test-utils/render-with-providers.js';
 import { DiffFileList } from './DiffFileList.js';
 
-// Regression: the PR-comments footer used to render every card with no
-// height budget. Once file rows + cards exceeded the pane, Yoga
-// squeezed the bordered cards into each other (border soup) and the
-// hints row vanished. The footer now windows cards around the selected
-// one and clips inside a bounded box, so total output must never
-// exceed paneRows.
+// File rows and PR-comment cards render as ONE row-granular virtual
+// viewport driven by `scrollRow` — there is no separate file window +
+// comments footer. Regression guarded here: cards used to render with
+// no height budget, Yoga squeezed them into each other (border soup)
+// and the hints row vanished once content exceeded the pane. Total
+// output must never exceed paneRows, and any row of any card is
+// reachable by scrolling.
 
 function makeFile(i: number): DiffFile {
   return {
@@ -86,24 +87,19 @@ describe('DiffFileList — footer height budget', () => {
     expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
   });
 
-  it('shows a ↓ more indicator when comments are clipped', () => {
+  it('shows a ↓ rows-below indicator when the stream is clipped', () => {
     const { lastFrame } = renderList();
     const visible = stripAnsi(lastFrame() ?? '');
-    expect(visible).toContain('PR Comments (8)');
-    expect(visible).toMatch(/↓ \d+ more/);
+    expect(visible).toMatch(/↓ \d+ rows below/);
   });
 
-  it('scrolls the selected comment card into view', () => {
-    // Selection on the last card (index 7): the footer must window
-    // down to it and flag the skipped cards above.
-    const { lastFrame } = renderList({
-      selectedIndex: 27, // 20 files + 7 → last comment card
-      selectedCommentIndex: 7,
-    });
+  it('shows the PR Comments heading when scrolled to the section', () => {
+    // 20 file rows precede the comments; the heading rides on the
+    // first card's span, so scrolling there brings it into view.
+    const { lastFrame } = renderList({ scrollRow: 20 });
     const visible = stripAnsi(lastFrame() ?? '');
-    expect(visible).toContain('author-7');
-    expect(visible).toMatch(/↑ \d+ more/);
-    expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
+    expect(visible).toContain('PR Comments (8)');
+    expect(visible).toContain('author-0');
   });
 
   it('keeps the hints row visible below the footer', () => {
@@ -112,24 +108,96 @@ describe('DiffFileList — footer height budget', () => {
     expect(rows.some((r) => r.includes('navigate'))).toBe(true);
   });
 
-  it('keeps at least half the pane for the file list', () => {
+  it('shows the file rows at the top of the stream at offset 0', () => {
     const { lastFrame } = renderList();
     const visible = stripAnsi(lastFrame() ?? '');
-    // 20 files, half of available (24 - 4 = 20) → ~10 file rows.
-    const fileRowCount = visible
-      .split('\n')
-      .filter((r) => r.includes('src/file-')).length;
-    expect(fileRowCount).toBeGreaterThanOrEqual(6);
+    expect(visible).toContain('src/file-0.ts');
+    // Comments live further down the stream, out of the viewport.
+    expect(visible).not.toContain('author-7');
   });
 
-  it('gives the footer the whole pane when there are few files', () => {
+  it('shows everything with no indicators when the stream fits', () => {
     const { lastFrame } = renderList({
       files: [makeFile(0)],
-      generalComments: Array.from({ length: 3 }, (_, i) => makeThread(i, 1)),
+      generalComments: Array.from({ length: 2 }, (_, i) => makeThread(i, 1)),
     });
     const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('src/file-0.ts');
     expect(visible).toContain('author-0');
-    expect(visible).toContain('author-2');
-    expect(visible).not.toMatch(/[↑↓] \d+ more/);
+    expect(visible).toContain('author-1');
+    expect(visible).not.toMatch(/[↑↓] \d+ rows/);
+  });
+});
+
+describe('DiffFileList — unified virtual viewport', () => {
+  it('scrolls the file rows out as the viewport moves into the comments', () => {
+    // Scrolled to the end of the stream: the last card is visible,
+    // the file rows are gone, and skipped rows are flagged above.
+    const { lastFrame } = renderList({
+      selectedIndex: 27, // 20 files + 7 → last comment card
+      selectedCommentIndex: 7,
+      scrollRow: 999, // clamped to the max offset internally
+    });
+    const visible = stripAnsi(lastFrame() ?? '');
+    expect(visible).toContain('author-7');
+    expect(visible).not.toContain('src/file-0.ts');
+    expect(visible).toMatch(/↑ \d+ rows above/);
+    expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
+  });
+
+  it('reveals deeper rows of a tall card as scrollRow advances', () => {
+    // One 30-line comment (36 rows with heading) after a single file
+    // row, in an ~18-row viewport: at offset 0 the card top is
+    // visible; scrolled to the end, the last body line is visible and
+    // the top is not.
+    const tall = [makeThread(0, 30)];
+    const atTop = renderList({
+      files: [makeFile(0)],
+      generalComments: tall,
+      selectedIndex: 1,
+      selectedCommentIndex: 0,
+      scrollRow: 0,
+    });
+    const topVisible = stripAnsi(atTop.lastFrame() ?? '');
+    expect(topVisible).toContain('author-0');
+    expect(topVisible).toContain('line 0');
+    expect(topVisible).not.toContain('line 29');
+    expect(topVisible).toMatch(/↓ \d+ rows below/);
+
+    const atBottom = renderList({
+      files: [makeFile(0)],
+      generalComments: tall,
+      selectedIndex: 1,
+      selectedCommentIndex: 0,
+      scrollRow: 999, // clamped to the max offset internally
+    });
+    const bottomVisible = stripAnsi(atBottom.lastFrame() ?? '');
+    expect(bottomVisible).toContain('line 29');
+    expect(bottomVisible).not.toContain('line 0');
+    expect(bottomVisible).toMatch(/↑ \d+ rows above/);
+    expect(frameRows(atBottom.lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
+  });
+
+  it('stays bounded while a long wrapping reply is being composed', () => {
+    // Regression: the reply input's span was a fixed 4 rows, so a
+    // buffer wrapping to several lines made the real card taller than
+    // its estimate and the stream overflowed the pane budget.
+    const { lastFrame } = renderList({
+      selectedIndex: 20,
+      selectedCommentIndex: 0,
+      scrollRow: 20,
+      replyingToThreadId: 't0',
+      replyBuffer: 'reply word '.repeat(40),
+    });
+    expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
+  });
+
+  it('keeps frame height stable across scroll positions', () => {
+    // Indicator lines are placeholders while clipped, so the frame's
+    // row count must not change as the viewport scrolls (the hints row
+    // would visibly jump otherwise).
+    const rowsAt = (offset: number) =>
+      frameRows(renderList({ scrollRow: offset }).lastFrame).length;
+    expect(rowsAt(0)).toBe(rowsAt(10));
   });
 });

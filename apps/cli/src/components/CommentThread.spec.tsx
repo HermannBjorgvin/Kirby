@@ -3,8 +3,17 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { CommentThreadCard, LocalCommentCard } from './CommentThread.js';
-import type { ReviewComment } from '@kirby/review-comments';
+import {
+  CommentThreadCard,
+  LocalCommentCard,
+  planCommentFooter,
+} from './CommentThread.js';
+import {
+  estimateCardRows,
+  estimateReplyInputRows,
+  type ReviewComment,
+} from '@kirby/review-comments';
+import { planItemKey } from '../plan/plan-types.js';
 
 // Regression: a selected card with resolved + outdated + a long
 // author used to overflow the card's content width — the trailing
@@ -224,5 +233,60 @@ describe('LocalCommentCard — header overflow', () => {
     expect(headerRowIdx).toBeGreaterThan(-1);
     const headerRow = rows[headerRowIdx]!;
     expect(headerRow).toContain('[critical]');
+  });
+});
+
+describe('planCommentFooter — compose-aware spans', () => {
+  const WIDTH = 40;
+
+  it('adds buffer-aware reply-input rows to the replying thread', () => {
+    const thread = makeThread();
+    const base = planCommentFooter([thread], WIDTH).spans[0]!;
+
+    const short = planCommentFooter([thread], WIDTH, {
+      replyingToThreadId: 't1',
+      replyBuffer: '',
+    }).spans[0]!;
+    expect(short).toBe(base + estimateReplyInputRows('', WIDTH));
+
+    // A buffer long enough to wrap several input lines grows the span.
+    const longBuffer = 'x'.repeat(120);
+    const long = planCommentFooter([thread], WIDTH, {
+      replyingToThreadId: 't1',
+      replyBuffer: longBuffer,
+    }).spans[0]!;
+    expect(long).toBe(base + estimateReplyInputRows(longBuffer, WIDTH));
+    expect(long).toBeGreaterThan(short);
+  });
+
+  it('leaves other threads untouched while one is replying', () => {
+    const threads = [makeThread(), makeThread({ id: 't2' })];
+    const spans = planCommentFooter(threads, WIDTH, {
+      replyingToThreadId: 't1',
+      replyBuffer: 'hi',
+    }).spans;
+    expect(spans[1]).toBe(estimateCardRows(threads[1]!, WIDTH));
+  });
+
+  it('replaces the card span with the composer estimate while annotating', () => {
+    // Long body → tall card; the one-line composer must NOT inherit it.
+    const thread = makeThread({
+      comments: [
+        {
+          id: 't1-c1',
+          author: 'alice',
+          body: 'word '.repeat(80),
+          createdAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      ],
+    });
+    const cardSpan = planCommentFooter([thread], WIDTH).spans[0]!;
+    const composerSpan = planCommentFooter([thread], WIDTH, {
+      annotatingPlanKey: planItemKey('remote', 't1'),
+      annotationBuffer: '',
+    }).spans[0]!;
+    // border(2) + header(1) + one buffer row + marginBottom(1)
+    expect(composerSpan).toBe(5);
+    expect(composerSpan).toBeLessThan(cardSpan);
   });
 });

@@ -520,6 +520,24 @@ export function estimateLocalCardRows(
 export const REPLY_INPUT_ROWS = 4;
 
 /**
+ * Buffer-aware version of `REPLY_INPUT_ROWS`: rows the open reply
+ * input occupies for a given buffer — the marginTop gap + bordered box
+ * (2 rows) + the wrapped buffer. `contentWidth` is the CARD interior
+ * width; the input's own text is 6 cols narrower (marginLeft 2 +
+ * border 2 + paddingX 2), and the trailing cursor glyph takes a cell.
+ */
+export function estimateReplyInputRows(
+  buffer: string,
+  contentWidth?: number
+): number {
+  const inputWidth =
+    contentWidth && contentWidth > 0
+      ? Math.max(1, contentWidth - 6)
+      : undefined;
+  return 1 + 2 + estimateBodyRows(`${buffer}▍`, inputWidth);
+}
+
+/**
  * Extra rows reserved when a local-draft card is in `editing` state.
  * Editing replaces the body Text with an input that may run a row or
  * two longer than the static body, so we reserve a couple of slack

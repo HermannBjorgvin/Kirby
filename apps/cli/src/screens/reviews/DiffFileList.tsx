@@ -5,17 +5,11 @@ import type { DiffFile } from '@kirby/diff';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { truncate } from '../../utils/truncate.js';
-import {
-  computeScrollWindow,
-  computeSpanScrollWindow,
-} from '../../utils/scroll-window.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
-import {
-  CommentThreadCard,
-  planCommentFooter,
-  CARD_MAX_WIDTH,
-} from '../../components/CommentThread.js';
+import { CommentThreadCard } from '../../components/CommentThread.js';
+import { VirtualViewport } from '../../components/VirtualViewport.js';
 import { planItemKey } from '../../plan/plan-types.js';
+import { computeDiffListLayout } from './diff-list-layout.js';
 
 function statusBadge(status: DiffFile['status']): {
   char: string;
@@ -35,39 +29,6 @@ function statusBadge(status: DiffFile['status']): {
     default:
       return { char: 'M', color: 'yellow' };
   }
-}
-
-// Tree row — either a directory header or a file. Directory headers
-// render dim with no stats; their depth indents nested paths. `fileRowIndex`
-// is the ordinal within the file-only sequence, used to map the outer
-// `selectedIndex` (which still counts files, not rows) to a row.
-type TreeRow =
-  | { kind: 'dir'; name: string; depth: number }
-  | { kind: 'file'; file: DiffFile; depth: number; fileRowIndex: number };
-
-function buildFileTree(files: DiffFile[]): TreeRow[] {
-  const rows: TreeRow[] = [];
-  const emittedDirs = new Set<string>();
-  files.forEach((file, fileRowIndex) => {
-    const parts = file.filename.split('/');
-    const dirs = parts.slice(0, -1);
-    // Emit each missing ancestor directory once, deepest-last.
-    let prefix = '';
-    dirs.forEach((segment, depth) => {
-      prefix = prefix ? `${prefix}/${segment}` : segment;
-      if (!emittedDirs.has(prefix)) {
-        emittedDirs.add(prefix);
-        rows.push({ kind: 'dir', name: segment, depth });
-      }
-    });
-    rows.push({
-      kind: 'file',
-      file,
-      depth: dirs.length,
-      fileRowIndex,
-    });
-  });
-  return rows;
 }
 
 function FileRow({
@@ -165,7 +126,9 @@ function DiffFileListHints({
   const resolveKeys = kb.getHintKeys('diff-file-list.toggle-thread-resolved');
   return (
     <Box marginTop={1}>
-      <Text dimColor>
+      {/* One budgeted row — truncate on narrow panes rather than wrap
+          (a wrapped hint line would push the pane past paneRows). */}
+      <Text dimColor wrap="truncate-end">
         <Text color="cyan">{navKeys}</Text> navigate ·{' '}
         {commentSelected ? (
           <>
@@ -208,6 +171,7 @@ export const DiffFileList = memo(function DiffFileList({
   treeMode = false,
   generalComments,
   selectedCommentIndex,
+  scrollRow = 0,
   replyingToThreadId,
   replyBuffer,
   inPlanKeys,
@@ -224,9 +188,13 @@ export const DiffFileList = memo(function DiffFileList({
   comments?: ReviewComment[];
   treeMode?: boolean;
   generalComments?: RemoteCommentThread[];
-  /** Index into the rendered PR-comments footer that is currently
-   *  highlighted (undefined = selection is on a file row instead). */
+  /** Index of the highlighted comment (undefined = selection is on a
+   *  file row instead). */
   selectedCommentIndex?: number;
+  /** Top row of the unified list viewport (pane state; the input
+   *  handler steps it row-wise so tall cards scroll before selection
+   *  moves on). */
+  scrollRow?: number;
   replyingToThreadId?: string | null;
   replyBuffer?: string;
   /** Keys (`${kind}:${id}`) of comments queued in the plan. */
@@ -252,101 +220,45 @@ export const DiffFileList = memo(function DiffFileList({
 
   const hasAnyComments = commentCounts.size > 0;
 
-  // Tree mode renders the same displayFiles just grouped under dir
-  // headers. Files must already be in the caller's desired order
-  // (container sorts before handing in) so the selected-file index
-  // matches both the input handler and the visible row position.
-  const treeRows = useMemo(
-    () => (treeMode ? buildFileTree(displayFiles) : null),
-    [treeMode, displayFiles]
-  );
-
-  const maxWidth = Math.max(20, paneCols - 2);
-  // Footer cards are capped like the diff viewer's so long bodies wrap
-  // at a readable width AND the row estimates (which are width-based)
-  // match what actually renders. Interior text width = card width
-  // minus border (2) + paddingX (2).
-  const cardWidth = Math.min(CARD_MAX_WIDTH, maxWidth);
-  const cardContentWidth = Math.max(1, cardWidth - 4);
-
-  // PR-comments footer: every thread stays j/k-selectable; the footer
-  // renders a scrollable window of cards around the selection instead
-  // of drawing all of them (which used to Yoga-squeeze the cards into
-  // border soup once they exceeded the pane).
   const generalThreads = useMemo(
     () => generalComments ?? [],
     [generalComments]
   );
-  const { shown: shownGeneral, spans: generalSpans } = useMemo(
+
+  // One unified virtual viewport: file rows and comment cards are a
+  // single scrollable stream (selection order = files, then comments).
+  // Shared with the input handler so scroll math matches the render —
+  // see diff-list-layout.ts.
+  const layout = useMemo(
     () =>
-      planCommentFooter(generalThreads, cardContentWidth, replyingToThreadId),
-    [generalThreads, cardContentWidth, replyingToThreadId]
+      computeDiffListLayout({
+        paneRows,
+        paneCols,
+        displayFiles,
+        treeMode,
+        skippedCount: skipped.length,
+        threads: generalThreads,
+        compose: {
+          replyingToThreadId,
+          replyBuffer,
+          annotatingPlanKey,
+          annotationBuffer,
+        },
+      }),
+    [
+      paneRows,
+      paneCols,
+      displayFiles,
+      treeMode,
+      skipped.length,
+      generalThreads,
+      replyingToThreadId,
+      replyBuffer,
+      annotatingPlanKey,
+      annotationBuffer,
+    ]
   );
-
-  // In tree mode, total visual rows = files + directories. Otherwise
-  // it's just files. Scroll window is computed against the selected
-  // row's position in the visual stream so dir headers above scroll
-  // out naturally with the file.
-  const totalVisualRows = treeRows ? treeRows.length : displayFiles.length;
-
-  // ── Row budget ──────────────────────────────────────────────────
-  // Chrome: title + divider + hints (marginTop + row) + optional
-  // skipped note. The remainder is split between the file list and
-  // the comments footer: the list keeps up to half the pane (but no
-  // more than it needs), the footer gets the rest capped by its own
-  // need. footerRows includes the footer's marginTop + heading.
-  const skippedNoteRows = skipped.length > 0 ? 1 : 0;
-  const available = Math.max(1, paneRows - 4 - skippedNoteRows);
-  const footerNeed =
-    shownGeneral.length > 0
-      ? 2 + generalSpans.reduce((sum, s) => sum + s, 0)
-      : 0;
-  // Even an empty list draws one row ("(no files)").
-  const fileNeed = Math.max(1, totalVisualRows);
-  const fileReserved = Math.min(fileNeed, Math.ceil(available / 2));
-  const footerRows =
-    footerNeed > 0
-      ? Math.min(footerNeed, Math.max(0, available - fileReserved))
-      : 0;
-  const maxVisible = Math.max(1, available - footerRows);
-  const selectedVisualIndex = treeRows
-    ? (() => {
-        const hit = treeRows.findIndex(
-          (r) => r.kind === 'file' && r.fileRowIndex === selectedIndex
-        );
-        return hit === -1 ? 0 : hit;
-      })()
-    : selectedIndex;
-  const needsIndicators = totalVisualRows > maxVisible;
-  const indicatorRows = needsIndicators ? 2 : 0;
-  const listRows = maxVisible - indicatorRows;
-
-  const { windowStart, aboveCount, belowCount } = computeScrollWindow({
-    totalItems: totalVisualRows,
-    selectedIndex: selectedVisualIndex,
-    maxVisible: listRows,
-  });
-  const visibleFiles = !treeRows
-    ? displayFiles.slice(windowStart, windowStart + Math.max(1, listRows))
-    : null;
-  const visibleRows = treeRows
-    ? treeRows.slice(windowStart, windowStart + Math.max(1, listRows))
-    : null;
-
-  // Card-granularity scroll window over the footer, anchored on the
-  // selected card (top of the list when selection is on a file row).
-  const footerWindow = computeSpanScrollWindow({
-    spans: generalSpans,
-    selectedIndex: selectedCommentIndex ?? 0,
-    budgetRows: Math.max(0, footerRows - 2),
-  });
-  const footerIndicatorRows =
-    (footerWindow.aboveCount > 0 ? 1 : 0) +
-    (footerWindow.belowCount > 0 ? 1 : 0);
-  // Fixed clip box for the cards: even when a card's row estimate is
-  // off by a little, the overflow is cut here instead of letting Yoga
-  // squeeze every card in the column.
-  const footerCardBoxRows = Math.max(1, footerRows - 2 - footerIndicatorRows);
+  const { maxWidth, cardWidth, items } = layout;
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -365,121 +277,96 @@ export const DiffFileList = memo(function DiffFileList({
         <Text dimColor>(no files)</Text>
       )}
 
-      {displayFiles.length > 0 && (
-        <Box flexDirection="column">
-          {aboveCount > 0 && <Text dimColor>↑ {aboveCount} more</Text>}
-          {visibleFiles &&
-            visibleFiles.map((f, i) => {
-              const realIndex = windowStart + i;
-              const isSelected = realIndex === selectedIndex;
+      {items.length > 0 && (
+        <VirtualViewport
+          spans={layout.spans}
+          offset={scrollRow}
+          budgetRows={layout.budgetRows}
+          renderItem={(idx) => {
+            const item = items[idx];
+            if (!item) return null;
+
+            if (item.kind === 'file') {
               return (
-                <FileRow
-                  key={f.filename}
-                  file={f}
-                  selected={isSelected}
-                  maxWidth={maxWidth}
-                  commentCount={commentCounts.get(f.filename) ?? 0}
-                  hasAnyComments={hasAnyComments}
+                <Box flexDirection="column">
+                  {item.dirs.map((dir, d) => (
+                    <DirRow
+                      key={`d:${d}:${dir.name}`}
+                      name={dir.name}
+                      depth={dir.depth}
+                    />
+                  ))}
+                  <FileRow
+                    file={item.file}
+                    selected={idx === selectedIndex}
+                    maxWidth={maxWidth}
+                    commentCount={commentCounts.get(item.file.filename) ?? 0}
+                    hasAnyComments={hasAnyComments}
+                    depth={item.depth}
+                  />
+                </Box>
+              );
+            }
+
+            const { thread } = item;
+            const pKey = planItemKey('remote', thread.id);
+            const heading = item.withHeading && (
+              <Box marginTop={1} flexShrink={0}>
+                <Text bold color="blue">
+                  PR Comments ({generalThreads.length})
+                </Text>
+              </Box>
+            );
+            // While annotating, the composer takes the card's slot.
+            const card =
+              annotatingPlanKey === pKey ? (
+                <Box
+                  flexDirection="column"
+                  borderStyle="round"
+                  borderColor="green"
+                  marginBottom={1}
+                  paddingX={1}
+                  width={cardWidth}
+                >
+                  <Text wrap="truncate-end">
+                    <Text bold color="green">
+                      EDITING NOTE
+                    </Text>
+                    <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
+                  </Text>
+                  <Text wrap="wrap">
+                    {annotationBuffer ?? ''}
+                    <Text color="green">▍</Text>
+                  </Text>
+                </Box>
+              ) : (
+                <CommentThreadCard
+                  thread={thread}
+                  selected={
+                    selectedCommentIndex !== undefined &&
+                    selectedCommentIndex === item.commentIndex
+                  }
+                  replyingToThreadId={replyingToThreadId}
+                  replyBuffer={replyBuffer}
+                  maxWidth={cardWidth}
+                  inPlan={inPlanKeys?.has(pKey) ?? false}
+                  planHint
                 />
               );
-            })}
-          {visibleRows &&
-            visibleRows.map((row, i) =>
-              row.kind === 'dir' ? (
-                <DirRow
-                  key={`d:${windowStart + i}:${row.name}`}
-                  name={row.name}
-                  depth={row.depth}
-                />
-              ) : (
-                <FileRow
-                  key={row.file.filename}
-                  file={row.file}
-                  selected={row.fileRowIndex === selectedIndex}
-                  maxWidth={maxWidth}
-                  commentCount={commentCounts.get(row.file.filename) ?? 0}
-                  hasAnyComments={hasAnyComments}
-                  depth={row.depth}
-                />
-              )
-            )}
-          {belowCount > 0 && <Text dimColor>↓ {belowCount} more</Text>}
-        </Box>
+            return (
+              <Box flexDirection="column">
+                {heading}
+                {card}
+              </Box>
+            );
+          }}
+        />
       )}
 
       {skipped.length > 0 && !showSkipped && (
         <Text dimColor>{skipped.length} skipped (binary/lock/generated)</Text>
       )}
       {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
-
-      {shownGeneral.length > 0 && footerRows >= 2 && (
-        <Box flexDirection="column" marginTop={1} flexShrink={0}>
-          <Text bold color="blue">
-            PR Comments ({generalThreads.length})
-          </Text>
-          {footerWindow.aboveCount > 0 && (
-            <Text dimColor>↑ {footerWindow.aboveCount} more</Text>
-          )}
-          <Box
-            flexDirection="column"
-            height={footerCardBoxRows}
-            overflow="hidden"
-            flexShrink={0}
-          >
-            {shownGeneral
-              .slice(footerWindow.start, footerWindow.end)
-              .map((thread, i) => {
-                const idx = footerWindow.start + i;
-                const pKey = planItemKey('remote', thread.id);
-                // While annotating, the composer takes the card's slot.
-                if (annotatingPlanKey === pKey) {
-                  return (
-                    <Box key={thread.id} flexShrink={0}>
-                      <Box
-                        flexDirection="column"
-                        borderStyle="round"
-                        borderColor="green"
-                        marginBottom={1}
-                        paddingX={1}
-                        width={cardWidth}
-                      >
-                        <Text wrap="truncate-end">
-                          <Text bold color="green">
-                            EDITING NOTE
-                          </Text>
-                          <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
-                        </Text>
-                        <Text wrap="wrap">
-                          {annotationBuffer ?? ''}
-                          <Text color="green">▍</Text>
-                        </Text>
-                      </Box>
-                    </Box>
-                  );
-                }
-                return (
-                  <Box key={thread.id} flexShrink={0}>
-                    <CommentThreadCard
-                      thread={thread}
-                      selected={
-                        selectedCommentIndex !== undefined &&
-                        selectedCommentIndex === idx
-                      }
-                      replyingToThreadId={replyingToThreadId}
-                      replyBuffer={replyBuffer}
-                      maxWidth={cardWidth}
-                      inPlan={inPlanKeys?.has(pKey) ?? false}
-                      planHint
-                    />
-                  </Box>
-                );
-              })}
-          </Box>
-          {footerWindow.belowCount > 0 && (
-            <Text dimColor>↓ {footerWindow.belowCount} more</Text>
-          )}
-        </Box>
-      )}
 
       <DiffFileListHints
         hasComments={generalThreads.length > 0}

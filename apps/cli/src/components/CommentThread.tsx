@@ -2,10 +2,12 @@ import { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import {
+  estimateBodyRows,
   estimateCardRows,
-  REPLY_INPUT_ROWS,
+  estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
+import { planItemKey } from '../plan/plan-types.js';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //
@@ -305,21 +307,43 @@ export const LocalCommentCard = memo(function LocalCommentCard({
  * wrapped long bodies are badly undercounted — always pass it from
  * render paths.
  */
+/** Live compose state that changes a card's rendered height. */
+export interface FooterComposeState {
+  replyingToThreadId?: string | null;
+  replyBuffer?: string;
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
+}
+
 export function planCommentFooter(
   threads: RemoteCommentThread[],
   contentWidth?: number,
-  replyingToThreadId?: string | null
+  compose?: FooterComposeState
 ): {
   shown: RemoteCommentThread[];
   rows: number;
   spans: number[];
 } {
   if (threads.length === 0) return { shown: [], rows: 0, spans: [] };
-  const spans = threads.map(
-    (thread) =>
+  const spans = threads.map((thread) => {
+    // The Shift+A note composer REPLACES the card in the file-list
+    // render, so its span replaces the card estimate too: border (2)
+    // + header row + wrapped buffer (with cursor cell) + marginBottom.
+    if (compose?.annotatingPlanKey === planItemKey('remote', thread.id)) {
+      return (
+        2 +
+        1 +
+        estimateBodyRows(`${compose.annotationBuffer ?? ''}▍`, contentWidth) +
+        1
+      );
+    }
+    return (
       estimateCardRows(thread, contentWidth) +
-      (thread.id === replyingToThreadId ? REPLY_INPUT_ROWS : 0)
-  );
+      (thread.id === compose?.replyingToThreadId
+        ? estimateReplyInputRows(compose.replyBuffer ?? '', contentWidth)
+        : 0)
+    );
+  });
   // +1 for the "PR Comments (N)" heading
   const rows = 1 + spans.reduce((sum, s) => sum + s, 0);
   return { shown: threads, rows, spans };
