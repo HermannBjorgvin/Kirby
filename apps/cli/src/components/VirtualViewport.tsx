@@ -15,9 +15,14 @@ import {
  * - only items overlapping [offset, offset + viewport] are mounted
  * - the first (partially visible) item is shifted up with a negative
  *   marginTop so its already-scrolled rows land above the clip edge
- * - every item is wrapped in flexShrink={0} so Yoga can't squeeze it,
- *   and the body is a fixed-height overflow="hidden" box so any
- *   span-estimate miss clips cleanly instead of corrupting layout
+ * - every item is wrapped in a flexShrink={0} box FIXED to its span
+ *   (height + overflow="hidden"), so an item whose real rendered
+ *   height disagrees with its estimate clips (or gaps) within its own
+ *   slot instead of shifting every item below it out of the geometry
+ *   the scroll math believes in — a card usually loses its blank
+ *   marginBottom row first, so a one-row miss is invisible
+ * - the body is a fixed-height overflow="hidden" box as the outer
+ *   guard against any remaining drift
  *
  * The component always occupies exactly `min(budgetRows, 2 + content)`
  * rows: while the content is clipped, the ↑/↓ indicator lines render
@@ -68,15 +73,28 @@ export function VirtualViewport({
         overflow="hidden"
         flexShrink={0}
       >
-        {visible.map(({ index, topClip }, i) => (
-          <Box
-            key={index}
-            flexShrink={0}
-            {...(i === 0 && topClip > 0 ? { marginTop: -topClip } : {})}
-          >
-            {renderItem(index)}
-          </Box>
-        ))}
+        {visible.map(({ index, topClip }, i) => {
+          const shifted = i === 0 && topClip > 0;
+          return (
+            <Box
+              key={index}
+              flexDirection="column"
+              flexShrink={0}
+              // Fix every fully-slotted item to its span so a
+              // real-vs-estimate height miss clips (or gaps) inside
+              // its own slot instead of shifting the items below it.
+              // The negative-margin-shifted first item must NOT carry
+              // its own overflow clip — Ink mispaints a clipping box
+              // that hangs outside its parent's clip region — so it
+              // relies on the parent body clip alone.
+              {...(shifted
+                ? { marginTop: -topClip }
+                : { height: spans[index], overflow: 'hidden' as const })}
+            >
+              {renderItem(index)}
+            </Box>
+          );
+        })}
       </Box>
       {clipped && (
         <Text dimColor>

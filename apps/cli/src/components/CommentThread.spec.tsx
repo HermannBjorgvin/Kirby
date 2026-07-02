@@ -290,3 +290,63 @@ describe('planCommentFooter — compose-aware spans', () => {
     expect(composerSpan).toBeLessThan(cardSpan);
   });
 });
+
+describe('estimateCardRows matches the rendered card exactly', () => {
+  // The whole scroll stack (viewport clamp, j/k stepping, reveal,
+  // anchoring) keys off estimated spans while Ink paints real
+  // word-wrapped rows. Any drift makes bottom rows unreachable and
+  // pushes trailing items out of the clipped stream — so for realistic
+  // bodies the estimate must EQUAL the painted height, not approximate
+  // it. estimateBodyRows runs the same wrap-ansi call Ink uses.
+  const CARD_WIDTH = 80;
+  const CONTENT_WIDTH = CARD_WIDTH - 4;
+
+  const BODIES = [
+    // single wrapping paragraph
+    'This refactor looks mostly good but I am worried about the error handling path here, specifically what happens when the upstream request times out and we have already partially written to the stream.',
+    // multi-paragraph body where individual lines wrap (the shape that
+    // used to drift: max(lineCount, ceil(len/width)) undercounted it)
+    'Nice catch overall!\n\nA couple of thoughts on this implementation though:\n\n1. The retry logic should probably use exponential backoff instead of a fixed delay, otherwise we hammer the API when it is already struggling.\n2. We should log the correlation id on failure so support can trace these.\n\nOtherwise looks good to merge once CI is green.',
+    // short body
+    'LGTM, ship it.',
+    // long unbroken token (hard-wrapped) + stack-trace lines
+    'Fails on `useVeryLongHookNameThatDoesNotBreakAnywhereBecauseItIsOneToken` — see the stack trace:\nTypeError: cannot read properties of undefined (reading foo)\n  at DiffViewer.tsx:241',
+  ];
+
+  function bodyThread(body: string, replies: string[] = []) {
+    return makeThread({
+      comments: [
+        {
+          id: 'c0',
+          author: 'alice',
+          body,
+          createdAt: new Date().toISOString(),
+        },
+        ...replies.map((b, i) => ({
+          id: `c${i + 1}`,
+          author: 'bob',
+          body: b,
+          createdAt: new Date().toISOString(),
+        })),
+      ],
+    });
+  }
+
+  const cases: [string, RemoteCommentThread][] = [
+    ...BODIES.map(
+      (b, i) => [`body ${i}`, bodyThread(b)] as [string, RemoteCommentThread]
+    ),
+    ['threaded (2 replies)', bodyThread(BODIES[1]!, [BODIES[0]!, BODIES[3]!])],
+    ['threaded (1 reply)', bodyThread(BODIES[3]!, [BODIES[2]!])],
+  ];
+
+  it.each(cases)('%s', (_label, thread) => {
+    const { lastFrame } = render(
+      <CommentThreadCard thread={thread} maxWidth={CARD_WIDTH} />
+    );
+    // The frame's trailing blank line is the card's marginBottom row,
+    // so frame lines == rows the stream layout consumes.
+    const real = stripAnsi(lastFrame() ?? '').split('\n').length;
+    expect(estimateCardRows(thread, CONTENT_WIDTH)).toBe(real);
+  });
+});
