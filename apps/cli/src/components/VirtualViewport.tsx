@@ -15,14 +15,17 @@ import {
  * - only items overlapping [offset, offset + viewport] are mounted
  * - the first (partially visible) item is shifted up with a negative
  *   marginTop so its already-scrolled rows land above the clip edge
- * - every item is wrapped in a flexShrink={0} box FIXED to its span
- *   (height + overflow="hidden"), so an item whose real rendered
- *   height disagrees with its estimate clips (or gaps) within its own
- *   slot instead of shifting every item below it out of the geometry
- *   the scroll math believes in — a card usually loses its blank
- *   marginBottom row first, so a one-row miss is invisible
- * - the body is a fixed-height overflow="hidden" box as the outer
- *   guard against any remaining drift
+ * - every fully-visible item is wrapped in a flexShrink={0} box FIXED
+ *   to its span (height + overflow="hidden"), so an item whose real
+ *   rendered height disagrees with its estimate clips (or gaps)
+ *   within its own slot instead of shifting every item below it out
+ *   of the geometry the scroll math believes in — a card usually
+ *   loses its blank marginBottom row first, so a one-row miss is
+ *   invisible. Items partially visible at either viewport edge get NO
+ *   slot clip: Ink honours only the innermost clip, so a slot poking
+ *   past the body box would let content escape the viewport entirely
+ * - the body is a fixed-height overflow="hidden" box that clips the
+ *   boundary items and guards against any remaining drift
  *
  * The component always occupies exactly `min(budgetRows, 2 + content)`
  * rows: while the content is clipped, the ↑/↓ indicator lines render
@@ -75,21 +78,30 @@ export function VirtualViewport({
       >
         {visible.map(({ index, topClip }, i) => {
           const shifted = i === 0 && topClip > 0;
+          // Ink honours only the INNERMOST overflow clip — Output.get
+          // consults clips.at(-1), never intersecting with ancestor
+          // clips — so an item whose slot pokes past the body box
+          // would clip to its OWN bounds and paint straight through
+          // the viewport edge (over the ↓-indicator/hints below, or
+          // the chrome above for the shifted first item). Give an
+          // item its own span-fixed clip only when its slot lies
+          // fully inside the viewport (containment makes
+          // innermost-only equivalent to intersection); boundary
+          // items rely on the parent body clip alone.
+          const fullyInside =
+            !shifted && (bounds[index]?.bottom ?? Infinity) <= bottom;
           return (
             <Box
               key={index}
               flexDirection="column"
               flexShrink={0}
-              // Fix every fully-slotted item to its span so a
-              // real-vs-estimate height miss clips (or gaps) inside
-              // its own slot instead of shifting the items below it.
-              // The negative-margin-shifted first item must NOT carry
-              // its own overflow clip — Ink mispaints a clipping box
-              // that hangs outside its parent's clip region — so it
-              // relies on the parent body clip alone.
-              {...(shifted
-                ? { marginTop: -topClip }
-                : { height: spans[index], overflow: 'hidden' as const })}
+              // Span-fixed slots make a real-vs-estimate height miss
+              // clip (or gap) inside the item's own slot instead of
+              // shifting the items below it out of the geometry.
+              {...(shifted ? { marginTop: -topClip } : {})}
+              {...(fullyInside
+                ? { height: spans[index], overflow: 'hidden' as const }
+                : {})}
             >
               {renderItem(index)}
             </Box>

@@ -192,6 +192,28 @@ describe('DiffFileList — unified virtual viewport', () => {
     expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
   });
 
+  it('clips a bottom-edge partial card instead of bleeding past the viewport', () => {
+    // Regression: Ink applies only the INNERMOST overflow clip
+    // (Output.get uses clips.at(-1), no ancestor intersection), so a
+    // per-item slot clip on a card whose slot extends past the body
+    // box let the card paint below the viewport — card text overlapped
+    // the ↓-indicator and hints rows. Deep rows of the partially
+    // visible bottom card must stay hidden.
+    const { lastFrame } = renderList({
+      files: [makeFile(0)],
+      generalComments: [makeThread(0, 2), makeThread(1, 30)],
+      scrollRow: 0,
+    });
+    const visible = stripAnsi(lastFrame() ?? '');
+    // The tall second card is partially visible at the bottom edge…
+    expect(visible).toContain('author-1');
+    // …but rows past the viewport's bottom edge must stay hidden —
+    // they used to paint over the ↓-indicator and hints rows below
+    // ('line 7'+ landed on the chrome rows).
+    expect(visible).not.toContain('line 8');
+    expect(frameRows(lastFrame).length).toBeLessThanOrEqual(PANE_ROWS);
+  });
+
   it('keeps frame height stable across scroll positions', () => {
     // Indicator lines are placeholders while clipped, so the frame's
     // row count must not change as the viewport scrolls (the hints row
