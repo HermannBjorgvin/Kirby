@@ -134,8 +134,12 @@ export function DiffFileListContainer({
   useDiffListScrollSync({
     layout,
     selectedIndex: pane.diffFileIndex,
-    composing:
-      pane.replyingToThreadId != null || pane.annotatingPlanKey != null,
+    composeMode:
+      pane.replyingToThreadId != null
+        ? 'reply'
+        : pane.annotatingPlanKey != null
+        ? 'annotate'
+        : null,
     pendingScrollThreadId: pane.pendingScrollThreadId,
     setDiffListScrollRow: pane.setDiffListScrollRow,
     setPendingScrollThreadId: pane.setPendingScrollThreadId,

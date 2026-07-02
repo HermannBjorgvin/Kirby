@@ -327,15 +327,18 @@ export function planCommentFooter(
   if (threads.length === 0) return { shown: [], rows: 0, spans: [] };
   const spans = threads.map((thread) => {
     // The Shift+A note composer REPLACES the card in the file-list
-    // render, so its span replaces the card estimate too: border (2)
-    // + header row + wrapped buffer (with cursor cell) + marginBottom.
+    // render. It keeps the replaced card's footprint (the renderer
+    // pins its height to the span) so entering/leaving annotate mode
+    // never shifts the layout — the span only grows past the card
+    // when the note wraps taller than it: border (2) + header row +
+    // wrapped buffer (with cursor cell) + marginBottom.
     if (compose?.annotatingPlanKey === planItemKey('remote', thread.id)) {
-      return (
+      const composerRows =
         2 +
         1 +
         estimateBodyRows(`${compose.annotationBuffer ?? ''}▍`, contentWidth) +
-        1
-      );
+        1;
+      return Math.max(estimateCardRows(thread, contentWidth), composerRows);
     }
     return (
       estimateCardRows(thread, contentWidth) +

@@ -102,7 +102,7 @@ function baseOpts(
   return {
     layout: makeLayout([fileItem('a.ts')], 8),
     selectedIndex: 0,
-    composing: false,
+    composeMode: null,
     pendingScrollThreadId: null,
     setDiffListScrollRow: vi.fn(),
     setPendingScrollThreadId: vi.fn(),
@@ -117,13 +117,13 @@ describe('useDiffListScrollSync — compose visibility', () => {
     commentItem('t1', 10),
   ];
 
-  it('reveals the composing item bottom when the input opens', async () => {
+  it('reveals the composing item bottom when the reply input opens', async () => {
     const setDiffListScrollRow = vi.fn();
     const { unmount } = mountHook(
       baseOpts({
         layout: makeLayout(items, 8),
         selectedIndex: 5,
-        composing: true,
+        composeMode: 'reply',
         setDiffListScrollRow,
       })
     );
@@ -138,7 +138,7 @@ describe('useDiffListScrollSync — compose visibility', () => {
     const opts = baseOpts({
       layout: makeLayout(items, 8),
       selectedIndex: 5,
-      composing: true,
+      composeMode: 'reply' as const,
       setDiffListScrollRow,
     });
     const { rerender, unmount } = mountHook(opts);
@@ -153,6 +153,25 @@ describe('useDiffListScrollSync — compose visibility', () => {
     await flush();
     // bottom 19 − viewport 8 = 11.
     expect(foldOffset(setDiffListScrollRow, afterOpen)).toBe(11);
+    unmount();
+  });
+
+  it('top-aligns a taller-than-viewport item in annotate mode', async () => {
+    // The annotate composer's input renders at the TOP of its slot —
+    // bottom-revealing a 10-row item in an 8-row viewport would hide
+    // the input, so annotate mode top-aligns instead.
+    const setDiffListScrollRow = vi.fn();
+    const { unmount } = mountHook(
+      baseOpts({
+        layout: makeLayout(items, 8),
+        selectedIndex: 5,
+        composeMode: 'annotate',
+        setDiffListScrollRow,
+      })
+    );
+    await flush();
+    // scrollIntoView(0, {5,15}, 8) → item taller than viewport → top 5.
+    expect(foldOffset(setDiffListScrollRow, 0)).toBe(5);
     unmount();
   });
 

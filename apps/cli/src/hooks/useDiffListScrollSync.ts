@@ -20,8 +20,10 @@ export interface UseDiffListScrollSyncOptions {
   layout: DiffListLayout;
   /** Selected unified-list ordinal (files first, then comments). */
   selectedIndex: number;
-  /** True while a reply input or annotate composer is open. */
-  composing: boolean;
+  /** Which compose input is open, if any. Reply inputs render at the
+   *  BOTTOM of their card, the annotate composer's input at the TOP
+   *  of its slot — the two need opposite scroll alignment. */
+  composeMode: 'reply' | 'annotate' | null;
   /** Thread id queued for a post-reply reveal (set by onReplyPosted). */
   pendingScrollThreadId: string | null;
   setDiffListScrollRow: (updater: (prev: number) => number) => void;
@@ -39,30 +41,38 @@ export interface UseDiffListScrollSyncOptions {
 export function useDiffListScrollSync({
   layout,
   selectedIndex,
-  composing,
+  composeMode,
   pendingScrollThreadId,
   setDiffListScrollRow,
   setPendingScrollThreadId,
 }: UseDiffListScrollSyncOptions): void {
   // ── Compose visibility ──────────────────────────────────────────
   // While a reply/annotate input is open it swallows every keypress,
-  // so the user can't scroll manually — keep the composing item's
-  // bottom (where the input lives) on screen. Re-runs per keystroke
-  // (the layout memo depends on the buffers), so a buffer wrapping to
-  // a new line re-reveals the cursor.
+  // so the user can't scroll manually — keep the input on screen.
+  // Reply inputs live at the card's BOTTOM (reveal the bottom edge);
+  // the annotate composer's input lives at the TOP of its
+  // card-footprint slot (top-align when taller than the viewport).
+  // Re-runs per keystroke (the layout memo depends on the buffers),
+  // so a buffer wrapping to a new line re-reveals the cursor.
   useEffect(() => {
-    if (!composing) return;
+    if (!composeMode) return;
     const bounds = itemBounds(layout.spans)[selectedIndex];
     if (!bounds) return;
     const total = totalRows(layout.spans);
     setDiffListScrollRow((o) =>
-      clampOffset(
-        revealBottom(o, bounds, layout.viewportRows),
-        total,
-        layout.viewportRows
-      )
+      composeMode === 'annotate'
+        ? scrollIntoView(
+            clampOffset(o, total, layout.viewportRows),
+            bounds,
+            layout.viewportRows
+          )
+        : clampOffset(
+            revealBottom(o, bounds, layout.viewportRows),
+            total,
+            layout.viewportRows
+          )
     );
-  }, [composing, layout, selectedIndex, setDiffListScrollRow]);
+  }, [composeMode, layout, selectedIndex, setDiffListScrollRow]);
 
   // ── Scroll anchoring ────────────────────────────────────────────
   // The offset is an absolute row; when spans change upstream (a

@@ -317,7 +317,11 @@ export const DiffFileList = memo(function DiffFileList({
                 </Text>
               </Box>
             );
-            // While annotating, the composer takes the card's slot.
+            // While annotating, the composer takes the card's slot at
+            // the card's exact footprint (span minus the heading rows
+            // it may carry, minus its own marginBottom) so entering
+            // and leaving annotate mode never shifts the layout.
+            const composerHeight = item.span - (item.withHeading ? 2 : 0) - 1;
             const card =
               annotatingPlanKey === pKey ? (
                 <Box
@@ -327,6 +331,7 @@ export const DiffFileList = memo(function DiffFileList({
                   marginBottom={1}
                   paddingX={1}
                   width={cardWidth}
+                  height={composerHeight}
                 >
                   <Text wrap="truncate-end">
                     <Text bold color="green">

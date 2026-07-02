@@ -268,8 +268,9 @@ describe('planCommentFooter — compose-aware spans', () => {
     expect(spans[1]).toBe(estimateCardRows(threads[1]!, WIDTH));
   });
 
-  it('replaces the card span with the composer estimate while annotating', () => {
-    // Long body → tall card; the one-line composer must NOT inherit it.
+  it('keeps the replaced card footprint while annotating', () => {
+    // The composer takes the card's slot at the card's exact size so
+    // entering/leaving annotate mode never shifts the layout.
     const thread = makeThread({
       comments: [
         {
@@ -285,9 +286,22 @@ describe('planCommentFooter — compose-aware spans', () => {
       annotatingPlanKey: planItemKey('remote', 't1'),
       annotationBuffer: '',
     }).spans[0]!;
-    // border(2) + header(1) + one buffer row + marginBottom(1)
-    expect(composerSpan).toBe(5);
-    expect(composerSpan).toBeLessThan(cardSpan);
+    expect(composerSpan).toBe(cardSpan);
+  });
+
+  it('grows past the card footprint when the note wraps taller', () => {
+    // Short card (small footprint) + long note → the composer needs
+    // border(2) + header(1) + wrapped note rows + marginBottom(1).
+    const thread = makeThread(); // one-line body
+    const cardSpan = planCommentFooter([thread], WIDTH).spans[0]!;
+    const noteBuffer = 'n'.repeat(WIDTH * 6);
+    const composerSpan = planCommentFooter([thread], WIDTH, {
+      annotatingPlanKey: planItemKey('remote', 't1'),
+      annotationBuffer: noteBuffer,
+    }).spans[0]!;
+    expect(composerSpan).toBeGreaterThan(cardSpan);
+    // hard-wrapped note (+ cursor cell) fills 7 rows at WIDTH cols
+    expect(composerSpan).toBe(2 + 1 + 7 + 1);
   });
 });
 
