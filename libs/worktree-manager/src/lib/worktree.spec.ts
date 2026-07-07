@@ -382,6 +382,33 @@ describe('canRemoveBranch', () => {
     );
   });
 
+  // A mid-rebase worktree carries in-progress rebase state that
+  // force-removing the worktree would silently destroy, so it must be
+  // reported unsafe to delete regardless of merge status — the caller
+  // surfaces this and leaves the worktree alone until the rebase is
+  // finished or aborted. Only the worktree lookup runs; no status or
+  // unpushed checks.
+  it('should reject a mid-rebase worktree as unsafe to delete', async () => {
+    const wtPath = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
+    const gitdir = `${process.cwd()}/.git/worktrees/investigate-ci-performance`;
+    mockExec.mockResolvedValueOnce(
+      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\n'))
+    );
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${wtPath}/.git`) return `gitdir: ${gitdir}\n`;
+      if (p === `${gitdir}/rebase-merge/head-name`) {
+        return 'refs/heads/ci/perf-setup-sticky-disk\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    expect(await canRemoveBranch('ci/perf-setup-sticky-disk', true)).toEqual({
+      safe: false,
+      reason: 'rebase in progress',
+    });
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
   it('should skip checks gracefully when worktree does not exist', async () => {
     mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockRejectedValueOnce(new Error('not a directory'));

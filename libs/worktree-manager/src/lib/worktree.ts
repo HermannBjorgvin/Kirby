@@ -143,9 +143,13 @@ function worktreeDir(branch: string): string {
  * Kirby-owned worktrees. Returns `null` if no owned worktree currently
  * has the branch checked out.
  */
-async function worktreePathForBranch(branch: string): Promise<string | null> {
+async function worktreeForBranch(branch: string): Promise<WorktreeInfo | null> {
   const wt = (await listWorktrees()).find((w) => w.branch === branch);
-  return wt ? wt.path : null;
+  return wt ?? null;
+}
+
+async function worktreePathForBranch(branch: string): Promise<string | null> {
+  return (await worktreeForBranch(branch))?.path ?? null;
 }
 
 /**
@@ -238,10 +242,21 @@ export async function canRemoveBranch(
     return { safe: false, reason: 'protected branch' };
   }
 
+  const wt = await worktreeForBranch(branch);
+
+  // A mid-rebase worktree carries in-progress rebase state (recovered
+  // from rebase-merge/rebase-apply) that force-removing the worktree
+  // would silently destroy. Refuse to delete it — auto-delete and manual
+  // delete both gate on this — so the user finishes or aborts the rebase
+  // first.
+  if (wt?.state === 'rebasing') {
+    return { safe: false, reason: 'rebase in progress' };
+  }
+
   // Use the worktree's real path from git so the status check runs
   // against the actual checkout, not a resolver-derived guess that may
   // not exist (which would silently skip the uncommitted-changes guard).
-  const dir = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
+  const dir = wt?.path ?? worktreeDir(branch);
 
   // Uncommitted changes
   try {

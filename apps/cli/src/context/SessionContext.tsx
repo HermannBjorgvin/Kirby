@@ -78,10 +78,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [sessionMgr, flash]
   );
 
+  const onRebaseInProgress = useCallback(
+    (branch: string) => {
+      flash(`Auto-delete of ${branch} skipped: rebase in progress`, 'warning');
+    },
+    [flash]
+  );
+
   const { mergedBranches } = useMergedBranches(
     sessionMgr.worktreeBranches,
     lastSynced,
-    onMergedDelete
+    onMergedDelete,
+    onRebaseInProgress
   );
 
   const conflictBranches = useMemo(
