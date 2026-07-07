@@ -135,20 +135,17 @@ function worktreeDir(branch: string): string {
  * name. A worktree's directory is independent of its branch name (git
  * lets you `worktree add <any-dir> <branch>`, and Kirby's resolver only
  * governs the dirs *it* creates), so the resolver-derived path can be
- * wrong for externally-created worktrees. Returns `null` if no worktree
- * currently has the branch checked out.
+ * wrong for externally-created worktrees.
+ *
+ * Uses `listWorktrees` rather than the raw porcelain so a mid-rebase
+ * worktree — which reports a detached HEAD with no `branch` line — still
+ * matches via its recovered branch, and so the result is scoped to
+ * Kirby-owned worktrees. Returns `null` if no owned worktree currently
+ * has the branch checked out.
  */
 async function worktreePathForBranch(branch: string): Promise<string | null> {
-  try {
-    const { stdout } = await exec('git worktree list --porcelain', {
-      encoding: 'utf8',
-    });
-    const wt = parseWorktrees(stdout).find((w) => w.branch === branch);
-    return wt ? wt.path : null;
-  } catch (e) {
-    log('warn', 'worktreePathForBranch', `lookup failed for ${branch}`, e);
-    return null;
-  }
+  const wt = (await listWorktrees()).find((w) => w.branch === branch);
+  return wt ? wt.path : null;
 }
 
 /**

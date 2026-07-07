@@ -187,6 +187,60 @@ describe('removeWorktree', () => {
     );
   });
 
+  // Regression (auto-delete spam, mid-rebase variant): a worktree that
+  // is mid-rebase reports a detached HEAD, so `git worktree list
+  // --porcelain` emits no `branch` line — the logical branch is only
+  // recoverable from the rebase state. Combined with a directory name
+  // that does not match the branch, matching on the porcelain branch
+  // line finds nothing and the branch-derived fallback path is wrong, so
+  // removal targets a nonexistent path and the merged branch re-spams the
+  // auto-delete flash on every sync. Resolving the path via the same
+  // machinery that recovers the rebasing branch fixes it.
+  it('removes a mid-rebase worktree whose directory name differs from the branch name', async () => {
+    const realDir = `${cwd}/.claude/worktrees/investigate-ci-performance`;
+    const gitdir = `${cwd}/.git/worktrees/investigate-ci-performance`;
+    mockExec.mockImplementation((command: string) => {
+      if (command.includes('git worktree list')) {
+        return Promise.resolve(
+          resolve(
+            [
+              `worktree ${cwd}`,
+              'HEAD aaa111',
+              'branch refs/heads/main',
+              '',
+              `worktree ${realDir}`,
+              'HEAD bbb222',
+              'detached',
+              '',
+            ].join('\n')
+          )
+        );
+      }
+      if (command.startsWith('git worktree remove')) {
+        if (command.includes(realDir)) return Promise.resolve(resolve());
+        return Promise.reject(
+          new Error("fatal: '...' is not a working tree")
+        );
+      }
+      return Promise.resolve(resolve());
+    });
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${realDir}/.git`) return `gitdir: ${gitdir}\n`;
+      if (p === `${gitdir}/rebase-merge/head-name`) {
+        return 'refs/heads/ci/perf-setup-sticky-disk\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    expect(
+      await removeWorktree('ci/perf-setup-sticky-disk', { force: true })
+    ).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      `git worktree remove --force "${realDir}"`,
+      { encoding: 'utf8' }
+    );
+  });
+
   it('should fall back to the resolver dir when git has no such branch', async () => {
     mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockResolvedValueOnce(resolve());
