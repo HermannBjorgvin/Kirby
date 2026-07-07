@@ -44,6 +44,25 @@ function resolve(stdout = '') {
   return { stdout, stderr: '' };
 }
 
+/**
+ * Build a `git worktree list --porcelain` payload for the given
+ * branch→dir mappings. `removeWorktree`/`canRemoveBranch` consult this
+ * to find a worktree's real path instead of deriving it from the branch
+ * name. `dir` may be omitted to model a branch with no live worktree.
+ */
+function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
+  const cwd = process.cwd();
+  const blocks = entries.map(({ branch, dir }) =>
+    [
+      `worktree ${cwd}/${dir ?? `.claude/worktrees/${branchToSessionName(branch)}`}`,
+      'HEAD abc123',
+      `branch refs/heads/${branch}`,
+      '',
+    ].join('\n')
+  );
+  return resolve(blocks.join('\n'));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetMainBranchCache();
@@ -112,16 +131,128 @@ describe('createWorktree', () => {
 });
 
 describe('removeWorktree', () => {
+  const cwd = process.cwd();
+
   it('should return true on success', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/auth' }])
+    );
     mockExec.mockResolvedValueOnce(resolve());
     expect(await removeWorktree('feature/auth')).toBe(true);
     expect(mockExec).toHaveBeenCalledWith(
+      `git worktree remove "${cwd}/.claude/worktrees/feature-auth"`,
+      { encoding: 'utf8' }
+    );
+  });
+
+  // Regression (auto-delete spam): a worktree whose directory name does
+  // not match its branch. Here dir `investigate-ci-performance` holds
+  // branch `ci/perf-setup-sticky-disk`. Deriving the dir from the branch
+  // name (`ci-perf-setup-sticky-disk`) points at a path that does not
+  // exist, so `git worktree remove` fails, the worktree survives, and
+  // the merged branch is re-detected + re-"auto-deleted" on every sync.
+  // The routing mock makes only the *real* dir removable, so this test
+  // fails against the branch-derived implementation and passes once the
+  // path is resolved from git.
+  it('removes a worktree whose directory name differs from the branch name', async () => {
+    const realDir = `${cwd}/.claude/worktrees/investigate-ci-performance`;
+    mockExec.mockImplementation((command: string) => {
+      if (command.includes('git worktree list')) {
+        return Promise.resolve(
+          worktreeListPorcelain([
+            {
+              branch: 'ci/perf-setup-sticky-disk',
+              dir: '.claude/worktrees/investigate-ci-performance',
+            },
+          ])
+        );
+      }
+      if (command.startsWith('git worktree remove')) {
+        // Only the real on-disk path can be removed; the branch-derived
+        // path does not exist and git errors out.
+        if (command.includes(realDir)) return Promise.resolve(resolve());
+        return Promise.reject(
+          new Error("fatal: '...' is not a working tree")
+        );
+      }
+      return Promise.resolve(resolve());
+    });
+
+    expect(
+      await removeWorktree('ci/perf-setup-sticky-disk', { force: true })
+    ).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      `git worktree remove --force "${realDir}"`,
+      { encoding: 'utf8' }
+    );
+  });
+
+  // Regression (auto-delete spam, mid-rebase variant): a worktree that
+  // is mid-rebase reports a detached HEAD, so `git worktree list
+  // --porcelain` emits no `branch` line — the logical branch is only
+  // recoverable from the rebase state. Combined with a directory name
+  // that does not match the branch, matching on the porcelain branch
+  // line finds nothing and the branch-derived fallback path is wrong, so
+  // removal targets a nonexistent path and the merged branch re-spams the
+  // auto-delete flash on every sync. Resolving the path via the same
+  // machinery that recovers the rebasing branch fixes it.
+  it('removes a mid-rebase worktree whose directory name differs from the branch name', async () => {
+    const realDir = `${cwd}/.claude/worktrees/investigate-ci-performance`;
+    const gitdir = `${cwd}/.git/worktrees/investigate-ci-performance`;
+    mockExec.mockImplementation((command: string) => {
+      if (command.includes('git worktree list')) {
+        return Promise.resolve(
+          resolve(
+            [
+              `worktree ${cwd}`,
+              'HEAD aaa111',
+              'branch refs/heads/main',
+              '',
+              `worktree ${realDir}`,
+              'HEAD bbb222',
+              'detached',
+              '',
+            ].join('\n')
+          )
+        );
+      }
+      if (command.startsWith('git worktree remove')) {
+        if (command.includes(realDir)) return Promise.resolve(resolve());
+        return Promise.reject(
+          new Error("fatal: '...' is not a working tree")
+        );
+      }
+      return Promise.resolve(resolve());
+    });
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${realDir}/.git`) return `gitdir: ${gitdir}\n`;
+      if (p === `${gitdir}/rebase-merge/head-name`) {
+        return 'refs/heads/ci/perf-setup-sticky-disk\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    expect(
+      await removeWorktree('ci/perf-setup-sticky-disk', { force: true })
+    ).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      `git worktree remove --force "${realDir}"`,
+      { encoding: 'utf8' }
+    );
+  });
+
+  it('should fall back to the resolver dir when git has no such branch', async () => {
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await removeWorktree('feature/auth')).toBe(true);
+    expect(mockExec).toHaveBeenLastCalledWith(
       'git worktree remove ".claude/worktrees/feature-auth"',
       { encoding: 'utf8' }
     );
   });
 
   it('should return false on failure', async () => {
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockRejectedValueOnce(new Error('not found'));
     expect(await removeWorktree('nonexistent')).toBe(false);
   });
@@ -181,6 +312,9 @@ describe('canRemoveBranch', () => {
   });
 
   it('should reject branches with uncommitted changes', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/dirty' }])
+    );
     mockExec.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
     expect(await canRemoveBranch('feature/dirty')).toEqual({
       safe: false,
@@ -189,6 +323,9 @@ describe('canRemoveBranch', () => {
   });
 
   it('should reject branches not pushed to upstream', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/unpushed' }])
+    );
     mockExec.mockResolvedValueOnce(resolve(''));
     mockExec.mockResolvedValueOnce(resolve('abc1234 some commit\n'));
     expect(await canRemoveBranch('feature/unpushed')).toEqual({
@@ -198,12 +335,82 @@ describe('canRemoveBranch', () => {
   });
 
   it('should return safe for clean, pushed branches', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/done' }])
+    );
     mockExec.mockResolvedValueOnce(resolve(''));
     mockExec.mockResolvedValueOnce(resolve(''));
     expect(await canRemoveBranch('feature/done')).toEqual({ safe: true });
   });
 
+  // Regression: when the worktree dir does not match the branch name,
+  // the uncommitted-changes guard must run against the real checkout.
+  // Against the branch-derived path the `git status` call errors, the
+  // guard silently skips, and a dirty worktree is wrongly reported safe
+  // to delete. The routing mock reports the real checkout as dirty and
+  // errors for any other path, so this fails against the branch-derived
+  // implementation and passes once the path is resolved from git.
+  it('runs the dirty-tree guard against the real worktree path, not a derived guess', async () => {
+    const realDir = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
+    mockExec.mockImplementation((command: string) => {
+      if (command.includes('git worktree list')) {
+        return Promise.resolve(
+          worktreeListPorcelain([
+            {
+              branch: 'ci/perf-setup-sticky-disk',
+              dir: '.claude/worktrees/investigate-ci-performance',
+            },
+          ])
+        );
+      }
+      if (command.includes('status --porcelain')) {
+        if (command.includes(realDir)) {
+          return Promise.resolve(resolve(' M src/file.ts\n'));
+        }
+        return Promise.reject(new Error('not a git repository'));
+      }
+      return Promise.resolve(resolve());
+    });
+
+    expect(await canRemoveBranch('ci/perf-setup-sticky-disk', true)).toEqual({
+      safe: false,
+      reason: 'uncommitted changes',
+    });
+    expect(mockExec).toHaveBeenCalledWith(
+      `git -C "${realDir}" status --porcelain`,
+      { encoding: 'utf8' }
+    );
+  });
+
+  // A mid-rebase worktree carries in-progress rebase state that
+  // force-removing the worktree would silently destroy, so it must be
+  // reported unsafe to delete regardless of merge status — the caller
+  // surfaces this and leaves the worktree alone until the rebase is
+  // finished or aborted. Only the worktree lookup runs; no status or
+  // unpushed checks.
+  it('should reject a mid-rebase worktree as unsafe to delete', async () => {
+    const wtPath = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
+    const gitdir = `${process.cwd()}/.git/worktrees/investigate-ci-performance`;
+    mockExec.mockResolvedValueOnce(
+      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\n'))
+    );
+    mockReadFileSync.mockImplementation(((p: string) => {
+      if (p === `${wtPath}/.git`) return `gitdir: ${gitdir}\n`;
+      if (p === `${gitdir}/rebase-merge/head-name`) {
+        return 'refs/heads/ci/perf-setup-sticky-disk\n';
+      }
+      throw new Error(`ENOENT: ${p}`);
+    }) as unknown as typeof readFileSync);
+
+    expect(await canRemoveBranch('ci/perf-setup-sticky-disk', true)).toEqual({
+      safe: false,
+      reason: 'rebase in progress',
+    });
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
   it('should skip checks gracefully when worktree does not exist', async () => {
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockRejectedValueOnce(new Error('not a directory'));
     mockExec.mockResolvedValueOnce(resolve(''));
     expect(await canRemoveBranch('feature/no-worktree')).toEqual({
@@ -212,15 +419,21 @@ describe('canRemoveBranch', () => {
   });
 
   it('should skip unpushed check when confirmedMerged is true', async () => {
-    // Only the status check runs (returns clean), no git log call
+    // Only the worktree lookup + status check run (status clean), no git log call
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/squash-merged' }])
+    );
     mockExec.mockResolvedValueOnce(resolve(''));
     expect(await canRemoveBranch('feature/squash-merged', true)).toEqual({
       safe: true,
     });
-    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).toHaveBeenCalledTimes(2);
   });
 
   it('should still reject uncommitted changes when confirmedMerged is true', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/dirty-merged' }])
+    );
     mockExec.mockResolvedValueOnce(resolve(' M src/file.ts\n'));
     expect(await canRemoveBranch('feature/dirty-merged', true)).toEqual({
       safe: false,
