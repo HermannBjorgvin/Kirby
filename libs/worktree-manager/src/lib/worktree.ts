@@ -130,6 +130,28 @@ function worktreeDir(branch: string): string {
 }
 
 /**
+ * Resolve the actual on-disk path of the worktree that has `branch`
+ * checked out, by asking git rather than deriving it from the branch
+ * name. A worktree's directory is independent of its branch name (git
+ * lets you `worktree add <any-dir> <branch>`, and Kirby's resolver only
+ * governs the dirs *it* creates), so the resolver-derived path can be
+ * wrong for externally-created worktrees. Returns `null` if no worktree
+ * currently has the branch checked out.
+ */
+async function worktreePathForBranch(branch: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec('git worktree list --porcelain', {
+      encoding: 'utf8',
+    });
+    const wt = parseWorktrees(stdout).find((w) => w.branch === branch);
+    return wt ? wt.path : null;
+  } catch (e) {
+    log('warn', 'worktreePathForBranch', `lookup failed for ${branch}`, e);
+    return null;
+  }
+}
+
+/**
  * Create a git worktree for a branch.
  * If the branch exists, checks it out. If not, creates a new branch from HEAD.
  * Returns the worktree path on success, null on failure.
@@ -182,10 +204,12 @@ export async function removeWorktree(
   branch: string,
   { force = false }: { force?: boolean } = {}
 ): Promise<boolean> {
-  const relativeDir = worktreeDir(branch);
+  // Prefer the worktree's real path from git; fall back to the
+  // resolver-derived dir only if git doesn't know the branch.
+  const target = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
   try {
     const forceFlag = force ? ' --force' : '';
-    await exec(`git worktree remove${forceFlag} "${relativeDir}"`, {
+    await exec(`git worktree remove${forceFlag} "${target}"`, {
       encoding: 'utf8',
     });
     return true;
@@ -217,7 +241,10 @@ export async function canRemoveBranch(
     return { safe: false, reason: 'protected branch' };
   }
 
-  const dir = worktreeDir(branch);
+  // Use the worktree's real path from git so the status check runs
+  // against the actual checkout, not a resolver-derived guess that may
+  // not exist (which would silently skip the uncommitted-changes guard).
+  const dir = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
 
   // Uncommitted changes
   try {
