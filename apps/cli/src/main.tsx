@@ -7,6 +7,11 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import { killAll } from './pty-registry.js';
 import { settlePendingRuns } from './hooks/useAsyncOperation.js';
+import {
+  repoTitle,
+  setWindowTitle,
+  restoreWindowTitle,
+} from './utils/window-title.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { NavProvider, useNavState } from './context/NavContext.js';
@@ -110,7 +115,13 @@ if (targetDir) {
   process.chdir(targetDir);
 }
 
-process.on('exit', killAll);
+// Name the tab after the repo, so a terminal full of Kirbys is legible.
+setWindowTitle(repoTitle());
+
+process.on('exit', () => {
+  killAll();
+  restoreWindowTitle();
+});
 process.on('SIGINT', () => {
   killAll();
   process.exit(0);
