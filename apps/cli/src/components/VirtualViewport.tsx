@@ -27,10 +27,11 @@ import {
  * - the body is a fixed-height overflow="hidden" box that clips the
  *   boundary items and guards against any remaining drift
  *
- * The component always occupies exactly `min(budgetRows, 2 + content)`
- * rows: while the content is clipped, the ↑/↓ indicator lines render
- * as placeholder rows even at the edges, so surrounding chrome (e.g.
- * a hints row below) never shifts while scrolling.
+ * While the content is clipped the component occupies exactly
+ * `budgetRows` rows: the ↑/↓ indicator lines render as placeholder
+ * rows even at the edges, so surrounding chrome (e.g. a hints row
+ * below) never shifts while scrolling. When the content fits, no
+ * indicators render and the component shrinks to the content's total.
  */
 export function VirtualViewport({
   spans,
