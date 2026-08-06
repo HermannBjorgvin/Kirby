@@ -16,6 +16,11 @@ export interface SessionSpec {
   cwd: string;
   cols: number;
   rows: number;
+  /** Complete environment for the spawned process. `undefined` means
+   *  "inherit the parent environment" — backends must not treat it as
+   *  "empty environment", or the child loses PATH/HOME. Callers that
+   *  need additions merge them over `process.env` themselves rather
+   *  than passing a partial bag. */
   env?: Record<string, string | undefined>;
 }
 
