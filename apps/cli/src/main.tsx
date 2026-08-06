@@ -116,7 +116,10 @@ if (targetDir) {
 }
 
 // Name the tab after the repo, so a terminal full of Kirbys is legible.
-setWindowTitle(repoTitle());
+// Skip the git lookup entirely when there's no TTY to title (CI, pipes).
+if (process.stdout.isTTY) {
+  setWindowTitle(repoTitle());
+}
 
 process.on('exit', () => {
   killAll();

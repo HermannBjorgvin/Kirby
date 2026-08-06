@@ -39,10 +39,14 @@ export function repoTitle(cwd: string = process.cwd()): string {
   return basename(cwd);
 }
 
-/** Control characters would terminate the OSC string early. */
+/**
+ * Strip control characters that could terminate the OSC string early:
+ * C0 (0x00–0x1f), DEL (0x7f), and C1 (0x80–0x9f) — 0x9c is ST in 8-bit
+ * terminals.
+ */
 function sanitize(title: string): string {
   // eslint-disable-next-line no-control-regex
-  return title.replace(/[\x00-\x1f\x7f]/g, '');
+  return title.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
 }
 
 export function setWindowTitle(title: string): void {

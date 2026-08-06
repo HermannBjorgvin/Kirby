@@ -93,6 +93,10 @@ describe('setWindowTitle', () => {
   afterAll(() => {
     if (originalIsTty) {
       Object.defineProperty(process.stdout, 'isTTY', originalIsTty);
+    } else {
+      // isTTY wasn't an own property to begin with — drop our stub
+      // rather than leaving a stale value behind for other suites.
+      delete (process.stdout as { isTTY?: boolean }).isTTY;
     }
   });
 
@@ -105,7 +109,8 @@ describe('setWindowTitle', () => {
   });
 
   it('strips control characters that would end the OSC string early', () => {
-    setWindowTitle('my\x07-\x1brepo');
+    // BEL (C0), ESC (C0), and ST (C1, 0x9c) all terminate an OSC string.
+    setWindowTitle('my\x07-\x1b\x9crepo');
 
     expect(writes).toContain(osc('my-repo'));
   });
