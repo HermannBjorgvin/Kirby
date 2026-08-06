@@ -48,7 +48,11 @@ function resolve(stdout = '') {
  * Build a `git worktree list --porcelain` payload for the given
  * branch→dir mappings. `removeWorktree`/`canRemoveBranch` consult this
  * to find a worktree's real path instead of deriving it from the branch
- * name. `dir` may be omitted to model a branch with no live worktree.
+ * name. Omitting `dir` places the worktree at the conventional
+ * resolver-derived `.claude/worktrees/<session>` path (a worktree whose
+ * directory matches its branch name); pass an explicit `dir` to model a
+ * mismatched directory. To model a branch with no live worktree, pass an
+ * empty entries array.
  */
 function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
   const cwd = process.cwd();
