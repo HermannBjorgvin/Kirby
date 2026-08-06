@@ -130,6 +130,29 @@ function worktreeDir(branch: string): string {
 }
 
 /**
+ * Resolve the actual on-disk path of the worktree that has `branch`
+ * checked out, by asking git rather than deriving it from the branch
+ * name. A worktree's directory is independent of its branch name (git
+ * lets you `worktree add <any-dir> <branch>`, and Kirby's resolver only
+ * governs the dirs *it* creates), so the resolver-derived path can be
+ * wrong for externally-created worktrees.
+ *
+ * Uses `listWorktrees` rather than the raw porcelain so a mid-rebase
+ * worktree — which reports a detached HEAD with no `branch` line — still
+ * matches via its recovered branch, and so the result is scoped to
+ * Kirby-owned worktrees. Returns `null` if no owned worktree currently
+ * has the branch checked out.
+ */
+async function worktreeForBranch(branch: string): Promise<WorktreeInfo | null> {
+  const wt = (await listWorktrees()).find((w) => w.branch === branch);
+  return wt ?? null;
+}
+
+async function worktreePathForBranch(branch: string): Promise<string | null> {
+  return (await worktreeForBranch(branch))?.path ?? null;
+}
+
+/**
  * Create a git worktree for a branch.
  * If the branch exists, checks it out. If not, creates a new branch from HEAD.
  * Returns the worktree path on success, null on failure.
@@ -182,10 +205,12 @@ export async function removeWorktree(
   branch: string,
   { force = false }: { force?: boolean } = {}
 ): Promise<boolean> {
-  const relativeDir = worktreeDir(branch);
+  // Prefer the worktree's real path from git; fall back to the
+  // resolver-derived dir only if git doesn't know the branch.
+  const target = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
   try {
     const forceFlag = force ? ' --force' : '';
-    await exec(`git worktree remove${forceFlag} "${relativeDir}"`, {
+    await exec(`git worktree remove${forceFlag} "${target}"`, {
       encoding: 'utf8',
     });
     return true;
@@ -217,7 +242,21 @@ export async function canRemoveBranch(
     return { safe: false, reason: 'protected branch' };
   }
 
-  const dir = worktreeDir(branch);
+  const wt = await worktreeForBranch(branch);
+
+  // A mid-rebase worktree carries in-progress rebase state (recovered
+  // from rebase-merge/rebase-apply) that force-removing the worktree
+  // would silently destroy. Refuse to delete it — auto-delete and manual
+  // delete both gate on this — so the user finishes or aborts the rebase
+  // first.
+  if (wt?.state === 'rebasing') {
+    return { safe: false, reason: 'rebase in progress' };
+  }
+
+  // Use the worktree's real path from git so the status check runs
+  // against the actual checkout, not a resolver-derived guess that may
+  // not exist (which would silently skip the uncommitted-changes guard).
+  const dir = wt?.path ?? worktreeDir(branch);
 
   // Uncommitted changes
   try {
