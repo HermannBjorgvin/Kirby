@@ -1,3 +1,4 @@
+import wrapAnsi from 'wrap-ansi';
 import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
@@ -452,20 +453,25 @@ export function getCommentPositions(
 //    share one source of truth.
 
 /**
- * Estimate how many rows a body string occupies after wrap. When
- * `contentWidth` is unknown the number falls back to a 4-line cap
- * (matches the file-list footer's pre-2026 behaviour); the diff
- * viewer's row map always passes a real width so long-bodied threads
- * aren't undercounted.
+ * Rows a body string occupies after wrap. With a `contentWidth` this
+ * is EXACT, not an estimate: it runs the same `wrap-ansi` call Ink's
+ * `<Text wrap="wrap">` uses (ink/build/wrap-text.js), so word
+ * boundaries, hard-broken long tokens, and wide glyphs all count the
+ * way they paint. Character-count math (`ceil(len/width)`) is not
+ * good enough here — it undercounts multi-line bodies whose
+ * individual lines wrap, and every scroll consumer (viewport clamp,
+ * j/k stepping, scroll-into-view) keys off these numbers, so a
+ * one-row miss per card accumulates into unreachable rows.
+ *
+ * Without a width the number falls back to a 4-line cap (matches the
+ * file-list footer's pre-2026 behaviour) — render paths should always
+ * pass the real width.
  */
 export function estimateBodyRows(body: string, contentWidth?: number): number {
   const naturalLines = Math.max(1, body.split('\n').length);
   if (contentWidth && contentWidth > 0) {
-    const wrapped = Math.max(
-      1,
-      Math.ceil(body.length / Math.max(1, contentWidth))
-    );
-    return Math.max(naturalLines, wrapped);
+    const wrapped = wrapAnsi(body, contentWidth, { trim: false, hard: true });
+    return Math.max(1, wrapped.split('\n').length);
   }
   return Math.min(4, naturalLines);
 }
@@ -478,7 +484,9 @@ export function estimateBodyRows(body: string, contentWidth?: number): number {
  *
  * Numbers mirror the card's structure: top border + author row +
  * wrapped body + bottom border + marginBottom = `4 + bodyRows`.
- * Per-reply: header + body + marginTop gap.
+ * Replies render in one container with a single marginTop gap, then
+ * header + body each; the reply column is indented 2 cells, so reply
+ * bodies wrap 2 cols narrower than the root.
  */
 export function estimateCardRows(
   thread: RemoteCommentThread,
@@ -487,9 +495,19 @@ export function estimateCardRows(
   const root = thread.comments[0];
   if (!root) return 0;
   const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
-  const replyRows = thread.comments.slice(1).reduce((sum, c) => {
-    return sum + 1 + estimateBodyRows(c.body, contentWidth) + 1;
-  }, 0);
+  const replies = thread.comments.slice(1);
+  const replyWidth =
+    contentWidth && contentWidth > 0
+      ? Math.max(1, contentWidth - 2)
+      : undefined;
+  const replyRows =
+    replies.length === 0
+      ? 0
+      : 1 +
+        replies.reduce(
+          (sum, c) => sum + 1 + estimateBodyRows(c.body, replyWidth),
+          0
+        );
   return rootRows + replyRows;
 }
 
@@ -503,10 +521,20 @@ export function estimateLocalCardRows(
   contentWidth?: number,
   selected = false
 ): number {
-  const naturalLines = Math.max(1, comment.body.split('\n').length);
-  const bodyRows = selected
-    ? estimateBodyRows(comment.body, contentWidth)
-    : Math.min(4, naturalLines);
+  const lines = comment.body.split('\n');
+  const MAX_COLLAPSED = 4;
+  const shown = selected ? lines : lines.slice(0, MAX_COLLAPSED);
+  const truncatedNote = !selected && lines.length > MAX_COLLAPSED ? 1 : 0;
+  // Collapsed cards render each natural line as its own wrapping
+  // <Text> (empty lines become a single space), so count per line.
+  const bodyRows =
+    Math.max(
+      1,
+      shown.reduce(
+        (sum, l) => sum + estimateBodyRows(l || ' ', contentWidth),
+        0
+      )
+    ) + truncatedNote;
   // border-top + header + body + border-bottom + marginBottom
   return 2 + 1 + bodyRows + 1;
 }
@@ -518,6 +546,24 @@ export function estimateLocalCardRows(
  * so the row map's totals stay correct while the user composes.
  */
 export const REPLY_INPUT_ROWS = 4;
+
+/**
+ * Buffer-aware version of `REPLY_INPUT_ROWS`: rows the open reply
+ * input occupies for a given buffer — the marginTop gap + bordered box
+ * (2 rows) + the wrapped buffer. `contentWidth` is the CARD interior
+ * width; the input's own text is 6 cols narrower (marginLeft 2 +
+ * border 2 + paddingX 2), and the trailing cursor glyph takes a cell.
+ */
+export function estimateReplyInputRows(
+  buffer: string,
+  contentWidth?: number
+): number {
+  const inputWidth =
+    contentWidth && contentWidth > 0
+      ? Math.max(1, contentWidth - 6)
+      : undefined;
+  return 1 + 2 + estimateBodyRows(`${buffer}▍`, inputWidth);
+}
 
 /**
  * Extra rows reserved when a local-draft card is in `editing` state.

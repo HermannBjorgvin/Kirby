@@ -3,6 +3,12 @@ import { getDisplayFiles } from '@kirby/diff';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import { planItemKey, snapshotRemote } from '../../plan/plan-types.js';
+import {
+  itemBounds,
+  scrollIntoView,
+  stepNext,
+  stepPrev,
+} from '../../utils/virtual-viewport.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 
 // Comment-nav semantics mirror the diff viewer's merged nav pool: cycle
@@ -10,12 +16,23 @@ import type { DiffFileListHandlerCtx } from './input-types.js';
 // still takes one slot (we don't sort by line here because general
 // comments aren't line-anchored).
 
+/** Select unified-list item `ordinal` and scroll it into view. */
+function selectItem(ctx: DiffFileListHandlerCtx, ordinal: number): void {
+  ctx.pane.setDiffFileIndex(ordinal);
+  const bounds = itemBounds(ctx.listSpans)[ordinal];
+  if (bounds) {
+    ctx.pane.setDiffListScrollRow((o) =>
+      scrollIntoView(o, bounds, ctx.listViewportRows)
+    );
+  }
+}
+
 function clampToFirstComment(ctx: DiffFileListHandlerCtx): void {
-  ctx.pane.setDiffFileIndex(ctx.fileCount);
+  selectItem(ctx, ctx.fileCount);
 }
 
 function clampToLastComment(ctx: DiffFileListHandlerCtx): void {
-  ctx.pane.setDiffFileIndex(ctx.diffDisplayCount - 1);
+  selectItem(ctx, ctx.diffDisplayCount - 1);
 }
 
 export function handleDiffFileListInput(
@@ -31,6 +48,10 @@ export function handleDiffFileListInput(
       pane: ctx.pane,
       flashStatus: ctx.sessions.flashStatus,
       replyToThread: ctx.remoteCtx.replyToThread,
+      // The posted reply grows the thread card; queue a reveal so the
+      // user sees what they just sent (useDiffListScrollSync consumes
+      // this once the layout reflects the new reply).
+      onReplyPosted: (threadId) => ctx.pane.setPendingScrollThreadId(threadId),
     })
   ) {
     return;
@@ -57,15 +78,7 @@ export function handleDiffFileListInput(
   if (action === 'diff-file-list.toggle-skipped') {
     ctx.pane.setShowSkipped((v) => !v);
     ctx.pane.setDiffFileIndex(0);
-    return;
-  }
-
-  if (action === 'diff-file-list.navigate-down') {
-    ctx.pane.setDiffFileIndex((i) => Math.min(i + 1, ctx.diffDisplayCount - 1));
-    return;
-  }
-  if (action === 'diff-file-list.navigate-up') {
-    ctx.pane.setDiffFileIndex((i) => Math.max(i - 1, 0));
+    ctx.pane.setDiffListScrollRow(0);
     return;
   }
 
@@ -75,13 +88,49 @@ export function handleDiffFileListInput(
       ? ctx.pane.diffFileIndex - ctx.fileCount
       : -1;
 
+  // ── j/k — web-like viewport semantics over the unified list ─────
+  // Files and comment cards are one scrollable stream. An item taller
+  // than the viewport (a long comment) consumes keypresses to scroll
+  // its remaining rows into view before selection moves past it
+  // (stepNext/stepPrev), so every row is reachable with j/k.
+  if (action === 'diff-file-list.navigate-down') {
+    const r = stepNext({
+      spans: ctx.listSpans,
+      index: ctx.pane.diffFileIndex,
+      offset: ctx.pane.diffListScrollRow,
+      viewportRows: ctx.listViewportRows,
+    });
+    if (r.moved) {
+      ctx.pane.setDiffListScrollRow(r.offset);
+      if (r.index !== ctx.pane.diffFileIndex) {
+        ctx.pane.setDiffFileIndex(r.index);
+      }
+    }
+    return;
+  }
+  if (action === 'diff-file-list.navigate-up') {
+    const r = stepPrev({
+      spans: ctx.listSpans,
+      index: ctx.pane.diffFileIndex,
+      offset: ctx.pane.diffListScrollRow,
+      viewportRows: ctx.listViewportRows,
+    });
+    if (r.moved) {
+      ctx.pane.setDiffListScrollRow(r.offset);
+      if (r.index !== ctx.pane.diffFileIndex) {
+        ctx.pane.setDiffFileIndex(r.index);
+      }
+    }
+    return;
+  }
+
   // ── Comment navigation (Shift+↑/↓ or c/C) ───────────────────────
   if (action === 'diff-file-list.next-comment' && commentCount > 0) {
     // Wrap within the comment range only — stays off the file rows so
     // j/k still walks files and Shift+arrow walks comments.
     const next =
       selectedCommentIdx < 0 ? 0 : (selectedCommentIdx + 1) % commentCount;
-    ctx.pane.setDiffFileIndex(ctx.fileCount + next);
+    selectItem(ctx, ctx.fileCount + next);
     return;
   }
   if (action === 'diff-file-list.prev-comment' && commentCount > 0) {
@@ -89,7 +138,7 @@ export function handleDiffFileListInput(
       selectedCommentIdx < 0
         ? commentCount - 1
         : (selectedCommentIdx - 1 + commentCount) % commentCount;
-    ctx.pane.setDiffFileIndex(ctx.fileCount + next);
+    selectItem(ctx, ctx.fileCount + next);
     return;
   }
 
@@ -110,7 +159,7 @@ export function handleDiffFileListInput(
   }
   if (action === 'diff-file-list.prev-section') {
     if (commentCount === 0) return;
-    ctx.pane.setDiffFileIndex(0);
+    selectItem(ctx, 0);
     return;
   }
 

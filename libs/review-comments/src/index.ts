@@ -31,5 +31,6 @@ export {
   estimateCardRows,
   estimateLocalCardRows,
   REPLY_INPUT_ROWS,
+  estimateReplyInputRows,
   EDIT_INPUT_SLACK_ROWS,
 } from './lib/comment-renderer.js';

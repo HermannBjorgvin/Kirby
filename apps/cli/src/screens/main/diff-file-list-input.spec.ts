@@ -76,6 +76,7 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
     diffFileIndex: 0,
     diffViewFile: null,
     diffScrollOffset: 0,
+    diffListScrollRow: 0,
     showSkipped: false,
     selectedCommentId: null,
     pendingDeleteCommentId: null,
@@ -121,6 +122,10 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
       return state.diffScrollOffset as number;
     },
     setDiffScrollOffset: updater<number>('diffScrollOffset'),
+    get diffListScrollRow() {
+      return state.diffListScrollRow as number;
+    },
+    setDiffListScrollRow: updater<number>('diffListScrollRow'),
     get showSkipped() {
       return state.showSkipped as boolean;
     },
@@ -188,19 +193,36 @@ function makeCtx(overrides: {
   pane: PaneModeValue;
   files: DiffFile[];
   shownGeneralComments: RemoteCommentThread[];
+  listSpans?: number[];
+  listViewportRows?: number;
   sessions?: Partial<SessionActionsContextValue>;
   remoteCtx?: {
     replyToThread?: ReturnType<typeof vi.fn>;
     toggleResolved?: ReturnType<typeof vi.fn>;
   };
 }): DiffFileListHandlerCtx {
-  const { pane, files, shownGeneralComments, sessions, remoteCtx } = overrides;
+  const {
+    pane,
+    files,
+    shownGeneralComments,
+    listSpans,
+    listViewportRows,
+    sessions,
+    remoteCtx,
+  } = overrides;
   return {
     pane,
     diffFiles: files,
     fileCount: files.length,
     diffDisplayCount: files.length + shownGeneralComments.length,
     shownGeneralComments,
+    // Default unified geometry: file rows are 1 row, every comment
+    // card 5 rows, in a 10-row viewport — tall-card tests override.
+    listSpans: listSpans ?? [
+      ...files.map(() => 1),
+      ...shownGeneralComments.map(() => 5),
+    ],
+    listViewportRows: listViewportRows ?? 10,
     keybinds: {
       resolve: (input, key, context) =>
         resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
@@ -223,6 +245,113 @@ function makeCtx(overrides: {
     },
   } as DiffFileListHandlerCtx;
 }
+
+// ── j/k viewport stepping over the unified list ──────────────────
+
+describe('diff-file-list handler — unified viewport stepping', () => {
+  it('j from the last file moves onto comment 0 and scrolls it into view', () => {
+    // spans [1,1,5,5]; comment 0 occupies rows 2..7. From offset 7 the
+    // card is above the viewport top, so selecting it scrolls back up.
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 7 });
+    const files = [makeFile('a.ts'), makeFile('b.ts')];
+    const threads = [makeThread('t1'), makeThread('t2')];
+    const ctx = makeCtx({ pane, files, shownGeneralComments: threads });
+    handleDiffFileListInput('', makeKey({ downArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(2);
+    expect(pane.diffListScrollRow).toBe(2);
+  });
+
+  it('j scrolls within a card taller than the viewport', () => {
+    // spans [1,30] in a 10-row viewport: j advances the offset by half
+    // the viewport and keeps the selection on the card.
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 0 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: threads,
+      listSpans: [1, 30],
+      listViewportRows: 10,
+    });
+    handleDiffFileListInput('', makeKey({ downArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(1);
+    expect(pane.diffListScrollRow).toBe(5);
+  });
+
+  it('j advances to the next card once the tall card bottom is visible', () => {
+    // Tall card spans rows 1..31; offset 21 shows its bottom in a
+    // 10-row viewport, so j moves selection and scrolls card 1
+    // (rows 31..36) into view.
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 21 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1'), makeThread('t2')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: threads,
+      listSpans: [1, 30, 5],
+      listViewportRows: 10,
+    });
+    handleDiffFileListInput('', makeKey({ downArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(2);
+    expect(pane.diffListScrollRow).toBe(26); // rows 31..36 bottom-aligned
+  });
+
+  it('k scrolls back up within a tall card before leaving it', () => {
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 21 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: threads,
+      listSpans: [1, 30],
+      listViewportRows: 10,
+    });
+    handleDiffFileListInput('', makeKey({ upArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(1);
+    expect(pane.diffListScrollRow).toBe(16);
+  });
+
+  it('k from the first comment moves back onto the last file', () => {
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 0 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1'), makeThread('t2')];
+    const ctx = makeCtx({ pane, files, shownGeneralComments: threads });
+    handleDiffFileListInput('', makeKey({ upArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(0);
+  });
+
+  it('j on the last item with its bottom in view is a no-op', () => {
+    // spans [1,5,5] total 11; offset 1 shows rows 1..11 → last card's
+    // bottom edge is visible, so j has nowhere to go.
+    const pane = makePane({ diffFileIndex: 2, diffListScrollRow: 1 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1'), makeThread('t2')];
+    const ctx = makeCtx({ pane, files, shownGeneralComments: threads });
+    handleDiffFileListInput('', makeKey({ downArrow: true }), ctx);
+    expect(pane.diffFileIndex).toBe(2);
+    expect(pane.diffListScrollRow).toBe(1);
+  });
+
+  it('Shift+Down scrolls the target comment into view', () => {
+    // Jump from comment 0 to comment 1 (rows 6..11) in a 5-row
+    // viewport: offset must move so the card is visible.
+    const pane = makePane({ diffFileIndex: 1, diffListScrollRow: 0 });
+    const files = [makeFile('a.ts')];
+    const threads = [makeThread('t1'), makeThread('t2')];
+    const ctx = makeCtx({
+      pane,
+      files,
+      shownGeneralComments: threads,
+      listViewportRows: 5,
+    });
+    handleDiffFileListInput('', makeKey({ downArrow: true, shift: true }), ctx);
+    expect(pane.diffFileIndex).toBe(2);
+    expect(pane.diffListScrollRow).toBe(6);
+  });
+});
 
 // ── next-comment / prev-comment ──────────────────────────────────
 

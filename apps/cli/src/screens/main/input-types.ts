@@ -60,6 +60,13 @@ export interface DiffFileListHandlerCtx {
   /** Threads actually rendered in the footer, in display order.
    *  `r`/Enter on one enters inline reply mode; `v` toggles resolved. */
   shownGeneralComments: RemoteCommentThread[];
+  /** Estimated rows per unified-list item (files first, then comment
+   *  cards) — the same values the renderer computes
+   *  (computeDiffListLayout), so scroll math can't drift from what is
+   *  drawn. */
+  listSpans: number[];
+  /** Body rows of the unified list viewport (scroll math bound). */
+  listViewportRows: number;
   keybinds: KeybindResolveValue;
   /** Reply/resolve delegate — same primitives used by the diff viewer
    *  and the Shift+C pane so the footer behaves identically. */

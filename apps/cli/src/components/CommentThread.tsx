@@ -1,7 +1,13 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { estimateCardRows, type ReviewComment } from '@kirby/review-comments';
+import {
+  estimateBodyRows,
+  estimateCardRows,
+  estimateReplyInputRows,
+  type ReviewComment,
+} from '@kirby/review-comments';
+import { planItemKey } from '../plan/plan-types.js';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //
@@ -46,17 +52,19 @@ interface CommentThreadCardProps {
    * card starts where the code content does. Default 0.
    */
   indent?: number;
-  /** Show the "in plan" badge (comment is queued in the PR plan). */
+  /** Whether the comment is queued in the PR plan (drives the hint). */
   inPlan?: boolean;
-  /** Whether the queued plan item carries a note (badge uses ✎). */
-  hasAnnotation?: boolean;
+  /**
+   * Show the a/A plan-action hint when selected. Only consumers whose
+   * input context actually handles the plan actions (diff viewer,
+   * diff-file-list footer) should set this — the Shift+C pane must not.
+   */
+  planHint?: boolean;
 }
 
-/** Single-line "in plan" badge shared by both card kinds. */
-function PlanBadge({ hasAnnotation }: { hasAnnotation?: boolean }) {
-  return (
-    <Text color="green">{hasAnnotation ? '  ✎ plan' : '  ◉ plan'}</Text>
-  );
+/** Hint text for the a/A plan actions; adapts to plan membership. */
+function planHintText(inPlan: boolean): string {
+  return inPlan ? ' [a] remove [A] annotate' : ' [a/A]dd to draft plan';
 }
 
 // Constants that mirror the previous ANSI renderer's visual language —
@@ -72,7 +80,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
   maxWidth,
   indent,
   inPlan = false,
-  hasAnnotation = false,
+  planHint = false,
 }: CommentThreadCardProps) {
   const rootComment = thread.comments[0];
   if (!rootComment) return null;
@@ -85,9 +93,11 @@ export const CommentThreadCard = memo(function CommentThreadCard({
       // Always frame the card — a gray border when unselected keeps the
       // shape consistent across the Shift+C pane (where one card is
       // always selected) and the file-list footer (where none is). The
-      // selected variant swaps in cyan for visual emphasis.
+      // selected variant swaps in cyan for visual emphasis; in-plan
+      // cards tint green (matches the corner PlanIndicator) so plan
+      // membership stays visible without a badge.
       borderStyle="round"
-      borderColor={selected ? 'cyan' : 'gray'}
+      borderColor={selected ? 'cyan' : inPlan ? 'green' : 'gray'}
       marginBottom={1}
       paddingX={1}
       {...(maxWidth !== undefined ? { width: maxWidth } : {})}
@@ -107,13 +117,13 @@ export const CommentThreadCard = memo(function CommentThreadCard({
         <Text dimColor>{` · ${relativeTime(rootComment.createdAt)}`}</Text>
         {thread.isResolved && <Text color="green">{' ✓ resolved'}</Text>}
         {thread.isOutdated && <Text dimColor>{' (outdated)'}</Text>}
-        {inPlan && <PlanBadge hasAnnotation={hasAnnotation} />}
         {selected && !isReplying && (
           <Text dimColor>
             {'  [r]eply'}
             {thread.canResolve
               ? ` [v]${thread.isResolved ? 'reopen' : 'resolve'}`
               : ''}
+            {planHint ? planHintText(inPlan) : ''}
           </Text>
         )}
         {isReplying && (
@@ -195,10 +205,10 @@ interface LocalCommentCardProps {
   maxWidth?: number;
   /** See CommentThreadCard.indent. */
   indent?: number;
-  /** Show the "in plan" badge (comment is queued in the PR plan). */
+  /** Whether the comment is queued in the PR plan (drives the hint). */
   inPlan?: boolean;
-  /** Whether the queued plan item carries a note (badge uses ✎). */
-  hasAnnotation?: boolean;
+  /** See CommentThreadCard.planHint. */
+  planHint?: boolean;
 }
 
 export const LocalCommentCard = memo(function LocalCommentCard({
@@ -210,7 +220,7 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   maxWidth,
   indent,
   inPlan = false,
-  hasAnnotation = false,
+  planHint = false,
 }: LocalCommentCardProps) {
   const severityColor = SEVERITY_COLOR[comment.severity] ?? 'gray';
   const statusMark = STATUS_MARK[comment.status];
@@ -224,7 +234,7 @@ export const LocalCommentCard = memo(function LocalCommentCard({
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={selected ? 'yellow' : 'gray'}
+      borderColor={selected ? 'yellow' : inPlan ? 'green' : 'gray'}
       marginBottom={1}
       paddingX={1}
       {...(maxWidth !== undefined ? { width: maxWidth } : {})}
@@ -240,9 +250,11 @@ export const LocalCommentCard = memo(function LocalCommentCard({
           <Text color={statusMark.color}>{` ${statusMark.char}`}</Text>
         )}
         {pendingDelete && <Text color="red">{'  Delete? [y]es [n]o'}</Text>}
-        {inPlan && <PlanBadge hasAnnotation={hasAnnotation} />}
         {selected && !editing && !pendingDelete && (
-          <Text dimColor>{'  [e]dit [x]delete [p]ost'}</Text>
+          <Text dimColor>
+            {'  [e]dit [x]delete [p]ost'}
+            {planHint ? planHintText(inPlan) : ''}
+          </Text>
         )}
         {editing && (
           <>
@@ -286,23 +298,56 @@ export const LocalCommentCard = memo(function LocalCommentCard({
 
 /**
  * Shared layout decision for the diff-file-list PR-comments footer.
- * Returns every thread (no artificial cap) along with the estimated
- * total rows they'd occupy so the container can reserve space for the
- * scroll window.
+ * Returns every thread (all stay j/k-selectable — the footer scrolls
+ * cards into view rather than capping the list) plus per-card row
+ * estimates so DiffFileList can budget its footer window.
  *
- * Earlier versions capped at half-pane height with a "+N more
- * (Shift+C for full view)" tail; that felt arbitrary and the tail
- * hint didn't actually do anything from the file-list context.
- * Rendering everything lets Ink's overflow clip naturally and j/k
- * through comments stays consistent with what's drawn.
+ * `contentWidth` is the card's interior text width (card width minus
+ * border + padding). Without it, estimates cap bodies at 4 lines and
+ * wrapped long bodies are badly undercounted — always pass it from
+ * render paths.
  */
-export function planCommentFooter(threads: RemoteCommentThread[]): {
+/** Live compose state that changes a card's rendered height. */
+export interface FooterComposeState {
+  replyingToThreadId?: string | null;
+  replyBuffer?: string;
+  annotatingPlanKey?: string | null;
+  annotationBuffer?: string;
+}
+
+export function planCommentFooter(
+  threads: RemoteCommentThread[],
+  contentWidth?: number,
+  compose?: FooterComposeState
+): {
   shown: RemoteCommentThread[];
   rows: number;
+  spans: number[];
 } {
-  if (threads.length === 0) return { shown: [], rows: 0 };
+  if (threads.length === 0) return { shown: [], rows: 0, spans: [] };
+  const spans = threads.map((thread) => {
+    // The Shift+A note composer REPLACES the card in the file-list
+    // render. It keeps the replaced card's footprint (the renderer
+    // pins its height to the span) so entering/leaving annotate mode
+    // never shifts the layout — the span only grows past the card
+    // when the note wraps taller than it: border (2) + header row +
+    // wrapped buffer (with cursor cell) + marginBottom.
+    if (compose?.annotatingPlanKey === planItemKey('remote', thread.id)) {
+      const composerRows =
+        2 +
+        1 +
+        estimateBodyRows(`${compose.annotationBuffer ?? ''}▍`, contentWidth) +
+        1;
+      return Math.max(estimateCardRows(thread, contentWidth), composerRows);
+    }
+    return (
+      estimateCardRows(thread, contentWidth) +
+      (thread.id === compose?.replyingToThreadId
+        ? estimateReplyInputRows(compose.replyBuffer ?? '', contentWidth)
+        : 0)
+    );
+  });
   // +1 for the "PR Comments (N)" heading
-  let rows = 1;
-  for (const thread of threads) rows += estimateCardRows(thread);
-  return { shown: threads, rows };
+  const rows = 1 + spans.reduce((sum, s) => sum + s, 0);
+  return { shown: threads, rows, spans };
 }

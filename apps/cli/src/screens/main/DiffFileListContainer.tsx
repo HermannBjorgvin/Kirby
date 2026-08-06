@@ -3,12 +3,13 @@ import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
+import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
+import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { usePlan } from '../../context/PlanContext.js';
 import { planItemKey } from '../../plan/plan-types.js';
-import { planCommentFooter } from '../../components/CommentThread.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
@@ -73,16 +74,70 @@ export function DiffFileListContainer({
     ? diffNormalFiles.length + diffSkippedFiles.length
     : diffNormalFiles.length;
 
-  // j/k walks files first, then extends into the rendered PR-comments
-  // footer. `shown` has to match what DiffFileList will actually draw
-  // (same planCommentFooter call there), otherwise selection could
-  // land on an invisible card.
+  // j/k walks files first, then extends into the comment cards. The
+  // unified list renders every thread as a card (buildDiffListItems
+  // caps nothing), so selection extends over all of them.
   const generalThreads = diffBundle.remote.generalComments;
-  const { shown: shownGeneral } = useMemo(
-    () => planCommentFooter(generalThreads),
-    [generalThreads]
+  const diffDisplayCount = fileCount + generalThreads.length;
+
+  // Unified-list viewport geometry — the same computation DiffFileList
+  // runs for rendering, so the input handler scrolls exactly what is
+  // drawn.
+  const displayFiles = useMemo(
+    () =>
+      pane.showSkipped
+        ? [...diffNormalFiles, ...diffSkippedFiles]
+        : diffNormalFiles,
+    [diffNormalFiles, diffSkippedFiles, pane.showSkipped]
   );
-  const diffDisplayCount = fileCount + shownGeneral.length;
+  const layout = useMemo(
+    () =>
+      computeDiffListLayout({
+        paneRows: terminal.paneRows,
+        paneCols: terminal.paneCols,
+        displayFiles,
+        treeMode,
+        skippedCount: diffSkippedFiles.length,
+        threads: generalThreads,
+        // Buffers included so spans track the compose input growing as
+        // the user types — the scroll-sync hook keeps it in view.
+        compose: {
+          replyingToThreadId: pane.replyingToThreadId,
+          replyBuffer: pane.replyBuffer,
+          annotatingPlanKey: pane.annotatingPlanKey,
+          annotationBuffer: pane.annotationBuffer,
+        },
+      }),
+    [
+      terminal.paneRows,
+      terminal.paneCols,
+      displayFiles,
+      treeMode,
+      diffSkippedFiles.length,
+      generalThreads,
+      pane.replyingToThreadId,
+      pane.replyBuffer,
+      pane.annotatingPlanKey,
+      pane.annotationBuffer,
+    ]
+  );
+
+  // Post-render scroll corrections: keep an open compose input in
+  // view, anchor the viewport when item sizes change upstream, and
+  // reveal a freshly-posted reply.
+  useDiffListScrollSync({
+    layout,
+    selectedIndex: pane.diffFileIndex,
+    composeMode:
+      pane.replyingToThreadId != null
+        ? 'reply'
+        : pane.annotatingPlanKey != null
+        ? 'annotate'
+        : null,
+    pendingScrollThreadId: pane.pendingScrollThreadId,
+    setDiffListScrollRow: pane.setDiffListScrollRow,
+    setPendingScrollThreadId: pane.setPendingScrollThreadId,
+  });
 
   // Selection breakdown: indices [0, fileCount) select a file; indices
   // [fileCount, diffDisplayCount) select a footer comment (offset by
@@ -100,7 +155,9 @@ export function DiffFileListContainer({
         diffFiles: orderedFiles,
         diffDisplayCount,
         fileCount,
-        shownGeneralComments: shownGeneral,
+        shownGeneralComments: generalThreads,
+        listSpans: layout.spans,
+        listViewportRows: layout.viewportRows,
         keybinds,
         sessions,
         remoteCtx: {
@@ -127,6 +184,7 @@ export function DiffFileListContainer({
       treeMode={treeMode}
       generalComments={generalThreads}
       selectedCommentIndex={selectedCommentIndex}
+      scrollRow={pane.diffListScrollRow}
       replyingToThreadId={pane.replyingToThreadId}
       replyBuffer={pane.replyBuffer}
       inPlanKeys={inPlanKeys}

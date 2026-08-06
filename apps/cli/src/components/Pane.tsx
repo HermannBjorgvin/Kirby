@@ -38,6 +38,12 @@ export function Pane({ focused, title, children, ...boxProps }: PaneProps) {
       borderColor={color}
       titles={title ? [title] : []}
       flexDirection="column"
+      // Clip children to the border interior (Ink insets the clip
+      // region by the computed border), so content that misjudges its
+      // height can never paint over or past the outline. Individual
+      // surfaces still do their own row budgeting; this is the
+      // pane-level backstop.
+      overflow="hidden"
       {...boxProps}
     >
       {children}
