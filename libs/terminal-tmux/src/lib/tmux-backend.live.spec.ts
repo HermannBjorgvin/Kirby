@@ -24,6 +24,19 @@ function tmuxAvailable(): boolean {
   }
 }
 
+/** PID of the process running in the session's active pane. Stable
+ *  across detach/attach, so it distinguishes a real reattach from a
+ *  same-named session that was torn down and recreated. Test-local
+ *  rather than added to tmux-cli.ts — the lib has no production need
+ *  for it. */
+function tmuxPanePid(session: string): string {
+  return execFileSync(
+    'tmux',
+    ['display-message', '-p', '-t', session, '#{pane_pid}'],
+    { encoding: 'utf8' }
+  ).trim();
+}
+
 const SKIP = !tmuxAvailable();
 
 /** Sessions created during a test, cleaned up in afterEach even on
@@ -107,6 +120,54 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     expect(tmuxHasSession(name)).toBe(true);
 
     // afterEach will kill it.
+  });
+
+  // The whole point of the tmux backend: Kirby exits (dispose), the
+  // user relaunches, and the agent is still there with its history. The
+  // unit suite can only assert that `-A` appears in the argv; this is
+  // the only test that proves `-A` actually reattaches to the *existing*
+  // session rather than silently starting a fresh one.
+  it('re-creating the same name reattaches, preserving the running session', async () => {
+    const name = uniqueName('reattach');
+    createdSessions.push(name);
+    const marker = `marker-${Math.random().toString(36).slice(2, 10)}`;
+    const factory = createTmuxBackendFactory();
+    const spec = {
+      name,
+      // Echo a unique marker, then idle. The marker stays on the pane's
+      // screen, so a genuine reattach redraws it; a fresh session would
+      // re-run the command and produce a *new* pane with no history of
+      // the first run's pid.
+      cmd: '/bin/sh',
+      args: ['-c', `echo ${marker}; sleep 30`],
+      cwd: process.cwd(),
+      cols: 80,
+      rows: 24,
+    };
+
+    const first = factory(spec);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(tmuxHasSession(name)).toBe(true);
+    const firstPanePid = tmuxPanePid(name);
+
+    // Kirby "exits": detach only, tmux keeps running.
+    first.dispose();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(tmuxHasSession(name)).toBe(true);
+
+    // Kirby "relaunches" with the same session name.
+    const second = factory(spec);
+    const chunks: string[] = [];
+    second.onData((chunk) => chunks.push(chunk));
+    await new Promise((r) => setTimeout(r, 750));
+
+    // Same pane process as before — proof we attached rather than
+    // creating a second session that merely shares the name.
+    expect(tmuxPanePid(name)).toBe(firstPanePid);
+    // And the first run's output is still on screen after the redraw.
+    expect(chunks.join('')).toContain(marker);
+
+    second.kill();
   });
 
   it('kill() terminates the tmux session', async () => {

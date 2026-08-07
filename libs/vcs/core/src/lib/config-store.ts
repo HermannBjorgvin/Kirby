@@ -58,6 +58,7 @@ interface RawGlobalConfig {
   worktreePath?: string;
   keybindPreset?: string;
   keybindOverrides?: Record<string, KeyDescriptorConfig[]>;
+  terminalBackend?: 'pty' | 'tmux';
 }
 
 interface RawProjectConfig {
@@ -151,6 +152,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     worktreePath: global.worktreePath,
     keybindPreset: global.keybindPreset,
     keybindOverrides: global.keybindOverrides,
+    terminalBackend: global.terminalBackend,
   };
 }
 

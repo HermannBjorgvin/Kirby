@@ -64,7 +64,9 @@ import {
   spawnSession,
   getSession,
   hasSession,
+  hasAnySession,
   isSessionAlive,
+  killAll,
   killSession,
 } from './pty-registry.js';
 
@@ -128,5 +130,64 @@ describe('pty-registry — self-exit', () => {
       flashing: true,
       exited: true,
     });
+  });
+});
+
+// The backend interface splits teardown in two: dispose() releases local
+// resources only, kill() terminates the underlying session. For the
+// direct-PTY backend both collapse to the same thing, so these tests are
+// the only thing standing between a wrong call here and a *silent*
+// regression for persistent backends — under tmux, dispose() leaves the
+// session running and kill() destroys it. Swapping either call would
+// still pass every other test in the suite.
+describe('pty-registry — teardown contract', () => {
+  beforeEach(() => {
+    for (const n of NAMES) killSession(n);
+    ptys.length = 0;
+    emus.length = 0;
+    activity.__resetForTests();
+  });
+
+  afterEach(() => {
+    for (const n of NAMES) killSession(n);
+    activity.__resetForTests();
+  });
+
+  it('killSession calls kill(), so a tmux session is destroyed not orphaned', () => {
+    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    const pty = ptys[0]!;
+
+    killSession('s1');
+
+    expect(pty.kill).toHaveBeenCalledTimes(1);
+    expect(pty.dispose).not.toHaveBeenCalled();
+    expect(hasSession('s1')).toBe(false);
+  });
+
+  it('killAll calls dispose(), so tmux sessions survive a Kirby restart', () => {
+    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s2', 'cmd', [], 80, 24, '/tmp');
+    const spawned = [...ptys];
+    expect(spawned).toHaveLength(2);
+
+    killAll();
+
+    for (const pty of spawned) {
+      expect(pty.dispose).toHaveBeenCalledTimes(1);
+      expect(pty.kill).not.toHaveBeenCalled();
+    }
+    expect(hasAnySession()).toBe(false);
+  });
+
+  it('respawning the same name disposes the old entry rather than killing it', () => {
+    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    const first = ptys[0]!;
+
+    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+
+    // dispose, not kill: on tmux the `-A` flag then reattaches to the
+    // still-live session instead of starting a fresh one.
+    expect(first.dispose).toHaveBeenCalledTimes(1);
+    expect(first.kill).not.toHaveBeenCalled();
   });
 });
