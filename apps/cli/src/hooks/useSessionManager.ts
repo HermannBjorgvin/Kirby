@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  removeWorktree,
-  deleteBranch,
   listAllBranches,
-  listWorktrees,
-  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
 import type { AgentSession } from '../types.js';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, isSessionAlive, onSessionExit } from '../pty-registry.js';
+import { isSessionAlive, onSessionExit } from '../pty-registry.js';
+import {
+  getSessionWorkspaces,
+  workspaceForSession,
+} from '../session/workspaces.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -22,29 +22,32 @@ export function useSessionManager(
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
 
   const refreshSessions = useCallback(async () => {
-    const worktrees = await listWorktrees();
     const filtered: AgentSession[] = [];
-    for (const wt of worktrees) {
-      const name = worktreeSessionName(wt);
-      filtered.push({
-        name,
-        running: isSessionAlive(name),
-        ...(wt.state ? { state: wt.state } : {}),
-      });
+    const localBranches: string[] = [];
+    for (const ws of getSessionWorkspaces()) {
+      const rows = await ws.list();
+      for (const row of rows) {
+        filtered.push({
+          name: row.name,
+          running: isSessionAlive(row.name),
+          ...(row.state ? { state: row.state } : {}),
+          ...(row.host ? { host: row.host } : {}),
+        });
+        // Detached-HEAD orphans have an empty branch; drop them here so
+        // the merged/conflict git queries (countConflicts,
+        // fetchMergedBranches) never run against an empty ref. Those
+        // queries run local git, so only local rows feed them.
+        if (ws.host === null && row.branch) localBranches.push(row.branch);
+      }
     }
     setSessions(filtered);
-    // Detached-HEAD orphans have an empty branch; drop them here so the
-    // merged/conflict git queries (countConflicts, fetchMergedBranches)
-    // never run against an empty ref.
-    setWorktreeBranches(worktrees.map((wt) => wt.branch).filter(Boolean));
+    setWorktreeBranches(localBranches);
     return filtered;
   }, []);
 
   const performDelete = useCallback(
     async (sessionName: string, branch: string) => {
-      killSession(sessionName);
-      await removeWorktree(branch, { force: true });
-      await deleteBranch(branch, true);
+      await workspaceForSession(sessionName).remove(sessionName, branch);
       await refreshSessions();
     },
     [refreshSessions]

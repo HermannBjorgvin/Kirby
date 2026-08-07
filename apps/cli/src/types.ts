@@ -53,6 +53,8 @@ export interface AgentSession {
   running: boolean;
   /** Mirrors `WorktreeInfo.state` — set when the worktree is mid-rebase. */
   state?: 'rebasing';
+  /** The beam host the session lives on; absent for local sessions. */
+  host?: string;
 }
 
 export type { DiffFile, FileCategory } from '@kirby/diff';

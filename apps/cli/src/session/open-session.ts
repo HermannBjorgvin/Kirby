@@ -1,6 +1,7 @@
 import type { AppConfig } from '@kirby/vcs-core';
-import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import { branchToSessionName } from '@kirby/worktree-manager';
 import { launchSession, type LaunchRequest } from './launch-session.js';
+import { localWorkspaces } from './workspaces.js';
 
 // ── Session opening ──────────────────────────────────────────────
 //
@@ -32,8 +33,10 @@ export type OpenSessionResult =
 export async function openSession(
   params: OpenSessionParams
 ): Promise<OpenSessionResult> {
+  // Local for now; the host choice arrives with the session-creation
+  // picker and selects a workspace implementation here.
   const name = branchToSessionName(params.branch);
-  const cwd = await createWorktree(params.branch);
+  const cwd = await localWorkspaces.prepare(params.branch);
   if (!cwd) {
     return {
       ok: false,
