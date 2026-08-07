@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { render, Box, useApp } from 'ink';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
@@ -12,6 +12,10 @@ import {
   setWindowTitle,
   restoreWindowTitle,
 } from './utils/window-title.js';
+import {
+  applySessionBackend,
+  probeTmuxAvailability,
+} from './session-backend.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
 import { KeybindProvider } from './context/KeybindContext.js';
 import { NavProvider, useNavState } from './context/NavContext.js';
@@ -64,6 +68,18 @@ function App() {
   const deleteConfirm = useDeleteConfirmState();
   const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+
+  // Wire the active terminal backend factory into pty-registry whenever
+  // the config selection changes. The Settings UI gates this to empty
+  // registry, so existing sessions are never stranded on a stale factory.
+  const terminalBackend = config.terminalBackend;
+  useEffect(() => {
+    applySessionBackend(config);
+    // Only react to backend changes; other config edits don't need to
+    // rebuild the factory. Capturing config in scope is fine — the
+    // factory only reads `terminalBackend`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terminalBackend]);
 
   const showOnboarding =
     !onboardingComplete && !!config.vendor && !!provider && !vcsConfigured;
@@ -133,6 +149,11 @@ process.on('SIGTERM', () => {
   killAll();
   process.exit(0);
 });
+
+// Resolve the tmux probe before render so applySessionBackend's
+// startup fallback (tmux requested but unavailable → PTY) sees a
+// populated cache. Probe is memoized; ~ms cost on `tmux -V`.
+await probeTmuxAvailability();
 
 render(
   <ConfigProvider providers={providers}>

@@ -225,6 +225,28 @@ describe('readConfig', () => {
     const config = readConfig('/tmp/test');
     expect(config.worktreePath).toBeUndefined();
   });
+
+  // readConfig builds AppConfig field-by-field, so a key added to
+  // AppConfig but not mapped here is silently dropped on every read —
+  // the setting appears to save, then reverts on restart. terminalBackend
+  // hit exactly that.
+  it('should include terminalBackend when set in global config', () => {
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ terminalBackend: 'tmux' })
+    );
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.terminalBackend).toBe('tmux');
+  });
+
+  it('should have undefined terminalBackend when not set (defaults to pty)', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+
+    const config = readConfig('/tmp/test');
+    expect(config.terminalBackend).toBeUndefined();
+  });
 });
 
 describe('isVcsConfigured', () => {

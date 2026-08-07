@@ -38,6 +38,36 @@ export async function createSession(
 }
 
 /**
+ * Press `key` repeatedly until `predicate` reports the action landed.
+ *
+ * A keypress can be swallowed when it arrives in the same stdin chunk as
+ * a preceding Ctrl+Space: the escape fires, but Ink's sidebar useInput
+ * isn't active yet for that React tick, so the key is dispatched against
+ * the terminal context and dropped. Waiting longer never recovers it —
+ * the key has to be sent again. (`createSession` retries around the same
+ * failure mode for 'c'.)
+ *
+ * Retrying also absorbs a genuinely slow effect, so this covers both the
+ * lost-key and slow-action cases with one mechanism.
+ *
+ * Only for idempotent actions — the key may be delivered more than once.
+ */
+export async function pressUntil(
+  term: KirbyTerm,
+  key: string,
+  predicate: () => boolean | Promise<boolean>,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await expect(async () => {
+    await term.press(key);
+    expect(await predicate()).toBe(true);
+  }).toPass({
+    timeout: opts.timeout ?? 20_000,
+    intervals: [250, 500, 1_000],
+  });
+}
+
+/**
  * Wait for the user to be focused on the sidebar. The pane title only
  * appends "(ctrl+space to exit)" while terminal-focused (see
  * `getPaneTitle` in focus.ts), so its absence is the cheapest
