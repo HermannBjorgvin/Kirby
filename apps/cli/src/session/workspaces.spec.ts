@@ -38,9 +38,14 @@ describe('localWorkspaces', () => {
   it('lists worktrees as rows with branch and state, no host', async () => {
     const rows = await localWorkspaces.list();
     expect(rows).toEqual([
-      { name: 'feature-x', branch: 'feature/x' },
-      { name: 'orphan' },
-      { name: 'fix-y', branch: 'fix/y', state: 'rebasing' },
+      { name: 'feature-x', cwd: '/wt/feature-x', branch: 'feature/x' },
+      { name: 'orphan', cwd: '/wt/orphan' },
+      {
+        name: 'fix-y',
+        cwd: '/wt/mid-rebase',
+        branch: 'fix/y',
+        state: 'rebasing',
+      },
     ]);
   });
 

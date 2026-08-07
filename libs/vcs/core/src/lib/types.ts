@@ -200,6 +200,14 @@ export interface AppConfig {
   /** Which session backend to use. 'pty' (default) spawns the AI
    *  command directly under node-pty. 'tmux' wraps the session in a
    *  tmux session that survives Kirby restarts. Cannot be changed
-   *  while sessions are active. */
+   *  while sessions are active. Applies to local sessions; sessions on
+   *  a beam host always go through beam. */
   terminalBackend?: 'pty' | 'tmux';
+  /** beam remote name (see `beam remote ls`) offering remote sessions
+   *  for this project. With `beamRepoPath` set, session creation asks
+   *  where the session should live. Per project. */
+  beamHost?: string;
+  /** Path to this project's clone on the beam host. Session worktrees
+   *  are created under `<path>/.beam/worktrees/`. Per project. */
+  beamRepoPath?: string;
 }

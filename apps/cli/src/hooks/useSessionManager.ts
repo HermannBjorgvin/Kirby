@@ -32,6 +32,8 @@ export function useSessionManager(
           running: isSessionAlive(row.name),
           ...(row.state ? { state: row.state } : {}),
           ...(row.host ? { host: row.host } : {}),
+          ...(row.branch ? { branch: row.branch } : {}),
+          ...(row.cwd ? { cwd: row.cwd } : {}),
         });
         // Detached-HEAD orphans have an empty branch; drop them here so
         // the merged/conflict git queries (countConflicts,

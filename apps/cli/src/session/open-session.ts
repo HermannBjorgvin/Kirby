@@ -1,7 +1,7 @@
 import type { AppConfig } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { launchSession, type LaunchRequest } from './launch-session.js';
-import { localWorkspaces } from './workspaces.js';
+import { getSessionWorkspaces, localWorkspaces } from './workspaces.js';
 
 // ── Session opening ──────────────────────────────────────────────
 //
@@ -19,6 +19,8 @@ export interface OpenSessionParams {
   rows: number;
   config: AppConfig;
   request: LaunchRequest;
+  /** Beam host name for a session on that host; omit for local. */
+  where?: string;
 }
 
 export type OpenSessionResult =
@@ -33,10 +35,15 @@ export type OpenSessionResult =
 export async function openSession(
   params: OpenSessionParams
 ): Promise<OpenSessionResult> {
-  // Local for now; the host choice arrives with the session-creation
-  // picker and selects a workspace implementation here.
-  const name = branchToSessionName(params.branch);
-  const cwd = await localWorkspaces.prepare(params.branch);
+  const base = branchToSessionName(params.branch);
+  const name = params.where ? `${params.where}:${base}` : base;
+  const workspace = params.where
+    ? getSessionWorkspaces().find((w) => w.host === params.where)
+    : localWorkspaces;
+  if (!workspace) {
+    return { ok: false, error: `Host '${params.where}' is not configured` };
+  }
+  const cwd = await workspace.prepare(params.branch);
   if (!cwd) {
     return {
       ok: false,

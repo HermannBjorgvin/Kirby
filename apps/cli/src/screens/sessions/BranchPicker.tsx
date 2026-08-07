@@ -11,6 +11,7 @@ import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useLayout } from '../../context/LayoutContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
+import { availableBeamHost } from '../../session-backend.js';
 import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({
@@ -56,6 +57,43 @@ export const BranchPicker = memo(function BranchPicker({
     },
     { isActive: branchPicker.creating }
   );
+
+  // Second stage: the branch is chosen, ask where the session runs.
+  const locationBranch = branchPicker.locationBranch;
+  const beamHost = availableBeamHost(config.config);
+  if (locationBranch !== null) {
+    const options = [
+      'Local (this machine)',
+      ...(beamHost ? [`${beamHost} (beam host)`] : []),
+    ];
+    return (
+      <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
+        <Text bold color="yellow">
+          New Session — where?
+        </Text>
+        <Text dimColor>{'─'.repeat(40)}</Text>
+        <Text>
+          Branch: <Text bold>{locationBranch}</Text>
+        </Text>
+        {options.map((label, i) => {
+          const isSelected = i === branchPicker.locationIndex;
+          return (
+            <Text key={label}>
+              <Text color={isSelected ? 'cyan' : undefined}>
+                {isSelected ? '› ' : '  '}
+              </Text>
+              <Text bold={isSelected}>{label}</Text>
+            </Text>
+          );
+        })}
+        <Text dimColor>
+          <Text color="cyan">↑↓</Text> navigate ·{' '}
+          <Text color="cyan">Enter</Text> select · <Text color="cyan">Esc</Text>{' '}
+          back
+        </Text>
+      </Box>
+    );
+  }
 
   const filtered = branches.filter((b) =>
     b.toLowerCase().includes(filter.toLowerCase())

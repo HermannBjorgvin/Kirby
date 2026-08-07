@@ -52,6 +52,8 @@ export interface BranchPickerStateValue {
   branchFilter: string;
   branchIndex: number;
   branches: string[];
+  locationBranch: string | null;
+  locationIndex: number;
 }
 
 export interface BranchPickerActionsValue {
@@ -59,6 +61,8 @@ export interface BranchPickerActionsValue {
   setBranchFilter: React.Dispatch<React.SetStateAction<string>>;
   setBranchIndex: React.Dispatch<React.SetStateAction<number>>;
   setBranches: React.Dispatch<React.SetStateAction<string[]>>;
+  setLocationBranch: React.Dispatch<React.SetStateAction<string | null>>;
+  setLocationIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export type BranchPickerValue = BranchPickerStateValue &
@@ -150,12 +154,16 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       branchFilter: branchPicker.branchFilter,
       branchIndex: branchPicker.branchIndex,
       branches: branchPicker.branches,
+      locationBranch: branchPicker.locationBranch,
+      locationIndex: branchPicker.locationIndex,
     }),
     [
       branchPicker.creating,
       branchPicker.branchFilter,
       branchPicker.branchIndex,
       branchPicker.branches,
+      branchPicker.locationBranch,
+      branchPicker.locationIndex,
     ]
   );
 
@@ -165,12 +173,16 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       setBranchFilter: branchPicker.setBranchFilter,
       setBranchIndex: branchPicker.setBranchIndex,
       setBranches: branchPicker.setBranches,
+      setLocationBranch: branchPicker.setLocationBranch,
+      setLocationIndex: branchPicker.setLocationIndex,
     }),
     [
       branchPicker.setCreating,
       branchPicker.setBranchFilter,
       branchPicker.setBranchIndex,
       branchPicker.setBranches,
+      branchPicker.setLocationBranch,
+      branchPicker.setLocationIndex,
     ]
   );
 

@@ -14,6 +14,7 @@ import {
 } from './utils/window-title.js';
 import {
   applySessionBackend,
+  probeBeamAvailability,
   probeTmuxAvailability,
 } from './session-backend.js';
 import { ConfigProvider, useConfig } from './context/ConfigContext.js';
@@ -73,13 +74,15 @@ function App() {
   // the config selection changes. The Settings UI gates this to empty
   // registry, so existing sessions are never stranded on a stale factory.
   const terminalBackend = config.terminalBackend;
+  const beamHost = config.beamHost;
+  const beamRepoPath = config.beamRepoPath;
   useEffect(() => {
     applySessionBackend(config);
-    // Only react to backend changes; other config edits don't need to
-    // rebuild the factory. Capturing config in scope is fine — the
-    // factory only reads `terminalBackend`.
+    // Only react to backend-shaping changes; other config edits don't
+    // need to rebuild the factory. Capturing config in scope is fine —
+    // the routing only reads these three fields.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalBackend]);
+  }, [terminalBackend, beamHost, beamRepoPath]);
 
   const showOnboarding =
     !onboardingComplete && !!config.vendor && !!provider && !vcsConfigured;
@@ -153,7 +156,7 @@ process.on('SIGTERM', () => {
 // Resolve the tmux probe before render so applySessionBackend's
 // startup fallback (tmux requested but unavailable → PTY) sees a
 // populated cache. Probe is memoized; ~ms cost on `tmux -V`.
-await probeTmuxAvailability();
+await Promise.all([probeTmuxAvailability(), probeBeamAvailability()]);
 
 render(
   <ConfigProvider providers={providers}>

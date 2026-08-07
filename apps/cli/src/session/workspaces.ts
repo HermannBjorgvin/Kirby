@@ -28,6 +28,9 @@ export interface WorkspaceRow {
   state?: 'rebasing';
   /** The beam host the session lives on; absent for local rows. */
   host?: string;
+  /** The workspace directory — local path for local rows, a path on
+   *  the host for remote rows. Used to (re)attach without a lookup. */
+  cwd?: string;
 }
 
 export interface SessionWorkspaces {
@@ -52,6 +55,7 @@ export const localWorkspaces: SessionWorkspaces = {
     const worktrees = await listWorktrees();
     return worktrees.map((wt) => ({
       name: worktreeSessionName(wt),
+      cwd: wt.path,
       ...(wt.branch ? { branch: wt.branch } : {}),
       ...(wt.state ? { state: wt.state } : {}),
     }));

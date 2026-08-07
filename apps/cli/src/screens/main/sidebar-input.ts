@@ -44,18 +44,23 @@ export function handleSidebarInput(
           return;
         }
 
-        // Session item → auto-start PTY
+        // Session item → auto-start PTY. Remote rows carry their own
+        // workspace path; beam reattaches to the surviving session.
         if (selectedItem.kind === 'session') {
-          const worktrees = await listWorktrees();
-          const wt = worktrees.find(
-            (w) => worktreeSessionName(w) === selectedItem.session.name
-          );
-          if (!wt) return;
+          let cwd: string | undefined = selectedItem.session.cwd;
+          if (!selectedItem.session.host) {
+            const worktrees = await listWorktrees();
+            const wt = worktrees.find(
+              (w) => worktreeSessionName(w) === selectedItem.session.name
+            );
+            if (!wt) return;
+            cwd = wt.path;
+          }
           startAiSession(
             selectedItem.session.name,
             ctx.terminal.paneCols,
             ctx.terminal.paneRows,
-            wt.path,
+            cwd ?? '',
             ctx.config.config
           );
           await ctx.sessions.refreshSessions();
@@ -110,6 +115,26 @@ export function handleSidebarInput(
         ? selectedItem.session.name
         : branchToSessionName(selectedItem.pr.sourceBranch);
     ctx.asyncOps.run('check-delete', async () => {
+      // Remote sessions: the dirty/unpushed checks cannot run on the
+      // host, so deletion ALWAYS asks for the typed branch name —
+      // fail safe over convenient.
+      if (selectedItem.kind === 'session' && selectedItem.session.host) {
+        const branch = selectedItem.session.branch;
+        if (!branch) {
+          ctx.sessions.flashStatus(
+            'Cannot delete: no branch recorded for the remote session'
+          );
+          return;
+        }
+        ctx.deleteConfirm.setConfirmDelete({
+          branch,
+          sessionName,
+          reason: 'remote session — safety checks are skipped',
+          mode: 'type-branch',
+        });
+        ctx.deleteConfirm.setConfirmInput('');
+        return;
+      }
       const worktrees = await listWorktrees();
       const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
       const branch = wt?.branch;
@@ -306,16 +331,20 @@ export function handleSidebarInput(
     // Session with no PTY, no PR → auto-start session
     if (selectedItem.kind === 'session' && !selectedItem.pr) {
       ctx.asyncOps.run('start-session', async () => {
-        const worktrees = await listWorktrees();
-        const wt = worktrees.find(
-          (w) => worktreeSessionName(w) === selectedItem.session.name
-        );
-        if (!wt) return;
+        let cwd: string | undefined = selectedItem.session.cwd;
+        if (!selectedItem.session.host) {
+          const worktrees = await listWorktrees();
+          const wt = worktrees.find(
+            (w) => worktreeSessionName(w) === selectedItem.session.name
+          );
+          if (!wt) return;
+          cwd = wt.path;
+        }
         startAiSession(
           selectedItem.session.name,
           ctx.terminal.paneCols,
           ctx.terminal.paneRows,
-          wt.path,
+          cwd ?? '',
           ctx.config.config
         );
         await ctx.sessions.refreshSessions();

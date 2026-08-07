@@ -15,9 +15,22 @@ import {
   isTmuxAvailable,
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
+import {
+  createBeamBackendFactory,
+  isBeamAvailable,
+  type BeamStatus,
+} from '@kirby/terminal-beam';
 import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey } from '@kirby/vcs-core';
-import { setSessionBackendFactory } from './pty-registry.js';
+import {
+  setSessionBackendFactory,
+  setSessionBackendResolver,
+} from './pty-registry.js';
+import {
+  createBeamWorkspaces,
+  pendingBranchFor,
+} from './session/beam-workspaces.js';
+import { localWorkspaces, setSessionWorkspaces } from './session/workspaces.js';
 
 /** Resolve the git toplevel of the repo Kirby is running in, or `null`
  *  when there isn't one (launched outside a working tree, `git` missing
@@ -66,6 +79,35 @@ export function getTmuxAvailability(): TmuxStatus | null {
   return cachedTmuxStatus;
 }
 
+// ── Beam availability cache ─────────────────────────────────────
+//
+// Same shape as the tmux probe: once at startup, synchronous reads
+// for input handlers and the session-creation choice.
+
+let cachedBeamStatus: BeamStatus | null = null;
+
+export async function probeBeamAvailability(): Promise<void> {
+  cachedBeamStatus = await isBeamAvailable();
+}
+
+export function getBeamAvailability(): BeamStatus | null {
+  return cachedBeamStatus;
+}
+
+/**
+ * The beam host sessions can be created on, when everything lines up:
+ * both project config fields are set, the beam CLI is installed, and
+ * the configured host is actually registered with beam. Null otherwise
+ * — and with null, session creation never shows the choice.
+ */
+export function availableBeamHost(config: AppConfig): string | null {
+  const host = config.beamHost;
+  if (!host || !config.beamRepoPath) return null;
+  if (!cachedBeamStatus?.available) return null;
+  if (!cachedBeamStatus.remotes.includes(host)) return null;
+  return host;
+}
+
 /** Application policy: build a SessionBackendFactory configured for
  *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
  *  baked in here — neither backend lib knows about it.
@@ -110,7 +152,34 @@ export function buildSessionBackendFactory(
  *  render down, so the lookup never throws — outside a working tree it
  *  yields `null` and the tmux selection degrades to PTY. */
 export function applySessionBackend(config: AppConfig): void {
-  const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : null;
+  const wantsBeam = Boolean(config.beamHost && config.beamRepoPath);
+  const repoRoot =
+    config.terminalBackend === 'tmux' || wantsBeam ? getRepoRoot() : null;
   const factory = buildSessionBackendFactory(config, repoRoot);
   setSessionBackendFactory(factory);
+
+  // Sessions on a beam host: their keys are `<host>:<name>`, and the
+  // key alone routes them to the beam factory and the beam workspace.
+  // The host worktree namespace reuses the tmux prefix so two Kirby
+  // projects sharing one host stay distinct.
+  const host = config.beamHost;
+  const repoPath = config.beamRepoPath;
+  if (host && repoPath && repoRoot) {
+    const prefix = `kirby-${projectKey(repoRoot)}-`;
+    const beamFactory = createBeamBackendFactory({
+      sessionPrefix: prefix,
+      branchFor: pendingBranchFor,
+      repoFor: (name) => (pendingBranchFor(name) ? repoPath : undefined),
+    });
+    setSessionBackendResolver((name) =>
+      name.startsWith(`${host}:`) ? beamFactory : factory
+    );
+    setSessionWorkspaces([
+      localWorkspaces,
+      createBeamWorkspaces(host, repoPath, prefix),
+    ]);
+  } else {
+    setSessionBackendResolver(() => factory);
+    setSessionWorkspaces([localWorkspaces]);
+  }
 }

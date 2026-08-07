@@ -22,6 +22,10 @@ const {
 
 vi.mock('node:child_process', () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+  // Pulled in at module load by transitive imports (worktree-manager's
+  // exec helper, the beam workspace's CLI runner); never called here.
+  exec: vi.fn(),
+  execFile: vi.fn(),
 }));
 
 vi.mock('@kirby/terminal-pty', () => ({

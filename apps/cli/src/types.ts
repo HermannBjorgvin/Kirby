@@ -55,6 +55,10 @@ export interface AgentSession {
   state?: 'rebasing';
   /** The beam host the session lives on; absent for local sessions. */
   host?: string;
+  /** The session's branch, from its workspace row. */
+  branch?: string;
+  /** The workspace directory (a path on the host for remote rows). */
+  cwd?: string;
 }
 
 export type { DiffFile, FileCategory } from '@kirby/diff';

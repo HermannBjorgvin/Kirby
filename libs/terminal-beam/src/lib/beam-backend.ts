@@ -10,6 +10,10 @@ import { beamKillSession } from './beam-cli.js';
 export interface BeamFactoryOptions {
   /** The beam binary. Defaults to 'beam' on PATH. */
   beamBin?: string;
+  /** Optional. Prepended to the session part of the beam target (the
+   *  part after the host's colon), the same namespacing the tmux
+   *  backend applies — the lib treats it as opaque. */
+  sessionPrefix?: string;
   /**
    * Per-session lookups the caller wires to its own bookkeeping — the
    * lib knows nothing about branches or repos. Returning undefined
@@ -25,14 +29,26 @@ export function createBeamBackendFactory(
   opts?: BeamFactoryOptions
 ): SessionBackendFactory {
   const bin = opts?.beamBin ?? 'beam';
+  const prefix = opts?.sessionPrefix ?? '';
   return (spec: SessionSpec): SessionBackend => {
     return new BeamBackend(
       spec,
+      beamTarget(spec.name, prefix),
       bin,
       opts?.repoFor?.(spec.name),
       opts?.branchFor?.(spec.name)
     );
   };
+}
+
+/** `<host>:<name>` with the prefix spliced into the session part, so
+ *  the session on the host carries the caller's namespace while the
+ *  caller's own key stays short. A name with no colon gets the prefix
+ *  whole — beam then treats it as a local session. */
+export function beamTarget(name: string, prefix: string): string {
+  const i = name.indexOf(':');
+  if (i === -1) return prefix + name;
+  return name.slice(0, i + 1) + prefix + name.slice(i + 1);
 }
 
 /**
@@ -58,13 +74,14 @@ class BeamBackend implements SessionBackend {
   private killed = false;
 
   constructor(
-    private readonly spec: SessionSpec,
+    spec: SessionSpec,
+    private readonly target: string,
     private readonly bin: string,
     repo: string | undefined,
     branch: string | undefined
   ) {
     const args = beamNewArgs({
-      target: spec.name,
+      target,
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
       ...(repo ? { repo } : {}),
       ...(branch ? { branch } : {}),
@@ -119,7 +136,7 @@ class BeamBackend implements SessionBackend {
   kill(): void {
     if (this.killed) return;
     this.killed = true;
-    beamKillSession(this.bin, this.spec.name);
+    beamKillSession(this.bin, this.target);
     this.inner.dispose();
   }
 }

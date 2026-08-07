@@ -144,6 +144,20 @@ export function buildSettingsFields(
       configBag: 'global',
     },
     {
+      label: 'Beam Host',
+      key: 'beamHost',
+      description:
+        'beam remote name for remote sessions on another machine (see: beam remote ls). Empty disables the choice.',
+      configBag: 'project',
+    },
+    {
+      label: 'Beam Repo Path',
+      key: 'beamRepoPath',
+      description:
+        "Path to this repo's clone on the beam host. Worktrees are created under it.",
+      configBag: 'project',
+    },
+    {
       label: 'Terminal Backend',
       key: 'terminalBackend',
       description:

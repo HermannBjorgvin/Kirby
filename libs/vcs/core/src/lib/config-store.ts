@@ -69,6 +69,8 @@ interface RawProjectConfig {
   vendor?: string;
   vendorProject?: Record<string, string>;
   editor?: string;
+  beamHost?: string;
+  beamRepoPath?: string;
 }
 
 // ── Migration from old flat format ─────────────────────────────────
@@ -153,6 +155,8 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     keybindPreset: global.keybindPreset,
     keybindOverrides: global.keybindOverrides,
     terminalBackend: global.terminalBackend,
+    beamHost: project.beamHost,
+    beamRepoPath: project.beamRepoPath,
   };
 }
 

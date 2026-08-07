@@ -7,6 +7,7 @@ export {
   type BeamNewOptions,
 } from './lib/beam-args.js';
 export {
+  beamTarget,
   createBeamBackendFactory,
   type BeamFactoryOptions,
 } from './lib/beam-backend.js';

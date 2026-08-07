@@ -43,6 +43,18 @@ function canApplyFieldChange(
   value: string | undefined,
   ctx: SettingsHandlerCtx
 ): boolean {
+  // The beam fields rebuild the backend routing and the workspace
+  // set, so they carry the same active-session gate as the backend
+  // switch: changing them mid-session would strand existing sessions.
+  if (field.key === 'beamHost' || field.key === 'beamRepoPath') {
+    if (hasAnySession()) {
+      ctx.sessions.flashStatus(
+        'Close all sessions before changing beam settings.'
+      );
+      return false;
+    }
+    return true;
+  }
   if (field.key !== 'terminalBackend') return true;
   if (hasAnySession()) {
     ctx.sessions.flashStatus(
