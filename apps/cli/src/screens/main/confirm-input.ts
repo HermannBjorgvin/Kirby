@@ -1,11 +1,9 @@
 import type { Key } from 'ink';
-import { createWorktree } from '@kirby/worktree-manager';
 import { hasSession } from '../../pty-registry.js';
-import { launchSession } from '../../session/launch-session.js';
+import { openSession } from '../../session/open-session.js';
 import { getPrFromItem } from '../../types.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { ConfirmHandlerCtx } from './input-types.js';
-import { startAiSession } from './branch-picker-input.js';
 
 async function startReviewSession(
   ctx: ConfirmHandlerCtx,
@@ -40,21 +38,12 @@ async function startReviewSession(
       additionalInstruction;
   }
 
-  const worktreePath = await createWorktree(pr.sourceBranch);
-  if (!worktreePath) {
-    ctx.sessions.flashStatus(
-      `Failed to create worktree for ${pr.sourceBranch}`
-    );
-    return;
-  }
-
   // Resume an existing review conversation in this worktree if one
   // exists, otherwise seed a fresh session with the review prompt. The
   // prompt is delivered as argv/env by the launcher — never composed
   // into a shell string — so quotes in the PR title survive intact.
-  launchSession({
-    name: ctx.sessionNameForTerminal,
-    cwd: worktreePath,
+  const result = await openSession({
+    branch: pr.sourceBranch,
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
@@ -64,6 +53,7 @@ async function startReviewSession(
       systemGuidance: guidance,
     },
   });
+  if (!result.ok) ctx.sessions.flashStatus(result.error);
 }
 
 const CONFIRM_OPTIONS = 4;
@@ -144,16 +134,14 @@ export function handleConfirmInput(
             ? getPrFromItem(ctx.selectedItem)
             : undefined;
           if (pr) {
-            const worktreePath = await createWorktree(pr.sourceBranch);
-            if (worktreePath) {
-              startAiSession(
-                ctx.sessionNameForTerminal!,
-                ctx.terminal.paneCols,
-                ctx.terminal.paneRows,
-                worktreePath,
-                ctx.config.config
-              );
-            }
+            const result = await openSession({
+              branch: pr.sourceBranch,
+              cols: ctx.terminal.paneCols,
+              rows: ctx.terminal.paneRows,
+              config: ctx.config.config,
+              request: { intent: 'continue-or-blank' },
+            });
+            if (!result.ok) ctx.sessions.flashStatus(result.error);
           }
         }
         await ctx.sessions.refreshSessions();

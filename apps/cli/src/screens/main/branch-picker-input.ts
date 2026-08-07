@@ -1,12 +1,8 @@
 import type { Key } from 'ink';
 import type { AppConfig } from '@kirby/vcs-core';
-import {
-  createWorktree,
-  listAllBranches,
-  fetchRemote,
-  branchToSessionName,
-} from '@kirby/worktree-manager';
+import { listAllBranches, fetchRemote } from '@kirby/worktree-manager';
 import { launchSession } from '../../session/launch-session.js';
+import { openSession } from '../../session/open-session.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
@@ -79,18 +75,18 @@ export function handleBranchPickerInput(
         : ctx.branchPicker.branchFilter.trim();
     if (branch) {
       ctx.asyncOps.run('create-worktree', async () => {
-        const worktreePath = await createWorktree(branch);
-        if (worktreePath) {
-          const sessionName = branchToSessionName(branch);
-          startAiSession(
-            sessionName,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            worktreePath,
-            ctx.config.config
-          );
+        const result = await openSession({
+          branch,
+          cols: ctx.terminal.paneCols,
+          rows: ctx.terminal.paneRows,
+          config: ctx.config.config,
+          request: { intent: 'continue-or-blank' },
+        });
+        if (result.ok) {
           await ctx.sessions.refreshSessions();
-          ctx.sidebar.selectByKey(`session:${sessionName}`);
+          ctx.sidebar.selectByKey(`session:${result.name}`);
+        } else {
+          ctx.sessions.flashStatus(result.error);
         }
       });
     }

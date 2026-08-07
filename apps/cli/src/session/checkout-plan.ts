@@ -1,7 +1,8 @@
 import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
-import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import { branchToSessionName } from '@kirby/worktree-manager';
 import { hasSession } from '../pty-registry.js';
-import { launchSession, deliverToRunningSession } from './launch-session.js';
+import { deliverToRunningSession } from './launch-session.js';
+import { openSession } from './open-session.js';
 
 // ── Checkout orchestration ───────────────────────────────────────
 //
@@ -42,10 +43,9 @@ export async function checkoutPlan(
   const { pr, prompt, paneCols, paneRows, mode, config, flashStatus } = deps;
   const name = branchToSessionName(pr.sourceBranch);
 
-  const seed = (cwd: string) =>
-    launchSession({
-      name,
-      cwd,
+  const seed = () =>
+    openSession({
+      branch: pr.sourceBranch,
       cols: paneCols,
       rows: paneRows,
       config,
@@ -61,22 +61,20 @@ export async function checkoutPlan(
       }
       return 'injected';
     }
-    // new-session: reseed. launchSession kills the same-name PTY first.
-    const worktreePath = await createWorktree(pr.sourceBranch);
-    if (!worktreePath) {
-      flashStatus(`Failed to resolve worktree for ${pr.sourceBranch}`);
+    // new-session: reseed. The spawn kills the same-name PTY first.
+    const reseeded = await seed();
+    if (!reseeded.ok) {
+      flashStatus(reseeded.error);
       return 'failed';
     }
-    seed(worktreePath);
     return 'spawned';
   }
 
   // ── States B & C: no running agent — ensure a worktree, then spawn ──
-  const worktreePath = await createWorktree(pr.sourceBranch);
-  if (!worktreePath) {
-    flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
+  const opened = await seed();
+  if (!opened.ok) {
+    flashStatus(opened.error);
     return 'failed';
   }
-  seed(worktreePath);
   return 'spawned';
 }
