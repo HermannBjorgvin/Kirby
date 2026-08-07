@@ -29,12 +29,26 @@ export function onSessionExit(cb: (name: string) => void): () => void {
 let activeFactory: SessionBackendFactory = createPtyBackendFactory();
 
 /** Swap the backend factory used by future spawnSession() calls. The
- *  composition root (apps/cli/src/session-backend.ts in Phase 4) calls
- *  this when the user picks a different terminal backend. Existing
- *  sessions in the registry are unaffected — switching is gated to
- *  empty-registry by the Settings UI guard. */
+ *  composition root (apps/cli/src/session-backend.ts) calls this when
+ *  the user picks a different terminal backend. Existing sessions in
+ *  the registry are unaffected — switching is gated to empty-registry
+ *  by the Settings UI guard. */
 export function setSessionBackendFactory(factory: SessionBackendFactory): void {
   activeFactory = factory;
+}
+
+type SessionBackendResolver = (name: string) => SessionBackendFactory;
+
+/** The factory is chosen per spawn, from the session's own key: local
+ *  sessions use the configured pty/tmux factory, `<host>:<name>` keys
+ *  use that host's beam factory. The default resolver keeps the
+ *  single-factory behaviour until the composition root installs one. */
+let resolveFactory: SessionBackendResolver = () => activeFactory;
+
+export function setSessionBackendResolver(
+  resolver: SessionBackendResolver
+): void {
+  resolveFactory = resolver;
 }
 
 export function spawnSession(
@@ -59,7 +73,7 @@ export function spawnSession(
     registry.delete(name);
   }
 
-  const pty = activeFactory({
+  const pty = resolveFactory(name)({
     name,
     cmd,
     args,
@@ -143,6 +157,21 @@ export function killSession(name: string): void {
   const entry = registry.get(name);
   if (entry) {
     entry.pty.kill();
+    entry.emu.dispose();
+    activity.detach(name);
+    removeInactiveAlert(name);
+    registry.delete(name);
+  }
+}
+
+/** Soft cleanup for one session — dispose the local side and drop the
+ *  entry, leaving whatever runs behind it (a tmux session here or on a
+ *  beam host) alive. Used when a teardown is owned elsewhere, e.g.
+ *  `beam kill --rm-worktree` doing the killing on the host. */
+export function disposeSession(name: string): void {
+  const entry = registry.get(name);
+  if (entry) {
+    entry.pty.dispose();
     entry.emu.dispose();
     activity.detach(name);
     removeInactiveAlert(name);
