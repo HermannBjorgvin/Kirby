@@ -1,5 +1,9 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import {
+  createSession,
+  pressUntil,
+  waitForSidebarFocused,
+} from './setup/sessions.js';
 
 // Regression for issue #56: pressing 'q' did not quit Kirby while an
 // agent PTY was still running, because Ink's exit() only unmounts the
@@ -53,25 +57,19 @@ test.describe('Quit with active agent (#56)', () => {
 
     // The fix under test: this should actually exit Kirby.
     //
-    // Retry the keypress rather than only waiting longer. Two things can
-    // go wrong here and a bigger timeout addresses just one of them:
-    //
-    //  1. Slow exit — `handleExit` races settlePendingRuns() against
-    //     EXIT_GRACE_MS (3s) before process.exit, so teardown can take a
-    //     few seconds under load.
-    //  2. Lost keystroke — a key can be swallowed when it lands in the
-    //     same stdin chunk as the preceding Ctrl+Space: the escape fires
-    //     but Ink's sidebar useInput isn't active yet in that React tick,
-    //     so the key is dispatched against the terminal context and
-    //     dropped. `createSession` already retries around exactly this.
-    //     No timeout recovers a key that was never delivered.
+    // `pressUntil` rather than a longer poll. Two things can fail here and
+    // a bigger timeout only covers one: `handleExit` races
+    // settlePendingRuns() against EXIT_GRACE_MS (3s) before process.exit
+    // (slow, so waiting helps), and the 'q' can be dropped outright after
+    // the preceding Ctrl+Space (waiting never helps).
     //
     // Re-pressing is safe: 'q' is idempotent in the sidebar, and once
-    // Kirby is tearing down the keystroke is a no-op (the client only
-    // sends on an OPEN socket, and the host ignores input with no PTY).
-    await expect(async () => {
-      await kirby.term.press('q');
-      expect((await fetchStatus(host)).ptyAlive).toBe(false);
-    }).toPass({ timeout: 20_000, intervals: [250, 500, 1_000] });
+    // Kirby is tearing down the keystroke is a no-op — the client only
+    // sends on an OPEN socket and the host ignores input with no PTY.
+    await pressUntil(
+      kirby.term,
+      'q',
+      async () => !(await fetchStatus(host)).ptyAlive
+    );
   });
 });

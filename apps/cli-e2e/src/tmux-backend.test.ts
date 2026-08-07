@@ -1,5 +1,9 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import {
+  createSession,
+  pressUntil,
+  waitForSidebarFocused,
+} from './setup/sessions.js';
 import {
   cleanupTmuxSessions,
   kirbySessionExists,
@@ -105,15 +109,11 @@ test.describe('Tmux backend (e2e)', () => {
     await kirby.term.write('\x00');
     await waitForSidebarFocused(kirby.term);
 
-    // vim preset binds sidebar.kill-agent to 'K'.
-    await kirby.term.press('K');
-
-    await expect
-      .poll(() => kirbySessionExists(branch), {
-        timeout: 15_000,
-        intervals: [250],
-      })
-      .toBe(false);
+    // vim preset binds sidebar.kill-agent to 'K'. Retried: a key following
+    // Ctrl+Space can be dropped before Ink's sidebar useInput is active,
+    // and a longer wait can't recover a key that never arrived. Safe to
+    // repeat — killSession no-ops once the registry entry is gone.
+    await pressUntil(kirby.term, 'K', () => !kirbySessionExists(branch));
   });
 
   // The feature's whole reason to exist: quitting Kirby must leave the
@@ -144,15 +144,11 @@ test.describe('Tmux backend (e2e)', () => {
 
     // 'q' quits. Wait for Kirby's own PTY to be gone before judging the
     // tmux session, otherwise we might sample before teardown ran at all.
-    //
-    // Retried for the same reason as quit-with-active-agent.test.ts: a key
-    // following Ctrl+Space can be dropped before Ink's sidebar useInput is
-    // active, and no timeout recovers an undelivered keystroke. Safe to
-    // repeat — 'q' is idempotent and becomes a no-op once Kirby is gone.
-    await expect(async () => {
-      await kirby.term.press('q');
-      expect((await fetchStatus(host)).ptyAlive).toBe(false);
-    }).toPass({ timeout: 20_000, intervals: [250, 500, 1_000] });
+    await pressUntil(
+      kirby.term,
+      'q',
+      async () => !(await fetchStatus(host)).ptyAlive
+    );
 
     // Kirby is gone; the agent's tmux session is not.
     expect(kirbySessionExists(branch)).toBe(true);
