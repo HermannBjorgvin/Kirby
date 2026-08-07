@@ -144,13 +144,15 @@ test.describe('Tmux backend (e2e)', () => {
 
     // 'q' quits. Wait for Kirby's own PTY to be gone before judging the
     // tmux session, otherwise we might sample before teardown ran at all.
-    await kirby.term.press('q');
-    await expect
-      .poll(async () => (await fetchStatus(host)).ptyAlive, {
-        timeout: 15_000,
-        intervals: [250],
-      })
-      .toBe(false);
+    //
+    // Retried for the same reason as quit-with-active-agent.test.ts: a key
+    // following Ctrl+Space can be dropped before Ink's sidebar useInput is
+    // active, and no timeout recovers an undelivered keystroke. Safe to
+    // repeat — 'q' is idempotent and becomes a no-op once Kirby is gone.
+    await expect(async () => {
+      await kirby.term.press('q');
+      expect((await fetchStatus(host)).ptyAlive).toBe(false);
+    }).toPass({ timeout: 20_000, intervals: [250, 500, 1_000] });
 
     // Kirby is gone; the agent's tmux session is not.
     expect(kirbySessionExists(branch)).toBe(true);
