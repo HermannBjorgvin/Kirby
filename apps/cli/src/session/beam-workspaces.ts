@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { beamKillArgs, beamLsArgs, beamTarget } from '@kirby/terminal-beam';
-import { disposeSession } from '../pty-registry.js';
+import { disposeSession, hasSession } from '../pty-registry.js';
 import type { SessionWorkspaces, WorkspaceRow } from './workspaces.js';
 
 // ── Beam-hosted workspaces ───────────────────────────────────────
@@ -40,11 +40,18 @@ function runBeam(args: string[]): Promise<{ stdout: string }> {
   });
 }
 
-// The branch each pending spawn was opened for, keyed by session key.
-// Written by prepare(), read back by the terminal backend's
-// repoFor/branchFor lookups in the same spawn. Never persisted: on a
-// reattach after restart the map is empty, the backend omits the
-// worktree flags, and beam attaches to the existing session anyway.
+// The branch each session opened this run was created for, keyed by
+// session key. Written by prepare(), read back by the terminal
+// backend's repoFor/branchFor lookups in the same spawn. Never
+// persisted: on a reattach after restart the map is empty, the backend
+// omits the worktree flags, and beam attaches to the existing session
+// anyway.
+//
+// It also carries the sidebar over a gap that local sessions do not
+// have: `beam new` runs inside the PTY, so ssh and tmux need a moment
+// before `beam ls` can report the session, while the refresh right
+// after a spawn happens immediately. Without these rows the new
+// session would be invisible until some unrelated refresh.
 const pendingBranches = new Map<string, string>();
 
 export function createBeamWorkspaces(
@@ -76,15 +83,31 @@ export function createBeamWorkspaces(
         return [];
       }
       const out: WorkspaceRow[] = [];
+      const seen = new Set<string>();
       for (const r of rows) {
         if (r.remote !== host) continue;
         if (!r.session.startsWith(sessionPrefix)) continue;
         const name = `${host}:${r.session.slice(sessionPrefix.length)}`;
+        seen.add(name);
         out.push({
           name,
           host,
           ...(r.branch ? { branch: r.branch } : {}),
           ...(r.worktree || r.path ? { cwd: r.worktree || r.path } : {}),
+        });
+      }
+      // Sessions started this run that beam cannot see yet. Bounded by
+      // the registry: once the entry is gone (killed, or the spawn
+      // never took) the row goes with it instead of lingering.
+      for (const [name, branch] of pendingBranches) {
+        if (seen.has(name) || !name.startsWith(`${host}:`)) continue;
+        if (!hasSession(name)) continue;
+        const session = name.slice(host.length + 1);
+        out.push({
+          name,
+          host,
+          branch,
+          cwd: `${repo}/.beam/worktrees/${sessionPrefix}${session}`,
         });
       }
       return out;
@@ -95,6 +118,7 @@ export function createBeamWorkspaces(
       // location lives on the tmux session and dies with it, so the
       // kill and the removal must be one beam call.
       disposeSession(sessionName);
+      pendingBranches.delete(sessionName);
       await runBeam(beamKillArgs(beamTarget(sessionName, sessionPrefix), true));
     },
   };

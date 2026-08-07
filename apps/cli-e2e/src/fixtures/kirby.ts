@@ -5,7 +5,8 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +56,13 @@ export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
 
 export interface KirbyOptions {
   kirbyConfig?: Record<string, unknown>;
+  /**
+   * Per-project config, written to
+   * `<home>/.kirby/projects/<projectKey(repo)>/config.json` before Kirby
+   * spawns — the same file Kirby derives from its cwd. Needed for fields
+   * that only exist at project scope (beamHost, beamRepoPath, vendor).
+   */
+  kirbyProjectConfig?: Record<string, unknown>;
   kirbyEnv?: Record<string, string>;
   cols: number;
   rows: number;
@@ -85,15 +93,35 @@ export interface KirbySession {
   homeDir: string;
 }
 
+/** Mirror of vcs-core's projectKey: how Kirby maps its cwd to the
+ *  per-project config directory. realpath first — the PTY's getcwd
+ *  resolves symlinks, so the key must be computed on the same string. */
+export function projectKeyFor(repoPath: string): string {
+  return createHash('sha256')
+    .update(realpathSync(repoPath))
+    .digest('hex')
+    .slice(0, 16);
+}
+
 export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
   kirbyConfig: [undefined, { option: true }],
+  kirbyProjectConfig: [undefined, { option: true }],
   kirbyEnv: [undefined, { option: true }],
   cols: [100, { option: true }],
   rows: [30, { option: true }],
   kirbyRepoPath: [undefined, { option: true }],
 
   kirby: async (
-    { page, baseURL, kirbyConfig, kirbyEnv, cols, rows, kirbyRepoPath },
+    {
+      page,
+      baseURL,
+      kirbyConfig,
+      kirbyProjectConfig,
+      kirbyEnv,
+      cols,
+      rows,
+      kirbyRepoPath,
+    },
     use
   ) => {
     const host = baseURL ?? 'http://localhost:5174';
@@ -105,6 +133,19 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       await writeFile(
         join(homeDir, '.kirby', 'config.json'),
         JSON.stringify(kirbyConfig, null, 2)
+      );
+    }
+    if (kirbyProjectConfig) {
+      const projectDir = join(
+        homeDir,
+        '.kirby',
+        'projects',
+        projectKeyFor(repoPath)
+      );
+      await mkdir(projectDir, { recursive: true });
+      await writeFile(
+        join(projectDir, 'config.json'),
+        JSON.stringify(kirbyProjectConfig, null, 2)
       );
     }
 

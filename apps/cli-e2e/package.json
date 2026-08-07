@@ -41,7 +41,7 @@
           "{projectRoot}/test-output/playwright/report"
         ],
         "options": {
-          "command": "playwright test --grep-invert @integration",
+          "command": "playwright test --grep-invert \"@integration|@beam\"",
           "cwd": "apps/cli-e2e"
         }
       },
@@ -63,7 +63,29 @@
           }
         ],
         "options": {
-          "command": "playwright test",
+          "command": "playwright test --grep-invert @beam",
+          "cwd": "apps/cli-e2e"
+        }
+      },
+      "e2e:beam": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          {
+            "projects": [
+              "cli"
+            ],
+            "target": "build"
+          },
+          {
+            "projects": [
+              "cli-wterm-host"
+            ],
+            "target": "build"
+          }
+        ],
+        "options": {
+          "command": "playwright test --grep @beam",
           "cwd": "apps/cli-e2e"
         }
       }

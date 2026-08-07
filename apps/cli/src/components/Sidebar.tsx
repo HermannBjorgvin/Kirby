@@ -143,6 +143,12 @@ const SessionItemRow = memo(function SessionItemRow({
             ) : (
               <Text bold={selected}>{title}</Text>
             )}
+            {session.host ? (
+              <Text dimColor color="cyan">
+                {' '}
+                @{session.host}
+              </Text>
+            ) : null}
             {isMerged ? (
               <Text dimColor color="green">
                 {' '}

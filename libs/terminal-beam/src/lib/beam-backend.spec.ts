@@ -55,11 +55,11 @@ describe('createBeamBackendFactory', () => {
     expect(ptyCtor).toHaveBeenCalledTimes(1);
     const [cmd, args] = ptyCtor.mock.calls[0]!;
     expect(cmd).toBe('beam');
+    // No -c here: beam refuses it next to --repo, and the worktree
+    // already decides the directory.
     expect(args).toEqual([
       'new',
       'desktop:kirby-abc-feature-x',
-      '-c',
-      '/data/repo/.beam/worktrees/kirby-abc-feature-x',
       '--repo',
       '/data/repo',
       '--branch',

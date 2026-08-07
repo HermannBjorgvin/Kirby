@@ -38,9 +38,12 @@ export interface BeamNewOptions {
  */
 export function beamNewArgs(opts: BeamNewOptions): string[] {
   const args = ['new', opts.target];
-  if (opts.cwd) args.push('-c', opts.cwd);
-  if (opts.repo && opts.branch) {
-    args.push('--repo', opts.repo, '--branch', opts.branch);
+  const worktree = Boolean(opts.repo && opts.branch);
+  // beam refuses `-c` together with `--repo` (the worktree IS the
+  // directory), so the cwd only rides along on the plain/reattach path.
+  if (opts.cwd && !worktree) args.push('-c', opts.cwd);
+  if (worktree) {
+    args.push('--repo', opts.repo!, '--branch', opts.branch!);
   }
   if (opts.command && opts.command.length > 0) {
     args.push('--', 'sh', '-lc', shellJoin(opts.command));

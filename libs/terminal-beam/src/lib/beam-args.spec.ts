@@ -25,10 +25,13 @@ describe('beamNewArgs', () => {
     ]);
   });
 
-  it('repo and branch ride together', () => {
+  it('repo and branch ride together, and displace the cwd', () => {
+    // beam refuses -c next to --repo; the worktree decides the
+    // directory, so the builder drops the redundant cwd.
     expect(
       beamNewArgs({
         target: 'desktop:api',
+        cwd: '/data/repo/.beam/worktrees/api',
         repo: '/data/repo',
         branch: 'feature/x',
       })
