@@ -6,6 +6,7 @@ const {
   ptyFactorySpy,
   tmuxFactorySpy,
   isTmuxAvailableMock,
+  execFileSyncMock,
   SENTINEL_PTY,
   SENTINEL_TMUX,
 } = vi.hoisted(() => {
@@ -13,10 +14,15 @@ const {
     ptyFactorySpy: vi.fn(),
     tmuxFactorySpy: vi.fn(),
     isTmuxAvailableMock: vi.fn<[], Promise<TmuxStatus>>(),
+    execFileSyncMock: vi.fn(),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),
   };
 });
+
+vi.mock('node:child_process', () => ({
+  execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+}));
 
 vi.mock('@kirby/terminal-pty', () => ({
   createPtyBackendFactory: () => {
@@ -37,6 +43,7 @@ vi.mock('@kirby/vcs-core', () => ({
 
 import {
   buildSessionBackendFactory,
+  getRepoRoot,
   probeTmuxAvailability,
 } from './session-backend.js';
 
@@ -123,5 +130,47 @@ describe('buildSessionBackendFactory', () => {
     );
     expect(factory).toBe(SENTINEL_PTY);
     expect(tmuxFactorySpy).not.toHaveBeenCalled();
+  });
+
+  // Outside a git working tree there is no stable key to namespace the
+  // tmux session name by. Keying off cwd instead would hash differently
+  // per subdirectory and strand the previous session, so degrade to PTY.
+  it.each([
+    ['null', null],
+    ['empty string', ''],
+  ])('falls back to PTY when repoRoot is %s', (_label, repoRoot) => {
+    const factory = buildSessionBackendFactory(
+      makeConfig({ terminalBackend: 'tmux' }),
+      repoRoot
+    );
+    expect(factory).toBe(SENTINEL_PTY);
+    expect(tmuxFactorySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('getRepoRoot', () => {
+  // One test rather than two: getRepoRoot memoizes, so a second test
+  // would read the cache and never re-invoke execFileSync.
+  it('returns null outside a git working tree, without throwing', () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error('fatal: not a git repository');
+    });
+
+    // Runs inside a useEffect — a throw here would take the render down
+    // rather than surfacing as a recoverable error.
+    expect(getRepoRoot()).toBeNull();
+
+    // stderr is swallowed, not inherited: git's "fatal:" line written
+    // straight to the terminal would land mid-frame and corrupt Ink's
+    // render.
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      'git',
+      ['rev-parse', '--show-toplevel'],
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'ignore'] })
+    );
+
+    // Memoized, including the failure — no repeated forks per render.
+    expect(getRepoRoot()).toBeNull();
+    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
   });
 });

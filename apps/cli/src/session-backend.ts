@@ -19,14 +19,28 @@ import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey } from '@kirby/vcs-core';
 import { setSessionBackendFactory } from './pty-registry.js';
 
-/** Resolve the git toplevel of the repo Kirby is running in. Cached on
- *  first call — Kirby is anchored to one repo per process. */
+/** Resolve the git toplevel of the repo Kirby is running in, or `null`
+ *  when there isn't one (launched outside a working tree, `git` missing
+ *  from PATH). Cached on first call — including the `null` — since
+ *  Kirby is anchored to one repo per process.
+ *
+ *  git's stderr is swallowed rather than inherited: a bare "fatal: not
+ *  a git repository" written straight to the terminal would land in the
+ *  middle of Ink's frame and corrupt the render. */
 let cachedRepoRoot: string | null = null;
-export function getRepoRoot(): string {
-  if (cachedRepoRoot) return cachedRepoRoot;
-  cachedRepoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    encoding: 'utf8',
-  }).trim();
+let repoRootResolved = false;
+export function getRepoRoot(): string | null {
+  if (repoRootResolved) return cachedRepoRoot;
+  repoRootResolved = true;
+  try {
+    cachedRepoRoot =
+      execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null;
+  } catch {
+    cachedRepoRoot = null;
+  }
   return cachedRepoRoot;
 }
 
@@ -56,16 +70,26 @@ export function getTmuxAvailability(): TmuxStatus | null {
  *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
  *  baked in here — neither backend lib knows about it.
  *
- *  Startup fallback: if the user's saved config requests tmux but the
- *  cached probe says tmux is unavailable, silently fall back to PTY.
- *  Without this, a config saved on a machine that has since lost tmux
- *  would explode at first session-spawn with ENOENT. The Settings UI
- *  already shows "Tmux (not installed)" so the user can re-pick. */
+ *  Two fallbacks keep a tmux selection from becoming a hard failure:
+ *
+ *  - Probe says tmux is unavailable → PTY. Without this, a config saved
+ *    on a machine that has since lost tmux would explode at first
+ *    session-spawn with ENOENT. The Settings UI already shows
+ *    "Tmux (not installed)" so the user can re-pick.
+ *  - No `repoRoot` → PTY. The tmux session name is namespaced by the
+ *    repo's projectKey so sessions from different repos stay distinct
+ *    and a restart reattaches to the right one. With no repo to key on
+ *    there is nothing stable to derive that from, and cwd is the wrong
+ *    substitute — launching from a subdirectory would hash differently
+ *    and silently strand the previous session. */
 export function buildSessionBackendFactory(
   config: AppConfig,
-  repoRoot: string
+  repoRoot: string | null
 ): SessionBackendFactory {
   if (config.terminalBackend === 'tmux') {
+    if (!repoRoot) {
+      return createPtyBackendFactory();
+    }
     if (cachedTmuxStatus && !cachedTmuxStatus.available) {
       return createPtyBackendFactory();
     }
@@ -80,12 +104,13 @@ export function buildSessionBackendFactory(
  *  and whenever `config.terminalBackend` changes (which the Settings
  *  UI gates to empty-registry).
  *
- *  Resolves `repoRoot` lazily so the default PTY backend doesn't pay
- *  a `git rev-parse` fork on every boot — and, more importantly,
- *  doesn't throw an unhandled error from inside `useEffect` when
- *  Kirby is launched outside a git working tree. */
+ *  Resolves `repoRoot` lazily so the default PTY backend doesn't pay a
+ *  `git rev-parse` fork on every boot. This runs inside a `useEffect`,
+ *  where a throw would surface as an unhandled error and take the
+ *  render down, so the lookup never throws — outside a working tree it
+ *  yields `null` and the tmux selection degrades to PTY. */
 export function applySessionBackend(config: AppConfig): void {
-  const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : '';
+  const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : null;
   const factory = buildSessionBackendFactory(config, repoRoot);
   setSessionBackendFactory(factory);
 }
