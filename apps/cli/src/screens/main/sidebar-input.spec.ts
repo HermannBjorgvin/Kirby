@@ -4,12 +4,15 @@ import type { SidebarInputCtx } from './input-types.js';
 import type { SidebarItem } from '../../types.js';
 
 // Mock the PTY registry — handleSidebarInput's tab-switch path now
-// orders running tabs by spawn time. The default `getSpawnedAt` mock
-// returns nothing; individual tests set spawnedAtMap to control order.
+// orders running tabs by spawn time and gates the focus jump on the
+// session still being in the registry. `spawnedAtMap` doubles as the
+// stand-in registry: a name present in it is a live PTY entry.
+// Individual tests set it to control order (and staleness).
 let spawnedAtMap = new Map<string, number>();
 vi.mock('../../pty-registry.js', () => ({
   getSpawnedAt: (name: string) => spawnedAtMap.get(name),
-  hasSession: () => false,
+  hasSession: (name: string) => spawnedAtMap.has(name),
+  isSessionAlive: (name: string) => spawnedAtMap.has(name),
   killSession: vi.fn(),
 }));
 
@@ -176,6 +179,24 @@ describe('handleSidebarInput — sidebar.switch-tab-N', () => {
     expect(sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
       'session:alpha'
     );
+  });
+
+  it('selects but does not focus the terminal when the PTY is gone', () => {
+    // `running` is stale: the row still claims to be running, but the
+    // PTY exited and was removed before the next refreshSessions().
+    const items: SidebarItem[] = [
+      sessionItem('alpha', true),
+      sessionItem('beta', true),
+    ];
+    const { ctx, sidebar, pane, nav } = buildCtx(items, 'sidebar.switch-tab-2');
+    spawnedAtMap.delete('beta');
+
+    handleSidebarInput('2', makeKey(), ctx);
+
+    expect(sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith('session:beta');
+    expect(pane.setPaneMode).not.toHaveBeenCalled();
+    expect(pane.setReconnectKey).not.toHaveBeenCalled();
+    expect(nav.setFocus).not.toHaveBeenCalled();
   });
 
   it('uses spawn order, not items array order, for the digit lookup', () => {

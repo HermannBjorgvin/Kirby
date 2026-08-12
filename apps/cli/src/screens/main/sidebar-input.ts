@@ -98,9 +98,16 @@ export function handleSidebarInput(
     const target = orderRunningTabs(ctx.sidebar.items, getSpawnedAt)[n - 1];
     if (target) {
       ctx.sidebar.selectByKey(getItemKey(target));
-      ctx.pane.setPaneMode('terminal');
-      ctx.pane.setReconnectKey((k) => k + 1);
-      ctx.nav.setFocus('terminal');
+      // `session.running` is a snapshot from the last refreshSessions()
+      // and can be stale if the PTY vanished since. Only hand focus to
+      // the terminal when the registry still has an entry — otherwise
+      // we'd focus an empty pane. Selection still moves, so Enter from
+      // the sidebar restarts the agent.
+      if (hasSession(target.session.name)) {
+        ctx.pane.setPaneMode('terminal');
+        ctx.pane.setReconnectKey((k) => k + 1);
+        ctx.nav.setFocus('terminal');
+      }
     }
     return;
   }

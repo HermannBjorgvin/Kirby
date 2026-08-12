@@ -193,8 +193,9 @@ export const ACTIONS = [
   // ── Active-session tab switching ──
   // Bound to digits 1..9 and 0 (= tab 10). Selects the Nth running
   // session in the active-sessions tab bar and jumps focus into the
-  // terminal in one shot. `showInHints: false` so the 10 entries don't
-  // blow the sidebar's keybind footer.
+  // terminal in one shot. `hintLabel`/`showInHints` are omitted (the
+  // convention for hidden actions) so the 10 entries don't blow the
+  // sidebar's keybind footer.
   {
     id: 'sidebar.switch-tab-1',
     label: 'Switch to active tab 1',
@@ -501,7 +502,11 @@ export const ACTIONS = [
     label: 'Edit item note',
     context: 'plan-checkout',
   },
-  { id: 'plan-checkout.send', label: 'Send to agent', context: 'plan-checkout' },
+  {
+    id: 'plan-checkout.send',
+    label: 'Send to agent',
+    context: 'plan-checkout',
+  },
   { id: 'plan-checkout.back', label: 'Back', context: 'plan-checkout' },
 
   // ── Controls ──
@@ -760,7 +765,10 @@ export const VIM_PRESET: KeybindPreset = {
     'diff-viewer.back': [{ flags: { escape: true } }],
 
     // Plan Checkout
-    'plan-checkout.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
+    'plan-checkout.navigate-down': [
+      { input: 'j' },
+      { flags: { downArrow: true } },
+    ],
     'plan-checkout.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
     'plan-checkout.toggle-include': [{ input: ' ' }],
     'plan-checkout.annotate': [{ input: 'a' }],

@@ -33,7 +33,10 @@ export function SessionTabBar() {
   const { items, selectedIndex } = useSidebar();
   const { sessionPrMap } = useSessionData();
 
-  const visibleTabs = tabs.slice(0, 10);
+  // `numbers` is already capped at MAX_TABS by tabNumberMap(), so its
+  // size is the cap — deriving from it keeps the two in sync instead of
+  // repeating the literal here.
+  const visibleTabs = tabs.slice(0, numbers.size);
   const overflow = tabs.length - visibleTabs.length;
 
   const selectedItem = items[selectedIndex];
