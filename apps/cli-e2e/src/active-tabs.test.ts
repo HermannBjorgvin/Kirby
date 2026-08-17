@@ -1,6 +1,10 @@
 import { test, expect } from './fixtures/kirby.js';
 import { sidebarLocator } from './setup/sidebar.js';
-import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import {
+  createSession,
+  pressUntil,
+  waitForSidebarFocused,
+} from './setup/sessions.js';
 
 // Quiet agents that just print a banner then sleep keep the PTYs alive
 // without producing the bursty output the activity tests need —
@@ -47,7 +51,14 @@ test.describe('Active-session tab bar', () => {
     //    focus straight back in the terminal.
     await kirby.term.write('\x00');
     await waitForSidebarFocused(kirby.term);
-    await kirby.term.type('1');
+    // `pressUntil`, not a bare press: a digit arriving in the same stdin
+    // chunk as the preceding Ctrl+Space gets dispatched against the
+    // terminal context and dropped, and waiting never recovers it. The
+    // switch is idempotent — re-selecting the same tab is a no-op — so
+    // re-pressing is safe.
+    await pressUntil(kirby.term, '1', () =>
+      sidebarLocator(kirby.term.page, 'alpha').selected().first().isVisible()
+    );
 
     // Selection moved to alpha (◉ ring icon in front of the row).
     await expect(
