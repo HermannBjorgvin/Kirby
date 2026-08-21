@@ -1,4 +1,4 @@
-import { useMemo, useReducer } from 'react';
+import { useEffect, useMemo, useReducer } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { PaneMode, SidebarItem } from '../types.js';
 import { getPrFromItem } from '../types.js';
@@ -6,6 +6,17 @@ import { hasSession } from '../pty-registry.js';
 import { consumeSessionMenuRequest } from '../session-menu-request.js';
 
 // ── State ────────────────────────────────────────────────────────
+
+/**
+ * State of the session menu. `pr` is null for plain sessions with no
+ * associated PR. `agentIndex` indexes into buildAgentOptions(config) —
+ * 0 is the config default.
+ */
+export interface SessionMenuState {
+  pr: PullRequestInfo | null;
+  selectedOption: number;
+  agentIndex: number;
+}
 
 export interface PaneState {
   // Pane mode
@@ -45,13 +56,7 @@ export interface PaneState {
   generalCommentsScrollOffset: number;
 
   // Session menu ("what would you like to do with this branch?").
-  // `pr` is null for plain sessions with no associated PR. `agentIndex`
-  // indexes into buildAgentOptions(config) — 0 is the config default.
-  sessionMenu: {
-    pr: PullRequestInfo | null;
-    selectedOption: number;
-    agentIndex: number;
-  } | null;
+  sessionMenu: SessionMenuState | null;
   reviewInstruction: string;
 
   // Plan checkout ("add-to-cart")
@@ -119,14 +124,7 @@ export type PaneAction =
   | { type: 'SET_PENDING_SCROLL_THREAD_ID'; id: string | null }
   | { type: 'SET_GENERAL_COMMENTS_INDEX'; updater: Updater<number> }
   | { type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET'; updater: Updater<number> }
-  | {
-      type: 'SET_SESSION_MENU';
-      value: {
-        pr: PullRequestInfo | null;
-        selectedOption: number;
-        agentIndex: number;
-      } | null;
-    }
+  | { type: 'SET_SESSION_MENU'; updater: Updater<SessionMenuState | null> }
   | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> }
   | { type: 'SET_PRIOR_PANE_MODE'; mode: PaneMode }
   | { type: 'SET_PLAN_CHECKOUT_INDEX'; updater: Updater<number> }
@@ -205,7 +203,10 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
         ),
       };
     case 'SET_SESSION_MENU':
-      return { ...state, sessionMenu: action.value };
+      return {
+        ...state,
+        sessionMenu: resolve(action.updater, state.sessionMenu),
+      };
     case 'SET_REVIEW_INSTRUCTION':
       return {
         ...state,
@@ -249,13 +250,7 @@ export interface PaneActions {
   setPendingScrollThreadId: (id: string | null) => void;
   setGeneralCommentsIndex: (updater: Updater<number>) => void;
   setGeneralCommentsScrollOffset: (updater: Updater<number>) => void;
-  setSessionMenu: (
-    value: {
-      pr: PullRequestInfo | null;
-      selectedOption: number;
-      agentIndex: number;
-    } | null
-  ) => void;
+  setSessionMenu: (updater: Updater<SessionMenuState | null>) => void;
   setReviewInstruction: (updater: Updater<string>) => void;
   setPriorPaneMode: (mode: PaneMode) => void;
   setPlanCheckoutIndex: (updater: Updater<number>) => void;
@@ -304,31 +299,35 @@ export function usePaneReducer(
   const [state, dispatch] = useReducer(
     paneReducer,
     { selectedItem, sessionNameForTerminal },
-    (arg) => {
-      // The branch picker moves the selection to a freshly created
-      // session and asks for its menu to open on mount (the selection
-      // change remounts this reducer, so it can't set pane state
-      // directly — see session-menu-request.ts).
-      if (
-        arg.selectedItem &&
-        consumeSessionMenuRequest(arg.sessionNameForTerminal)
-      ) {
-        return {
-          ...initialState,
-          paneMode: 'confirm' as PaneMode,
-          sessionMenu: {
-            pr: getPrFromItem(arg.selectedItem) ?? null,
-            selectedOption: 0,
-            agentIndex: 0,
-          },
-        };
-      }
-      return {
-        ...initialState,
-        paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
-      };
-    }
+    (arg) => ({
+      ...initialState,
+      paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
+    })
   );
+
+  // The branch picker moves the selection to a freshly created session
+  // and asks for its menu to open on mount (the selection change
+  // remounts this reducer, so the picker can't set pane state directly
+  // — see session-menu-request.ts). Consumed in an effect, not the lazy
+  // initializer: the initializer runs during render, where mutating the
+  // module-level mailbox would break under a double-invoked render
+  // (StrictMode).
+  useEffect(() => {
+    if (selectedItem && consumeSessionMenuRequest(sessionNameForTerminal)) {
+      dispatch({
+        type: 'SET_SESSION_MENU',
+        updater: {
+          pr: getPrFromItem(selectedItem) ?? null,
+          selectedOption: 0,
+          agentIndex: 0,
+        },
+      });
+      dispatch({ type: 'SET_PANE_MODE', mode: 'confirm' });
+    }
+    // Mount-only: the pane remounts (keyed on the sidebar item) whenever
+    // the selection changes, so this runs exactly once per selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const actions = useMemo<PaneActions>(
     () => ({
@@ -362,7 +361,8 @@ export function usePaneReducer(
         dispatch({ type: 'SET_GENERAL_COMMENTS_INDEX', updater }),
       setGeneralCommentsScrollOffset: (updater) =>
         dispatch({ type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET', updater }),
-      setSessionMenu: (value) => dispatch({ type: 'SET_SESSION_MENU', value }),
+      setSessionMenu: (updater) =>
+        dispatch({ type: 'SET_SESSION_MENU', updater }),
       setReviewInstruction: (updater) =>
         dispatch({ type: 'SET_REVIEW_INSTRUCTION', updater }),
       setPriorPaneMode: (mode) =>

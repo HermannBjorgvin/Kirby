@@ -109,6 +109,7 @@ export function MainContent({
           branches={branchPicker.branches}
           selectedIndex={branchPicker.branchIndex}
           paneRows={terminal.paneRows}
+          pane={pane}
         />
       );
     case 'sessionMenu':

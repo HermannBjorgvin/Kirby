@@ -3,7 +3,6 @@ import {
   createSession,
   pressUntil,
   waitForSidebarFocused,
-  tabIntoSession,
 } from './setup/sessions.js';
 
 // Regression for issue #56: pressing 'q' did not quit Kirby while an
@@ -40,11 +39,10 @@ test.describe('Quit with active agent (#56)', () => {
   }) => {
     const host = baseURL ?? 'http://localhost:5174';
 
-    await createSession(kirby.term, 'busy-q');
+    await createSession(kirby.term, 'busy-q', { start: true });
 
     // Tab → spawn the agent. Wait for its banner so we know the PTY is
     // up and bursting before we try to quit.
-    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

@@ -74,13 +74,13 @@ describe('paneReducer', () => {
     const value = { pr: samplePr, selectedOption: 1, agentIndex: 0 };
     const next = paneReducer(initialState, {
       type: 'SET_SESSION_MENU',
-      value,
+      updater: value,
     });
     expect(next.sessionMenu).toEqual(value);
 
     const cleared = paneReducer(next, {
       type: 'SET_SESSION_MENU',
-      value: null,
+      updater: null,
     });
     expect(cleared.sessionMenu).toBeNull();
   });

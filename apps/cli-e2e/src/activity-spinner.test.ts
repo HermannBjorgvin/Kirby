@@ -1,9 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import {
-  createSession,
-  waitForSidebarFocused,
-  tabIntoSession,
-} from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 // `autoHideSidebar: false` keeps the sidebar visible while the terminal
 // is focused, so we can assert against a row that isn't currently
@@ -24,9 +20,8 @@ test.describe('Activity spinner', () => {
     kirby,
   }) => {
     // 1. Create session A (the busy one). PTY is not yet started.
-    await createSession(kirby.term, 'busy');
+    await createSession(kirby.term, 'busy', { start: true });
     // 2. Tab into A → PTY spawns, fake-agent begins its burst.
-    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

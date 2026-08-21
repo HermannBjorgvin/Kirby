@@ -5,14 +5,19 @@
 // selection to the new session's row. Selection changes remount
 // MainTabBody (and with it the pane reducer), so any pane state set
 // before the move is lost. This module-level mailbox survives the
-// remount: the picker files a request keyed by the session name, and
-// `usePaneReducer`'s lazy initializer consumes it when it mounts for an
-// item resolving to that session, starting with the session menu open.
+// remount: the picker files a request keyed by the session name, and a
+// mount effect in `usePaneReducer` consumes it when the pane mounts for
+// an item resolving to that session, opening the session menu.
 //
 // Keyed by session name rather than sidebar item key because the row
 // for a branch that already has a PR keeps its `review:<id>` identity
 // (see translateSelectKey in SidebarContext) — but both row kinds
 // resolve the same `sessionNameForTerminal`.
+//
+// A request only survives until the next mount, whichever item it is
+// for: the selection move it accompanies produces exactly one remount,
+// and if that lands somewhere unexpected the request must not linger
+// and pop the menu on a later unrelated navigation.
 //
 // Pure module, no React — same pattern as inactive-alerts.ts.
 
@@ -23,16 +28,15 @@ export function requestSessionMenu(sessionName: string): void {
 }
 
 /**
- * Consume the pending request if it targets `sessionName`. Returns true
- * exactly once per request; a mount for a different session leaves the
- * request in place (the selection move may not have landed yet).
+ * Take the pending request. Always clears it; returns true only when it
+ * targets `sessionName`.
  */
 export function consumeSessionMenuRequest(
   sessionName: string | null | undefined
 ): boolean {
-  if (pending === null || pending !== sessionName) return false;
+  const taken = pending;
   pending = null;
-  return true;
+  return taken !== null && taken === sessionName;
 }
 
 export function __resetForTests(): void {

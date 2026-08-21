@@ -14,11 +14,11 @@ describe('session-menu-request', () => {
     expect(consumeSessionMenuRequest('feature-x')).toBe(false);
   });
 
-  it('leaves the request pending for a non-matching mount', () => {
+  it('a non-matching mount discards the request instead of leaving it armed', () => {
     requestSessionMenu('feature-x');
     expect(consumeSessionMenuRequest('other')).toBe(false);
-    expect(consumeSessionMenuRequest(undefined)).toBe(false);
-    expect(consumeSessionMenuRequest('feature-x')).toBe(true);
+    // The request must not survive to pop the menu on a later visit.
+    expect(consumeSessionMenuRequest('feature-x')).toBe(false);
   });
 
   it('returns false with no pending request', () => {
@@ -28,7 +28,6 @@ describe('session-menu-request', () => {
   it('a newer request replaces the old one', () => {
     requestSessionMenu('a');
     requestSessionMenu('b');
-    expect(consumeSessionMenuRequest('a')).toBe(false);
     expect(consumeSessionMenuRequest('b')).toBe(true);
   });
 });

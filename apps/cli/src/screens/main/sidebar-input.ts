@@ -315,6 +315,13 @@ function openSessionMenu(
   ctx: SidebarInputCtx,
   selectedItem: SidebarItem
 ): void {
+  // A start is already in flight (its op will move selection and focus
+  // when it completes). Opening a second menu now would just have its
+  // Enter silently swallowed by the op dedup — refuse with feedback.
+  if (ctx.asyncOps.isRunning('start-session')) {
+    ctx.sessions.flashStatus('A session is already starting…');
+    return;
+  }
   ctx.pane.setPaneMode('confirm');
   ctx.pane.setSessionMenu({
     pr: getPrFromItem(selectedItem) ?? null,

@@ -2,14 +2,20 @@ import { expect, type KirbyTerm } from '../fixtures/kirby.js';
 
 /**
  * Create a session via the branch picker. Creating a worktree lands the
- * user in the new session's menu; this helper dismisses it, so after it
- * returns the session row is visible in the sidebar with the user still
- * focused on the sidebar (the PTY has NOT been started yet — use
- * `tabIntoSession` to start + focus the terminal).
+ * user in the new session's menu.
+ *
+ * With `start: true`, Enter takes the menu's default "Start/Continue
+ * session" row, so the helper returns with the PTY spawning and the
+ * terminal focused — follow with an assertion on the agent's output.
+ *
+ * Without it, the menu is dismissed: the session row is visible in the
+ * sidebar with the user still focused on the sidebar and the PTY NOT
+ * started (use `tabIntoSession` later to start + focus the terminal).
  */
 export async function createSession(
   term: KirbyTerm,
-  branchName: string
+  branchName: string,
+  opts: { start?: boolean } = {}
 ): Promise<void> {
   // One 'c' can be lost when it bunches into the same stdin chunk as
   // a preceding Ctrl+Space — the escape fires but Ink's sidebar
@@ -34,11 +40,19 @@ export async function createSession(
     timeout: 5_000,
   });
   // Worktree creation finishes by opening the new session's menu —
-  // that's the reliable "creation done" signal. Dismiss it to leave the
-  // caller on the sidebar with the new row selected.
+  // that's the reliable "creation done" signal.
   await expect(term.getByText('What would you like to do?')).toBeVisible({
     timeout: 10_000,
   });
+  if (opts.start) {
+    // Enter the menu that's already open instead of dismissing it and
+    // re-opening via Tab — one keypress, no retry races.
+    await term.press('Enter');
+    await expect(term.getByText('What would you like to do?')).not.toBeVisible({
+      timeout: 10_000,
+    });
+    return;
+  }
   await term.press('Escape');
   await expect(term.getByText('What would you like to do?')).not.toBeVisible({
     timeout: 5_000,

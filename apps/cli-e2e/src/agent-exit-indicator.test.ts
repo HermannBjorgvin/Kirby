@@ -1,9 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import {
-  createSession,
-  waitForSidebarFocused,
-  tabIntoSession,
-} from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 // Regression for issue #55: when an agent terminated on its own
 // (Ctrl-D Ctrl-D in claude, the process being killed, etc.), the
@@ -26,10 +22,9 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
     kirby,
   }) => {
     const branch = 'short-lived';
-    await createSession(kirby.term, branch);
+    await createSession(kirby.term, branch, { start: true });
 
     // Tab → start agent. Wait for banner so we know the PTY is up.
-    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

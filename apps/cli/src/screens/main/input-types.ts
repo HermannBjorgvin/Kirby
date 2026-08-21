@@ -40,6 +40,8 @@ export interface BranchPickerHandlerCtx {
   terminal: TerminalLayout;
   config: ConfigContextValue;
   keybinds: KeybindResolveValue;
+  pane: PaneModeValue;
+  nav: NavValue;
 }
 
 export interface DeleteConfirmHandlerCtx {

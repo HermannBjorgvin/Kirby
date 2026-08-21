@@ -1,15 +1,12 @@
 import type { Key } from 'ink';
-import {
-  createWorktree,
-  listWorktrees,
-  worktreeSessionName,
-} from '@kirby/worktree-manager';
+import { createWorktree, listWorktrees } from '@kirby/worktree-manager';
 import { hasSession } from '../../pty-registry.js';
 import { launchSession } from '../../session/launch-session.js';
 import { buildAgentOptions } from '../../agents/agent-options.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { SessionMenuHandlerCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
+import { resolveEditorTarget } from './editor-target.js';
 
 export type SessionMenuOptionKey =
   | 'start'
@@ -87,36 +84,11 @@ async function startReviewSession(
   });
 }
 
-/**
- * Resolve the worktree to start the selected session in. A PR item may
- * not have a worktree yet — create it on demand. A plain session item
- * always has one (session rows come from worktrees).
- */
-async function resolveWorktreePath(
-  ctx: SessionMenuHandlerCtx
-): Promise<string | null> {
-  const pr = ctx.pane.sessionMenu?.pr;
-  if (pr) return createWorktree(pr.sourceBranch);
-  const worktrees = await listWorktrees();
-  const wt = worktrees.find(
-    (w) => worktreeSessionName(w) === ctx.sessionNameForTerminal
-  );
-  return wt?.path ?? null;
-}
-
 function closeMenu(ctx: SessionMenuHandlerCtx): void {
   const hadPr = ctx.pane.sessionMenu?.pr != null;
   ctx.pane.setSessionMenu(null);
   ctx.pane.setReviewInstruction('');
   ctx.pane.setPaneMode(hadPr ? 'pr-detail' : 'terminal');
-}
-
-function focusStartedSession(ctx: SessionMenuHandlerCtx): void {
-  ctx.pane.setPaneMode('terminal');
-  ctx.nav.setFocus('terminal');
-  ctx.pane.setReconnectKey((k) => k + 1);
-  ctx.pane.setSessionMenu(null);
-  ctx.pane.setReviewInstruction('');
 }
 
 export function handleSessionMenuInput(
@@ -136,103 +108,131 @@ export function handleSessionMenuInput(
     return;
   }
 
-  const agentOptions = buildAgentOptions(ctx.config.config);
-
   // Agent cycling only applies while the start row is highlighted —
-  // that's where the selection is rendered.
+  // that's where the selection is rendered. Updater form so arrow
+  // presses bunched into one stdin chunk each advance one step.
   if (optKey === 'start') {
+    const cycle = (step: 1 | -1) => {
+      const len = buildAgentOptions(ctx.config.config).length;
+      ctx.pane.setSessionMenu(
+        (prev) =>
+          prev && { ...prev, agentIndex: (prev.agentIndex + step + len) % len }
+      );
+    };
     if (action === 'confirm.cycle-agent-left') {
-      ctx.pane.setSessionMenu({
-        ...menu,
-        agentIndex:
-          (menu.agentIndex - 1 + agentOptions.length) % agentOptions.length,
-      });
+      cycle(-1);
       return;
     }
     if (action === 'confirm.cycle-agent-right') {
-      ctx.pane.setSessionMenu({
-        ...menu,
-        agentIndex: (menu.agentIndex + 1) % agentOptions.length,
-      });
+      cycle(1);
       return;
     }
   }
 
-  const startSelectedSession = () => {
+  // Shared start wrapper: spawn (unless the PTY already exists), then
+  // refresh + move focus into the started terminal. `launch` returns
+  // false to abort without focusing (e.g. no worktree resolvable).
+  const runStart = (launch: () => Promise<boolean>) => {
     ctx.asyncOps.run('start-session', async () => {
       if (!ctx.sessionNameForTerminal) return;
-      if (!hasSession(ctx.sessionNameForTerminal)) {
-        const worktreePath = await resolveWorktreePath(ctx);
-        if (!worktreePath) {
-          ctx.sessions.flashStatus('No worktree found for selected session');
-          return;
-        }
-        const agentIdx = Math.min(
-          Math.max(menu.agentIndex, 0),
-          agentOptions.length - 1
-        );
-        startAiSession(
-          ctx.sessionNameForTerminal,
-          ctx.terminal.paneCols,
-          ctx.terminal.paneRows,
-          worktreePath,
-          ctx.config.config,
-          agentOptions[agentIdx]!.agent
-        );
+      if (!hasSession(ctx.sessionNameForTerminal) && !(await launch())) {
+        return;
       }
       await ctx.sessions.refreshSessions();
       if (ctx.selectedItem?.kind !== 'review-pr') {
         ctx.sidebar.selectByKey(`session:${ctx.sessionNameForTerminal}`);
       }
-      focusStartedSession(ctx);
+      ctx.pane.setPaneMode('terminal');
+      ctx.nav.setFocus('terminal');
+      ctx.pane.setReconnectKey((k) => k + 1);
+      ctx.pane.setSessionMenu(null);
+      ctx.pane.setReviewInstruction('');
+    });
+  };
+
+  const startSelectedSession = () => {
+    runStart(async () => {
+      // Existing worktree first (session rows always have one, whatever
+      // its directory name); PR rows without one get it created on
+      // demand — the same resolution the editor shortcut uses.
+      const worktreePath = ctx.selectedItem
+        ? await resolveEditorTarget(ctx.selectedItem, {
+            listWorktrees,
+            createWorktree,
+          })
+        : null;
+      if (!worktreePath) {
+        ctx.sessions.flashStatus('No worktree found for selected session');
+        return false;
+      }
+      const agentOptions = buildAgentOptions(ctx.config.config);
+      const agentIdx = Math.min(
+        Math.max(menu.agentIndex, 0),
+        agentOptions.length - 1
+      );
+      startAiSession(
+        ctx.sessionNameForTerminal!,
+        ctx.terminal.paneCols,
+        ctx.terminal.paneRows,
+        worktreePath,
+        ctx.config.config,
+        agentOptions[agentIdx]!.agent
+      );
+      return true;
     });
   };
 
   const startReview = (instruction?: string) => {
-    ctx.asyncOps.run('start-session', async () => {
-      if (!ctx.sessionNameForTerminal) return;
-      if (!hasSession(ctx.sessionNameForTerminal)) {
-        await startReviewSession(ctx, instruction);
-      }
-      await ctx.sessions.refreshSessions();
-      if (ctx.selectedItem?.kind !== 'review-pr') {
-        ctx.sidebar.selectByKey(`session:${ctx.sessionNameForTerminal}`);
-      }
-      focusStartedSession(ctx);
+    runStart(async () => {
+      await startReviewSession(ctx, instruction);
+      return true;
     });
   };
 
-  // Instructions row: text input mode. Nav actions first, then fall
-  // through to typing.
+  // Instructions row: text input takes precedence so any printable
+  // character (including j/k under the vim preset) lands in the buffer;
+  // navigation still works via the non-printable arrow keys.
   if (optKey === 'instructions') {
     if (key.return) {
       startReview(ctx.pane.reviewInstruction || undefined);
       return;
     }
+    if (handleTextInput(input, key, ctx.pane.setReviewInstruction)) {
+      return;
+    }
     if (action === 'confirm.navigate-up') {
-      ctx.pane.setSessionMenu({ ...menu, selectedOption: opt - 1 });
+      ctx.pane.setSessionMenu(
+        (prev) => prev && { ...prev, selectedOption: opt - 1 }
+      );
       return;
     }
     if (action === 'confirm.navigate-down') {
-      ctx.pane.setSessionMenu({ ...menu, selectedOption: opt + 1 });
+      ctx.pane.setSessionMenu(
+        (prev) => prev && { ...prev, selectedOption: opt + 1 }
+      );
       return;
     }
-    handleTextInput(input, key, ctx.pane.setReviewInstruction);
     return;
   }
 
   if (action === 'confirm.navigate-down') {
-    ctx.pane.setSessionMenu({
-      ...menu,
-      selectedOption: Math.min(opt + 1, options.length - 1),
-    });
+    ctx.pane.setSessionMenu(
+      (prev) =>
+        prev && {
+          ...prev,
+          selectedOption: Math.min(prev.selectedOption + 1, options.length - 1),
+        }
+    );
     return;
   }
   if (action === 'confirm.navigate-up') {
-    ctx.pane.setSessionMenu({
-      ...menu,
-      selectedOption: Math.max(opt - 1, 0),
-    });
+    ctx.pane.setSessionMenu(
+      (prev) =>
+        prev && {
+          ...prev,
+          selectedOption: Math.max(prev.selectedOption - 1, 0),
+        }
+    );
     return;
   }
 

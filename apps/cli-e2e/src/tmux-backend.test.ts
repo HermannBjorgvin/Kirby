@@ -3,7 +3,6 @@ import {
   createSession,
   pressUntil,
   waitForSidebarFocused,
-  tabIntoSession,
 } from './setup/sessions.js';
 import {
   cleanupTmuxSessions,
@@ -68,8 +67,7 @@ test.describe('Tmux backend (e2e)', () => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch);
-    await tabIntoSession(kirby.term);
+    await createSession(kirby.term, branch, { start: true });
 
     // Output arriving at all proves the whole chain: Kirby → local PTY →
     // tmux client → tmux server → fake agent, and back.
@@ -94,8 +92,7 @@ test.describe('Tmux backend (e2e)', () => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch);
-    await tabIntoSession(kirby.term);
+    await createSession(kirby.term, branch, { start: true });
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
@@ -128,8 +125,7 @@ test.describe('Tmux backend (e2e)', () => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch);
-    await tabIntoSession(kirby.term);
+    await createSession(kirby.term, branch, { start: true });
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });

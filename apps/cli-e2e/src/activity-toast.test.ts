@@ -1,9 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import {
-  createSession,
-  waitForSidebarFocused,
-  tabIntoSession,
-} from './setup/sessions.js';
+import { createSession, waitForSidebarFocused } from './setup/sessions.js';
 
 test.use({
   kirbyConfig: {
@@ -23,8 +19,7 @@ test.describe('Activity toast', () => {
   }) => {
     // 1. Create the session that will burst then go idle ("busy"), and
     //    Tab into it so the PTY actually starts.
-    await createSession(kirby.term, 'busy');
-    await tabIntoSession(kirby.term);
+    await createSession(kirby.term, 'busy', { start: true });
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
