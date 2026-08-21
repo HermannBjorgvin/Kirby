@@ -7,7 +7,13 @@ import { useHostQuery } from '../hooks/useHostQuery.js';
  * Phase-5 slice covers worktree listing + create/remove; sessions and
  * reviews entries arrive with the terminal pane (phase 6).
  */
-export function Sidebar({ repoCwd }: { repoCwd: string }) {
+export function Sidebar({
+  repoCwd,
+  onSwitchRepo,
+}: {
+  repoCwd: string;
+  onSwitchRepo?: () => void;
+}) {
   const worktrees = useHostQuery(() => window.kirby.listWorktrees(), [repoCwd]);
   const branches = useHostQuery(() => window.kirby.listBranches(), [repoCwd]);
   const [newBranch, setNewBranch] = useState('');
@@ -33,9 +39,20 @@ export function Sidebar({ repoCwd }: { repoCwd: string }) {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           Worktrees
         </h2>
-        <p className="mt-0.5 truncate font-mono text-xs text-slate-400">
-          {repoCwd}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate font-mono text-xs text-slate-400">
+            {repoCwd}
+          </p>
+          {onSwitchRepo && (
+            <button
+              onClick={onSwitchRepo}
+              title="Switch repository"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            >
+              switch
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Create worktree */}

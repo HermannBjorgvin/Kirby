@@ -17,6 +17,8 @@ const api: KirbyHostApi = {
 
   openRepo: (cwd) => ipcRenderer.invoke(IPC.openRepo, cwd),
   getRepo: () => ipcRenderer.invoke(IPC.getRepo),
+  listRecentRepos: () => ipcRenderer.invoke(IPC.listRecentRepos),
+  forgetRecent: (cwd) => ipcRenderer.invoke(IPC.forgetRecent, cwd),
 
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
   updateSettingsField: (field, value) =>

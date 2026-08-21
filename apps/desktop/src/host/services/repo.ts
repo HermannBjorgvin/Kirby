@@ -5,6 +5,13 @@ import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { NoActiveRepoError, type RepoInfo } from '../contract.js';
+import {
+  loadRecents,
+  forgetRecent as forgetRecentOnDisk,
+  recordOpen,
+  saveRecents,
+  type RecentRepo,
+} from './recent-repos.js';
 
 export const PROVIDERS: VcsProvider[] = [githubProvider, azureDevOpsProvider];
 
@@ -35,6 +42,11 @@ export function openRepo(cwd: string): RepoInfo {
   }
   activeCwd = cwd;
   process.chdir(cwd);
+  try {
+    saveRecents(recordOpen(loadRecents(), cwd));
+  } catch {
+    // Recent-repos bookkeeping must never block opening a repo.
+  }
   const config = readConfig(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {
@@ -66,10 +78,33 @@ export function autoOpenStartDir(
   env: Record<string, string | undefined> = process.env
 ): RepoInfo | null {
   const startDir = env.KIRBY_START_DIR;
-  if (!startDir || !isGitRepo(startDir)) return null;
-  try {
-    return openRepo(startDir);
-  } catch {
+  if (!startDir) return null;
+  if (!isGitRepo(startDir)) {
+    console.warn(`[desktop] KIRBY_START_DIR is not a git repo: ${startDir}`);
     return null;
   }
+  try {
+    return openRepo(startDir);
+  } catch (err: unknown) {
+    console.warn(
+      `[desktop] failed to open start dir ${startDir}:`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+/**
+ * Recently opened repositories, newest first. Each entry is
+ * re-validated against the filesystem so dead checkouts render as
+ * invalid instead of failing on click.
+ */
+export function listRecentRepos(): (RecentRepo & { valid: boolean })[] {
+  return loadRecents()
+    .slice(0, 10)
+    .map((r) => ({ ...r, valid: isGitRepo(r.cwd) }));
+}
+
+export function forgetRecentRepo(cwd: string): void {
+  forgetRecentOnDisk(cwd);
 }

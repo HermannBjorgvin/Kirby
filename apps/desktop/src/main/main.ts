@@ -53,7 +53,10 @@ setSessionBroadcaster((channel, payload) => {
 
 app.whenReady().then(() => {
   // Running `kirby-desktop` inside a repo opens that repo directly.
-  autoOpenStartDir();
+  const opened = autoOpenStartDir();
+  console.log(
+    `[desktop] start dir: ${opened ? `opened ${opened.cwd}` : 'none'}`
+  );
 
   void createMainWindow();
 

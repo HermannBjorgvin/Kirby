@@ -23,6 +23,8 @@ export function createHostApi(): KirbyHostApi {
 
     openRepo: (cwd) => Promise.resolve(repo.openRepo(cwd)),
     getRepo: () => Promise.resolve(repo.getRepo()),
+    listRecentRepos: () => Promise.resolve(repo.listRecentRepos()),
+    forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
     getConfig: () => Promise.resolve(config.getConfig()),
     updateSettingsField: (field, value) =>
@@ -81,6 +83,8 @@ export function registerHostHandlers(
     [IPC.getVersion]: api.getVersion as HostMethod,
     [IPC.openRepo]: api.openRepo as HostMethod,
     [IPC.getRepo]: api.getRepo as HostMethod,
+    [IPC.listRecentRepos]: api.listRecentRepos as HostMethod,
+    [IPC.forgetRecent]: api.forgetRecent as HostMethod,
     [IPC.getConfig]: api.getConfig as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
     [IPC.listWorktrees]: api.listWorktrees as HostMethod,

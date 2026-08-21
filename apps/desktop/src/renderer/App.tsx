@@ -46,7 +46,7 @@ export function App() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar repoCwd={repo.cwd} />
+      <Sidebar repoCwd={repo.cwd} onSwitchRepo={() => setRepo(null)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <nav className="flex items-center gap-1 border-b border-slate-800 px-3 py-1.5">
           {(['reviews', 'sessions'] as const).map((t) => (

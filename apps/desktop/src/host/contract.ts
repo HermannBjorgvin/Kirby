@@ -67,6 +67,15 @@ export const SESSION_EVENTS = {
   exit: 'kirby/session/exit',
 } as const;
 
+// ── Recent repos ─────────────────────────────────────────────────
+
+export interface RecentRepoEntry {
+  cwd: string;
+  lastOpenedAt: number;
+  /** Re-validated against the filesystem at list time. */
+  valid: boolean;
+}
+
 // ── Reviews ──────────────────────────────────────────────────────
 
 export interface ReplyRequest {
@@ -89,6 +98,10 @@ export interface KirbyHostApi {
   /** Validate + open a directory as the active repo. */
   openRepo(cwd: string): Promise<RepoInfo>;
   getRepo(): Promise<RepoInfo | null>;
+
+  // ── Recent repos ─────────────────────────────────────────────
+  listRecentRepos(): Promise<RecentRepoEntry[]>;
+  forgetRecent(cwd: string): Promise<void>;
 
   // ── Config ───────────────────────────────────────────────────
   getConfig(): Promise<AppConfig>;
@@ -136,6 +149,8 @@ export interface KirbyHostApi {
 export const IPC = {
   getVersion: 'kirby/version',
   openRepo: 'kirby/repo/open',
+  listRecentRepos: 'kirby/repo/recents',
+  forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
   getConfig: 'kirby/config/get',
   updateSettingsField: 'kirby/config/update-field',

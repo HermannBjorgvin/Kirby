@@ -29,5 +29,9 @@ try {
   args.push('--no-sandbox');
 }
 
-const child = spawn(electron, [...args, appDir], { stdio: 'inherit' });
+const child = spawn(electron, [...args, appDir], {
+  stdio: 'inherit',
+  // Launching from inside a repo auto-opens that repo.
+  env: { ...process.env, KIRBY_START_DIR: process.cwd() },
+});
 child.on('close', (code) => process.exit(code ?? 0));
