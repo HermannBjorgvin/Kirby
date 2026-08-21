@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
+import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { totalRows, clampOffset } from '../../utils/virtual-viewport.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
@@ -138,6 +140,19 @@ export function DiffFileListContainer({
     setDiffListScrollRow: pane.setDiffListScrollRow,
     setPendingScrollThreadId: pane.setPendingScrollThreadId,
   });
+
+  // ── Scroll wheel ────────────────────────────────────────────────
+  const { setDiffListScrollRow } = pane;
+  const handleScrollWheel = useCallback(
+    (delta: number) => {
+      const total = totalRows(layout.spans);
+      setDiffListScrollRow((o) =>
+        clampOffset(o + delta, total, layout.viewportRows)
+      );
+    },
+    [layout.spans, layout.viewportRows, setDiffListScrollRow]
+  );
+  useScrollWheel(!terminalFocused, handleScrollWheel);
 
   // Selection breakdown: indices [0, fileCount) select a file; indices
   // [fileCount, diffDisplayCount) select a footer comment (offset by

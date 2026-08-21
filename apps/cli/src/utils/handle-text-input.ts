@@ -1,4 +1,5 @@
 import type { Key } from 'ink';
+import { isMouseSequence } from './mouse-sequence.js';
 
 /**
  * Handle common text-input key patterns: backspace to delete last char,
@@ -13,7 +14,7 @@ export function handleTextInput(
     setter((v) => v.slice(0, -1));
     return true;
   }
-  if (input && !key.ctrl && !key.meta) {
+  if (input && !key.ctrl && !key.meta && !isMouseSequence(input)) {
     setter((v) => v + input);
     return true;
   }

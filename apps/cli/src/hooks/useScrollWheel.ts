@@ -3,16 +3,34 @@ import { useStdin, useStdout } from 'ink';
 
 const SCROLL_LINES = 3;
 
-// SGR mouse mode escape sequences
-const ENABLE_MOUSE = '\x1b[?1002h\x1b[?1006h';
-const DISABLE_MOUSE = '\x1b[?1006l\x1b[?1002l';
+// SGR mouse mode escape sequences. ?1000 (button events) is enough for
+// wheel reporting and avoids the drag-motion spam ?1002 would produce.
+const ENABLE_MOUSE = '\x1b[?1000h\x1b[?1006h';
+const DISABLE_MOUSE = '\x1b[?1006l\x1b[?1000l';
 
-// SGR mouse event regex: ESC[<Btn;X;Y[Mm]
+// SGR mouse event: ESC[<Btn;X;Y[Mm]. Global — terminals batch rapid
+// wheel spins into one stdin chunk and every event must be consumed.
 // eslint-disable-next-line no-control-regex
-const SGR_MOUSE_RE = /\x1b\[<(\d+);\d+;\d+[Mm]/;
+const SGR_MOUSE_RE = /\x1b\[<(\d+);\d+;\d+[Mm]/g;
 
 /**
- * Experimental scroll wheel support for the diff viewer.
+ * Net wheel ticks in one stdin chunk: +1 per wheel-down (btn 65),
+ * -1 per wheel-up (btn 64). Clicks, releases, and drags are ignored.
+ */
+export function parseWheelTicks(str: string): number {
+  let ticks = 0;
+  SGR_MOUSE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SGR_MOUSE_RE.exec(str)) !== null) {
+    const btn = parseInt(match[1], 10);
+    if (btn === 64) ticks -= 1;
+    else if (btn === 65) ticks += 1;
+  }
+  return ticks;
+}
+
+/**
+ * Scroll wheel support for the reviews panes.
  * Enables SGR mouse mode and parses scroll events from raw stdin.
  *
  * @param active Whether to enable scroll wheel handling
@@ -32,18 +50,8 @@ export function useScrollWheel(
     stdout.write(ENABLE_MOUSE);
 
     const handler = (data: Buffer) => {
-      const str = data.toString('utf8');
-      const match = SGR_MOUSE_RE.exec(str);
-      if (!match) return;
-
-      const btn = parseInt(match[1], 10);
-      if (btn === 64) {
-        // Scroll up
-        onScroll(-SCROLL_LINES);
-      } else if (btn === 65) {
-        // Scroll down
-        onScroll(SCROLL_LINES);
-      }
+      const ticks = parseWheelTicks(data.toString('utf8'));
+      if (ticks !== 0) onScroll(ticks * SCROLL_LINES);
     };
 
     stdin.on('data', handler);
