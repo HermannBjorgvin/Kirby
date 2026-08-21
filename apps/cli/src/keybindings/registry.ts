@@ -90,6 +90,16 @@ export const ACTIONS = [
     context: 'sidebar',
   },
   {
+    id: 'sidebar.page-down',
+    label: 'Page down',
+    context: 'sidebar',
+  },
+  {
+    id: 'sidebar.page-up',
+    label: 'Page up',
+    context: 'sidebar',
+  },
+  {
     id: 'sidebar.quit',
     label: 'Quit',
     context: 'sidebar',
@@ -532,6 +542,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     'sidebar.navigate-up': [{ flags: { upArrow: true } }],
     'sidebar.jump-next-active': [{ shift: true, flags: { downArrow: true } }],
     'sidebar.jump-prev-active': [{ shift: true, flags: { upArrow: true } }],
+    'sidebar.page-down': [{ flags: { pageDown: true } }],
+    'sidebar.page-up': [{ flags: { pageUp: true } }],
     'sidebar.quit': [{ input: 'q' }],
     'sidebar.checkout-branch': [{ input: 'c' }],
     'sidebar.delete-branch': [
@@ -657,6 +669,8 @@ export const VIM_PRESET: KeybindPreset = {
     'sidebar.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
     'sidebar.jump-next-active': [{ shift: true, flags: { downArrow: true } }],
     'sidebar.jump-prev-active': [{ shift: true, flags: { upArrow: true } }],
+    'sidebar.page-down': [{ flags: { pageDown: true } }],
+    'sidebar.page-up': [{ flags: { pageUp: true } }],
     'sidebar.quit': [{ input: 'q' }],
     'sidebar.checkout-branch': [{ input: 'c' }],
     'sidebar.delete-branch': [{ input: 'x' }],

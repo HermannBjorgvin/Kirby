@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
+import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
+import { LAYOUT } from '../../context/LayoutContext.js';
+import { totalRows, clampOffset } from '../../utils/virtual-viewport.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
@@ -14,6 +17,7 @@ import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 import { handleDiffFileListInput } from './main-input.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 
 interface DiffFileListContainerProps {
   pane: PaneModeValue;
@@ -90,6 +94,7 @@ export function DiffFileListContainer({
         : diffNormalFiles,
     [diffNormalFiles, diffSkippedFiles, pane.showSkipped]
   );
+  const { layouts: imageLayouts } = useCommentImagesValue();
   const layout = useMemo(
     () =>
       computeDiffListLayout({
@@ -107,6 +112,7 @@ export function DiffFileListContainer({
           annotatingPlanKey: pane.annotatingPlanKey,
           annotationBuffer: pane.annotationBuffer,
         },
+        imageLayouts,
       }),
     [
       terminal.paneRows,
@@ -119,6 +125,7 @@ export function DiffFileListContainer({
       pane.replyBuffer,
       pane.annotatingPlanKey,
       pane.annotationBuffer,
+      imageLayouts,
     ]
   );
 
@@ -137,6 +144,21 @@ export function DiffFileListContainer({
     pendingScrollThreadId: pane.pendingScrollThreadId,
     setDiffListScrollRow: pane.setDiffListScrollRow,
     setPendingScrollThreadId: pane.setPendingScrollThreadId,
+  });
+
+  // ── Scroll wheel (main pane region — the sidebar scrolls itself) ─
+  const { setDiffListScrollRow } = pane;
+  const handleScrollWheel = useCallback(
+    (ticks: number) => {
+      const total = totalRows(layout.spans);
+      setDiffListScrollRow((o) =>
+        clampOffset(o + ticks * SCROLL_LINES, total, layout.viewportRows)
+      );
+    },
+    [layout.spans, layout.viewportRows, setDiffListScrollRow]
+  );
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
   });
 
   // Selection breakdown: indices [0, fileCount) select a file; indices

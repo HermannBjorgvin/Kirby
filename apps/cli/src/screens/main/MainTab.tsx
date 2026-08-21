@@ -23,7 +23,14 @@ import { useKeybinds } from '../../context/KeybindContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { usePaneReducer } from '../../hooks/usePaneReducer.js';
-import { getItemKey } from '../../types.js';
+import {
+  useScrollWheel,
+  useMouseClicks,
+  type MouseClick,
+} from '../../hooks/useScrollWheel.js';
+import { sidebarHitTestRef } from '../../components/sidebar-hit-test.js';
+import { openUrl } from '../../utils/open-url.js';
+import { getItemKey, getPrFromItem } from '../../types.js';
 import { handleConfirmInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';
 import { getMainFocused, getSidebarFocused, getPaneTitle } from './focus.js';
@@ -118,6 +125,49 @@ function MainTabBody({
     sidebar.selectedItem,
     sidebar.sessionNameForTerminal
   );
+
+  // ── Sidebar scroll wheel ───────────────────────────────────────
+  // Reacts only to wheel events whose pointer column is inside the
+  // sidebar; the reviews containers handle the main-pane region.
+  // Inactive while a modal owns input so selection can't drift
+  // underneath it.
+  const modalOpen =
+    branchPicker.creating ||
+    deleteConfirm.confirmDelete ||
+    settings.settingsOpen;
+  const { moveSelection } = sidebar;
+  const handleSidebarWheel = useCallback(
+    (ticks: number) => moveSelection(ticks),
+    [moveSelection]
+  );
+  useScrollWheel(!terminalFocused && !modalOpen, handleSidebarWheel, {
+    xMax: LAYOUT.SIDEBAR_WIDTH,
+  });
+
+  // ── Sidebar clicks ─────────────────────────────────────────────
+  // Mouse tracking steals plain clicks from the terminal, so OSC-8
+  // links stop opening natively. Instead the click is handled here:
+  // clicking an item selects it, and clicking an item's PR-badge line
+  // opens the PR in the browser (what the terminal's own link
+  // handling used to do).
+  const { selectByKey, items } = sidebar;
+  const handleSidebarClick = useCallback(
+    (click: MouseClick) => {
+      const hit = sidebarHitTestRef.current?.(click.y);
+      if (!hit) return;
+      const item = items[hit.itemIndex];
+      if (!item) return;
+      selectByKey(getItemKey(item));
+      if (hit.badgeLine) {
+        const pr = getPrFromItem(item);
+        if (pr?.url) openUrl(pr.url);
+      }
+    },
+    [items, selectByKey]
+  );
+  useMouseClicks(!terminalFocused && !modalOpen, handleSidebarClick, {
+    xMax: LAYOUT.SIDEBAR_WIDTH,
+  });
 
   // ── Input handling (modals + sidebar) ──────────────────────────
   useInput((input, key) => {

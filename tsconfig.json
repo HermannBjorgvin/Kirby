@@ -41,6 +41,12 @@
     },
     {
       "path": "./libs/terminal-tmux"
+    },
+    {
+      "path": "./libs/kitty-graphics"
+    },
+    {
+      "path": "./libs/image-loader"
     }
   ]
 }

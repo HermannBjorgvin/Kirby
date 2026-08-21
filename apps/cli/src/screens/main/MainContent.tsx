@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { BranchPicker } from '../sessions/BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
@@ -12,10 +13,14 @@ import { PlanCheckoutContainer } from './PlanCheckoutContainer.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import { useDiffBundle } from '../../hooks/useDiffBundle.js';
+import { useCommentImages } from '../../hooks/useCommentImages.js';
+import { CommentImagesContext } from '../../context/CommentImagesContext.js';
+import { useConfig } from '../../context/ConfigContext.js';
 import {
   useSettingsState,
   useBranchPickerState,
 } from '../../context/ModalContext.js';
+import { CARD_MAX_WIDTH, CARD_INDENT } from '../../components/CommentThread.js';
 
 interface MainContentProps {
   pane: PaneModeValue;
@@ -72,6 +77,34 @@ export function MainContent({
     selectedPr?.headSha
   );
 
+  // Comment images (kitty graphics). Loaded/transmitted once per url
+  // across every reviews surface; the context defaults to disabled so
+  // consumers outside this provider render plain markdown.
+  const { config } = useConfig();
+  const allThreads = useMemo(
+    () => [...diffBundle.remote.threads, ...diffBundle.remote.generalComments],
+    [diffBundle.remote.threads, diffBundle.remote.generalComments]
+  );
+  // Mirror of the diff viewer's card width math — images are sized to
+  // fit the card interior.
+  const cardContentWidth =
+    Math.max(
+      20,
+      Math.min(CARD_MAX_WIDTH, terminal.paneCols - CARD_INDENT - 2)
+    ) - 4;
+  // Client-driven GIF playback only runs while comment cards can
+  // actually be on screen.
+  const reviewsPaneShowing =
+    pane.paneMode === 'diff' ||
+    pane.paneMode === 'diff-file' ||
+    pane.paneMode === 'comments';
+  const commentImages = useCommentImages(
+    allThreads,
+    cardContentWidth,
+    config.vendorAuth,
+    reviewsPaneShowing
+  );
+
   const screenType: ScreenType = (() => {
     if (settings.settingsOpen && settings.controlsOpen) return 'controls';
     if (settings.settingsOpen) return 'settings';
@@ -85,89 +118,97 @@ export function MainContent({
     return 'terminal';
   })();
 
-  switch (screenType) {
-    case 'controls':
-      return (
-        <ControlsPanel
-          paneRows={terminal.paneRows}
-          selectedIndex={settings.controlsSelectedIndex}
-          rebindActionId={settings.controlsRebindActionId}
-        />
-      );
-    case 'settings':
-      return (
-        <SettingsPanel
-          fieldIndex={settings.settingsFieldIndex}
-          editingField={settings.editingField}
-          editBuffer={settings.editBuffer}
-        />
-      );
-    case 'branchPicker':
-      return (
-        <BranchPicker
-          filter={branchPicker.branchFilter}
-          branches={branchPicker.branches}
-          selectedIndex={branchPicker.branchIndex}
-          paneRows={terminal.paneRows}
-        />
-      );
-    case 'reviewConfirm':
-      return (
-        <ReviewConfirmPane
-          pr={pane.reviewConfirm!.pr}
-          selectedOption={pane.reviewConfirm!.selectedOption}
-          instruction={pane.reviewInstruction}
-        />
-      );
-    case 'terminal':
-      return (
-        <TerminalPane
-          sessionNameForTerminal={sessionNameForTerminal}
-          terminal={terminal}
-          reconnectKey={pane.reconnectKey}
-          terminalFocused={terminalFocused}
-          onFocusSidebar={onFocusSidebar}
-        />
-      );
-    case 'prDetail':
-      return <ReviewDetailPane pr={selectedPr} />;
-    case 'diff':
-      return (
-        <DiffFileListContainer
-          pane={pane}
-          terminal={terminal}
-          selectedPr={selectedPr}
-          terminalFocused={terminalFocused}
-          diffBundle={diffBundle}
-        />
-      );
-    case 'diffFile':
-      return (
-        <DiffFileViewerContainer
-          pane={pane}
-          terminal={terminal}
-          selectedPr={selectedPr}
-          terminalFocused={terminalFocused}
-          diffBundle={diffBundle}
-        />
-      );
-    case 'comments':
-      return (
-        <GeneralCommentsContainer
-          pane={pane}
-          terminal={terminal}
-          terminalFocused={terminalFocused}
-          diffBundle={diffBundle}
-        />
-      );
-    case 'planCheckout':
-      return (
-        <PlanCheckoutContainer
-          pane={pane}
-          terminal={terminal}
-          selectedPr={selectedPr}
-          terminalFocused={terminalFocused}
-        />
-      );
-  }
+  const screen = (() => {
+    switch (screenType) {
+      case 'controls':
+        return (
+          <ControlsPanel
+            paneRows={terminal.paneRows}
+            selectedIndex={settings.controlsSelectedIndex}
+            rebindActionId={settings.controlsRebindActionId}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsPanel
+            fieldIndex={settings.settingsFieldIndex}
+            editingField={settings.editingField}
+            editBuffer={settings.editBuffer}
+          />
+        );
+      case 'branchPicker':
+        return (
+          <BranchPicker
+            filter={branchPicker.branchFilter}
+            branches={branchPicker.branches}
+            selectedIndex={branchPicker.branchIndex}
+            paneRows={terminal.paneRows}
+          />
+        );
+      case 'reviewConfirm':
+        return (
+          <ReviewConfirmPane
+            pr={pane.reviewConfirm!.pr}
+            selectedOption={pane.reviewConfirm!.selectedOption}
+            instruction={pane.reviewInstruction}
+          />
+        );
+      case 'terminal':
+        return (
+          <TerminalPane
+            sessionNameForTerminal={sessionNameForTerminal}
+            terminal={terminal}
+            reconnectKey={pane.reconnectKey}
+            terminalFocused={terminalFocused}
+            onFocusSidebar={onFocusSidebar}
+          />
+        );
+      case 'prDetail':
+        return <ReviewDetailPane pr={selectedPr} />;
+      case 'diff':
+        return (
+          <DiffFileListContainer
+            pane={pane}
+            terminal={terminal}
+            selectedPr={selectedPr}
+            terminalFocused={terminalFocused}
+            diffBundle={diffBundle}
+          />
+        );
+      case 'diffFile':
+        return (
+          <DiffFileViewerContainer
+            pane={pane}
+            terminal={terminal}
+            selectedPr={selectedPr}
+            terminalFocused={terminalFocused}
+            diffBundle={diffBundle}
+          />
+        );
+      case 'comments':
+        return (
+          <GeneralCommentsContainer
+            pane={pane}
+            terminal={terminal}
+            terminalFocused={terminalFocused}
+            diffBundle={diffBundle}
+          />
+        );
+      case 'planCheckout':
+        return (
+          <PlanCheckoutContainer
+            pane={pane}
+            terminal={terminal}
+            selectedPr={selectedPr}
+            terminalFocused={terminalFocused}
+          />
+        );
+    }
+  })();
+
+  return (
+    <CommentImagesContext.Provider value={commentImages}>
+      {screen}
+    </CommentImagesContext.Provider>
+  );
 }

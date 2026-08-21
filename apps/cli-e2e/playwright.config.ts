@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { workspaceRoot } from '@nx/devkit';
 
-const baseURL = process.env.BASE_URL ?? 'http://localhost:5174';
+// KIRBY_E2E_PORT lets parallel checkouts (git worktrees, concurrent
+// agent sessions) run their own wterm host without colliding on 5174 —
+// with reuseExistingServer, a port collision silently attaches this
+// suite to ANOTHER worktree's host (stale build, foreign PTY input).
+const port = Number(process.env.KIRBY_E2E_PORT ?? 5174);
+const baseURL = process.env.BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: './src',
@@ -27,11 +32,12 @@ export default defineConfig({
   webServer: {
     command:
       'npx nx serve cli-wterm-host --output-style=stream-without-prefixes',
-    url: 'http://localhost:5174',
+    url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     cwd: workspaceRoot,
     stdout: 'pipe',
     timeout: 60_000,
+    env: { ...process.env, PORT: String(port) },
   },
   projects: [
     {

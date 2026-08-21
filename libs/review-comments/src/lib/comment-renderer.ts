@@ -3,6 +3,11 @@ import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { log } from '@kirby/logger';
+import {
+  segmentCommentBody,
+  imageToken,
+  type CommentImageLayouts,
+} from './comment-images.js';
 
 // Dim ANSI — only used for the separator rows below (`── comments on
 // lines not in diff ──` etc.). Diff rows themselves no longer carry
@@ -467,7 +472,28 @@ export function getCommentPositions(
  * file-list footer's pre-2026 behaviour) — render paths should always
  * pass the real width.
  */
-export function estimateBodyRows(body: string, contentWidth?: number): number {
+export function estimateBodyRows(
+  body: string,
+  contentWidth?: number,
+  imageLayouts?: CommentImageLayouts
+): number {
+  if (imageLayouts && contentWidth && contentWidth > 0) {
+    // Image mode: block-segmented rendering (see comment-images.ts).
+    // Laid-out images occupy their placement rows; images that aren't
+    // ready (or failed) fall back to their raw markdown token text.
+    const blocks = segmentCommentBody(body);
+    return Math.max(
+      1,
+      blocks.reduce((sum, block) => {
+        if (block.type === 'image') {
+          const layout = imageLayouts.get(block.url);
+          if (layout) return sum + layout.rows;
+          return sum + estimateBodyRows(imageToken(block), contentWidth);
+        }
+        return sum + estimateBodyRows(block.text, contentWidth);
+      }, 0)
+    );
+  }
   const naturalLines = Math.max(1, body.split('\n').length);
   if (contentWidth && contentWidth > 0) {
     const wrapped = wrapAnsi(body, contentWidth, { trim: false, hard: true });
@@ -490,11 +516,12 @@ export function estimateBodyRows(body: string, contentWidth?: number): number {
  */
 export function estimateCardRows(
   thread: RemoteCommentThread,
-  contentWidth?: number
+  contentWidth?: number,
+  imageLayouts?: CommentImageLayouts
 ): number {
   const root = thread.comments[0];
   if (!root) return 0;
-  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
+  const rootRows = 4 + estimateBodyRows(root.body, contentWidth, imageLayouts);
   const replies = thread.comments.slice(1);
   const replyWidth =
     contentWidth && contentWidth > 0
@@ -505,7 +532,8 @@ export function estimateCardRows(
       ? 0
       : 1 +
         replies.reduce(
-          (sum, c) => sum + 1 + estimateBodyRows(c.body, replyWidth),
+          (sum, c) =>
+            sum + 1 + estimateBodyRows(c.body, replyWidth, imageLayouts),
           0
         );
   return rootRows + replyRows;
@@ -605,6 +633,8 @@ export interface BuildRowMapInputs {
    * cap at 4 lines). Remote thread cards always render fully expanded.
    */
   selectedCommentId?: string | null;
+  /** url → placement for comment images that are ready to render. */
+  imageLayouts?: CommentImageLayouts;
 }
 
 /**
@@ -628,6 +658,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     replyingToThreadId,
     editingCommentId,
     selectedCommentId,
+    imageLayouts,
   } = inputs;
 
   const positions: RowMapEntry[] = new Array(annotatedLines.length);
@@ -636,7 +667,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     const entry = annotatedLines[i]!;
     let span = 1;
     if (entry.type === 'thread-remote') {
-      span = estimateCardRows(entry.thread, contentWidth);
+      span = estimateCardRows(entry.thread, contentWidth, imageLayouts);
       if (entry.thread.id === replyingToThreadId) {
         span += REPLY_INPUT_ROWS;
       }

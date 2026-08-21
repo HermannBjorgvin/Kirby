@@ -51,7 +51,7 @@
           ],
           "esbuildOptions": {
             "banner": {
-              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);"
+              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);\nimport { dirname as __kirbyDirname } from \"node:path\";\nimport { fileURLToPath as __kirbyFileURLToPath } from \"node:url\";\nconst __dirname = __kirbyDirname(__kirbyFileURLToPath(import.meta.url));"
             },
             "alias": {
               "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
