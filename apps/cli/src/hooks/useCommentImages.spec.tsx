@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from 'ink-testing-library';
+import { render, cleanup } from 'ink-testing-library';
 import { Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { useCommentImages } from './useCommentImages.js';
@@ -7,12 +7,17 @@ import { useCommentImages } from './useCommentImages.js';
 vi.mock('@kirby/image-loader', () => ({
   fetchImageBytes: vi.fn(),
   decodeImage: vi.fn(),
+  decodeGifAnimation: vi.fn(() => null),
 }));
 vi.mock('../utils/gh-token.js', () => ({
   getGhToken: vi.fn(async () => null),
 }));
 
-import { fetchImageBytes, decodeImage } from '@kirby/image-loader';
+import {
+  fetchImageBytes,
+  decodeImage,
+  decodeGifAnimation,
+} from '@kirby/image-loader';
 
 const URL = 'https://x/shot.png';
 
@@ -32,8 +37,14 @@ function thread(body: string): RemoteCommentThread {
   };
 }
 
-function Probe({ threads }: { threads: RemoteCommentThread[] }) {
-  const value = useCommentImages(threads, 40, {});
+function Probe({
+  threads,
+  animationsActive = true,
+}: {
+  threads: RemoteCommentThread[];
+  animationsActive?: boolean;
+}) {
+  const value = useCommentImages(threads, 40, {}, animationsActive);
   const parts = [...value.images.entries()].map(
     ([url, s]) => `${url}=${s.status}${s.id ? `#${s.id}` : ''}`
   );
@@ -42,27 +53,28 @@ function Probe({ threads }: { threads: RemoteCommentThread[] }) {
 
 const flush = () => new Promise((r) => setTimeout(r, 20));
 
+let writes: string[];
+let writeSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  process.env['KIRBY_IMAGES'] = 'kitty';
+  writes = [];
+  writeSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    });
+});
+
+afterEach(() => {
+  cleanup();
+  writeSpy.mockRestore();
+  delete process.env['KIRBY_IMAGES'];
+  vi.clearAllMocks();
+});
+
 describe('useCommentImages', () => {
-  let writes: string[];
-  let writeSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    process.env['KIRBY_IMAGES'] = 'kitty';
-    writes = [];
-    writeSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation((chunk: unknown) => {
-        writes.push(String(chunk));
-        return true;
-      });
-  });
-
-  afterEach(() => {
-    writeSpy.mockRestore();
-    delete process.env['KIRBY_IMAGES'];
-    vi.clearAllMocks();
-  });
-
   it('fetches, decodes, transmits once, and reports ready', async () => {
     vi.mocked(fetchImageBytes).mockResolvedValue(new Uint8Array([1]));
     vi.mocked(decodeImage).mockResolvedValue({
@@ -119,5 +131,79 @@ describe('useCommentImages', () => {
     await flush();
     unmount();
     expect(writes).toContain('\x1b_Ga=d,d=I,i=1\x1b\\');
+  });
+});
+
+describe('useCommentImages — GIF playback', () => {
+  const GIF_URL = 'https://x/anim.gif';
+  const gifThread = () => thread(`![g](${GIF_URL})`);
+
+  function mockAnimatedGif() {
+    vi.mocked(fetchImageBytes).mockResolvedValue(new Uint8Array([1]));
+    vi.mocked(decodeImage).mockResolvedValue({
+      format: 'gif',
+      width: 2,
+      height: 1,
+      rgba: new Uint8Array(8),
+    });
+    vi.mocked(decodeGifAnimation).mockReturnValue({
+      width: 2,
+      height: 1,
+      frames: [
+        { rgba: new Uint8Array(8).fill(1), delayMs: 100 },
+        { rgba: new Uint8Array(8).fill(2), delayMs: 100 },
+      ],
+    });
+  }
+
+  it('client-driven playback retransmits frames on a timer (ghostty path)', async () => {
+    mockAnimatedGif();
+    const { lastFrame } = render(<Probe threads={[gifThread()]} />);
+    await flush();
+    expect(lastFrame()).toContain(`${GIF_URL}=ready#1`);
+    const before = writes.filter((w) => w.includes('a=T')).length;
+
+    // Two frame periods later, at least two retransmissions happened.
+    await new Promise((r) => setTimeout(r, 250));
+    const after = writes.filter((w) => w.includes('a=T')).length;
+    expect(after).toBeGreaterThanOrEqual(before + 2);
+  });
+
+  it('pauses client-driven playback while reviews panes are hidden', async () => {
+    mockAnimatedGif();
+    render(<Probe threads={[gifThread()]} animationsActive={false} />);
+    await flush();
+    const before = writes.filter((w) => w.includes('a=T')).length;
+    await new Promise((r) => setTimeout(r, 250));
+    expect(writes.filter((w) => w.includes('a=T')).length).toBe(before);
+  });
+
+  it('uses terminal-driven animation in kitty (a=f frames + loop)', async () => {
+    // Fully control the terminal identity — the test process itself
+    // may run inside ghostty, whose TERM_PROGRAM would veto native
+    // animation support.
+    const saved = {
+      TERM: process.env['TERM'],
+      TERM_PROGRAM: process.env['TERM_PROGRAM'],
+    };
+    process.env['TERM'] = 'xterm-kitty';
+    delete process.env['TERM_PROGRAM'];
+    try {
+      mockAnimatedGif();
+      const { lastFrame } = render(<Probe threads={[gifThread()]} />);
+      await flush();
+      expect(lastFrame()).toContain(`${GIF_URL}=ready#1`);
+      expect(writes.some((w) => w.includes('a=f'))).toBe(true);
+      expect(writes).toContain('\x1b_Gq=2,a=a,i=1,s=3,v=1\x1b\\');
+      // No client-driven retransmissions.
+      const before = writes.filter((w) => w.includes('a=T')).length;
+      await new Promise((r) => setTimeout(r, 250));
+      expect(writes.filter((w) => w.includes('a=T')).length).toBe(before);
+    } finally {
+      if (saved.TERM === undefined) delete process.env['TERM'];
+      else process.env['TERM'] = saved.TERM;
+      if (saved.TERM_PROGRAM === undefined) delete process.env['TERM_PROGRAM'];
+      else process.env['TERM_PROGRAM'] = saved.TERM_PROGRAM;
+    }
   });
 });

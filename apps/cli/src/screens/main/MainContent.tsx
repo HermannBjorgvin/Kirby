@@ -92,10 +92,17 @@ export function MainContent({
       20,
       Math.min(CARD_MAX_WIDTH, terminal.paneCols - CARD_INDENT - 2)
     ) - 4;
+  // Client-driven GIF playback only runs while comment cards can
+  // actually be on screen.
+  const reviewsPaneShowing =
+    pane.paneMode === 'diff' ||
+    pane.paneMode === 'diff-file' ||
+    pane.paneMode === 'comments';
   const commentImages = useCommentImages(
     allThreads,
     cardContentWidth,
-    config.vendorAuth
+    config.vendorAuth,
+    reviewsPaneShowing
   );
 
   const screenType: ScreenType = (() => {

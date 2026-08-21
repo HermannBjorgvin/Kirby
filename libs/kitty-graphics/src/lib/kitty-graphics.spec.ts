@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { inflateSync } from 'node:zlib';
 import {
   detectKittyGraphics,
+  encodeAnimationFrame,
+  setRootFrameGap,
+  startAnimationLoop,
+  supportsNativeAnimation,
   encodeTransmitPng,
   encodeTransmitRgba,
   placeholderText,
@@ -109,5 +113,45 @@ describe('placeholderText', () => {
 describe('deleteImage', () => {
   it('deletes the image and its placements by id', () => {
     expect(deleteImage(42)).toBe('\x1b_Ga=d,d=I,i=42\x1b\\');
+  });
+});
+
+describe('animation encoding', () => {
+  it('encodes an additional frame with its gap', () => {
+    const rgba = new Uint8Array([255, 0, 0, 255]);
+    const out = encodeAnimationFrame(9, rgba, 1, 1, 120);
+    const m = out.match(
+      // eslint-disable-next-line no-control-regex
+      /^\x1b_Gq=2,a=f,f=32,o=z,s=1,v=1,i=9,z=120;([A-Za-z0-9+/=]+)\x1b\\$/
+    );
+    expect(m).not.toBeNull();
+    expect([...inflateSync(Buffer.from(m![1], 'base64'))]).toEqual([
+      255, 0, 0, 255,
+    ]);
+  });
+
+  it('sets the root frame gap via animation control', () => {
+    expect(setRootFrameGap(9, 80)).toBe('\x1b_Gq=2,a=a,i=9,r=1,z=80\x1b\\');
+  });
+
+  it('starts an infinite terminal-driven loop', () => {
+    expect(startAnimationLoop(9)).toBe('\x1b_Gq=2,a=a,i=9,s=3,v=1\x1b\\');
+  });
+});
+
+describe('supportsNativeAnimation', () => {
+  it('is true for kitty', () => {
+    expect(supportsNativeAnimation({ TERM: 'xterm-kitty' })).toBe(true);
+    expect(supportsNativeAnimation({ KITTY_WINDOW_ID: '1' })).toBe(true);
+  });
+
+  it('is false for ghostty (no a=f support upstream)', () => {
+    expect(supportsNativeAnimation({ TERM: 'xterm-ghostty' })).toBe(false);
+    expect(
+      supportsNativeAnimation({
+        TERM_PROGRAM: 'ghostty',
+        TERM: 'xterm-256color',
+      })
+    ).toBe(false);
   });
 });

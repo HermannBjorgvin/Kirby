@@ -131,3 +131,48 @@ export function deleteImage(id: number): string {
   assertId(id);
   return `${APC}a=d,d=I,i=${id}${ST}`;
 }
+
+// ── Terminal-driven animation (kitty only — ghostty lacks a=f) ──────
+
+/**
+ * True when the terminal implements the animation sub-protocol
+ * (a=f frames + a=a control). Kitty does; ghostty renders images but
+ * has not implemented animation, so it needs client-driven playback.
+ */
+export function supportsNativeAnimation(
+  env: Record<string, string | undefined>
+): boolean {
+  if ((env['TERM'] ?? '').includes('ghostty')) return false;
+  if (env['TERM_PROGRAM'] === 'ghostty') return false;
+  if ((env['TERM'] ?? '').includes('kitty')) return true;
+  if (env['KITTY_WINDOW_ID']) return true;
+  return false;
+}
+
+/**
+ * Transmit one additional animation frame (full image area, raw RGBA,
+ * zlib) with its display gap in milliseconds.
+ */
+export function encodeAnimationFrame(
+  id: number,
+  rgba: Uint8Array,
+  pxWidth: number,
+  pxHeight: number,
+  gapMs: number
+): string {
+  assertId(id);
+  const control = `q=2,a=f,f=32,o=z,s=${pxWidth},v=${pxHeight},i=${id},z=${gapMs}`;
+  return chunked(control, deflateSync(Buffer.from(rgba)).toString('base64'));
+}
+
+/** Set the display gap of the root frame (frame 1) in milliseconds. */
+export function setRootFrameGap(id: number, gapMs: number): string {
+  assertId(id);
+  return `${APC}q=2,a=a,i=${id},r=1,z=${gapMs}${ST}`;
+}
+
+/** Start the animation, looping forever, driven by the terminal. */
+export function startAnimationLoop(id: number): string {
+  assertId(id);
+  return `${APC}q=2,a=a,i=${id},s=3,v=1${ST}`;
+}

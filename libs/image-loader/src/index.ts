@@ -10,3 +10,9 @@ export {
   type ImageAuth,
   type FetchImageOptions,
 } from './lib/fetch-image.js';
+export {
+  decodeGifAnimation,
+  type GifAnimation,
+  type GifFrame,
+  type GifAnimationOptions,
+} from './lib/gif-animation.js';
