@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
 import { registerHostHandlers } from '../host/register-handlers.js';
-import { autoOpenStartDir } from '../host/services/repo.js';
+import { openStartupRepo } from '../host/services/repo.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
 import { ipcMain } from 'electron';
 import { loadTarget, rendererWebPreferences } from './window.js';
@@ -52,11 +52,8 @@ setSessionBroadcaster((channel, payload) => {
 // ── App lifecycle ────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  // Running `kirby-desktop` inside a repo opens that repo directly.
-  const opened = autoOpenStartDir();
-  console.log(
-    `[desktop] start dir: ${opened ? `opened ${opened.cwd}` : 'none'}`
-  );
+  const opened = openStartupRepo();
+  console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 
   void createMainWindow();
 

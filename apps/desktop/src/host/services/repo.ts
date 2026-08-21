@@ -7,7 +7,7 @@ import type { VcsProvider } from '@kirby/vcs-core';
 import { NoActiveRepoError, type RepoInfo } from '../contract.js';
 import {
   loadRecents,
-  forgetRecent as forgetRecentOnDisk,
+  forgetRecent,
   recordOpen,
   saveRecents,
   type RecentRepo,
@@ -68,30 +68,44 @@ export function getRepo(): RepoInfo | null {
 }
 
 /**
- * Launching `kirby-desktop` inside a repository should open that
- * repository immediately. Reads KIRBY_START_DIR (set by the launcher
- * and dev script from the invoking shell's cwd) and opens it when it
- * is a valid repo; any failure silently leaves the app on the
- * repo-open screen.
+ * Startup repo resolution, in priority order:
+ *   1. KIRBY_START_DIR (launcher/dev pass the invoking shell's cwd)
+ *   2. the most recently opened repo that still exists on disk
+ * Falls back to null (repo-open screen) when neither applies.
  */
-export function autoOpenStartDir(
-  env: Record<string, string | undefined> = process.env
+export function openStartupRepo(
+  env: Record<string, string | undefined> = process.env,
+  recents: RecentRepo[] = loadRecents()
 ): RepoInfo | null {
   const startDir = env.KIRBY_START_DIR;
-  if (!startDir) return null;
-  if (!isGitRepo(startDir)) {
-    console.warn(`[desktop] KIRBY_START_DIR is not a git repo: ${startDir}`);
-    return null;
+  if (startDir) {
+    if (!isGitRepo(startDir)) {
+      console.warn(`[desktop] KIRBY_START_DIR is not a git repo: ${startDir}`);
+    } else {
+      try {
+        return openRepo(startDir);
+      } catch (err: unknown) {
+        console.warn(
+          `[desktop] failed to open start dir ${startDir}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
   }
-  try {
-    return openRepo(startDir);
-  } catch (err: unknown) {
-    console.warn(
-      `[desktop] failed to open start dir ${startDir}:`,
-      err instanceof Error ? err.message : err
-    );
-    return null;
+  // Restore the last session: newest recent that still validates.
+  for (const r of recents) {
+    if (!isGitRepo(r.cwd)) continue;
+    try {
+      console.log(`[desktop] restoring last repo: ${r.cwd}`);
+      return openRepo(r.cwd);
+    } catch (err: unknown) {
+      console.warn(
+        `[desktop] failed to restore ${r.cwd}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
+  return null;
 }
 
 /**
@@ -106,5 +120,5 @@ export function listRecentRepos(): (RecentRepo & { valid: boolean })[] {
 }
 
 export function forgetRecentRepo(cwd: string): void {
-  forgetRecentOnDisk(cwd);
+  forgetRecent(cwd);
 }

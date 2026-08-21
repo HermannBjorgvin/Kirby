@@ -15,17 +15,18 @@ interface ActiveProvider {
  * Resolve the configured VCS provider for the active repo and check
  * it is fully authenticated before doing any network work.
  */
-function activeProvider(): ActiveProvider {
+/**
+ * Resolves the configured provider, or null when the repo has none /
+ * it isn't fully authenticated. Bare repos are first-class: review
+ * features simply degrade, mirroring the TUI's usePrData.
+ */
+function resolveProvider(): ActiveProvider | null {
   const cwd = requireRepo();
   const config = readConfig(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
-  if (!provider) {
-    throw new Error(
-      'No VCS provider configured — set vendor in project or global config'
-    );
-  }
+  if (!provider) return null;
   if (!provider.isConfigured(config.vendorAuth, config.vendorProject)) {
-    throw new Error(`VCS provider "${provider.id}" is not fully configured`);
+    return null;
   }
   const { vendorAuth: auth, vendorProject: project } = config;
   return {
@@ -55,22 +56,32 @@ function activeProvider(): ActiveProvider {
   };
 }
 
-export function fetchPullRequests(): Promise<BranchPrMap> {
-  return activeProvider().fetchPullRequests();
+export async function fetchPullRequests(): Promise<BranchPrMap> {
+  // No provider / unconfigured auth → no reviews. Not an error: bare
+  // repos are first-class, mirroring the TUI's usePrData.
+  const provider = resolveProvider();
+  if (!provider) return {};
+  return provider.fetchPullRequests();
 }
 
-export function fetchCommentThreads(
+export async function fetchCommentThreads(
   prId: number
 ): Promise<PullRequestComments> {
-  return activeProvider().fetchCommentThreads(prId);
+  const provider = resolveProvider();
+  if (!provider) return { threads: [], generalComments: [] };
+  return provider.fetchCommentThreads(prId);
 }
 
-export function replyToThread(req: ReplyRequest): Promise<void> {
-  return activeProvider().replyToThread(req);
+export async function replyToThread(req: ReplyRequest): Promise<void> {
+  const provider = resolveProvider();
+  if (!provider) return;
+  await provider.replyToThread(req);
 }
 
-export function setThreadResolved(req: ResolveRequest): Promise<void> {
-  return activeProvider().setThreadResolved(req);
+export async function setThreadResolved(req: ResolveRequest): Promise<void> {
+  const provider = resolveProvider();
+  if (!provider) return;
+  await provider.setThreadResolved(req);
 }
 
 // ── Diff (git-side, no provider needed) ──────────────────────────

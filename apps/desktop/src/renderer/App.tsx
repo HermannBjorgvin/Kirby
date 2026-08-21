@@ -69,7 +69,7 @@ export function App() {
         </nav>
         <div className="min-h-0 flex-1">
           {tab === 'reviews' ? (
-            <Reviews repoCwd={repo.cwd} />
+            <Reviews repoCwd={repo.cwd} vcsConfigured={repo.vcsConfigured} />
           ) : (
             <Sessions repoCwd={repo.cwd} />
           )}

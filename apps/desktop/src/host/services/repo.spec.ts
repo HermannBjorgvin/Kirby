@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { autoOpenStartDir, getRepo, isGitRepo, openRepo } from './repo.js';
+import { getRepo, isGitRepo, openRepo, openStartupRepo } from './repo.js';
+import type { RecentRepo } from '@kirby/vcs-core';
+
+const recents = (cwds: string[]): RecentRepo[] =>
+  cwds.map((cwd, i) => ({ cwd, lastOpenedAt: i }));
 
 let gitDir: string;
 let plainDir: string;
@@ -29,7 +33,7 @@ describe('isGitRepo', () => {
   });
 });
 
-describe('autoOpenStartDir', () => {
+describe('openStartupRepo', () => {
   afterEach(() => {
     // reset module state between tests by opening nothing
     try {
@@ -40,22 +44,30 @@ describe('autoOpenStartDir', () => {
   });
 
   it('opens the repo when KIRBY_START_DIR is a valid git repo', () => {
-    const info = autoOpenStartDir({ KIRBY_START_DIR: gitDir });
+    const info = openStartupRepo({ KIRBY_START_DIR: gitDir });
     expect(info).not.toBeNull();
     expect(info!.cwd).toBe(gitDir);
     expect(getRepo()?.cwd).toBe(gitDir);
   });
 
-  it('leaves no active repo when the start dir is not a git repo', () => {
-    const before = getRepo();
-    const info = autoOpenStartDir({ KIRBY_START_DIR: plainDir });
-    expect(info).toBeNull();
-    // state unchanged (null stays null; a previously opened repo is
-    // untouched — auto-open never closes anything)
-    expect(getRepo()).toEqual(before);
+  it('falls back to restoring the most recent valid repo', () => {
+    // Launch without a start dir; recents injected explicitly.
+    const info = openStartupRepo({}, recents([gitDir, '/gone/repo']));
+    expect(info).not.toBeNull();
+    expect(info!.cwd).toBe(gitDir);
   });
 
-  it('does nothing when KIRBY_START_DIR is unset', () => {
-    expect(autoOpenStartDir({})).toBeNull();
+  it('skips dead recents when restoring', () => {
+    const info = openStartupRepo(
+      { KIRBY_START_DIR: plainDir },
+      recents(['/gone/repo', gitDir])
+    );
+    // invalid start dir falls through to the first valid recent
+    expect(info).not.toBeNull();
+    expect(info!.cwd).toBe(gitDir);
+  });
+
+  it('returns null with no start dir and empty recents', () => {
+    expect(openStartupRepo({ KIRBY_START_DIR: undefined }, [])).toBeNull();
   });
 });

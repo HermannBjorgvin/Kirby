@@ -14,7 +14,13 @@ const LINE_CLASS: Record<DiffLine['type'], string> = {
  * Reviews pane: the PR list for the active repo plus a whole-PR diff
  * view. Comment threads ride on this screen in a later slice.
  */
-export function Reviews({ repoCwd }: { repoCwd: string }) {
+export function Reviews({
+  repoCwd,
+  vcsConfigured,
+}: {
+  repoCwd: string;
+  vcsConfigured?: boolean;
+}) {
   const prs = useHostQuery(() => window.kirby.fetchPullRequests(), [repoCwd]);
   const [selected, setSelected] = useState<PullRequestInfo | null>(null);
 
@@ -33,7 +39,15 @@ export function Reviews({ repoCwd }: { repoCwd: string }) {
     return <PaneMessage message={prs.error} error />;
   }
   if (prList.length === 0) {
-    return <PaneMessage message="No open pull requests." />;
+    return (
+      <PaneMessage
+        message={
+          vcsConfigured === false
+            ? 'No VCS provider configured — reviews are unavailable for this repo, but worktrees and sessions work normally.'
+            : 'No open pull requests.'
+        }
+      />
+    );
   }
 
   return (
