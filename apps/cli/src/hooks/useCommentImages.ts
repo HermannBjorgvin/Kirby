@@ -72,7 +72,7 @@ export function useCommentImages(
             githubToken,
             azurePat: vendorAuth['pat'],
           });
-          const decoded = decodeImage(bytes);
+          const decoded = await decodeImage(bytes);
           if (!decoded || cancelled) return fail(url);
           if (nextIdRef.current > 255) return fail(url);
           const id = nextIdRef.current++;

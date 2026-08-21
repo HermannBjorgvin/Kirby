@@ -1,7 +1,26 @@
 import jpeg from 'jpeg-js';
 import { GifReader } from 'omggif';
-import * as webp from '@cwasm/webp';
 import { sniffImageFormat, imageDimensions } from './image-format.js';
+
+// @cwasm/webp reads its .wasm from disk at module load, so it's
+// imported lazily and only when a WebP actually shows up — if the wasm
+// file is missing (unusual bundling setups), WebP decoding degrades to
+// null (markdown fallback) instead of crashing startup.
+interface WebpModule {
+  decode(buf: Uint8Array): {
+    width: number;
+    height: number;
+    data: Uint8ClampedArray;
+  };
+}
+let webpModule: Promise<WebpModule | null> | null = null;
+function loadWebp(): Promise<WebpModule | null> {
+  webpModule ??= import('@cwasm/webp').then(
+    (m) => m as WebpModule,
+    () => null
+  );
+  return webpModule;
+}
 
 // Normalized decode result. PNG passes through untouched — the kitty
 // graphics protocol transmits PNG bytes natively (f=100); every other
@@ -20,7 +39,9 @@ export type DecodedImage =
  * contribute their first frame only. Returns null for unknown formats
  * or corrupt data — callers fall back to plain markdown text.
  */
-export function decodeImage(bytes: Uint8Array): DecodedImage | null {
+export async function decodeImage(
+  bytes: Uint8Array
+): Promise<DecodedImage | null> {
   const format = sniffImageFormat(bytes);
   if (!format) return null;
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -42,6 +63,8 @@ export function decodeImage(bytes: Uint8Array): DecodedImage | null {
         return { format, width: reader.width, height: reader.height, rgba };
       }
       case 'webp': {
+        const webp = await loadWebp();
+        if (!webp) return null;
         const d = webp.decode(buf);
         return {
           format,

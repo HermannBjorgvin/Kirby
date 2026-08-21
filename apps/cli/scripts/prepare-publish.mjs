@@ -5,13 +5,26 @@
 // but that file carries workspace `@kirby/*` deps that don't exist on the
 // npm registry, plus dev deps and nx config bloat. This strips all of it.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distPkgPath = resolve(__dirname, '../dist/package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
+
+// @cwasm/webp (bundled into main.js) loads webp.wasm from the bundle's
+// own directory at runtime. Nx's asset copying can't reach into
+// node_modules, so place the wasm next to main.js here. WebP decoding
+// degrades to markdown fallback if it's ever missing — but published
+// builds should have it.
+const require = createRequire(import.meta.url);
+const webpWasm = resolve(
+  dirname(require.resolve('@cwasm/webp/package.json')),
+  'webp.wasm'
+);
+copyFileSync(webpWasm, resolve(__dirname, '../dist/webp.wasm'));
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
 // Everything else — ink, react, @kirby/*, @inkjs/ui, @mishieck/ink-titled-box
@@ -29,7 +42,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js'],
+  files: ['main.js', 'webp.wasm'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,
@@ -37,4 +50,6 @@ const out = {
 };
 
 writeFileSync(distPkgPath, JSON.stringify(out, null, 2) + '\n');
-console.log(`Prepared ${distPkgPath} for publish (name=${out.name}@${out.version})`);
+console.log(
+  `Prepared ${distPkgPath} for publish (name=${out.name}@${out.version})`
+);
