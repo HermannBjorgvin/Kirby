@@ -270,8 +270,8 @@ libs/image-loader/               — Comment-image download + decode
 - **Animated GIFs play back two ways** (`useCommentImages`): kitty gets
   terminal-driven animation (all frames transmitted once via `a=f`, infinite
   loop via `a=a,s=3,v=1` — zero ongoing traffic); ghostty lacks `a=f`
-  upstream, so Kirby re-transmits downscaled frames (≤640px wide, ≤120
-  frames, ≥50ms/frame, ≤3 concurrent GIFs) on chained timeouts while a
+  upstream, so Kirby re-transmits full-resolution frames (≤120 frames,
+  ≥50ms/frame, ≤3 concurrent GIFs) on chained timeouts while a
   reviews pane is showing. `KIRBY_GIF_ANIMATION=off` disables playback
   (static mid-animation composite only).
 
