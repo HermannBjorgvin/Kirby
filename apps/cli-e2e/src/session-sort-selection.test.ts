@@ -48,9 +48,16 @@ async function createSessionViaBranchPicker(
   await term.press('Enter');
 
   // Branch picker closes first (setCreating(false) is sync); worktree
-  // creation is async. Wait for the picker to close before asserting
-  // the session row.
+  // creation is async and finishes by opening the session menu for the
+  // new row. Dismiss it before asserting the session row.
   await expect(term.getByText('Branch Picker').first()).not.toBeVisible();
+  await expect(term.getByText('What would you like to do?')).toBeVisible({
+    timeout: 15_000,
+  });
+  await term.press('Escape');
+  await expect(term.getByText('What would you like to do?')).not.toBeVisible({
+    timeout: 5_000,
+  });
 
   // Wait for the session row in any icon state (selected or not, running or not).
   await expect(sidebarLocator(term.page, waitForTitle).any()).toBeVisible({

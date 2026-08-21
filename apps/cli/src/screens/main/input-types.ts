@@ -40,6 +40,8 @@ export interface BranchPickerHandlerCtx {
   terminal: TerminalLayout;
   config: ConfigContextValue;
   keybinds: KeybindResolveValue;
+  pane: PaneModeValue;
+  nav: NavValue;
 }
 
 export interface DeleteConfirmHandlerCtx {
@@ -142,7 +144,7 @@ export interface PlanCheckoutHandlerCtx {
   config: ConfigContextValue;
 }
 
-export interface ConfirmHandlerCtx {
+export interface SessionMenuHandlerCtx {
   pane: PaneModeValue;
   nav: NavValue;
   asyncOps: AsyncOpsValue;

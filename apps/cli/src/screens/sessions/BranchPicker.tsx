@@ -6,6 +6,7 @@ import {
   useBranchPickerActions,
 } from '../../context/ModalContext.js';
 import { useSessionActions } from '../../context/SessionContext.js';
+import { useNavState, useNavActions } from '../../context/NavContext.js';
 import { useAsyncOps } from '../../context/AsyncOpsContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
@@ -13,16 +14,20 @@ import { useLayout } from '../../context/LayoutContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
 import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
+import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
+
 export const BranchPicker = memo(function BranchPicker({
   filter,
   branches,
   selectedIndex,
   paneRows,
+  pane,
 }: {
   filter: string;
   branches: string[];
   selectedIndex: number;
   paneRows: number;
+  pane: PaneModeValue;
 }) {
   // ── Input handling ────────────────────────────────────────────
   // Moved out of MainTab so the branch picker owns its own keypress
@@ -41,6 +46,12 @@ export const BranchPicker = memo(function BranchPicker({
   const config = useConfig();
   const keybinds = useKeybindResolve();
   const { terminal } = useLayout();
+  const navState = useNavState();
+  const navActions = useNavActions();
+  const nav = useMemo(
+    () => ({ ...navState, ...navActions }),
+    [navState, navActions]
+  );
 
   useInput(
     (input, key) => {
@@ -52,6 +63,8 @@ export const BranchPicker = memo(function BranchPicker({
         terminal,
         config,
         keybinds,
+        pane,
+        nav,
       });
     },
     { isActive: branchPicker.creating }

@@ -7,7 +7,11 @@ import {
   branchToSessionName,
 } from '@kirby/worktree-manager';
 import { launchSession } from '../../session/launch-session.js';
+import { hasSession } from '../../pty-registry.js';
 import { handleTextInput } from '../../utils/handle-text-input.js';
+import type { AgentDefinition } from '../../agents/registry.js';
+import { requestSessionMenu } from '../../session-menu-request.js';
+import { getPrFromItem } from '../../types.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 export function startAiSession(
@@ -15,10 +19,11 @@ export function startAiSession(
   cols: number,
   rows: number,
   cwd: string,
-  config: AppConfig
+  config: AppConfig,
+  agentOverride?: AgentDefinition
 ) {
   // Resume a prior conversation in this worktree if there is one, else
-  // start blank. The configured agent decides whether continue is even
+  // start blank. The launched agent decides whether continue is even
   // possible (only Claude, currently) — everyone else starts blank.
   launchSession({
     name,
@@ -26,6 +31,7 @@ export function startAiSession(
     cols,
     rows,
     config,
+    agent: agentOverride,
     request: { intent: 'continue-or-blank' },
   });
 }
@@ -82,14 +88,38 @@ export function handleBranchPickerInput(
         const worktreePath = await createWorktree(branch);
         if (worktreePath) {
           const sessionName = branchToSessionName(branch);
-          startAiSession(
-            sessionName,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            worktreePath,
-            ctx.config.config
-          );
           await ctx.sessions.refreshSessions();
+
+          // Picking a branch whose session is already running: there is
+          // no agent left to choose, so skip the menu and jump straight
+          // into the running terminal — same as Tab on its row.
+          if (hasSession(sessionName)) {
+            ctx.sidebar.selectByKey(`session:${sessionName}`);
+            ctx.pane.setPaneMode('terminal');
+            ctx.pane.setReconnectKey((k) => k + 1);
+            ctx.nav.setFocus('terminal');
+            return;
+          }
+
+          // Land the user in the new session's menu (agent choice,
+          // start, cancel). When the selection is already on this
+          // session's row, no remount will happen — open directly.
+          // Otherwise the selection move remounts the pane, so the menu
+          // is requested via the mailbox instead of set on state that's
+          // about to be discarded.
+          if (ctx.sidebar.sessionNameForTerminal === sessionName) {
+            ctx.pane.setPaneMode('confirm');
+            ctx.pane.setSessionMenu({
+              pr: ctx.sidebar.selectedItem
+                ? getPrFromItem(ctx.sidebar.selectedItem) ?? null
+                : null,
+              selectedOption: 0,
+              agentIndex: 0,
+            });
+            return;
+          }
+
+          requestSessionMenu(sessionName);
           ctx.sidebar.selectByKey(`session:${sessionName}`);
         }
       });

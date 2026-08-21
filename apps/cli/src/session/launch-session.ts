@@ -85,6 +85,11 @@ export interface LaunchSessionParams {
   rows: number;
   config: AppConfig;
   request: LaunchRequest;
+  /**
+   * Per-launch agent override (e.g. the branch picker's session-only
+   * agent choice). Falls back to the config-resolved agent.
+   */
+  agent?: AgentDefinition;
 }
 
 /**
@@ -92,7 +97,7 @@ export interface LaunchSessionParams {
  * and spawn the PTY. Returns the created entry.
  */
 export function launchSession(params: LaunchSessionParams): PtyEntry {
-  const agent = resolveAgent(params.config);
+  const agent = params.agent ?? resolveAgent(params.config);
   const spec = buildLaunchSpec(agent, params.request);
   return spawnSession(
     params.name,

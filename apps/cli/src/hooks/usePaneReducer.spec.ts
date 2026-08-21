@@ -70,19 +70,19 @@ describe('paneReducer', () => {
     expect(next.editingCommentId).toBe('c3');
   });
 
-  it('SET_REVIEW_CONFIRM replaces reviewConfirm', () => {
-    const value = { pr: samplePr, selectedOption: 1 };
+  it('SET_SESSION_MENU replaces sessionMenu', () => {
+    const value = { pr: samplePr, selectedOption: 1, agentIndex: 0 };
     const next = paneReducer(initialState, {
-      type: 'SET_REVIEW_CONFIRM',
-      value,
+      type: 'SET_SESSION_MENU',
+      updater: value,
     });
-    expect(next.reviewConfirm).toEqual(value);
+    expect(next.sessionMenu).toEqual(value);
 
     const cleared = paneReducer(next, {
-      type: 'SET_REVIEW_CONFIRM',
-      value: null,
+      type: 'SET_SESSION_MENU',
+      updater: null,
     });
-    expect(cleared.reviewConfirm).toBeNull();
+    expect(cleared.sessionMenu).toBeNull();
   });
 
   // ── Updater<T>: value form ───────────────────────────────────────
@@ -211,7 +211,7 @@ describe('paneReducer', () => {
     expect(s.selectedCommentId).toBe('x');
     // Fields not touched stay at initial values:
     expect(s.reconnectKey).toBe(initialState.reconnectKey);
-    expect(s.reviewConfirm).toBeNull();
+    expect(s.sessionMenu).toBeNull();
     expect(s.showSkipped).toBe(false);
   });
 });

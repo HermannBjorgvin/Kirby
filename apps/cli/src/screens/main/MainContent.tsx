@@ -2,7 +2,7 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import { BranchPicker } from '../sessions/BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
 import { ControlsPanel } from '../../components/ControlsPanel.js';
-import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';
+import { SessionMenuPane } from './SessionMenuPane.js';
 import { ReviewDetailPane } from '../reviews/ReviewDetailPane.js';
 import { TerminalPane } from './TerminalPane.js';
 import { DiffFileListContainer } from './DiffFileListContainer.js';
@@ -30,7 +30,7 @@ type ScreenType =
   | 'controls'
   | 'settings'
   | 'branchPicker'
-  | 'reviewConfirm'
+  | 'sessionMenu'
   | 'terminal'
   | 'prDetail'
   | 'diff'
@@ -46,7 +46,7 @@ type ScreenType =
 //   1. Controls sub-screen  → ControlsPanel
 //   2. Settings             → SettingsPanel
 //   3. Branch picker        → BranchPicker
-//   4. Review confirm       → ReviewConfirmPane
+//   4. Session menu         → SessionMenuPane
 //   5. Terminal mode        → TerminalPane
 //   6. PR detail mode       → ReviewDetailPane
 //   7. Diff list            → DiffPane
@@ -76,7 +76,7 @@ export function MainContent({
     if (settings.settingsOpen && settings.controlsOpen) return 'controls';
     if (settings.settingsOpen) return 'settings';
     if (branchPicker.creating) return 'branchPicker';
-    if (pane.reviewConfirm) return 'reviewConfirm';
+    if (pane.sessionMenu) return 'sessionMenu';
     if (pane.paneMode === 'pr-detail') return 'prDetail';
     if (pane.paneMode === 'diff') return 'diff';
     if (pane.paneMode === 'diff-file') return 'diffFile';
@@ -109,13 +109,16 @@ export function MainContent({
           branches={branchPicker.branches}
           selectedIndex={branchPicker.branchIndex}
           paneRows={terminal.paneRows}
+          pane={pane}
         />
       );
-    case 'reviewConfirm':
+    case 'sessionMenu':
       return (
-        <ReviewConfirmPane
-          pr={pane.reviewConfirm!.pr}
-          selectedOption={pane.reviewConfirm!.selectedOption}
+        <SessionMenuPane
+          pr={pane.sessionMenu!.pr}
+          sessionName={sessionNameForTerminal}
+          selectedOption={pane.sessionMenu!.selectedOption}
+          agentIndex={pane.sessionMenu!.agentIndex}
           instruction={pane.reviewInstruction}
         />
       );

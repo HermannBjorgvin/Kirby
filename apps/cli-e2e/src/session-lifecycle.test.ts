@@ -33,10 +33,18 @@ test.describe('Session Lifecycle – clean delete', () => {
     await kirby.term.page.waitForTimeout(2_000);
     await kirby.term.press('Enter');
 
-    // 3. Branch picker closes, session appears in sidebar
+    // 3. Branch picker closes; worktree creation lands in the session
+    //    menu. Dismiss it — this test only exercises create + delete.
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
+    await expect(
+      kirby.term.getByText('What would you like to do?')
+    ).toBeVisible({ timeout: 10_000 });
+    await kirby.term.press('Escape');
+    await expect(
+      kirby.term.getByText('What would you like to do?')
+    ).not.toBeVisible({ timeout: 5_000 });
     await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -109,6 +117,13 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
+    await expect(
+      kirby.term.getByText('What would you like to do?')
+    ).toBeVisible({ timeout: 10_000 });
+    await kirby.term.press('Escape');
+    await expect(
+      kirby.term.getByText('What would you like to do?')
+    ).not.toBeVisible({ timeout: 5_000 });
     await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });
