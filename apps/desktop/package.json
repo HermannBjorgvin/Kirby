@@ -45,14 +45,26 @@
             "sourcemap": true,
             "outExtension": {
               ".js": ".js"
+            },
+            "banner": {
+              "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
             }
           }
         },
         "configurations": {
-          "development": {},
+          "development": {
+            "esbuildOptions": {
+              "banner": {
+                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+              }
+            }
+          },
           "production": {
             "esbuildOptions": {
-              "sourcemap": false
+              "sourcemap": false,
+              "banner": {
+                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+              }
             }
           }
         }

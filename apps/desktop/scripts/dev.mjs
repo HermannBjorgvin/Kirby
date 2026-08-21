@@ -25,13 +25,20 @@ const appRoot = join(workspaceRoot, 'apps', 'desktop');
 const electronBin = join(workspaceRoot, 'node_modules', '.bin', 'electron');
 const DEV_URL = 'http://localhost:5173';
 
+// Must mirror the build-main nx target exactly: electron + node-pty
+// stay external, and the ESM output needs a require shim for them.
+const REQUIRE_BANNER =
+  'import { createRequire as __kirbyCreateRequire } from "node:module";' +
+  'const require = __kirbyCreateRequire(import.meta.url);';
+
 const mainOptions = {
   entryPoints: [join(appRoot, 'src/main/main.ts')],
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node20',
-  external: ['electron'],
+  external: ['electron', 'node-pty'],
+  banner: { js: REQUIRE_BANNER },
   outfile: join(appRoot, 'dist/main/main.js'),
 };
 
