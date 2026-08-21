@@ -54,3 +54,22 @@ export function getRepo(): RepoInfo | null {
     vcsConfigured: provider ? isVcsConfigured(config, provider) : false,
   };
 }
+
+/**
+ * Launching `kirby-desktop` inside a repository should open that
+ * repository immediately. Reads KIRBY_START_DIR (set by the launcher
+ * and dev script from the invoking shell's cwd) and opens it when it
+ * is a valid repo; any failure silently leaves the app on the
+ * repo-open screen.
+ */
+export function autoOpenStartDir(
+  env: Record<string, string | undefined> = process.env
+): RepoInfo | null {
+  const startDir = env.KIRBY_START_DIR;
+  if (!startDir || !isGitRepo(startDir)) return null;
+  try {
+    return openRepo(startDir);
+  } catch {
+    return null;
+  }
+}
