@@ -13,7 +13,7 @@
  */
 
 import type { AppConfig } from '@kirby/vcs-core';
-import type { SettingsField } from '@kirby/app-core';
+import type { LaunchIntent, SettingsField } from '@kirby/app-core';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
 import type {
   BranchPrMap,
@@ -36,6 +36,36 @@ export interface RepoInfo {
   providerId: string | null;
   vcsConfigured: boolean;
 }
+
+// ── Sessions (agent terminals) ───────────────────────────────────
+
+export interface SessionLaunchRequest {
+  branch: string;
+  intent: LaunchIntent;
+  prompt?: string;
+}
+
+export interface SessionSummary {
+  name: string;
+  running: boolean;
+  spawnedAt: number;
+}
+
+export interface SessionDataEvent {
+  name: string;
+  data: string;
+}
+
+export interface SessionExitEvent {
+  name: string;
+  code: number;
+}
+
+/** Channels the main process pushes events on (ipcRenderer.on). */
+export const SESSION_EVENTS = {
+  data: 'kirby/session/data',
+  exit: 'kirby/session/exit',
+} as const;
 
 // ── Reviews ──────────────────────────────────────────────────────
 
@@ -83,6 +113,16 @@ export interface KirbyHostApi {
   replyToThread(req: ReplyRequest): Promise<void>;
   setThreadResolved(req: ResolveRequest): Promise<void>;
 
+  // ── Sessions ─────────────────────────────────────────────────
+  launchAgent(req: SessionLaunchRequest): Promise<{ name: string }>;
+  listSessions(): Promise<SessionSummary[]>;
+  writeSession(name: string, data: string): Promise<void>;
+  resizeSession(name: string, cols: number, rows: number): Promise<void>;
+  killSession(name: string): Promise<void>;
+  /** Subscribe to PTY output. Returns an unsubscribe function. */
+  onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
+  onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
+
   // ── Diff ─────────────────────────────────────────────────────
   fetchDiffText(sourceBranch: string, targetBranch: string): Promise<string>;
   fetchFileDiffText(
@@ -104,6 +144,11 @@ export const IPC = {
   createWorktree: 'kirby/worktree/create',
   removeWorktree: 'kirby/worktree/remove',
   canRemoveBranch: 'kirby/worktree/can-remove',
+  launchAgent: 'kirby/session/launch',
+  listSessions: 'kirby/session/list',
+  writeSession: 'kirby/session/write',
+  resizeSession: 'kirby/session/resize',
+  killSession: 'kirby/session/kill',
   fetchPullRequests: 'kirby/reviews/prs',
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',

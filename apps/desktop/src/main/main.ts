@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
 import { registerHostHandlers } from '../host/register-handlers.js';
+import { setSessionBroadcaster } from '../host/services/sessions.js';
 import { ipcMain } from 'electron';
 import { loadTarget, rendererWebPreferences } from './window.js';
 
@@ -40,6 +41,12 @@ function createMainWindow(): BrowserWindow {
 // ── Host contract (main-process side) ────────────────────────────
 
 registerHostHandlers(ipcMain);
+
+setSessionBroadcaster((channel, payload) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(channel, payload);
+  }
+});
 
 // ── App lifecycle ────────────────────────────────────────────────
 

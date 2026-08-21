@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC, type KirbyHostApi } from '../host/contract.js';
+import {
+  IPC,
+  SESSION_EVENTS,
+  type KirbyHostApi,
+  type SessionDataEvent,
+  type SessionExitEvent,
+} from '../host/contract.js';
 
 /**
  * The only channel between the sandboxed renderer and the host
@@ -28,6 +34,25 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.fetchCommentThreads, prId),
   replyToThread: (req) => ipcRenderer.invoke(IPC.replyToThread, req),
   setThreadResolved: (req) => ipcRenderer.invoke(IPC.setThreadResolved, req),
+
+  launchAgent: (req) => ipcRenderer.invoke(IPC.launchAgent, req),
+  listSessions: () => ipcRenderer.invoke(IPC.listSessions),
+  writeSession: (name, data) =>
+    ipcRenderer.invoke(IPC.writeSession, name, data),
+  resizeSession: (name, cols, rows) =>
+    ipcRenderer.invoke(IPC.resizeSession, name, cols, rows),
+  killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
+
+  onSessionData: (cb) => {
+    const listener = (_e: unknown, payload: SessionDataEvent) => cb(payload);
+    ipcRenderer.on(SESSION_EVENTS.data, listener);
+    return () => ipcRenderer.removeListener(SESSION_EVENTS.data, listener);
+  },
+  onSessionExit: (cb) => {
+    const listener = (_e: unknown, payload: SessionExitEvent) => cb(payload);
+    ipcRenderer.on(SESSION_EVENTS.exit, listener);
+    return () => ipcRenderer.removeListener(SESSION_EVENTS.exit, listener);
+  },
 
   fetchDiffText: (sourceBranch, targetBranch) =>
     ipcRenderer.invoke(IPC.fetchDiffText, sourceBranch, targetBranch),

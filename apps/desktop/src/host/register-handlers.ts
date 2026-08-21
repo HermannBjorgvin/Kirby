@@ -4,6 +4,7 @@ import * as repo from './services/repo.js';
 import * as config from './services/config.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
+import * as sessions from './services/sessions.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -37,6 +38,20 @@ export function createHostApi(): KirbyHostApi {
     fetchCommentThreads: (prId) => reviews.fetchCommentThreads(prId),
     replyToThread: (req: ReplyRequest) => reviews.replyToThread(req),
     setThreadResolved: (req: ResolveRequest) => reviews.setThreadResolved(req),
+
+    launchAgent: (req) => sessions.launchAgent(req),
+    listSessions: () => Promise.resolve(sessions.listSessions()),
+    writeSession: (name, data) =>
+      Promise.resolve(sessions.writeSession(name, data)),
+    resizeSession: (name, cols, rows) =>
+      Promise.resolve(sessions.resizeSession(name, cols, rows)),
+    killSession: (name) => Promise.resolve(sessions.killSession(name)),
+    onSessionData: () => {
+      // Events are pushed via setSessionBroadcaster; the preload side
+      // subscribes directly to ipcRenderer events. Nothing to do here.
+      return () => undefined;
+    },
+    onSessionExit: () => () => undefined,
 
     fetchDiffText: (sourceBranch, targetBranch) =>
       reviews.getDiffText(sourceBranch, targetBranch),
@@ -73,6 +88,11 @@ export function registerHostHandlers(
     [IPC.createWorktree]: api.createWorktree as HostMethod,
     [IPC.removeWorktree]: api.removeWorktree as HostMethod,
     [IPC.canRemoveBranch]: api.canRemoveBranch as HostMethod,
+    [IPC.launchAgent]: api.launchAgent as HostMethod,
+    [IPC.listSessions]: api.listSessions as HostMethod,
+    [IPC.writeSession]: api.writeSession as HostMethod,
+    [IPC.resizeSession]: api.resizeSession as HostMethod,
+    [IPC.killSession]: api.killSession as HostMethod,
     [IPC.fetchPullRequests]: api.fetchPullRequests as HostMethod,
     [IPC.fetchCommentThreads]: api.fetchCommentThreads as HostMethod,
     [IPC.replyToThread]: api.replyToThread as HostMethod,

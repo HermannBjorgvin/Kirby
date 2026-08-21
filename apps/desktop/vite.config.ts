@@ -7,6 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   root: 'src/renderer',
   plugins: [react(), tailwindcss()],
+  assetsInclude: ['**/*.wasm'],
   base: './',
   clearScreen: false,
   build: {

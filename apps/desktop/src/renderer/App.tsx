@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { KirbyHostApi, KirbyVersionInfo } from '../host/contract.js';
+import type { KirbyHostApi, RepoInfo } from '../host/contract.js';
+import { RepoOpen } from './screens/RepoOpen.js';
+import { Sidebar } from './screens/Sidebar.js';
+import { Reviews } from './screens/Reviews.js';
+import { Sessions } from './screens/Sessions.js';
 
 declare global {
   interface Window {
@@ -7,49 +11,70 @@ declare global {
   }
 }
 
+type MainTab = 'reviews' | 'sessions';
+
 /**
- * Phase-4 shell page: proves the Electron shell boots, the renderer
- * mounts, Tailwind styles apply, and the preload bridge answers IPC.
- * Replaced by the real app layout in Phase 5.
+ * App shell: repo-open gate, then sidebar + tabbed main pane.
  */
 export function App() {
-  const [version, setVersion] = useState<KirbyVersionInfo | null>(null);
-  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [tab, setTab] = useState<MainTab>('reviews');
 
+  // Restore the previously opened repo (the host remembers it for the
+  // session; this also covers electron reloads during development).
   useEffect(() => {
     window.kirby
-      .getVersion()
-      .then(setVersion)
-      .catch((err: unknown) =>
-        setBridgeError(err instanceof Error ? err.message : String(err))
-      );
+      .getRepo()
+      .then(setRepo)
+      .finally(() => setChecked(true));
   }, []);
 
-  return (
-    <main className="flex h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-100">
-        Kirby Desktop
-      </h1>
-      {version ? (
-        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 font-mono text-sm text-slate-400">
-          <dt>app</dt>
-          <dd className="text-slate-200">{version.app}</dd>
-          <dt>electron</dt>
-          <dd className="text-slate-200">{version.electron}</dd>
-          <dt>node</dt>
-          <dd className="text-slate-200">{version.node}</dd>
-          <dt>chrome</dt>
-          <dd className="text-slate-200">{version.chrome}</dd>
-        </dl>
-      ) : bridgeError ? (
-        <p className="font-mono text-sm text-red-400">
-          bridge error: {bridgeError}
-        </p>
-      ) : (
+  if (!checked) {
+    return (
+      <main className="flex h-screen items-center justify-center">
         <p className="animate-pulse font-mono text-sm text-slate-500">
           connecting to host…
         </p>
-      )}
-    </main>
+      </main>
+    );
+  }
+
+  if (!repo) {
+    return <RepoOpen onOpened={setRepo} />;
+  }
+
+  return (
+    <div className="flex h-screen">
+      <Sidebar repoCwd={repo.cwd} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <nav className="flex items-center gap-1 border-b border-slate-800 px-3 py-1.5">
+          {(['reviews', 'sessions'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded px-3 py-1 text-xs font-medium capitalize ${
+                tab === t
+                  ? 'bg-slate-800 text-slate-100'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+          <span className="ml-auto font-mono text-[10px] text-slate-600">
+            {repo.providerId ?? 'no provider'}
+            {repo.vcsConfigured ? '' : ' (not configured)'}
+          </span>
+        </nav>
+        <div className="min-h-0 flex-1">
+          {tab === 'reviews' ? (
+            <Reviews repoCwd={repo.cwd} />
+          ) : (
+            <Sessions repoCwd={repo.cwd} />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
