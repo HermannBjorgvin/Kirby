@@ -88,13 +88,28 @@ export function buildSidebarItems(
 
   // 4-6. Review PRs by category
   for (const pr of categorizedReviews.needsReview) {
-    items.push({ kind: 'review-pr', pr, category: 'needs-review', running: reviewRunning(pr) });
+    items.push({
+      kind: 'review-pr',
+      pr,
+      category: 'needs-review',
+      running: reviewRunning(pr),
+    });
   }
   for (const pr of categorizedReviews.waitingForAuthor) {
-    items.push({ kind: 'review-pr', pr, category: 'waiting', running: reviewRunning(pr) });
+    items.push({
+      kind: 'review-pr',
+      pr,
+      category: 'waiting',
+      running: reviewRunning(pr),
+    });
   }
   for (const pr of categorizedReviews.approvedByYou) {
-    items.push({ kind: 'review-pr', pr, category: 'approved', running: reviewRunning(pr) });
+    items.push({
+      kind: 'review-pr',
+      pr,
+      category: 'approved',
+      running: reviewRunning(pr),
+    });
   }
 
   return items;

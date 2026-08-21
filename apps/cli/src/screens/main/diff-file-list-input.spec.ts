@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { KeyPress } from '@kirby/app-core';
+import type {
+  KeyPress,
+  PaneModeValue,
+  SessionActionsContextValue,
+} from '@kirby/app-core';
+import { ACTIONS, NORMIE_PRESET, resolveAction } from '@kirby/app-core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { DiffFile } from '@kirby/diff';
 import { handleDiffFileListInput } from './diff-file-list-input.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
-import { ACTIONS, NORMIE_PRESET, resolveAction } from '@kirby/app-core';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 
 // ── Test fixtures ────────────────────────────────────────────────
 

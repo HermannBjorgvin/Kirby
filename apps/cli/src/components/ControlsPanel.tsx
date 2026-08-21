@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import { Text, Box, useInput } from 'ink';
-import { useKeybindResolve, useKeybinds } from '../context/KeybindContext.js';
 import {
+  useKeybindResolve,
+  useKeybinds,
   useSettingsState,
   useSettingsActions,
-} from '../context/ModalContext.js';
-import { ACTIONS, buildControlsRows, getBindingRows } from '@kirby/app-core';
+  ACTIONS,
+  buildControlsRows,
+  getBindingRows,
+} from '@kirby/app-core';
 import { handleControlsInput } from '../input-handlers.js';
 
 // ── Hints sub-component (isolates context subscription from parent) ──

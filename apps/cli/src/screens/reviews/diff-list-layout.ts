@@ -5,10 +5,7 @@ import {
   CARD_MAX_WIDTH,
   type FooterComposeState,
 } from '../../components/CommentThread.js';
-import {
-  totalRows,
-  viewportRowsForBudget,
-} from '../../utils/virtual-viewport.js';
+import { totalRows, viewportRowsForBudget } from '@kirby/app-core';
 
 // Layout math shared by the DiffFileList renderer and the
 // diff-file-list input handler. Both sides need identical geometry —

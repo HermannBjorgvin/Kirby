@@ -12,18 +12,16 @@ import {
   NORMIE_PRESET,
   resolveAction,
   type KeyPress,
-} from '@kirby/app-core';
-import {
   add,
   count,
   has,
   list,
-  remove,
+  removePlanItem as remove,
   toggle,
   annotate,
   clear,
   __resetPlanStoreForTest,
-} from '../../plan/plan-store.js';
+} from '@kirby/app-core';
 
 const PR_ID = 1;
 const plan = {

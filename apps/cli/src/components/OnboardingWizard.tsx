@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useConfig } from '../context/ConfigContext.js';
-import type { SettingsField } from './SettingsPanel.js';
+import { useConfig } from '@kirby/app-core';
+import type { SettingsField } from '@kirby/app-core';
 import { WelcomeStep } from './onboarding/WelcomeStep.js';
 import { FieldsStep } from './onboarding/FieldsStep.js';
 import { PreferencesStep } from './onboarding/PreferencesStep.js';

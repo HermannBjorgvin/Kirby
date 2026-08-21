@@ -13,7 +13,7 @@ const {
   return {
     ptyFactorySpy: vi.fn(),
     tmuxFactorySpy: vi.fn(),
-    isTmuxAvailableMock: vi.fn<[], Promise<TmuxStatus>>(),
+    isTmuxAvailableMock: vi.fn<() => Promise<TmuxStatus>>(),
     execFileSyncMock: vi.fn(),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),

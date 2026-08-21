@@ -9,17 +9,21 @@ import {
 } from '@kirby/review-comments';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { CARD_INDENT, CARD_MAX_WIDTH } from '../../components/CommentThread.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { useAsyncOps } from '../../context/AsyncOpsContext.js';
-import { usePlan } from '../../context/PlanContext.js';
-import { planItemKey } from '../../plan/plan-types.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { DiffBundle } from '../../hooks/useDiffBundle.js';
+import type {
+  TerminalLayout,
+  PaneModeValue,
+  DiffBundle,
+} from '@kirby/app-core';
+import {
+  useSessionActions,
+  useConfig,
+  useKeybindResolve,
+  useAsyncOps,
+  usePlan,
+  planItemKey,
+  useAutoSelectFirstComment,
+} from '@kirby/app-core';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
-import { useAutoSelectFirstComment } from '../../hooks/useAutoSelectFirstComment.js';
 import { usePendingThreadScrollIntoView } from '../../hooks/usePendingThreadScrollIntoView.js';
 import { handleDiffViewerInput } from './main-input.js';
 

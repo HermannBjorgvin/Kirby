@@ -15,7 +15,7 @@ import {
   isVcsConfigured,
 } from '@kirby/vcs-core';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
-import type { SettingsField } from '../components/SettingsPanel.js';
+import type { SettingsField } from '../settings/fields.js';
 
 /** Subset of AppConfig persisted via keybind mutators (see updateKeybindFields) */
 export type KeybindFields = Pick<

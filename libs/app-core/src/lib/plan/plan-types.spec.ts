@@ -62,7 +62,12 @@ describe('snapshotRemote', () => {
     const t = thread();
     const item = snapshotRemote(t);
     t.comments[0].body = 'CHANGED';
-    t.comments.push({ id: 'c3', author: 'carol', body: 'late', createdAt: 'x' });
+    t.comments.push({
+      id: 'c3',
+      author: 'carol',
+      body: 'late',
+      createdAt: 'x',
+    });
     expect(item.body).toBe('root');
     expect(item.replies).toHaveLength(1);
   });

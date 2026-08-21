@@ -1,8 +1,6 @@
 import { Box, Text } from 'ink';
-import { usePlan } from '../context/PlanContext.js';
-import { useSidebar } from '../context/SidebarContext.js';
-import { truncate } from '../utils/truncate.js';
-import type { PlanItem } from '../plan/plan-types.js';
+import type { PlanItem } from '@kirby/app-core';
+import { usePlan, useSidebar, truncate } from '@kirby/app-core';
 
 // Top-right "add-to-cart" indicator: a titled box listing the comments
 // queued in the current PR's plan. Positioned by TopRightOverlay, which

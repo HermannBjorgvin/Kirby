@@ -1,16 +1,16 @@
 import { memo, useMemo } from 'react';
 import { Text, Box, useInput } from 'ink';
-import { computeScrollWindow } from '../../utils/scroll-window.js';
 import {
+  computeScrollWindow,
   useBranchPickerState,
   useBranchPickerActions,
-} from '../../context/ModalContext.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { useAsyncOps } from '../../context/AsyncOpsContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { useLayout } from '../../context/LayoutContext.js';
-import { useSidebar } from '../../context/SidebarContext.js';
+  useSessionActions,
+  useAsyncOps,
+  useConfig,
+  useKeybindResolve,
+  useLayout,
+  useSidebar,
+} from '@kirby/app-core';
 import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({

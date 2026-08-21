@@ -5,14 +5,18 @@ import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { usePlan } from '../../context/PlanContext.js';
-import { planItemKey } from '../../plan/plan-types.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { DiffBundle } from '../../hooks/useDiffBundle.js';
+import type {
+  TerminalLayout,
+  PaneModeValue,
+  DiffBundle,
+} from '@kirby/app-core';
+import {
+  useKeybindResolve,
+  useConfig,
+  useSessionActions,
+  usePlan,
+  planItemKey,
+} from '@kirby/app-core';
 import { handleDiffFileListInput } from './main-input.js';
 
 interface DiffFileListContainerProps {

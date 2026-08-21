@@ -95,11 +95,9 @@ describe('buildSidebarItems', () => {
       new Map()
     );
 
-    expect(items.map((i) => (i.kind === 'session' ? i.session.name : i.kind))).toEqual([
-      'feature-local',
-      'feature-draft',
-      'feature-active',
-    ]);
+    expect(
+      items.map((i) => (i.kind === 'session' ? i.session.name : i.kind))
+    ).toEqual(['feature-local', 'feature-draft', 'feature-active']);
   });
 
   it('places draft orphan PRs before active orphan PRs', () => {

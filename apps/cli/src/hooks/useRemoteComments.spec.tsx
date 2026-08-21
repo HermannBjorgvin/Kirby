@@ -8,7 +8,7 @@ import type {
   RemoteCommentThread,
   RemoteCommentReply,
 } from '@kirby/vcs-core';
-import { useRemoteComments } from './useRemoteComments.js';
+import { useRemoteComments } from '@kirby/app-core';
 
 // ── Test helpers ────────────────────────────────────────────────
 

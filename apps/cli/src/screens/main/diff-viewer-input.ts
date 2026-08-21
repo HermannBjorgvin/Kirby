@@ -1,5 +1,11 @@
-import { handleTextInput, type KeyPress } from '@kirby/app-core';
-import type { ReviewComment } from '../../types.js';
+import type { ReviewComment, PlanItem } from '@kirby/app-core';
+import {
+  handleTextInput,
+  type KeyPress,
+  planItemKey,
+  snapshotLocal,
+  snapshotRemote,
+} from '@kirby/app-core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
@@ -12,12 +18,6 @@ import {
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import {
-  planItemKey,
-  snapshotLocal,
-  snapshotRemote,
-} from '../../plan/plan-types.js';
-import type { PlanItem } from '../../plan/plan-types.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────

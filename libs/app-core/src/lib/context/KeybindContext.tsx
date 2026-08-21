@@ -8,13 +8,10 @@ import {
   getNavHintKeys,
   keysToDisplayString,
   resolveAction,
-} from '@kirby/app-core';
-import type {
-  HintEntry,
-  InputContext,
-  KeyDescriptor,
-  KeyPress,
-} from '@kirby/app-core';
+} from '../keybindings/index.js';
+import type { HintEntry } from '../keybindings/hints.js';
+import type { InputContext, KeyDescriptor } from '../keybindings/registry.js';
+import type { KeyPress } from '../input/key-press.js';
 import { useConfig } from './ConfigContext.js';
 
 // ── Two-context split ────────────────────────────────────────────

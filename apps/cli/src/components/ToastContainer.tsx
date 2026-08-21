@@ -1,6 +1,6 @@
 import { Box } from 'ink';
 import { Alert } from '@inkjs/ui';
-import { useToastState } from '../context/ToastContext.js';
+import { useToastState } from '@kirby/app-core';
 
 // Width of the toast column — toasts align to the right inside it, so
 // long messages fill out the full 40 cols and short ones hug the edge.

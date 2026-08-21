@@ -2,16 +2,17 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Text, Box } from 'ink';
 import { render } from 'ink-testing-library';
 import type { SessionBackend } from '@kirby/terminal';
-import { attach, __resetForTests as resetActivity } from '../activity.js';
-import { ACTIVITY_IDLE_MS } from '../activity-config.js';
-import { RainbowSpinner } from '../components/RainbowSpinner.js';
 import {
+  attach,
+  __resetActivityForTests as resetActivity,
+  ACTIVITY_IDLE_MS,
   useActivityStatus,
   useSpinnerFrame,
   __resetForTests as resetHooks,
   __timerActiveForTests,
   __subscriberCountForTests,
-} from './useActivity.js';
+} from '@kirby/app-core';
+import { RainbowSpinner } from '../components/RainbowSpinner.js';
 
 class MockPty {
   private dataCb: ((s: string) => void) | null = null;

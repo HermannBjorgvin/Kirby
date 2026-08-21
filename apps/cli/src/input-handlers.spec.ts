@@ -13,15 +13,14 @@ const { hasAnySessionMock, getTmuxAvailabilityMock } = vi.hoisted(() => ({
   getTmuxAvailabilityMock: vi.fn<[], TmuxStatus | null>(),
 }));
 
-vi.mock('./pty-registry.js', () => ({
+vi.mock('@kirby/app-core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   hasAnySession: () => hasAnySessionMock(),
-}));
-vi.mock('./session-backend.js', () => ({
   getTmuxAvailability: () => getTmuxAvailabilityMock(),
 }));
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from './components/SettingsPanel.js';
+import { buildSettingsFields } from '@kirby/app-core';
 
 const BACKEND_FIELD_INDEX = buildSettingsFields(null).findIndex(
   (f) => f.key === 'terminalBackend'

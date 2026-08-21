@@ -1,6 +1,16 @@
 import { createContext, useContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { useTerminalDimensions } from '../hooks/useTerminalDimensions.js';
+import {
+  useTerminalDimensions,
+  type TerminalDimensions,
+} from '../hooks/useTerminalDimensions.js';
+
+/**
+ * Source of terminal/window dimensions. The CLI shell uses the default
+ * (Node TTY `process.stdout`); the desktop GUI injects a hook backed by
+ * window resize events via the `useDimensions` provider prop.
+ */
+export type UseDimensions = () => TerminalDimensions;
 
 // Layout constants. Exported as LAYOUT so any consumer that needs to
 // recompute pane dimensions (e.g. MainTab's auto-hide sidebar override)
@@ -45,8 +55,14 @@ export interface LayoutContextValue {
 
 const LayoutContext = createContext<LayoutContextValue | null>(null);
 
-export function LayoutProvider({ children }: { children: ReactNode }) {
-  const { rows: termRows, cols: termCols } = useTerminalDimensions();
+export function LayoutProvider({
+  children,
+  useDimensions = useTerminalDimensions,
+}: {
+  children: ReactNode;
+  useDimensions?: UseDimensions;
+}) {
+  const { rows: termRows, cols: termCols } = useDimensions();
 
   const paneCols = Math.max(20, termCols - SIDEBAR_WIDTH - PANE_BORDER_COLS);
   const paneRows = Math.max(

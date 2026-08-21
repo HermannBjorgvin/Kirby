@@ -3,15 +3,15 @@ import { Box, Text, useInput } from 'ink';
 import { Alert, ConfirmInput } from '@inkjs/ui';
 import { Modal } from './Modal.js';
 import { Pane } from './Pane.js';
+import type { DeleteConfirmMode } from '@kirby/app-core';
 import {
   useDeleteConfirmState,
   useDeleteConfirmActions,
-} from '../context/ModalContext.js';
-import { useSessionActions } from '../context/SessionContext.js';
-import { useAsyncOps } from '../context/AsyncOpsContext.js';
-import { useKeybindResolve } from '../context/KeybindContext.js';
+  useSessionActions,
+  useAsyncOps,
+  useKeybindResolve,
+} from '@kirby/app-core';
 import { handleConfirmDeleteInput } from '../screens/main/confirm-delete-input.js';
-import type { DeleteConfirmMode } from '../hooks/useDeleteConfirmation.js';
 
 interface DeleteConfirmModalProps {
   branch: string;

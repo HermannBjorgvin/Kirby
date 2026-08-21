@@ -45,7 +45,9 @@ describe('composePlanPrompt', () => {
   });
 
   it('renders no reply lines when there are none', () => {
-    const out = composePlanPrompt([{ ...remote, replies: [], annotation: undefined }]);
+    const out = composePlanPrompt([
+      { ...remote, replies: [], annotation: undefined },
+    ]);
     expect(out).not.toContain('↳');
   });
 

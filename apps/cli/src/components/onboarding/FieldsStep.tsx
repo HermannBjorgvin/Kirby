@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { Text, Box, useInput } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
-import { useConfig } from '../../context/ConfigContext.js';
-import { resolveValue } from '../SettingsPanel.js';
-import type { SettingsField } from '../SettingsPanel.js';
-import { handleTextInput } from '@kirby/app-core';
+import { useConfig, handleTextInput } from '@kirby/app-core';
+import { resolveValue, type SettingsField } from '@kirby/app-core';
 
 interface FieldsStepProps {
   provider: VcsProvider;

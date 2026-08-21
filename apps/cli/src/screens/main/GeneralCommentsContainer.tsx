@@ -1,10 +1,12 @@
 import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
-import { useSessionActions } from '../../context/SessionContext.js';
+import type {
+  TerminalLayout,
+  PaneModeValue,
+  DiffBundle,
+} from '@kirby/app-core';
+import { useSessionActions } from '@kirby/app-core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 
 interface GeneralCommentsContainerProps {
   pane: PaneModeValue;

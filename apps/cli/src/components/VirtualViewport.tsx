@@ -5,7 +5,7 @@ import {
   itemBounds,
   totalRows,
   viewportRowsForBudget,
-} from '../utils/virtual-viewport.js';
+} from '@kirby/app-core';
 
 /**
  * Row-granular viewport over variable-height items — the render half

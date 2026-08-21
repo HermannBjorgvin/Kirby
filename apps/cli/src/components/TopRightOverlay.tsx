@@ -1,5 +1,5 @@
 import { Box } from 'ink';
-import { useLayout } from '../context/LayoutContext.js';
+import { useLayout } from '@kirby/app-core';
 import { AsyncOpsContent } from './AsyncOpsIndicator.js';
 import { PlanIndicatorSection } from './PlanIndicator.js';
 import { ToastStack } from './ToastContainer.js';

@@ -2,7 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 
 const DEBOUNCE_MS = 500;
 
-export function useTerminalDimensions(): { rows: number; cols: number } {
+export interface TerminalDimensions {
+  rows: number;
+  cols: number;
+}
+
+export function useTerminalDimensions(): TerminalDimensions {
   const [dimensions, setDimensions] = useState({
     rows: process.stdout.rows ?? 24,
     cols: process.stdout.columns ?? 80,

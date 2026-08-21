@@ -2,7 +2,11 @@ import { memo } from 'react';
 import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import type { AnnotatedLine } from '@kirby/review-comments';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
+import {
+  useKeybindResolve,
+  planItemKey,
+  languageFromFilename,
+} from '@kirby/app-core';
 import {
   CommentThreadCard,
   LocalCommentCard,
@@ -10,9 +14,7 @@ import {
   CARD_INDENT,
 } from '../../components/CommentThread.js';
 import type { RowMap } from '@kirby/review-comments';
-import { planItemKey } from '../../plan/plan-types.js';
 import { DiffRow } from './DiffRow.js';
-import { languageFromFilename } from '../../utils/language.js';
 
 // Note composer shown while annotating a plan item (Shift+A). Rendered
 // *in place of* the comment card so it occupies the same slot — the card

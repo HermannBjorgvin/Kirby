@@ -1,14 +1,15 @@
 import type { KeyPress } from '@kirby/app-core';
-import { getDisplayFiles } from '@kirby/diff';
-import { handleReplyModeInput } from '../../utils/reply-mode.js';
-import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import { planItemKey, snapshotRemote } from '../../plan/plan-types.js';
 import {
+  planItemKey,
+  snapshotRemote,
   itemBounds,
   scrollIntoView,
   stepNext,
   stepPrev,
-} from '../../utils/virtual-viewport.js';
+} from '@kirby/app-core';
+import { getDisplayFiles } from '@kirby/diff';
+import { handleReplyModeInput } from '../../utils/reply-mode.js';
+import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 
 // Comment-nav semantics mirror the diff viewer's merged nav pool: cycle

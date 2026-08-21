@@ -1,4 +1,4 @@
-import { handleTextInput, type KeyPress } from '@kirby/app-core';
+import { handleTextInput, type KeyPress, launchSession } from '@kirby/app-core';
 import type { AppConfig } from '@kirby/vcs-core';
 import {
   createWorktree,
@@ -6,7 +6,6 @@ import {
   fetchRemote,
   branchToSessionName,
 } from '@kirby/worktree-manager';
-import { launchSession } from '../../session/launch-session.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 export function startAiSession(

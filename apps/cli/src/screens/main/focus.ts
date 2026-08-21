@@ -9,9 +9,9 @@
 //      the sidebar when nav.focus === 'terminal'. Our helpers must agree
 //      that the sidebar is NOT focused in those cases.
 
-import type { Focus, PaneMode } from '../../types.js';
+import type { Focus, PaneMode } from '@kirby/app-core';
+import { resolveAgent } from '@kirby/app-core';
 import type { AgentId, AppConfig } from '@kirby/vcs-core';
-import { resolveAgent } from '../../agents/registry.js';
 
 export interface FocusState {
   navFocus: Focus;
