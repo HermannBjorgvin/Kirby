@@ -197,6 +197,12 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
+apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
+  src/main/                      — Electron main: window, IPC handlers (window.ts holds the security posture)
+  src/preload/preload.ts         — Typed contextBridge → window.kirby
+  src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names
+  src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
+  scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
 apps/cli-wterm-host/             — HTTP + WS host that bridges Kirby PTY to browser
   src/main.ts                    — Server: /spawn, /kill, WS /pty, ring buffer
   src/protocol.ts                — Shared SpawnRequest + ControlMessage types

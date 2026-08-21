@@ -44,6 +44,9 @@
     },
     {
       "path": "./libs/app-core"
+    },
+    {
+      "path": "./apps/desktop"
     }
   ]
 }
