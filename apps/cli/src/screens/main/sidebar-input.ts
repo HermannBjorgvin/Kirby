@@ -126,6 +126,7 @@ export function handleSidebarInput(
       ctx.branchPicker.setCreating(true);
       ctx.branchPicker.setBranchFilter('');
       ctx.branchPicker.setBranchIndex(0);
+      ctx.branchPicker.setAgentIndex(0);
     });
     return;
   }
