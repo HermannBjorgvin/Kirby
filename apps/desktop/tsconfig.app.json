@@ -22,6 +22,18 @@
   ],
   "references": [
     {
+      "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/github/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/worktree-manager/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/core/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/app-core/tsconfig.lib.json"
     }
   ]

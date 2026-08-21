@@ -36,7 +36,8 @@
           "bundle": true,
           "thirdParty": true,
           "external": [
-            "electron"
+            "electron",
+            "node-pty"
           ],
           "main": "apps/desktop/src/main/main.ts",
           "tsConfig": "apps/desktop/tsconfig.build.json",

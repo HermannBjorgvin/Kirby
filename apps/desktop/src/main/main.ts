@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { IPC } from '../host/contract.js';
+import { app, BrowserWindow } from 'electron';
+import { registerHostHandlers } from '../host/register-handlers.js';
+import { ipcMain } from 'electron';
 import { loadTarget, rendererWebPreferences } from './window.js';
 
 const DIST = join(import.meta.dirname, '..');
@@ -36,14 +37,9 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
-// ── IPC handlers (the main-process side of the host contract) ────
+// ── Host contract (main-process side) ────────────────────────────
 
-ipcMain.handle(IPC.getVersion, () => ({
-  app: app.getVersion(),
-  electron: process.versions.electron ?? 'unknown',
-  node: process.versions.node ?? 'unknown',
-  chrome: process.versions.chrome ?? 'unknown',
-}));
+registerHostHandlers(ipcMain);
 
 // ── App lifecycle ────────────────────────────────────────────────
 
