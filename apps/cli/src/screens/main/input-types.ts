@@ -142,7 +142,7 @@ export interface PlanCheckoutHandlerCtx {
   config: ConfigContextValue;
 }
 
-export interface ConfirmHandlerCtx {
+export interface SessionMenuHandlerCtx {
   pane: PaneModeValue;
   nav: NavValue;
   asyncOps: AsyncOpsValue;

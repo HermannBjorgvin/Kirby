@@ -11,10 +11,7 @@ import { useConfig } from '../../context/ConfigContext.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useLayout } from '../../context/LayoutContext.js';
 import { useSidebar } from '../../context/SidebarContext.js';
-import {
-  buildAgentOptions,
-  handleBranchPickerInput,
-} from '../main/branch-picker-input.js';
+import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({
   filter,
@@ -69,20 +66,8 @@ export const BranchPicker = memo(function BranchPicker({
   const showCreateHint =
     filter.length > 0 && !hasExactMatch && filtered.length > 0;
 
-  const agentOptions = useMemo(
-    () => buildAgentOptions(config.config),
-    [config.config]
-  );
-  const safeAgentIdx = Math.min(
-    Math.max(branchPicker.agentIndex, 0),
-    agentOptions.length - 1
-  );
-  const agentName = agentOptions[safeAgentIdx]?.name ?? 'Agent';
-
   // Windowed rendering: derive visible slice from props
-  // chrome rows = title + agent row + divider + hints
-  // (+ optional create hint)
-  const chromeRows = 4 + (showCreateHint ? 2 : 0);
+  const chromeRows = 3 + (showCreateHint ? 2 : 0); // title + divider + hints + optional create hint
   const maxVisible = Math.max(1, paneRows - chromeRows);
   const needsIndicators = filtered.length > maxVisible;
   const indicatorRows = needsIndicators ? 2 : 0;
@@ -109,11 +94,6 @@ export const BranchPicker = memo(function BranchPicker({
             <Text color="cyan">_</Text>
           </Text>
         )}
-      </Text>
-      <Text>
-        <Text bold>Agent: </Text>
-        <Text color="cyan">{agentName}</Text>
-        <Text dimColor> ←/→ to change (this session only)</Text>
       </Text>
       <Text dimColor>{'─'.repeat(40)}</Text>
       <Text dimColor>

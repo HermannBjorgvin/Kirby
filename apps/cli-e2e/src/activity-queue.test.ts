@@ -1,6 +1,10 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
 import { sidebarLocator } from './setup/sidebar.js';
-import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import {
+  createSession,
+  waitForSidebarFocused,
+  tabIntoSession,
+} from './setup/sessions.js';
 
 // Both sessions run the same fake-agent (aiCommand is global). We rely
 // on the active→idle edge being detected after the 4s burst plus the
@@ -20,7 +24,7 @@ test.describe('Activity queue (Ctrl+Space, setting on)', () => {
   test('jumps to a queued idle session', async ({ kirby }) => {
     // Session A: bursts then goes idle.
     await createSession(kirby.term, 'busy');
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
@@ -31,7 +35,7 @@ test.describe('Activity queue (Ctrl+Space, setting on)', () => {
     // PTY starts (otherwise Ctrl+Space wouldn't intercept — escape only
     // works from a terminal-focused session).
     await createSession(kirby.term, 'second');
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(kirby.term.getByText(/Agent.*second/).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -65,7 +69,7 @@ test.describe('Activity queue (Ctrl+Space, setting off)', () => {
 
   test('falls back to sidebar focus when setting is off', async ({ kirby }) => {
     await createSession(kirby.term, 'busy');
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
@@ -73,7 +77,7 @@ test.describe('Activity queue (Ctrl+Space, setting off)', () => {
     await waitForSidebarFocused(kirby.term);
 
     await createSession(kirby.term, 'second');
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(kirby.term.getByText(/Agent.*second/).first()).toBeVisible({
       timeout: 10_000,
     });

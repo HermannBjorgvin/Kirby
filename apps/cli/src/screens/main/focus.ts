@@ -18,7 +18,7 @@ export interface FocusState {
   paneMode: PaneMode;
   branchPickerCreating: boolean;
   settingsOpen: boolean;
-  reviewConfirmActive: boolean;
+  sessionMenuActive: boolean;
   deleteConfirmActive: boolean;
 }
 
@@ -26,7 +26,7 @@ export interface FocusState {
  * Returns true when the main content pane should render with the active
  * border color. Precedence (highest first):
  *   1. Delete confirm modal → NEITHER pane is focused (modal owns focus).
- *   2. Any modal-ish state (branch picker, settings, review confirm) →
+ *   2. Any modal-ish state (branch picker, settings, session menu) →
  *      main pane, because that's where the modal content renders.
  *   3. Diff modes → main pane, because DiffPane's useInput is the sink.
  *   4. Otherwise → whichever side nav.focus points at.
@@ -35,7 +35,7 @@ export function getMainFocused(s: FocusState): boolean {
   if (s.deleteConfirmActive) return false;
   if (s.branchPickerCreating) return true;
   if (s.settingsOpen) return true;
-  if (s.reviewConfirmActive) return true;
+  if (s.sessionMenuActive) return true;
   if (
     s.paneMode === 'diff' ||
     s.paneMode === 'diff-file' ||
@@ -61,7 +61,7 @@ export interface PaneTitleState {
   branchPickerCreating: boolean;
   settingsOpen: boolean;
   controlsOpen: boolean;
-  reviewConfirmActive: boolean;
+  sessionMenuActive: boolean;
   agentId: AgentId | undefined;
   aiCommand: string | undefined;
   prTitle: string | undefined;
@@ -87,7 +87,7 @@ export function getPaneTitle(s: PaneTitleState): string {
   if (s.controlsOpen) return 'Controls';
   if (s.settingsOpen) return 'Settings';
   if (s.branchPickerCreating) return 'New Session';
-  if (s.reviewConfirmActive) return 'Confirm Review';
+  if (s.sessionMenuActive) return 'Session Menu';
   if (s.paneMode === 'pr-detail') return 'Pull Request';
   if (s.paneMode === 'diff' || s.paneMode === 'diff-file')
     return 'Files Changed';

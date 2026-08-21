@@ -1,10 +1,11 @@
 import { expect, type KirbyTerm } from '../fixtures/kirby.js';
 
 /**
- * Create a session via the branch picker. After this returns, the
- * session row is visible in the sidebar with the user still focused on
- * the sidebar (the PTY has NOT been started yet — use Tab to start +
- * focus the terminal).
+ * Create a session via the branch picker. Creating a worktree lands the
+ * user in the new session's menu; this helper dismisses it, so after it
+ * returns the session row is visible in the sidebar with the user still
+ * focused on the sidebar (the PTY has NOT been started yet — use
+ * `tabIntoSession` to start + focus the terminal).
  */
 export async function createSession(
   term: KirbyTerm,
@@ -32,7 +33,41 @@ export async function createSession(
   await expect(term.getByText('Branch Picker')).not.toBeVisible({
     timeout: 5_000,
   });
+  // Worktree creation finishes by opening the new session's menu —
+  // that's the reliable "creation done" signal. Dismiss it to leave the
+  // caller on the sidebar with the new row selected.
+  await expect(term.getByText('What would you like to do?')).toBeVisible({
+    timeout: 10_000,
+  });
+  await term.press('Escape');
+  await expect(term.getByText('What would you like to do?')).not.toBeVisible({
+    timeout: 5_000,
+  });
   await expect(term.getByText(branchName).first()).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
+/**
+ * Start the selected (non-running) session: Tab opens the session menu,
+ * Enter takes the default "Start/Continue session" row with the default
+ * agent. After this returns the menu is gone and the PTY is spawning —
+ * follow with an assertion on the agent's output to confirm it's up.
+ *
+ * The Tab is retried until the menu shows (a Tab bunched into the same
+ * stdin chunk as a preceding Ctrl+Space can be dropped — same failure
+ * mode `createSession` retries around for 'c'). Re-sending Tab while
+ * the menu is already open is a no-op, so the retry is safe.
+ */
+export async function tabIntoSession(term: KirbyTerm): Promise<void> {
+  await expect(async () => {
+    await term.press('Tab');
+    await expect(term.getByText('What would you like to do?')).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: 10_000, intervals: [400] });
+  await term.press('Enter');
+  await expect(term.getByText('What would you like to do?')).not.toBeVisible({
     timeout: 10_000,
   });
 }

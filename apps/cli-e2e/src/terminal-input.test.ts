@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { tabIntoSession } from './setup/sessions.js';
 
 // Vim preset for the keybindings this test uses (s settings, c branch
 // picker, K kill, x delete). `aiCommand: 'bash'` is an unrecognized
@@ -54,7 +55,7 @@ test.describe('Terminal Input', () => {
     });
 
     // ── 4. Tab to start bash session and focus terminal ──────────
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('ctrl+space to exit').first()
     ).toBeVisible({ timeout: 10_000 });

@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { tabIntoSession } from './setup/sessions.js';
 
 test.use({
   kirbyConfig: {
@@ -38,7 +39,7 @@ test.describe('Sidebar auto-hide', () => {
     // 4. Tab → PTY starts, focus moves to terminal, sidebar hides.
     //    The session name may still be visible as the main pane title, so
     //    assert on a sidebar-only element (keybind hint "quit") instead.
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('kirby-session-active').first()
     ).toBeVisible({ timeout: 10_000 });

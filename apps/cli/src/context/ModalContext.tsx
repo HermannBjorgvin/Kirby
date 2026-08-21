@@ -52,7 +52,6 @@ export interface BranchPickerStateValue {
   branchFilter: string;
   branchIndex: number;
   branches: string[];
-  agentIndex: number;
 }
 
 export interface BranchPickerActionsValue {
@@ -60,7 +59,6 @@ export interface BranchPickerActionsValue {
   setBranchFilter: React.Dispatch<React.SetStateAction<string>>;
   setBranchIndex: React.Dispatch<React.SetStateAction<number>>;
   setBranches: React.Dispatch<React.SetStateAction<string[]>>;
-  setAgentIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export type BranchPickerValue = BranchPickerStateValue &
@@ -152,14 +150,12 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       branchFilter: branchPicker.branchFilter,
       branchIndex: branchPicker.branchIndex,
       branches: branchPicker.branches,
-      agentIndex: branchPicker.agentIndex,
     }),
     [
       branchPicker.creating,
       branchPicker.branchFilter,
       branchPicker.branchIndex,
       branchPicker.branches,
-      branchPicker.agentIndex,
     ]
   );
 
@@ -169,14 +165,12 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       setBranchFilter: branchPicker.setBranchFilter,
       setBranchIndex: branchPicker.setBranchIndex,
       setBranches: branchPicker.setBranches,
-      setAgentIndex: branchPicker.setAgentIndex,
     }),
     [
       branchPicker.setCreating,
       branchPicker.setBranchFilter,
       branchPicker.setBranchIndex,
       branchPicker.setBranches,
-      branchPicker.setAgentIndex,
     ]
   );
 

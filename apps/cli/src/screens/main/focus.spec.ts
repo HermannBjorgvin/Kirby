@@ -12,7 +12,7 @@ const baseFocus: FocusState = {
   paneMode: 'terminal',
   branchPickerCreating: false,
   settingsOpen: false,
-  reviewConfirmActive: false,
+  sessionMenuActive: false,
   deleteConfirmActive: false,
 };
 
@@ -21,7 +21,7 @@ const baseTitle: PaneTitleState = {
   branchPickerCreating: false,
   settingsOpen: false,
   controlsOpen: false,
-  reviewConfirmActive: false,
+  sessionMenuActive: false,
   agentId: undefined,
   aiCommand: undefined,
   prTitle: undefined,
@@ -56,7 +56,7 @@ describe('getMainFocused', () => {
   });
 
   it('is true when the review confirm overlay is active', () => {
-    expect(getMainFocused({ ...baseFocus, reviewConfirmActive: true })).toBe(
+    expect(getMainFocused({ ...baseFocus, sessionMenuActive: true })).toBe(
       true
     );
   });
@@ -206,8 +206,8 @@ describe('getPaneTitle', () => {
   });
 
   it('returns "Confirm Review" when the review confirm overlay is active', () => {
-    expect(getPaneTitle({ ...baseTitle, reviewConfirmActive: true })).toBe(
-      'Confirm Review'
+    expect(getPaneTitle({ ...baseTitle, sessionMenuActive: true })).toBe(
+      'Session Menu'
     );
   });
 });

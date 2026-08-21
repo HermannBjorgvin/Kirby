@@ -15,10 +15,9 @@ import {
   isSessionAlive,
   killSession,
 } from '../../pty-registry.js';
-import { getItemKey, getPrFromItem } from '../../types.js';
+import { getItemKey, getPrFromItem, type SidebarItem } from '../../types.js';
 import { orderRunningTabs } from '../../utils/running-tabs.js';
 import type { SidebarInputCtx } from './input-types.js';
-import { startAiSession } from './branch-picker-input.js';
 import { resolveEditorTarget } from './editor-target.js';
 
 export function handleSidebarInput(
@@ -40,46 +39,17 @@ export function handleSidebarInput(
   // Tab focus toggle
   if (action === 'sidebar.focus-terminal') {
     if (ctx.nav.focus === 'sidebar' && sidebar.sessionNameForTerminal) {
-      ctx.asyncOps.run('start-session', async () => {
-        if (!selectedItem) return;
+      if (!selectedItem) return;
 
-        if (hasSession(sidebar.sessionNameForTerminal!)) {
-          pane.setPaneMode('terminal');
-          pane.setReconnectKey((k) => k + 1);
-          ctx.nav.setFocus('terminal');
-          return;
-        }
+      if (hasSession(sidebar.sessionNameForTerminal)) {
+        pane.setPaneMode('terminal');
+        pane.setReconnectKey((k) => k + 1);
+        ctx.nav.setFocus('terminal');
+        return;
+      }
 
-        // Session item → auto-start PTY
-        if (selectedItem.kind === 'session') {
-          const worktrees = await listWorktrees();
-          const wt = worktrees.find(
-            (w) => worktreeSessionName(w) === selectedItem.session.name
-          );
-          if (!wt) return;
-          startAiSession(
-            selectedItem.session.name,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            wt.path,
-            ctx.config.config
-          );
-          await ctx.sessions.refreshSessions();
-          pane.setReconnectKey((k) => k + 1);
-          pane.setPaneMode('terminal');
-          ctx.nav.setFocus('terminal');
-          return;
-        }
-
-        // Review/orphan PR → show confirm dialog
-        if (selectedItem.pr) {
-          pane.setPaneMode('confirm');
-          pane.setReviewConfirm({
-            pr: selectedItem.pr,
-            selectedOption: 0,
-          });
-        }
-      });
+      // No running PTY → session menu (agent choice, start, review…)
+      openSessionMenu(ctx, selectedItem);
     } else if (ctx.nav.focus === 'terminal') {
       ctx.nav.setFocus('sidebar');
     }
@@ -126,7 +96,6 @@ export function handleSidebarInput(
       ctx.branchPicker.setCreating(true);
       ctx.branchPicker.setBranchFilter('');
       ctx.branchPicker.setBranchIndex(0);
-      ctx.branchPicker.setAgentIndex(0);
     });
     return;
   }
@@ -324,9 +293,8 @@ export function handleSidebarInput(
 
   // Enter
   if (action === 'sidebar.start-session' && selectedItem) {
-    // Session with running PTY → focus terminal
+    // Running PTY → focus terminal
     if (
-      selectedItem.kind === 'session' &&
       sidebar.sessionNameForTerminal &&
       hasSession(sidebar.sessionNameForTerminal)
     ) {
@@ -336,47 +304,21 @@ export function handleSidebarInput(
       return;
     }
 
-    // Session with no PTY, no PR → auto-start session
-    if (selectedItem.kind === 'session' && !selectedItem.pr) {
-      ctx.asyncOps.run('start-session', async () => {
-        const worktrees = await listWorktrees();
-        const wt = worktrees.find(
-          (w) => worktreeSessionName(w) === selectedItem.session.name
-        );
-        if (!wt) return;
-        startAiSession(
-          selectedItem.session.name,
-          ctx.terminal.paneCols,
-          ctx.terminal.paneRows,
-          wt.path,
-          ctx.config.config
-        );
-        await ctx.sessions.refreshSessions();
-        pane.setReconnectKey((k) => k + 1);
-        pane.setPaneMode('terminal');
-        ctx.nav.setFocus('terminal');
-      });
-      return;
-    }
-
-    // Item with PR → show confirm dialog
-    const pr = getPrFromItem(selectedItem);
-    if (pr) {
-      if (
-        sidebar.sessionNameForTerminal &&
-        hasSession(sidebar.sessionNameForTerminal)
-      ) {
-        pane.setPaneMode('terminal');
-        pane.setReconnectKey((k) => k + 1);
-        ctx.nav.setFocus('terminal');
-      } else {
-        pane.setPaneMode('confirm');
-        pane.setReviewConfirm({
-          pr,
-          selectedOption: 0,
-        });
-      }
-      return;
-    }
+    // No running PTY → session menu
+    openSessionMenu(ctx, selectedItem);
+    return;
   }
+}
+
+/** Open the session menu for any non-running sidebar item. */
+function openSessionMenu(
+  ctx: SidebarInputCtx,
+  selectedItem: SidebarItem
+): void {
+  ctx.pane.setPaneMode('confirm');
+  ctx.pane.setSessionMenu({
+    pr: getPrFromItem(selectedItem) ?? null,
+    selectedOption: 0,
+    agentIndex: 0,
+  });
 }

@@ -3,6 +3,7 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { PaneMode, SidebarItem } from '../types.js';
 import { getPrFromItem } from '../types.js';
 import { hasSession } from '../pty-registry.js';
+import { consumeSessionMenuRequest } from '../session-menu-request.js';
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -43,8 +44,14 @@ export interface PaneState {
   generalCommentsIndex: number;
   generalCommentsScrollOffset: number;
 
-  // Review confirm
-  reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
+  // Session menu ("what would you like to do with this branch?").
+  // `pr` is null for plain sessions with no associated PR. `agentIndex`
+  // indexes into buildAgentOptions(config) — 0 is the config default.
+  sessionMenu: {
+    pr: PullRequestInfo | null;
+    selectedOption: number;
+    agentIndex: number;
+  } | null;
   reviewInstruction: string;
 
   // Plan checkout ("add-to-cart")
@@ -77,7 +84,7 @@ export const initialState: PaneState = {
   pendingScrollThreadId: null,
   generalCommentsIndex: 0,
   generalCommentsScrollOffset: 0,
-  reviewConfirm: null,
+  sessionMenu: null,
   reviewInstruction: '',
   priorPaneMode: 'terminal',
   planCheckoutIndex: 0,
@@ -113,8 +120,12 @@ export type PaneAction =
   | { type: 'SET_GENERAL_COMMENTS_INDEX'; updater: Updater<number> }
   | { type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET'; updater: Updater<number> }
   | {
-      type: 'SET_REVIEW_CONFIRM';
-      value: { pr: PullRequestInfo; selectedOption: number } | null;
+      type: 'SET_SESSION_MENU';
+      value: {
+        pr: PullRequestInfo | null;
+        selectedOption: number;
+        agentIndex: number;
+      } | null;
     }
   | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> }
   | { type: 'SET_PRIOR_PANE_MODE'; mode: PaneMode }
@@ -193,8 +204,8 @@ export function paneReducer(state: PaneState, action: PaneAction): PaneState {
           state.generalCommentsScrollOffset
         ),
       };
-    case 'SET_REVIEW_CONFIRM':
-      return { ...state, reviewConfirm: action.value };
+    case 'SET_SESSION_MENU':
+      return { ...state, sessionMenu: action.value };
     case 'SET_REVIEW_INSTRUCTION':
       return {
         ...state,
@@ -238,8 +249,12 @@ export interface PaneActions {
   setPendingScrollThreadId: (id: string | null) => void;
   setGeneralCommentsIndex: (updater: Updater<number>) => void;
   setGeneralCommentsScrollOffset: (updater: Updater<number>) => void;
-  setReviewConfirm: (
-    value: { pr: PullRequestInfo; selectedOption: number } | null
+  setSessionMenu: (
+    value: {
+      pr: PullRequestInfo | null;
+      selectedOption: number;
+      agentIndex: number;
+    } | null
   ) => void;
   setReviewInstruction: (updater: Updater<string>) => void;
   setPriorPaneMode: (mode: PaneMode) => void;
@@ -267,7 +282,8 @@ function defaultPaneMode(
 
 /**
  * Consolidated pane state machine. Replaces the previous four hooks:
- * usePaneMode, useDiffState, useCommentState, useReviewConfirmState.
+ * usePaneMode, useDiffState, useCommentState, useReviewConfirmState
+ * (the last now the session menu).
  *
  * The call site (MainTab) mounts this hook inside a component keyed on
  * the selected sidebar item's identity, so on every item change the
@@ -288,10 +304,30 @@ export function usePaneReducer(
   const [state, dispatch] = useReducer(
     paneReducer,
     { selectedItem, sessionNameForTerminal },
-    (arg) => ({
-      ...initialState,
-      paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
-    })
+    (arg) => {
+      // The branch picker moves the selection to a freshly created
+      // session and asks for its menu to open on mount (the selection
+      // change remounts this reducer, so it can't set pane state
+      // directly — see session-menu-request.ts).
+      if (
+        arg.selectedItem &&
+        consumeSessionMenuRequest(arg.sessionNameForTerminal)
+      ) {
+        return {
+          ...initialState,
+          paneMode: 'confirm' as PaneMode,
+          sessionMenu: {
+            pr: getPrFromItem(arg.selectedItem) ?? null,
+            selectedOption: 0,
+            agentIndex: 0,
+          },
+        };
+      }
+      return {
+        ...initialState,
+        paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
+      };
+    }
   );
 
   const actions = useMemo<PaneActions>(
@@ -326,8 +362,7 @@ export function usePaneReducer(
         dispatch({ type: 'SET_GENERAL_COMMENTS_INDEX', updater }),
       setGeneralCommentsScrollOffset: (updater) =>
         dispatch({ type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET', updater }),
-      setReviewConfirm: (value) =>
-        dispatch({ type: 'SET_REVIEW_CONFIRM', value }),
+      setSessionMenu: (value) => dispatch({ type: 'SET_SESSION_MENU', value }),
       setReviewInstruction: (updater) =>
         dispatch({ type: 'SET_REVIEW_INSTRUCTION', updater }),
       setPriorPaneMode: (mode) =>

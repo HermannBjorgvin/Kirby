@@ -1,13 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-
-// The module imports the session launcher (→ pty-registry → node-pty).
-// Mock the registry so these stay fast, dependency-free unit tests.
-vi.mock('../../pty-registry.js', () => ({
-  spawnSession: vi.fn(),
-  getSession: vi.fn(),
-}));
-
-import { buildAgentOptions } from './branch-picker-input.js';
+import { describe, it, expect } from 'vitest';
+import { buildAgentOptions } from './agent-options.js';
 
 describe('buildAgentOptions', () => {
   it('marks the configured agent as the default and lists the rest after', () => {

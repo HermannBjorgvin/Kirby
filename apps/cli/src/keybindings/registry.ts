@@ -290,19 +290,19 @@ export const ACTIONS = [
     label: 'Fetch remotes',
     context: 'branch-picker',
   },
-  {
-    id: 'branch-picker.cycle-agent-left',
-    label: 'Previous agent',
-    context: 'branch-picker',
-  },
-  {
-    id: 'branch-picker.cycle-agent-right',
-    label: 'Next agent',
-    context: 'branch-picker',
-  },
 
   // ── Confirm Dialog ──
   { id: 'confirm.navigate-down', label: 'Navigate down', context: 'confirm' },
+  {
+    id: 'confirm.cycle-agent-left',
+    label: 'Previous agent',
+    context: 'confirm',
+  },
+  {
+    id: 'confirm.cycle-agent-right',
+    label: 'Next agent',
+    context: 'confirm',
+  },
   { id: 'confirm.navigate-up', label: 'Navigate up', context: 'confirm' },
   { id: 'confirm.cancel', label: 'Cancel', context: 'confirm' },
   { id: 'confirm.select', label: 'Select', context: 'confirm' },
@@ -587,11 +587,11 @@ export const NORMIE_PRESET: KeybindPreset = {
     'branch-picker.navigate-down': [{ flags: { downArrow: true } }],
     'branch-picker.select': [{ flags: { return: true } }],
     'branch-picker.fetch': [{ input: 'f', ctrl: true }],
-    'branch-picker.cycle-agent-left': [{ flags: { leftArrow: true } }],
-    'branch-picker.cycle-agent-right': [{ flags: { rightArrow: true } }],
 
     // Confirm Dialog
     'confirm.navigate-down': [{ flags: { downArrow: true } }],
+    'confirm.cycle-agent-left': [{ flags: { leftArrow: true } }],
+    'confirm.cycle-agent-right': [{ flags: { rightArrow: true } }],
     'confirm.navigate-up': [{ flags: { upArrow: true } }],
     'confirm.cancel': [{ flags: { escape: true } }],
     'confirm.select': [{ flags: { return: true } }],
@@ -711,11 +711,11 @@ export const VIM_PRESET: KeybindPreset = {
     'branch-picker.navigate-down': [{ flags: { downArrow: true } }],
     'branch-picker.select': [{ flags: { return: true } }],
     'branch-picker.fetch': [{ input: 'f', ctrl: true }],
-    'branch-picker.cycle-agent-left': [{ flags: { leftArrow: true } }],
-    'branch-picker.cycle-agent-right': [{ flags: { rightArrow: true } }],
 
     // Confirm Dialog (same as normie)
     'confirm.navigate-down': [{ input: 'j' }, { flags: { downArrow: true } }],
+    'confirm.cycle-agent-left': [{ flags: { leftArrow: true } }],
+    'confirm.cycle-agent-right': [{ flags: { rightArrow: true } }],
     'confirm.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
     'confirm.cancel': [{ flags: { escape: true } }],
     'confirm.select': [{ flags: { return: true } }],
