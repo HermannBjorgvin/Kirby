@@ -131,12 +131,31 @@
           "command": "node apps/desktop/scripts/dev.mjs",
           "cwd": "{workspaceRoot}"
         }
+      },
+      "prepare-install": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node apps/desktop/scripts/prepare-install.mjs"
+        }
+      },
+      "install-global": {
+        "dependsOn": [
+          "prepare-install"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -g ./apps/desktop/dist/kirby-desktop-*.tgz"
+        }
       }
     }
   },
   "dependencies": {
     "@kirby/app-core": "*",
     "@wterm/react": "^0.3.4",
+    "node-pty": "^1.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
