@@ -1,4 +1,4 @@
-import type { Key } from 'ink';
+import type { KeyPress } from './key-press.js';
 
 /**
  * Handle common text-input key patterns: backspace to delete last char,
@@ -6,7 +6,7 @@ import type { Key } from 'ink';
  */
 export function handleTextInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   setter: (fn: (prev: string) => string) => void
 ): boolean {
   if (key.backspace || key.delete) {

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import {
   canRemoveBranch,
   createWorktree,
@@ -23,7 +23,7 @@ import { resolveEditorTarget } from './editor-target.js';
 
 export function handleSidebarInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: SidebarInputCtx
 ): void {
   const { sidebar, pane } = ctx;

@@ -1,5 +1,6 @@
-import { ACTIONS, keysToDisplayString } from './index.js';
-import type { InputContext, KeyDescriptor } from './index.js';
+import { ACTIONS } from './registry.js';
+import { keysToDisplayString } from './hints.js';
+import type { InputContext, KeyDescriptor } from './registry.js';
 
 // ── Section config ─────────────────────────────────────────────────
 

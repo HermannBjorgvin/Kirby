@@ -5,11 +5,7 @@ import {
   useSettingsState,
   useSettingsActions,
 } from '../context/ModalContext.js';
-import { ACTIONS } from '../keybindings/index.js';
-import {
-  buildControlsRows,
-  getBindingRows,
-} from '../keybindings/controls-data.js';
+import { ACTIONS, buildControlsRows, getBindingRows } from '@kirby/app-core';
 import { handleControlsInput } from '../input-handlers.js';
 
 // ── Hints sub-component (isolates context subscription from parent) ──

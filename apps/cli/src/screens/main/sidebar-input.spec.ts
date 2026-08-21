@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import type { SidebarInputCtx } from './input-types.js';
 import type { SidebarItem } from '../../types.js';
 
@@ -20,7 +20,7 @@ const { handleSidebarInput } = await import('./sidebar-input.js');
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-function makeKey(): Key {
+function makeKey(): KeyPress {
   return {
     upArrow: false,
     downArrow: false,

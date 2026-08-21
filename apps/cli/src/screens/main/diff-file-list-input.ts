@@ -1,4 +1,4 @@
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import { getDisplayFiles } from '@kirby/diff';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
@@ -37,7 +37,7 @@ function clampToLastComment(ctx: DiffFileListHandlerCtx): void {
 
 export function handleDiffFileListInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: DiffFileListHandlerCtx
 ): void {
   // Reply mode bypass (Esc/Enter/text) — short-circuits keybind

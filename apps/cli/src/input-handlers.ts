@@ -1,6 +1,14 @@
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
+import {
+  ACTIONS,
+  PRESETS,
+  buildControlsRows,
+  descriptorFromKeypress,
+  findConflict,
+  getBindingRows,
+  handleTextInput,
+} from '@kirby/app-core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
-import { handleTextInput } from './utils/handle-text-input.js';
 import {
   buildSettingsFields,
   resolveValue,
@@ -12,16 +20,6 @@ import type { SessionActionsContextValue } from './context/SessionContext.js';
 import type { ConfigContextValue } from './context/ConfigContext.js';
 import type { TerminalLayout } from './context/LayoutContext.js';
 import type { KeybindContextValue } from './context/KeybindContext.js';
-import {
-  PRESETS,
-  ACTIONS,
-  findConflict,
-  descriptorFromKeypress,
-} from './keybindings/index.js';
-import {
-  buildControlsRows,
-  getBindingRows,
-} from './keybindings/controls-data.js';
 import { hasAnySession } from './pty-registry.js';
 import { getTmuxAvailability } from './session-backend.js';
 import type { SettingsField } from './components/SettingsPanel.js';
@@ -79,7 +77,7 @@ export interface SettingsHandlerCtx {
 
 export function handleSettingsInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: SettingsHandlerCtx
 ): void {
   const fields = buildSettingsFields(ctx.config.provider);
@@ -197,7 +195,7 @@ export interface ControlsHandlerCtx {
 
 export function handleControlsInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: ControlsHandlerCtx
 ): void {
   const rows = buildControlsRows(ctx.keybinds.bindings, ctx.keybinds.isCustom);

@@ -194,11 +194,6 @@ apps/cli/                        — Ink TUI application (ESM, React 19)
   src/main.tsx                   — Entry point, root component
   src/pty-registry.ts            — PTY session lifecycle (spawn, get, kill)
   src/input-handlers.ts          — Shared input types (NavValue, etc.) + settings/controls handlers
-  src/keybindings/               — Customizable keybinding system
-    registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
-    resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
-    hints.ts                     — Human-readable key display strings
-    controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
@@ -215,6 +210,13 @@ apps/cli-e2e/                    — E2E tests (@playwright/test)
   src/setup/                     — git-repo.ts, sidebar.ts, constants.ts, github.ts
   src/*.test.ts                  — Test files (one per feature area)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
+libs/app-core/                   — Shell-agnostic app core (shared by CLI TUI and future GUI)
+  src/lib/keybindings/           — Customizable keybinding system
+    registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
+    resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
+    hints.ts                     — Human-readable key display strings
+    controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
+  src/lib/input/                 — KeyPress type (shell-agnostic ink-Key shape) + text-input handling
 libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
 libs/terminal/                   — Terminal emulator (renderer) + SessionBackend interface
@@ -318,16 +320,19 @@ Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
 ### How to publish a beta version
 
 1. Bump the version in `apps/cli/package.json`. Every version must end in `-beta.N`:
+
    - Patch: `0.0.1-beta.2` or `0.0.2-beta.1`
    - Minor: `0.1.0-beta.1`
    - Major: `1.0.0-beta.1`
 
 2. Commit the bump:
+
    ```bash
    git commit apps/cli/package.json -m "chore: bump kirby to 0.0.1-beta.2"
    ```
 
 3. Publish:
+
    ```bash
    npx nx run cli:publish
    ```

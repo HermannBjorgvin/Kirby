@@ -1,6 +1,5 @@
-import type { Key } from 'ink';
+import { handleTextInput, type KeyPress } from '@kirby/app-core';
 import type { RemoteCommentReply } from '@kirby/vcs-core';
-import { handleTextInput } from './handle-text-input.js';
 
 // Shared reply-mode input handling.
 //
@@ -51,7 +50,7 @@ export interface ReplyModeDeps {
  */
 export function handleReplyModeInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   deps: ReplyModeDeps
 ): boolean {
   const { pane, flashStatus, replyToThread, onReplyPosted } = deps;

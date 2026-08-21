@@ -4,7 +4,7 @@ import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { useConfig } from '../../context/ConfigContext.js';
 import { resolveValue } from '../SettingsPanel.js';
 import type { SettingsField } from '../SettingsPanel.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleTextInput } from '@kirby/app-core';
 
 interface FieldsStepProps {
   provider: VcsProvider;

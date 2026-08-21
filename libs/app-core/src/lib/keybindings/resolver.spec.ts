@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '../input/key-press.js';
 import {
   matchesKey,
   resolveAction,
@@ -8,9 +8,9 @@ import {
 } from './resolver.js';
 import type { KeyDescriptor, ActionDef } from './registry.js';
 
-// ── Helper to build a minimal Key object ──────────────────────────
+// ── Helper to build a minimal KeyPress object ──────────────────────────
 
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,

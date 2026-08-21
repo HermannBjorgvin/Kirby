@@ -1,4 +1,4 @@
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import { hasSession } from '../../pty-registry.js';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
@@ -17,7 +17,7 @@ import type { PlanCheckoutHandlerCtx } from './input-types.js';
 
 export function handlePlanCheckoutInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: PlanCheckoutHandlerCtx
 ): void {
   const { pane, plan, selectedPr } = ctx;

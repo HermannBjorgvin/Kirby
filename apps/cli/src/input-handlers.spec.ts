@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import type { AppConfig } from '@kirby/vcs-core';
 import type { TmuxStatus } from '@kirby/terminal-tmux';
 
@@ -70,7 +70,7 @@ function harness(
   return { ctx, updateField, flashStatus, setPreset };
 }
 
-const NO_KEY = {} as Key;
+const NO_KEY = {} as KeyPress;
 
 // Both paths that can write a preset-backed field. If a future refactor
 // adds a third, it needs its own guard call — and this table is where

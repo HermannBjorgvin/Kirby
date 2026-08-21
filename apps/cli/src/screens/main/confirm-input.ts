@@ -1,9 +1,8 @@
-import type { Key } from 'ink';
+import { handleTextInput, type KeyPress } from '@kirby/app-core';
 import { createWorktree } from '@kirby/worktree-manager';
 import { hasSession } from '../../pty-registry.js';
 import { launchSession } from '../../session/launch-session.js';
 import { getPrFromItem } from '../../types.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { ConfirmHandlerCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
 
@@ -70,7 +69,7 @@ const CONFIRM_OPTIONS = 4;
 
 export function handleConfirmInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: ConfirmHandlerCtx
 ): void {
   const confirm = ctx.pane.reviewConfirm!;

@@ -1,11 +1,11 @@
-import type { Key } from 'ink';
+import type { KeyPress } from '../input/key-press.js';
 import type { KeyDescriptor, InputContext, ActionDef } from './registry.js';
 
 /** Check whether a keypress matches a single key descriptor */
 export function matchesKey(
   descriptor: KeyDescriptor,
   input: string,
-  key: Key
+  key: KeyPress
 ): boolean {
   // Must have at least input or flags to match
   if (descriptor.input === undefined && !descriptor.flags) return false;
@@ -17,7 +17,7 @@ export function matchesKey(
   // Check special key flags — all specified flags must be true
   if (descriptor.flags) {
     for (const [flag, required] of Object.entries(descriptor.flags)) {
-      if (required && !key[flag as keyof Key]) return false;
+      if (required && !key[flag as keyof KeyPress]) return false;
     }
   }
 
@@ -67,7 +67,7 @@ export function matchesKey(
  */
 export function resolveAction(
   input: string,
-  key: Key,
+  key: KeyPress,
   context: InputContext,
   bindings: Record<string, KeyDescriptor[]>,
   actions: readonly ActionDef[]
@@ -90,7 +90,7 @@ export function resolveAction(
  */
 export function findConflict(
   input: string,
-  key: Key,
+  key: KeyPress,
   context: InputContext,
   bindings: Record<string, KeyDescriptor[]>,
   actions: readonly ActionDef[],
@@ -115,12 +115,12 @@ export function findConflict(
  */
 export function descriptorFromKeypress(
   input: string,
-  key: Key
+  key: KeyPress
 ): KeyDescriptor | null {
   const desc: KeyDescriptor = {};
 
   // Special keys via flags
-  const flagMap: [keyof Key, string][] = [
+  const flagMap: [keyof KeyPress, string][] = [
     ['upArrow', 'upArrow'],
     ['downArrow', 'downArrow'],
     ['leftArrow', 'leftArrow'],

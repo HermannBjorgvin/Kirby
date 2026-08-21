@@ -1,4 +1,4 @@
-import type { Key } from 'ink';
+import type { KeyPress } from '../input/key-press.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -6,10 +6,10 @@ import type { Key } from 'ink';
 export interface KeyDescriptor {
   /** The character from the `input` param (e.g. 'j', 'q'). Omit for non-character keys. */
   input?: string;
-  /** Which Key boolean flags must be true (e.g. { downArrow: true }) */
+  /** Which KeyPress boolean flags must be true (e.g. { downArrow: true }) */
   flags?: Partial<
     Pick<
-      Key,
+      KeyPress,
       | 'upArrow'
       | 'downArrow'
       | 'leftArrow'

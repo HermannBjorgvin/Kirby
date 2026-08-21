@@ -1,21 +1,21 @@
 import { createContext, useContext, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import type { Key } from 'ink';
-import { useConfig } from './ConfigContext.js';
 import {
   ACTIONS,
   PRESETS,
   getPreset,
-  resolveAction,
   getHintsForContext,
-  keysToDisplayString,
   getNavHintKeys,
-} from '../keybindings/index.js';
+  keysToDisplayString,
+  resolveAction,
+} from '@kirby/app-core';
 import type {
+  HintEntry,
   InputContext,
   KeyDescriptor,
-  HintEntry,
-} from '../keybindings/index.js';
+  KeyPress,
+} from '@kirby/app-core';
+import { useConfig } from './ConfigContext.js';
 
 // ── Two-context split ────────────────────────────────────────────
 //
@@ -38,7 +38,11 @@ export interface KeybindResolveValue {
   /** The merged bindings (preset + custom overrides) */
   bindings: Record<string, KeyDescriptor[]>;
   /** Resolve a keypress to an action ID in a given context */
-  resolve: (input: string, key: Key, context: InputContext) => string | null;
+  resolve: (
+    input: string,
+    key: KeyPress,
+    context: InputContext
+  ) => string | null;
   /** Get the display key(s) for a given action (e.g. "j/Down") */
   getHintKeys: (actionId: string) => string;
   /** Get combined nav keys for a context (e.g. "j/k" or "Down/Up") */
@@ -90,7 +94,7 @@ export function KeybindProvider({ children }: { children: ReactNode }) {
   }, [preset, overrides]);
 
   const resolve = useCallback(
-    (input: string, key: Key, context: InputContext) =>
+    (input: string, key: KeyPress, context: InputContext) =>
       resolveAction(input, key, context, mergedBindings, ACTIONS),
     [mergedBindings]
   );

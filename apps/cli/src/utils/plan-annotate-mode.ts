@@ -1,5 +1,4 @@
-import type { Key } from 'ink';
-import { handleTextInput } from './handle-text-input.js';
+import { handleTextInput, type KeyPress } from '@kirby/app-core';
 import type { PlanValue } from '../context/PlanContext.js';
 import type { PlanItem } from '../plan/plan-types.js';
 
@@ -40,7 +39,7 @@ function parseKey(key: string): { kind: PlanItem['kind']; id: string } | null {
  */
 export function handlePlanAnnotateInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   deps: PlanAnnotateDeps
 ): boolean {
   const { pane, plan, prId } = deps;

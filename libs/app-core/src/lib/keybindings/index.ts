@@ -26,3 +26,5 @@ export {
   getNavHintKeys,
 } from './hints.js';
 export type { HintEntry } from './hints.js';
+export { buildControlsRows, getBindingRows } from './controls-data.js';
+export type { ControlsRow } from './controls-data.js';

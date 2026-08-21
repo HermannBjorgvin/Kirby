@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '../input/key-press.js';
 import {
   ACTIONS,
   NORMIE_PRESET,
@@ -11,7 +11,7 @@ import { resolveAction, findConflict } from './resolver.js';
 
 // Helper — same shape as resolver.spec.ts's, kept local so the two
 // files stay independent.
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,
@@ -43,7 +43,7 @@ function actionExists(id: string): boolean {
 
 function resolveInPreset(
   input: string,
-  key: Key,
+  key: KeyPress,
   context: 'diff-file-list' | 'diff-viewer' | 'sidebar',
   preset: KeybindPreset
 ): string | null {
@@ -195,7 +195,7 @@ describe('registry — diff-file-list comment actions', () => {
     const checks: {
       name: string;
       input: string;
-      key: Key;
+      key: KeyPress;
       id: ActionId;
     }[] = [
       {
@@ -281,7 +281,7 @@ function keypressFromDescriptor(desc: {
   ctrl?: boolean;
   shift?: boolean;
   meta?: boolean;
-}): { input: string; key: Key } {
+}): { input: string; key: KeyPress } {
   const key = makeKey({
     ...(desc.flags ?? {}),
     ctrl: desc.ctrl === true,
@@ -318,7 +318,12 @@ describe('registry — plan bindings', () => {
       'diff-viewer.plan-toggle'
     );
     expect(
-      resolveInPreset('A', makeKey({ shift: true }), 'diff-viewer', NORMIE_PRESET)
+      resolveInPreset(
+        'A',
+        makeKey({ shift: true }),
+        'diff-viewer',
+        NORMIE_PRESET
+      )
     ).toBe('diff-viewer.plan-annotate');
     expect(resolveInPreset('c', makeKey(), 'diff-viewer', NORMIE_PRESET)).toBe(
       'diff-viewer.plan-checkout'
@@ -359,7 +364,14 @@ describe('registry — plan bindings', () => {
           it(`${preset.id}/${context}: ${action.id}[${di}] has no conflict`, () => {
             const { input, key } = keypressFromDescriptor(desc);
             expect(
-              findConflict(input, key, context, preset.bindings, ACTIONS, action.id)
+              findConflict(
+                input,
+                key,
+                context,
+                preset.bindings,
+                ACTIONS,
+                action.id
+              )
             ).toBeNull();
           });
         }

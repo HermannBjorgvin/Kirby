@@ -1,6 +1,5 @@
-import type { Key } from 'ink';
+import { handleTextInput, type KeyPress } from '@kirby/app-core';
 import type { ReviewComment } from '../../types.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
@@ -93,7 +92,7 @@ function scrollToComment(
 
 export function handleDiffViewerInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: DiffViewerHandlerCtx
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
