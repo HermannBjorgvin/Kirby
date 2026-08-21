@@ -48,4 +48,24 @@ describe('registerHostHandlers', () => {
       'Not a git repository: /x'
     );
   });
+
+  it('strips the invoke event so handlers receive only the payload', async () => {
+    const { registered, registrar } = collect();
+    const seen: unknown[] = [];
+    const api = {
+      ...createHostApi(),
+      openRepo: (cwd: string) => {
+        seen.push(cwd);
+        return Promise.resolve({
+          cwd,
+          providerId: null,
+          vcsConfigured: false,
+        });
+      },
+    };
+    registerHostHandlers(registrar, api);
+    // Electron passes the IpcMainInvokeEvent as the first listener arg.
+    await registered.get(IPC.openRepo)!({ senderFrame: 'x' }, '/some/repo');
+    expect(seen).toEqual(['/some/repo']);
+  });
 });

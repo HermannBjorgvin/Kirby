@@ -103,7 +103,9 @@ export function registerHostHandlers(
 
   for (const [channel, fn] of Object.entries(handlers)) {
     if (!fn) throw new Error(`No host implementation for ${channel}`);
-    register.handle(channel, async (...args: unknown[]) => {
+    // Electron's ipcMain.handle passes the IpcMainInvokeEvent as the
+    // first listener arg; the contract methods only want the payload.
+    register.handle(channel, async (event, ...args: unknown[]) => {
       try {
         return await (fn as (...a: unknown[]) => unknown)(...args);
       } catch (err: unknown) {
