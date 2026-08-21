@@ -228,7 +228,35 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
   src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
+libs/kitty-graphics/             — Kitty graphics protocol (Unicode placeholders)
+  src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, delete
+  src/lib/placement.ts           — px→cells placement heuristic (~10px/col, 2:1 aspect, 24-row cap)
+  src/lib/rowcolumn-diacritics.ts — generated from kitty gen/rowcolumn-diacritics.txt
+libs/image-loader/               — Comment-image download + decode
+  src/lib/image-format.ts        — sniff + header-only dimensions (PNG/JPEG/GIF/WebP)
+  src/lib/decode-image.ts        — PNG passthrough; JPEG/GIF/WebP → RGBA (webp wasm lazy-loaded)
+  src/lib/fetch-image.ts         — auth-aware fetch (gh token bearer / ADO PAT basic)
 ```
+
+## Comment images (kitty graphics)
+
+- Images embedded in PR-comment markdown (`![alt](url)`) render inline in all
+  reviews surfaces when the terminal supports kitty graphics (kitty, ghostty);
+  everywhere else the raw markdown stays. Detection is env-based
+  (`detectKittyGraphics`); override with `KIRBY_IMAGES=off|kitty|auto`.
+- Mechanism: each distinct url is fetched+decoded once, transmitted out-of-band
+  as a _virtual_ placement (`U=1`, no cursor drawing — same stdout-write
+  precedent as `window-title.ts`), then `CommentBody` renders U+10EEEE
+  placeholder rows as ordinary `<Text>` — flows through Ink layout/diffing.
+- `estimateBodyRows`/`estimateCardRows`/`buildRowMap`/`planCommentFooter` take
+  an optional `imageLayouts` map (url → {rows, cols}) so scroll geometry stays
+  exact; `MainContent` mounts `CommentImagesContext` over the reviews panes.
+- **wterm (e2e) cannot render kitty graphics or report mouse events.** E2E
+  asserts escape bytes via the host's `GET /output` (raw PTY ring buffer,
+  base64) and injects SGR wheel/click sequences via `term.write()`. Real-pixel
+  verification is manual QA in ghostty/kitty.
+- The published bundle ships `webp.wasm` next to `main.js`
+  (prepare-publish.mjs); missing wasm degrades WebP to markdown fallback.
 
 ## Known Decisions & Learnings
 
@@ -318,16 +346,19 @@ Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
 ### How to publish a beta version
 
 1. Bump the version in `apps/cli/package.json`. Every version must end in `-beta.N`:
+
    - Patch: `0.0.1-beta.2` or `0.0.2-beta.1`
    - Minor: `0.1.0-beta.1`
    - Major: `1.0.0-beta.1`
 
 2. Commit the bump:
+
    ```bash
    git commit apps/cli/package.json -m "chore: bump kirby to 0.0.1-beta.2"
    ```
 
 3. Publish:
+
    ```bash
    npx nx run cli:publish
    ```
