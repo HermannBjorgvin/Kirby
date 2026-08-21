@@ -201,6 +201,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Raw PTY output (ring buffer) as base64. E2E tests read this to
+  // assert on escape sequences the browser terminal can't render —
+  // kitty graphics APC payloads, DECSET mouse-mode toggles, etc.
+  if (req.method === 'GET' && url.pathname === '/output') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        base64: Buffer.concat(outputBuffer).toString('base64'),
+      })
+    );
+    return;
+  }
+
   if (req.method !== 'GET') {
     res.writeHead(405).end('method not allowed');
     return;
