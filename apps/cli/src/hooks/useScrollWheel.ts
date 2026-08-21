@@ -41,6 +41,35 @@ export function parseWheelTicks(str: string, region?: WheelRegion): number {
   return ticks;
 }
 
+/** A left-button press with its 1-based terminal coordinates. */
+export interface MouseClick {
+  x: number;
+  y: number;
+}
+
+/**
+ * Left-button presses in one stdin chunk, optionally filtered to a
+ * column region. Releases, wheel events, and other buttons are
+ * ignored.
+ */
+export function parseMouseClicks(
+  str: string,
+  region?: WheelRegion
+): MouseClick[] {
+  const clicks: MouseClick[] = [];
+  // eslint-disable-next-line no-control-regex
+  const re = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(str)) !== null) {
+    if (match[1] !== '0' || match[4] !== 'M') continue;
+    const x = parseInt(match[2], 10);
+    if (region?.xMin !== undefined && x < region.xMin) continue;
+    if (region?.xMax !== undefined && x > region.xMax) continue;
+    clicks.push({ x, y: parseInt(match[3], 10) });
+  }
+  return clicks;
+}
+
 // Multiple wheel consumers can be active at once (sidebar + a reviews
 // pane, split by region), so the DECSET enable/disable writes are
 // refcounted — enable on the first active consumer, disable when the
@@ -89,4 +118,43 @@ export function useScrollWheel(
       releaseMouse(stdout as NodeJS.WriteStream);
     };
   }, [active, stdin, stdout, onWheel, xMin, xMax]);
+}
+
+/**
+ * Left-click support, sharing the wheel hook's refcounted mouse mode.
+ * Used by the sidebar so clicks select items / open PR links even
+ * though mouse reporting steals plain clicks from the terminal's own
+ * link handling.
+ */
+export function useMouseClicks(
+  active: boolean,
+  onClick: (click: MouseClick) => void,
+  region?: WheelRegion
+) {
+  const { stdin } = useStdin();
+  const { stdout } = useStdout();
+  const xMin = region?.xMin;
+  const xMax = region?.xMax;
+
+  useEffect(() => {
+    if (!active || !stdin || !stdout) return;
+
+    acquireMouse(stdout as NodeJS.WriteStream);
+
+    const handler = (data: Buffer) => {
+      for (const click of parseMouseClicks(data.toString('utf8'), {
+        xMin,
+        xMax,
+      })) {
+        onClick(click);
+      }
+    };
+
+    stdin.on('data', handler);
+
+    return () => {
+      stdin.off('data', handler);
+      releaseMouse(stdout as NodeJS.WriteStream);
+    };
+  }, [active, stdin, stdout, onClick, xMin, xMax]);
 }

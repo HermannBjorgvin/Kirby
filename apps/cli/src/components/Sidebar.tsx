@@ -6,6 +6,11 @@ import type { AgentSession, SidebarItem } from '../types.js';
 import { PrBadge } from './PrBadge.js';
 import { RainbowSpinner } from './RainbowSpinner.js';
 import { SidebarLayout } from './SidebarLayout.js';
+import {
+  buildSidebarHitTest,
+  type SidebarHitRow,
+} from './sidebar-hit-regions.js';
+import { sidebarHitTestRef } from './sidebar-hit-test.js';
 import { computeScrollWindow } from '../utils/scroll-window.js';
 import { useConfig } from '../context/ConfigContext.js';
 import { useKeybindResolve } from '../context/KeybindContext.js';
@@ -24,6 +29,30 @@ import { tabDigit } from '../utils/running-tabs.js';
 // terminal height) but actually renders inside a smaller flex slot.
 const SIDEBAR_CHROME_ROWS = LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS;
 const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
+
+// ── Row geometry ────────────────────────────────────────────────
+
+// Single source of truth for an item's rendered height and which of
+// its lines carries the PR badge — shared by the scroll-window math
+// and the click hit test so they can't drift apart.
+function itemRowLayout(
+  item: SidebarItem,
+  vcsConfigured: boolean
+): { height: number; badgeLineOffset: number | null } {
+  if (item.kind === 'session') {
+    let height = 1; // title line
+    if (item.conflictCount != null && item.conflictCount > 0) height++;
+    if (vcsConfigured) {
+      height++; // PrBadge (badge or "(no PR)")
+      return { height, badgeLineOffset: height - 1 };
+    }
+    return { height, badgeLineOffset: null };
+  }
+  if (item.kind === 'orphan-pr') {
+    return { height: 2, badgeLineOffset: 1 }; // title + badge
+  }
+  return { height: 3, badgeLineOffset: 1 }; // review: title + badge + author
+}
 
 // ── Section header detection ────────────────────────────────────
 
@@ -373,15 +402,7 @@ export const Sidebar = memo(function Sidebar({
   const rowHeights = useMemo(() => {
     return rows.map((row): number => {
       if (row.type === 'header') return row.first ? 1 : 2; // divider (+ marginTop if not first)
-      const { item } = row;
-      if (item.kind === 'session') {
-        let h = 1; // title line
-        if (item.conflictCount != null && item.conflictCount > 0) h++;
-        if (vcsConfigured) h++; // PrBadge (badge or "(no PR)")
-        return h;
-      }
-      if (item.kind === 'orphan-pr') return 2; // title + badge
-      return 3; // review: title + badge + "by author"
+      return itemRowLayout(row.item, vcsConfigured).height;
     });
   }, [rows, vcsConfigured]);
 
@@ -463,6 +484,38 @@ export const Sidebar = memo(function Sidebar({
     keybindLineCount,
     hintsHidden,
   ]);
+
+  // Publish a click hit test built from the exact rows just laid out,
+  // so MainTab can map SGR click coordinates to items / PR badges.
+  const hitTest = useMemo(() => {
+    const visible: SidebarHitRow[] = fullyVisibleRows.map((row) => {
+      if (row.type === 'header') {
+        return { type: 'header' as const, height: row.first ? 1 : 2 };
+      }
+      const { height, badgeLineOffset } = itemRowLayout(
+        row.item,
+        vcsConfigured
+      );
+      return {
+        type: 'item' as const,
+        itemIndex: row.itemIndex,
+        height,
+        badgeLineOffset,
+      };
+    });
+    return buildSidebarHitTest({
+      visibleRows: visible,
+      hasAboveIndicator: aboveCount > 0,
+    });
+  }, [fullyVisibleRows, aboveCount, vcsConfigured]);
+
+  useEffect(() => {
+    sidebarHitTestRef.current = hitTest;
+    return () => {
+      if (sidebarHitTestRef.current === hitTest)
+        sidebarHitTestRef.current = null;
+    };
+  }, [hitTest]);
 
   const renderRow = (row: RenderRow) => {
     if (row.type === 'header') {

@@ -59,7 +59,16 @@ export async function decodeImage(
       case 'gif': {
         const reader = new GifReader(buf);
         const rgba = new Uint8Array(reader.width * reader.height * 4);
-        reader.decodeAndBlitFrameRGBA(0, rgba);
+        // Composite frames up to the middle of the animation and show
+        // that as the static image. Frame 0 alone is often useless —
+        // screen-capture GIFs tend to open on a bare background frame,
+        // and later frames are partial deltas that need the frames
+        // before them. Capped so pathological GIFs stay cheap.
+        const frames = reader.numFrames();
+        const target = Math.min(Math.floor(frames / 2), frames - 1, 60);
+        for (let f = 0; f <= target; f++) {
+          reader.decodeAndBlitFrameRGBA(f, rgba);
+        }
         return { format, width: reader.width, height: reader.height, rgba };
       }
       case 'webp': {

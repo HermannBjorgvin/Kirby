@@ -37,3 +37,23 @@ describe('decodeImage', () => {
     expect(await decodeImage(corrupt)).toBeNull();
   });
 });
+
+describe('animated GIF static frame', () => {
+  it('composites frames and shows a mid-animation frame, not frame 0', async () => {
+    // 1x1 GIF, 2 frames: red then blue. Screen-capture GIFs often open
+    // on a bare background frame, so the static render must composite
+    // into the animation instead of showing frame 0.
+    const { GifWriter } = await import('omggif');
+    const buf = Buffer.alloc(1024);
+    const writer = new GifWriter(buf, 1, 1, { loop: 0 });
+    const palette = [0xff0000, 0x0000ff];
+    writer.addFrame(0, 0, 1, 1, [0], { palette, delay: 10 });
+    writer.addFrame(0, 0, 1, 1, [1], { palette, delay: 10 });
+    const gif = buf.subarray(0, writer.end());
+
+    const d = await decodeImage(gif);
+    expect(d).toMatchObject({ format: 'gif', width: 1, height: 1 });
+    // Mid-frame of a 2-frame animation is frame 1 (blue).
+    expect(d && 'rgba' in d && [...d.rgba.subarray(0, 3)]).toEqual([0, 0, 255]);
+  });
+});

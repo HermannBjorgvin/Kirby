@@ -67,6 +67,16 @@ npx nx e2e cli-e2e               # offline tests only
 npx nx e2e:integration cli-e2e   # offline + @integration-tagged (needs GH_TOKEN)
 ```
 
+**Parallel checkouts:** the wterm host binds port 5174 and Playwright's
+`reuseExistingServer` will silently attach to ANOTHER worktree's host if one
+is already listening (stale build, foreign PTY input → interleaved keystrokes
+and cascading failures). When other Kirby sessions/worktrees may be running
+e2e or `nx serve cli-wterm-host`, isolate with `KIRBY_E2E_PORT=<port>`:
+
+```sh
+KIRBY_E2E_PORT=5175 npx nx e2e cli-e2e
+```
+
 Tests live in `apps/cli-e2e/src/*.test.ts` and use the fixture at
 `apps/cli-e2e/src/fixtures/kirby.ts`. Per test, the fixture:
 

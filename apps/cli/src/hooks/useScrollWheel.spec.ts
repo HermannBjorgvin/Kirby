@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWheelTicks } from './useScrollWheel.js';
+import { parseWheelTicks, parseMouseClicks } from './useScrollWheel.js';
 
 // SGR wheel events: \x1b[<64;x;yM = wheel up, \x1b[<65;x;yM = wheel down.
 // Terminals batch rapid wheel spins into a single stdin chunk, so the
@@ -69,5 +69,23 @@ describe('parseWheelTicks with a column region', () => {
     expect(parseWheelTicks(chunk, { xMax: 48 })).toBe(1);
     expect(parseWheelTicks(chunk, { xMin: 49 })).toBe(2);
     expect(parseWheelTicks(chunk)).toBe(3);
+  });
+});
+
+describe('parseMouseClicks', () => {
+  it('reports left-button presses with coordinates', () => {
+    expect(parseMouseClicks('\x1b[<0;12;7M')).toEqual([{ x: 12, y: 7 }]);
+  });
+
+  it('ignores releases, wheel, and other buttons', () => {
+    expect(parseMouseClicks('\x1b[<0;12;7m')).toEqual([]); // release
+    expect(parseMouseClicks('\x1b[<65;12;7M')).toEqual([]); // wheel
+    expect(parseMouseClicks('\x1b[<2;12;7M')).toEqual([]); // right button
+  });
+
+  it('filters by column region', () => {
+    const chunk = '\x1b[<0;10;3M\x1b[<0;60;4M';
+    expect(parseMouseClicks(chunk, { xMax: 48 })).toEqual([{ x: 10, y: 3 }]);
+    expect(parseMouseClicks(chunk, { xMin: 49 })).toEqual([{ x: 60, y: 4 }]);
   });
 });

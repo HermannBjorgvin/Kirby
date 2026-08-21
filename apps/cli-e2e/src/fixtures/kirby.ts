@@ -96,7 +96,9 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     { page, baseURL, kirbyConfig, kirbyEnv, cols, rows, kirbyRepoPath },
     use
   ) => {
-    const host = baseURL ?? 'http://localhost:5174';
+    const host =
+      baseURL ??
+      `http://localhost:${Number(process.env['KIRBY_E2E_PORT'] ?? 5174)}`;
     const ownsRepo = !kirbyRepoPath;
     const repoPath = kirbyRepoPath ?? createTestRepo();
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));

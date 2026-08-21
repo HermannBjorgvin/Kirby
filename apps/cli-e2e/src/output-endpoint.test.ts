@@ -1,11 +1,10 @@
 import { test, expect } from './fixtures/kirby.js';
+import { HOST } from './setup/host.js';
 
 // GET /output exposes the wterm host's raw PTY ring buffer (base64).
 // It exists so tests can assert on escape sequences the browser
 // terminal can't render — kitty graphics APC payloads, DECSET mouse
 // toggles. This offline test pins the endpoint's contract.
-
-const HOST = process.env.BASE_URL ?? 'http://localhost:5174';
 
 test.describe('Raw output endpoint', () => {
   test('returns the PTY byte stream', async ({ kirby }) => {

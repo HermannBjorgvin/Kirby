@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { HOST } from './setup/host.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
@@ -15,7 +16,6 @@ import { TEST_REPO } from './setup/constants.js';
 // bytes Kirby emits (read back through the host's GET /output).
 
 const hasGhToken = !!process.env.GH_TOKEN;
-const HOST = process.env.BASE_URL ?? 'http://localhost:5174';
 
 // Pointer at column 80 — inside the main pane (the sidebar owns
 // columns 1-48 and scrolls its own selection).

@@ -59,3 +59,23 @@ test.describe('Sidebar wheel scrolling', () => {
     await expect(b.selected().first()).toBeVisible({ timeout: 10_000 });
   });
 });
+
+test.describe('Sidebar click-to-select', () => {
+  test('clicking an item row selects it', async ({ kirby }) => {
+    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await createSession(kirby, 'click-a');
+    await createSession(kirby, 'click-b');
+
+    const a = sidebarLocator(kirby.term.page, 'click-a');
+    const b = sidebarLocator(kirby.term.page, 'click-b');
+    await expect(b.selected().first()).toBeVisible({ timeout: 10_000 });
+
+    // Screen rows: 1 = border/title, 2 = "Worktrees" header,
+    // 3 = click-a, 4 = click-b (no PR badge rows without VCS config).
+    await kirby.term.write('\x1b[<0;10;3M\x1b[<0;10;3m');
+    await expect(a.selected().first()).toBeVisible({ timeout: 10_000 });
+
+    await kirby.term.write('\x1b[<0;10;4M\x1b[<0;10;4m');
+    await expect(b.selected().first()).toBeVisible({ timeout: 10_000 });
+  });
+});
