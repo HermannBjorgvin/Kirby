@@ -80,6 +80,10 @@ export {
 } from './lib/plan/plan-store.js';
 export * from './lib/plan/prompt-composer.js';
 
+// ── Headless screen controllers ─────────────────────────────────
+export * from './lib/controllers/diff-file-list.js';
+export * from './lib/controllers/diff-file-viewer.js';
+
 // ── React contexts ───────────────────────────────────────────────
 export * from './lib/context/ConfigContext.js';
 export * from './lib/context/KeybindContext.js';
@@ -105,6 +109,7 @@ export * from './lib/hooks/useInactiveAlertWatcher.js';
 export * from './lib/hooks/useMergedBranches.js';
 export * from './lib/hooks/useNavigation.js';
 export * from './lib/hooks/usePaneReducer.js';
+export * from './lib/hooks/usePendingThreadScrollIntoView.js';
 export * from './lib/hooks/usePolling.js';
 export * from './lib/hooks/usePrData.js';
 export * from './lib/hooks/usePtySession.js';
