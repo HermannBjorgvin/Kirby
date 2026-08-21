@@ -11,10 +11,16 @@
 import { build, context } from 'esbuild';
 import { spawn } from 'node:child_process';
 import { createServer } from 'vite';
+import { statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const workspaceRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..'
+);
 const appRoot = join(workspaceRoot, 'apps', 'desktop');
 const electronBin = join(workspaceRoot, 'node_modules', '.bin', 'electron');
 const DEV_URL = 'http://localhost:5173';
@@ -41,9 +47,30 @@ const preloadOptions = {
 
 let electronProcess = null;
 
+// npm-installed Electron often can't use its SUID sandbox (chrome-sandbox
+// not root-owned 4755) — e.g. inside containers or unusual setups.
+// Detect that and fall back to --no-sandbox rather than crashing.
+function electronArgs() {
+  const args = [];
+  try {
+    const st = statSync(
+      join(workspaceRoot, 'node_modules', 'electron', 'dist', 'chrome-sandbox')
+    );
+    if (!(st.uid === 0 && (st.mode & 0o4755) === 0o4755)) {
+      console.warn(
+        '[desktop] SUID sandbox unavailable — launching with --no-sandbox (dev only)'
+      );
+      args.push('--no-sandbox');
+    }
+  } catch {
+    args.push('--no-sandbox');
+  }
+  return args;
+}
+
 function startElectron() {
   if (electronProcess) electronProcess.kill();
-  electronProcess = spawn(electronBin, ['.'], {
+  electronProcess = spawn(electronBin, [...electronArgs(), '.'], {
     cwd: appRoot,
     stdio: 'inherit',
     env: {
