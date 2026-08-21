@@ -22,6 +22,7 @@ import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { useAutoSelectFirstComment } from '../../hooks/useAutoSelectFirstComment.js';
 import { usePendingThreadScrollIntoView } from '../../hooks/usePendingThreadScrollIntoView.js';
 import { handleDiffViewerInput } from './main-input.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 
 interface DiffFileViewerContainerProps {
   pane: PaneModeValue;
@@ -134,6 +135,7 @@ export function DiffFileViewerContainer({
   );
   const cardContentWidth = Math.max(1, cardWidth - 4);
 
+  const { layouts: imageLayouts } = useCommentImagesValue();
   const rowMap = useMemo(
     () =>
       buildRowMap({
@@ -143,6 +145,7 @@ export function DiffFileViewerContainer({
         replyingToThreadId: pane.replyingToThreadId,
         editingCommentId: pane.editingCommentId,
         selectedCommentId: pane.selectedCommentId,
+        imageLayouts,
       }),
     [
       annotatedLines,
@@ -151,6 +154,7 @@ export function DiffFileViewerContainer({
       pane.replyingToThreadId,
       pane.editingCommentId,
       pane.selectedCommentId,
+      imageLayouts,
     ]
   );
 

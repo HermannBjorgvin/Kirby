@@ -2,12 +2,14 @@ import { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import {
+  type CommentImageLayouts,
   estimateBodyRows,
   estimateCardRows,
   estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
 import { planItemKey } from '../plan/plan-types.js';
+import { CommentBody } from './CommentBody.js';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //
@@ -133,7 +135,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
           </>
         )}
       </Text>
-      <Text wrap="wrap">{rootComment.body}</Text>
+      <CommentBody body={rootComment.body} />
       {thread.comments.length > 1 && (
         <Box flexDirection="column" marginTop={1}>
           {thread.comments.slice(1).map((reply) => (
@@ -144,7 +146,7 @@ export const CommentThreadCard = memo(function CommentThreadCard({
                 </Text>
                 <Text dimColor>{` · ${relativeTime(reply.createdAt)}`}</Text>
               </Text>
-              <Text wrap="wrap">{reply.body}</Text>
+              <CommentBody body={reply.body} />
             </Box>
           ))}
         </Box>
@@ -318,7 +320,8 @@ export interface FooterComposeState {
 export function planCommentFooter(
   threads: RemoteCommentThread[],
   contentWidth?: number,
-  compose?: FooterComposeState
+  compose?: FooterComposeState,
+  imageLayouts?: CommentImageLayouts
 ): {
   shown: RemoteCommentThread[];
   rows: number;
@@ -338,10 +341,13 @@ export function planCommentFooter(
         1 +
         estimateBodyRows(`${compose.annotationBuffer ?? ''}▍`, contentWidth) +
         1;
-      return Math.max(estimateCardRows(thread, contentWidth), composerRows);
+      return Math.max(
+        estimateCardRows(thread, contentWidth, imageLayouts),
+        composerRows
+      );
     }
     return (
-      estimateCardRows(thread, contentWidth) +
+      estimateCardRows(thread, contentWidth, imageLayouts) +
       (thread.id === compose?.replyingToThreadId
         ? estimateReplyInputRows(compose.replyBuffer ?? '', contentWidth)
         : 0)

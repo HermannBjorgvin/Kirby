@@ -16,6 +16,7 @@ import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 import { handleDiffFileListInput } from './main-input.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 
 interface DiffFileListContainerProps {
   pane: PaneModeValue;
@@ -92,6 +93,7 @@ export function DiffFileListContainer({
         : diffNormalFiles,
     [diffNormalFiles, diffSkippedFiles, pane.showSkipped]
   );
+  const { layouts: imageLayouts } = useCommentImagesValue();
   const layout = useMemo(
     () =>
       computeDiffListLayout({
@@ -109,6 +111,7 @@ export function DiffFileListContainer({
           annotatingPlanKey: pane.annotatingPlanKey,
           annotationBuffer: pane.annotationBuffer,
         },
+        imageLayouts,
       }),
     [
       terminal.paneRows,
@@ -121,6 +124,7 @@ export function DiffFileListContainer({
       pane.replyBuffer,
       pane.annotatingPlanKey,
       pane.annotationBuffer,
+      imageLayouts,
     ]
   );
 

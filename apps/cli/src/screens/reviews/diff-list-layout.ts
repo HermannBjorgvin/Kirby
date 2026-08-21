@@ -1,5 +1,6 @@
 import type { DiffFile } from '@kirby/diff';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { CommentImageLayouts } from '@kirby/review-comments';
 import {
   planCommentFooter,
   CARD_MAX_WIDTH,
@@ -95,6 +96,8 @@ export function buildDiffListItems(opts: {
   /** Live compose state — an open reply input / annotate composer
    *  changes the composing card's span. */
   compose?: FooterComposeState;
+  /** url → placement for ready comment images (affects card spans). */
+  imageLayouts?: CommentImageLayouts;
 }): DiffListItem[] {
   const { displayFiles, treeMode, threads, cardContentWidth } = opts;
   const items: DiffListItem[] = [];
@@ -124,7 +127,8 @@ export function buildDiffListItems(opts: {
   const { spans: cardSpans } = planCommentFooter(
     threads,
     cardContentWidth,
-    opts.compose
+    opts.compose,
+    opts.imageLayouts
   );
   threads.forEach((thread, commentIndex) => {
     const withHeading = commentIndex === 0;
@@ -167,6 +171,8 @@ export function computeDiffListLayout(opts: {
   threads: RemoteCommentThread[];
   /** Live compose state — see `buildDiffListItems`. */
   compose?: FooterComposeState;
+  /** url → placement for ready comment images — see `buildDiffListItems`. */
+  imageLayouts?: CommentImageLayouts;
 }): DiffListLayout {
   const { paneRows, paneCols, displayFiles, skippedCount, threads } = opts;
 
@@ -180,6 +186,7 @@ export function computeDiffListLayout(opts: {
     threads,
     cardContentWidth,
     compose: opts.compose,
+    imageLayouts: opts.imageLayouts,
   });
   const spans = items.map((i) => i.span);
 
