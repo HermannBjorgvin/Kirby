@@ -19,13 +19,17 @@ export interface GifAnimation {
 }
 
 export interface GifAnimationOptions {
-  /** Downscale frames to at most this many pixels wide (default 640). */
+  /**
+   * Downscale frames to at most this many pixels wide. Default: no
+   * downscaling — frames keep the GIF's native resolution (the
+   * terminal scales into the placement rectangle far better than
+   * nearest-neighbor pre-scaling would).
+   */
   maxWidth?: number;
   /** Keep at most this many frames (default 120). */
   maxFrames?: number;
 }
 
-const DEFAULT_MAX_WIDTH = 640;
 const DEFAULT_MAX_FRAMES = 120;
 
 // GIF delays are centiseconds; ≤1cs conventionally means "unspecified"
@@ -67,7 +71,7 @@ export function decodeGifAnimation(
   opts: GifAnimationOptions = {}
 ): GifAnimation | null {
   if (sniffImageFormat(bytes) !== 'gif') return null;
-  const maxWidth = opts.maxWidth ?? DEFAULT_MAX_WIDTH;
+  const maxWidth = opts.maxWidth;
   const maxFrames = opts.maxFrames ?? DEFAULT_MAX_FRAMES;
   try {
     const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -76,7 +80,7 @@ export function decodeGifAnimation(
     if (count < 2) return null;
 
     const { width, height } = reader;
-    const scale = width > maxWidth;
+    const scale = maxWidth !== undefined && width > maxWidth;
     const outWidth = scale ? maxWidth : width;
     const outHeight = scale
       ? Math.max(1, Math.round((height * maxWidth) / width))

@@ -78,6 +78,25 @@ describe('decodeGifAnimation', () => {
     ]);
   });
 
+  it('keeps full resolution by default (no implicit downscale)', () => {
+    // Wider than the old 640px animation cap — frames must come back
+    // at native size unless a maxWidth is explicitly requested.
+    const width = 700;
+    const pixels = Array.from({ length: width }, (_, i) => i % 2);
+    const gif = makeGif(
+      width,
+      1,
+      [
+        { pixels, delayCs: 10 },
+        { pixels, delayCs: 10 },
+      ],
+      RED_BLUE
+    );
+    const anim = decodeGifAnimation(gif);
+    expect(anim!.width).toBe(700);
+    expect(anim!.frames[0]!.rgba.length).toBe(700 * 4);
+  });
+
   it('caps the number of frames', () => {
     const frames = Array.from({ length: 6 }, (_, i) => ({
       pixels: [i % 2],
