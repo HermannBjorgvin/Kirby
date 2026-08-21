@@ -633,6 +633,8 @@ export interface BuildRowMapInputs {
    * cap at 4 lines). Remote thread cards always render fully expanded.
    */
   selectedCommentId?: string | null;
+  /** url → placement for comment images that are ready to render. */
+  imageLayouts?: CommentImageLayouts;
 }
 
 /**
@@ -656,6 +658,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     replyingToThreadId,
     editingCommentId,
     selectedCommentId,
+    imageLayouts,
   } = inputs;
 
   const positions: RowMapEntry[] = new Array(annotatedLines.length);
@@ -664,7 +667,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     const entry = annotatedLines[i]!;
     let span = 1;
     if (entry.type === 'thread-remote') {
-      span = estimateCardRows(entry.thread, contentWidth);
+      span = estimateCardRows(entry.thread, contentWidth, imageLayouts);
       if (entry.thread.id === replyingToThreadId) {
         span += REPLY_INPUT_ROWS;
       }

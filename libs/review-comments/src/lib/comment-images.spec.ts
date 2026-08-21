@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { segmentCommentBody } from './comment-images.js';
-import { estimateBodyRows } from './comment-renderer.js';
+import { segmentCommentBody, collectImageUrls } from './comment-images.js';
+import { estimateBodyRows, buildRowMap } from './comment-renderer.js';
 
 describe('segmentCommentBody', () => {
   it('returns a single text block for plain text', () => {
@@ -105,5 +105,74 @@ describe('estimateBodyRows with image layouts', () => {
     expect(estimateBodyRows(`a\n\n![a](${url})\nb`, 40, layouts)).toBe(
       2 + 10 + 1
     );
+  });
+});
+
+describe('collectImageUrls', () => {
+  const thread = (id: string, ...bodies: string[]) =>
+    ({
+      id,
+      comments: bodies.map((body, i) => ({
+        id: `${id}-${i}`,
+        author: 'a',
+        body,
+        createdAt: '2026-01-01T00:00:00Z',
+      })),
+    } as never);
+
+  it('collects urls across threads and replies, deduplicated in order', () => {
+    const threads = [
+      thread('t1', 'x ![a](https://x/1.png) y', 'reply ![b](https://x/2.png)'),
+      thread('t2', '![c](https://x/1.png) again\n![d](https://x/3.png)'),
+    ];
+    expect(collectImageUrls(threads)).toEqual([
+      'https://x/1.png',
+      'https://x/2.png',
+      'https://x/3.png',
+    ]);
+  });
+
+  it('returns empty for threads without images', () => {
+    expect(collectImageUrls([thread('t', 'no images here')])).toEqual([]);
+  });
+});
+
+describe('buildRowMap with image layouts', () => {
+  const url = 'https://x/shot.png';
+  const thread = {
+    id: 'T1',
+    file: 'a.ts',
+    lineStart: 1,
+    lineEnd: 1,
+    side: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    canResolve: true,
+    comments: [
+      {
+        id: 'c1',
+        author: 'a',
+        body: `look\n![s](${url})`,
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+  } as never;
+  const lines = [{ type: 'thread-remote', thread }] as never;
+
+  it('adds image rows to the thread card span', () => {
+    const base = buildRowMap({
+      annotatedLines: lines,
+      sectionAnchors: [0],
+      contentWidth: 40,
+    });
+    const withImages = buildRowMap({
+      annotatedLines: lines,
+      sectionAnchors: [0],
+      contentWidth: 40,
+      imageLayouts: new Map([[url, { rows: 12, cols: 40 }]]),
+    });
+    // base body: "look" + wrapped url line = 2 rows; with layout the
+    // url line becomes 12 image rows
+    expect(withImages.totalRows).toBe(base.totalRows + 11);
   });
 });

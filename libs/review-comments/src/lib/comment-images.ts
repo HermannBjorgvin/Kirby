@@ -31,6 +31,28 @@ export function imageToken(block: { alt: string; url: string }): string {
 }
 
 /**
+ * Every distinct image url across the given threads (root comments and
+ * replies), in first-appearance order.
+ */
+export function collectImageUrls(
+  threads: readonly { comments: readonly { body: string }[] }[]
+): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const thread of threads) {
+    for (const comment of thread.comments) {
+      for (const block of segmentCommentBody(comment.body)) {
+        if (block.type === 'image' && !seen.has(block.url)) {
+          seen.add(block.url);
+          urls.push(block.url);
+        }
+      }
+    }
+  }
+  return urls;
+}
+
+/**
  * Split a comment body into text and block-level image segments.
  * Consecutive text lines merge into one text block joined by newlines;
  * a body without image tokens comes back as a single text block.

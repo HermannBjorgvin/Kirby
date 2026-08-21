@@ -14,6 +14,7 @@ export {
 export { postReviewComments, type PostContext } from './lib/comment-poster.js';
 export {
   segmentCommentBody,
+  collectImageUrls,
   imageToken,
   type BodyBlock,
   type CommentImageLayout,

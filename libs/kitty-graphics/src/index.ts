@@ -6,3 +6,4 @@ export {
   deleteImage,
   type PlacementSize,
 } from './lib/kitty-graphics.js';
+export { placementForImage } from './lib/placement.js';
