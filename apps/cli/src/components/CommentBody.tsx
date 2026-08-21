@@ -12,8 +12,16 @@ import { useCommentImagesValue } from '../context/CommentImagesContext.js';
 // its raw `![alt](url)` token text.
 export const CommentBody = memo(function CommentBody({
   body,
+  width,
 }: {
   body: string;
+  /**
+   * Content width available to this body, in cells. Placeholder rows
+   * wider than this are clipped up front — Ink's truncate-end would
+   * otherwise append a visible '…' (colored with the image id) to
+   * every overflowing row. Undefined = no clipping (flex panes).
+   */
+  width?: number;
 }) {
   const { enabled, images } = useCommentImagesValue();
   if (!enabled) return <Text wrap="wrap">{body}</Text>;
@@ -42,17 +50,17 @@ export const CommentBody = memo(function CommentBody({
             </Text>
           );
         }
+        const cols =
+          width !== undefined ? Math.min(state.cols, width) : state.cols;
         // Placeholder lines must stay one terminal row each — never
-        // wrap them; clipping a too-narrow pane is fine.
+        // wrap them.
         return (
           <Fragment key={i}>
-            {placeholderText(state.id, state.rows, state.cols).map(
-              (line, r) => (
-                <Text key={r} wrap="truncate-end">
-                  {line}
-                </Text>
-              )
-            )}
+            {placeholderText(state.id, state.rows, cols).map((line, r) => (
+              <Text key={r} wrap="truncate-end">
+                {line}
+              </Text>
+            ))}
           </Fragment>
         );
       })}

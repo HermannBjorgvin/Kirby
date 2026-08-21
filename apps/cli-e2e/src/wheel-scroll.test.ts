@@ -17,8 +17,11 @@ import { TEST_REPO } from './setup/constants.js';
 const hasGhToken = !!process.env.GH_TOKEN;
 const HOST = process.env.BASE_URL ?? 'http://localhost:5174';
 
-const WHEEL_DOWN = '\x1b[<65;40;12M';
-const WHEEL_UP = '\x1b[<64;40;12M';
+// Pointer at column 80 — inside the main pane (the sidebar owns
+// columns 1-48 and scrolls its own selection).
+const WHEEL_DOWN = '\x1b[<65;80;12M';
+const WHEEL_UP = '\x1b[<64;80;12M';
+const SIDEBAR_WHEEL_DOWN = '\x1b[<65;10;12M';
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-wheel-clone-'));
 registerCleanup(cloneDir);
@@ -98,6 +101,10 @@ test.describe('@integration Wheel scrolling', () => {
     await expect(kirby.term.getByText('rows above')).not.toBeVisible({
       timeout: 10_000,
     });
+
+    // A wheel event over the sidebar region must NOT scroll the diff.
+    await kirby.term.write(SIDEBAR_WHEEL_DOWN);
+    await expect(kirby.term.getByText('rows above')).not.toBeVisible();
   });
 
   test('mouse clicks do not leak into compose input', async ({ kirby }) => {

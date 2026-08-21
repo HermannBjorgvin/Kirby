@@ -105,3 +105,53 @@ describe('CommentThreadCard image rendering', () => {
     expect(estimateCardRows(thread, CONTENT_WIDTH, value.layouts)).toBe(real);
   });
 });
+
+describe('placeholder clipping (no Ink truncation ellipsis)', () => {
+  it('clips placeholder rows to the card width instead of appending …', () => {
+    // Placement wider than the card interior (e.g. computed before a
+    // terminal resize). Ink's truncate-end would append a colored '…'
+    // to every placeholder row — the "mystery dots" — so the rows must
+    // be clipped to the available width up front.
+    const { lastFrame } = render(
+      <CommentImagesContext.Provider
+        value={imagesValue([[URL, { id: 7, rows: 2, cols: 200 }]])}
+      >
+        <CommentThreadCard
+          thread={makeThread(`![shot](${URL})`)}
+          maxWidth={CARD_WIDTH}
+        />
+      </CommentImagesContext.Provider>
+    );
+    const frame = lastFrame() ?? '';
+    const placeholderLines = frame
+      .split('\n')
+      .filter((l) => l.includes(PLACEHOLDER));
+    expect(placeholderLines).toHaveLength(2);
+    for (const line of placeholderLines) {
+      expect(line).not.toContain('…');
+      expect(line.split(PLACEHOLDER).length - 1).toBe(CONTENT_WIDTH);
+    }
+  });
+
+  it('clips reply placeholders 2 columns narrower (reply indent)', () => {
+    const thread = makeThread('root text');
+    thread.comments.push({
+      id: 'c1',
+      author: 'bob',
+      body: `![shot](${URL})`,
+      createdAt: new Date().toISOString(),
+    });
+    const { lastFrame } = render(
+      <CommentImagesContext.Provider
+        value={imagesValue([[URL, { id: 7, rows: 1, cols: 200 }]])}
+      >
+        <CommentThreadCard thread={thread} maxWidth={CARD_WIDTH} />
+      </CommentImagesContext.Provider>
+    );
+    const frame = lastFrame() ?? '';
+    const line = frame.split('\n').find((l) => l.includes(PLACEHOLDER));
+    expect(line).toBeDefined();
+    expect(line).not.toContain('…');
+    expect(line!.split(PLACEHOLDER).length - 1).toBe(CONTENT_WIDTH - 2);
+  });
+});

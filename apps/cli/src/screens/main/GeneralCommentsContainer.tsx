@@ -3,6 +3,7 @@ import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
 import { useSessionActions } from '../../context/SessionContext.js';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { LAYOUT } from '../../context/LayoutContext.js';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
@@ -29,22 +30,23 @@ export function GeneralCommentsContainer({
   const viewportHeight = Math.max(1, terminal.paneRows - 2);
   const { flashStatus } = useSessionActions();
 
-  // ── Scroll wheel ────────────────────────────────────────────────
+  // ── Scroll wheel (main pane region — the sidebar scrolls itself) ─
   // This pane scrolls by item (one comment card per step), so a wheel
   // tick moves one item rather than SCROLL_LINES rows.
   const count = generalComments.length;
   const { setGeneralCommentsScrollOffset } = pane;
   const handleScrollWheel = useCallback(
-    (delta: number) => {
-      const items = Math.sign(delta);
+    (ticks: number) => {
       const max = Math.max(0, count - viewportHeight);
       setGeneralCommentsScrollOffset((off) =>
-        Math.max(0, Math.min(off + items, max))
+        Math.max(0, Math.min(off + ticks, max))
       );
     },
     [count, viewportHeight, setGeneralCommentsScrollOffset]
   );
-  useScrollWheel(!terminalFocused, handleScrollWheel);
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   useInput(
     (input, key) => {

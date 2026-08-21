@@ -5,7 +5,8 @@ import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
-import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
+import { LAYOUT } from '../../context/LayoutContext.js';
 import { totalRows, clampOffset } from '../../utils/virtual-viewport.js';
 import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { useConfig } from '../../context/ConfigContext.js';
@@ -145,18 +146,20 @@ export function DiffFileListContainer({
     setPendingScrollThreadId: pane.setPendingScrollThreadId,
   });
 
-  // ── Scroll wheel ────────────────────────────────────────────────
+  // ── Scroll wheel (main pane region — the sidebar scrolls itself) ─
   const { setDiffListScrollRow } = pane;
   const handleScrollWheel = useCallback(
-    (delta: number) => {
+    (ticks: number) => {
       const total = totalRows(layout.spans);
       setDiffListScrollRow((o) =>
-        clampOffset(o + delta, total, layout.viewportRows)
+        clampOffset(o + ticks * SCROLL_LINES, total, layout.viewportRows)
       );
     },
     [layout.spans, layout.viewportRows, setDiffListScrollRow]
   );
-  useScrollWheel(!terminalFocused, handleScrollWheel);
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   // Selection breakdown: indices [0, fileCount) select a file; indices
   // [fileCount, diffDisplayCount) select a footer comment (offset by

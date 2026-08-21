@@ -320,6 +320,16 @@ export function handleSidebarInput(
     sidebar.moveSelectionToActive(-1);
     return;
   }
+  // Half the pane height per page — big enough to move fast, small
+  // enough to keep visual continuity.
+  if (action === 'sidebar.page-down') {
+    sidebar.moveSelection(Math.max(3, Math.floor(ctx.terminal.paneRows / 2)));
+    return;
+  }
+  if (action === 'sidebar.page-up') {
+    sidebar.moveSelection(-Math.max(3, Math.floor(ctx.terminal.paneRows / 2)));
+    return;
+  }
 
   // Enter
   if (action === 'sidebar.start-session' && selectedItem) {

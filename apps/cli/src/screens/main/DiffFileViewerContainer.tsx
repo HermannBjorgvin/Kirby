@@ -18,7 +18,8 @@ import { planItemKey } from '../../plan/plan-types.js';
 import type { TerminalLayout } from '../../context/LayoutContext.js';
 import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { DiffBundle } from '../../hooks/useDiffBundle.js';
-import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
+import { LAYOUT } from '../../context/LayoutContext.js';
 import { useAutoSelectFirstComment } from '../../hooks/useAutoSelectFirstComment.js';
 import { usePendingThreadScrollIntoView } from '../../hooks/usePendingThreadScrollIntoView.js';
 import { handleDiffViewerInput } from './main-input.js';
@@ -192,17 +193,21 @@ export function DiffFileViewerContainer({
     setPendingScrollThreadId: pane.setPendingScrollThreadId,
   });
 
-  // ── Scroll wheel ────────────────────────────────────────────────
+  // ── Scroll wheel (main pane region — the sidebar scrolls itself) ─
   const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(
-    (delta: number) => {
+    (ticks: number) => {
       const viewportHeight = Math.max(1, terminal.paneRows - 3);
       const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-      setDiffScrollOffset((o) => Math.max(0, Math.min(o + delta, maxScroll)));
+      setDiffScrollOffset((o) =>
+        Math.max(0, Math.min(o + ticks * SCROLL_LINES, maxScroll))
+      );
     },
     [terminal.paneRows, diffTotalRows, setDiffScrollOffset]
   );
-  useScrollWheel(!terminalFocused, handleScrollWheel);
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   // ── Input routing ───────────────────────────────────────────────
   useInput(

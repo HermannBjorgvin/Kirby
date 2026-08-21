@@ -43,3 +43,31 @@ describe('parseWheelTicks', () => {
     expect(parseWheelTicks('')).toBe(0);
   });
 });
+
+describe('parseWheelTicks with a column region', () => {
+  // SGR events carry the pointer column; region filtering routes the
+  // sidebar (x <= 48) separately from the main pane (x > 48).
+  it('counts events inside xMax', () => {
+    expect(parseWheelTicks('\x1b[<65;10;5M', { xMax: 48 })).toBe(1);
+  });
+
+  it('ignores events beyond xMax', () => {
+    expect(parseWheelTicks('\x1b[<65;60;5M', { xMax: 48 })).toBe(0);
+  });
+
+  it('counts events at or above xMin', () => {
+    expect(parseWheelTicks('\x1b[<65;60;5M', { xMin: 49 })).toBe(1);
+    expect(parseWheelTicks('\x1b[<64;49;5M', { xMin: 49 })).toBe(-1);
+  });
+
+  it('ignores events below xMin', () => {
+    expect(parseWheelTicks('\x1b[<65;10;5M', { xMin: 49 })).toBe(0);
+  });
+
+  it('filters a mixed chunk per region', () => {
+    const chunk = '\x1b[<65;10;5M\x1b[<65;60;5M\x1b[<65;61;6M';
+    expect(parseWheelTicks(chunk, { xMax: 48 })).toBe(1);
+    expect(parseWheelTicks(chunk, { xMin: 49 })).toBe(2);
+    expect(parseWheelTicks(chunk)).toBe(3);
+  });
+});

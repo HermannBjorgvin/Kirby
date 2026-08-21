@@ -318,7 +318,12 @@ describe('registry — plan bindings', () => {
       'diff-viewer.plan-toggle'
     );
     expect(
-      resolveInPreset('A', makeKey({ shift: true }), 'diff-viewer', NORMIE_PRESET)
+      resolveInPreset(
+        'A',
+        makeKey({ shift: true }),
+        'diff-viewer',
+        NORMIE_PRESET
+      )
     ).toBe('diff-viewer.plan-annotate');
     expect(resolveInPreset('c', makeKey(), 'diff-viewer', NORMIE_PRESET)).toBe(
       'diff-viewer.plan-checkout'
@@ -359,7 +364,14 @@ describe('registry — plan bindings', () => {
           it(`${preset.id}/${context}: ${action.id}[${di}] has no conflict`, () => {
             const { input, key } = keypressFromDescriptor(desc);
             expect(
-              findConflict(input, key, context, preset.bindings, ACTIONS, action.id)
+              findConflict(
+                input,
+                key,
+                context,
+                preset.bindings,
+                ACTIONS,
+                action.id
+              )
             ).toBeNull();
           });
         }
@@ -457,4 +469,28 @@ describe('registry — sidebar.switch-tab-* (active-session tabs)', () => {
       ).toBeNull();
     });
   });
+});
+
+// ── Sidebar paging ────────────────────────────────────────────────
+
+describe('registry — sidebar page up/down', () => {
+  it('actions exist', () => {
+    expect(actionExists('sidebar.page-down')).toBe(true);
+    expect(actionExists('sidebar.page-up')).toBe(true);
+  });
+
+  it.each([
+    ['Normie', NORMIE_PRESET],
+    ['Vim', VIM_PRESET],
+  ] as const)(
+    '%s: PageDown/PageUp resolve in the sidebar context',
+    (_n, preset) => {
+      expect(
+        resolveInPreset('', makeKey({ pageDown: true }), 'sidebar', preset)
+      ).toBe('sidebar.page-down');
+      expect(
+        resolveInPreset('', makeKey({ pageUp: true }), 'sidebar', preset)
+      ).toBe('sidebar.page-up');
+    }
+  );
 });

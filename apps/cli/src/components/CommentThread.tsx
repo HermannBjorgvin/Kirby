@@ -135,7 +135,10 @@ export const CommentThreadCard = memo(function CommentThreadCard({
           </>
         )}
       </Text>
-      <CommentBody body={rootComment.body} />
+      <CommentBody
+        body={rootComment.body}
+        width={maxWidth !== undefined ? maxWidth - 4 : undefined}
+      />
       {thread.comments.length > 1 && (
         <Box flexDirection="column" marginTop={1}>
           {thread.comments.slice(1).map((reply) => (
@@ -146,7 +149,10 @@ export const CommentThreadCard = memo(function CommentThreadCard({
                 </Text>
                 <Text dimColor>{` · ${relativeTime(reply.createdAt)}`}</Text>
               </Text>
-              <CommentBody body={reply.body} />
+              <CommentBody
+                body={reply.body}
+                width={maxWidth !== undefined ? maxWidth - 6 : undefined}
+              />
             </Box>
           ))}
         </Box>
