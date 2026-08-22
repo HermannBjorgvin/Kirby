@@ -1,6 +1,11 @@
-import type { Key } from 'ink';
-import type { ReviewComment } from '../../types.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import type { ReviewComment, PlanItem } from '@kirby/app-core';
+import {
+  handleTextInput,
+  type KeyPress,
+  planItemKey,
+  snapshotLocal,
+  snapshotRemote,
+} from '@kirby/app-core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
@@ -13,12 +18,6 @@ import {
 } from '@kirby/review-comments';
 import { getDisplayFiles } from '@kirby/diff';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import {
-  planItemKey,
-  snapshotLocal,
-  snapshotRemote,
-} from '../../plan/plan-types.js';
-import type { PlanItem } from '../../plan/plan-types.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ function scrollToComment(
 
 export function handleDiffViewerInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: DiffViewerHandlerCtx
 ): void {
   const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);

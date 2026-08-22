@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
-import { useAsyncOps } from '../context/AsyncOpsContext.js';
-import type { OperationName } from '../hooks/useAsyncOperation.js';
+import type { OperationName } from '@kirby/app-core';
+import { useAsyncOps } from '@kirby/app-core';
 
 // Human-readable labels for each async operation. Falls back to the
 // raw op name if an entry is missing — keeps us from crashing on a

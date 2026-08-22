@@ -1,0 +1,172 @@
+{
+  "name": "kirby-desktop",
+  "version": "0.1.0",
+  "description": "Kirby Desktop — GUI shell over the same app core as the Kirby TUI",
+  "author": "Hermann Bjorgvin",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HermannBjorgvin/kirby.git",
+    "directory": "apps/desktop"
+  },
+  "nx": {
+    "name": "desktop",
+    "tags": [
+      "type:app",
+      "scope:desktop"
+    ],
+    "targets": {
+      "build-main": {
+        "executor": "@nx/esbuild:esbuild",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "platform": "node",
+          "outputPath": "apps/desktop/dist/main",
+          "format": [
+            "esm"
+          ],
+          "bundle": true,
+          "thirdParty": true,
+          "external": [
+            "electron",
+            "node-pty"
+          ],
+          "main": "apps/desktop/src/main/main.ts",
+          "tsConfig": "apps/desktop/tsconfig.build.json",
+          "esbuildOptions": {
+            "sourcemap": true,
+            "outExtension": {
+              ".js": ".js"
+            },
+            "banner": {
+              "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+            }
+          }
+        },
+        "configurations": {
+          "development": {
+            "esbuildOptions": {
+              "banner": {
+                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+              }
+            }
+          },
+          "production": {
+            "esbuildOptions": {
+              "sourcemap": false,
+              "banner": {
+                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+              }
+            }
+          }
+        }
+      },
+      "build-preload": {
+        "executor": "@nx/esbuild:esbuild",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "platform": "node",
+          "outputPath": "apps/desktop/dist/preload",
+          "format": [
+            "cjs"
+          ],
+          "bundle": true,
+          "thirdParty": true,
+          "external": [
+            "electron"
+          ],
+          "main": "apps/desktop/src/preload/preload.ts",
+          "tsConfig": "apps/desktop/tsconfig.build.json",
+          "esbuildOptions": {
+            "sourcemap": true,
+            "outExtension": {
+              ".js": ".cjs"
+            }
+          }
+        },
+        "configurations": {
+          "development": {},
+          "production": {
+            "esbuildOptions": {
+              "sourcemap": false
+            }
+          }
+        }
+      },
+      "build-renderer": {
+        "executor": "nx:run-commands",
+        "outputs": [
+          "{workspaceRoot}/apps/desktop/dist/renderer"
+        ],
+        "options": {
+          "command": "npx vite build",
+          "cwd": "apps/desktop"
+        }
+      },
+      "build": {
+        "executor": "nx:noop",
+        "dependsOn": [
+          "build-main",
+          "build-preload",
+          "build-renderer"
+        ]
+      },
+      "serve": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "^build"
+        ],
+        "options": {
+          "command": "node apps/desktop/scripts/dev.mjs",
+          "cwd": "{workspaceRoot}"
+        }
+      },
+      "prepare-install": {
+        "dependsOn": [
+          "build"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node apps/desktop/scripts/prepare-install.mjs"
+        }
+      },
+      "install-global": {
+        "dependsOn": [
+          "prepare-install"
+        ],
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -g ./apps/desktop/dist/kirby-desktop-*.tgz"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@kirby/app-core": "*",
+    "@wterm/react": "^0.3.4",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.1.2",
+    "electron": "^39.2.6",
+    "tailwindcss": "^4.1.14",
+    "vite": "^7.1.11"
+  },
+  "main": "dist/main/main.js"
+}

@@ -41,6 +41,12 @@
     },
     {
       "path": "./libs/terminal-tmux"
+    },
+    {
+      "path": "./libs/app-core"
+    },
+    {
+      "path": "./apps/desktop"
     }
   ]
 }

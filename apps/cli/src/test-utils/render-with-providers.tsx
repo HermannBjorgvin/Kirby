@@ -1,9 +1,11 @@
 import type { ReactElement } from 'react';
 import { render as inkRender } from 'ink-testing-library';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { ConfigProvider } from '../context/ConfigContext.js';
-import { KeybindProvider } from '../context/KeybindContext.js';
-import { ToastProvider } from '../context/ToastContext.js';
+import {
+  ConfigProvider,
+  KeybindProvider,
+  ToastProvider,
+} from '@kirby/app-core';
 
 export interface RenderWithProvidersOptions {
   /** VCS providers available to ConfigProvider. Defaults to []. */

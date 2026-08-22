@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import { PlanCheckoutPane } from './PlanCheckoutPane.js';
-import type { LocalPlanItem, RemotePlanItem } from '../../plan/plan-types.js';
+import type { LocalPlanItem, RemotePlanItem } from '@kirby/app-core';
 
 const remote: RemotePlanItem = {
   kind: 'remote',
@@ -28,7 +28,11 @@ const local: LocalPlanItem = {
 describe('PlanCheckoutPane', () => {
   it('lists items with a checkbox and title count', () => {
     const { lastFrame } = render(
-      <PlanCheckoutPane items={[remote, local]} selectedIndex={0} paneCols={80} />
+      <PlanCheckoutPane
+        items={[remote, local]}
+        selectedIndex={0}
+        paneCols={80}
+      />
     );
     const out = stripAnsi(lastFrame() ?? '');
     expect(out).toContain('Plan Checkout (2)');

@@ -9,13 +9,12 @@ import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import { GeneralCommentsContainer } from './GeneralCommentsContainer.js';
 import { PlanCheckoutContainer } from './PlanCheckoutContainer.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import { useDiffBundle } from '../../hooks/useDiffBundle.js';
+import type { TerminalLayout, PaneModeValue } from '@kirby/app-core';
 import {
+  useDiffBundle,
   useSettingsState,
   useBranchPickerState,
-} from '../../context/ModalContext.js';
+} from '@kirby/app-core';
 
 interface MainContentProps {
   pane: PaneModeValue;

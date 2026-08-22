@@ -1,30 +1,28 @@
-import type { Key } from 'ink';
-import { autoDetectProjectConfig } from '@kirby/vcs-core';
-import { handleTextInput } from './utils/handle-text-input.js';
+import type {
+  ConfigContextValue,
+  KeybindContextValue,
+  KeyPress,
+  SessionActionsContextValue,
+  SettingsField,
+  TerminalLayout,
+  AsyncOpsValue as AsyncOpsContextValue,
+  SettingsValue as SettingsModalValue,
+  NavValue as NavContextValue,
+} from '@kirby/app-core';
 import {
-  buildSettingsFields,
-  resolveValue,
-} from './components/SettingsPanel.js';
-import type { NavValue as NavContextValue } from './context/NavContext.js';
-import type { AsyncOpsValue as AsyncOpsContextValue } from './context/AsyncOpsContext.js';
-import type { SettingsValue as SettingsModalValue } from './context/ModalContext.js';
-import type { SessionActionsContextValue } from './context/SessionContext.js';
-import type { ConfigContextValue } from './context/ConfigContext.js';
-import type { TerminalLayout } from './context/LayoutContext.js';
-import type { KeybindContextValue } from './context/KeybindContext.js';
-import {
-  PRESETS,
   ACTIONS,
-  findConflict,
-  descriptorFromKeypress,
-} from './keybindings/index.js';
-import {
+  PRESETS,
   buildControlsRows,
+  buildSettingsFields,
+  descriptorFromKeypress,
+  findConflict,
   getBindingRows,
-} from './keybindings/controls-data.js';
-import { hasAnySession } from './pty-registry.js';
-import { getTmuxAvailability } from './session-backend.js';
-import type { SettingsField } from './components/SettingsPanel.js';
+  handleTextInput,
+  hasAnySession,
+  getTmuxAvailability,
+  resolveValue,
+} from '@kirby/app-core';
+import { autoDetectProjectConfig } from '@kirby/vcs-core';
 
 /** Guard for `terminalBackend` field changes. Returns true if the
  *  caller should proceed with the write; returns false (and flashes
@@ -79,7 +77,7 @@ export interface SettingsHandlerCtx {
 
 export function handleSettingsInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: SettingsHandlerCtx
 ): void {
   const fields = buildSettingsFields(ctx.config.provider);
@@ -197,7 +195,7 @@ export interface ControlsHandlerCtx {
 
 export function handleControlsInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: ControlsHandlerCtx
 ): void {
   const rows = buildControlsRows(ctx.keybinds.bindings, ctx.keybinds.isCustom);

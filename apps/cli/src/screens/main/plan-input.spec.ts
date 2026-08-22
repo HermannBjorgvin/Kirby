@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Key } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { ReviewComment } from '@kirby/review-comments';
 import { handleDiffViewerInput } from './diff-viewer-input.js';
@@ -8,19 +7,21 @@ import type {
   DiffViewerHandlerCtx,
   DiffFileListHandlerCtx,
 } from './input-types.js';
-import { ACTIONS, NORMIE_PRESET } from '../../keybindings/registry.js';
-import { resolveAction } from '../../keybindings/resolver.js';
 import {
+  ACTIONS,
+  NORMIE_PRESET,
+  resolveAction,
+  type KeyPress,
   add,
   count,
   has,
   list,
-  remove,
+  removePlanItem as remove,
   toggle,
   annotate,
   clear,
   __resetPlanStoreForTest,
-} from '../../plan/plan-store.js';
+} from '@kirby/app-core';
 
 const PR_ID = 1;
 const plan = {
@@ -35,7 +36,7 @@ const plan = {
   clear,
 };
 
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,
@@ -64,7 +65,7 @@ function makeKey(overrides: Partial<Key> = {}): Key {
 const keybinds = {
   resolve: (
     input: string,
-    key: Key,
+    key: KeyPress,
     context: 'diff-viewer' | 'diff-file-list'
   ) => resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
 } as unknown as DiffViewerHandlerCtx['keybinds'];

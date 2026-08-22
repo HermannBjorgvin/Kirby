@@ -1,9 +1,5 @@
 import { Text } from 'ink';
-import {
-  COLORS,
-  SPINNER_GLYPHS,
-  useSpinnerFrame,
-} from '../hooks/useActivity.js';
+import { COLORS, SPINNER_GLYPHS, useSpinnerFrame } from '@kirby/app-core';
 
 export function RainbowSpinner() {
   const { frame, colorIndex } = useSpinnerFrame();

@@ -1,10 +1,12 @@
-import type { Key } from 'ink';
-import { hasSession } from '../../pty-registry.js';
+import type { KeyPress } from '@kirby/app-core';
+import {
+  hasSession,
+  checkoutPlan,
+  composePlanPrompt,
+  planItemKey,
+} from '@kirby/app-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
-import { checkoutPlan } from '../../session/checkout-plan.js';
-import { composePlanPrompt } from '../../plan/prompt-composer.js';
-import { planItemKey } from '../../plan/plan-types.js';
 import type { PlanCheckoutHandlerCtx } from './input-types.js';
 
 // Interactive checkout pane input.
@@ -17,7 +19,7 @@ import type { PlanCheckoutHandlerCtx } from './input-types.js';
 
 export function handlePlanCheckoutInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: PlanCheckoutHandlerCtx
 ): void {
   const { pane, plan, selectedPr } = ctx;

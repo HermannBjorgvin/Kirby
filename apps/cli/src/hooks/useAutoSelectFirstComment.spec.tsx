@@ -6,7 +6,7 @@ import type { ReviewComment, RowMap } from '@kirby/review-comments';
 import {
   useAutoSelectFirstComment,
   type UseAutoSelectFirstCommentOptions,
-} from './useAutoSelectFirstComment.js';
+} from '@kirby/app-core';
 
 // ── Test helpers ────────────────────────────────────────────────
 

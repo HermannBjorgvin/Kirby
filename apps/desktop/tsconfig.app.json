@@ -1,0 +1,43 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist/tsc",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/tsc/tsconfig.app.tsbuildinfo"
+  },
+  "include": [
+    "src/host/**/*.ts",
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.tsx"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "references": [
+    {
+      "path": "../../libs/diff/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/github/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/worktree-manager/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/app-core/tsconfig.lib.json"
+    }
+  ]
+}

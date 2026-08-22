@@ -1,5 +1,14 @@
 import { spawn } from 'node:child_process';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
+import {
+  getSpawnedAt,
+  hasSession,
+  isSessionAlive,
+  killSession,
+  getItemKey,
+  getPrFromItem,
+  orderRunningTabs,
+} from '@kirby/app-core';
 import {
   canRemoveBranch,
   createWorktree,
@@ -9,21 +18,13 @@ import {
   worktreeSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import {
-  getSpawnedAt,
-  hasSession,
-  isSessionAlive,
-  killSession,
-} from '../../pty-registry.js';
-import { getItemKey, getPrFromItem } from '../../types.js';
-import { orderRunningTabs } from '../../utils/running-tabs.js';
 import type { SidebarInputCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
 import { resolveEditorTarget } from './editor-target.js';
 
 export function handleSidebarInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: SidebarInputCtx
 ): void {
   const { sidebar, pane } = ctx;

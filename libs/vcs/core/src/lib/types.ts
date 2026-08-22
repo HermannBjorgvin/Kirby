@@ -202,4 +202,15 @@ export interface AppConfig {
    *  tmux session that survives Kirby restarts. Cannot be changed
    *  while sessions are active. */
   terminalBackend?: 'pty' | 'tmux';
+  /** Recently opened repositories, newest first. Shared naming so any
+   *  Kirby shell (TUI, desktop) reads and writes the same list. */
+  recentRepos?: RecentRepo[];
+}
+
+/** One entry of {@link AppConfig.recentRepos}. */
+export interface RecentRepo {
+  /** Absolute path to the repository working directory. */
+  cwd: string;
+  /** ms-since-epoch of the most recent open. */
+  lastOpenedAt: number;
 }

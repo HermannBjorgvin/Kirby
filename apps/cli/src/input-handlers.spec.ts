@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import type { AppConfig } from '@kirby/vcs-core';
 import type { TmuxStatus } from '@kirby/terminal-tmux';
 
@@ -13,15 +13,14 @@ const { hasAnySessionMock, getTmuxAvailabilityMock } = vi.hoisted(() => ({
   getTmuxAvailabilityMock: vi.fn<[], TmuxStatus | null>(),
 }));
 
-vi.mock('./pty-registry.js', () => ({
+vi.mock('@kirby/app-core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   hasAnySession: () => hasAnySessionMock(),
-}));
-vi.mock('./session-backend.js', () => ({
   getTmuxAvailability: () => getTmuxAvailabilityMock(),
 }));
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from './components/SettingsPanel.js';
+import { buildSettingsFields } from '@kirby/app-core';
 
 const BACKEND_FIELD_INDEX = buildSettingsFields(null).findIndex(
   (f) => f.key === 'terminalBackend'
@@ -70,7 +69,7 @@ function harness(
   return { ctx, updateField, flashStatus, setPreset };
 }
 
-const NO_KEY = {} as Key;
+const NO_KEY = {} as KeyPress;
 
 // Both paths that can write a preset-backed field. If a future refactor
 // adds a third, it needs its own guard call — and this table is where

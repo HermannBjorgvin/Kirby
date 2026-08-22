@@ -190,20 +190,19 @@ GH_TOKEN=<integration-pat> gh api \
 ## Project Structure
 
 ```
-apps/cli/                        — Ink TUI application (ESM, React 19)
+apps/cli/                        — Ink TUI application (ESM, React 19) — thin render layer over @kirby/app-core
   src/main.tsx                   — Entry point, root component
-  src/pty-registry.ts            — PTY session lifecycle (spawn, get, kill)
-  src/input-handlers.ts          — Shared input types (NavValue, etc.) + settings/controls handlers
-  src/keybindings/               — Customizable keybinding system
-    registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
-    resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
-    hints.ts                     — Human-readable key display strings
-    controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
+  src/input-handlers.ts          — Settings/controls input handlers (keybind-driven state transitions)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
-  src/context/                   — React contexts (AppState, Session, Config, Keybind, Layout, Sidebar)
-  src/hooks/                     — Custom hooks (useTerminal, useDiffData, useSettings)
+  src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
+apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
+  src/main/                      — Electron main: window, IPC handlers (window.ts holds the security posture)
+  src/preload/preload.ts         — Typed contextBridge → window.kirby
+  src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names
+  src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
+  scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
 apps/cli-wterm-host/             — HTTP + WS host that bridges Kirby PTY to browser
   src/main.ts                    — Server: /spawn, /kill, WS /pty, ring buffer
   src/protocol.ts                — Shared SpawnRequest + ControlMessage types
@@ -215,6 +214,21 @@ apps/cli-e2e/                    — E2E tests (@playwright/test)
   src/setup/                     — git-repo.ts, sidebar.ts, constants.ts, github.ts
   src/*.test.ts                  — Test files (one per feature area)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
+libs/app-core/                   — Shell-agnostic app core (shared by CLI TUI and future GUI)
+  src/lib/context/               — React state contexts (Config, Session, Sidebar, Nav, Modal, Toast, Layout…)
+  src/lib/hooks/                 — Shell-agnostic hooks (useSessionManager, useDiffData, useRemoteComments…)
+  src/lib/session/               — Session launch + plan checkout flows
+  src/lib/plan/                  — Plan store (external store) + prompt composition
+  src/lib/utils/                 — Pure helpers (sidebar-items, session-sort, diff-fetcher, virtual-viewport…)
+  src/lib/settings/              — Settings field model (fields, presets, resolveValue)
+  src/lib/activity.ts            — Agent activity registry; pty-registry.ts — PTY session lifecycle
+  src/lib/session-backend.ts     — Terminal backend factory wiring (PTY/tmux)
+  src/lib/keybindings/           — Customizable keybinding system
+    registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
+    resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
+    hints.ts                     — Human-readable key display strings
+    controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
+  src/lib/input/                 — KeyPress type (shell-agnostic ink-Key shape) + text-input handling
 libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
 libs/terminal/                   — Terminal emulator (renderer) + SessionBackend interface
@@ -242,7 +256,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **NX inline config vs `project.json`:** our apps (`cli`, `cli-wterm-host`, `cli-e2e`) all use inline `"nx": { "name": "...", "targets": {...} }` in `package.json`. Generators default to this in recent Nx, and it keeps the project definition next to its deps. `cli-e2e` defines its `e2e` and `e2e:integration` targets explicitly rather than relying on `@nx/playwright/plugin` inference — we removed that plugin from `nx.json` because (a) we're the only Playwright project and (b) explicit config is easier to reason about (e.g. `e2e` running `playwright test --grep-invert @integration`).
 - **Avoid nested platform-split build targets.** Original `cli-wterm-host` had `build-server` (node, `@nx/esbuild`) + `build-client` (browser, custom script) + `build` (noop) with `dependsOn` ordering to work around `@nx/esbuild`'s output-path cleaning. One `build.mjs` running both esbuild invocations is simpler and avoids the ordering bug.
 - **Playwright `outputDir` + Nx `outputs` must agree** or nx caching works with stale artifacts. We pin `outputDir: './test-output/playwright/output'` and set matching `outputs` in the `e2e` target.
-- **Pluggable terminal backend.** `libs/terminal` only owns the `SessionBackend` interface and the xterm renderer; `libs/terminal-pty` and `libs/terminal-tmux` are interchangeable backends both implementing that interface. `apps/cli/src/session-backend.ts` is the _only_ place the literal `'kirby-'` prefix appears — it composes `kirby-${projectKey(repoRoot)}-${branch}` for the tmux session name. The libs themselves know nothing about Kirby, branches, or projects. To add a future backend (SSH, Docker exec…), implement `SessionBackend` in a new lib and add a branch to `buildSessionBackendFactory`.
+- **Pluggable terminal backend.** `libs/terminal` only owns the `SessionBackend` interface and the xterm renderer; `libs/terminal-pty` and `libs/terminal-tmux` are interchangeable backends both implementing that interface. `libs/app-core/src/lib/session-backend.ts` is the _only_ place the literal `'kirby-'` prefix appears — it composes `kirby-${projectKey(repoRoot)}-${branch}` for the tmux session name. The libs themselves know nothing about Kirby, branches, or projects. To add a future backend (SSH, Docker exec…), implement `SessionBackend` in a new lib and add a branch to `buildSessionBackendFactory`.
 - **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
 - **Switching backends is gated to no-active-sessions.** `apps/cli/src/input-handlers.ts:canApplyFieldChange` blocks the `terminalBackend` toggle whenever `hasAnySession()` is true and refuses a switch to tmux when `getTmuxAvailability()` reports unavailable (with the install hint). Without this guard, sessions would be stranded on a stale backend factory.
 
@@ -318,16 +332,19 @@ Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
 ### How to publish a beta version
 
 1. Bump the version in `apps/cli/package.json`. Every version must end in `-beta.N`:
+
    - Patch: `0.0.1-beta.2` or `0.0.2-beta.1`
    - Minor: `0.1.0-beta.1`
    - Major: `1.0.0-beta.1`
 
 2. Commit the bump:
+
    ```bash
    git commit apps/cli/package.json -m "chore: bump kirby to 0.0.1-beta.2"
    ```
 
 3. Publish:
+
    ```bash
    npx nx run cli:publish
    ```

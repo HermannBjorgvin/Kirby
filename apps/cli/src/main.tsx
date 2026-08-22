@@ -5,28 +5,31 @@ import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
-import { killAll } from './pty-registry.js';
-import { settlePendingRuns } from './hooks/useAsyncOperation.js';
+import {
+  killAll,
+  settlePendingRuns,
+  applySessionBackend,
+  probeTmuxAvailability,
+  ConfigProvider,
+  useConfig,
+  KeybindProvider,
+  NavProvider,
+  useNavState,
+  AsyncOpsProvider,
+  PlanProvider,
+  LayoutProvider,
+  useLayout,
+  ModalProvider,
+  useDeleteConfirmState,
+  SessionProvider,
+  SidebarProvider,
+  ToastProvider,
+} from '@kirby/app-core';
 import {
   repoTitle,
   setWindowTitle,
   restoreWindowTitle,
 } from './utils/window-title.js';
-import {
-  applySessionBackend,
-  probeTmuxAvailability,
-} from './session-backend.js';
-import { ConfigProvider, useConfig } from './context/ConfigContext.js';
-import { KeybindProvider } from './context/KeybindContext.js';
-import { NavProvider, useNavState } from './context/NavContext.js';
-import { AsyncOpsProvider } from './context/AsyncOpsContext.js';
-import { PlanProvider } from './context/PlanContext.js';
-import { LayoutProvider, useLayout } from './context/LayoutContext.js';
-import { ModalProvider } from './context/ModalContext.js';
-import { useDeleteConfirmState } from './context/ModalContext.js';
-import { SessionProvider } from './context/SessionContext.js';
-import { SidebarProvider } from './context/SidebarContext.js';
-import { ToastProvider } from './context/ToastContext.js';
 import { MainTab } from './screens/main/MainTab.js';
 
 // ── Provider registry ──────────────────────────────────────────────

@@ -1,14 +1,12 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { ReviewComment } from '../../types.js';
+import type { ReviewComment } from '@kirby/app-core';
+import { truncate, useKeybindResolve, planItemKey } from '@kirby/app-core';
 import type { DiffFile } from '@kirby/diff';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';
-import { truncate } from '../../utils/truncate.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
 import { CommentThreadCard } from '../../components/CommentThread.js';
 import { VirtualViewport } from '../../components/VirtualViewport.js';
-import { planItemKey } from '../../plan/plan-types.js';
 import { computeDiffListLayout } from './diff-list-layout.js';
 
 function statusBadge(status: DiffFile['status']): {

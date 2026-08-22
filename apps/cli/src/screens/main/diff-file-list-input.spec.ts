@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Key } from 'ink';
+import type {
+  KeyPress,
+  PaneModeValue,
+  SessionActionsContextValue,
+} from '@kirby/app-core';
+import { ACTIONS, NORMIE_PRESET, resolveAction } from '@kirby/app-core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { DiffFile } from '@kirby/diff';
 import { handleDiffFileListInput } from './diff-file-list-input.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
-import { ACTIONS, NORMIE_PRESET } from '../../keybindings/registry.js';
-import { resolveAction } from '../../keybindings/resolver.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { SessionActionsContextValue } from '../../context/SessionContext.js';
 
 // ── Test fixtures ────────────────────────────────────────────────
 
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,

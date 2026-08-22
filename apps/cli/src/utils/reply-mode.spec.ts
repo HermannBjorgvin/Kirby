@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/app-core';
 import {
   handleReplyModeInput,
   type ReplyModePane,
   type ReplyModeDeps,
 } from './reply-mode.js';
 
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,

@@ -7,7 +7,7 @@ import {
   estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
-import { planItemKey } from '../plan/plan-types.js';
+import { planItemKey } from '@kirby/app-core';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //

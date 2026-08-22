@@ -13,7 +13,7 @@ import {
   estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
-import { planItemKey } from '../plan/plan-types.js';
+import { planItemKey } from '@kirby/app-core';
 
 // Regression: a selected card with resolved + outdated + a long
 // author used to overflow the card's content width — the trailing

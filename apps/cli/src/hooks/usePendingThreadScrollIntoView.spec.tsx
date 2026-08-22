@@ -5,7 +5,7 @@ import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
 import {
   usePendingThreadScrollIntoView,
   type UsePendingThreadScrollIntoViewOptions,
-} from './usePendingThreadScrollIntoView.js';
+} from '@kirby/app-core';
 
 function makeRowMap(
   positions: { rowStart: number; rowSpan: number }[]

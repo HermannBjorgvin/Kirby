@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "dist/tsc/tsconfig.esbuild.tsbuildinfo"
+  },
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "references": [
+    {
+      "path": "../../libs/diff/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/github/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/worktree-manager/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/vcs/core/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/app-core/tsconfig.lib.json"
+    }
+  ]
+}

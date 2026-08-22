@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { truncate } from '../utils/truncate.js';
+import { truncate } from '@kirby/app-core';
 
 export const PrBadge = memo(function PrBadge({
   pr,

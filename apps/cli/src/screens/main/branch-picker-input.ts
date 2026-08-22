@@ -1,4 +1,4 @@
-import type { Key } from 'ink';
+import { handleTextInput, type KeyPress, launchSession } from '@kirby/app-core';
 import type { AppConfig } from '@kirby/vcs-core';
 import {
   createWorktree,
@@ -6,8 +6,6 @@ import {
   fetchRemote,
   branchToSessionName,
 } from '@kirby/worktree-manager';
-import { launchSession } from '../../session/launch-session.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 export function startAiSession(
@@ -32,7 +30,7 @@ export function startAiSession(
 
 export function handleBranchPickerInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: BranchPickerHandlerCtx
 ): void {
   const action = ctx.keybinds.resolve(input, key, 'branch-picker');
