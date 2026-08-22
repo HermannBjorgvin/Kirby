@@ -8,7 +8,13 @@
 // binary the launcher spawns) and node-pty (kept external by esbuild
 // because it's native). Everything else is bundled.
 
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +67,11 @@ writeFileSync(
 // Pack a tarball: `npm install -g <folder>` only symlinks the folder
 // and skips installing dependencies; installing the tarball performs
 // a real dependency install (electron + node-pty).
+for (const f of readdirSync(distDir)) {
+  if (/^kirby-desktop-.*\.tgz$/.test(f)) {
+    rmSync(resolve(distDir, f));
+  }
+}
 const tarball = execSync('npm pack', { cwd: distDir, encoding: 'utf8' })
   .trim()
   .split('\n')

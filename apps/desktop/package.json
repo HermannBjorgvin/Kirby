@@ -1,6 +1,6 @@
 {
   "name": "kirby-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Kirby Desktop — GUI shell over the same app core as the Kirby TUI",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
@@ -147,7 +147,7 @@
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -g ./apps/desktop/dist/kirby-desktop-*.tgz"
+          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -f ./apps/desktop/dist/kirby-desktop-*.tgz"
         }
       }
     }

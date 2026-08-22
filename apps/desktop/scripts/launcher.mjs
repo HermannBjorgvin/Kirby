@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const appDir = dirname(fileURLToPath(import.meta.url));
 const electron = require('electron'); // string: path to the electron binary
+const { version } = require(join(appDir, 'package.json'));
+const { version } = require(join(appDir, 'package.json'));
 
 const args = [];
 try {
@@ -32,6 +34,10 @@ try {
 const child = spawn(electron, [...args, appDir], {
   stdio: 'inherit',
   // Launching from inside a repo auto-opens that repo.
-  env: { ...process.env, KIRBY_START_DIR: process.cwd() },
+  env: {
+    ...process.env,
+    KIRBY_START_DIR: process.cwd(),
+    KIRBY_DESKTOP_VERSION: version,
+  },
 });
 child.on('close', (code) => process.exit(code ?? 0));

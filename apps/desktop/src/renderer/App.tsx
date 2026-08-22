@@ -4,6 +4,7 @@ import { RepoOpen } from './screens/RepoOpen.js';
 import { Sidebar } from './screens/Sidebar.js';
 import { Reviews } from './screens/Reviews.js';
 import { Sessions } from './screens/Sessions.js';
+import { VersionBadge } from './screens/VersionBadge.js';
 
 declare global {
   interface Window {
@@ -75,6 +76,7 @@ export function App() {
           )}
         </div>
       </div>
+      <VersionBadge />
     </div>
   );
 }

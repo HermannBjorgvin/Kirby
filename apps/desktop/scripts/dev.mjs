@@ -83,6 +83,7 @@ function startElectron() {
     env: {
       ...process.env,
       KIRBY_VITE_URL: DEV_URL,
+      KIRBY_DESKTOP_VERSION: 'dev',
       ELECTRON_ENABLE_LOGGING: '1',
     },
   });
