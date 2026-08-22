@@ -24,6 +24,7 @@ export function createHostApi(): KirbyHostApi {
     openRepo: (cwd) => Promise.resolve(repo.openRepo(cwd)),
     getRepo: () => Promise.resolve(repo.getRepo()),
     listRecentRepos: () => Promise.resolve(repo.listRecentRepos()),
+    selectRepoDirectory: () => folderPicker(),
     forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
     getConfig: () => Promise.resolve(config.getConfig()),
@@ -70,6 +71,14 @@ export interface IpcRegistrar {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type HostMethod = (...args: any[]) => unknown;
 
+// Injected by main.ts (Electron's native dialog). Default is a no-op
+// so tests and non-Electron contexts never touch the dialog module.
+let folderPicker: () => Promise<string | null> = async () => null;
+
+export function setFolderPicker(fn: () => Promise<string | null>): void {
+  folderPicker = fn;
+}
+
 /**
  * Register one ipcMain handler per contract channel. Handlers are
  * wrapped so rejections cross the IPC boundary with their message
@@ -84,6 +93,7 @@ export function registerHostHandlers(
     [IPC.openRepo]: api.openRepo as HostMethod,
     [IPC.getRepo]: api.getRepo as HostMethod,
     [IPC.listRecentRepos]: api.listRecentRepos as HostMethod,
+    [IPC.selectRepoDirectory]: api.selectRepoDirectory as HostMethod,
     [IPC.forgetRecent]: api.forgetRecent as HostMethod,
     [IPC.getConfig]: api.getConfig as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,

@@ -1,9 +1,11 @@
 import { join } from 'node:path';
-import { app, BrowserWindow } from 'electron';
-import { registerHostHandlers } from '../host/register-handlers.js';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import {
+  registerHostHandlers,
+  setFolderPicker,
+} from '../host/register-handlers.js';
 import { openStartupRepo } from '../host/services/repo.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
-import { ipcMain } from 'electron';
 import { loadTarget, rendererWebPreferences } from './window.js';
 
 const DIST = join(import.meta.dirname, '..');
@@ -42,6 +44,17 @@ function createMainWindow(): BrowserWindow {
 // ── Host contract (main-process side) ────────────────────────────
 
 registerHostHandlers(ipcMain);
+
+// Native folder picker — Electron glue lives here so the handler
+// registry stays testable without Electron.
+setFolderPicker(async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Open repository',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 
 setSessionBroadcaster((channel, payload) => {
   for (const win of BrowserWindow.getAllWindows()) {

@@ -101,6 +101,9 @@ export interface KirbyHostApi {
 
   // ── Recent repos ─────────────────────────────────────────────
   listRecentRepos(): Promise<RecentRepoEntry[]>;
+  /** Native folder picker. Resolves to the chosen path, or null when
+   *  the user cancels. */
+  selectRepoDirectory(): Promise<string | null>;
   forgetRecent(cwd: string): Promise<void>;
 
   // ── Config ───────────────────────────────────────────────────
@@ -150,6 +153,7 @@ export const IPC = {
   getVersion: 'kirby/version',
   openRepo: 'kirby/repo/open',
   listRecentRepos: 'kirby/repo/recents',
+  selectRepoDirectory: 'kirby/repo/select-directory',
   forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
   getConfig: 'kirby/config/get',
