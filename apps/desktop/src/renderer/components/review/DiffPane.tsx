@@ -127,7 +127,7 @@ function Toolbar({
 }) {
   const o = useDiffOptions();
   return (
-    <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2 text-sm">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2 text-sm">
       <div className="flex items-center rounded-md border border-border p-0.5">
         <Tip label="Unified view">
           <button

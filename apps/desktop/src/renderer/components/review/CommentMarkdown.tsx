@@ -2,7 +2,9 @@ import { ExternalLinkIcon, ImageOffIcon } from 'lucide-react';
 import { useState, type ComponentProps } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useHighlightedCodeBlock } from '../../lib/highlight.js';
 import { useCommentImage } from '../../lib/queries.js';
+import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog.js';
@@ -27,6 +29,7 @@ const MARKDOWN_COMPONENTS = {
   img: CommentImage,
   a: ExternalAnchor,
   p: MarkdownParagraph,
+  code: MarkdownCode,
 };
 
 export function CommentMarkdown({ markdown }: { markdown: string }) {
@@ -130,5 +133,51 @@ function CommentImage({ src, alt }: ComponentProps<'img'>) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Markdown code: inline stays plain; fenced blocks (```lang) are
+ * shiki-highlighted with the same colours as the diff viewer.
+ */
+function MarkdownCode({
+  className,
+  children,
+  ...props
+}: ComponentProps<'code'>) {
+  const match = /language-([\w+-]+)/.exec(className ?? '');
+  if (!match) {
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  }
+  return (
+    <HighlightedCodeBlock
+      code={String(children).replace(/\n$/, '')}
+      tag={match[1]}
+    />
+  );
+}
+
+function HighlightedCodeBlock({ code, tag }: { code: string; tag: string }) {
+  const { resolved } = useTheme();
+  const lines = code.split('\n');
+  const tokens = useHighlightedCodeBlock(code, tag, resolved);
+  return (
+    <code className="block">
+      {lines.map((line, i) => (
+        <span key={i} className="block">
+          {tokens?.[i]
+            ? tokens[i].map((tok, j) => (
+                <span key={j} style={{ color: tok.color }}>
+                  {tok.content}
+                </span>
+              ))
+            : line || ' '}
+        </span>
+      ))}
+    </code>
   );
 }
