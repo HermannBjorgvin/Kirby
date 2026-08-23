@@ -1,6 +1,7 @@
 import {
   listWorktrees as listWts,
   listBranches as listBr,
+  listAllBranches as listAllBr,
   createWorktree as createWt,
   removeWorktree as removeWt,
   canRemoveBranch as canRemoveBr,
@@ -18,6 +19,11 @@ export function listWorktrees() {
 export function listBranches() {
   requireRepo();
   return listBr();
+}
+
+export function listAllBranches() {
+  requireRepo();
+  return listAllBr();
 }
 
 export function createWorktree(branch: string) {

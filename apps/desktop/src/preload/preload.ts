@@ -29,6 +29,7 @@ const api: KirbyHostApi = {
   getSidebarModel: () => ipcRenderer.invoke(IPC.getSidebarModel),
   listWorktrees: () => ipcRenderer.invoke(IPC.listWorktrees),
   listBranches: () => ipcRenderer.invoke(IPC.listBranches),
+  listAllBranches: () => ipcRenderer.invoke(IPC.listAllBranches),
   createWorktree: (branch) => ipcRenderer.invoke(IPC.createWorktree, branch),
   removeWorktree: (branch, force) =>
     ipcRenderer.invoke(IPC.removeWorktree, branch, force),

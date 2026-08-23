@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KirbyHostApi, RepoInfo, SidebarItem } from '../host/contract.js';
 import { RepoOpen } from './screens/RepoOpen.js';
 import { UnifiedSidebar } from './screens/UnifiedSidebar.js';
@@ -57,8 +57,37 @@ function RepoWorkspace({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('kirby.sidebarWidth'));
+    return saved >= 200 && saved <= 640 ? saved : 288;
+  });
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.min(640, Math.max(200, startW + (ev.clientX - startX)));
+      setSidebarWidth(w);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem(
+        'kirby.sidebarWidth',
+        String(sidebarWidthRef.current)
+      );
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   const items: SidebarItem[] = useMemo(() => model.data ?? [], [model.data]);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
 
   // Poll for sidebar changes (running state, new PRs) like the TUI's
   // background sync.
@@ -87,19 +116,38 @@ function RepoWorkspace({
 
   return (
     <div className="flex h-screen">
-      <UnifiedSidebar
-        items={items}
-        loading={model.loading}
-        selectedKey={effectiveKey}
-        onSelect={setSelectedKey}
-        onCreateWorktree={(branch) =>
-          void runAction(() => window.kirby.createWorktree(branch))
-        }
-        onOpenSettings={() => setShowSettings(true)}
-        onSwitchRepo={onSwitchRepo}
-        repoCwd={repo.cwd}
-        actionError={actionError ?? model.error}
-      />
+      {sidebarHidden ? (
+        <button
+          onClick={() => setSidebarHidden(false)}
+          title="Show sidebar"
+          className="h-full w-6 shrink-0 border-r border-slate-800 bg-slate-950/60 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+        >
+          »
+        </button>
+      ) : (
+        <>
+          <UnifiedSidebar
+            items={items}
+            loading={model.loading}
+            selectedKey={effectiveKey}
+            onSelect={setSelectedKey}
+            onCreateWorktree={(branch) =>
+              void runAction(() => window.kirby.createWorktree(branch))
+            }
+            onOpenSettings={() => setShowSettings(true)}
+            onSwitchRepo={onSwitchRepo}
+            onToggleHide={() => setSidebarHidden(true)}
+            width={sidebarWidth}
+            repoCwd={repo.cwd}
+            actionError={actionError ?? model.error}
+          />
+          <div
+            onMouseDown={startResize}
+            title="Drag to resize"
+            className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-cyan-600/50"
+          />
+        </>
+      )}
 
       <div className="min-w-0 flex-1">
         {showSettings ? (

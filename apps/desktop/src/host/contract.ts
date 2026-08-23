@@ -138,6 +138,8 @@ export interface KirbyHostApi {
   // ── Worktrees ────────────────────────────────────────────────
   listWorktrees(): Promise<WorktreeInfo[]>;
   listBranches(): Promise<string[]>;
+  /** All local + remote branch names (checkout candidates). */
+  listAllBranches(): Promise<string[]>;
   createWorktree(branch: string): Promise<string | null>;
   removeWorktree(branch: string, force: boolean): Promise<boolean>;
   canRemoveBranch(
@@ -183,6 +185,7 @@ export const IPC = {
   getSidebarModel: 'kirby/sidebar/model',
   listWorktrees: 'kirby/worktree/list',
   listBranches: 'kirby/worktree/branches',
+  listAllBranches: 'kirby/worktree/all-branches',
   createWorktree: 'kirby/worktree/create',
   removeWorktree: 'kirby/worktree/remove',
   canRemoveBranch: 'kirby/worktree/can-remove',

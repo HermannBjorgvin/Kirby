@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { BranchPicker } from './BranchPicker.js';
+import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { SidebarItem } from '../../host/contract.js';
 import {
   SECTION_LABEL,
@@ -24,6 +25,8 @@ export function UnifiedSidebar({
   onCreateWorktree,
   onOpenSettings,
   onSwitchRepo,
+  onToggleHide,
+  width,
   repoCwd,
   actionError,
 }: {
@@ -34,11 +37,11 @@ export function UnifiedSidebar({
   onCreateWorktree: (branch: string) => void;
   onOpenSettings: () => void;
   onSwitchRepo: () => void;
+  onToggleHide: () => void;
+  width: number;
   repoCwd: string;
   actionError: string | null;
 }) {
-  const [newBranch, setNewBranch] = useState('');
-
   // Group into rows with section headers at each transition.
   const rows: (
     | { type: 'header'; section: SectionKey; count: number }
@@ -58,50 +61,37 @@ export function UnifiedSidebar({
   }
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-950/60">
+    <aside
+      style={{ width }}
+      className="flex h-full shrink-0 flex-col border-r border-slate-800 bg-slate-950/60"
+    >
       {/* Repo header */}
       <div className="border-b border-slate-800 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className="min-w-0 truncate font-mono text-[11px] text-slate-400">
             {repoCwd.split('/').filter(Boolean).pop()}
           </p>
-          <button
-            onClick={onSwitchRepo}
-            title="Switch repository"
-            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-800 hover:text-slate-200"
-          >
-            switch
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={onSwitchRepo}
+              title="Switch repository"
+              className="rounded px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            >
+              switch
+            </button>
+            <button
+              onClick={onToggleHide}
+              title="Hide sidebar"
+              className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            >
+              «
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* New worktree */}
-      <form
-        className="flex items-center gap-1.5 border-b border-slate-800 px-3 py-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!newBranch.trim()) return;
-          onCreateWorktree(newBranch.trim());
-          setNewBranch('');
-        }}
-      >
-        <input
-          type="text"
-          value={newBranch}
-          onChange={(e) => setNewBranch(e.target.value)}
-          placeholder="new branch…"
-          spellCheck={false}
-          className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 font-mono text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-cyan-500"
-        />
-        <button
-          type="submit"
-          disabled={!newBranch.trim()}
-          title="Create worktree"
-          className="rounded bg-cyan-600 px-2 py-1 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40"
-        >
-          +
-        </button>
-      </form>
+      {/* Branch picker: check out existing or create new */}
+      <BranchPicker onPick={onCreateWorktree} />
 
       {/* Item list */}
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -163,26 +153,74 @@ function SidebarRow({
 }) {
   const prId = itemPrId(item);
   const running = itemRunning(item);
+  const pr = item.pr;
   return (
     <button
       onClick={onSelect}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+      className={`block w-full px-3 py-1.5 text-left ${
         selected ? 'bg-slate-800' : 'hover:bg-slate-800/60'
       }`}
     >
-      <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          running ? 'bg-emerald-500' : 'bg-transparent'
-        }`}
-      />
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
-        {itemTitle(item)}
-      </span>
-      {prId != null && (
-        <span className="shrink-0 font-mono text-[10px] text-cyan-400">
-          #{prId}
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            running ? 'bg-emerald-500' : 'border border-slate-600'
+          }`}
+        />
+        <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+          {itemTitle(item)}
+        </span>
+        {prId != null && (
+          <span className="shrink-0 font-mono text-[10px] text-cyan-400">
+            #{prId}
+          </span>
+        )}
+      </div>
+      {pr && <PrBadge pr={pr} />}
+    </button>
+  );
+}
+
+function PrBadge({ pr }: { pr: PullRequestInfo }) {
+  const reviewers = pr.reviewers ?? [];
+  const approved = reviewers.filter((r) => r.decision === 'approved').length;
+  const rejected = reviewers.some((r) => r.decision === 'changes-requested');
+  const total = reviewers.length;
+  const comments = pr.activeCommentCount ?? 0;
+
+  const ci = pr.buildStatus;
+  const ciMeta =
+    ci === 'succeeded'
+      ? { dot: 'bg-emerald-500', label: 'CI' }
+      : ci === 'failed'
+      ? { dot: 'bg-red-500', label: 'CI' }
+      : ci === 'pending'
+      ? { dot: 'bg-amber-400', label: 'CI' }
+      : null;
+
+  const reviewColor = rejected
+    ? 'text-red-400'
+    : total > 0 && approved === total
+    ? 'text-emerald-400'
+    : 'text-slate-500';
+
+  return (
+    <div className="ml-4 mt-0.5 flex items-center gap-2 text-[10px] text-slate-500">
+      {total > 0 && (
+        <span className={reviewColor}>
+          {approved}/{total} ✓
         </span>
       )}
-    </button>
+      {comments > 0 && <span className="text-amber-400/80">{comments} 💬</span>}
+      {ciMeta && (
+        <span className="flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full ${ciMeta.dot}`} />
+          {ciMeta.label}
+        </span>
+      )}
+      <span className="ml-auto truncate text-slate-600">
+        {pr.createdByDisplayName}
+      </span>
+    </div>
   );
 }
