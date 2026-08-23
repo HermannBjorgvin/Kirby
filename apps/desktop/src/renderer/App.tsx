@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import type { KirbyHostApi, RepoInfo } from '../host/contract.js';
+import { useEffect, useMemo, useState } from 'react';
+import type { KirbyHostApi, RepoInfo, SidebarItem } from '../host/contract.js';
 import { RepoOpen } from './screens/RepoOpen.js';
-import { Sidebar } from './screens/Sidebar.js';
-import { Reviews } from './screens/Reviews.js';
-import { Sessions } from './screens/Sessions.js';
+import { UnifiedSidebar } from './screens/UnifiedSidebar.js';
+import { ContentPane } from './screens/ContentPane.js';
 import { Settings } from './screens/Settings.js';
 import { VersionBadge } from './screens/VersionBadge.js';
+import { useHostQuery } from './hooks/useHostQuery.js';
+import { itemKey } from './lib/sidebar-model.js';
 
 declare global {
   interface Window {
@@ -13,18 +14,10 @@ declare global {
   }
 }
 
-type MainTab = 'reviews' | 'sessions' | 'settings';
-
-/**
- * App shell: repo-open gate, then sidebar + tabbed main pane.
- */
 export function App() {
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [checked, setChecked] = useState(false);
-  const [tab, setTab] = useState<MainTab>('reviews');
 
-  // Restore the previously opened repo (the host remembers it for the
-  // session; this also covers electron reloads during development).
   useEffect(() => {
     window.kirby
       .getRepo()
@@ -42,41 +35,92 @@ export function App() {
     );
   }
 
-  if (!repo) {
-    return <RepoOpen onOpened={setRepo} />;
-  }
+  if (!repo) return <RepoOpen onOpened={setRepo} />;
+
+  return (
+    <RepoWorkspace
+      key={repo.cwd}
+      repo={repo}
+      onSwitchRepo={() => setRepo(null)}
+    />
+  );
+}
+
+function RepoWorkspace({
+  repo,
+  onSwitchRepo,
+}: {
+  repo: RepoInfo;
+  onSwitchRepo: () => void;
+}) {
+  const model = useHostQuery(() => window.kirby.getSidebarModel(), [repo.cwd]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const items: SidebarItem[] = useMemo(() => model.data ?? [], [model.data]);
+
+  // Poll for sidebar changes (running state, new PRs) like the TUI's
+  // background sync.
+  useEffect(() => {
+    const id = setInterval(() => model.reload(), 5000);
+    return () => clearInterval(id);
+  }, [model]);
+
+  // Keep a valid selection as the list changes.
+  const selectedItem = useMemo(() => {
+    if (items.length === 0) return undefined;
+    const found = items.find((it) => itemKey(it) === selectedKey);
+    return found ?? items[0];
+  }, [items, selectedKey]);
+  const effectiveKey = selectedItem ? itemKey(selectedItem) : null;
+
+  const runAction = async (fn: () => Promise<unknown>) => {
+    setActionError(null);
+    try {
+      await fn();
+      model.reload();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
     <div className="flex h-screen">
-      <Sidebar repoCwd={repo.cwd} onSwitchRepo={() => setRepo(null)} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <nav className="flex items-center gap-1 border-b border-slate-800 px-3 py-1.5">
-          {(['reviews', 'sessions', 'settings'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded px-3 py-1 text-xs font-medium capitalize ${
-                tab === t
-                  ? 'bg-slate-800 text-slate-100'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-          <span className="ml-auto font-mono text-[10px] text-slate-600">
-            {repo.providerId ?? 'no provider'}
-            {repo.vcsConfigured ? '' : ' (not configured)'}
-          </span>
-        </nav>
-        <div className="min-h-0 flex-1">
-          {tab === 'reviews' && (
-            <Reviews repoCwd={repo.cwd} vcsConfigured={repo.vcsConfigured} />
-          )}
-          {tab === 'sessions' && <Sessions repoCwd={repo.cwd} />}
-          {tab === 'settings' && <Settings repoCwd={repo.cwd} />}
-        </div>
+      <UnifiedSidebar
+        items={items}
+        loading={model.loading}
+        selectedKey={effectiveKey}
+        onSelect={setSelectedKey}
+        onCreateWorktree={(branch) =>
+          void runAction(() => window.kirby.createWorktree(branch))
+        }
+        onOpenSettings={() => setShowSettings(true)}
+        onSwitchRepo={onSwitchRepo}
+        repoCwd={repo.cwd}
+        actionError={actionError ?? model.error}
+      />
+
+      <div className="min-w-0 flex-1">
+        {showSettings ? (
+          <div className="flex h-full flex-col">
+            <div className="border-b border-slate-800 px-4 py-2">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              >
+                ← Back
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <Settings repoCwd={repo.cwd} />
+            </div>
+          </div>
+        ) : (
+          <ContentPane item={selectedItem} onChanged={() => model.reload()} />
+        )}
       </div>
+
       <VersionBadge />
     </div>
   );

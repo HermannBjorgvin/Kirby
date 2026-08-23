@@ -1,6 +1,6 @@
 {
   "name": "kirby-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kirby Desktop — GUI shell over the same app core as the Kirby TUI",
   "author": "Hermann Bjorgvin",
   "license": "MIT",

@@ -13,7 +13,7 @@
  */
 
 import type { AppConfig } from '@kirby/vcs-core';
-import type { LaunchIntent } from '@kirby/app-core';
+import type { LaunchIntent, SidebarItem } from '@kirby/app-core';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
 import type {
   BranchPrMap,
@@ -21,6 +21,7 @@ import type {
   RemoteCommentThread,
 } from '@kirby/vcs-core';
 export type { BranchPrMap, PullRequestComments, RemoteCommentThread };
+export type { SidebarItem } from '@kirby/app-core';
 
 export interface KirbyVersionInfo {
   /** kirby-desktop package version */
@@ -131,6 +132,9 @@ export interface KirbyHostApi {
     value: string
   ): Promise<void>;
 
+  // ── Sidebar (unified worktrees + PRs + reviews, TUI order) ────
+  getSidebarModel(): Promise<SidebarItem[]>;
+
   // ── Worktrees ────────────────────────────────────────────────
   listWorktrees(): Promise<WorktreeInfo[]>;
   listBranches(): Promise<string[]>;
@@ -176,6 +180,7 @@ export const IPC = {
   getConfig: 'kirby/config/get',
   getSettingsView: 'kirby/settings/view',
   updateSettingsField: 'kirby/config/update-field',
+  getSidebarModel: 'kirby/sidebar/model',
   listWorktrees: 'kirby/worktree/list',
   listBranches: 'kirby/worktree/branches',
   createWorktree: 'kirby/worktree/create',

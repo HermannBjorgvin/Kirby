@@ -26,6 +26,7 @@ const api: KirbyHostApi = {
   updateSettingsField: (ref, value) =>
     ipcRenderer.invoke(IPC.updateSettingsField, ref, value),
 
+  getSidebarModel: () => ipcRenderer.invoke(IPC.getSidebarModel),
   listWorktrees: () => ipcRenderer.invoke(IPC.listWorktrees),
   listBranches: () => ipcRenderer.invoke(IPC.listBranches),
   createWorktree: (branch) => ipcRenderer.invoke(IPC.createWorktree, branch),

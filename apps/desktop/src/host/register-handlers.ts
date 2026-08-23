@@ -3,6 +3,7 @@ import { IPC } from './contract.js';
 import * as repo from './services/repo.js';
 import * as config from './services/config.js';
 import * as settings from './services/settings.js';
+import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
@@ -33,6 +34,7 @@ export function createHostApi(): KirbyHostApi {
     updateSettingsField: (ref, value) =>
       Promise.resolve(settings.updateSettingsFromView(ref, value)),
 
+    getSidebarModel: () => sidebar.getSidebarModel(),
     listWorktrees: () => worktrees.listWorktrees(),
     listBranches: () => worktrees.listBranches(),
     createWorktree: (branch) => worktrees.createWorktree(branch),
@@ -100,6 +102,7 @@ export function registerHostHandlers(
     [IPC.getConfig]: api.getConfig as HostMethod,
     [IPC.getSettingsView]: api.getSettingsView as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
+    [IPC.getSidebarModel]: api.getSidebarModel as HostMethod,
     [IPC.listWorktrees]: api.listWorktrees as HostMethod,
     [IPC.listBranches]: api.listBranches as HostMethod,
     [IPC.createWorktree]: api.createWorktree as HostMethod,
