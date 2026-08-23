@@ -40,6 +40,8 @@ export function buildSidebarItems(
 
   // Build a quick lookup: session name → AgentSession for review-pr running status
   const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
+  const prSessionEarly = (pr: PullRequestInfo): AgentSession | undefined =>
+    sessionByName.get(branchToSessionName(pr.sourceBranch));
 
   // Bucket sessions by PR status so each section can be emitted in order.
   const noPrSessions: SidebarItem[] = [];
@@ -71,20 +73,32 @@ export function buildSidebarItems(
   // 2. Draft Pull Requests — session-backed first, then orphans
   items.push(...draftPrSessions);
   for (const pr of orphanPrs.filter((p) => p.isDraft === true)) {
-    items.push({ kind: 'orphan-pr', pr });
+    const session = prSessionEarly(pr);
+    items.push({
+      kind: 'orphan-pr',
+      pr,
+      running: session?.running,
+      sessionName: session?.name,
+    });
   }
 
   // 3. Pull Requests — session-backed first, then orphans
   items.push(...activePrSessions);
   for (const pr of orphanPrs.filter((p) => p.isDraft !== true)) {
-    items.push({ kind: 'orphan-pr', pr });
+    const session = prSessionEarly(pr);
+    items.push({
+      kind: 'orphan-pr',
+      pr,
+      running: session?.running,
+      sessionName: session?.name,
+    });
   }
 
-  // Helper: determine running status for a review PR based on session state
-  const reviewRunning = (pr: PullRequestInfo): boolean | undefined => {
-    const session = sessionByName.get(branchToSessionName(pr.sourceBranch));
-    return session?.running;
-  };
+  // Helper: the alive worktree session backing a PR's branch, if any.
+  const prSession = (pr: PullRequestInfo): AgentSession | undefined =>
+    sessionByName.get(branchToSessionName(pr.sourceBranch));
+  const reviewRunning = (pr: PullRequestInfo): boolean | undefined =>
+    prSession(pr)?.running;
 
   // 4-6. Review PRs by category
   for (const pr of categorizedReviews.needsReview) {
@@ -93,6 +107,7 @@ export function buildSidebarItems(
       pr,
       category: 'needs-review',
       running: reviewRunning(pr),
+      sessionName: prSession(pr)?.name,
     });
   }
   for (const pr of categorizedReviews.waitingForAuthor) {
@@ -101,6 +116,7 @@ export function buildSidebarItems(
       pr,
       category: 'waiting',
       running: reviewRunning(pr),
+      sessionName: prSession(pr)?.name,
     });
   }
   for (const pr of categorizedReviews.approvedByYou) {
@@ -109,6 +125,7 @@ export function buildSidebarItems(
       pr,
       category: 'approved',
       running: reviewRunning(pr),
+      sessionName: prSession(pr)?.name,
     });
   }
 

@@ -9,6 +9,7 @@ import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
 import { itemKey, itemRunning, itemTitle } from '../../lib/sidebar-model.js';
 import { useTabs, type Tab } from '../../lib/tabs.js';
 import { cn } from '../../lib/utils.js';
+import { ErrorBoundary } from '../ErrorBoundary.js';
 import { SettingsView } from '../settings/SettingsView.js';
 import { EmptyState } from './EmptyState.js';
 import { ItemView } from './ItemView.js';
@@ -63,17 +64,19 @@ export function EditorArea({
                 !active && 'invisible'
               )}
             >
-              {tab.kind === 'settings' ? (
-                <SettingsView />
-              ) : (
-                <ItemView
-                  item={byKey.get(tab.itemKey)}
-                  items={items}
-                  itemKey={tab.itemKey}
-                  active={active}
-                  onPin={() => tabs.pin(tab.id)}
-                />
-              )}
+              <ErrorBoundary resetKey={tab.id}>
+                {tab.kind === 'settings' ? (
+                  <SettingsView />
+                ) : (
+                  <ItemView
+                    item={byKey.get(tab.itemKey)}
+                    items={items}
+                    itemKey={tab.itemKey}
+                    active={active}
+                    onPin={() => tabs.pin(tab.id)}
+                  />
+                )}
+              </ErrorBoundary>
             </div>
           );
         })}

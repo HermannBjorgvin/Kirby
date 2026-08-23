@@ -16,12 +16,25 @@ import { Skeleton } from '../ui/skeleton.js';
  *  • Links open in the system browser, never inside the app.
  *  • Headings are capped so a reply can't shout over the page.
  */
+// Comment images render as block elements (and show a block skeleton
+// while loading); a real <p> can't legally contain a <div>, so
+// paragraphs render as <div> to keep the nesting valid.
+function MarkdownParagraph(props: ComponentProps<'div'>) {
+  return <div className="my-1.5" {...props} />;
+}
+
+const MARKDOWN_COMPONENTS = {
+  img: CommentImage,
+  a: ExternalAnchor,
+  p: MarkdownParagraph,
+};
+
 export function CommentMarkdown({ markdown }: { markdown: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:text-sm prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-a:text-primary prose-headings:my-2 prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-h4:text-base prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-table:my-2 prose-th:py-1 prose-th:px-2 prose-td:py-1 prose-td:px-2 prose-blockquote:my-2 prose-blockquote:border-l-border prose-hr:my-3">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={{ img: CommentImage, a: ExternalAnchor }}
+        components={MARKDOWN_COMPONENTS}
       >
         {markdown}
       </ReactMarkdown>

@@ -22,12 +22,20 @@ export type SidebarItem =
       isMerged: boolean;
       conflictCount?: number;
     }
-  | { kind: 'orphan-pr'; pr: PullRequestInfo; running?: boolean }
+  | {
+      kind: 'orphan-pr';
+      pr: PullRequestInfo;
+      running?: boolean;
+      /** PTY session name when the PR's branch has a worktree session. */
+      sessionName?: string;
+    }
   | {
       kind: 'review-pr';
       pr: PullRequestInfo;
       category: ReviewCategory;
       running?: boolean;
+      /** PTY session name when the PR's branch has a worktree session. */
+      sessionName?: string;
     };
 
 /** Extract the PR from any sidebar item kind. */

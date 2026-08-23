@@ -3,11 +3,15 @@ import {
   GitBranchIcon,
   GitPullRequestIcon,
   PlayIcon,
-  SearchCodeIcon,
   SquareIcon,
   TerminalIcon,
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import {
+  Group,
+  Panel,
+  Separator as PanelSeparator,
+} from 'react-resizable-panels';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
@@ -21,6 +25,7 @@ import {
   itemBranch,
   itemHasWorktree,
   itemRunning,
+  itemSessionName,
   itemTitle,
 } from '../../lib/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
@@ -31,11 +36,14 @@ import { Tip } from '../ui/tooltip.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
 
 /**
- * One editor tab for a sidebar item. A PR can be reached through
- * several sidebar rows (its worktree row, an orphan/review row); the
- * tab resolves the worktree session for the same branch so any of them
- * shows the running terminal — and lets you flip between the terminal
- * and the review while the agent works.
+ * One editor tab for a sidebar item.
+ *
+ * When the item's branch has a review session (running or its final
+ * frame), the tab is a review workspace: the agent terminal on the
+ * left, the PR review (diff + drafts + comments) on the right, split
+ * resizably — so the drafts the agent writes appear in the diff live.
+ * With no session it's the plain PR review, or a launch call-to-action
+ * for a bare worktree.
  */
 export function ItemView({
   item,
@@ -57,18 +65,15 @@ export function ItemView({
   const create = useCreateWorktree(repo.cwd);
   const paneRef = useRef<HTMLDivElement>(null);
   const [launchMenu, setLaunchMenu] = useState(false);
-  const [viewOverride, setViewOverride] = useState<
-    'terminal' | 'review' | null
-  >(null);
+  /** null → auto (split when a session exists); otherwise a forced sole pane. */
+  const [solo, setSolo] = useState<'terminal' | 'review' | null>(null);
 
   const branch = item ? itemBranch(item) : '';
-  // The worktree/session row for this branch (may be the item itself).
-  const sessionItem = useMemo(
-    () =>
-      items.find(
-        (i): i is Extract<SidebarItem, { kind: 'session' }> =>
-          i.kind === 'session' && itemBranch(i) === branch
-      ),
+  // Any sidebar row for this branch carrying a live/idle session — the
+  // item's own worktree row, or (for review-bucket PRs, which aren't
+  // `session` items) the session name the host attached to the PR item.
+  const sessionRow = useMemo(
+    () => items.find((i) => itemBranch(i) === branch && itemSessionName(i)),
     [items, branch]
   );
 
@@ -80,27 +85,24 @@ export function ItemView({
     );
   }
 
-  const running = sessionItem ? itemRunning(sessionItem) : itemRunning(item);
-  const hasWorktree = Boolean(sessionItem) || itemHasWorktree(item);
-  const sessionName = sessionItem?.session.name;
-  const pr = item.pr ?? sessionItem?.pr;
+  const sessionName =
+    itemSessionName(item) ??
+    (sessionRow ? itemSessionName(sessionRow) : undefined);
+  const running =
+    itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false);
+  const hasWorktree = Boolean(sessionName) || itemHasWorktree(item);
+  const pr = item.pr ?? sessionRow?.pr;
   const title = pr ? pr.title : itemTitle(item);
-  const canShowTerminal = running && Boolean(sessionName);
-  const view: 'terminal' | 'review' =
-    viewOverride ?? (canShowTerminal ? 'terminal' : 'review');
+  const hasTerminal = Boolean(sessionName);
 
-  /** Estimate the terminal grid from the pane so the PTY's first paint
-   *  is already the right size (wterm corrects it on mount anyway). */
   const estimateGrid = () => {
     const el = paneRef.current;
     if (!el) return {};
     const rect = el.getBoundingClientRect();
-    const cols = Math.max(20, Math.floor((rect.width - 24) / 7.8));
+    const cols = Math.max(20, Math.floor((rect.width / 2 - 24) / 7.8));
     const rows = Math.max(5, Math.floor((rect.height - 16) / 18));
     return { cols, rows };
   };
-
-  const afterLaunch = () => setViewOverride('terminal');
 
   const startPlainSession = async () => {
     if (!hasWorktree) {
@@ -115,7 +117,7 @@ export function ItemView({
     }
     launch.mutate(
       { branch, intent: 'continue-or-blank', ...estimateGrid() },
-      { onSuccess: afterLaunch, onError: (e) => toast.error(errorMessage(e)) }
+      { onError: (e) => toast.error(errorMessage(e)) }
     );
   };
 
@@ -140,10 +142,7 @@ export function ItemView({
     launchReview.mutate(
       { pr, instruction: choice.instruction, ...estimateGrid() },
       {
-        onSuccess: () => {
-          toast.success('Review agent started', { id });
-          afterLaunch();
-        },
+        onSuccess: () => toast.success('Review agent started', { id }),
         onError: (e) => toast.error(errorMessage(e), { id }),
       }
     );
@@ -154,6 +153,11 @@ export function ItemView({
     kill.mutate(sessionName, { onError: (e) => toast.error(errorMessage(e)) });
 
   const busy = launch.isPending || create.isPending || launchReview.isPending;
+
+  const terminalPane = sessionName ? (
+    <SessionTerminal name={sessionName} active={active && solo !== 'review'} />
+  ) : null;
+  const reviewPane = pr ? <PrReview pr={pr} /> : null;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
@@ -175,34 +179,28 @@ export function ItemView({
           </span>
         </span>
 
-        {pr && canShowTerminal && (
+        {/* Layout switch: split �| terminal-only | review-only (only
+            meaningful when both a terminal and a review exist). */}
+        {hasTerminal && pr && (
           <div className="flex shrink-0 items-center rounded-md border border-border p-0.5">
-            <Tip label="Agent terminal">
-              <button
-                onClick={() => setViewOverride('terminal')}
-                className={cn(
-                  'flex h-6 items-center gap-1 rounded px-2 text-xs',
-                  view === 'terminal'
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <TerminalIcon className="size-3.5" /> Terminal
-              </button>
-            </Tip>
-            <Tip label="Diff, comments and drafts">
-              <button
-                onClick={() => setViewOverride('review')}
-                className={cn(
-                  'flex h-6 items-center gap-1 rounded px-2 text-xs',
-                  view === 'review'
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <SearchCodeIcon className="size-3.5" /> Review
-              </button>
-            </Tip>
+            <LayoutButton
+              active={solo === 'terminal'}
+              onClick={() => setSolo('terminal')}
+              icon={<TerminalIcon className="size-3.5" />}
+              label="Agent terminal only"
+            />
+            <LayoutButton
+              active={solo === null}
+              onClick={() => setSolo(null)}
+              icon={<SplitIcon />}
+              label="Split: terminal + review"
+            />
+            <LayoutButton
+              active={solo === 'review'}
+              onClick={() => setSolo('review')}
+              icon={<GitPullRequestIcon className="size-3.5" />}
+              label="Review only"
+            />
           </div>
         )}
 
@@ -241,35 +239,45 @@ export function ItemView({
       </header>
 
       <div ref={paneRef} className="relative min-h-0 flex-1">
-        {canShowTerminal && sessionName && (
-          <div
-            className={cn(
-              'absolute inset-0',
-              view !== 'terminal' && 'invisible'
-            )}
-          >
-            <SessionTerminal
-              name={sessionName}
-              active={active && view === 'terminal'}
+        {hasTerminal && pr ? (
+          // Review workspace: terminal �| review, resizable. Both panes
+          // stay mounted (hidden with `hidden`) so the terminal keeps
+          // its scrollback and the diff its scroll position when soloing.
+          <Group orientation="horizontal" className="h-full">
+            <Panel
+              id="agent"
+              defaultSize="46%"
+              minSize="20%"
+              className={cn('min-w-0', solo === 'review' && 'hidden')}
+            >
+              <div className="relative h-full">{terminalPane}</div>
+            </Panel>
+            <PanelSeparator
+              className={cn(
+                'relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary',
+                solo !== null && 'hidden'
+              )}
             />
-          </div>
-        )}
-        {pr ? (
-          <div
-            className={cn('absolute inset-0', view !== 'review' && 'invisible')}
-          >
-            <PrReview pr={pr} />
-          </div>
+            <Panel
+              id="review"
+              minSize="20%"
+              className={cn('min-w-0', solo === 'terminal' && 'hidden')}
+            >
+              {reviewPane}
+            </Panel>
+          </Group>
+        ) : hasTerminal ? (
+          <div className="relative h-full">{terminalPane}</div>
+        ) : pr ? (
+          reviewPane
         ) : (
-          !canShowTerminal && (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-              <TerminalIcon className="size-10 opacity-30" />
-              <p className="text-base">No agent is running in this worktree.</p>
-              <Button onClick={onLaunchClick} disabled={busy}>
-                <PlayIcon /> Launch agent
-              </Button>
-            </div>
-          )
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+            <TerminalIcon className="size-10 opacity-30" />
+            <p className="text-base">No agent is running in this worktree.</p>
+            <Button onClick={onLaunchClick} disabled={busy}>
+              <PlayIcon /> Launch agent
+            </Button>
+          </div>
         )}
       </div>
 
@@ -282,5 +290,51 @@ export function ItemView({
         />
       )}
     </div>
+  );
+}
+
+function LayoutButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <Tip label={label}>
+      <button
+        onClick={onClick}
+        aria-pressed={active}
+        aria-label={label}
+        className={cn(
+          'flex h-6 items-center justify-center rounded px-2',
+          active
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
+      >
+        {icon}
+      </button>
+    </Tip>
+  );
+}
+
+/** Two-column split glyph (lucide has no exact match at this weight). */
+function SplitIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="size-3.5"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="12" y1="4" x2="12" y2="20" />
+    </svg>
   );
 }

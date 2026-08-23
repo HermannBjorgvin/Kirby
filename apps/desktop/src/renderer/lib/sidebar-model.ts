@@ -26,12 +26,19 @@ export const SECTION_LABEL: Record<SectionKey, string> = {
   approved: 'Approved by You',
 };
 
-/** Mirror of app-core getItemKey (kept renderer-local to avoid pulling
- *  the Node-touching barrel into the browser bundle). */
+/**
+ * Stable identity for an editor tab / selection. A single PR keeps the
+ * same key as it moves between sidebar kinds — launching an agent turns
+ * an orphan/review PR into a session-backed row, and it must not orphan
+ * the open tab — so any PR-bearing item is keyed by its PR id, and a
+ * plain worktree by its branch.
+ */
 export function itemKey(item: SidebarItem): string {
-  if (item.kind === 'session') return `session:${item.session.name}`;
-  if (item.kind === 'orphan-pr') return `orphan:${item.pr.id}`;
-  return `review:${item.pr.id}`;
+  const pr = item.pr;
+  if (pr) return `pr:${pr.id}`;
+  if (item.kind === 'session')
+    return `branch:${item.branch ?? item.session.name}`;
+  return `pr:${item.pr.id}`;
 }
 
 export function sectionKey(item: SidebarItem): SectionKey {
@@ -66,13 +73,16 @@ export function itemBranch(item: SidebarItem): string {
   return item.pr.sourceBranch;
 }
 
-/** PTY session name for an item when it has a local worktree. */
+/** PTY session name for an item — the worktree session, or (for PR
+ *  items) the alive review session the host attached to it. */
 export function itemSessionName(item: SidebarItem): string | undefined {
-  return item.kind === 'session' ? item.session.name : undefined;
+  if (item.kind === 'session') return item.session.name;
+  return item.sessionName;
 }
 
 export function itemHasWorktree(item: SidebarItem): boolean {
-  return item.kind === 'session';
+  if (item.kind === 'session') return true;
+  return Boolean(item.sessionName);
 }
 
 export interface SidebarSection {
