@@ -1,36 +1,52 @@
 import {
+  BotIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   MessageSquareIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { RemoteCommentThread } from '../../../host/contract.js';
+import type { CommentSeverity } from '../../../host/contract.js';
 import { cn } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 
+export interface CommentListItem {
+  id: string;
+  /** 'thread' = a real (remote) comment; 'draft' = an agent draft. */
+  kind: 'thread' | 'draft';
+  author: string;
+  /** "file:line" or "Conversation" for general PR comments. */
+  where: string;
+  preview: string;
+  resolved: boolean;
+  severity?: CommentSeverity;
+}
+
+const SEVERITY_DOT: Record<CommentSeverity, string> = {
+  critical: 'bg-destructive',
+  major: 'bg-warning',
+  minor: 'bg-info',
+  nit: 'bg-muted-foreground/50',
+};
+
 /**
- * Overview of every thread on the PR (inline + general), open ones
- * first, as a jump list under the file tree.
+ * Jump list of every comment on the PR — remote threads (inline +
+ * general) and the agent's drafts — under the file tree. Click to
+ * scroll the diff to it. Open items first; drafts flagged.
  */
 export function CommentsList({
-  threads,
-  general,
+  items,
   activeId,
   onJump,
 }: {
-  threads: RemoteCommentThread[];
-  general: RemoteCommentThread[];
+  items: CommentListItem[];
   activeId: string | null;
-  onJump: (thread: RemoteCommentThread) => void;
+  onJump: (item: CommentListItem) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const all = [...general, ...threads];
-  const sorted = [...all].sort(
-    (a, b) => Number(a.isResolved) - Number(b.isResolved)
-  );
-  const openCount = all.filter((t) => !t.isResolved).length;
-  if (all.length === 0) return null;
+  if (items.length === 0) return null;
+  const openCount = items.filter((i) => !i.resolved).length;
+  const draftCount = items.filter((i) => i.kind === 'draft').length;
 
   return (
     <div className="flex min-h-0 flex-col border-t border-border">
@@ -46,48 +62,56 @@ export function CommentsList({
         <MessageSquareIcon className="size-3.5" />
         Comments
         <span className="ml-auto rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums">
-          {openCount} open · {all.length}
+          {draftCount > 0 && `${draftCount} draft · `}
+          {openCount} open
         </span>
       </button>
       {open && (
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          {sorted.map((t) => {
-            const root = t.comments[0];
-            if (!root) return null;
-            const where =
-              t.file != null
-                ? `${t.file.split('/').pop()}${
-                    t.lineStart != null ? `:${t.lineStart}` : ''
-                  }`
-                : 'Conversation';
-            return (
-              <button
-                key={t.id}
-                onClick={() => onJump(t)}
-                className={cn(
-                  'flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent',
-                  activeId === t.id && 'bg-sidebar-active',
-                  t.isResolved && 'opacity-60'
-                )}
-              >
-                <Avatar name={root.author} size="xs" className="mt-0.5" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">
-                      {root.author}
-                    </span>
-                    <span className="truncate font-mono">{where}</span>
-                    {t.isResolved && (
-                      <CheckCircle2Icon className="ml-auto size-3 shrink-0 text-success" />
+          {items.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onJump(item)}
+              className={cn(
+                'flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent',
+                activeId === item.id && 'bg-sidebar-active',
+                item.resolved && 'opacity-60'
+              )}
+            >
+              {item.kind === 'draft' ? (
+                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                  <span
+                    className={cn(
+                      'size-2.5 rounded-full',
+                      item.severity ? SEVERITY_DOT[item.severity] : 'bg-primary'
                     )}
-                  </span>
-                  <span className="line-clamp-2 text-sm leading-snug">
-                    {root.body}
-                  </span>
+                  />
                 </span>
-              </button>
-            );
-          })}
+              ) : (
+                <Avatar name={item.author} size="xs" className="mt-0.5" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {item.kind === 'draft' ? (
+                    <span className="flex items-center gap-1 font-medium text-foreground">
+                      <BotIcon className="size-3" /> Draft
+                    </span>
+                  ) : (
+                    <span className="font-medium text-foreground">
+                      {item.author}
+                    </span>
+                  )}
+                  <span className="truncate font-mono">{item.where}</span>
+                  {item.resolved && (
+                    <CheckCircle2Icon className="ml-auto size-3 shrink-0 text-success" />
+                  )}
+                </span>
+                <span className="line-clamp-2 text-sm leading-snug">
+                  {item.preview}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>

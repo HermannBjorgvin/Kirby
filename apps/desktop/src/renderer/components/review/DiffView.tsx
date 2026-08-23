@@ -209,7 +209,13 @@ export const DiffView = memo(function DiffView({
         )}
       >
         {draftList.map((d) => (
-          <DraftCard key={d.id} draft={d} prId={prId} headSha={headSha} />
+          <DraftCard
+            key={d.id}
+            draft={d}
+            prId={prId}
+            headSha={headSha}
+            focused={d.id === focusThreadId}
+          />
         ))}
         {list.map((t) => (
           <ThreadCard
@@ -688,6 +694,7 @@ function OrphanBlock({
           prId={prId}
           headSha={headSha}
           showLocation
+          focused={d.id === focusThreadId}
         />
       ))}
       {threads.map((t) => (

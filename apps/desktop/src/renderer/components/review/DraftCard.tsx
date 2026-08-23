@@ -7,7 +7,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
@@ -63,11 +63,13 @@ export function DraftCard({
   prId,
   headSha,
   showLocation = false,
+  focused = false,
 }: {
   draft: ReviewComment;
   prId: number;
   headSha?: string;
   showLocation?: boolean;
+  focused?: boolean;
 }) {
   const { repo } = useRepo();
   const update = useUpdateDraft(repo.cwd);
@@ -77,6 +79,11 @@ export function DraftCard({
   const [body, setBody] = useState(draft.body);
   const [severity, setSeverity] = useState<CommentSeverity>(draft.severity);
   const posting = draft.status === 'posting' || post.isPending;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused)
+      ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focused]);
 
   const save = () => {
     update.mutate(
@@ -107,10 +114,12 @@ export function DraftCard({
 
   return (
     <div
+      ref={ref}
       data-draft={draft.id}
       className={cn(
-        'max-w-[900px] overflow-hidden rounded-lg border border-dashed border-border border-l-[3px] bg-card text-card-foreground shadow-xs',
-        SEVERITY_RAIL[draft.severity]
+        'max-w-[900px] overflow-hidden rounded-lg border border-dashed border-border border-l-[3px] bg-card text-card-foreground shadow-xs transition-shadow',
+        SEVERITY_RAIL[draft.severity],
+        focused && 'ring-2 ring-primary/50'
       )}
     >
       <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-sm">

@@ -3,10 +3,8 @@ import {
   ChevronUpIcon,
   ColumnsIcon,
   EyeOffIcon,
-  Loader2Icon,
   MessageSquareIcon,
   RowsIcon,
-  SendIcon,
   WrapTextIcon,
 } from 'lucide-react';
 import type { RefObject } from 'react';
@@ -46,9 +44,6 @@ export function DiffPane({
   navIndex,
   onPrev,
   onNext,
-  draftCount,
-  postingAll,
-  onPostAll,
 }: {
   pr: PullRequestInfo;
   files: [string, DiffLine[]][];
@@ -64,9 +59,6 @@ export function DiffPane({
   navIndex: number;
   onPrev: () => void;
   onNext: () => void;
-  draftCount: number;
-  postingAll: boolean;
-  onPostAll: () => void;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -75,9 +67,6 @@ export function DiffPane({
         navIndex={navIndex}
         onPrev={onPrev}
         onNext={onNext}
-        draftCount={draftCount}
-        postingAll={postingAll}
-        onPostAll={onPostAll}
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
         {diffLoading && (
@@ -130,17 +119,11 @@ function Toolbar({
   navIndex,
   onPrev,
   onNext,
-  draftCount,
-  postingAll,
-  onPostAll,
 }: {
   navCount: number;
   navIndex: number;
   onPrev: () => void;
   onNext: () => void;
-  draftCount: number;
-  postingAll: boolean;
-  onPostAll: () => void;
 }) {
   const o = useDiffOptions();
   return (
@@ -198,18 +181,6 @@ function Toolbar({
         </Button>
       </Tip>
       <div className="flex-1" />
-      {draftCount > 0 && (
-        <Tip label="Post every draft comment written by the review agent">
-          <Button size="sm" onClick={onPostAll} disabled={postingAll}>
-            {postingAll ? (
-              <Loader2Icon className="animate-spin" />
-            ) : (
-              <SendIcon />
-            )}
-            Post {draftCount} draft{draftCount === 1 ? '' : 's'}
-          </Button>
-        </Tip>
-      )}
       {navCount > 0 && (
         <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
           <MessageSquareIcon className="size-3.5" />

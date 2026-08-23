@@ -39,10 +39,10 @@ import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
-import { CommentsList } from './CommentsList.js';
+import { CommentsList, type CommentListItem } from './CommentsList.js';
 import { ReviewStepper } from './ReviewStepper.js';
 import { severityCounts } from '../../lib/diff-model.js';
-import { ClipboardCheckIcon } from 'lucide-react';
+import { ClipboardCheckIcon, Loader2Icon, SendIcon } from 'lucide-react';
 import { DiffPane } from './DiffPane.js';
 import { FileTree, type FileEntry } from './FileTree.js';
 
@@ -162,43 +162,108 @@ export function PrWorkspace({
     );
   }, []);
 
-  const orderedThreads = useMemo(() => {
+  // Unified, document-ordered comment list: general (Conversation)
+  // first, then per file [threads + drafts] by line. Powers both the
+  // sidebar Comments list and the diff toolbar's prev/next nav, so both
+  // move between remote comments AND agent drafts.
+  const commentItems = useMemo<CommentListItem[]>(() => {
     const order = new Map(files.map(([f], i) => [f, i]));
-    const inDiff = [...inlineThreads].sort((a, b) => {
-      const fa = order.get(a.file ?? '') ?? Infinity;
-      const fb = order.get(b.file ?? '') ?? Infinity;
-      if (fa !== fb) return fa - fb;
-      return (a.lineStart ?? 0) - (b.lineStart ?? 0);
+    type Row = CommentListItem & {
+      file: string | null;
+      line: number;
+      fileRank: number;
+    };
+    const rows: Row[] = [];
+    for (const t of general) {
+      const root = t.comments[0];
+      rows.push({
+        id: t.id,
+        kind: 'thread',
+        author: root?.author ?? '',
+        where: 'Conversation',
+        preview: root?.body ?? '',
+        resolved: t.isResolved,
+        file: null,
+        line: 0,
+        fileRank: -1,
+      });
+    }
+    for (const t of inlineThreads) {
+      const root = t.comments[0];
+      rows.push({
+        id: t.id,
+        kind: 'thread',
+        author: root?.author ?? '',
+        where: `${t.file?.split('/').pop() ?? ''}${
+          t.lineStart != null ? `:${t.lineStart}` : ''
+        }`,
+        preview: root?.body ?? '',
+        resolved: t.isResolved,
+        file: t.file,
+        line: t.lineStart ?? 0,
+        fileRank: order.get(t.file ?? '') ?? Number.MAX_SAFE_INTEGER,
+      });
+    }
+    for (const d of drafts) {
+      rows.push({
+        id: d.id,
+        kind: 'draft',
+        author: 'Draft',
+        where: `${d.file.split('/').pop()}:${d.lineStart}`,
+        preview: d.body,
+        resolved: false,
+        severity: d.severity,
+        file: d.file,
+        line: d.lineStart,
+        fileRank: order.get(d.file) ?? Number.MAX_SAFE_INTEGER,
+      });
+    }
+    rows.sort((a, b) => {
+      const ga = a.file == null ? 0 : 1;
+      const gb = b.file == null ? 0 : 1;
+      if (ga !== gb) return ga - gb;
+      if (a.fileRank !== b.fileRank) return a.fileRank - b.fileRank;
+      return a.line - b.line;
     });
-    return [...general, ...inDiff];
-  }, [files, inlineThreads, general]);
-  const navThreads = options.hideResolved
-    ? orderedThreads.filter((t) => !t.isResolved)
-    : orderedThreads;
-  const navIndex = navThreads.findIndex((t) => t.id === focusThreadId);
+    return rows;
+  }, [files, general, inlineThreads, drafts]);
 
-  const jumpToThread = useCallback((t: RemoteCommentThread) => {
-    setFocusThreadId(t.id);
+  const navItems = options.hideResolved
+    ? commentItems.filter((i) => !i.resolved)
+    : commentItems;
+  const navIndex = navItems.findIndex((i) => i.id === focusThreadId);
+
+  // Scroll to any comment or draft by id; falls back to the file.
+  const jumpToId = useCallback((id: string, file: string | null) => {
+    setFocusThreadId(id);
     setMode('diff');
-    if (t.file) setSelectedFile(t.file);
+    if (file) setSelectedFile(file);
     requestAnimationFrame(() => {
-      const el = scrollRef.current?.querySelector<HTMLElement>(
-        `[data-thread="${CSS.escape(t.id)}"]`
+      const root = scrollRef.current;
+      const el = root?.querySelector<HTMLElement>(
+        `[data-thread="${CSS.escape(id)}"], [data-draft="${CSS.escape(id)}"]`
       );
       if (el) el.scrollIntoView({ block: 'center' });
-      else if (t.file)
-        scrollRef.current
-          ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(t.file)}"]`)
+      else if (file)
+        root
+          ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(file)}"]`)
           ?.scrollIntoView({ block: 'start' });
+      else root?.scrollTo({ top: 0 });
     });
   }, []);
+  const jumpToItem = useCallback(
+    (item: CommentListItem) => {
+      const row = commentItems.find((r) => r.id === item.id);
+      jumpToId(item.id, (row as { file?: string | null })?.file ?? null);
+    },
+    [commentItems, jumpToId]
+  );
   const step = (delta: number) => {
-    if (navThreads.length === 0) return;
+    if (navItems.length === 0) return;
     const next =
-      navIndex < 0
-        ? 0
-        : (navIndex + delta + navThreads.length) % navThreads.length;
-    jumpToThread(navThreads[next]);
+      navIndex < 0 ? 0 : (navIndex + delta + navItems.length) % navItems.length;
+    const target = navItems[next] as { id: string; file?: string | null };
+    jumpToId(target.id, target.file ?? null);
   };
 
   return (
@@ -242,14 +307,27 @@ export function PrWorkspace({
                   drafts={drafts}
                   reviewActive={effMode === 'review'}
                   onReview={() => setMode('review')}
+                  postingAll={postAll.isPending}
+                  onPostAll={() =>
+                    postAll.mutate(
+                      { prId: pr.id, headSha: pr.headSha },
+                      {
+                        onSuccess: (n) =>
+                          toast.success(
+                            `Posted ${n} comment${n === 1 ? '' : 's'}`
+                          ),
+                        onError: (e) =>
+                          toast.error(`Post failed: ${errorMessage(e)}`),
+                      }
+                    )
+                  }
                   entries={entries}
                   diffLoading={diff.isLoading}
                   selectedFile={effMode === 'diff' ? selectedFile : null}
                   onSelectFile={jumpToFile}
-                  inlineThreads={inlineThreads}
-                  generalThreads={general}
-                  focusThreadId={effMode === 'diff' ? focusThreadId : null}
-                  onJumpThread={jumpToThread}
+                  commentItems={commentItems}
+                  activeCommentId={effMode === 'diff' ? focusThreadId : null}
+                  onJumpComment={jumpToItem}
                 />
               </Panel>
               <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
@@ -312,25 +390,10 @@ export function PrWorkspace({
                   diffError={diff.error ? String(diff.error.message) : null}
                   focusThreadId={focusThreadId}
                   scrollRef={scrollRef}
-                  navCount={navThreads.length}
+                  navCount={navItems.length}
                   navIndex={navIndex}
                   onPrev={() => step(-1)}
                   onNext={() => step(1)}
-                  draftCount={drafts.length}
-                  postingAll={postAll.isPending}
-                  onPostAll={() =>
-                    postAll.mutate(
-                      { prId: pr.id, headSha: pr.headSha },
-                      {
-                        onSuccess: (n) =>
-                          toast.success(
-                            `Posted ${n} comment${n === 1 ? '' : 's'}`
-                          ),
-                        onError: (e) =>
-                          toast.error(`Post failed: ${errorMessage(e)}`),
-                      }
-                    )
-                  }
                 />
               </div>
             </div>
@@ -393,18 +456,14 @@ function PrHeader({
           </Badge>
         )}
         {reviewers.length > 0 && (
-          <span className="flex items-center">
-            {reviewers.slice(0, 5).map((r) => (
+          <span className="flex items-center gap-1.5">
+            {reviewers.slice(0, 6).map((r) => (
               <Tip
                 key={r.identifier}
                 label={`${r.displayName}: ${r.decision.replace('-', ' ')}`}
               >
-                <span className="relative -ml-1 first:ml-0">
-                  <Avatar
-                    name={r.displayName}
-                    size="xs"
-                    className="ring-1 ring-background"
-                  />
+                <span className="relative">
+                  <Avatar name={r.displayName} size="xs" />
                   <span
                     className={cn(
                       'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
@@ -457,14 +516,15 @@ function ReviewRail({
   drafts,
   reviewActive,
   onReview,
+  postingAll,
+  onPostAll,
   entries,
   diffLoading,
   selectedFile,
   onSelectFile,
-  inlineThreads,
-  generalThreads,
-  focusThreadId,
-  onJumpThread,
+  commentItems,
+  activeCommentId,
+  onJumpComment,
 }: {
   running: boolean;
   busy: boolean;
@@ -477,14 +537,15 @@ function ReviewRail({
   drafts: ReviewComment[];
   reviewActive: boolean;
   onReview: () => void;
+  postingAll: boolean;
+  onPostAll: () => void;
   entries: FileEntry[];
   diffLoading: boolean;
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
-  inlineThreads: RemoteCommentThread[];
-  generalThreads: RemoteCommentThread[];
-  focusThreadId: string | null;
-  onJumpThread: (t: RemoteCommentThread) => void;
+  commentItems: CommentListItem[];
+  activeCommentId: string | null;
+  onJumpComment: (item: CommentListItem) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar/60">
@@ -587,6 +648,20 @@ function ReviewRail({
               {drafts.length}
             </span>
           </button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 w-full"
+            onClick={onPostAll}
+            disabled={postingAll}
+          >
+            {postingAll ? (
+              <Loader2Icon className="animate-spin" />
+            ) : (
+              <SendIcon />
+            )}
+            Post all {drafts.length} draft{drafts.length === 1 ? '' : 's'}
+          </Button>
         </div>
       )}
 
@@ -599,10 +674,9 @@ function ReviewRail({
           onSelect={onSelectFile}
         />
         <CommentsList
-          threads={inlineThreads}
-          general={generalThreads}
-          activeId={focusThreadId}
-          onJump={onJumpThread}
+          items={commentItems}
+          activeId={activeCommentId}
+          onJump={onJumpComment}
         />
       </ScrollArea>
     </div>

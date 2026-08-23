@@ -356,38 +356,53 @@ function StepCard({
                 <CommentMarkdown markdown={draft.body} />
               </div>
             )}
+            {/* Actions — part of the card, next to the comment. */}
+            {!editing && (
+              <div className="flex items-center gap-1.5 border-t border-border bg-muted/20 px-3 py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setBody(draft.body);
+                    setSeverity(draft.severity);
+                    setEditing(true);
+                  }}
+                  disabled={busy}
+                >
+                  <PencilIcon /> Edit <Kbd>e</Kbd>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onDiscard}
+                  disabled={busy}
+                >
+                  <Trash2Icon /> Discard <Kbd>d</Kbd>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onNext}
+                  disabled={atEnd}
+                >
+                  <SkipForwardIcon /> Skip
+                </Button>
+                <div className="flex-1" />
+                <Button size="sm" onClick={onPost} disabled={busy}>
+                  {busy ? (
+                    <Loader2Icon className="animate-spin" />
+                  ) : (
+                    <SendIcon />
+                  )}
+                  Post{' '}
+                  <Kbd className="border-primary-foreground/30 text-primary-foreground/80">
+                    ↵
+                  </Kbd>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Action bar */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-t border-border px-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setBody(draft.body);
-            setSeverity(draft.severity);
-            setEditing(true);
-          }}
-          disabled={busy || editing}
-        >
-          <PencilIcon /> Edit <Kbd>e</Kbd>
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onDiscard} disabled={busy}>
-          <Trash2Icon /> Discard <Kbd>d</Kbd>
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onNext} disabled={atEnd}>
-          <SkipForwardIcon /> Skip
-        </Button>
-        <div className="flex-1" />
-        <Button size="sm" onClick={onPost} disabled={busy}>
-          {busy ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
-          Post{' '}
-          <Kbd className="border-primary-foreground/30 text-primary-foreground/80">
-            ↵
-          </Kbd>
-        </Button>
       </div>
     </div>
   );
