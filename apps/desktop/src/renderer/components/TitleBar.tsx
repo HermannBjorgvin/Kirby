@@ -1,6 +1,7 @@
 import {
   ChevronDownIcon,
   FolderOpenIcon,
+  MenuIcon,
   MonitorIcon,
   MoonIcon,
   SearchIcon,
@@ -8,6 +9,7 @@ import {
   SunIcon,
 } from 'lucide-react';
 import type { RepoInfo } from '../../host/contract.js';
+import { isMacPlatform, useDesktopPrefs } from '../lib/desktop-prefs.js';
 import { useRecentRepos } from '../lib/queries.js';
 import { useTheme, type ThemePreference } from '../lib/theme.js';
 import { basename, MOD } from '../lib/utils.js';
@@ -26,9 +28,12 @@ import { Tip } from './ui/tooltip.js';
 import { KirbyMark } from './KirbyMark.js';
 
 /**
- * Custom title bar (Electron `titleBarStyle: 'hidden'`). Sized and
- * positioned with the Window Controls Overlay env() values so the
- * native minimise/maximise/close buttons never overlap our controls.
+ * Top bar. With the custom frame (default) it doubles as the window's
+ * drag region and is sized with the Window Controls Overlay env()
+ * values so the native minimise/maximise/close buttons never overlap
+ * our controls; on Linux/Windows a ≡ button pops the native app menu.
+ * With the native frame the OS draws the title + menu bar, so this
+ * becomes a plain toolbar.
  */
 export function TitleBar({
   repo,
@@ -43,16 +48,37 @@ export function TitleBar({
   onOpenPalette?: () => void;
   onOpenSettings?: () => void;
 }) {
+  const { nativeFrame } = useDesktopPrefs();
+  const drag = !nativeFrame;
   return (
     <header
-      className="app-drag relative z-20 flex h-9 shrink-0 select-none items-center border-b border-border bg-titlebar text-sidebar-foreground"
-      style={{
-        paddingLeft: 'env(titlebar-area-x, 0px)',
-        width: 'env(titlebar-area-width, 100%)',
-      }}
+      className={`${
+        drag ? 'app-drag' : ''
+      } relative z-20 flex h-9 shrink-0 select-none items-center border-b border-border bg-titlebar text-sidebar-foreground`}
+      style={
+        drag
+          ? {
+              paddingLeft: 'env(titlebar-area-x, 0px)',
+              width: 'env(titlebar-area-width, 100%)',
+            }
+          : undefined
+      }
     >
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 pl-2">
-        <div className="app-no-drag flex items-center">
+        {!nativeFrame && !isMacPlatform && (
+          <Tip label="Menu">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Application menu"
+              className="app-no-drag"
+              onClick={() => void window.kirby.showAppMenu()}
+            >
+              <MenuIcon />
+            </Button>
+          </Tip>
+        )}
+        <div className="app-no-drag flex items-center pl-1">
           <KirbyMark className="size-5" />
         </div>
         {repo ? (

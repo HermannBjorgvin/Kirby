@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { KirbyHostApi, RepoInfo } from '../host/contract.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
+import { loadDesktopPrefs } from './lib/desktop-prefs.js';
 import { queryClient } from './lib/queries.js';
 import { errorMessage } from './lib/utils.js';
 import { RepoOpen } from './screens/RepoOpen.js';
@@ -31,10 +32,8 @@ function Gate() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    window.kirby
-      .getRepo()
-      .then(setRepo)
-      .catch(() => setRepo(null))
+    Promise.all([window.kirby.getRepo().catch(() => null), loadDesktopPrefs()])
+      .then(([r]) => setRepo(r))
       .finally(() => setChecked(true));
   }, []);
 
@@ -47,6 +46,15 @@ function Gate() {
       })
       .catch((err: unknown) => toast.error(errorMessage(err)));
   }, []);
+
+  const pickRepoFolder = useCallback(() => {
+    window.kirby
+      .selectRepoDirectory()
+      .then((dir) => {
+        if (dir) openRepo(dir);
+      })
+      .catch((err: unknown) => toast.error(errorMessage(err)));
+  }, [openRepo]);
 
   if (!checked) {
     return (
@@ -75,6 +83,7 @@ function Gate() {
       repo={repo}
       onSwitchRepo={() => setRepo(null)}
       onOpenRepo={openRepo}
+      onPickRepoFolder={pickRepoFolder}
     />
   );
 }

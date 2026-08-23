@@ -13,10 +13,12 @@ export function ConversationPanel({
   threads,
   loading,
   prId,
+  focusThreadId,
 }: {
   threads: RemoteCommentThread[];
   loading: boolean;
   prId: number;
+  focusThreadId: string | null;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -42,7 +44,12 @@ export function ConversationPanel({
             <Skeleton className="h-16 w-full" />
           )}
           {threads.map((t) => (
-            <ThreadCard key={t.id} thread={t} prId={prId} />
+            <ThreadCard
+              key={t.id}
+              thread={t}
+              prId={prId}
+              focused={t.id === focusThreadId}
+            />
           ))}
         </div>
       )}

@@ -1,8 +1,15 @@
 import { useSyncExternalStore } from 'react';
+import type { ThemePreference } from '../../host/contract.js';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type { ThemePreference };
 export type ResolvedTheme = 'light' | 'dark';
 
+/**
+ * Theme store. The persisted source of truth is the host's desktop
+ * prefs file (so the native menu's Theme radio and the window chrome
+ * agree with us); localStorage is only a first-paint cache so the
+ * right class is on <html> before the bridge answers.
+ */
 const STORAGE_KEY = 'kirby.theme';
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
@@ -33,7 +40,7 @@ function apply(): void {
   for (const l of listeners) l();
 }
 
-export function setThemePreference(pref: ThemePreference): void {
+function setLocal(pref: ThemePreference): void {
   preference = pref;
   try {
     localStorage.setItem(STORAGE_KEY, pref);
@@ -41,6 +48,11 @@ export function setThemePreference(pref: ThemePreference): void {
     // ignore
   }
   apply();
+}
+
+export function setThemePreference(pref: ThemePreference): void {
+  setLocal(pref);
+  void window.kirby?.setDesktopPrefs({ theme: pref }).catch(() => undefined);
 }
 
 export function getThemePreference(): ThemePreference {
@@ -51,9 +63,16 @@ media.addEventListener('change', () => {
   if (preference === 'system') apply();
 });
 
-/** Call once at startup so the first paint already has the right class. */
+/** Call once at startup so the first paint already has the right class;
+ *  then reconcile with the host's persisted preference. */
 export function initTheme(): void {
   apply();
+  void window.kirby
+    ?.getDesktopPrefs()
+    .then((p) => {
+      if (p.theme !== preference) setLocal(p.theme);
+    })
+    .catch(() => undefined);
 }
 
 function subscribe(cb: () => void): () => void {

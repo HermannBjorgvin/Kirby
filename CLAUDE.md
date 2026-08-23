@@ -198,16 +198,17 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
 apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
-  src/main/                      — Electron main: window chrome + security posture (window.ts), KIRBY_QA_STEPS hook
+  src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), KIRBY_QA_STEPS hook
   src/preload/preload.ts         — Typed contextBridge → window.kirby
-  src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names
-  src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings…)
+  src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names (incl. MenuCommand, ContextMenuItem, DesktopPrefs)
+  src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings, desktop-prefs…)
   src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
     styles.css                   — Design tokens (VS Code-style light/dark palette, type scale) — components use tokens only
     components/ui/               — shadcn-style primitives (radix-ui + cva + lucide): button, dialog, command, select…
     components/                  — TitleBar, StatusBar, CommandPalette, sidebar/, editor/ (tabs), review/, settings/, terminal/
     lib/queries.ts               — TanStack Query data layer over window.kirby (all host calls + invalidation)
-    lib/tabs.tsx                 — Editor tab model (preview/pinned tabs, VS Code semantics)
+    lib/tabs.tsx                 — Editor tab model (preview/pinned tabs)
+    lib/diff-model.ts            — Pure diff viewer model: fold unchanged regions, split-view pairing, word diff (tested)
     screens/                     — RepoOpen (repo picker) and Workspace (shell + shortcuts)
   scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
   scripts/qa-shots.mjs           — Headless visual QA: drives the built app under xvfb and writes PNGs
@@ -266,6 +267,8 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **Playwright `outputDir` + Nx `outputs` must agree** or nx caching works with stale artifacts. We pin `outputDir: './test-output/playwright/output'` and set matching `outputs` in the `e2e` target.
 - **Pluggable terminal backend.** `libs/terminal` only owns the `SessionBackend` interface and the xterm renderer; `libs/terminal-pty` and `libs/terminal-tmux` are interchangeable backends both implementing that interface. `libs/app-core/src/lib/session-backend.ts` is the _only_ place the literal `'kirby-'` prefix appears — it composes `kirby-${projectKey(repoRoot)}-${branch}` for the tmux session name. The libs themselves know nothing about Kirby, branches, or projects. To add a future backend (SSH, Docker exec…), implement `SessionBackend` in a new lib and add a branch to `buildSessionBackendFactory`.
 - **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
+- **Desktop uses native OS elements where they exist.** Application menu (`apps/desktop/src/main/menu.ts` → `Menu.setApplicationMenu`, commands reach the renderer via `onMenuCommand`), context menus (`window.kirby.showContextMenu` → `Menu.popup`), native dialogs/about box, optional native window frame (`desktop-prefs.json` → `nativeFrame`). Web-rendered menus are only for things the OS can't express (rich dialogs, command palette). VS Code is inspiration for the shell, not a template.
+- **Desktop diffs are whole-file.** `fetchDiffText` uses `-U99999` so threads on untouched lines can be placed; the desktop viewer folds unchanged regions client-side (`lib/diff-model.ts`, ±3 context, expandable gaps, thread anchors pinned) rather than asking git for hunks.
 - **Switching backends is gated to no-active-sessions.** `apps/cli/src/input-handlers.ts:canApplyFieldChange` blocks the `terminalBackend` toggle whenever `hasAnySession()` is true and refuses a switch to tmux when `getTmuxAvailability()` reports unavailable (with the install hint). Without this guard, sessions would be stranded on a stale backend factory.
 
 ## PR Reviews via CLI

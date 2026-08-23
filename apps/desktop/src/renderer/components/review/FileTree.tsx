@@ -103,7 +103,7 @@ export function FileTree({
   );
 
   return (
-    <div className="flex h-full flex-col bg-sidebar/60">
+    <div className="flex h-full flex-col">
       <div className="flex h-8 shrink-0 items-center justify-between px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         <span>Files</span>
         {entries.length > 0 && (

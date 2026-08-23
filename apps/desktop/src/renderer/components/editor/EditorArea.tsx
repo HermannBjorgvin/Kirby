@@ -5,17 +5,10 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useMemo } from 'react';
-import type { SidebarItem } from '../../../host/contract.js';
+import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
 import { itemKey, itemRunning, itemTitle } from '../../lib/sidebar-model.js';
 import { useTabs, type Tab } from '../../lib/tabs.js';
 import { cn } from '../../lib/utils.js';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '../ui/context-menu.js';
 import { SettingsView } from '../settings/SettingsView.js';
 import { EmptyState } from './EmptyState.js';
 import { ItemView } from './ItemView.js';
@@ -112,75 +105,70 @@ function TabButton({
       ? GitPullRequestIcon
       : GitBranchIcon;
 
+  const openContextMenu = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const items: ContextMenuItem[] = [
+      { id: 'close', label: 'Close' },
+      {
+        id: 'close-others',
+        label: 'Close Others',
+        enabled: tabs.tabs.length > 1,
+      },
+      { id: 'close-all', label: 'Close All' },
+    ];
+    if (tab.preview) {
+      items.push({ type: 'separator' }, { id: 'pin', label: 'Keep Open' });
+    }
+    const chosen = await window.kirby.showContextMenu(items);
+    if (chosen === 'close') tabs.close(tab.id);
+    else if (chosen === 'close-others') tabs.closeOthers(tab.id);
+    else if (chosen === 'close-all') tabs.closeAll();
+    else if (chosen === 'pin') tabs.pin(tab.id);
+  };
+
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          role="tab"
-          aria-selected={active}
-          onMouseDown={(e) => {
-            if (e.button === 1) {
-              e.preventDefault();
-              tabs.close(tab.id);
-            }
-          }}
-          onClick={() => tabs.activate(tab.id)}
-          onDoubleClick={() => tabs.pin(tab.id)}
-          className={cn(
-            'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors',
-            active
-              ? 'bg-tab-active text-foreground'
-              : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-          )}
-        >
-          {active && (
-            <span className="absolute inset-x-0 top-0 h-px bg-primary" />
-          )}
-          <span className="relative flex shrink-0">
-            <Icon className="size-4" />
-            {running && (
-              <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
-            )}
-          </span>
-          <span
-            className={cn('min-w-0 flex-1 truncate', tab.preview && 'italic')}
-          >
-            {label}
-          </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              tabs.close(tab.id);
-            }}
-            aria-label="Close tab"
-            className={cn(
-              'flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100',
-              active && 'opacity-100'
-            )}
-          >
-            <XIcon className="size-3.5" />
-          </button>
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={() => tabs.close(tab.id)}>
-          Close
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => tabs.closeOthers(tab.id)}>
-          Close others
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => tabs.closeAll()}>
-          Close all
-        </ContextMenuItem>
-        {tab.preview && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => tabs.pin(tab.id)}>
-              Keep open
-            </ContextMenuItem>
-          </>
+    <div
+      role="tab"
+      aria-selected={active}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          tabs.close(tab.id);
+        }
+      }}
+      onClick={() => tabs.activate(tab.id)}
+      onDoubleClick={() => tabs.pin(tab.id)}
+      onContextMenu={(e) => void openContextMenu(e)}
+      className={cn(
+        'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors',
+        active
+          ? 'bg-tab-active text-foreground'
+          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+      )}
+    >
+      {active && <span className="absolute inset-x-0 top-0 h-px bg-primary" />}
+      <span className="relative flex shrink-0">
+        <Icon className="size-4" />
+        {running && (
+          <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
         )}
-      </ContextMenuContent>
-    </ContextMenu>
+      </span>
+      <span className={cn('min-w-0 flex-1 truncate', tab.preview && 'italic')}>
+        {label}
+      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          tabs.close(tab.id);
+        }}
+        aria-label="Close tab"
+        className={cn(
+          'flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100',
+          active && 'opacity-100'
+        )}
+      >
+        <XIcon className="size-3.5" />
+      </button>
+    </div>
   );
 }

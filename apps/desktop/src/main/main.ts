@@ -4,6 +4,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   nativeTheme,
   shell,
 } from 'electron';
@@ -11,16 +12,99 @@ import {
   registerHostHandlers,
   setExternalOpener,
   setFolderPicker,
+  setShellGlue,
 } from '../host/register-handlers.js';
 import { killAll } from '@kirby/app-core';
+import {
+  MENU_EVENTS,
+  type ContextMenuItem,
+  type DesktopPrefs,
+  type MenuCommand,
+} from '../host/contract.js';
 import { openStartupRepo } from '../host/services/repo.js';
+import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
+import { buildMenuTemplate } from './menu.js';
 import { loadTarget, rendererWebPreferences, windowChrome } from './window.js';
 
 const DIST = join(import.meta.dirname, '..');
 const DEV_SERVER_URL = process.env.KIRBY_VITE_URL;
+const APP_VERSION = process.env.KIRBY_DESKTOP_VERSION ?? 'dev';
+const IS_DEV = Boolean(DEV_SERVER_URL) || APP_VERSION === 'dev';
+
+let prefs: DesktopPrefs = loadDesktopPrefs();
+
+// ── Native application menu ──────────────────────────────────────
+
+function sendMenuCommand(command: MenuCommand, arg?: string): void {
+  const win =
+    BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  win?.webContents.send(MENU_EVENTS.command, { command, arg });
+}
+
+function installAppMenu(): void {
+  const template = buildMenuTemplate(
+    {
+      platform: process.platform,
+      isDev: IS_DEV,
+      theme: prefs.theme,
+      appVersion: APP_VERSION,
+    },
+    sendMenuCommand
+  );
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function showAbout(): Promise<void> {
+  return dialog
+    .showMessageBox({
+      type: 'info',
+      title: 'About Kirby Desktop',
+      message: 'Kirby Desktop',
+      detail: [
+        `Version ${APP_VERSION}`,
+        `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
+        '',
+        'Worktrees, agents and reviews for one repository.',
+      ].join('\n'),
+      buttons: ['OK'],
+    })
+    .then(() => undefined);
+}
+
+function popupContextMenu(items: ContextMenuItem[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    let chosen: string | null = null;
+    const menu = Menu.buildFromTemplate(
+      items.map((item) =>
+        'type' in item
+          ? { type: 'separator' as const }
+          : {
+              label: item.label,
+              enabled: item.enabled ?? true,
+              click: () => {
+                chosen = item.id;
+              },
+            }
+      )
+    );
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    menu.popup({
+      window: win,
+      // `click` fires before `callback` when an item is chosen.
+      callback: () => resolve(chosen),
+    });
+  });
+}
+
+// ── Window ───────────────────────────────────────────────────────
 
 function createMainWindow(): BrowserWindow {
+  const dark = nativeTheme.shouldUseDarkColors;
+  const chrome = prefs.nativeFrame
+    ? { backgroundColor: windowChrome(dark).backgroundColor }
+    : windowChrome(dark);
+
   const win = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -28,7 +112,8 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     title: 'Kirby',
     show: false,
-    ...windowChrome(nativeTheme.shouldUseDarkColors),
+    autoHideMenuBar: false,
+    ...chrome,
     webPreferences: rendererWebPreferences(
       join(DIST, 'preload', 'preload.cjs')
     ),
@@ -36,10 +121,11 @@ function createMainWindow(): BrowserWindow {
 
   // Keep the native overlay controls in step with the OS theme.
   nativeTheme.on('updated', () => {
-    const chrome = windowChrome(nativeTheme.shouldUseDarkColors);
-    if (chrome.titleBarOverlay && typeof chrome.titleBarOverlay === 'object') {
+    if (prefs.nativeFrame) return;
+    const next = windowChrome(nativeTheme.shouldUseDarkColors);
+    if (next.titleBarOverlay && typeof next.titleBarOverlay === 'object') {
       try {
-        win.setTitleBarOverlay(chrome.titleBarOverlay);
+        win.setTitleBarOverlay(next.titleBarOverlay);
       } catch {
         // not supported on this platform
       }
@@ -146,6 +232,20 @@ setExternalOpener(async (url) => {
   await shell.openExternal(url);
 });
 
+setShellGlue({
+  contextMenu: popupContextMenu,
+  appMenuPopup: async () => {
+    const menu = Menu.getApplicationMenu();
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    menu?.popup({ window: win });
+  },
+  aboutBox: showAbout,
+  prefsChanged: (next) => {
+    prefs = next;
+    installAppMenu(); // theme radio state lives in the menu
+  },
+});
+
 setSessionBroadcaster((channel, payload) => {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload);
@@ -168,6 +268,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    installAppMenu();
     const opened = openStartupRepo();
     console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 

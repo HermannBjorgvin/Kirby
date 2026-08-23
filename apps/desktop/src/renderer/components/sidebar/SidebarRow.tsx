@@ -2,21 +2,16 @@ import {
   CheckCircle2Icon,
   CircleDotIcon,
   CircleIcon,
-  CopyIcon,
-  ExternalLinkIcon,
   GitBranchIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   MessageSquareIcon,
-  PlayIcon,
-  SquareIcon,
-  Trash2Icon,
   XCircleIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem } from '../../../host/contract.js';
+import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
   useCreateWorktree,
@@ -31,13 +26,6 @@ import {
   itemTitle,
 } from '../../lib/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '../ui/context-menu.js';
 import { Tip } from '../ui/tooltip.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';
 
@@ -78,98 +66,102 @@ export function SidebarRow({
       onError: (e) => toast.error(errorMessage(e)),
     });
 
+  /** Native (OS) context menu — built from the item's state. */
+  const openContextMenu = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const items: ContextMenuItem[] = [
+      { id: 'open', label: 'Open' },
+      { type: 'separator' },
+    ];
+    if (hasWorktree && !running)
+      items.push({ id: 'launch', label: 'Launch agent' });
+    if (hasWorktree && running) items.push({ id: 'kill', label: 'Stop agent' });
+    if (!hasWorktree)
+      items.push({ id: 'checkout', label: 'Check out as worktree' });
+    if (pr)
+      items.push({ id: 'open-pr', label: 'Open pull request in browser' });
+    items.push({ id: 'copy', label: 'Copy branch name' });
+    if (hasWorktree) {
+      items.push(
+        { type: 'separator' },
+        {
+          id: 'remove',
+          label: 'Remove worktree…',
+          danger: true,
+        }
+      );
+    }
+    const chosen = await window.kirby.showContextMenu(items);
+    switch (chosen) {
+      case 'open':
+        onOpen(false);
+        break;
+      case 'launch':
+        onLaunch();
+        break;
+      case 'kill':
+        onKill();
+        break;
+      case 'checkout':
+        onCheckout();
+        break;
+      case 'open-pr':
+        if (pr) void window.kirby.openExternal(pr.url);
+        break;
+      case 'copy':
+        void navigator.clipboard.writeText(branch);
+        toast.success('Branch name copied');
+        break;
+      case 'remove':
+        setConfirmRemove(true);
+        break;
+    }
+  };
+
   return (
     <>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => onOpen(true)}
-            onDoubleClick={() => onOpen(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onOpen(false);
-            }}
-            className={cn(
-              'group flex w-full cursor-default items-center gap-2 py-[3px] pr-2 pl-4 text-base outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring/60',
-              active
-                ? 'bg-sidebar-active text-sidebar-accent-foreground'
-                : 'hover:bg-sidebar-accent'
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(true)}
+        onDoubleClick={() => onOpen(false)}
+        onContextMenu={(e) => void openContextMenu(e)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onOpen(false);
+        }}
+        className={cn(
+          'group flex w-full cursor-default items-center gap-2 py-[3px] pr-2 pl-4 text-base outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring/60',
+          active
+            ? 'bg-sidebar-active text-sidebar-accent-foreground'
+            : 'hover:bg-sidebar-accent'
+        )}
+      >
+        <ItemIcon item={item} running={running} />
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="flex items-center gap-1.5">
+            <span className={cn('truncate', running && 'font-medium')}>
+              {title}
+            </span>
+            {rebasing && (
+              <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning">
+                rebasing
+              </span>
             )}
-          >
-            <ItemIcon item={item} running={running} />
-            <div className="min-w-0 flex-1 leading-tight">
-              <div className="flex items-center gap-1.5">
-                <span className={cn('truncate', running && 'font-medium')}>
-                  {title}
-                </span>
-                {rebasing && (
-                  <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning">
-                    rebasing
-                  </span>
-                )}
-              </div>
-              {pr && (
-                <div
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                  title={pr.title}
-                >
-                  <span className="shrink-0 tabular-nums">#{pr.id}</span>
-                  <span className="min-w-0 truncate">
-                    {item.kind === 'session'
-                      ? pr.title
-                      : pr.createdByDisplayName}
-                  </span>
-                </div>
-              )}
-            </div>
-            {pr && <PrMeta pr={pr} />}
           </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {hasWorktree && !running && (
-            <ContextMenuItem onSelect={onLaunch}>
-              <PlayIcon /> Launch agent
-            </ContextMenuItem>
-          )}
-          {hasWorktree && running && (
-            <ContextMenuItem onSelect={onKill}>
-              <SquareIcon /> Stop agent
-            </ContextMenuItem>
-          )}
-          {!hasWorktree && (
-            <ContextMenuItem onSelect={onCheckout}>
-              <GitBranchIcon /> Check out as worktree
-            </ContextMenuItem>
-          )}
           {pr && (
-            <ContextMenuItem
-              onSelect={() => void window.kirby.openExternal(pr.url)}
+            <div
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title={pr.title}
             >
-              <ExternalLinkIcon /> Open pull request in browser
-            </ContextMenuItem>
+              <span className="shrink-0 tabular-nums">#{pr.id}</span>
+              <span className="min-w-0 truncate">
+                {item.kind === 'session' ? pr.title : pr.createdByDisplayName}
+              </span>
+            </div>
           )}
-          <ContextMenuItem
-            onSelect={() => {
-              void navigator.clipboard.writeText(branch);
-              toast.success('Branch name copied');
-            }}
-          >
-            <CopyIcon /> Copy branch name
-          </ContextMenuItem>
-          {hasWorktree && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                variant="destructive"
-                onSelect={() => setConfirmRemove(true)}
-              >
-                <Trash2Icon /> Remove worktree…
-              </ContextMenuItem>
-            </>
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
+        </div>
+        {pr && <PrMeta pr={pr} />}
+      </div>
       {confirmRemove && (
         <RemoveWorktreeDialog
           branch={branch}

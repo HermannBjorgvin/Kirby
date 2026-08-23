@@ -14,7 +14,7 @@ import {
   type SectionKey,
 } from '../../lib/sidebar-model.js';
 import { useTabs } from '../../lib/tabs.js';
-import { cn } from '../../lib/utils.js';
+import { basename, cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
   Collapsible,
@@ -60,8 +60,8 @@ export function Sidebar({
   return (
     <aside className="flex h-full min-w-0 flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Explorer
+        <span className="truncate text-base font-semibold">
+          {basename(repo.cwd)}
         </span>
         <div className="flex items-center">
           <Tip label="New worktree / check out branch">

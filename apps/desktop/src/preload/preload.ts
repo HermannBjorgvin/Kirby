@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC,
+  MENU_EVENTS,
   SESSION_EVENTS,
   type KirbyHostApi,
+  type MenuCommandEvent,
   type SessionDataEvent,
   type SessionExitEvent,
 } from '../host/contract.js';
@@ -69,6 +71,16 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.fetchFileDiffText, sourceBranch, targetBranch, file),
 
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
+  showContextMenu: (items) => ipcRenderer.invoke(IPC.showContextMenu, items),
+  showAppMenu: () => ipcRenderer.invoke(IPC.showAppMenu),
+  onMenuCommand: (cb) => {
+    const listener = (_e: unknown, payload: MenuCommandEvent) => cb(payload);
+    ipcRenderer.on(MENU_EVENTS.command, listener);
+    return () => ipcRenderer.removeListener(MENU_EVENTS.command, listener);
+  },
+  getDesktopPrefs: () => ipcRenderer.invoke(IPC.getDesktopPrefs),
+  setDesktopPrefs: (patch) => ipcRenderer.invoke(IPC.setDesktopPrefs, patch),
+  showAbout: () => ipcRenderer.invoke(IPC.showAbout),
 };
 
 contextBridge.exposeInMainWorld('kirby', api);

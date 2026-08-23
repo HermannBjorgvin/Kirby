@@ -127,6 +127,52 @@ export interface SyncState {
   remoteIntervalMs: number;
 }
 
+// ── Desktop shell (native menus, prefs) ──────────────────────────
+
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+export interface DesktopPrefs {
+  theme: ThemePreference;
+  /** Use the OS window frame + native menu bar instead of the custom
+   *  title bar. Applied on next launch. */
+  nativeFrame: boolean;
+}
+
+/** Commands the native application menu sends to the renderer. */
+export type MenuCommand =
+  | 'open-repo'
+  | 'switch-repo'
+  | 'new-worktree'
+  | 'open-settings'
+  | 'close-tab'
+  | 'command-palette'
+  | 'toggle-sidebar'
+  | 'refresh-remote'
+  | 'set-theme'
+  | 'open-url'
+  | 'show-shortcuts'
+  | 'about';
+
+export interface MenuCommandEvent {
+  command: MenuCommand;
+  arg?: string;
+}
+
+/** One entry of a native context menu. */
+export type ContextMenuItem =
+  | { type: 'separator' }
+  | {
+      id: string;
+      label: string;
+      enabled?: boolean;
+      /** Render as a destructive action where the platform supports it. */
+      danger?: boolean;
+    };
+
+export const MENU_EVENTS = {
+  command: 'kirby/menu/command',
+} as const;
+
 // ── Reviews ──────────────────────────────────────────────────────
 
 export interface ReplyRequest {
@@ -215,6 +261,18 @@ export interface KirbyHostApi {
   // ── Shell ────────────────────────────────────────────────────
   /** Open a URL in the user's default browser. */
   openExternal(url: string): Promise<void>;
+  /** Show a native context menu at the cursor; resolves to the chosen
+   *  item id, or null when dismissed. */
+  showContextMenu(items: ContextMenuItem[]): Promise<string | null>;
+  /** Pop the application menu (used by the custom title bar's menu
+   *  button on platforms without a visible native menu bar). */
+  showAppMenu(): Promise<void>;
+  /** Subscribe to native menu commands. Returns an unsubscribe fn. */
+  onMenuCommand(cb: (payload: MenuCommandEvent) => void): () => void;
+  getDesktopPrefs(): Promise<DesktopPrefs>;
+  setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
+  /** Native about box. */
+  showAbout(): Promise<void>;
 }
 
 /** IPC channel names — single source of truth for main and preload. */
@@ -250,6 +308,11 @@ export const IPC = {
   fetchDiffText: 'kirby/diff/text',
   fetchFileDiffText: 'kirby/diff/file-text',
   openExternal: 'kirby/shell/open-external',
+  showContextMenu: 'kirby/shell/context-menu',
+  showAppMenu: 'kirby/shell/app-menu',
+  getDesktopPrefs: 'kirby/shell/prefs/get',
+  setDesktopPrefs: 'kirby/shell/prefs/set',
+  showAbout: 'kirby/shell/about',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

@@ -1,6 +1,12 @@
-import type { KirbyHostApi, ReplyRequest, ResolveRequest } from './contract.js';
+import type {
+  ContextMenuItem,
+  KirbyHostApi,
+  ReplyRequest,
+  ResolveRequest,
+} from './contract.js';
 import { IPC } from './contract.js';
 import * as repo from './services/repo.js';
+import * as prefs from './services/desktop-prefs.js';
 import * as config from './services/config.js';
 import * as settings from './services/settings.js';
 import * as sidebar from './services/sidebar.js';
@@ -71,6 +77,16 @@ export function createHostApi(): KirbyHostApi {
       reviews.getFileDiffText(sourceBranch, targetBranch, file),
 
     openExternal: (url) => externalOpener(url),
+    showContextMenu: (items) => contextMenu(items),
+    showAppMenu: () => appMenuPopup(),
+    onMenuCommand: () => () => undefined,
+    getDesktopPrefs: () => Promise.resolve(prefs.loadDesktopPrefs()),
+    setDesktopPrefs: (patch) => {
+      const next = prefs.saveDesktopPrefs(patch);
+      prefsChanged(next);
+      return Promise.resolve(next);
+    },
+    showAbout: () => aboutBox(),
   };
 }
 
@@ -86,6 +102,12 @@ type HostMethod = (...args: any[]) => unknown;
 // no-ops so tests and non-Electron contexts never touch those modules.
 let folderPicker: () => Promise<string | null> = async () => null;
 let externalOpener: (url: string) => Promise<void> = async () => undefined;
+let contextMenu: (
+  items: ContextMenuItem[]
+) => Promise<string | null> = async () => null;
+let appMenuPopup: () => Promise<void> = async () => undefined;
+let aboutBox: () => Promise<void> = async () => undefined;
+let prefsChanged: (next: prefs.DesktopPrefsLike) => void = () => undefined;
 
 export function setFolderPicker(fn: () => Promise<string | null>): void {
   folderPicker = fn;
@@ -93,6 +115,18 @@ export function setFolderPicker(fn: () => Promise<string | null>): void {
 
 export function setExternalOpener(fn: (url: string) => Promise<void>): void {
   externalOpener = fn;
+}
+
+export function setShellGlue(glue: {
+  contextMenu: (items: ContextMenuItem[]) => Promise<string | null>;
+  appMenuPopup: () => Promise<void>;
+  aboutBox: () => Promise<void>;
+  prefsChanged: (next: prefs.DesktopPrefsLike) => void;
+}): void {
+  contextMenu = glue.contextMenu;
+  appMenuPopup = glue.appMenuPopup;
+  aboutBox = glue.aboutBox;
+  prefsChanged = glue.prefsChanged;
 }
 
 /**
@@ -136,6 +170,11 @@ export function registerHostHandlers(
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,
     [IPC.openExternal]: api.openExternal as HostMethod,
+    [IPC.showContextMenu]: api.showContextMenu as HostMethod,
+    [IPC.showAppMenu]: api.showAppMenu as HostMethod,
+    [IPC.getDesktopPrefs]: api.getDesktopPrefs as HostMethod,
+    [IPC.setDesktopPrefs]: api.setDesktopPrefs as HostMethod,
+    [IPC.showAbout]: api.showAbout as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {
