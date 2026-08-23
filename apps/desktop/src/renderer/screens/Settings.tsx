@@ -91,11 +91,13 @@ function FieldRow({
         </label>
         {field.presets && field.presets.length > 0 ? (
           <select
-            value={
-              field.presets.some((p) => p.value === draft)
-                ? draft
-                : '__custom__'
-            }
+            value={(() => {
+              if (field.presets!.some((p) => p.value === draft)) return draft;
+              // An unset field resolves to '' — show the default (first)
+              // preset rather than a misleading "Custom".
+              if (draft === '') return field.presets![0]?.value ?? '';
+              return '__custom__';
+            })()}
             onChange={(e) => {
               const v = e.target.value;
               if (v === '__custom__') return; // switch to text editing
@@ -104,8 +106,8 @@ function FieldRow({
             }}
             className="w-56 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-cyan-500"
           >
-            {!field.presets.some((p) => p.value === draft) && (
-              <option value="__custom__">Custom: {draft || '—'}</option>
+            {draft !== '' && !field.presets!.some((p) => p.value === draft) && (
+              <option value="__custom__">Custom: {draft}</option>
             )}
             {field.presets.map((preset) => (
               <option key={preset.name} value={preset.value ?? ''}>

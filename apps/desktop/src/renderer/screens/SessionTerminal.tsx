@@ -59,11 +59,12 @@ export function SessionTerminal({
   if (!active) return null;
 
   return (
-    <div className="h-full min-h-0 p-1">
+    <div className="h-full min-h-0 w-full">
       <Terminal
         ref={termRef}
         wasmUrl={wasmUrl}
-        className="h-full"
+        className="!h-full !w-full !rounded-none !shadow-none"
+        autoResize
         cursorBlink
         onReady={(wt) => {
           setReady(true);
