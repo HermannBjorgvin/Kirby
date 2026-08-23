@@ -5,8 +5,10 @@ import {
   CircleDotIcon,
   ColumnsIcon,
   EyeOffIcon,
+  Loader2Icon,
   MessageSquareIcon,
   RowsIcon,
+  SendIcon,
   WrapTextIcon,
   XCircleIcon,
 } from 'lucide-react';
@@ -18,11 +20,20 @@ import {
 } from 'react-resizable-panels';
 import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { RemoteCommentThread } from '../../../host/contract.js';
+import { toast } from 'sonner';
+import type {
+  RemoteCommentThread,
+  ReviewComment,
+} from '../../../host/contract.js';
 import { setDiffOptions, useDiffOptions } from '../../lib/diff-options.js';
-import { useDiff, useThreads } from '../../lib/queries.js';
+import {
+  useDiff,
+  useDraftComments,
+  usePostDrafts,
+  useThreads,
+} from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { cn } from '../../lib/utils.js';
+import { cn, errorMessage } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
@@ -43,6 +54,8 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
   const { repo } = useRepo();
   const diff = useDiff(repo.cwd, pr.sourceBranch, pr.targetBranch);
   const comments = useThreads(repo.cwd, pr.id);
+  const draftsQuery = useDraftComments(repo.cwd, pr.id);
+  const postAll = usePostDrafts(repo.cwd);
   const options = useDiffOptions();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -62,6 +75,17 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
     [comments.data]
   );
 
+  const drafts = useMemo(
+    () => (draftsQuery.data ?? []).filter((d) => d.status !== 'posted'),
+    [draftsQuery.data]
+  );
+  const draftsByFile = useMemo(() => {
+    const map = new Map<string, ReviewComment[]>();
+    for (const d of drafts)
+      (map.get(d.file) ?? map.set(d.file, []).get(d.file)!).push(d);
+    return map;
+  }, [drafts]);
+
   const threadsByFile = useMemo(() => {
     const map = new Map<string, RemoteCommentThread[]>();
     for (const t of inlineThreads) {
@@ -80,8 +104,9 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
         comments: (threadsByFile.get(filename) ?? []).filter(
           (t) => !t.isResolved
         ).length,
+        drafts: (draftsByFile.get(filename) ?? []).length,
       })),
-    [files, threadsByFile]
+    [files, threadsByFile, draftsByFile]
   );
 
   const jumpToFile = useCallback((path: string) => {
@@ -137,6 +162,18 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
         navIndex={navIndex}
         onPrev={() => step(-1)}
         onNext={() => step(1)}
+        draftCount={drafts.length}
+        postingAll={postAll.isPending}
+        onPostAll={() =>
+          postAll.mutate(
+            { prId: pr.id, headSha: pr.headSha },
+            {
+              onSuccess: (n) =>
+                toast.success(`Posted ${n} comment${n === 1 ? '' : 's'}`),
+              onError: (e) => toast.error(`Post failed: ${errorMessage(e)}`),
+            }
+          )
+        }
       />
       <Group orientation="horizontal" className="min-h-0 flex-1">
         <Panel
@@ -205,7 +242,9 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
                 filename={filename}
                 lines={lines}
                 threads={threadsByFile.get(filename) ?? []}
+                drafts={draftsByFile.get(filename) ?? []}
                 prId={pr.id}
+                headSha={pr.headSha}
                 focusThreadId={focusThreadId}
               />
             ))}
@@ -221,11 +260,17 @@ function Toolbar({
   navIndex,
   onPrev,
   onNext,
+  draftCount,
+  postingAll,
+  onPostAll,
 }: {
   navCount: number;
   navIndex: number;
   onPrev: () => void;
   onNext: () => void;
+  draftCount: number;
+  postingAll: boolean;
+  onPostAll: () => void;
 }) {
   const o = useDiffOptions();
   return (
@@ -283,6 +328,18 @@ function Toolbar({
         </Button>
       </Tip>
       <div className="flex-1" />
+      {draftCount > 0 && (
+        <Tip label="Post every draft comment written by the review agent">
+          <Button size="sm" onClick={onPostAll} disabled={postingAll}>
+            {postingAll ? (
+              <Loader2Icon className="animate-spin" />
+            ) : (
+              <SendIcon />
+            )}
+            Post {draftCount} draft{draftCount === 1 ? '' : 's'}
+          </Button>
+        </Tip>
+      )}
       {navCount > 0 && (
         <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
           <MessageSquareIcon className="size-3.5" />

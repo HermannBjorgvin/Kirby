@@ -14,6 +14,8 @@ export interface FileEntry {
   additions: number;
   deletions: number;
   comments: number;
+  /** Unposted agent drafts in this file. */
+  drafts?: number;
 }
 
 interface DirNode {
@@ -196,6 +198,16 @@ function TreeRow({
     >
       <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-left">{node.name}</span>
+      {(entry.drafts ?? 0) > 0 && (
+        <span
+          className="rounded border border-dashed border-border px-1 text-[10px] text-muted-foreground"
+          title={`${entry.drafts} draft comment${
+            entry.drafts === 1 ? '' : 's'
+          }`}
+        >
+          {entry.drafts}
+        </span>
+      )}
       {entry.comments > 0 && (
         <span className="flex items-center gap-0.5 text-xs text-warning">
           <MessageSquareIcon className="size-3" />

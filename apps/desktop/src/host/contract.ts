@@ -12,8 +12,10 @@
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
 import type { LaunchIntent, SidebarItem } from '@kirby/app-core';
+import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
+export type { CommentSeverity, ReviewComment };
 import type { WorktreeInfo } from '@kirby/worktree-manager';
 import type {
   BranchPrMap,
@@ -51,6 +53,8 @@ export interface SessionLaunchRequest {
   branch: string;
   intent: LaunchIntent;
   prompt?: string;
+  /** Delivered as a native system prompt for agents that support it. */
+  systemGuidance?: string;
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
@@ -193,6 +197,24 @@ export interface ResolveRequest {
   resolved: boolean;
 }
 
+/** Launch (or resume) an AI review of a PR in its worktree. */
+export interface ReviewLaunchRequest {
+  pr: PullRequestInfo;
+  /** Extra user instruction appended to the review task prompt. */
+  instruction?: string;
+  cols?: number;
+  rows?: number;
+}
+
+export interface PostDraftsRequest {
+  prId: number;
+  /** Subset to post; every draft when omitted. */
+  ids?: string[];
+  /** Required for GitHub (review API). */
+  headSha?: string;
+  event?: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES';
+}
+
 /** An image embedded in a comment, fetched host-side with provider auth. */
 export interface CommentImagePayload {
   dataUrl: string;
@@ -253,8 +275,22 @@ export interface KirbyHostApi {
    *  DevOps PAT / GitHub token) and return it as a data URL. */
   fetchCommentImage(url: string): Promise<CommentImagePayload | null>;
 
+  // ── Draft review comments (from the review agent) ─────────────
+  listDraftComments(prId: number): Promise<ReviewComment[]>;
+  updateDraftComment(
+    prId: number,
+    id: string,
+    patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>
+  ): Promise<void>;
+  deleteDraftComment(prId: number, id: string): Promise<void>;
+  /** Resolves to the number of comments posted. */
+  postDraftComments(req: PostDraftsRequest): Promise<number>;
+
   // ── Sessions ─────────────────────────────────────────────────
   launchAgent(req: SessionLaunchRequest): Promise<{ name: string }>;
+  /** Create the PR's worktree if needed and start/continue a review
+   *  session seeded with the shared review prompt + guidance. */
+  launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
   listSessions(): Promise<SessionSummary[]>;
   /** Recent output for a session so a (re)mounted terminal can replay
    *  what it missed before subscribing to live data. */
@@ -322,6 +358,11 @@ export const IPC = {
   replyToThread: 'kirby/reviews/reply',
   setThreadResolved: 'kirby/reviews/resolve',
   fetchCommentImage: 'kirby/reviews/comment-image',
+  listDraftComments: 'kirby/drafts/list',
+  updateDraftComment: 'kirby/drafts/update',
+  deleteDraftComment: 'kirby/drafts/delete',
+  postDraftComments: 'kirby/drafts/post',
+  launchReviewAgent: 'kirby/session/launch-review',
   fetchDiffText: 'kirby/diff/text',
   fetchFileDiffText: 'kirby/diff/file-text',
   openExternal: 'kirby/shell/open-external',

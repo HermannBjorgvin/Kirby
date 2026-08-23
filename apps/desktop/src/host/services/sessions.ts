@@ -1,4 +1,5 @@
 import {
+  buildReviewLaunchRequest,
   launchSession,
   getSession,
   killSession as killSessionEntry,
@@ -6,9 +7,14 @@ import {
   getSpawnedAt,
 } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
-import { branchToSessionName, listWorktrees } from '@kirby/worktree-manager';
+import {
+  branchToSessionName,
+  createWorktree,
+  listWorktrees,
+} from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import type {
+  ReviewLaunchRequest,
   SessionBuffer,
   SessionLaunchRequest,
   SessionSummary,
@@ -84,7 +90,11 @@ export async function launchAgent(req: SessionLaunchRequest): Promise<{
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
-    request: { intent: req.intent, prompt: req.prompt },
+    request: {
+      intent: req.intent,
+      prompt: req.prompt,
+      systemGuidance: req.systemGuidance,
+    },
   });
   const entry: KnownSession = {
     branch: req.branch,
@@ -101,6 +111,32 @@ export function getSessionBuffer(name: string): SessionBuffer {
   const entry = known.get(name);
   if (!entry) return { data: '', seq: 0 };
   return { data: entry.chunks.join(''), seq: entry.seq };
+}
+
+/**
+ * Start (or resume) an AI review of `req.pr`: make sure the PR's branch
+ * has a worktree, then launch with the shared review prompt. Same flow
+ * as the TUI's "Start/Continue review" menu entry.
+ */
+export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
+  name: string;
+}> {
+  requireRepo();
+  const branch = req.pr.sourceBranch;
+  const existing = (await listWorktrees()).find((w) => w.branch === branch);
+  if (!existing) {
+    const created = await createWorktree(branch);
+    if (!created) throw new Error(`Failed to create worktree for ${branch}`);
+  }
+  const request = buildReviewLaunchRequest(req.pr, req.instruction);
+  return launchAgent({
+    branch,
+    intent: request.intent,
+    prompt: request.prompt,
+    systemGuidance: request.systemGuidance,
+    cols: req.cols,
+    rows: req.rows,
+  });
 }
 
 function clampDim(value: number | undefined, fallback: number): number {

@@ -23,6 +23,9 @@
       "path": "../../libs/worktree-manager/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/review-comments/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/vcs/core/tsconfig.lib.json"
     },
     {

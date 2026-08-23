@@ -4,6 +4,7 @@ import {
   hasSession,
   launchSession,
   getPrFromItem,
+  buildReviewLaunchRequest,
 } from '@kirby/app-core';
 import { createWorktree } from '@kirby/worktree-manager';
 import type { ConfirmHandlerCtx } from './input-types.js';
@@ -17,30 +18,7 @@ async function startReviewSession(
   const pr = getPrFromItem(ctx.selectedItem);
   if (!pr) return;
 
-  // Reusable how-to guidance (installed as a system prompt for agents
-  // that support it, e.g. Claude; folded into the prompt otherwise).
-  const guidance =
-    `To add review comments, use this command:\n` +
-    `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
-    `Rules:\n` +
-    `- File paths are relative to the repo root\n` +
-    `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
-    `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
-    `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
-    `- Comments appear live in the reviewer's diff viewer`;
-
-  // The per-PR task prompt.
-  let task =
-    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
-    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
-    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
-    `Review all changed files thoroughly. Add comments for any issues found.`;
-
-  if (additionalInstruction) {
-    task +=
-      ` ADDITIONAL USER INSTRUCTION (overrides previous where applicable): ` +
-      additionalInstruction;
-  }
+  const request = buildReviewLaunchRequest(pr, additionalInstruction);
 
   const worktreePath = await createWorktree(pr.sourceBranch);
   if (!worktreePath) {
@@ -60,11 +38,7 @@ async function startReviewSession(
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
-    request: {
-      intent: 'continue-or-seed',
-      prompt: task,
-      systemGuidance: guidance,
-    },
+    request,
   });
 }
 

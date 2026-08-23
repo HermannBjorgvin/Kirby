@@ -8,7 +8,10 @@ import {
 } from 'lucide-react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { RemoteCommentThread } from '../../../host/contract.js';
+import type {
+  RemoteCommentThread,
+  ReviewComment,
+} from '../../../host/contract.js';
 import {
   anchorKey,
   buildSplitRows,
@@ -27,6 +30,7 @@ import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
+import { DraftCard } from './DraftCard.js';
 import { ThreadCard } from './ThreadCard.js';
 
 /**
@@ -40,13 +44,18 @@ export const DiffView = memo(function DiffView({
   filename,
   lines,
   threads,
+  drafts = [],
   prId,
+  headSha,
   focusThreadId,
 }: {
   filename: string;
   lines: DiffLine[];
   threads: RemoteCommentThread[];
+  /** Agent-written draft comments for this file (not yet posted). */
+  drafts?: ReviewComment[];
   prId: number;
+  headSha?: string;
   focusThreadId: string | null;
 }) {
   const options = useDiffOptions();
@@ -96,14 +105,34 @@ export const DiffView = memo(function DiffView({
     return { inline, orphaned, pinned };
   }, [lines, visibleThreads]);
 
+  // Drafts keyed by anchor (lineEnd on their side); anchors pinned too.
+  const { draftMap, orphanDrafts, pinnedAll } = useMemo(() => {
+    const present = new Set<string>();
+    for (const l of lines) for (const a of lineAnchors(l)) present.add(a);
+    const draftMap = new Map<string, ReviewComment[]>();
+    const orphanDrafts: ReviewComment[] = [];
+    const pinnedAll = new Set(pinned);
+    for (const d of drafts) {
+      if (d.status === 'posted') continue;
+      const a = anchorKey(d.side === 'LEFT' ? 'L' : 'R', d.lineEnd);
+      if (present.has(a)) {
+        (draftMap.get(a) ?? draftMap.set(a, []).get(a)!).push(d);
+        pinnedAll.add(a);
+      } else {
+        orphanDrafts.push(d);
+      }
+    }
+    return { draftMap, orphanDrafts, pinnedAll };
+  }, [lines, drafts, pinned]);
+
   const unifiedRows = useMemo(
     () =>
       buildUnifiedRows(lines, {
-        pinnedAnchors: pinned,
+        pinnedAnchors: pinnedAll,
         expanded,
         noFold: lines.length <= 40,
       }),
-    [lines, pinned, expanded]
+    [lines, pinnedAll, expanded]
   );
   const splitRows = useMemo(
     () =>
@@ -157,14 +186,31 @@ export const DiffView = memo(function DiffView({
     return out;
   };
 
-  const threadBlock = (list: RemoteCommentThread[], indent = true) =>
-    list.length > 0 && (
+  const draftsFor = (line: DiffLine, onlyLeft = false) => {
+    const out: ReviewComment[] = [];
+    if (!onlyLeft && line.newLine != null)
+      out.push(...(draftMap.get(anchorKey('R', line.newLine)) ?? []));
+    if ((onlyLeft || line.type === 'remove') && line.oldLine != null) {
+      out.push(...(draftMap.get(anchorKey('L', line.oldLine)) ?? []));
+    }
+    return out;
+  };
+
+  const threadBlock = (
+    list: RemoteCommentThread[],
+    draftList: ReviewComment[] = [],
+    indent = true
+  ) =>
+    (list.length > 0 || draftList.length > 0) && (
       <div
         className={cn(
           'space-y-2 border-y border-border bg-muted/30 py-2 pr-4 font-sans',
           indent ? 'pl-[5.5rem]' : 'pl-4'
         )}
       >
+        {draftList.map((d) => (
+          <DraftCard key={d.id} draft={d} prId={prId} headSha={headSha} />
+        ))}
         {list.map((t) => (
           <ThreadCard
             key={t.id}
@@ -208,6 +254,14 @@ export const DiffView = memo(function DiffView({
               : collapseReason === 'lockfile'
               ? 'lockfile'
               : 'generated'}
+          </span>
+        )}
+        {drafts.filter((d) => d.status !== 'posted').length > 0 && (
+          <span className="rounded-full border border-dashed border-border px-1.5 text-xs font-medium text-muted-foreground">
+            {drafts.filter((d) => d.status !== 'posted').length} draft
+            {drafts.filter((d) => d.status !== 'posted').length === 1
+              ? ''
+              : 's'}
           </span>
         )}
         {openThreads > 0 && (
@@ -274,13 +328,17 @@ export const DiffView = memo(function DiffView({
                         wrap
                       />
                     </div>
-                    {threadBlock(threadsFor(line), false)}
+                    {threadBlock(threadsFor(line), draftsFor(line), false)}
                   </div>
                 );
               }
               const attached = [
                 ...(row.left ? threadsFor(row.left.line, true) : []),
                 ...(row.right ? threadsFor(row.right.line) : []),
+              ];
+              const attachedDrafts = [
+                ...(row.left ? draftsFor(row.left.line, true) : []),
+                ...(row.right ? draftsFor(row.right.line) : []),
               ];
               return (
                 <div key={i}>
@@ -304,14 +362,16 @@ export const DiffView = memo(function DiffView({
                       wrap
                     />
                   </div>
-                  {threadBlock(attached, false)}
+                  {threadBlock(attached, attachedDrafts, false)}
                 </div>
               );
             })}
-            {orphaned.length > 0 && (
+            {(orphaned.length > 0 || orphanDrafts.length > 0) && (
               <OrphanBlock
                 threads={orphaned}
+                drafts={orphanDrafts}
                 prId={prId}
+                headSha={headSha}
                 focusThreadId={focusThreadId}
               />
             )}
@@ -335,14 +395,16 @@ export const DiffView = memo(function DiffView({
                     ranges={wordRanges.get(row.index)}
                     wrap={options.wrap}
                   />
-                  {threadBlock(threadsFor(line))}
+                  {threadBlock(threadsFor(line), draftsFor(line))}
                 </div>
               );
             })}
-            {orphaned.length > 0 && (
+            {(orphaned.length > 0 || orphanDrafts.length > 0) && (
               <OrphanBlock
                 threads={orphaned}
+                drafts={orphanDrafts}
                 prId={prId}
+                headSha={headSha}
                 focusThreadId={focusThreadId}
               />
             )}
@@ -603,11 +665,15 @@ function splitRanges(
 
 function OrphanBlock({
   threads,
+  drafts,
   prId,
+  headSha,
   focusThreadId,
 }: {
   threads: RemoteCommentThread[];
+  drafts: ReviewComment[];
   prId: number;
+  headSha?: string;
   focusThreadId: string | null;
 }) {
   return (
@@ -615,6 +681,15 @@ function OrphanBlock({
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Comments on lines not in this diff
       </p>
+      {drafts.map((d) => (
+        <DraftCard
+          key={d.id}
+          draft={d}
+          prId={prId}
+          headSha={headSha}
+          showLocation
+        />
+      ))}
       {threads.map((t) => (
         <ThreadCard
           key={t.id}

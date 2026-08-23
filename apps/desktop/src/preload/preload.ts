@@ -45,8 +45,15 @@ const api: KirbyHostApi = {
   replyToThread: (req) => ipcRenderer.invoke(IPC.replyToThread, req),
   setThreadResolved: (req) => ipcRenderer.invoke(IPC.setThreadResolved, req),
   fetchCommentImage: (url) => ipcRenderer.invoke(IPC.fetchCommentImage, url),
+  listDraftComments: (prId) => ipcRenderer.invoke(IPC.listDraftComments, prId),
+  updateDraftComment: (prId, id, patch) =>
+    ipcRenderer.invoke(IPC.updateDraftComment, prId, id, patch),
+  deleteDraftComment: (prId, id) =>
+    ipcRenderer.invoke(IPC.deleteDraftComment, prId, id),
+  postDraftComments: (req) => ipcRenderer.invoke(IPC.postDraftComments, req),
 
   launchAgent: (req) => ipcRenderer.invoke(IPC.launchAgent, req),
+  launchReviewAgent: (req) => ipcRenderer.invoke(IPC.launchReviewAgent, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   getSessionBuffer: (name) => ipcRenderer.invoke(IPC.getSessionBuffer, name),
   writeSession: (name, data) =>

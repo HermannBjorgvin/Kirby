@@ -5,8 +5,11 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  PostDraftsRequest,
   ReplyRequest,
   ResolveRequest,
+  ReviewComment,
+  ReviewLaunchRequest,
   SessionLaunchRequest,
 } from '../../host/contract.js';
 
@@ -38,6 +41,7 @@ export const keys = {
     ['diff', cwd, source, target] as const,
   threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
   commentImage: (url: string) => ['comment-image', url] as const,
+  drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
@@ -122,6 +126,17 @@ export function useCommentImage(url: string) {
   });
 }
 
+/** Draft review comments written by the review agent; polled so they
+ *  show up in the diff while the agent is still working. */
+export function useDraftComments(cwd: string, prId: number) {
+  return useQuery({
+    queryKey: keys.drafts(cwd, prId),
+    queryFn: () => window.kirby.listDraftComments(prId),
+    refetchInterval: 2_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 // ── Mutations ────────────────────────────────────────────────────
 
 function useInvalidator(cwd: string) {
@@ -133,6 +148,8 @@ function useInvalidator(cwd: string) {
     settings: () => qc.invalidateQueries({ queryKey: keys.settings(cwd) }),
     threads: (prId: number) =>
       qc.invalidateQueries({ queryKey: keys.threads(cwd, prId) }),
+    drafts: (prId: number) =>
+      qc.invalidateQueries({ queryKey: keys.drafts(cwd, prId) }),
   };
 }
 
@@ -164,6 +181,55 @@ export function useLaunchAgent(cwd: string) {
   return useMutation({
     mutationFn: (req: SessionLaunchRequest) => window.kirby.launchAgent(req),
     onSuccess: () => void inv.sidebar(),
+  });
+}
+
+export function useLaunchReview(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: ReviewLaunchRequest) =>
+      window.kirby.launchReviewAgent(req),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.branches();
+    },
+  });
+}
+
+export function useUpdateDraft(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: ({
+      prId,
+      id,
+      patch,
+    }: {
+      prId: number;
+      id: string;
+      patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>;
+    }) => window.kirby.updateDraftComment(prId, id, patch),
+    onSettled: (_r, _e, v) => void inv.drafts(v.prId),
+  });
+}
+
+export function useDeleteDraft(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: ({ prId, id }: { prId: number; id: string }) =>
+      window.kirby.deleteDraftComment(prId, id),
+    onSettled: (_r, _e, v) => void inv.drafts(v.prId),
+  });
+}
+
+export function usePostDrafts(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: PostDraftsRequest) => window.kirby.postDraftComments(req),
+    onSettled: (_r, _e, v) => {
+      void inv.drafts(v.prId);
+      // The posted comments become remote threads.
+      void inv.threads(v.prId);
+    },
   });
 }
 

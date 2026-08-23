@@ -68,6 +68,7 @@ export function EditorArea({
               ) : (
                 <ItemView
                   item={byKey.get(tab.itemKey)}
+                  items={items}
                   itemKey={tab.itemKey}
                   active={active}
                   onPin={() => tabs.pin(tab.id)}

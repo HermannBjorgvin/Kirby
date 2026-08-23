@@ -14,6 +14,7 @@ import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
 import * as commentImages from './services/comment-images.js';
+import * as drafts from './services/drafts.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -56,8 +57,16 @@ export function createHostApi(): KirbyHostApi {
     replyToThread: (req: ReplyRequest) => reviews.replyToThread(req),
     setThreadResolved: (req: ResolveRequest) => reviews.setThreadResolved(req),
     fetchCommentImage: (url) => commentImages.fetchCommentImage(url),
+    listDraftComments: (prId) =>
+      Promise.resolve(drafts.listDraftComments(prId)),
+    updateDraftComment: (prId, id, patch) =>
+      Promise.resolve(drafts.updateDraftComment(prId, id, patch)),
+    deleteDraftComment: (prId, id) =>
+      Promise.resolve(drafts.deleteDraftComment(prId, id)),
+    postDraftComments: (req) => drafts.postDraftComments(req),
 
     launchAgent: (req) => sessions.launchAgent(req),
+    launchReviewAgent: (req) => sessions.launchReviewAgent(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
     getSessionBuffer: (name) =>
       Promise.resolve(sessions.getSessionBuffer(name)),
@@ -170,6 +179,11 @@ export function registerHostHandlers(
     [IPC.replyToThread]: api.replyToThread as HostMethod,
     [IPC.setThreadResolved]: api.setThreadResolved as HostMethod,
     [IPC.fetchCommentImage]: api.fetchCommentImage as HostMethod,
+    [IPC.listDraftComments]: api.listDraftComments as HostMethod,
+    [IPC.updateDraftComment]: api.updateDraftComment as HostMethod,
+    [IPC.deleteDraftComment]: api.deleteDraftComment as HostMethod,
+    [IPC.postDraftComments]: api.postDraftComments as HostMethod,
+    [IPC.launchReviewAgent]: api.launchReviewAgent as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,
     [IPC.openExternal]: api.openExternal as HostMethod,
