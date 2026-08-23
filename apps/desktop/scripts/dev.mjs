@@ -107,24 +107,50 @@ const vite = await createServer({
 await vite.listen();
 console.log('[desktop] vite dev server on ' + DEV_URL);
 
-let restarting = false;
-const contexts = [];
-async function watch(options) {
-  const ctx = await context(options);
-  contexts.push(ctx);
-  await ctx.watch(() => {
-    if (restarting) return;
-    restarting = true;
-    console.log('[desktop] host bundle changed — restarting electron…');
-    // Small delay so the write completes before the new process reads it.
-    setTimeout(() => {
-      startElectron();
-      restarting = false;
-    }, 200);
-  });
+// esbuild's context.watch() takes no callback — rebuild notifications
+// come from an onEnd plugin. main + preload usually finish within a few
+// ms of each other, so restarts are debounced into one. Initial builds
+// (before the first watch rebuild) do not restart: startElectron() below
+// handles the first launch.
+let restartTimer = null;
+let initialBuilds = 0;
+function scheduleRestart(label) {
+  if (restartTimer) clearTimeout(restartTimer);
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    console.log(`[desktop] ${label} bundle changed — restarting electron…`);
+    startElectron();
+  }, 250);
 }
-await watch(mainOptions);
-await watch(preloadOptions);
+function restartOnRebuild(label) {
+  return {
+    name: 'kirby-restart-electron',
+    setup(build) {
+      build.onEnd((result) => {
+        if (result.errors.length > 0) {
+          console.error(`[desktop] ${label} build failed — not restarting`);
+          return;
+        }
+        if (initialBuilds < 2) {
+          initialBuilds += 1; // first onEnd per context is the initial build
+          return;
+        }
+        scheduleRestart(label);
+      });
+    },
+  };
+}
+const contexts = [];
+async function watch(options, label) {
+  const ctx = await context({
+    ...options,
+    plugins: [...(options.plugins ?? []), restartOnRebuild(label)],
+  });
+  contexts.push(ctx);
+  await ctx.watch();
+}
+await watch(mainOptions, 'main');
+await watch(preloadOptions, 'preload');
 
 startElectron();
 
