@@ -1,8 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  afterEach,
+} from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getRepo, isGitRepo, openRepo, openStartupRepo } from './repo.js';
+import { getRepo, isGitRepo, openStartupRepo } from './repo.js';
+import { loadRecents, saveRecents } from './recent-repos.js';
 import type { RecentRepo } from '@kirby/vcs-core';
 
 const recents = (cwds: string[]): RecentRepo[] =>
@@ -23,6 +32,16 @@ afterEach(() => {
   rmSync(join(gitDir, '..'), { recursive: true, force: true });
 });
 
+// openRepo records to the real recents store; snapshot and restore
+// around the suite so tests never leave pollution behind.
+let savedRecents: RecentRepo[] | null = null;
+beforeAll(() => {
+  savedRecents = loadRecents();
+});
+afterAll(() => {
+  if (savedRecents) saveRecents(savedRecents);
+});
+
 describe('isGitRepo', () => {
   it('accepts a directory containing a .git directory', () => {
     expect(isGitRepo(gitDir)).toBe(true);
@@ -34,15 +53,6 @@ describe('isGitRepo', () => {
 });
 
 describe('openStartupRepo', () => {
-  afterEach(() => {
-    // reset module state between tests by opening nothing
-    try {
-      openRepo(gitDir); // harmless re-open
-    } catch {
-      /* ignore */
-    }
-  });
-
   it('opens the repo when KIRBY_START_DIR is a valid git repo', () => {
     const info = openStartupRepo({ KIRBY_START_DIR: gitDir });
     expect(info).not.toBeNull();

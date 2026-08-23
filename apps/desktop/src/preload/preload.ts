@@ -22,8 +22,9 @@ const api: KirbyHostApi = {
   forgetRecent: (cwd) => ipcRenderer.invoke(IPC.forgetRecent, cwd),
 
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
-  updateSettingsField: (field, value) =>
-    ipcRenderer.invoke(IPC.updateSettingsField, field, value),
+  getSettingsView: () => ipcRenderer.invoke(IPC.getSettingsView),
+  updateSettingsField: (ref, value) =>
+    ipcRenderer.invoke(IPC.updateSettingsField, ref, value),
 
   listWorktrees: () => ipcRenderer.invoke(IPC.listWorktrees),
   listBranches: () => ipcRenderer.invoke(IPC.listBranches),

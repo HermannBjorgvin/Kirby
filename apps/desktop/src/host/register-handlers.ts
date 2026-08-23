@@ -2,6 +2,7 @@ import type { KirbyHostApi, ReplyRequest, ResolveRequest } from './contract.js';
 import { IPC } from './contract.js';
 import * as repo from './services/repo.js';
 import * as config from './services/config.js';
+import * as settings from './services/settings.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
@@ -28,8 +29,9 @@ export function createHostApi(): KirbyHostApi {
     forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
     getConfig: () => Promise.resolve(config.getConfig()),
-    updateSettingsField: (field, value) =>
-      Promise.resolve(config.updateSettingsField(field, value)),
+    getSettingsView: () => Promise.resolve(settings.getSettingsView()),
+    updateSettingsField: (ref, value) =>
+      Promise.resolve(settings.updateSettingsFromView(ref, value)),
 
     listWorktrees: () => worktrees.listWorktrees(),
     listBranches: () => worktrees.listBranches(),
@@ -96,6 +98,7 @@ export function registerHostHandlers(
     [IPC.selectRepoDirectory]: api.selectRepoDirectory as HostMethod,
     [IPC.forgetRecent]: api.forgetRecent as HostMethod,
     [IPC.getConfig]: api.getConfig as HostMethod,
+    [IPC.getSettingsView]: api.getSettingsView as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
     [IPC.listWorktrees]: api.listWorktrees as HostMethod,
     [IPC.listBranches]: api.listBranches as HostMethod,

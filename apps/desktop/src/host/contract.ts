@@ -13,7 +13,7 @@
  */
 
 import type { AppConfig } from '@kirby/vcs-core';
-import type { LaunchIntent, SettingsField } from '@kirby/app-core';
+import type { LaunchIntent } from '@kirby/app-core';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
 import type {
   BranchPrMap,
@@ -68,6 +68,18 @@ export const SESSION_EVENTS = {
   exit: 'kirby/session/exit',
 } as const;
 
+// ── Settings ─────────────────────────────────────────────────────
+
+/** One row of the settings form: the field plus its current value. */
+export interface SettingsFieldView {
+  label: string;
+  key: string;
+  masked?: boolean;
+  description?: string;
+  presets?: { name: string; value: string | null }[];
+  value: string;
+}
+
 // ── Recent repos ─────────────────────────────────────────────────
 
 export interface RecentRepoEntry {
@@ -107,13 +119,17 @@ export interface KirbyHostApi {
   selectRepoDirectory(): Promise<string | null>;
   forgetRecent(cwd: string): Promise<void>;
 
-  // ── Config ───────────────────────────────────────────────────
+  // ── Config / settings ────────────────────────────────────────
   getConfig(): Promise<AppConfig>;
+  /** Settings form model: every editable field with its current
+   *  resolved display value (same semantics as the CLI's panel). */
+  getSettingsView(): Promise<SettingsFieldView[]>;
+  /** Update one settings field (same bag semantics as the CLI). */
   /** Update one settings field (same bag semantics as the CLI). */
   updateSettingsField(
-    field: SettingsField,
-    value: string | undefined
-  ): Promise<AppConfig>;
+    ref: { label: string; key: string },
+    value: string
+  ): Promise<void>;
 
   // ── Worktrees ────────────────────────────────────────────────
   listWorktrees(): Promise<WorktreeInfo[]>;
@@ -158,6 +174,7 @@ export const IPC = {
   forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
   getConfig: 'kirby/config/get',
+  getSettingsView: 'kirby/settings/view',
   updateSettingsField: 'kirby/config/update-field',
   listWorktrees: 'kirby/worktree/list',
   listBranches: 'kirby/worktree/branches',

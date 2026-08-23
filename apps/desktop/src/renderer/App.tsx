@@ -4,6 +4,7 @@ import { RepoOpen } from './screens/RepoOpen.js';
 import { Sidebar } from './screens/Sidebar.js';
 import { Reviews } from './screens/Reviews.js';
 import { Sessions } from './screens/Sessions.js';
+import { Settings } from './screens/Settings.js';
 import { VersionBadge } from './screens/VersionBadge.js';
 
 declare global {
@@ -12,7 +13,7 @@ declare global {
   }
 }
 
-type MainTab = 'reviews' | 'sessions';
+type MainTab = 'reviews' | 'sessions' | 'settings';
 
 /**
  * App shell: repo-open gate, then sidebar + tabbed main pane.
@@ -50,7 +51,7 @@ export function App() {
       <Sidebar repoCwd={repo.cwd} onSwitchRepo={() => setRepo(null)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <nav className="flex items-center gap-1 border-b border-slate-800 px-3 py-1.5">
-          {(['reviews', 'sessions'] as const).map((t) => (
+          {(['reviews', 'sessions', 'settings'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -69,11 +70,11 @@ export function App() {
           </span>
         </nav>
         <div className="min-h-0 flex-1">
-          {tab === 'reviews' ? (
+          {tab === 'reviews' && (
             <Reviews repoCwd={repo.cwd} vcsConfigured={repo.vcsConfigured} />
-          ) : (
-            <Sessions repoCwd={repo.cwd} />
           )}
+          {tab === 'sessions' && <Sessions repoCwd={repo.cwd} />}
+          {tab === 'settings' && <Settings repoCwd={repo.cwd} />}
         </div>
       </div>
       <VersionBadge />
