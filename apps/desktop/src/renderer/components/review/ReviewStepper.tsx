@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from '../ui/select.js';
 import { Textarea } from '../ui/textarea.js';
+import { Tip } from '../ui/tooltip.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
 import { SnippetView } from './SnippetView.js';
 
@@ -194,10 +195,14 @@ function StepCard({
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if (e.key === 'ArrowDown' || e.key === 'j') {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'j') {
         e.preventDefault();
         onNext();
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'k'
+      ) {
         e.preventDefault();
         onPrev();
       } else if (e.key === 'e') {
@@ -243,24 +248,28 @@ function StepCard({
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onPrev}
-            disabled={atStart}
-            aria-label="Previous"
-          >
-            <ChevronLeftIcon />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onNext}
-            disabled={atEnd}
-            aria-label="Next"
-          >
-            <ChevronRightIcon />
-          </Button>
+          <Tip label="Previous comment (← / ↑)">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onPrev}
+              disabled={atStart}
+              aria-label="Previous comment"
+            >
+              <ChevronLeftIcon />
+            </Button>
+          </Tip>
+          <Tip label="Next comment (→ / ↓)">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onNext}
+              disabled={atEnd}
+              aria-label="Next comment"
+            >
+              <ChevronRightIcon />
+            </Button>
+          </Tip>
         </div>
         <Button variant="ghost" size="sm" onClick={onExit}>
           <XIcon /> Close
