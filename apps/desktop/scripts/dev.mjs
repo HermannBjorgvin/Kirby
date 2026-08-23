@@ -93,7 +93,13 @@ function startElectron() {
 await build(mainOptions);
 await build(preloadOptions);
 
+// Load the app's vite.config.ts explicitly — Vite only auto-discovers a
+// config in `root`, and ours lives one level up. Without it the
+// Tailwind + React plugins are missing and the renderer loads unstyled.
+// `root` is passed absolutely too: the config's relative root would
+// otherwise resolve against process.cwd() (the workspace root).
 const vite = await createServer({
+  configFile: join(appRoot, 'vite.config.ts'),
   root: join(appRoot, 'src/renderer'),
   clearScreen: false,
   server: { port: 5173, strictPort: true },
