@@ -1,20 +1,35 @@
 import { useMemo } from 'react';
 import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '../../host/contract.js';
 import { useHostQuery } from '../hooks/useHostQuery.js';
 import { CommentThreadCard } from './CommentThread.js';
 
 const LINE_CLASS: Record<DiffLine['type'], string> = {
-  add: 'bg-emerald-950/60 text-emerald-200',
-  remove: 'bg-red-950/60 text-red-200',
+  add: 'bg-emerald-950/40',
+  remove: 'bg-red-950/40',
+  context: '',
+  'hunk-header': 'bg-slate-800/60 text-cyan-300',
+};
+
+const SIGN: Record<DiffLine['type'], string> = {
+  add: '+',
+  remove: '-',
+  context: ' ',
+  'hunk-header': '',
+};
+
+const TEXT_CLASS: Record<DiffLine['type'], string> = {
+  add: 'text-emerald-200',
+  remove: 'text-red-200',
   context: 'text-slate-400',
-  'hunk-header': 'bg-slate-800/80 text-cyan-300',
+  'hunk-header': 'text-cyan-300',
 };
 
 /**
- * PR review view: the whole-PR diff (parsed with @kirby/diff, colored
- * DOM lines) followed by comment threads (markdown, reply, resolve).
- * Reused by the content pane for any item backed by a pull request.
+ * PR review view: the whole-PR diff with review comment threads
+ * interleaved inline at their line positions (like the TUI), plus a
+ * line-number gutter. General (non-inline) comments render up top.
  */
 export function PrReview({ pr }: { pr: PullRequestInfo }) {
   const diff = useHostQuery(
@@ -31,51 +46,40 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
     return [...parseUnifiedDiff(diff.data).entries()];
   }, [diff.data]);
 
-  const threadCount =
-    (comments.data?.threads.length ?? 0) +
-    (comments.data?.generalComments.length ?? 0);
+  // Inline threads keyed by `${file}:${lineStart}` for O(1) interleave.
+  const inlineThreads = useMemo(() => {
+    const map = new Map<string, RemoteCommentThread[]>();
+    for (const t of comments.data?.threads ?? []) {
+      if (t.file == null || t.lineStart == null) continue;
+      const key = `${t.file}:${t.lineStart}`;
+      const arr = map.get(key) ?? [];
+      arr.push(t);
+      map.set(key, arr);
+    }
+    return map;
+  }, [comments.data]);
+
+  const general = comments.data?.generalComments ?? [];
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-3">
+    <div className="min-h-0 flex-1 overflow-auto">
       {diff.loading && (
-        <p className="font-mono text-sm text-slate-500">Loading diff…</p>
+        <p className="p-3 font-mono text-sm text-slate-500">Loading diff…</p>
       )}
       {diff.error && (
-        <p className="rounded border border-red-900 bg-red-950/50 px-3 py-2 font-mono text-xs text-red-300">
+        <p className="m-3 rounded border border-red-900 bg-red-950/50 px-3 py-2 font-mono text-xs text-red-300">
           {diff.error}
         </p>
       )}
 
-      {files?.map(([filename, lines]) => (
-        <section key={filename} className="mb-5">
-          <h4 className="mb-1 truncate rounded-t bg-slate-800 px-3 py-1.5 font-mono text-xs text-slate-200">
-            {filename}
-          </h4>
-          <pre className="overflow-x-auto pb-1 font-mono text-xs leading-5">
-            {lines.map((line, i) => (
-              <div key={i} className={`px-3 ${LINE_CLASS[line.type]}`}>
-                {line.content || ' '}
-              </div>
-            ))}
-          </pre>
-        </section>
-      ))}
-
-      {threadCount > 0 && (
-        <section className="mt-2 border-t border-slate-800 pt-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Comments ({threadCount})
+      {/* General PR comments */}
+      {general.length > 0 && (
+        <div className="border-b border-slate-800 bg-slate-950/40 p-3">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Conversation ({general.length})
           </h3>
-          <div className="space-y-3">
-            {comments.data!.generalComments.map((t) => (
-              <CommentThreadCard
-                key={t.id}
-                thread={t}
-                prId={pr.id}
-                onReplied={comments.reload}
-              />
-            ))}
-            {comments.data!.threads.map((t) => (
+          <div className="space-y-2">
+            {general.map((t) => (
               <CommentThreadCard
                 key={t.id}
                 thread={t}
@@ -84,8 +88,92 @@ export function PrReview({ pr }: { pr: PullRequestInfo }) {
               />
             ))}
           </div>
-        </section>
+        </div>
       )}
+
+      {files?.map(([filename, lines]) => (
+        <FileDiff
+          key={filename}
+          filename={filename}
+          lines={lines}
+          inlineThreads={inlineThreads}
+          prId={pr.id}
+          onReplied={comments.reload}
+        />
+      ))}
     </div>
+  );
+}
+
+function FileDiff({
+  filename,
+  lines,
+  inlineThreads,
+  prId,
+  onReplied,
+}: {
+  filename: string;
+  lines: DiffLine[];
+  inlineThreads: Map<string, RemoteCommentThread[]>;
+  prId: number;
+  onReplied: () => void;
+}) {
+  const adds = lines.filter((l) => l.type === 'add').length;
+  const dels = lines.filter((l) => l.type === 'remove').length;
+
+  return (
+    <section className="border-b border-slate-800">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+        <span className="truncate font-mono text-xs text-slate-200">
+          {filename}
+        </span>
+        <span className="shrink-0 font-mono text-[10px]">
+          <span className="text-emerald-400">+{adds}</span>{' '}
+          <span className="text-red-400">−{dels}</span>
+        </span>
+      </div>
+
+      <div className="font-mono text-xs leading-5">
+        {lines.map((line, i) => {
+          const threadKey =
+            line.newLine != null ? `${filename}:${line.newLine}` : null;
+          const threads = threadKey ? inlineThreads.get(threadKey) : undefined;
+          return (
+            <div key={i}>
+              <div className={`flex ${LINE_CLASS[line.type]}`}>
+                <span className="w-10 shrink-0 select-none pr-2 text-right text-slate-600">
+                  {line.oldLine ?? ''}
+                </span>
+                <span className="w-10 shrink-0 select-none pr-2 text-right text-slate-600">
+                  {line.newLine ?? ''}
+                </span>
+                <span
+                  className={`w-4 shrink-0 select-none text-center ${
+                    TEXT_CLASS[line.type]
+                  }`}
+                >
+                  {SIGN[line.type]}
+                </span>
+                <span className={`whitespace-pre ${TEXT_CLASS[line.type]}`}>
+                  {line.content || ' '}
+                </span>
+              </div>
+              {threads?.map((t) => (
+                <div
+                  key={t.id}
+                  className="border-y border-slate-800 bg-slate-950/60 px-3 py-2"
+                >
+                  <CommentThreadCard
+                    thread={t}
+                    prId={prId}
+                    onReplied={onReplied}
+                  />
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
