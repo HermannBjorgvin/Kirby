@@ -4,28 +4,70 @@ import {
   persistConfigField,
   resolveValue,
   updateConfigField,
+  type SettingsField,
 } from '@kirby/app-core';
 import { PROVIDERS, requireRepo } from './repo.js';
-import type { SettingsFieldView } from '../contract.js';
+import type { SettingsFieldView, SettingsGroup } from '../contract.js';
+
+/**
+ * Fields that only make sense for the terminal UI (keyboard focus
+ * model, Ink layout toggles). The desktop has its own affordances for
+ * these, so they are hidden from the desktop settings page.
+ */
+const TUI_ONLY_KEYS = new Set([
+  'keybindPreset',
+  'autoHideSidebar',
+  'jumpToInactiveOnEscape',
+  'diffFileListTree',
+]);
+
+const GROUP_BY_KEY: Record<string, SettingsGroup> = {
+  agentId: 'agent',
+  editor: 'general',
+  email: 'general',
+  worktreePath: 'general',
+  terminalBackend: 'terminal',
+  autoDeleteOnMerge: 'sync',
+  autoRebase: 'sync',
+  mergePollInterval: 'sync',
+};
+
+function groupFor(field: SettingsField): SettingsGroup {
+  if (field.configBag === 'vendorAuth' || field.configBag === 'vendorProject') {
+    return 'provider';
+  }
+  return GROUP_BY_KEY[field.key] ?? 'general';
+}
+
+function kindFor(field: SettingsField): SettingsFieldView['kind'] {
+  const presets = field.presets;
+  if (!presets || presets.length === 0) return 'text';
+  const values = presets.map((p) => p.value).sort();
+  if (values.length === 2 && values[0] === 'false' && values[1] === 'true') {
+    return 'boolean';
+  }
+  return 'select';
+}
 
 function activeFields() {
   const config = readConfig(requireRepo());
   const provider = config.vendor
     ? PROVIDERS.find((p) => p.id === config.vendor) ?? null
     : null;
-  // The Controls row opens the TUI keybinding panel — desktop has its
-  // own UX for that later, so it isn't part of the form model.
   return {
     config,
     provider,
-    fields: buildSettingsFields(provider).filter((f) => !f.action),
+    fields: buildSettingsFields(provider).filter(
+      (f) => !f.action && !TUI_ONLY_KEYS.has(f.key)
+    ),
   };
 }
 
 /**
  * Build the settings form model for the active repo: every editable
- * field (same catalog the CLI's settings panel uses) with its current
- * resolved display value.
+ * field (same catalog the CLI's settings panel uses, minus TUI-only
+ * toggles) with its current resolved display value plus the section
+ * and widget kind the desktop page should render it with.
  */
 export function getSettingsView(): SettingsFieldView[] {
   const { config, fields } = activeFields();
@@ -36,6 +78,8 @@ export function getSettingsView(): SettingsFieldView[] {
     description: field.description,
     presets: field.presets?.map((preset) => ({ ...preset })),
     value: resolveValue(config, field),
+    group: groupFor(field),
+    kind: kindFor(field),
   }));
 }
 

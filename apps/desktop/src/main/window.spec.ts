@@ -1,16 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { loadTarget, rendererWebPreferences } from './window.js';
+import { loadTarget, rendererWebPreferences, windowChrome } from './window.js';
 
 describe('rendererWebPreferences', () => {
   it('never grants Node access to the renderer', () => {
     const prefs = rendererWebPreferences('/path/to/preload.cjs');
     expect(prefs.contextIsolation).toBe(true);
     expect(prefs.nodeIntegration).toBe(false);
+    expect(prefs.sandbox).toBe(true);
   });
 
   it('points the preload at the provided bridge script', () => {
     const prefs = rendererWebPreferences('/path/to/preload.cjs');
     expect(prefs.preload).toBe('/path/to/preload.cjs');
+  });
+});
+
+describe('windowChrome', () => {
+  it('uses a hidden title bar with native overlay controls', () => {
+    const chrome = windowChrome(true);
+    expect(chrome.titleBarStyle).toBe('hidden');
+    expect(chrome.titleBarOverlay).toMatchObject({ height: 36 });
+  });
+
+  it('matches the overlay colour to the colour scheme', () => {
+    const dark = windowChrome(true);
+    const light = windowChrome(false);
+    expect(dark.backgroundColor).not.toBe(light.backgroundColor);
+    expect(dark.titleBarOverlay).not.toEqual(light.titleBarOverlay);
   });
 });
 

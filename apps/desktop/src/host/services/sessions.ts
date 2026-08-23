@@ -4,23 +4,22 @@ import {
   killSession as killSessionEntry,
   isSessionAlive,
   getSpawnedAt,
-  type LaunchIntent,
 } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
 import { branchToSessionName, listWorktrees } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
+import type {
+  SessionBuffer,
+  SessionLaunchRequest,
+  SessionSummary,
+} from '../contract.js';
 
-export interface SessionLaunchRequest {
-  branch: string;
-  intent: LaunchIntent;
-  prompt?: string;
-}
+export type { SessionLaunchRequest, SessionSummary };
 
-export interface SessionSummary {
-  name: string;
-  running: boolean;
-  spawnedAt: number;
-}
+const DEFAULT_COLS = 120;
+const DEFAULT_ROWS = 40;
+/** Per-session scrollback kept for late/remounting terminals. */
+const BUFFER_LIMIT = 512 * 1024;
 
 // ── Event streaming (main → renderer) ────────────────────────────
 
@@ -34,13 +33,27 @@ export function setSessionBroadcaster(
   broadcast = fn;
 }
 
-function attachRelay(name: string): void {
-  const entry = getSession(name);
-  if (!entry) throw new Error(`Session ${name} vanished after spawn`);
-  entry.pty.onData((data) => {
-    broadcast?.('kirby/session/data', { name, data });
+interface KnownSession {
+  branch: string;
+  /** Ring buffer of recent output chunks (bounded by BUFFER_LIMIT). */
+  chunks: string[];
+  bytes: number;
+  seq: number;
+}
+
+function attachRelay(name: string, entry: KnownSession): void {
+  const session = getSession(name);
+  if (!session) throw new Error(`Session ${name} vanished after spawn`);
+  session.pty.onData((data) => {
+    entry.seq += 1;
+    entry.chunks.push(data);
+    entry.bytes += data.length;
+    while (entry.bytes > BUFFER_LIMIT && entry.chunks.length > 1) {
+      entry.bytes -= entry.chunks.shift()?.length ?? 0;
+    }
+    broadcast?.('kirby/session/data', { name, data, seq: entry.seq });
   });
-  entry.pty.onExit((code) => {
+  session.pty.onExit((code) => {
     broadcast?.('kirby/session/exit', { name, code });
   });
 }
@@ -51,7 +64,7 @@ function attachRelay(name: string): void {
 // launched. Entries persist after exit so the final frame stays
 // viewable — matching TUI behavior.
 
-const known = new Map<string, { branch: string }>();
+const known = new Map<string, KnownSession>();
 
 // ── Operations ───────────────────────────────────────────────────
 
@@ -68,14 +81,31 @@ export async function launchAgent(req: SessionLaunchRequest): Promise<{
   launchSession({
     name,
     cwd: wt.path,
-    cols: 80,
-    rows: 24,
+    cols: clampDim(req.cols, DEFAULT_COLS),
+    rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
     request: { intent: req.intent, prompt: req.prompt },
   });
-  known.set(name, { branch: req.branch });
-  attachRelay(name);
+  const entry: KnownSession = {
+    branch: req.branch,
+    chunks: [],
+    bytes: 0,
+    seq: 0,
+  };
+  known.set(name, entry);
+  attachRelay(name, entry);
   return { name };
+}
+
+export function getSessionBuffer(name: string): SessionBuffer {
+  const entry = known.get(name);
+  if (!entry) return { data: '', seq: 0 };
+  return { data: entry.chunks.join(''), seq: entry.seq };
+}
+
+function clampDim(value: number | undefined, fallback: number): number {
+  if (!value || !Number.isFinite(value) || value < 2) return fallback;
+  return Math.min(500, Math.floor(value));
 }
 
 export function listSessions(): SessionSummary[] {

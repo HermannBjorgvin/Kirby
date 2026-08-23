@@ -35,6 +35,8 @@ export function createHostApi(): KirbyHostApi {
       Promise.resolve(settings.updateSettingsFromView(ref, value)),
 
     getSidebarModel: () => sidebar.getSidebarModel(),
+    getSyncState: () => Promise.resolve(sidebar.getSyncState()),
+    refreshRemote: () => sidebar.refreshRemote(),
     listWorktrees: () => worktrees.listWorktrees(),
     listBranches: () => worktrees.listBranches(),
     listAllBranches: () => worktrees.listAllBranches(),
@@ -49,6 +51,8 @@ export function createHostApi(): KirbyHostApi {
 
     launchAgent: (req) => sessions.launchAgent(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
+    getSessionBuffer: (name) =>
+      Promise.resolve(sessions.getSessionBuffer(name)),
     writeSession: (name, data) =>
       Promise.resolve(sessions.writeSession(name, data)),
     resizeSession: (name, cols, rows) =>
@@ -65,6 +69,8 @@ export function createHostApi(): KirbyHostApi {
       reviews.getDiffText(sourceBranch, targetBranch),
     fetchFileDiffText: (sourceBranch, targetBranch, file) =>
       reviews.getFileDiffText(sourceBranch, targetBranch, file),
+
+    openExternal: (url) => externalOpener(url),
   };
 }
 
@@ -76,12 +82,17 @@ export interface IpcRegistrar {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type HostMethod = (...args: any[]) => unknown;
 
-// Injected by main.ts (Electron's native dialog). Default is a no-op
-// so tests and non-Electron contexts never touch the dialog module.
+// Injected by main.ts (Electron's native dialog / shell). Defaults are
+// no-ops so tests and non-Electron contexts never touch those modules.
 let folderPicker: () => Promise<string | null> = async () => null;
+let externalOpener: (url: string) => Promise<void> = async () => undefined;
 
 export function setFolderPicker(fn: () => Promise<string | null>): void {
   folderPicker = fn;
+}
+
+export function setExternalOpener(fn: (url: string) => Promise<void>): void {
+  externalOpener = fn;
 }
 
 /**
@@ -104,6 +115,8 @@ export function registerHostHandlers(
     [IPC.getSettingsView]: api.getSettingsView as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
     [IPC.getSidebarModel]: api.getSidebarModel as HostMethod,
+    [IPC.getSyncState]: api.getSyncState as HostMethod,
+    [IPC.refreshRemote]: api.refreshRemote as HostMethod,
     [IPC.listWorktrees]: api.listWorktrees as HostMethod,
     [IPC.listBranches]: api.listBranches as HostMethod,
     [IPC.listAllBranches]: api.listAllBranches as HostMethod,
@@ -112,6 +125,7 @@ export function registerHostHandlers(
     [IPC.canRemoveBranch]: api.canRemoveBranch as HostMethod,
     [IPC.launchAgent]: api.launchAgent as HostMethod,
     [IPC.listSessions]: api.listSessions as HostMethod,
+    [IPC.getSessionBuffer]: api.getSessionBuffer as HostMethod,
     [IPC.writeSession]: api.writeSession as HostMethod,
     [IPC.resizeSession]: api.resizeSession as HostMethod,
     [IPC.killSession]: api.killSession as HostMethod,
@@ -121,6 +135,7 @@ export function registerHostHandlers(
     [IPC.setThreadResolved]: api.setThreadResolved as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,
+    [IPC.openExternal]: api.openExternal as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

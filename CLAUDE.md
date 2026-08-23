@@ -198,11 +198,19 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
 apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
-  src/main/                      — Electron main: window, IPC handlers (window.ts holds the security posture)
+  src/main/                      — Electron main: window chrome + security posture (window.ts), KIRBY_QA_STEPS hook
   src/preload/preload.ts         — Typed contextBridge → window.kirby
   src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names
+  src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings…)
   src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
+    styles.css                   — Design tokens (VS Code-style light/dark palette, type scale) — components use tokens only
+    components/ui/               — shadcn-style primitives (radix-ui + cva + lucide): button, dialog, command, select…
+    components/                  — TitleBar, StatusBar, CommandPalette, sidebar/, editor/ (tabs), review/, settings/, terminal/
+    lib/queries.ts               — TanStack Query data layer over window.kirby (all host calls + invalidation)
+    lib/tabs.tsx                 — Editor tab model (preview/pinned tabs, VS Code semantics)
+    screens/                     — RepoOpen (repo picker) and Workspace (shell + shortcuts)
   scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
+  scripts/qa-shots.mjs           — Headless visual QA: drives the built app under xvfb and writes PNGs
 apps/cli-wterm-host/             — HTTP + WS host that bridges Kirby PTY to browser
   src/main.ts                    — Server: /spawn, /kill, WS /pty, ring buffer
   src/protocol.ts                — Shared SpawnRequest + ControlMessage types

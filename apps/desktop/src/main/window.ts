@@ -5,12 +5,10 @@ import type { BrowserWindowConstructorOptions } from 'electron';
  *
  * Security posture: the renderer is an untrusted web context (it
  * renders remote content like PR comments), so it gets no Node access
- * whatsoever. All host capabilities go through the typed preload
- * bridge (see src/host/contract.ts).
- *
- * `sandbox: false` is required because our preload uses `import` from
- * 'electron' via the bundled CJS shim; it still has no Node access
- * since contextIsolation is on and only the bridge API is exposed.
+ * whatsoever and runs in the Chromium sandbox. All host capabilities
+ * go through the typed preload bridge (see src/host/contract.ts); the
+ * preload only needs `electron` (contextBridge/ipcRenderer), which
+ * sandboxed preloads are allowed to require.
  */
 export function rendererWebPreferences(
   preloadPath: string
@@ -19,7 +17,25 @@ export function rendererWebPreferences(
     preload: preloadPath,
     contextIsolation: true,
     nodeIntegration: false,
-    sandbox: false,
+    sandbox: true,
+  };
+}
+
+/** Title-bar / background chrome matched to the OS colour scheme so the
+ *  first paint and the native window controls don't flash the wrong
+ *  theme. Values mirror the renderer's `--titlebar` tokens. */
+export function windowChrome(
+  dark: boolean
+): Pick<
+  BrowserWindowConstructorOptions,
+  'backgroundColor' | 'titleBarStyle' | 'titleBarOverlay'
+> {
+  const bar = dark ? '#181818' : '#f8f8f8';
+  const symbol = dark ? '#cccccc' : '#3b3b3b';
+  return {
+    backgroundColor: dark ? '#1f1f1f' : '#ffffff',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: bar, symbolColor: symbol, height: 36 },
   };
 }
 

@@ -45,6 +45,9 @@ export interface SessionLaunchRequest {
   branch: string;
   intent: LaunchIntent;
   prompt?: string;
+  /** Initial PTY size — the renderer knows the real pane geometry. */
+  cols?: number;
+  rows?: number;
 }
 
 export interface SessionSummary {
@@ -56,6 +59,16 @@ export interface SessionSummary {
 export interface SessionDataEvent {
   name: string;
   data: string;
+  /** Monotonic per-session chunk counter; lets a late subscriber drop
+   *  chunks already covered by a `getSessionBuffer` snapshot. */
+  seq: number;
+}
+
+/** Snapshot of a session's recent output (host-side ring buffer). */
+export interface SessionBuffer {
+  data: string;
+  /** seq of the last chunk included in `data`. */
+  seq: number;
 }
 
 export interface SessionExitEvent {
@@ -71,6 +84,13 @@ export const SESSION_EVENTS = {
 
 // ── Settings ─────────────────────────────────────────────────────
 
+export type SettingsGroup =
+  | 'general'
+  | 'agent'
+  | 'sync'
+  | 'terminal'
+  | 'provider';
+
 /** One row of the settings form: the field plus its current value. */
 export interface SettingsFieldView {
   label: string;
@@ -79,6 +99,10 @@ export interface SettingsFieldView {
   description?: string;
   presets?: { name: string; value: string | null }[];
   value: string;
+  /** Section the desktop settings page files this field under. */
+  group: SettingsGroup;
+  /** Widget hint derived from the presets shape. */
+  kind: 'boolean' | 'select' | 'text';
 }
 
 // ── Recent repos ─────────────────────────────────────────────────
@@ -88,6 +112,19 @@ export interface RecentRepoEntry {
   lastOpenedAt: number;
   /** Re-validated against the filesystem at list time. */
   valid: boolean;
+}
+
+// ── Sync (remote PR data) ────────────────────────────────────────
+
+export interface SyncState {
+  providerId: string | null;
+  providerConfigured: boolean;
+  /** ms-epoch of the last successful remote fetch, null if never. */
+  lastRemoteSyncAt: number | null;
+  remoteError: string | null;
+  remoteSyncing: boolean;
+  /** Remote cache TTL in ms (from config, clamped). */
+  remoteIntervalMs: number;
 }
 
 // ── Reviews ──────────────────────────────────────────────────────
@@ -126,7 +163,6 @@ export interface KirbyHostApi {
    *  resolved display value (same semantics as the CLI's panel). */
   getSettingsView(): Promise<SettingsFieldView[]>;
   /** Update one settings field (same bag semantics as the CLI). */
-  /** Update one settings field (same bag semantics as the CLI). */
   updateSettingsField(
     ref: { label: string; key: string },
     value: string
@@ -134,6 +170,9 @@ export interface KirbyHostApi {
 
   // ── Sidebar (unified worktrees + PRs + reviews, TUI order) ────
   getSidebarModel(): Promise<SidebarItem[]>;
+  getSyncState(): Promise<SyncState>;
+  /** Drop the remote PR cache and re-fetch now. */
+  refreshRemote(): Promise<void>;
 
   // ── Worktrees ────────────────────────────────────────────────
   listWorktrees(): Promise<WorktreeInfo[]>;
@@ -155,6 +194,9 @@ export interface KirbyHostApi {
   // ── Sessions ─────────────────────────────────────────────────
   launchAgent(req: SessionLaunchRequest): Promise<{ name: string }>;
   listSessions(): Promise<SessionSummary[]>;
+  /** Recent output for a session so a (re)mounted terminal can replay
+   *  what it missed before subscribing to live data. */
+  getSessionBuffer(name: string): Promise<SessionBuffer>;
   writeSession(name: string, data: string): Promise<void>;
   resizeSession(name: string, cols: number, rows: number): Promise<void>;
   killSession(name: string): Promise<void>;
@@ -169,6 +211,10 @@ export interface KirbyHostApi {
     targetBranch: string,
     file: string
   ): Promise<string>;
+
+  // ── Shell ────────────────────────────────────────────────────
+  /** Open a URL in the user's default browser. */
+  openExternal(url: string): Promise<void>;
 }
 
 /** IPC channel names — single source of truth for main and preload. */
@@ -183,6 +229,8 @@ export const IPC = {
   getSettingsView: 'kirby/settings/view',
   updateSettingsField: 'kirby/config/update-field',
   getSidebarModel: 'kirby/sidebar/model',
+  getSyncState: 'kirby/sidebar/sync-state',
+  refreshRemote: 'kirby/sidebar/refresh-remote',
   listWorktrees: 'kirby/worktree/list',
   listBranches: 'kirby/worktree/branches',
   listAllBranches: 'kirby/worktree/all-branches',
@@ -191,6 +239,7 @@ export const IPC = {
   canRemoveBranch: 'kirby/worktree/can-remove',
   launchAgent: 'kirby/session/launch',
   listSessions: 'kirby/session/list',
+  getSessionBuffer: 'kirby/session/buffer',
   writeSession: 'kirby/session/write',
   resizeSession: 'kirby/session/resize',
   killSession: 'kirby/session/kill',
@@ -200,6 +249,7 @@ export const IPC = {
   setThreadResolved: 'kirby/reviews/resolve',
   fetchDiffText: 'kirby/diff/text',
   fetchFileDiffText: 'kirby/diff/file-text',
+  openExternal: 'kirby/shell/open-external',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

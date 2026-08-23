@@ -27,6 +27,8 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.updateSettingsField, ref, value),
 
   getSidebarModel: () => ipcRenderer.invoke(IPC.getSidebarModel),
+  getSyncState: () => ipcRenderer.invoke(IPC.getSyncState),
+  refreshRemote: () => ipcRenderer.invoke(IPC.refreshRemote),
   listWorktrees: () => ipcRenderer.invoke(IPC.listWorktrees),
   listBranches: () => ipcRenderer.invoke(IPC.listBranches),
   listAllBranches: () => ipcRenderer.invoke(IPC.listAllBranches),
@@ -43,6 +45,7 @@ const api: KirbyHostApi = {
 
   launchAgent: (req) => ipcRenderer.invoke(IPC.launchAgent, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
+  getSessionBuffer: (name) => ipcRenderer.invoke(IPC.getSessionBuffer, name),
   writeSession: (name, data) =>
     ipcRenderer.invoke(IPC.writeSession, name, data),
   resizeSession: (name, cols, rows) =>
@@ -64,6 +67,8 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.fetchDiffText, sourceBranch, targetBranch),
   fetchFileDiffText: (sourceBranch, targetBranch, file) =>
     ipcRenderer.invoke(IPC.fetchFileDiffText, sourceBranch, targetBranch, file),
+
+  openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
 };
 
 contextBridge.exposeInMainWorld('kirby', api);

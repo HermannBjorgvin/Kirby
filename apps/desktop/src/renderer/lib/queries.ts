@@ -1,0 +1,205 @@
+import {
+  QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type {
+  ReplyRequest,
+  ResolveRequest,
+  SessionLaunchRequest,
+} from '../../host/contract.js';
+
+/**
+ * The renderer's data layer: every host call is a TanStack Query so
+ * refetch cadence, caching, dedupe and invalidation live in one place
+ * instead of ad-hoc setInterval/useEffect pairs in components.
+ */
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+      staleTime: 5_000,
+    },
+  },
+});
+
+export const keys = {
+  repo: ['repo'] as const,
+  version: ['version'] as const,
+  recents: ['recents'] as const,
+  sidebar: (cwd: string) => ['sidebar', cwd] as const,
+  sync: (cwd: string) => ['sync', cwd] as const,
+  branches: (cwd: string) => ['branches', cwd] as const,
+  settings: (cwd: string) => ['settings', cwd] as const,
+  sessions: (cwd: string) => ['sessions', cwd] as const,
+  diff: (cwd: string, source: string, target: string) =>
+    ['diff', cwd, source, target] as const,
+  threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
+};
+
+// ── Queries ──────────────────────────────────────────────────────
+
+export function useVersion() {
+  return useQuery({
+    queryKey: keys.version,
+    queryFn: () => window.kirby.getVersion(),
+    staleTime: Infinity,
+  });
+}
+
+export function useRecentRepos() {
+  return useQuery({
+    queryKey: keys.recents,
+    queryFn: () => window.kirby.listRecentRepos(),
+    staleTime: 0,
+  });
+}
+
+/** Sidebar model. Local state (worktrees, alive PTYs) is cheap so we
+ *  poll it every few seconds; remote PR data is cached host-side and
+ *  only re-fetched on its own interval or an explicit refresh. */
+export function useSidebarModel(cwd: string) {
+  return useQuery({
+    queryKey: keys.sidebar(cwd),
+    queryFn: () => window.kirby.getSidebarModel(),
+    refetchInterval: 4_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useSyncState(cwd: string) {
+  return useQuery({
+    queryKey: keys.sync(cwd),
+    queryFn: () => window.kirby.getSyncState(),
+    refetchInterval: 4_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useAllBranches(cwd: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.branches(cwd),
+    queryFn: () => window.kirby.listAllBranches(),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useSettingsView(cwd: string) {
+  return useQuery({
+    queryKey: keys.settings(cwd),
+    queryFn: () => window.kirby.getSettingsView(),
+  });
+}
+
+export function useDiff(cwd: string, source: string, target: string) {
+  return useQuery({
+    queryKey: keys.diff(cwd, source, target),
+    queryFn: () => window.kirby.fetchDiffText(source, target),
+    staleTime: 60_000,
+  });
+}
+
+export function useThreads(cwd: string, prId: number) {
+  return useQuery({
+    queryKey: keys.threads(cwd, prId),
+    queryFn: () => window.kirby.fetchCommentThreads(prId),
+    staleTime: 30_000,
+  });
+}
+
+// ── Mutations ────────────────────────────────────────────────────
+
+function useInvalidator(cwd: string) {
+  const qc = useQueryClient();
+  return {
+    sidebar: () => qc.invalidateQueries({ queryKey: keys.sidebar(cwd) }),
+    sync: () => qc.invalidateQueries({ queryKey: keys.sync(cwd) }),
+    branches: () => qc.invalidateQueries({ queryKey: keys.branches(cwd) }),
+    settings: () => qc.invalidateQueries({ queryKey: keys.settings(cwd) }),
+    threads: (prId: number) =>
+      qc.invalidateQueries({ queryKey: keys.threads(cwd, prId) }),
+  };
+}
+
+export function useCreateWorktree(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (branch: string) => window.kirby.createWorktree(branch),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.branches();
+    },
+  });
+}
+
+export function useRemoveWorktree(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: ({ branch, force }: { branch: string; force: boolean }) =>
+      window.kirby.removeWorktree(branch, force),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.branches();
+    },
+  });
+}
+
+export function useLaunchAgent(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: SessionLaunchRequest) => window.kirby.launchAgent(req),
+    onSuccess: () => void inv.sidebar(),
+  });
+}
+
+export function useKillSession(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (name: string) => window.kirby.killSession(name),
+    onSuccess: () => void inv.sidebar(),
+  });
+}
+
+export function useRefreshRemote(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: () => window.kirby.refreshRemote(),
+    onSettled: () => {
+      void inv.sidebar();
+      void inv.sync();
+    },
+  });
+}
+
+export function useReply(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: ReplyRequest) => window.kirby.replyToThread(req),
+    onSuccess: (_r, req) => void inv.threads(req.prId),
+  });
+}
+
+export function useSetResolved(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: ResolveRequest) => window.kirby.setThreadResolved(req),
+    onSuccess: (_r, req) => void inv.threads(req.prId),
+  });
+}
+
+export function useUpdateSetting(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: ({
+      ref,
+      value,
+    }: {
+      ref: { label: string; key: string };
+      value: string;
+    }) => window.kirby.updateSettingsField(ref, value),
+    onSettled: () => void inv.settings(),
+  });
+}
