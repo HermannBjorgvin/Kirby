@@ -1,9 +1,15 @@
 import {
   BotIcon,
+  CheckCircle2Icon,
+  CircleDotIcon,
+  ExternalLinkIcon,
+  GitPullRequestIcon,
+  MessageSquareIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PlayIcon,
   SquareIcon,
+  XCircleIcon,
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -28,6 +34,8 @@ import {
 import { useRepo } from '../../lib/repo-context.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
+import { Avatar } from '../ui/avatar.js';
+import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
@@ -179,116 +187,223 @@ export function PrWorkspace({
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0">
-      {railHidden ? (
-        <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
-          <Tip label="Show review sidebar" side="right">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setRailHidden(false)}
-              aria-label="Show review sidebar"
-            >
-              <PanelLeftOpenIcon />
-            </Button>
-          </Tip>
-        </div>
-      ) : null}
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <PrHeader pr={pr} fileCount={files.length} />
+      <div className="flex min-h-0 min-w-0 flex-1">
+        {railHidden ? (
+          <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
+            <Tip label="Show review sidebar" side="right">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setRailHidden(false)}
+                aria-label="Show review sidebar"
+              >
+                <PanelLeftOpenIcon />
+              </Button>
+            </Tip>
+          </div>
+        ) : null}
 
-      <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1">
-        {!railHidden && (
-          <>
-            <Panel
-              id="review-rail"
-              defaultSize="270px"
-              minSize="200px"
-              maxSize="45%"
-              className="min-w-0"
-            >
-              <ReviewRail
-                running={running}
-                busy={busy}
-                hasSession={Boolean(sessionName)}
-                agentActive={effMode === 'agent'}
-                onSelectAgent={() => setMode('agent')}
-                onLaunch={onLaunch}
-                onStop={onStop}
-                onHide={() => setRailHidden(true)}
-                entries={entries}
-                diffLoading={diff.isLoading}
-                selectedFile={effMode === 'diff' ? selectedFile : null}
-                onSelectFile={jumpToFile}
-                inlineThreads={inlineThreads}
-                generalThreads={general}
-                focusThreadId={effMode === 'diff' ? focusThreadId : null}
-                onJumpThread={jumpToThread}
-              />
-            </Panel>
-            <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
-          </>
-        )}
+        <Group orientation="horizontal" className="min-h-0 min-w-0 flex-1">
+          {!railHidden && (
+            <>
+              <Panel
+                id="review-rail"
+                defaultSize="270px"
+                minSize="200px"
+                maxSize="45%"
+                className="min-w-0"
+              >
+                <ReviewRail
+                  running={running}
+                  busy={busy}
+                  hasSession={Boolean(sessionName)}
+                  agentActive={effMode === 'agent'}
+                  onSelectAgent={() => setMode('agent')}
+                  onLaunch={onLaunch}
+                  onStop={onStop}
+                  onHide={() => setRailHidden(true)}
+                  entries={entries}
+                  diffLoading={diff.isLoading}
+                  selectedFile={effMode === 'diff' ? selectedFile : null}
+                  onSelectFile={jumpToFile}
+                  inlineThreads={inlineThreads}
+                  generalThreads={general}
+                  focusThreadId={effMode === 'diff' ? focusThreadId : null}
+                  onJumpThread={jumpToThread}
+                />
+              </Panel>
+              <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
+            </>
+          )}
 
-        <Panel id="review-content" minSize="30%" className="min-w-0">
-          <div className="relative h-full min-h-0">
-            {sessionName && (
+          <Panel id="review-content" minSize="30%" className="min-w-0">
+            <div className="relative h-full min-h-0">
+              {sessionName && (
+                <div
+                  className={cn(
+                    'absolute inset-0',
+                    effMode !== 'agent' && 'invisible'
+                  )}
+                >
+                  <SessionTerminal
+                    name={sessionName}
+                    active={active && effMode === 'agent'}
+                  />
+                </div>
+              )}
               <div
                 className={cn(
                   'absolute inset-0',
-                  effMode !== 'agent' && 'invisible'
+                  effMode !== 'diff' && 'invisible'
                 )}
               >
-                <SessionTerminal
-                  name={sessionName}
-                  active={active && effMode === 'agent'}
+                <DiffPane
+                  pr={pr}
+                  files={files}
+                  threadsByFile={threadsByFile}
+                  draftsByFile={draftsByFile}
+                  generalThreads={
+                    options.hideResolved
+                      ? general.filter((t) => !t.isResolved)
+                      : general
+                  }
+                  commentsLoading={comments.isLoading}
+                  diffLoading={diff.isLoading}
+                  diffError={diff.error ? String(diff.error.message) : null}
+                  focusThreadId={focusThreadId}
+                  scrollRef={scrollRef}
+                  navCount={navThreads.length}
+                  navIndex={navIndex}
+                  onPrev={() => step(-1)}
+                  onNext={() => step(1)}
+                  draftCount={drafts.length}
+                  postingAll={postAll.isPending}
+                  onPostAll={() =>
+                    postAll.mutate(
+                      { prId: pr.id, headSha: pr.headSha },
+                      {
+                        onSuccess: (n) =>
+                          toast.success(
+                            `Posted ${n} comment${n === 1 ? '' : 's'}`
+                          ),
+                        onError: (e) =>
+                          toast.error(`Post failed: ${errorMessage(e)}`),
+                      }
+                    )
+                  }
                 />
               </div>
-            )}
-            <div
-              className={cn(
-                'absolute inset-0',
-                effMode !== 'diff' && 'invisible'
-              )}
-            >
-              <DiffPane
-                pr={pr}
-                files={files}
-                threadsByFile={threadsByFile}
-                draftsByFile={draftsByFile}
-                generalThreads={
-                  options.hideResolved
-                    ? general.filter((t) => !t.isResolved)
-                    : general
-                }
-                commentsLoading={comments.isLoading}
-                diffLoading={diff.isLoading}
-                diffError={diff.error ? String(diff.error.message) : null}
-                focusThreadId={focusThreadId}
-                scrollRef={scrollRef}
-                navCount={navThreads.length}
-                navIndex={navIndex}
-                onPrev={() => step(-1)}
-                onNext={() => step(1)}
-                draftCount={drafts.length}
-                postingAll={postAll.isPending}
-                onPostAll={() =>
-                  postAll.mutate(
-                    { prId: pr.id, headSha: pr.headSha },
-                    {
-                      onSuccess: (n) =>
-                        toast.success(
-                          `Posted ${n} comment${n === 1 ? '' : 's'}`
-                        ),
-                      onError: (e) =>
-                        toast.error(`Post failed: ${errorMessage(e)}`),
-                    }
-                  )
-                }
-              />
             </div>
-          </div>
-        </Panel>
-      </Group>
+          </Panel>
+        </Group>
+      </div>
     </div>
+  );
+}
+
+/** One merged header bar: PR identity + meta (author, CI, reviewers,
+ *  comments, files changed) + Open. The diff *settings* live separately
+ *  inside the diff pane. */
+function PrHeader({
+  pr,
+  fileCount,
+}: {
+  pr: PullRequestInfo;
+  fileCount: number;
+}) {
+  const reviewers = pr.reviewers ?? [];
+  const ci = pr.buildStatus;
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+      <GitPullRequestIcon className="size-4 shrink-0 text-info" />
+      <span className="flex min-w-0 shrink items-center gap-2">
+        <span className="truncate font-medium">{pr.title}</span>
+        <span className="shrink-0 text-sm text-muted-foreground">#{pr.id}</span>
+        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
+          {pr.sourceBranch} → {pr.targetBranch}
+        </span>
+      </span>
+
+      <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+
+      <span className="flex min-w-0 items-center gap-2 text-sm">
+        <Tip label={`Opened by ${pr.createdByDisplayName}`}>
+          <span className="flex items-center gap-1.5">
+            <Avatar name={pr.createdByDisplayName} size="xs" />
+            <span className="hidden truncate text-muted-foreground md:inline">
+              {pr.createdByDisplayName}
+            </span>
+          </span>
+        </Tip>
+        {pr.isDraft && <Badge variant="outline">Draft</Badge>}
+        {ci && ci !== 'none' && (
+          <Badge
+            variant={
+              ci === 'succeeded'
+                ? 'success'
+                : ci === 'failed'
+                ? 'destructive'
+                : 'warning'
+            }
+          >
+            {ci === 'succeeded' && <CheckCircle2Icon />}
+            {ci === 'failed' && <XCircleIcon />}
+            {ci === 'pending' && <CircleDotIcon />}
+            CI {ci}
+          </Badge>
+        )}
+        {reviewers.length > 0 && (
+          <span className="flex items-center">
+            {reviewers.slice(0, 5).map((r) => (
+              <Tip
+                key={r.identifier}
+                label={`${r.displayName}: ${r.decision.replace('-', ' ')}`}
+              >
+                <span className="relative -ml-1 first:ml-0">
+                  <Avatar
+                    name={r.displayName}
+                    size="xs"
+                    className="ring-1 ring-background"
+                  />
+                  <span
+                    className={cn(
+                      'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
+                      r.decision === 'approved' && 'bg-success',
+                      r.decision === 'changes-requested' && 'bg-destructive',
+                      r.decision === 'no-response' && 'bg-muted-foreground/50',
+                      r.decision === 'declined' && 'bg-muted-foreground'
+                    )}
+                  />
+                </span>
+              </Tip>
+            ))}
+          </span>
+        )}
+        {(pr.activeCommentCount ?? 0) > 0 && (
+          <span className="flex items-center gap-0.5 text-muted-foreground">
+            <MessageSquareIcon className="size-3.5" />
+            {pr.activeCommentCount}
+          </span>
+        )}
+      </span>
+
+      <div className="flex-1" />
+
+      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+        {fileCount} file{fileCount === 1 ? '' : 's'} changed
+      </span>
+      <Tip label="Open on the provider">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void window.kirby.openExternal(pr.url)}
+        >
+          <ExternalLinkIcon /> Open
+        </Button>
+      </Tip>
+    </header>
   );
 }
 
@@ -345,9 +460,10 @@ function ReviewRail({
         </Tip>
       </div>
 
-      {/* Agent */}
+      {/* Agent — a running row you can select to view the terminal, or
+          a launch button (opening the session/review menu) otherwise. */}
       <div className="shrink-0 border-b border-border px-2 pb-2">
-        {hasSession ? (
+        {running ? (
           <div className="flex items-center gap-1">
             <button
               onClick={onSelectAgent}
@@ -360,27 +476,26 @@ function ReviewRail({
             >
               <span className="relative flex size-4 shrink-0 items-center justify-center">
                 <BotIcon className="size-4 text-muted-foreground" />
-                {running && (
-                  <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-sidebar" />
-                )}
+                <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
+                </span>
               </span>
               <span className="min-w-0 flex-1 truncate text-left">Agent</span>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {running ? 'running' : 'stopped'}
+                running
               </span>
             </button>
-            {running && (
-              <Tip label="Stop agent">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onStop}
-                  aria-label="Stop agent"
-                >
-                  <SquareIcon />
-                </Button>
-              </Tip>
-            )}
+            <Tip label="Stop agent">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onStop}
+                aria-label="Stop agent"
+              >
+                <SquareIcon />
+              </Button>
+            </Tip>
           </div>
         ) : (
           <Button
@@ -389,7 +504,8 @@ function ReviewRail({
             onClick={onLaunch}
             disabled={busy}
           >
-            <PlayIcon /> {busy ? 'Working…' : 'Launch agent'}
+            <PlayIcon />{' '}
+            {busy ? 'Working…' : hasSession ? 'Relaunch agent' : 'Launch agent'}
           </Button>
         )}
       </div>

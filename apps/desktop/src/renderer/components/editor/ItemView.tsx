@@ -1,7 +1,5 @@
 import {
-  ExternalLinkIcon,
   GitBranchIcon,
-  GitPullRequestIcon,
   PlayIcon,
   SquareIcon,
   TerminalIcon,
@@ -27,7 +25,6 @@ import { errorMessage } from '../../lib/utils.js';
 import { PrWorkspace } from '../review/PrWorkspace.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { Button } from '../ui/button.js';
-import { Tip } from '../ui/tooltip.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
 
 /**
@@ -141,75 +138,67 @@ export function ItemView({
 
   const busy = launch.isPending || create.isPending || launchReview.isPending;
 
+  // A pull request is the full review workspace (its own merged header,
+  // rail, and content). A bare worktree keeps a simple header + terminal.
+  if (pr) {
+    return (
+      <>
+        <PrWorkspace
+          pr={pr}
+          sessionName={sessionName}
+          running={running}
+          active={active}
+          busy={busy}
+          onLaunch={onLaunchClick}
+          onStop={doKill}
+        />
+        {launchMenu && (
+          <LaunchDialog
+            pr={pr}
+            hasWorktree={hasWorktree}
+            onChoose={onChoose}
+            onClose={() => setLaunchMenu(false)}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          {pr ? (
-            <GitPullRequestIcon className="size-4 shrink-0 text-info" />
-          ) : (
-            <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-          )}
+          <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate font-medium">{title}</span>
-          {pr && (
-            <span className="shrink-0 text-sm text-muted-foreground">
-              #{pr.id}
-            </span>
-          )}
           <span className="truncate font-mono text-xs text-muted-foreground">
-            {pr ? `${pr.sourceBranch} → ${pr.targetBranch}` : branch}
+            {branch}
           </span>
         </span>
-
         <div className="flex shrink-0 items-center gap-1.5">
-          {pr && (
-            <Tip label="Open on the provider">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void window.kirby.openExternal(pr.url)}
-              >
-                <ExternalLinkIcon /> Open
-              </Button>
-            </Tip>
+          {running ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={doKill}
+              disabled={kill.isPending}
+            >
+              <SquareIcon /> Stop agent
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onLaunchClick} disabled={busy}>
+              <PlayIcon />{' '}
+              {busy
+                ? 'Working…'
+                : hasWorktree
+                ? 'Launch agent'
+                : 'Check out & launch'}
+            </Button>
           )}
-          {/* Bare worktrees keep their launch/stop here; PR launch/stop
-              live in the review rail. */}
-          {!pr &&
-            (running ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={doKill}
-                disabled={kill.isPending}
-              >
-                <SquareIcon /> Stop agent
-              </Button>
-            ) : (
-              <Button size="sm" onClick={onLaunchClick} disabled={busy}>
-                <PlayIcon />{' '}
-                {busy
-                  ? 'Working…'
-                  : hasWorktree
-                  ? 'Launch agent'
-                  : 'Check out & launch'}
-              </Button>
-            ))}
         </div>
       </header>
 
       <div ref={paneRef} className="relative min-h-0 flex-1">
-        {pr ? (
-          <PrWorkspace
-            pr={pr}
-            sessionName={sessionName}
-            running={running}
-            active={active}
-            busy={busy}
-            onLaunch={onLaunchClick}
-            onStop={doKill}
-          />
-        ) : sessionName ? (
+        {sessionName ? (
           <div className="absolute inset-0">
             <SessionTerminal name={sessionName} active={active} />
           </div>
@@ -223,15 +212,6 @@ export function ItemView({
           </div>
         )}
       </div>
-
-      {launchMenu && pr && (
-        <LaunchDialog
-          pr={pr}
-          hasWorktree={hasWorktree}
-          onChoose={onChoose}
-          onClose={() => setLaunchMenu(false)}
-        />
-      )}
     </div>
   );
 }

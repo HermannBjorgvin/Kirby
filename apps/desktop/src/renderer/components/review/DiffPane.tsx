@@ -1,8 +1,6 @@
 import {
-  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronUpIcon,
-  CircleDotIcon,
   ColumnsIcon,
   EyeOffIcon,
   Loader2Icon,
@@ -10,7 +8,6 @@ import {
   RowsIcon,
   SendIcon,
   WrapTextIcon,
-  XCircleIcon,
 } from 'lucide-react';
 import type { RefObject } from 'react';
 import type { DiffLine } from '@kirby/diff';
@@ -21,8 +18,6 @@ import type {
 } from '../../../host/contract.js';
 import { setDiffOptions, useDiffOptions } from '../../lib/diff-options.js';
 import { cn } from '../../lib/utils.js';
-import { Avatar } from '../ui/avatar.js';
-import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { Tip } from '../ui/tooltip.js';
@@ -30,10 +25,11 @@ import { ConversationPanel } from './ConversationPanel.js';
 import { DiffView } from './DiffView.js';
 
 /**
- * The diff content pane: PR meta strip, the diff toolbar (view / wrap /
+ * The diff content pane: the diff *settings* toolbar (view / wrap /
  * hide-resolved / post-drafts / comment navigation) and the scrolling
- * per-file diffs. The toolbar lives here — not in the tab header — so
- * it disappears when the terminal replaces this pane.
+ * per-file diffs. Only diff-specific controls live here — the PR meta
+ * (author, CI, reviewers, files changed) is in the tab header — so this
+ * bar is gone when the terminal replaces the pane.
  */
 export function DiffPane({
   pr,
@@ -74,7 +70,6 @@ export function DiffPane({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <MetaStrip pr={pr} fileCount={files.length} />
       <Toolbar
         navCount={navCount}
         navIndex={navIndex}
@@ -243,76 +238,6 @@ function Toolbar({
           </Tip>
         </div>
       )}
-    </div>
-  );
-}
-
-function MetaStrip({
-  pr,
-  fileCount,
-}: {
-  pr: PullRequestInfo;
-  fileCount: number;
-}) {
-  const reviewers = pr.reviewers ?? [];
-  const ci = pr.buildStatus;
-  return (
-    <div className="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border bg-muted/40 px-3 text-sm">
-      <span className="flex min-w-0 items-center gap-1.5">
-        <Avatar name={pr.createdByDisplayName} size="xs" />
-        <span className="truncate text-foreground">
-          {pr.createdByDisplayName}
-        </span>
-      </span>
-      {pr.isDraft && <Badge variant="outline">Draft</Badge>}
-      {ci && ci !== 'none' && (
-        <Badge
-          variant={
-            ci === 'succeeded'
-              ? 'success'
-              : ci === 'failed'
-              ? 'destructive'
-              : 'warning'
-          }
-        >
-          {ci === 'succeeded' && <CheckCircle2Icon />}
-          {ci === 'failed' && <XCircleIcon />}
-          {ci === 'pending' && <CircleDotIcon />}
-          CI {ci}
-        </Badge>
-      )}
-      {reviewers.length > 0 && (
-        <span className="flex items-center gap-1">
-          {reviewers.slice(0, 6).map((r) => (
-            <Tip
-              key={r.identifier}
-              label={`${r.displayName}: ${r.decision.replace('-', ' ')}`}
-            >
-              <span className="relative">
-                <Avatar name={r.displayName} size="xs" />
-                <span
-                  className={cn(
-                    'absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-background',
-                    r.decision === 'approved' && 'bg-success',
-                    r.decision === 'changes-requested' && 'bg-destructive',
-                    r.decision === 'no-response' && 'bg-muted-foreground/50',
-                    r.decision === 'declined' && 'bg-muted-foreground'
-                  )}
-                />
-              </span>
-            </Tip>
-          ))}
-        </span>
-      )}
-      {(pr.activeCommentCount ?? 0) > 0 && (
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <MessageSquareIcon className="size-3.5" />
-          {pr.activeCommentCount}
-        </span>
-      )}
-      <span className="ml-auto shrink-0 text-muted-foreground">
-        {fileCount} file{fileCount === 1 ? '' : 's'} changed
-      </span>
     </div>
   );
 }
