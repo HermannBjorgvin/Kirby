@@ -14,7 +14,6 @@ const require = createRequire(import.meta.url);
 const appDir = dirname(fileURLToPath(import.meta.url));
 const electron = require('electron'); // string: path to the electron binary
 const { version } = require(join(appDir, 'package.json'));
-const { version } = require(join(appDir, 'package.json'));
 
 const args = [];
 try {
