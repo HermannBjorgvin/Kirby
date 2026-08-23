@@ -20,6 +20,7 @@ import type {
   PullRequestComments,
   RemoteCommentThread,
 } from '@kirby/vcs-core';
+export type { BranchPrMap, PullRequestComments, RemoteCommentThread };
 
 export interface KirbyVersionInfo {
   /** kirby-desktop package version */

@@ -154,10 +154,13 @@
   },
   "dependencies": {
     "@kirby/app-core": "*",
+    "@tailwindcss/typography": "^0.5.20",
     "@wterm/react": "^0.3.4",
     "node-pty": "^1.1.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",

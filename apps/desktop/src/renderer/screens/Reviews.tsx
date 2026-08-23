@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { useHostQuery } from '../hooks/useHostQuery.js';
+import { CommentThreadCard } from './CommentThread.js';
 
 const LINE_CLASS: Record<DiffLine['type'], string> = {
   add: 'bg-emerald-950/60 text-emerald-200',
@@ -95,6 +96,13 @@ function PrDiff({ pr }: { pr: PullRequestInfo }) {
     () => window.kirby.fetchDiffText(pr.sourceBranch, pr.targetBranch),
     [pr.id]
   );
+  const [showComments, setShowComments] = useState(true);
+  const comments = useHostQuery(
+    () => window.kirby.fetchCommentThreads(pr.id),
+    [pr.id]
+  );
+
+  const reloadComments = useCallback(() => comments.reload(), [comments]);
 
   const files = useMemo(() => {
     if (!diff.data) return null;
@@ -141,6 +149,43 @@ function PrDiff({ pr }: { pr: PullRequestInfo }) {
             </pre>
           </section>
         ))}
+
+        {/* ── Comment threads ─────────────────────────────── */}
+        {(comments.data?.threads.length ?? 0) +
+          (comments.data?.generalComments.length ?? 0) >
+          0 && (
+          <section className="mt-2 border-t border-slate-800 pt-4">
+            <button
+              onClick={() => setShowComments((v) => !v)}
+              className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-300"
+            >
+              {showComments ? '▾' : '▸'} Comments (
+              {(comments.data?.threads.length ?? 0) +
+                (comments.data?.generalComments.length ?? 0)}
+              )
+            </button>
+            {showComments && (
+              <div className="space-y-3">
+                {comments.data!.generalComments.map((t) => (
+                  <CommentThreadCard
+                    key={t.id}
+                    thread={t}
+                    prId={pr.id}
+                    onReplied={reloadComments}
+                  />
+                ))}
+                {comments.data!.threads.map((t) => (
+                  <CommentThreadCard
+                    key={t.id}
+                    thread={t}
+                    prId={pr.id}
+                    onReplied={reloadComments}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );
