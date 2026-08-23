@@ -18,9 +18,15 @@ import type { WorktreeInfo } from '@kirby/worktree-manager';
 import type {
   BranchPrMap,
   PullRequestComments,
+  RemoteCommentReply,
   RemoteCommentThread,
 } from '@kirby/vcs-core';
-export type { BranchPrMap, PullRequestComments, RemoteCommentThread };
+export type {
+  BranchPrMap,
+  PullRequestComments,
+  RemoteCommentReply,
+  RemoteCommentThread,
+};
 export type { SidebarItem } from '@kirby/app-core';
 
 export interface KirbyVersionInfo {
@@ -187,6 +193,13 @@ export interface ResolveRequest {
   resolved: boolean;
 }
 
+/** An image embedded in a comment, fetched host-side with provider auth. */
+export interface CommentImagePayload {
+  dataUrl: string;
+  contentType: string;
+  bytes: number;
+}
+
 /** The API surface exposed on `window.kirby`. */
 export interface KirbyHostApi {
   getVersion(): Promise<KirbyVersionInfo>;
@@ -236,6 +249,9 @@ export interface KirbyHostApi {
   fetchCommentThreads(prId: number): Promise<PullRequestComments>;
   replyToThread(req: ReplyRequest): Promise<void>;
   setThreadResolved(req: ResolveRequest): Promise<void>;
+  /** Download a comment image with the provider's credentials (Azure
+   *  DevOps PAT / GitHub token) and return it as a data URL. */
+  fetchCommentImage(url: string): Promise<CommentImagePayload | null>;
 
   // ── Sessions ─────────────────────────────────────────────────
   launchAgent(req: SessionLaunchRequest): Promise<{ name: string }>;
@@ -305,6 +321,7 @@ export const IPC = {
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',
   setThreadResolved: 'kirby/reviews/resolve',
+  fetchCommentImage: 'kirby/reviews/comment-image',
   fetchDiffText: 'kirby/diff/text',
   fetchFileDiffText: 'kirby/diff/file-text',
   openExternal: 'kirby/shell/open-external',

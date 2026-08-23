@@ -44,6 +44,7 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.fetchCommentThreads, prId),
   replyToThread: (req) => ipcRenderer.invoke(IPC.replyToThread, req),
   setThreadResolved: (req) => ipcRenderer.invoke(IPC.setThreadResolved, req),
+  fetchCommentImage: (url) => ipcRenderer.invoke(IPC.fetchCommentImage, url),
 
   launchAgent: (req) => ipcRenderer.invoke(IPC.launchAgent, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),

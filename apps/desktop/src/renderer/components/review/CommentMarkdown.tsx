@@ -1,0 +1,121 @@
+import { ExternalLinkIcon, ImageOffIcon } from 'lucide-react';
+import { useState, type ComponentProps } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useCommentImage } from '../../lib/queries.js';
+import { cn } from '../../lib/utils.js';
+import { Button } from '../ui/button.js';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog.js';
+import { Skeleton } from '../ui/skeleton.js';
+
+/**
+ * Markdown body for PR comments.
+ *  • Images are fetched by the host with the provider's credentials
+ *    (Azure DevOps attachments need the PAT, private GitHub assets the
+ *    gh token) and shown from a data URL; click opens a lightbox.
+ *  • Links open in the system browser, never inside the app.
+ *  • Headings are capped so a reply can't shout over the page.
+ */
+export function CommentMarkdown({ markdown }: { markdown: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:text-sm prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-a:text-primary prose-headings:my-2 prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-h4:text-base prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-table:my-2 prose-th:py-1 prose-th:px-2 prose-td:py-1 prose-td:px-2 prose-blockquote:my-2 prose-blockquote:border-l-border prose-hr:my-3">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{ img: CommentImage, a: ExternalAnchor }}
+      >
+        {markdown}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function ExternalAnchor({ href, children, ...rest }: ComponentProps<'a'>) {
+  return (
+    <a
+      {...rest}
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href && /^https?:/i.test(href))
+          void window.kirby.openExternal(href);
+      }}
+      title={href}
+    >
+      {children}
+    </a>
+  );
+}
+
+function CommentImage({ src, alt }: ComponentProps<'img'>) {
+  const url = typeof src === 'string' ? src : '';
+  const img = useCommentImage(url);
+  const [open, setOpen] = useState(false);
+
+  if (!url) return null;
+
+  if (img.isLoading) {
+    return (
+      <span className="my-2 block">
+        <Skeleton className="h-32 w-64 max-w-full" />
+      </span>
+    );
+  }
+  if (img.isError || !img.data) {
+    return (
+      <span className="my-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-sm text-muted-foreground">
+        <ImageOffIcon className="size-3.5" />
+        <span>{alt || 'image'}</span>
+        <button
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+          onClick={() => void window.kirby.openExternal(url)}
+        >
+          open <ExternalLinkIcon className="size-3" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="my-2 block cursor-zoom-in rounded-md border border-border bg-background p-0.5 text-left hover:border-ring"
+        title={alt ? `${alt} — click to enlarge` : 'Click to enlarge'}
+      >
+        <img
+          src={img.data.dataUrl}
+          alt={alt ?? ''}
+          className="!my-0 max-h-72 max-w-full rounded object-contain"
+        />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[92vh] w-auto max-w-[min(96vw,1400px)] overflow-auto p-3 sm:max-w-[min(96vw,1400px)]">
+          <DialogTitle className="sr-only">{alt || 'Image'}</DialogTitle>
+          <img
+            src={img.data.dataUrl}
+            alt={alt ?? ''}
+            className="mx-auto block max-h-[84vh] max-w-full object-contain"
+          />
+          <div
+            className={cn(
+              'flex items-center justify-between gap-3 pt-2 text-sm text-muted-foreground'
+            )}
+          >
+            <span className="truncate">
+              {alt || 'image'} · {img.data.contentType} ·{' '}
+              {(img.data.bytes / 1024).toFixed(0)} KB
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void window.kirby.openExternal(url)}
+            >
+              <ExternalLinkIcon /> Open original
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

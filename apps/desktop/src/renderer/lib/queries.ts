@@ -37,6 +37,7 @@ export const keys = {
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
   threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
+  commentImage: (url: string) => ['comment-image', url] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
@@ -107,6 +108,17 @@ export function useThreads(cwd: string, prId: number) {
     queryKey: keys.threads(cwd, prId),
     queryFn: () => window.kirby.fetchCommentThreads(prId),
     staleTime: 30_000,
+  });
+}
+
+/** Comment image bytes (as a data URL), fetched host-side with auth. */
+export function useCommentImage(url: string) {
+  return useQuery({
+    queryKey: keys.commentImage(url),
+    queryFn: () => window.kirby.fetchCommentImage(url),
+    enabled: url.length > 0,
+    staleTime: Infinity,
+    gcTime: 10 * 60_000,
   });
 }
 

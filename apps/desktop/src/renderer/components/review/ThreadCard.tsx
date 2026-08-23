@@ -4,13 +4,15 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   CornerDownRightIcon,
+  MessageSquareIcon,
   RotateCcwIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
-import type { RemoteCommentThread } from '../../../host/contract.js';
+import type {
+  RemoteCommentReply,
+  RemoteCommentThread,
+} from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useReply, useSetResolved } from '../../lib/queries.js';
 import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
@@ -18,20 +20,14 @@ import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Textarea } from '../ui/textarea.js';
-
-function Body({ markdown }: { markdown: string }) {
-  return (
-    <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-snug prose-p:my-1 prose-pre:my-2 prose-pre:text-sm prose-code:before:content-none prose-code:after:content-none prose-a:text-primary prose-headings:my-2 prose-img:my-2 prose-img:max-h-80 prose-img:rounded">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
-    </div>
-  );
-}
+import { CommentMarkdown } from './CommentMarkdown.js';
 
 /**
- * One review thread (root + replies) with an inline reply composer and
- * resolve/reopen. Resolved threads start collapsed to a one-line
- * summary; `focused` (thread navigator / comment list) expands and
- * flashes the card.
+ * One review thread. The root comment and every reply render as
+ * distinct messages (own header, divider, replies tinted + indented)
+ * inside one bordered card with a summary header and a reply footer.
+ * Resolved threads start collapsed to the header; `focused` (thread
+ * navigator / comment list) expands and outlines the card.
  */
 export function ThreadCard({
   thread,
@@ -58,8 +54,6 @@ export function ThreadCard({
     if (focused) setOverride(null);
   }
   const expanded = override ?? (focused || !thread.isResolved);
-  const setExpanded = (next: boolean | ((e: boolean) => boolean)) =>
-    setOverride(typeof next === 'function' ? next(expanded) : next);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -110,14 +104,21 @@ export function ThreadCard({
       ref={ref}
       data-thread={thread.id}
       className={cn(
-        'rounded-md border bg-card text-card-foreground shadow-xs transition-shadow',
+        'max-w-[900px] overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs transition-shadow',
         thread.isResolved ? 'border-success/30' : 'border-border',
         focused && 'ring-2 ring-primary/50'
       )}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5 text-sm">
+      {/* Summary header */}
+      <div
+        className={cn(
+          'flex items-center gap-2 px-3 py-1.5 text-sm',
+          thread.isResolved ? 'bg-success/5' : 'bg-muted/40',
+          expanded && 'border-b border-border'
+        )}
+      >
         <button
-          onClick={() => setExpanded((e) => !e)}
+          onClick={() => setOverride(!expanded)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
           aria-expanded={expanded}
         >
@@ -126,11 +127,8 @@ export function ThreadCard({
           ) : (
             <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
           )}
-          <Avatar name={root.author} size="xs" />
-          <span className="font-medium">{root.author}</span>
-          <span className="text-muted-foreground">
-            {relativeTime(root.createdAt)}
-          </span>
+          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 font-medium">{root.author}</span>
           {showLocation && location && (
             <span className="truncate font-mono text-xs text-muted-foreground">
               {location}
@@ -138,14 +136,13 @@ export function ThreadCard({
           )}
           {!expanded && (
             <span className="min-w-0 truncate text-muted-foreground">
-              — {root.body.split('\n')[0]}
+              — {root.body.split('\n').find((l) => l.trim()) ?? ''}
             </span>
           )}
-          {replies.length > 0 && (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {replies.length} repl{replies.length === 1 ? 'y' : 'ies'}
-            </span>
-          )}
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+            {thread.comments.length} comment
+            {thread.comments.length === 1 ? '' : 's'}
+          </span>
         </button>
         <span className="flex shrink-0 items-center gap-1">
           {thread.isOutdated && <Badge variant="outline">Outdated</Badge>}
@@ -159,28 +156,15 @@ export function ThreadCard({
 
       {expanded && (
         <>
-          <div className="px-3 pb-2 pl-9">
-            <Body markdown={root.body} />
+          <div className="divide-y divide-border">
+            <Message comment={root} />
+            {replies.map((r) => (
+              <Message key={r.id} comment={r} reply />
+            ))}
           </div>
 
-          {replies.length > 0 && (
-            <div className="mx-3 mb-2 ml-9 space-y-2 border-l-2 border-border pl-3">
-              {replies.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Avatar name={r.author} size="xs" />
-                    <span className="font-medium">{r.author}</span>
-                    <span className="text-muted-foreground">
-                      {relativeTime(r.createdAt)}
-                    </span>
-                  </div>
-                  <Body markdown={r.body} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-start gap-2 border-t border-border px-3 py-2">
+          {/* Footer: reply + resolve */}
+          <div className="flex items-start gap-2 border-t border-border bg-muted/20 px-3 py-2">
             {composing ? (
               <div className="flex flex-1 flex-col gap-2">
                 <Textarea
@@ -195,7 +179,7 @@ export function ThreadCard({
                     if (e.key === 'Escape') setComposing(false);
                   }}
                   placeholder="Write a reply… Markdown supported. ⌘/Ctrl+Enter to send."
-                  className="min-h-16"
+                  className="min-h-20 bg-background"
                 />
                 <div className="flex justify-end gap-2">
                   <Button
@@ -255,5 +239,44 @@ export function ThreadCard({
         </>
       )}
     </div>
+  );
+}
+
+/** One comment in a thread: author line, then the markdown body. */
+function Message({
+  comment,
+  reply = false,
+}: {
+  comment: RemoteCommentReply;
+  reply?: boolean;
+}) {
+  return (
+    <article
+      className={cn(
+        'px-3 py-2.5',
+        reply && 'border-l-[3px] border-l-border bg-muted/15 pl-4'
+      )}
+    >
+      <header className="mb-1 flex items-center gap-2 text-sm">
+        {reply && (
+          <CornerDownRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <Avatar name={comment.author} size="sm" />
+        <span className="font-medium">{comment.author}</span>
+        <span className="text-muted-foreground">
+          {reply ? 'replied' : 'commented'} {relativeTime(comment.createdAt)}
+        </span>
+        {comment.isMinimized && (
+          <Badge variant="outline" className="ml-auto">
+            Hidden
+          </Badge>
+        )}
+      </header>
+      <div
+        className={cn(reply ? 'pl-[calc(1.25rem+0.875rem+0.5rem)]' : 'pl-7')}
+      >
+        <CommentMarkdown markdown={comment.body} />
+      </div>
+    </article>
   );
 }

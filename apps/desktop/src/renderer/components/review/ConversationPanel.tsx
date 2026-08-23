@@ -39,7 +39,7 @@ export function ConversationPanel({
         )}
       </button>
       {open && (
-        <div className="space-y-2 px-4 pb-3">
+        <div className="space-y-3 px-4 pb-3">
           {loading && threads.length === 0 && (
             <Skeleton className="h-16 w-full" />
           )}

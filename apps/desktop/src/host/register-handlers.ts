@@ -13,6 +13,7 @@ import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
+import * as commentImages from './services/comment-images.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -54,6 +55,7 @@ export function createHostApi(): KirbyHostApi {
     fetchCommentThreads: (prId) => reviews.fetchCommentThreads(prId),
     replyToThread: (req: ReplyRequest) => reviews.replyToThread(req),
     setThreadResolved: (req: ResolveRequest) => reviews.setThreadResolved(req),
+    fetchCommentImage: (url) => commentImages.fetchCommentImage(url),
 
     launchAgent: (req) => sessions.launchAgent(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
@@ -167,6 +169,7 @@ export function registerHostHandlers(
     [IPC.fetchCommentThreads]: api.fetchCommentThreads as HostMethod,
     [IPC.replyToThread]: api.replyToThread as HostMethod,
     [IPC.setThreadResolved]: api.setThreadResolved as HostMethod,
+    [IPC.fetchCommentImage]: api.fetchCommentImage as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,
     [IPC.openExternal]: api.openExternal as HostMethod,
