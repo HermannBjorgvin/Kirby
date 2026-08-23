@@ -6,8 +6,12 @@ import {
   buildUnifiedRows,
   defaultCollapseReason,
   expandIndices,
+  orderDraftsForReview,
+  severityCounts,
+  snippetAround,
   wordDiff,
 } from './diff-model.js';
+import type { ReviewComment } from '../../host/contract.js';
 
 function ctx(n: number, startOld = 1, startNew = 1): DiffLine[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -124,5 +128,79 @@ describe('defaultCollapseReason', () => {
     expect(defaultCollapseReason('dist/app.js', 10)).toBe('generated');
     expect(defaultCollapseReason('src/a.ts', 5000)).toBe('large');
     expect(defaultCollapseReason('src/a.ts', 10)).toBeNull();
+  });
+});
+
+function draft(p: Partial<ReviewComment>): ReviewComment {
+  return {
+    id: p.id ?? 'x',
+    file: p.file ?? 'a.ts',
+    lineStart: p.lineStart ?? 1,
+    lineEnd: p.lineEnd ?? p.lineStart ?? 1,
+    severity: p.severity ?? 'minor',
+    body: p.body ?? '',
+    side: p.side ?? 'RIGHT',
+    status: p.status ?? 'draft',
+    createdAt: p.createdAt ?? '2026-01-01T00:00:00Z',
+  };
+}
+
+describe('orderDraftsForReview', () => {
+  it('orders by severity, then file order, then line', () => {
+    const order = new Map([
+      ['a.ts', 0],
+      ['b.ts', 1],
+    ]);
+    const drafts = [
+      draft({ id: 'nit', severity: 'nit', file: 'a.ts', lineStart: 1 }),
+      draft({ id: 'crit-b', severity: 'critical', file: 'b.ts', lineStart: 5 }),
+      draft({
+        id: 'crit-a2',
+        severity: 'critical',
+        file: 'a.ts',
+        lineStart: 9,
+      }),
+      draft({
+        id: 'crit-a1',
+        severity: 'critical',
+        file: 'a.ts',
+        lineStart: 2,
+      }),
+    ];
+    expect(orderDraftsForReview(drafts, order).map((d) => d.id)).toEqual([
+      'crit-a1',
+      'crit-a2',
+      'crit-b',
+      'nit',
+    ]);
+  });
+});
+
+describe('severityCounts', () => {
+  it('tallies each severity', () => {
+    const counts = severityCounts([
+      draft({ severity: 'critical' }),
+      draft({ severity: 'critical' }),
+      draft({ severity: 'nit' }),
+    ]);
+    expect(counts).toEqual({ critical: 2, major: 0, minor: 0, nit: 1 });
+  });
+});
+
+describe('snippetAround', () => {
+  const lines: DiffLine[] = [
+    { type: 'context', content: 'a', oldLine: 1, newLine: 1 },
+    { type: 'context', content: 'b', oldLine: 2, newLine: 2 },
+    { type: 'add', content: 'c', newLine: 3 },
+    { type: 'add', content: 'd', newLine: 4 },
+    { type: 'context', content: 'e', oldLine: 3, newLine: 5 },
+  ];
+  it('windows around the RIGHT anchor and flags anchored rows', () => {
+    const snip = snippetAround(lines, 'RIGHT', 3, 4, 1);
+    expect(snip.map((s) => s.line.content)).toEqual(['b', 'c', 'd', 'e']);
+    expect(snip.map((s) => s.anchored)).toEqual([false, true, true, false]);
+  });
+  it('returns empty when the anchor is not present', () => {
+    expect(snippetAround(lines, 'RIGHT', 99, 99)).toEqual([]);
   });
 });

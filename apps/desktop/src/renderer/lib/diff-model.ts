@@ -1,4 +1,5 @@
 import type { DiffLine } from '@kirby/diff';
+import type { CommentSeverity, ReviewComment } from '../../host/contract.js';
 
 /**
  * Pure helpers behind the diff viewer. The host hands us whole-file
@@ -295,4 +296,82 @@ export function defaultCollapseReason(
   if (GENERATED_RE.test(filename)) return 'generated';
   if (changedLines > LARGE_FILE_LINES) return 'large';
   return null;
+}
+
+// ── Draft review walkthrough ─────────────────────────────────────
+
+export const SEVERITY_RANK: Record<CommentSeverity, number> = {
+  critical: 0,
+  major: 1,
+  minor: 2,
+  nit: 3,
+};
+
+/**
+ * Order drafts for the "Review ready" walkthrough: by severity
+ * (critical → nit), then by the file's position in the diff, then by
+ * line. `fileOrder` maps a filename to its index among the changed
+ * files so unknown files sort last.
+ */
+export function orderDraftsForReview(
+  drafts: readonly ReviewComment[],
+  fileOrder: ReadonlyMap<string, number>
+): ReviewComment[] {
+  return [...drafts].sort((a, b) => {
+    const s = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (s !== 0) return s;
+    const fa = fileOrder.get(a.file) ?? Number.MAX_SAFE_INTEGER;
+    const fb = fileOrder.get(b.file) ?? Number.MAX_SAFE_INTEGER;
+    if (fa !== fb) return fa - fb;
+    return a.lineStart - b.lineStart;
+  });
+}
+
+/** Count drafts per severity, for the "Review ready" breakdown. */
+export function severityCounts(
+  drafts: readonly ReviewComment[]
+): Record<CommentSeverity, number> {
+  const counts: Record<CommentSeverity, number> = {
+    critical: 0,
+    major: 0,
+    minor: 0,
+    nit: 0,
+  };
+  for (const d of drafts) counts[d.severity] += 1;
+  return counts;
+}
+
+/**
+ * A window of diff lines around a draft's anchor, for the snippet shown
+ * next to it in the walkthrough. Matches on the new-file line (RIGHT)
+ * or old-file line (LEFT); returns the anchored lines plus `radius`
+ * lines of context on each side. `anchor` flags which rows the comment
+ * covers so the snippet can highlight them.
+ */
+export function snippetAround(
+  lines: readonly DiffLine[],
+  side: 'LEFT' | 'RIGHT',
+  lineStart: number,
+  lineEnd: number,
+  radius = 3
+): { line: DiffLine; anchored: boolean }[] {
+  const key = side === 'LEFT' ? 'oldLine' : 'newLine';
+  const inRange = (l: DiffLine) => {
+    const n = l[key];
+    return n != null && n >= lineStart && n <= lineEnd;
+  };
+  const first = lines.findIndex(inRange);
+  if (first < 0) {
+    // Anchor not in the diff (outdated / out of hunk): show nothing.
+    return [];
+  }
+  let last = first;
+  for (let i = first; i < lines.length; i++) if (inRange(lines[i])) last = i;
+  const from = Math.max(0, first - radius);
+  const to = Math.min(lines.length - 1, last + radius);
+  const out: { line: DiffLine; anchored: boolean }[] = [];
+  for (let i = from; i <= to; i++) {
+    out.push({ line: lines[i], anchored: i >= first && i <= last });
+  }
+  return out;
 }

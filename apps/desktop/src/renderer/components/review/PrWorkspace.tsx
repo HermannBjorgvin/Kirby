@@ -40,10 +40,13 @@ import { Button } from '../ui/button.js';
 import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
 import { CommentsList } from './CommentsList.js';
+import { ReviewStepper } from './ReviewStepper.js';
+import { severityCounts } from '../../lib/diff-model.js';
+import { ClipboardCheckIcon } from 'lucide-react';
 import { DiffPane } from './DiffPane.js';
 import { FileTree, type FileEntry } from './FileTree.js';
 
-type Mode = 'diff' | 'agent';
+type Mode = 'diff' | 'agent' | 'review';
 
 /**
  * The review workspace for a PR: a persistent left rail (Agent · Files
@@ -90,8 +93,6 @@ export function PrWorkspace({
     setPrevRunning(running);
     if (running) setMode('agent');
   }
-  const effMode: Mode = mode === 'agent' && sessionName ? 'agent' : 'diff';
-
   const files = useMemo<[string, DiffLine[]][]>(
     () => (diff.data ? [...parseUnifiedDiff(diff.data).entries()] : []),
     [diff.data]
@@ -122,6 +123,20 @@ export function PrWorkspace({
     }
     return map;
   }, [inlineThreads]);
+
+  const fileOrder = useMemo(
+    () => new Map(files.map(([f], i) => [f, i])),
+    [files]
+  );
+  const filesByName = useMemo(() => new Map(files), [files]);
+
+  const hasDrafts = drafts.length > 0;
+  const effMode: Mode =
+    mode === 'agent' && sessionName
+      ? 'agent'
+      : mode === 'review' && hasDrafts
+      ? 'review'
+      : 'diff';
 
   const entries = useMemo<FileEntry[]>(
     () =>
@@ -224,6 +239,9 @@ export function PrWorkspace({
                   onLaunch={onLaunch}
                   onStop={onStop}
                   onHide={() => setRailHidden(true)}
+                  drafts={drafts}
+                  reviewActive={effMode === 'review'}
+                  onReview={() => setMode('review')}
                   entries={entries}
                   diffLoading={diff.isLoading}
                   selectedFile={effMode === 'diff' ? selectedFile : null}
@@ -251,6 +269,26 @@ export function PrWorkspace({
                     name={sessionName}
                     active={active && effMode === 'agent'}
                   />
+                </div>
+              )}
+              {hasDrafts && (
+                <div
+                  className={cn(
+                    'absolute inset-0',
+                    effMode !== 'review' && 'invisible'
+                  )}
+                >
+                  {effMode === 'review' && (
+                    <ReviewStepper
+                      prId={pr.id}
+                      headSha={pr.headSha}
+                      drafts={drafts}
+                      filesByName={filesByName}
+                      fileOrder={fileOrder}
+                      onExit={() => setMode('diff')}
+                      onOpenInDiff={(file) => jumpToFile(file)}
+                    />
+                  )}
                 </div>
               )}
               <div
@@ -416,6 +454,9 @@ function ReviewRail({
   onLaunch,
   onStop,
   onHide,
+  drafts,
+  reviewActive,
+  onReview,
   entries,
   diffLoading,
   selectedFile,
@@ -433,6 +474,9 @@ function ReviewRail({
   onLaunch: () => void;
   onStop: () => void;
   onHide: () => void;
+  drafts: ReviewComment[];
+  reviewActive: boolean;
+  onReview: () => void;
   entries: FileEntry[];
   diffLoading: boolean;
   selectedFile: string | null;
@@ -509,6 +553,42 @@ function ReviewRail({
           </Button>
         )}
       </div>
+
+      {/* Review ready — enter the draft walkthrough */}
+      {drafts.length > 0 && (
+        <div className="shrink-0 border-b border-border px-2 py-2">
+          <button
+            onClick={onReview}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
+              reviewActive
+                ? 'border-primary bg-primary/10'
+                : 'border-border hover:bg-sidebar-accent'
+            )}
+          >
+            <ClipboardCheckIcon className="size-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-medium">Review ready</span>
+              <span className="block text-xs text-muted-foreground">
+                {(() => {
+                  const c = severityCounts(drafts);
+                  return [
+                    c.critical && `${c.critical} critical`,
+                    c.major && `${c.major} major`,
+                    c.minor && `${c.minor} minor`,
+                    c.nit && `${c.nit} nit`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                })()}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums">
+              {drafts.length}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Files + Comments */}
       <ScrollArea className="min-h-0 flex-1">

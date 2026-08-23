@@ -20,6 +20,7 @@ export function SessionTerminal({
   active: boolean;
 }) {
   const termRef = useRef<TerminalHandle>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const { resolved } = useTheme();
 
@@ -76,14 +77,47 @@ export function SessionTerminal({
     if (active && ready) termRef.current?.focus();
   }, [active, ready]);
 
+  // Fit the terminal grid to its pane. wterm's autoResize can latch a
+  // stale size when the resizable panel mounts before it has laid out
+  // (or while the pane is hidden), only recovering on a window resize;
+  // measuring here and resizing explicitly avoids the "doesn't fill the
+  // space until you resize the window" bug.
+  useEffect(() => {
+    if (!ready) return;
+    const el = wrapRef.current;
+    const term = termRef.current;
+    if (!el || !term) return;
+    const CHAR_W = 7.8;
+    const ROW_H = 18;
+    const PAD_X = 24;
+    const PAD_Y = 16;
+    let raf = 0;
+    const fit = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return;
+        const cols = Math.max(20, Math.floor((rect.width - PAD_X) / CHAR_W));
+        const rows = Math.max(5, Math.floor((rect.height - PAD_Y) / ROW_H));
+        term.resize(cols, rows);
+      });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [ready, active]);
+
   return (
-    <div className="absolute inset-0">
+    <div ref={wrapRef} className="absolute inset-0">
       <Terminal
         ref={termRef}
         wasmUrl={wasmUrl}
         className="h-full w-full"
         theme={resolved === 'light' ? 'light' : undefined}
-        autoResize
         cursorBlink
         onReady={(wt) => {
           setReady(true);
