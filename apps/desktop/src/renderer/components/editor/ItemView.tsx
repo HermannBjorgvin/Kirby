@@ -142,7 +142,7 @@ export function ItemView({
   // rail, and content). A bare worktree keeps a simple header + terminal.
   if (pr) {
     return (
-      <>
+      <div ref={paneRef} className="flex h-full min-h-0 min-w-0 flex-col">
         <PrWorkspace
           pr={pr}
           sessionName={sessionName}
@@ -160,7 +160,7 @@ export function ItemView({
             onClose={() => setLaunchMenu(false)}
           />
         )}
-      </>
+      </div>
     );
   }
 

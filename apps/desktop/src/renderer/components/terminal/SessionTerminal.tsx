@@ -78,11 +78,12 @@ export function SessionTerminal({
     if (active && ready) termRef.current?.focus();
   }, [active, ready]);
 
-  // Fit the terminal grid to its pane. wterm's autoResize can latch a
-  // stale size when the resizable panel mounts before it has laid out
-  // (or while the pane is hidden), only recovering on a window resize;
-  // measuring here and resizing explicitly avoids the "doesn't fill the
-  // space until you resize the window" bug.
+  // Fit the terminal grid to its pane. autoResize stays ON (with it off
+  // the react wrapper pins an inline height of rows*17px and keeps
+  // re-applying its cols/rows props, clamping the terminal to ~24 rows).
+  // wterm's own observer can still latch a stale size when the pane
+  // mounts before layout settles, so this extra observer nudges
+  // resize() from the wrapper's real box whenever it changes.
   useEffect(() => {
     if (!ready) return;
     const el = wrapRef.current;
@@ -114,10 +115,10 @@ export function SessionTerminal({
         wasmUrl={wasmUrl}
         className="h-full w-full"
         theme={resolved === 'light' ? 'light' : undefined}
+        autoResize
         cursorBlink
         onReady={(wt) => {
           setReady(true);
-          void window.kirby.resizeSession(name, wt.cols, wt.rows);
           if (active) wt.focus();
         }}
         onData={(data) => void window.kirby.writeSession(name, data)}
