@@ -3,19 +3,7 @@ import type { DiffLine } from '@kirby/diff';
 import { useHighlightedLines, type LineTokens } from '../../lib/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
-
-const ROW_BG: Record<DiffLine['type'], string> = {
-  add: 'bg-diff-add',
-  remove: 'bg-diff-del',
-  context: '',
-  'hunk-header': 'bg-diff-hunk',
-};
-const SIGN: Record<DiffLine['type'], string> = {
-  add: '+',
-  remove: '−',
-  context: ' ',
-  'hunk-header': '',
-};
+import { LineContent, ROW_BG, SignCell } from './diff-rows.js';
 
 function SnippetRow({
   line,
@@ -33,34 +21,17 @@ function SnippetRow({
         <span className="w-10 pr-2 text-right tabular-nums">
           {line.newLine ?? ''}
         </span>
-        <span
-          className={cn(
-            'w-4 text-center',
-            line.type === 'add' && 'text-success',
-            line.type === 'remove' && 'text-destructive'
-          )}
-        >
-          {SIGN[line.type]}
-        </span>
+        <SignCell type={line.type} />
       </span>
-      <span className="whitespace-pre pr-4">
-        {tokens
-          ? tokens.map((tok, j) => (
-              <span key={j} style={{ color: tok.color }}>
-                {tok.content}
-              </span>
-            ))
-          : line.content || ' '}
-      </span>
+      <LineContent line={line} tokens={tokens} />
     </div>
   );
 }
 
 /**
- * A compact, read-only code snippet for the review walkthrough: a few
- * diff lines with a two-column gutter and shiki highlighting. The rows
- * the comment anchors to are wrapped in a single outline (a highlighted
- * block) rather than each row being individually boxed.
+ * A compact, read-only code snippet for the review walkthrough. The
+ * rows the comment anchors to are wrapped in a single outlined block
+ * rather than each row being individually boxed.
  */
 export function SnippetView({
   filename,
@@ -85,8 +56,6 @@ export function SnippetView({
     );
   }
 
-  // The anchored rows are contiguous; a single wrapping border around
-  // that run reads as "this is the commented block".
   const firstAnchored = rows.findIndex((r) => r.anchored);
   const lastAnchored = rows.reduce((acc, r, i) => (r.anchored ? i : acc), -1);
 

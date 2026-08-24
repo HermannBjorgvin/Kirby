@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Terminal, type TerminalHandle } from '@wterm/react';
 import wasmUrl from '@wterm/core/wasm?url';
+import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { useTheme } from '../../lib/theme.js';
 
 /**
@@ -87,18 +88,13 @@ export function SessionTerminal({
     const el = wrapRef.current;
     const term = termRef.current;
     if (!el || !term) return;
-    const CHAR_W = 7.8;
-    const ROW_H = 18;
-    const PAD_X = 24;
-    const PAD_Y = 16;
     let raf = 0;
     const fit = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const rect = el.getBoundingClientRect();
         if (rect.width < 2 || rect.height < 2) return;
-        const cols = Math.max(20, Math.floor((rect.width - PAD_X) / CHAR_W));
-        const rows = Math.max(5, Math.floor((rect.height - PAD_Y) / ROW_H));
+        const { cols, rows } = estimateTerminalGrid(rect);
         term.resize(cols, rows);
       });
     };

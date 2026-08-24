@@ -9,6 +9,7 @@ import { useState } from 'react';
 import type { CommentSeverity } from '../../../host/contract.js';
 import { cn } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
+import { SEVERITY_DOT } from '../../lib/severity.js';
 
 export interface CommentListItem {
   id: string;
@@ -21,13 +22,6 @@ export interface CommentListItem {
   resolved: boolean;
   severity?: CommentSeverity;
 }
-
-const SEVERITY_DOT: Record<CommentSeverity, string> = {
-  critical: 'bg-destructive',
-  major: 'bg-warning',
-  minor: 'bg-info',
-  nit: 'bg-muted-foreground/50',
-};
 
 /**
  * Jump list of every comment on the PR — remote threads (inline +

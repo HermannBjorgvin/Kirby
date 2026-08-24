@@ -27,31 +27,12 @@ import {
   SelectValue,
 } from '../ui/select.js';
 import { Textarea } from '../ui/textarea.js';
+import {
+  SEVERITIES,
+  SEVERITY_BADGE,
+  SEVERITY_RAIL,
+} from '../../lib/severity.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
-
-export const SEVERITIES: CommentSeverity[] = [
-  'critical',
-  'major',
-  'minor',
-  'nit',
-];
-
-const SEVERITY_BADGE: Record<
-  CommentSeverity,
-  'destructive' | 'warning' | 'info' | 'outline'
-> = {
-  critical: 'destructive',
-  major: 'warning',
-  minor: 'info',
-  nit: 'outline',
-};
-
-const SEVERITY_RAIL: Record<CommentSeverity, string> = {
-  critical: 'border-l-destructive',
-  major: 'border-l-warning',
-  minor: 'border-l-info',
-  nit: 'border-l-muted-foreground/40',
-};
 
 /**
  * A draft review comment written by the agent (`kirby util

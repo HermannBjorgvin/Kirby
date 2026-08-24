@@ -21,6 +21,7 @@ import {
   itemSessionName,
   itemTitle,
 } from '../../lib/sidebar-model.js';
+import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { errorMessage } from '../../lib/utils.js';
 import { PrWorkspace } from '../review/PrWorkspace.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
@@ -78,13 +79,12 @@ export function ItemView({
   const pr = item.pr ?? sessionRow?.pr;
   const title = pr ? pr.title : itemTitle(item);
 
+  // Half-width: a PR launch lands in the split review workspace where
+  // the terminal shares the pane with the diff.
   const estimateGrid = () => {
     const el = paneRef.current;
     if (!el) return {};
-    const rect = el.getBoundingClientRect();
-    const cols = Math.max(20, Math.floor((rect.width * 0.6 - 24) / 7.8));
-    const rows = Math.max(5, Math.floor((rect.height - 16) / 18));
-    return { cols, rows };
+    return estimateTerminalGrid(el.getBoundingClientRect(), 0.6);
   };
 
   const startPlainSession = async () => {

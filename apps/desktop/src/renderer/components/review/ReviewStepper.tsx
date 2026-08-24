@@ -27,6 +27,11 @@ import {
 } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { cn, errorMessage } from '../../lib/utils.js';
+import {
+  SEVERITIES,
+  SEVERITY_BADGE,
+  SEVERITY_DOT,
+} from '../../lib/severity.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import {
@@ -40,25 +45,6 @@ import { Textarea } from '../ui/textarea.js';
 import { Tip } from '../ui/tooltip.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
 import { SnippetView } from './SnippetView.js';
-
-const SEVERITIES: CommentSeverity[] = ['critical', 'major', 'minor', 'nit'];
-
-const SEVERITY_BADGE: Record<
-  CommentSeverity,
-  'destructive' | 'warning' | 'info' | 'outline'
-> = {
-  critical: 'destructive',
-  major: 'warning',
-  minor: 'info',
-  nit: 'outline',
-};
-
-const SEVERITY_DOT: Record<CommentSeverity, string> = {
-  critical: 'bg-destructive',
-  major: 'bg-warning',
-  minor: 'bg-info',
-  nit: 'bg-muted-foreground/50',
-};
 
 /**
  * "Review ready" walkthrough: steps through the agent's draft comments

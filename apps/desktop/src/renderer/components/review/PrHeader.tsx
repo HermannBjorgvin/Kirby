@@ -1,0 +1,111 @@
+import {
+  CheckCircle2Icon,
+  CircleDotIcon,
+  ExternalLinkIcon,
+  GitPullRequestIcon,
+  MessageSquareIcon,
+  XCircleIcon,
+} from 'lucide-react';
+import type { PullRequestInfo } from '@kirby/vcs-core';
+import { cn } from '../../lib/utils.js';
+import { Avatar } from '../ui/avatar.js';
+import { Badge } from '../ui/badge.js';
+import { Button } from '../ui/button.js';
+import { Tip } from '../ui/tooltip.js';
+
+export function PrHeader({
+  pr,
+  fileCount,
+}: {
+  pr: PullRequestInfo;
+  fileCount: number;
+}) {
+  const reviewers = pr.reviewers ?? [];
+  const ci = pr.buildStatus;
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+      <GitPullRequestIcon className="size-4 shrink-0 text-info" />
+      <span className="flex min-w-0 shrink items-center gap-2">
+        <span className="truncate font-medium">{pr.title}</span>
+        <span className="shrink-0 text-sm text-muted-foreground">#{pr.id}</span>
+        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
+          {pr.sourceBranch} → {pr.targetBranch}
+        </span>
+      </span>
+
+      <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+
+      <span className="flex min-w-0 items-center gap-2 text-sm">
+        <Tip label={`Opened by ${pr.createdByDisplayName}`}>
+          <span className="flex items-center gap-1.5">
+            <Avatar name={pr.createdByDisplayName} size="xs" />
+            <span className="hidden truncate text-muted-foreground md:inline">
+              {pr.createdByDisplayName}
+            </span>
+          </span>
+        </Tip>
+        {pr.isDraft && <Badge variant="outline">Draft</Badge>}
+        {ci && ci !== 'none' && (
+          <Badge
+            variant={
+              ci === 'succeeded'
+                ? 'success'
+                : ci === 'failed'
+                ? 'destructive'
+                : 'warning'
+            }
+          >
+            {ci === 'succeeded' && <CheckCircle2Icon />}
+            {ci === 'failed' && <XCircleIcon />}
+            {ci === 'pending' && <CircleDotIcon />}
+            CI {ci}
+          </Badge>
+        )}
+        {reviewers.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            {reviewers.slice(0, 6).map((r) => (
+              <Tip
+                key={r.identifier}
+                label={`${r.displayName}: ${r.decision.replace('-', ' ')}`}
+              >
+                <span className="relative">
+                  <Avatar name={r.displayName} size="xs" />
+                  <span
+                    className={cn(
+                      'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
+                      r.decision === 'approved' && 'bg-success',
+                      r.decision === 'changes-requested' && 'bg-destructive',
+                      r.decision === 'no-response' && 'bg-muted-foreground/50',
+                      r.decision === 'declined' && 'bg-muted-foreground'
+                    )}
+                  />
+                </span>
+              </Tip>
+            ))}
+          </span>
+        )}
+        {(pr.activeCommentCount ?? 0) > 0 && (
+          <span className="flex items-center gap-0.5 text-muted-foreground">
+            <MessageSquareIcon className="size-3.5" />
+            {pr.activeCommentCount}
+          </span>
+        )}
+      </span>
+
+      <div className="flex-1" />
+
+      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+        {fileCount} file{fileCount === 1 ? '' : 's'} changed
+      </span>
+      <Tip label="Open on the provider">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void window.kirby.openExternal(pr.url)}
+        >
+          <ExternalLinkIcon /> Open
+        </Button>
+      </Tip>
+    </header>
+  );
+}
