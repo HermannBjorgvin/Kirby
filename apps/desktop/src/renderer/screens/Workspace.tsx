@@ -1,4 +1,3 @@
-import { PanelLeftOpenIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Group,
@@ -11,14 +10,13 @@ import type {
   RepoInfo,
   SidebarItem,
 } from '../../host/contract.js';
+import { AttentionRail } from '../components/AttentionRail.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
 import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
 import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
-import { Button } from '../components/ui/button.js';
-import { Tip } from '../components/ui/tooltip.js';
 import { useRefreshRemote, useSidebarModel } from '../lib/queries.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs } from '../lib/tabs.js';
@@ -172,18 +170,7 @@ function WorkspaceInner({
 
       <div className="flex min-h-0 flex-1">
         {sidebarHidden && (
-          <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
-            <Tip label="Show sidebar (Ctrl B)" side="right">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleSidebar}
-                aria-label="Show sidebar"
-              >
-                <PanelLeftOpenIcon />
-              </Button>
-            </Tip>
-          </div>
+          <AttentionRail items={items} onReveal={toggleSidebar} />
         )}
         <Group
           orientation="horizontal"
