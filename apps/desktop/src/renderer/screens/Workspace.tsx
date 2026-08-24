@@ -142,19 +142,23 @@ function WorkspaceInner({
   }, [tabs, refresh, onPickRepoFolder, onSwitchRepo]);
 
   // In-page shortcuts for the web-rendered UI. Anything that is also a
-  // native menu accelerator reaches us through onMenuCommand instead,
-  // so only palette/⌘K (not a menu item) is handled here.
+  // native menu accelerator reaches us through onMenuCommand instead;
+  // handled here: palette (⌘K) and tab cycling (Ctrl+Tab / Ctrl+Shift+Tab).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === 'k') {
+      if (!mod) return;
+      if (e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((o) => !o);
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        tabs.cycle(e.shiftKey ? -1 : 1);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [tabs]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">

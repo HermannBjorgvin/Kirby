@@ -1,6 +1,8 @@
 import {
+  ChevronDownIcon,
   ChevronRightIcon,
   FileIcon,
+  FilesIcon,
   FolderIcon,
   MessageSquareIcon,
 } from 'lucide-react';
@@ -91,6 +93,7 @@ export function FileTree({
   selected: string | null;
   onSelect: (path: string) => void;
 }) {
+  const [open, setOpen] = useState(true);
   const tree = useMemo(() => buildTree(entries), [entries]);
   const totals = useMemo(
     () =>
@@ -105,36 +108,48 @@ export function FileTree({
   );
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-8 shrink-0 items-center justify-between px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        <span>Files</span>
+    <div className={cn('flex flex-col', open ? 'h-full' : 'shrink-0')}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDownIcon className="size-3.5" />
+        ) : (
+          <ChevronRightIcon className="size-3.5" />
+        )}
+        <FilesIcon className="size-3.5" />
+        Files
         {entries.length > 0 && (
-          <span className="font-mono font-normal normal-case tracking-normal tabular-nums">
+          <span className="ml-auto font-mono font-normal normal-case tracking-normal tabular-nums">
             <span className="text-success">+{totals.additions}</span>{' '}
             <span className="text-destructive">−{totals.deletions}</span>
           </span>
         )}
-      </div>
-      <ScrollArea className="min-h-0 flex-1">
-        {loading && (
-          <div className="space-y-2 px-3 py-1">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-4 w-2/3" />
+      </button>
+      {open && (
+        <ScrollArea className="min-h-0 flex-1">
+          {loading && (
+            <div className="space-y-2 px-3 py-1">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          )}
+          <div className="pb-2">
+            {tree.map((node) => (
+              <TreeRow
+                key={node.kind === 'dir' ? node.path : node.entry.path}
+                node={node}
+                depth={0}
+                selected={selected}
+                onSelect={onSelect}
+              />
+            ))}
           </div>
-        )}
-        <div className="pb-2">
-          {tree.map((node) => (
-            <TreeRow
-              key={node.kind === 'dir' ? node.path : node.entry.path}
-              node={node}
-              depth={0}
-              selected={selected}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      )}
     </div>
   );
 }

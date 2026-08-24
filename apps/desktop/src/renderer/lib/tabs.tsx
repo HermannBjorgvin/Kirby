@@ -111,6 +111,8 @@ interface TabsApi extends TabsState {
   closeOthers: (id: string) => void;
   closeAll: () => void;
   closeActive: () => void;
+  /** Activate the next (+1) / previous (-1) tab, wrapping around. */
+  cycle: (delta: 1 | -1) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -144,6 +146,16 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   const closeActive = useCallback(() => {
     if (state.activeId) dispatch({ type: 'close', id: state.activeId });
   }, [state.activeId]);
+  const cycle = useCallback(
+    (delta: 1 | -1) => {
+      const { tabs, activeId } = state;
+      if (tabs.length < 2) return;
+      const idx = tabs.findIndex((t) => t.id === activeId);
+      const next = tabs[(idx + delta + tabs.length) % tabs.length];
+      dispatch({ type: 'activate', id: next.id });
+    },
+    [state]
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -156,6 +168,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeOthers,
       closeAll,
       closeActive,
+      cycle,
     }),
     [
       state,
@@ -167,6 +180,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeOthers,
       closeAll,
       closeActive,
+      cycle,
     ]
   );
 
