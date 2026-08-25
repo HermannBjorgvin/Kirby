@@ -18,6 +18,9 @@ export default defineConfig({
   assetsInclude: ['**/*.wasm'],
   base: './',
   clearScreen: false,
+  // The diff worker uses dynamic imports (shiki grammars) — the
+  // default iife worker format can't code-split.
+  worker: { format: 'es' },
   build: {
     outDir,
     emptyOutDir: true,

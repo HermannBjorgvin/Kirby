@@ -11,11 +11,9 @@ import {
   defaultCollapseReason,
   expandIndices,
   lineAnchors,
-  wordDiff,
-  type CharRange,
 } from '../../lib/diff-model.js';
 import { useDiffOptions } from '../../lib/diff-options.js';
-import { useHighlightedLines } from '../../lib/highlight.js';
+import { useFileAnalysis } from '../../lib/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { CommentBlock, OrphanBlock } from './CommentBlock.js';
 import { DiffFileHeader } from './DiffFileHeader.js';
@@ -129,25 +127,13 @@ export const DiffView = memo(function DiffView({
     [options.view, lines, unifiedRows]
   );
 
-  const contents = useMemo(() => lines.map((l) => l.content), [lines]);
-  const tokens = useHighlightedLines(filename, contents, resolved, open);
-
-  // Word-level highlights for paired remove/add lines (both layouts).
-  const wordRanges = useMemo(() => {
-    const map = new Map<number, CharRange[]>();
-    const pairs = buildSplitRows(
-      lines,
-      lines.map((_, index) => ({ kind: 'line', index }))
-    );
-    for (const r of pairs) {
-      if (r.kind !== 'pair' || !r.left || !r.right) continue;
-      const d = wordDiff(r.left.line.content, r.right.line.content);
-      if (!d) continue;
-      map.set(r.left.index, d.old);
-      map.set(r.right.index, d.new);
-    }
-    return map;
-  }, [lines]);
+  // Tokens + word-diff ranges come from the diff worker, off-thread.
+  const { tokens, wordRanges } = useFileAnalysis(
+    filename,
+    lines,
+    resolved,
+    open
+  );
 
   const expand = useCallback(
     (fold: { from: number; to: number }, dir: 'up' | 'down' | 'all') =>

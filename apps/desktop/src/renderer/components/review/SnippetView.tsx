@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import { useHighlightedLines, type LineTokens } from '../../lib/highlight.js';
+import { useFileAnalysis, type LineTokens } from '../../lib/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
 import { LineContent, ROW_BG, SignCell } from './diff-rows.js';
@@ -41,11 +41,8 @@ export function SnippetView({
   rows: { line: DiffLine; anchored: boolean }[];
 }) {
   const { resolved } = useTheme();
-  const tokens = useHighlightedLines(
-    filename,
-    rows.map((r) => r.line.content),
-    resolved
-  );
+  const lines = useMemo(() => rows.map((r) => r.line), [rows]);
+  const { tokens } = useFileAnalysis(filename, lines, resolved);
 
   if (rows.length === 0) {
     return (

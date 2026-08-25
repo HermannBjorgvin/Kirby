@@ -1,24 +1,19 @@
 import { GitBranchIcon, PanelLeftOpenIcon } from 'lucide-react';
-import {
-  useCallback,
-  useDeferredValue,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Group,
   Panel,
   Separator as PanelSeparator,
 } from 'react-resizable-panels';
 import { toast } from 'sonner';
-import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
+import { type DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
 import { useDiffOptions } from '../../lib/diff-options.js';
+import { parseDiffInWorker } from '../../lib/diff-worker-client.js';
 import {
   useDiff,
   useDraftComments,
@@ -91,15 +86,33 @@ export function PrWorkspace({
     setPrevRunning(running);
     if (running) setMode('agent');
   }
-  // Defer the heavy parse (whole-file diffs can be megabytes): the tab
-  // paints its frame + skeletons first, the diff arrives in a
-  // low-priority render right after.
-  const diffText = useDeferredValue(diff.data);
+  // Whole-file diffs can be megabytes; the parse runs in the diff
+  // worker so opening a tab never blocks the UI thread on it.
+  const [parsed, setParsed] = useState<{
+    text: string;
+    files: [string, DiffLine[]][];
+  } | null>(null);
+  useEffect(() => {
+    const text = diff.data;
+    if (text == null) return;
+    let cancelled = false;
+    void parseDiffInWorker(text)
+      .then((files) => {
+        if (!cancelled) setParsed({ text, files });
+      })
+      .catch(() => {
+        if (!cancelled) setParsed({ text, files: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [diff.data]);
   const files = useMemo<[string, DiffLine[]][]>(
-    () => (diffText ? [...parseUnifiedDiff(diffText).entries()] : []),
-    [diffText]
+    () => (parsed && parsed.text === diff.data ? parsed.files : []),
+    [parsed, diff.data]
   );
-  const diffPending = diff.isLoading || diffText !== diff.data;
+  const diffPending =
+    diff.isLoading || (diff.data != null && parsed?.text !== diff.data);
   const inlineThreads = useMemo(
     () => comments.data?.threads ?? [],
     [comments.data]
