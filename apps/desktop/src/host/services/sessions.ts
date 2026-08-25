@@ -78,9 +78,18 @@ export async function launchAgent(req: SessionLaunchRequest): Promise<{
   name: string;
 }> {
   requireRepo();
-  const wt = (await listWorktrees()).find((w) => w.branch === req.branch);
+  let wt = (await listWorktrees()).find((w) => w.branch === req.branch);
   if (!wt) {
-    throw new Error(`No worktree exists for branch "${req.branch}"`);
+    // Launching on a branch without a worktree (a PR row, a plain
+    // branch) creates one — same as the review flow and the TUI.
+    const created = await createWorktree(req.branch);
+    if (!created) {
+      throw new Error(`Failed to create a worktree for "${req.branch}"`);
+    }
+    wt = (await listWorktrees()).find((w) => w.branch === req.branch);
+    if (!wt) {
+      throw new Error(`No worktree exists for branch "${req.branch}"`);
+    }
   }
   const config = readConfig(wt.path);
   const name = branchToSessionName(req.branch);
