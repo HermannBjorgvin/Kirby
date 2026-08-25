@@ -28,11 +28,12 @@ import { Tip } from '../ui/tooltip.js';
 import { type CommentListItem } from './CommentsList.js';
 import { DiffPane } from './DiffPane.js';
 import { type FileEntry } from './FileTree.js';
+import { OverviewPane } from './OverviewPane.js';
 import { PrHeader } from './PrHeader.js';
 import { ReviewRail } from './ReviewRail.js';
 import { ReviewStepper } from './ReviewStepper.js';
 
-type Mode = 'diff' | 'agent' | 'review';
+type Mode = 'diff' | 'agent' | 'review' | 'overview';
 
 /**
  * The review workspace for a PR: a persistent left rail (Agent · Files
@@ -159,6 +160,8 @@ export function PrWorkspace({
       ? 'agent'
       : mode === 'review' && hasDrafts
       ? 'review'
+      : mode === 'overview' && pr
+      ? 'overview'
       : 'diff';
 
   const entries = useMemo<FileEntry[]>(
@@ -292,7 +295,7 @@ export function PrWorkspace({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {pr ? (
-        <PrHeader pr={pr} fileCount={files.length} />
+        <PrHeader pr={pr} />
       ) : (
         <BranchHeader
           branch={branch}
@@ -327,6 +330,9 @@ export function PrWorkspace({
                 className="min-w-0"
               >
                 <ReviewRail
+                  hasPr={Boolean(pr)}
+                  overviewActive={effMode === 'overview'}
+                  onOverview={() => setMode('overview')}
                   running={running}
                   busy={busy}
                   hasSession={Boolean(sessionName)}
@@ -398,6 +404,11 @@ export function PrWorkspace({
                       onOpenInDiff={(file) => jumpToFile(file)}
                     />
                   )}
+                </div>
+              )}
+              {pr && effMode === 'overview' && (
+                <div className="absolute inset-0">
+                  <OverviewPane pr={pr} />
                 </div>
               )}
               <div

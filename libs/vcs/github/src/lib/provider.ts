@@ -10,6 +10,7 @@ import type {
   RemoteCommentThread,
   RemoteCommentReply,
   ReviewDecision,
+  ReviewVerdict,
   BuildStatusState,
 } from '@kirby/vcs-core';
 import { sanitizeBody } from '@kirby/vcs-core';
@@ -821,5 +822,41 @@ export const githubProvider: VcsProvider = {
       ? RESOLVE_THREAD_MUTATION
       : UNRESOLVE_THREAD_MUTATION;
     await ghGraphQL(mutation, { threadId: thread.id });
+  },
+
+  async fetchPullRequestDescription(
+    _auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<string> {
+    const { owner, repo } = project;
+    if (!owner || !repo) return '';
+    const { stdout } = await execFile('gh', [
+      'api',
+      `repos/${owner}/${repo}/pulls/${prId}`,
+      '--jq',
+      '.body // ""',
+    ]);
+    return sanitizeBody(stdout.trim());
+  },
+
+  async submitReviewVerdict(
+    _auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    verdict: ReviewVerdict
+  ): Promise<void> {
+    const { owner, repo } = project;
+    if (!owner || !repo) throw new Error('GitHub project not configured');
+    const args = [
+      'api',
+      `repos/${owner}/${repo}/pulls/${prId}/reviews`,
+      '-f',
+      'event=APPROVE',
+    ];
+    if (verdict === 'approve-with-suggestions') {
+      args.push('-f', 'body=Approved with suggestions — see comments.');
+    }
+    await execFile('gh', args);
   },
 };

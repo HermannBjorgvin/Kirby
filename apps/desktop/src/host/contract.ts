@@ -12,7 +12,12 @@
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
+import type {
+  AppConfig,
+  PullRequestInfo,
+  ReviewVerdict,
+} from '@kirby/vcs-core';
+export type { ReviewVerdict };
 import type { LaunchIntent, SidebarItem } from '@kirby/app-core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
 export type { CommentSeverity, ReviewComment };
@@ -271,6 +276,10 @@ export interface KirbyHostApi {
   fetchCommentThreads(prId: number): Promise<PullRequestComments>;
   replyToThread(req: ReplyRequest): Promise<void>;
   setThreadResolved(req: ResolveRequest): Promise<void>;
+  /** Full PR description (list payloads truncate or omit it). */
+  fetchPrDescription(prId: number): Promise<string>;
+  /** Cast the current user's review verdict on a PR. */
+  submitReviewVerdict(prId: number, verdict: ReviewVerdict): Promise<void>;
   /** Download a comment image with the provider's credentials (Azure
    *  DevOps PAT / GitHub token) and return it as a data URL. */
   fetchCommentImage(url: string): Promise<CommentImagePayload | null>;
@@ -357,6 +366,8 @@ export const IPC = {
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',
   setThreadResolved: 'kirby/reviews/resolve',
+  fetchPrDescription: 'kirby/reviews/pr-description',
+  submitReviewVerdict: 'kirby/reviews/submit-verdict',
   fetchCommentImage: 'kirby/reviews/comment-image',
   listDraftComments: 'kirby/drafts/list',
   updateDraftComment: 'kirby/drafts/update',

@@ -1,4 +1,5 @@
 import {
+  BookOpenIcon,
   BotIcon,
   ClipboardCheckIcon,
   Loader2Icon,
@@ -18,6 +19,9 @@ import { CommentsList, type CommentListItem } from './CommentsList.js';
 import { FileTree, type FileEntry } from './FileTree.js';
 
 export function ReviewRail({
+  hasPr,
+  overviewActive,
+  onOverview,
   running,
   busy,
   hasSession,
@@ -39,6 +43,9 @@ export function ReviewRail({
   activeCommentId,
   onJumpComment,
 }: {
+  hasPr: boolean;
+  overviewActive: boolean;
+  onOverview: () => void;
   running: boolean;
   busy: boolean;
   hasSession: boolean;
@@ -77,6 +84,24 @@ export function ReviewRail({
           </Button>
         </Tip>
       </div>
+
+      {/* Overview — the PR's title, description and verdict actions. */}
+      {hasPr && (
+        <div className="shrink-0 px-2 pb-1">
+          <button
+            onClick={onOverview}
+            className={cn(
+              'flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-base transition-colors',
+              overviewActive
+                ? 'bg-sidebar-active text-foreground'
+                : 'hover:bg-sidebar-accent'
+            )}
+          >
+            <BookOpenIcon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-left">Overview</span>
+          </button>
+        </div>
+      )}
 
       {/* Agent — a running row you can select to view the terminal, or
           a launch button (opening the session/review menu) otherwise. */}

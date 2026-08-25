@@ -8,6 +8,7 @@ import type {
   RemoteCommentThread,
   RemoteCommentReply,
   ReviewDecision,
+  ReviewVerdict,
   BuildStatusState,
 } from '@kirby/vcs-core';
 import { sanitizeBody } from '@kirby/vcs-core';
@@ -218,6 +219,29 @@ export async function fetchAuthenticatedUserEmail(
     };
   };
   return data.authenticatedUser?.properties?.Account?.$value ?? '';
+}
+
+// The authenticated user's identity GUID — needed to cast a reviewer
+// vote (the reviewers endpoint has no "me" alias). Cached like the
+// email/team identity above.
+let userIdCache: { id: string; fetchedAt: number } | null = null;
+
+export async function fetchAuthenticatedUserId(
+  config: AdoConfig
+): Promise<string> {
+  if (userIdCache && Date.now() - userIdCache.fetchedAt < CACHE_TTL_MS) {
+    return userIdCache.id;
+  }
+  const url = `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`;
+  const res = await fetch(url, { headers: authHeaders(config.pat) });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as { authenticatedUser?: { id?: string } };
+  const id = data.authenticatedUser?.id;
+  if (!id) throw new Error('Could not resolve the authenticated ADO user id');
+  userIdCache = { id, fetchedAt: Date.now() };
+  return id;
 }
 
 export async function fetchMyTeamIds(config: AdoConfig): Promise<Set<string>> {
@@ -964,5 +988,42 @@ export const azureDevOpsProvider: VcsProvider = {
     if (!thread.canResolve) return;
     const config = toAdoConfig(auth, project);
     await setAdoThreadResolved(config, prId, thread.id, resolved);
+  },
+
+  async fetchPullRequestDescription(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<string> {
+    const config = toAdoConfig(auth, project);
+    const url = `${baseUrl(config)}/pullrequests/${prId}?api-version=7.1`;
+    const res = await fetch(url, { headers: authHeaders(config.pat) });
+    if (!res.ok) {
+      throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+    }
+    const data = (await res.json()) as { description?: string };
+    return sanitizeBody(data.description ?? '');
+  },
+
+  async submitReviewVerdict(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    verdict: ReviewVerdict
+  ): Promise<void> {
+    const config = toAdoConfig(auth, project);
+    const userId = await fetchAuthenticatedUserId(config);
+    const vote: ReviewerVote = verdict === 'approve' ? 10 : 5;
+    const url = `${baseUrl(
+      config
+    )}/pullrequests/${prId}/reviewers/${userId}?api-version=7.1`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: authHeaders(config.pat),
+      body: JSON.stringify({ id: userId, vote }),
+    });
+    if (!res.ok) {
+      throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+    }
   },
 };

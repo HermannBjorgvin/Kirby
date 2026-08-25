@@ -5,6 +5,11 @@ export type ReviewDecision =
   | 'declined';
 export type BuildStatusState = 'succeeded' | 'failed' | 'pending' | 'none';
 
+/** The current user's review verdict on a PR. ADO maps these to votes
+ *  10 / 5; GitHub has no "with suggestions" vote so both submit an
+ *  approving review. */
+export type ReviewVerdict = 'approve' | 'approve-with-suggestions';
+
 export interface PullRequestReviewer {
   displayName: string;
   identifier: string;
@@ -105,6 +110,22 @@ export interface VcsProvider {
     prId: number,
     thread: RemoteCommentThread,
     resolved: boolean
+  ): Promise<void>;
+
+  /** Full PR description/body. A separate fetch because list payloads
+   *  truncate (ADO caps at ~400 chars) or omit it. */
+  fetchPullRequestDescription?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<string>;
+
+  /** Cast the current user's review verdict on a PR. */
+  submitReviewVerdict?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    verdict: ReviewVerdict
   ): Promise<void>;
 }
 

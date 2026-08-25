@@ -61,6 +61,10 @@ const api: KirbyHostApi = {
   resizeSession: (name, cols, rows) =>
     ipcRenderer.invoke(IPC.resizeSession, name, cols, rows),
   killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
+  fetchPrDescription: (prId) =>
+    ipcRenderer.invoke(IPC.fetchPrDescription, prId),
+  submitReviewVerdict: (prId, verdict) =>
+    ipcRenderer.invoke(IPC.submitReviewVerdict, prId, verdict),
 
   onSessionData: (cb) => {
     const listener = (_e: unknown, payload: SessionDataEvent) => cb(payload);

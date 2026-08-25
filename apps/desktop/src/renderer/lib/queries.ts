@@ -6,10 +6,12 @@ import {
 } from '@tanstack/react-query';
 import type {
   PostDraftsRequest,
+  PullRequestComments,
   ReplyRequest,
   ResolveRequest,
   ReviewComment,
   ReviewLaunchRequest,
+  ReviewVerdict,
   SessionLaunchRequest,
 } from '../../host/contract.js';
 
@@ -40,6 +42,8 @@ export const keys = {
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
   threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
+  prDescription: (cwd: string, prId: number) =>
+    ['pr-description', cwd, prId] as const,
   commentImage: (url: string) => ['comment-image', url] as const,
   drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
 };
@@ -114,6 +118,24 @@ export function useThreads(cwd: string, prId: number) {
     staleTime: 30_000,
     // prId 0 = a worktree without a PR: nothing to fetch.
     enabled: prId > 0,
+  });
+}
+
+export function usePrDescription(cwd: string, prId: number) {
+  return useQuery({
+    queryKey: keys.prDescription(cwd, prId),
+    queryFn: () => window.kirby.fetchPrDescription(prId),
+    staleTime: 5 * 60_000,
+    enabled: prId > 0,
+  });
+}
+
+export function useSubmitVerdict(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: ({ prId, verdict }: { prId: number; verdict: ReviewVerdict }) =>
+      window.kirby.submitReviewVerdict(prId, verdict),
+    onSuccess: () => void inv.sidebar(),
   });
 }
 
@@ -264,10 +286,30 @@ export function useReply(cwd: string) {
 }
 
 export function useSetResolved(cwd: string) {
+  const qc = useQueryClient();
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: (req: ResolveRequest) => window.kirby.setThreadResolved(req),
-    onSuccess: (_r, req) => void inv.threads(req.prId),
+    // Optimistic: resolving succeeds virtually always, so flip the
+    // thread in the cache immediately and roll back only on error.
+    onMutate: async (req) => {
+      const key = keys.threads(cwd, req.prId);
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<PullRequestComments>(key);
+      if (prev) {
+        qc.setQueryData<PullRequestComments>(key, {
+          ...prev,
+          threads: prev.threads.map((t) =>
+            t.id === req.thread.id ? { ...t, isResolved: req.resolved } : t
+          ),
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, req, ctx) => {
+      if (ctx?.prev) qc.setQueryData(keys.threads(cwd, req.prId), ctx.prev);
+    },
+    onSettled: (_r, _e, req) => void inv.threads(req.prId),
   });
 }
 

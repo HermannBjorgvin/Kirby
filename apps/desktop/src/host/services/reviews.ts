@@ -1,5 +1,9 @@
 import { readConfig } from '@kirby/vcs-core';
-import type { BranchPrMap, PullRequestComments } from '@kirby/vcs-core';
+import type {
+  BranchPrMap,
+  PullRequestComments,
+  ReviewVerdict,
+} from '@kirby/vcs-core';
 import { fetchDiffText, fetchFileDiffText } from '@kirby/app-core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import type { ReplyRequest, ResolveRequest } from '../contract.js';
@@ -9,6 +13,8 @@ interface ActiveProvider {
   fetchCommentThreads(prId: number): Promise<PullRequestComments>;
   replyToThread(req: ReplyRequest): Promise<void>;
   setThreadResolved(req: ResolveRequest): Promise<void>;
+  fetchPrDescription(prId: number): Promise<string>;
+  submitReviewVerdict(prId: number, verdict: ReviewVerdict): Promise<void>;
 }
 
 /**
@@ -53,6 +59,18 @@ function resolveProvider(): ActiveProvider | null {
       }
       return provider.setThreadResolved(auth, project, prId, thread, resolved);
     },
+    fetchPrDescription: (prId) => {
+      if (!provider.fetchPullRequestDescription) return Promise.resolve('');
+      return provider.fetchPullRequestDescription(auth, project, prId);
+    },
+    submitReviewVerdict: (prId, verdict) => {
+      if (!provider.submitReviewVerdict) {
+        throw new Error(
+          `Provider ${provider.id} does not support review verdicts`
+        );
+      }
+      return provider.submitReviewVerdict(auth, project, prId, verdict);
+    },
   };
 }
 
@@ -82,6 +100,21 @@ export async function setThreadResolved(req: ResolveRequest): Promise<void> {
   const provider = resolveProvider();
   if (!provider) return;
   await provider.setThreadResolved(req);
+}
+
+export async function fetchPrDescription(prId: number): Promise<string> {
+  const provider = resolveProvider();
+  if (!provider) return '';
+  return provider.fetchPrDescription(prId);
+}
+
+export async function submitReviewVerdict(
+  prId: number,
+  verdict: ReviewVerdict
+): Promise<void> {
+  const provider = resolveProvider();
+  if (!provider) throw new Error('No review provider is configured');
+  await provider.submitReviewVerdict(prId, verdict);
 }
 
 // ── Diff (git-side, no provider needed) ──────────────────────────
