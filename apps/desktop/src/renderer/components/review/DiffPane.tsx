@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import type { RefObject } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { PullRequestInfo } from '@kirby/vcs-core';
 import type {
   RemoteCommentThread,
   ReviewComment,
@@ -30,7 +29,10 @@ import { DiffView } from './DiffView.js';
  * bar is gone when the terminal replaces the pane.
  */
 export function DiffPane({
-  pr,
+  prId,
+  headSha,
+  sourceBranch,
+  targetBranch,
   files,
   threadsByFile,
   draftsByFile,
@@ -45,7 +47,10 @@ export function DiffPane({
   onPrev,
   onNext,
 }: {
-  pr: PullRequestInfo;
+  prId: number;
+  headSha?: string;
+  sourceBranch: string;
+  targetBranch: string;
   files: [string, DiffLine[]][];
   threadsByFile: Map<string, RemoteCommentThread[]>;
   draftsByFile: Map<string, ReviewComment[]>;
@@ -86,15 +91,14 @@ export function DiffPane({
           <ConversationPanel
             threads={generalThreads}
             loading={commentsLoading}
-            prId={pr.id}
+            prId={prId}
             focusThreadId={focusThreadId}
           />
         )}
         {!diffLoading && !diffError && files.length === 0 && (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No changes between{' '}
-            <span className="font-mono">{pr.targetBranch}</span> and{' '}
-            <span className="font-mono">{pr.sourceBranch}</span>.
+            No changes between <span className="font-mono">{targetBranch}</span>{' '}
+            and <span className="font-mono">{sourceBranch}</span>.
           </div>
         )}
         {files.map(([filename, lines]) => (
@@ -104,8 +108,8 @@ export function DiffPane({
             lines={lines}
             threads={threadsByFile.get(filename) ?? []}
             drafts={draftsByFile.get(filename) ?? []}
-            prId={pr.id}
-            headSha={pr.headSha}
+            prId={prId}
+            headSha={headSha}
             focusThreadId={focusThreadId}
           />
         ))}

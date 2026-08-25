@@ -112,6 +112,8 @@ export function useThreads(cwd: string, prId: number) {
     queryKey: keys.threads(cwd, prId),
     queryFn: () => window.kirby.fetchCommentThreads(prId),
     staleTime: 30_000,
+    // prId 0 = a worktree without a PR: nothing to fetch.
+    enabled: prId > 0,
   });
 }
 
@@ -134,6 +136,7 @@ export function useDraftComments(cwd: string, prId: number) {
     queryFn: () => window.kirby.listDraftComments(prId),
     refetchInterval: 2_000,
     placeholderData: (prev) => prev,
+    enabled: prId > 0,
   });
 }
 

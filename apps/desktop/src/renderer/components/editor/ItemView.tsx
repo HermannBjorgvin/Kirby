@@ -1,15 +1,10 @@
-import {
-  GitBranchIcon,
-  Loader2Icon,
-  PlayIcon,
-  SquareIcon,
-  TerminalIcon,
-} from 'lucide-react';
+import { Loader2Icon, PlayIcon, TerminalIcon } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
+  useAllBranches,
   useCreateWorktree,
   useKillSession,
   useLaunchAgent,
@@ -20,12 +15,10 @@ import {
   itemHasWorktree,
   itemRunning,
   itemSessionName,
-  itemTitle,
 } from '../../lib/sidebar-model.js';
 import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { errorMessage } from '../../lib/utils.js';
 import { PrWorkspace } from '../review/PrWorkspace.js';
-import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { Button } from '../ui/button.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
 
@@ -62,6 +55,15 @@ export function ItemView({
     () => items.find((i) => itemBranch(i) === branch && itemSessionName(i)),
     [items, branch]
   );
+  // Default branch for PR-less worktree diffs: main, falling back to
+  // master (the host's ref resolver prefers origin/<name>).
+  const allBranches = useAllBranches(repo.cwd);
+  const baseBranch = useMemo(() => {
+    const names = new Set(
+      (allBranches.data ?? []).map((b) => b.replace(/^origin\//, ''))
+    );
+    return names.has('main') ? 'main' : 'master';
+  }, [allBranches.data]);
 
   if (!item) {
     // Either the worktree is still being created (optimistic tab) or
@@ -82,7 +84,6 @@ export function ItemView({
     itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false);
   const hasWorktree = Boolean(sessionName) || itemHasWorktree(item);
   const pr = item.pr ?? sessionRow?.pr;
-  const title = pr ? pr.title : itemTitle(item);
 
   // Half-width: a PR launch lands in the split review workspace where
   // the terminal shares the pane with the diff.
@@ -150,6 +151,8 @@ export function ItemView({
       <div ref={paneRef} className="flex h-full min-h-0 min-w-0 flex-col">
         <PrWorkspace
           pr={pr}
+          branch={pr.sourceBranch}
+          baseBranch={pr.targetBranch}
           sessionName={sessionName}
           running={running}
           active={active}
@@ -169,54 +172,31 @@ export function ItemView({
     );
   }
 
+  // A worktree without a PR: same workspace, gracefully degraded —
+  // Agent + Files rail with the diff vs the default branch; no
+  // comments/drafts sections. Worktree still being created → loader.
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{title}</span>
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {branch}
-          </span>
-        </span>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {running ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={doKill}
-              disabled={kill.isPending}
-            >
-              <SquareIcon /> Stop agent
-            </Button>
-          ) : (
-            <Button size="sm" onClick={onLaunchClick} disabled={busy}>
-              <PlayIcon />{' '}
-              {busy
-                ? 'Working…'
-                : hasWorktree
-                ? 'Launch agent'
-                : 'Check out & launch'}
-            </Button>
-          )}
+    <div ref={paneRef} className="flex h-full min-h-0 min-w-0 flex-col">
+      {hasWorktree ? (
+        <PrWorkspace
+          branch={branch}
+          baseBranch={baseBranch}
+          sessionName={sessionName}
+          running={running}
+          active={active}
+          busy={busy}
+          onLaunch={onLaunchClick}
+          onStop={doKill}
+        />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+          <TerminalIcon className="size-10 opacity-30" />
+          <p className="text-base">No worktree for this branch yet.</p>
+          <Button onClick={onLaunchClick} disabled={busy}>
+            <PlayIcon /> Check out & launch
+          </Button>
         </div>
-      </header>
-
-      <div ref={paneRef} className="relative min-h-0 flex-1">
-        {sessionName ? (
-          <div className="absolute inset-0">
-            <SessionTerminal name={sessionName} active={active} />
-          </div>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-            <TerminalIcon className="size-10 opacity-30" />
-            <p className="text-base">No agent is running in this worktree.</p>
-            <Button onClick={onLaunchClick} disabled={busy}>
-              <PlayIcon /> {hasWorktree ? 'Launch agent' : 'Check out & launch'}
-            </Button>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

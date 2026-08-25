@@ -1,4 +1,4 @@
-import { PanelLeftOpenIcon } from 'lucide-react';
+import { GitBranchIcon, PanelLeftOpenIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Group,
@@ -43,6 +43,8 @@ type Mode = 'diff' | 'agent' | 'review';
  */
 export function PrWorkspace({
   pr,
+  branch,
+  baseBranch,
   sessionName,
   running,
   active,
@@ -50,7 +52,11 @@ export function PrWorkspace({
   onLaunch,
   onStop,
 }: {
-  pr: PullRequestInfo;
+  /** Absent for a worktree without a PR: the rail degrades gracefully
+   *  (no comments, drafts or review walkthrough — just Agent + Files). */
+  pr?: PullRequestInfo;
+  branch: string;
+  baseBranch: string;
   /** PTY session for this branch, if one exists (running or its final frame). */
   sessionName?: string;
   running: boolean;
@@ -60,9 +66,10 @@ export function PrWorkspace({
   onStop: () => void;
 }) {
   const { repo } = useRepo();
-  const diff = useDiff(repo.cwd, pr.sourceBranch, pr.targetBranch);
-  const comments = useThreads(repo.cwd, pr.id);
-  const draftsQuery = useDraftComments(repo.cwd, pr.id);
+  const prId = pr?.id ?? 0;
+  const diff = useDiff(repo.cwd, branch, baseBranch);
+  const comments = useThreads(repo.cwd, prId);
+  const draftsQuery = useDraftComments(repo.cwd, prId);
   const postAll = usePostDrafts(repo.cwd);
   const options = useDiffOptions();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -253,7 +260,15 @@ export function PrWorkspace({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      <PrHeader pr={pr} fileCount={files.length} />
+      {pr ? (
+        <PrHeader pr={pr} fileCount={files.length} />
+      ) : (
+        <BranchHeader
+          branch={branch}
+          baseBranch={baseBranch}
+          fileCount={files.length}
+        />
+      )}
       <div className="flex min-h-0 min-w-0 flex-1">
         {railHidden ? (
           <div className="flex w-9 shrink-0 flex-col items-center border-r border-border bg-sidebar pt-1">
@@ -295,7 +310,7 @@ export function PrWorkspace({
                   postingAll={postAll.isPending}
                   onPostAll={() =>
                     postAll.mutate(
-                      { prId: pr.id, headSha: pr.headSha },
+                      { prId, headSha: pr?.headSha },
                       {
                         onSuccess: (n) =>
                           toast.success(
@@ -343,8 +358,8 @@ export function PrWorkspace({
                 >
                   {effMode === 'review' && (
                     <ReviewStepper
-                      prId={pr.id}
-                      headSha={pr.headSha}
+                      prId={prId}
+                      headSha={pr?.headSha}
                       drafts={drafts}
                       filesByName={filesByName}
                       fileOrder={fileOrder}
@@ -361,7 +376,10 @@ export function PrWorkspace({
                 )}
               >
                 <DiffPane
-                  pr={pr}
+                  prId={prId}
+                  headSha={pr?.headSha}
+                  sourceBranch={branch}
+                  targetBranch={baseBranch}
                   files={files}
                   threadsByFile={threadsByFile}
                   draftsByFile={draftsByFile}
@@ -386,5 +404,32 @@ export function PrWorkspace({
         </Group>
       </div>
     </div>
+  );
+}
+
+/** Header for a worktree tab without a PR: branch → base + files count. */
+function BranchHeader({
+  branch,
+  baseBranch,
+  fileCount,
+}: {
+  branch: string;
+  baseBranch: string;
+  fileCount: number;
+}) {
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+      <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="flex min-w-0 shrink items-center gap-2">
+        <span className="truncate font-medium">{branch}</span>
+        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
+          diff vs {baseBranch}
+        </span>
+      </span>
+      <div className="flex-1" />
+      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+        {fileCount} file{fileCount === 1 ? '' : 's'} changed
+      </span>
+    </header>
   );
 }
