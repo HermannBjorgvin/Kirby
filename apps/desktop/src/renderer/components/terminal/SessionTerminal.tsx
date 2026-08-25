@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Terminal, type TerminalHandle } from '@wterm/react';
 import wasmUrl from '@wterm/core/wasm?url';
-import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
+import {
+  estimateTerminalGrid,
+  measureTerminalGrid,
+} from '../../lib/terminal-grid.js';
 import { useTheme } from '../../lib/theme.js';
 
 /**
@@ -83,24 +86,38 @@ export function SessionTerminal({
   // re-applying its cols/rows props, clamping the terminal to ~24 rows).
   // wterm's own observer can still latch a stale size when the pane
   // mounts before layout settles, so this extra observer nudges
-  // resize() from the wrapper's real box whenever it changes.
+  // resize() from the wrapper's real box whenever it changes, using
+  // wterm's measured cell metrics so the two observers agree.
+  //
+  // When the pane becomes the active tab again, a same-size resize is a
+  // no-op all the way down (wterm repaints only dirty rows and the PTY
+  // skips a same-size SIGWINCH), so the terminal can come back stale or
+  // blank. Bouncing the grid one row forces the app to repaint the
+  // whole screen — the same thing a manual window resize did.
   useEffect(() => {
     if (!ready) return;
     const el = wrapRef.current;
     const term = termRef.current;
-    if (!el || !term) return;
+    const inst = term?.instance;
+    if (!el || !term || !inst) return;
     let raf = 0;
-    const fit = () => {
+    const fit = (forceRepaint = false) => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const rect = el.getBoundingClientRect();
         if (rect.width < 2 || rect.height < 2) return;
-        const { cols, rows } = estimateTerminalGrid(rect);
-        term.resize(cols, rows);
+        const grid =
+          measureTerminalGrid(inst.element, rect) ?? estimateTerminalGrid(rect);
+        if (grid.cols !== inst.cols || grid.rows !== inst.rows) {
+          term.resize(grid.cols, grid.rows);
+        } else if (forceRepaint) {
+          term.resize(grid.cols, grid.rows - 1);
+          raf = requestAnimationFrame(() => term.resize(grid.cols, grid.rows));
+        }
       });
     };
-    fit();
-    const ro = new ResizeObserver(fit);
+    fit(active);
+    const ro = new ResizeObserver(() => fit());
     ro.observe(el);
     return () => {
       ro.disconnect();

@@ -14,6 +14,40 @@ export interface Grid {
   rows: number;
 }
 
+/**
+ * Compute the grid for a pane from the wterm element's *measured* cell
+ * metrics — the same probe technique wterm's own observer uses, so the
+ * two never disagree (the 7.8px estimate overflowed the pane whenever
+ * the real glyph was wider). Returns null when the element isn't
+ * measurable yet (hidden, not laid out); fall back to the estimate.
+ */
+export function measureTerminalGrid(
+  termEl: HTMLElement,
+  pane: { width: number; height: number }
+): Grid | null {
+  const row = document.createElement('div');
+  row.className = 'term-row';
+  row.style.position = 'absolute';
+  row.style.visibility = 'hidden';
+  const probe = document.createElement('span');
+  probe.textContent = 'W'.repeat(40);
+  row.appendChild(probe);
+  termEl.appendChild(row);
+  const charWidth = probe.getBoundingClientRect().width / 40;
+  const rowHeight = row.getBoundingClientRect().height;
+  row.remove();
+  if (charWidth <= 0 || rowHeight <= 0) return null;
+  const cs = getComputedStyle(termEl);
+  const padX =
+    (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const padY =
+    (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  return {
+    cols: Math.max(20, Math.floor((pane.width - padX) / charWidth)),
+    rows: Math.max(5, Math.floor((pane.height - padY) / rowHeight)),
+  };
+}
+
 export function estimateTerminalGrid(
   rect: { width: number; height: number },
   /** Fraction of the width the terminal will occupy (e.g. 0.6 in a
