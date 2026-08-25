@@ -75,7 +75,7 @@ export function PrWorkspace({
   const options = useDiffOptions();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [mode, setMode] = useState<Mode>('diff');
+  const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [focusThreadId, setFocusThreadId] = useState<string | null>(null);
@@ -85,6 +85,13 @@ export function PrWorkspace({
   if (running !== prevRunning) {
     setPrevRunning(running);
     if (running) setMode('agent');
+  }
+  // Coming (back) to a tab with a running agent shows the agent, not
+  // the diff — the agent is what the user is working in.
+  const [prevActive, setPrevActive] = useState(active);
+  if (active !== prevActive) {
+    setPrevActive(active);
+    if (active && running) setMode('agent');
   }
   // Whole-file diffs can be megabytes; the parse runs in the diff
   // worker so opening a tab never blocks the UI thread on it.

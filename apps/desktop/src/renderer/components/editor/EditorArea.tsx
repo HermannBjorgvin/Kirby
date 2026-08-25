@@ -1,10 +1,11 @@
 import {
   GitBranchIcon,
   GitPullRequestIcon,
+  Loader2Icon,
   SettingsIcon,
   XIcon,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
 import {
   itemBranch,
@@ -40,6 +41,15 @@ export function EditorArea({
     () => new Map(items.map((i) => [itemKey(i), i])),
     [items]
   );
+
+  // The tab strip tracks the live state so clicks feel instant; the
+  // panes below follow a *deferred* copy, so mounting/unmounting a
+  // heavy pane (a whole-file diff is tens of thousands of nodes) runs
+  // as an interruptible background render instead of blocking the
+  // click. While the two disagree we gray the pane area out.
+  const paneTabs = useDeferredValue(tabs.tabs);
+  const paneActiveId = useDeferredValue(tabs.activeId);
+  const switching = paneTabs !== tabs.tabs || paneActiveId !== tabs.activeId;
 
   // Mount policy: the active tab plus any tab whose branch has a PTY
   // session (its terminal must stay mounted to keep scrollback). Other
@@ -77,8 +87,13 @@ export function EditorArea({
         <div className="flex-1" />
       </div>
       <div className="relative min-h-0 flex-1">
-        {tabs.tabs.map((tab) => {
-          const active = tab.id === tabs.activeId;
+        {switching && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
+            <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {paneTabs.map((tab) => {
+          const active = tab.id === paneActiveId;
           if (!active && !hasSession(tab)) return null;
           return (
             <div

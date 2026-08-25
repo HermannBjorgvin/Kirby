@@ -11,6 +11,7 @@ import type {
   SidebarItem,
 } from '../../host/contract.js';
 import { AttentionRail } from '../components/AttentionRail.js';
+import { itemBranch, itemKey, itemSessionName } from '../lib/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
 import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
@@ -85,6 +86,23 @@ function WorkspaceInner({
       localStorage.setItem(SIDEBAR_KEY, h ? '0' : '1');
       return !h;
     });
+
+  // A preview tab whose branch has a live agent is active work, not
+  // idle browsing: pin it so preview replacement (clicking another
+  // sidebar item) can never swallow the tab out from under the agent.
+  useEffect(() => {
+    const byKey = new Map(items.map((i) => [itemKey(i), i]));
+    for (const tab of tabs.tabs) {
+      if (tab.kind !== 'item' || !tab.preview) continue;
+      const item = byKey.get(tab.itemKey);
+      if (!item) continue;
+      const branch = itemBranch(item);
+      const alive = items.some(
+        (i) => itemBranch(i) === branch && itemSessionName(i) != null
+      );
+      if (alive) tabs.pin(tab.id);
+    }
+  }, [tabs, items]);
 
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;
