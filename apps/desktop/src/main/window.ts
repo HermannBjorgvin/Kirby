@@ -35,7 +35,10 @@ export function windowChrome(
   return {
     backgroundColor: dark ? '#1f1f1f' : '#ffffff',
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: bar, symbolColor: symbol, height: 36 },
+    // 35 = the title bar's 36px minus its 1px bottom border, so the
+    // overlay controls centre on the visible bar instead of straddling
+    // the border.
+    titleBarOverlay: { color: bar, symbolColor: symbol, height: 35 },
   };
 }
 

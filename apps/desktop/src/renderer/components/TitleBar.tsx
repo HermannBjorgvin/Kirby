@@ -58,8 +58,12 @@ export function TitleBar({
       style={
         drag
           ? {
+              // Span the full window width (so the bar's background and
+              // bottom border continue under the OS window controls) and
+              // keep our own controls out of the overlay via padding.
               paddingLeft: 'env(titlebar-area-x, 0px)',
-              width: 'env(titlebar-area-width, 100%)',
+              paddingRight:
+                'calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%))',
             }
           : undefined
       }
@@ -107,7 +111,7 @@ export function TitleBar({
         </div>
       )}
 
-      <div className="app-no-drag flex h-full flex-1 items-center justify-end gap-0.5 pr-2">
+      <div className="flex h-full flex-1 items-center justify-end gap-0.5 pr-2">
         <ThemeMenu />
         {repo && onOpenSettings && (
           <Tip label={`Settings (${MOD} ,)`}>
@@ -116,6 +120,7 @@ export function TitleBar({
               size="icon"
               onClick={onOpenSettings}
               aria-label="Settings"
+              className="app-no-drag"
             >
               <SettingsIcon />
             </Button>
@@ -196,7 +201,12 @@ function ThemeMenu() {
     <DropdownMenu>
       <Tip label="Theme">
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Theme">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Theme"
+            className="app-no-drag"
+          >
             <Icon />
           </Button>
         </DropdownMenuTrigger>

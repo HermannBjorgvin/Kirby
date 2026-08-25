@@ -97,6 +97,23 @@ function popupContextMenu(items: ContextMenuItem[]): Promise<string | null> {
   });
 }
 
+// Native chrome (overlay window controls, context menus, dialogs)
+// follows the resolved theme. Both OS scheme changes and in-app
+// Light/Dark picks land here: setting `themeSource` fires 'updated'.
+nativeTheme.on('updated', () => {
+  if (prefs.nativeFrame) return;
+  const next = windowChrome(nativeTheme.shouldUseDarkColors);
+  if (next.titleBarOverlay && typeof next.titleBarOverlay === 'object') {
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        win.setTitleBarOverlay(next.titleBarOverlay);
+      } catch {
+        // not supported on this platform
+      }
+    }
+  }
+});
+
 // ── Window ───────────────────────────────────────────────────────
 
 function createMainWindow(): BrowserWindow {
@@ -117,19 +134,6 @@ function createMainWindow(): BrowserWindow {
     webPreferences: rendererWebPreferences(
       join(DIST, 'preload', 'preload.cjs')
     ),
-  });
-
-  // Keep the native overlay controls in step with the OS theme.
-  nativeTheme.on('updated', () => {
-    if (prefs.nativeFrame) return;
-    const next = windowChrome(nativeTheme.shouldUseDarkColors);
-    if (next.titleBarOverlay && typeof next.titleBarOverlay === 'object') {
-      try {
-        win.setTitleBarOverlay(next.titleBarOverlay);
-      } catch {
-        // not supported on this platform
-      }
-    }
   });
 
   const target = loadTarget(
@@ -242,6 +246,7 @@ setShellGlue({
   aboutBox: showAbout,
   prefsChanged: (next) => {
     prefs = next;
+    nativeTheme.themeSource = next.theme; // recolors overlay + native menus
     installAppMenu(); // theme radio state lives in the menu
   },
 });
@@ -268,6 +273,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    nativeTheme.themeSource = prefs.theme;
     installAppMenu();
     const opened = openStartupRepo();
     console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
