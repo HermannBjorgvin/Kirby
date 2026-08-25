@@ -7,11 +7,7 @@ import {
   getSpawnedAt,
 } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
-import {
-  branchToSessionName,
-  createWorktree,
-  listWorktrees,
-} from '@kirby/worktree-manager';
+import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import type {
   ReviewLaunchRequest,
@@ -78,24 +74,21 @@ export async function launchAgent(req: SessionLaunchRequest): Promise<{
   name: string;
 }> {
   requireRepo();
-  let wt = (await listWorktrees()).find((w) => w.branch === req.branch);
-  if (!wt) {
-    // Launching on a branch without a worktree (a PR row, a plain
-    // branch) creates one — same as the review flow and the TUI.
-    const created = await createWorktree(req.branch);
-    if (!created) {
-      throw new Error(`Failed to create a worktree for "${req.branch}"`);
-    }
-    wt = (await listWorktrees()).find((w) => w.branch === req.branch);
-    if (!wt) {
-      throw new Error(`No worktree exists for branch "${req.branch}"`);
-    }
+  // Resolve-or-create through the same primitive as every TUI launch
+  // path. The worktree directory is keyed by the branch *name*, and an
+  // existing directory wins even if a different branch has since been
+  // checked out inside it — resolving via listWorktrees (actual
+  // checked-out branches) instead made the desktop reject worktrees
+  // the TUI happily launched in.
+  const wtPath = await createWorktree(req.branch);
+  if (!wtPath) {
+    throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
-  const config = readConfig(wt.path);
+  const config = readConfig(wtPath);
   const name = branchToSessionName(req.branch);
   launchSession({
     name,
-    cwd: wt.path,
+    cwd: wtPath,
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
@@ -123,20 +116,15 @@ export function getSessionBuffer(name: string): SessionBuffer {
 }
 
 /**
- * Start (or resume) an AI review of `req.pr`: make sure the PR's branch
- * has a worktree, then launch with the shared review prompt. Same flow
- * as the TUI's "Start/Continue review" menu entry.
+ * Start (or resume) an AI review of `req.pr` with the shared review
+ * prompt. Same flow as the TUI's "Start/Continue review" menu entry —
+ * launchAgent resolves or creates the worktree.
  */
 export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
   name: string;
 }> {
   requireRepo();
   const branch = req.pr.sourceBranch;
-  const existing = (await listWorktrees()).find((w) => w.branch === branch);
-  if (!existing) {
-    const created = await createWorktree(branch);
-    if (!created) throw new Error(`Failed to create worktree for ${branch}`);
-  }
   const request = buildReviewLaunchRequest(req.pr, req.instruction);
   return launchAgent({
     branch,
