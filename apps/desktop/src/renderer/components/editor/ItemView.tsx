@@ -1,5 +1,6 @@
 import {
   GitBranchIcon,
+  Loader2Icon,
   PlayIcon,
   SquareIcon,
   TerminalIcon,
@@ -63,9 +64,13 @@ export function ItemView({
   );
 
   if (!item) {
+    // Either the worktree is still being created (optimistic tab) or
+    // the item left the sidebar; show a quiet loading state — the pane
+    // resolves itself on the next sidebar poll.
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        This item is no longer in the sidebar ({itemKey}).
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Loader2Icon className="size-6 animate-spin" />
+        <p className="text-sm">Preparing {itemKey.replace(/^[a-z]+:/, '')}…</p>
       </div>
     );
   }

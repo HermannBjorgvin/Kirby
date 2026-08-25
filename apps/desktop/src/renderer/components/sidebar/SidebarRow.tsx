@@ -60,11 +60,21 @@ export function SidebarRow({
   const onKill = () =>
     sessionName &&
     kill.mutate(sessionName, { onError: (e) => toast.error(errorMessage(e)) });
-  const onCheckout = () =>
+  const onCheckout = () => {
+    onOpen(false); // show the tab right away; it loads while git works
     create.mutate(branch, {
       onSuccess: () => toast.success(`Worktree ready: ${branch}`),
       onError: (e) => toast.error(errorMessage(e)),
     });
+  };
+
+  // Double-click on an idle worktree row opens the tab AND starts the
+  // agent (the TUI's Enter behaviour). PR rows keep dblclick = open;
+  // their launch goes through the session/review menu in the tab.
+  const onDoubleClick = () => {
+    onOpen(false);
+    if (item.kind === 'session' && !running) onLaunch();
+  };
 
   /** Native (OS) context menu — built from the item's state. */
   const openContextMenu = async (e: React.MouseEvent) => {
@@ -124,7 +134,7 @@ export function SidebarRow({
         role="button"
         tabIndex={0}
         onClick={() => onOpen(true)}
-        onDoubleClick={() => onOpen(false)}
+        onDoubleClick={onDoubleClick}
         onContextMenu={(e) => void openContextMenu(e)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') onOpen(false);

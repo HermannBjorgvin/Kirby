@@ -80,13 +80,14 @@ export function CommandPalette({
   const checkout = (branch: string) => {
     close();
     const id = toast.loading(`Checking out ${branch}…`);
+    // Open the tab optimistically: worktree tabs are keyed by branch
+    // (PR-backed ones by PR id — those already exist as sidebar items
+    // and go through tabs.openItem above). The pane shows its loading
+    // state until the sidebar model catches up.
+    const existing = items.find((i) => itemBranch(i) === branch);
+    tabs.openItem(existing ? itemKey(existing) : `branch:${branch}`);
     create.mutate(branch, {
-      onSuccess: () => {
-        toast.success(`Worktree ready: ${branch}`, { id });
-        // The sidebar model refetches; open the tab optimistically by
-        // its future key (session name is derived from the branch on
-        // the host, so we wait for the item to show up instead).
-      },
+      onSuccess: () => toast.success(`Worktree ready: ${branch}`, { id }),
       onError: (err) => toast.error(errorMessage(err), { id }),
     });
   };
