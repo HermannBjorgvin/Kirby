@@ -54,7 +54,7 @@ export function TitleBar({
     <header
       className={`${
         drag ? 'app-drag' : ''
-      } relative z-20 flex h-9 shrink-0 select-none items-center border-b border-border bg-titlebar text-sidebar-foreground`}
+      } relative z-20 flex h-9 shrink-0 select-none items-center bg-titlebar text-sidebar-foreground shadow-[inset_0_-1px_0_0_var(--color-border)]`}
       style={
         drag
           ? {

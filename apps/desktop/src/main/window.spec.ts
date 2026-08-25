@@ -19,7 +19,7 @@ describe('windowChrome', () => {
   it('uses a hidden title bar with native overlay controls', () => {
     const chrome = windowChrome(true);
     expect(chrome.titleBarStyle).toBe('hidden');
-    expect(chrome.titleBarOverlay).toMatchObject({ height: 35 });
+    expect(chrome.titleBarOverlay).toMatchObject({ height: 36 });
   });
 
   it('matches the overlay colour to the colour scheme', () => {
