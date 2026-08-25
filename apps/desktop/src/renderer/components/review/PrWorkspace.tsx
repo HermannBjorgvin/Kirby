@@ -1,5 +1,11 @@
 import { GitBranchIcon, PanelLeftOpenIcon } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Group,
   Panel,
@@ -85,10 +91,15 @@ export function PrWorkspace({
     setPrevRunning(running);
     if (running) setMode('agent');
   }
+  // Defer the heavy parse (whole-file diffs can be megabytes): the tab
+  // paints its frame + skeletons first, the diff arrives in a
+  // low-priority render right after.
+  const diffText = useDeferredValue(diff.data);
   const files = useMemo<[string, DiffLine[]][]>(
-    () => (diff.data ? [...parseUnifiedDiff(diff.data).entries()] : []),
-    [diff.data]
+    () => (diffText ? [...parseUnifiedDiff(diffText).entries()] : []),
+    [diffText]
   );
+  const diffPending = diff.isLoading || diffText !== diff.data;
   const inlineThreads = useMemo(
     () => comments.data?.threads ?? [],
     [comments.data]
@@ -322,7 +333,7 @@ export function PrWorkspace({
                     )
                   }
                   entries={entries}
-                  diffLoading={diff.isLoading}
+                  diffLoading={diffPending}
                   selectedFile={effMode === 'diff' ? selectedFile : null}
                   onSelectFile={jumpToFile}
                   commentItems={commentItems}
@@ -389,7 +400,7 @@ export function PrWorkspace({
                       : general
                   }
                   commentsLoading={comments.isLoading}
-                  diffLoading={diff.isLoading}
+                  diffLoading={diffPending}
                   diffError={diff.error ? String(diff.error.message) : null}
                   focusThreadId={focusThreadId}
                   scrollRef={scrollRef}

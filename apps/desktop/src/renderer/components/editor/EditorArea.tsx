@@ -6,7 +6,13 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
-import { itemKey, itemRunning, itemTitle } from '../../lib/sidebar-model.js';
+import {
+  itemBranch,
+  itemKey,
+  itemRunning,
+  itemSessionName,
+  itemTitle,
+} from '../../lib/sidebar-model.js';
 import { useTabs, type Tab } from '../../lib/tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
@@ -33,6 +39,21 @@ export function EditorArea({
     [items]
   );
 
+  // Mount policy: the active tab plus any tab whose branch has a PTY
+  // session (its terminal must stay mounted to keep scrollback). Other
+  // panes unmount while inactive — a diff pane can hold tens of
+  // thousands of nodes, and keeping several alive made every
+  // interaction (typing, closing tabs) pay for all of them.
+  const hasSession = (tab: Tab): boolean => {
+    if (tab.kind !== 'item') return false;
+    const item = byKey.get(tab.itemKey);
+    if (!item) return false;
+    const branch = itemBranch(item);
+    return items.some(
+      (i) => itemBranch(i) === branch && itemSessionName(i) != null
+    );
+  };
+
   if (tabs.tabs.length === 0) {
     return (
       <EmptyState onOpenPalette={onOpenPalette} hasItems={items.length > 0} />
@@ -55,6 +76,7 @@ export function EditorArea({
       <div className="relative min-h-0 flex-1">
         {tabs.tabs.map((tab) => {
           const active = tab.id === tabs.activeId;
+          if (!active && !hasSession(tab)) return null;
           return (
             <div
               key={tab.id}
