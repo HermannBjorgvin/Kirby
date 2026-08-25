@@ -161,7 +161,9 @@ function WorkspaceInner({
 
   // In-page shortcuts for the web-rendered UI. Anything that is also a
   // native menu accelerator reaches us through onMenuCommand instead;
-  // handled here: palette (⌘K) and tab cycling (Ctrl+Tab / Ctrl+Shift+Tab).
+  // handled here: palette (⌘K). Tab cycling was removed for now — it
+  // collided with Shift+Tab inside agent terminals (Claude Code's mode
+  // switch).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -169,14 +171,11 @@ function WorkspaceInner({
       if (e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((o) => !o);
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        tabs.cycle(e.shiftKey ? -1 : 1);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tabs]);
+  }, []);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">

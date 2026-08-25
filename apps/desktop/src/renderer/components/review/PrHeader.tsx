@@ -1,11 +1,13 @@
 import {
   CheckCircle2Icon,
   CircleDotIcon,
+  CopyIcon,
   ExternalLinkIcon,
   GitPullRequestIcon,
   MessageSquareIcon,
   XCircleIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { cn } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
@@ -13,13 +15,7 @@ import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
 
-export function PrHeader({
-  pr,
-  fileCount,
-}: {
-  pr: PullRequestInfo;
-  fileCount: number;
-}) {
+export function PrHeader({ pr }: { pr: PullRequestInfo }) {
   const reviewers = pr.reviewers ?? [];
   const ci = pr.buildStatus;
   return (
@@ -28,9 +24,20 @@ export function PrHeader({
       <span className="flex min-w-0 shrink items-center gap-2">
         <span className="truncate font-medium">{pr.title}</span>
         <span className="shrink-0 text-sm text-muted-foreground">#{pr.id}</span>
-        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
-          {pr.sourceBranch} → {pr.targetBranch}
-        </span>
+        <Tip label="Copy branch name">
+          <button
+            onClick={() => {
+              void navigator.clipboard.writeText(pr.sourceBranch);
+              toast.success('Branch name copied');
+            }}
+            className="hidden min-w-0 items-center gap-1 truncate rounded px-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-foreground sm:flex"
+          >
+            <span className="truncate">
+              {pr.sourceBranch} → {pr.targetBranch}
+            </span>
+            <CopyIcon className="size-3 shrink-0" />
+          </button>
+        </Tip>
       </span>
 
       <span className="mx-1 h-4 w-px shrink-0 bg-border" />
@@ -94,9 +101,6 @@ export function PrHeader({
 
       <div className="flex-1" />
 
-      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
-        {fileCount} file{fileCount === 1 ? '' : 's'} changed
-      </span>
       <Tip label="Open on the provider">
         <Button
           variant="ghost"

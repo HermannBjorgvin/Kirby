@@ -49,7 +49,10 @@ export function EditorArea({
   // click. While the two disagree we gray the pane area out.
   const paneTabs = useDeferredValue(tabs.tabs);
   const paneActiveId = useDeferredValue(tabs.activeId);
-  const switching = paneTabs !== tabs.tabs || paneActiveId !== tabs.activeId;
+  // Overlay only when the *visible* pane is changing — closing a
+  // background tab defers its unmount too, but the user isn't waiting
+  // on anything they can see.
+  const switching = paneActiveId !== tabs.activeId;
 
   // Mount policy: the active tab plus any tab whose branch has a PTY
   // session (its terminal must stay mounted to keep scrollback). Other
