@@ -20,6 +20,7 @@ import { TitleBar } from '../components/TitleBar.js';
 import { useRefreshRemote, useSidebarModel } from '../lib/queries.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs } from '../lib/tabs.js';
+import { useCloseTabs } from '../lib/use-close-tabs.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
 
@@ -72,6 +73,7 @@ function WorkspaceInner({
   const model = useSidebarModel(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
   const items: SidebarItem[] = useMemo(() => model.data ?? [], [model.data]);
+  const closer = useCloseTabs(items);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(
@@ -109,7 +111,7 @@ function WorkspaceInner({
             tabs.openSettings();
             break;
           case 'close-tab':
-            tabs.closeActive();
+            closer.closeActive();
             break;
           case 'toggle-sidebar':
             toggleSidebar();
@@ -137,7 +139,7 @@ function WorkspaceInner({
       }
     );
     return off;
-  }, [tabs, refresh, onPickRepoFolder, onSwitchRepo]);
+  }, [tabs, closer, refresh, onPickRepoFolder, onSwitchRepo]);
 
   // In-page shortcuts for the web-rendered UI. Anything that is also a
   // native menu accelerator reaches us through onMenuCommand instead;

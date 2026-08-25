@@ -14,6 +14,7 @@ import {
   itemTitle,
 } from '../../lib/sidebar-model.js';
 import { useTabs, type Tab } from '../../lib/tabs.js';
+import { useCloseTabs } from '../../lib/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
 import { SettingsView } from '../settings/SettingsView.js';
@@ -34,6 +35,7 @@ export function EditorArea({
   onOpenPalette: () => void;
 }) {
   const tabs = useTabs();
+  const closer = useCloseTabs(items);
   const byKey = useMemo(
     () => new Map(items.map((i) => [itemKey(i), i])),
     [items]
@@ -69,6 +71,7 @@ export function EditorArea({
             tab={tab}
             item={tab.kind === 'item' ? byKey.get(tab.itemKey) : undefined}
             active={tab.id === tabs.activeId}
+            closer={closer}
           />
         ))}
         <div className="flex-1" />
@@ -111,10 +114,12 @@ function TabButton({
   tab,
   item,
   active,
+  closer,
 }: {
   tab: Tab;
   item: SidebarItem | undefined;
   active: boolean;
+  closer: ReturnType<typeof useCloseTabs>;
 }) {
   const tabs = useTabs();
   const label =
@@ -146,9 +151,9 @@ function TabButton({
       items.push({ type: 'separator' }, { id: 'pin', label: 'Keep Open' });
     }
     const chosen = await window.kirby.showContextMenu(items);
-    if (chosen === 'close') tabs.close(tab.id);
-    else if (chosen === 'close-others') tabs.closeOthers(tab.id);
-    else if (chosen === 'close-all') tabs.closeAll();
+    if (chosen === 'close') closer.close(tab.id);
+    else if (chosen === 'close-others') closer.closeOthers(tab.id);
+    else if (chosen === 'close-all') closer.closeAll();
     else if (chosen === 'pin') tabs.pin(tab.id);
   };
 
@@ -159,7 +164,7 @@ function TabButton({
       onMouseDown={(e) => {
         if (e.button === 1) {
           e.preventDefault();
-          tabs.close(tab.id);
+          closer.close(tab.id);
         }
       }}
       onClick={() => tabs.activate(tab.id)}
@@ -185,7 +190,7 @@ function TabButton({
       <button
         onClick={(e) => {
           e.stopPropagation();
-          tabs.close(tab.id);
+          closer.close(tab.id);
         }}
         aria-label="Close tab"
         className={cn(
