@@ -84,6 +84,12 @@ export function getSettingsView(): SettingsFieldView[] {
     value: resolveValue(config, field),
     group: groupFor(field),
     kind: kindFor(field),
+    // Same gate updateSettingsFromView enforces — surfacing it here
+    // grays the control out instead of erroring after the attempt.
+    disabled:
+      field.key === 'terminalBackend' && hasAnySession()
+        ? 'close all sessions to switch the terminal backend'
+        : undefined,
   }));
 }
 

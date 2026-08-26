@@ -242,17 +242,29 @@ function FieldRow({ field }: { field: SettingsFieldView }) {
     );
   };
 
+  // A host-side gate (e.g. "no backend switch with live sessions")
+  // grays the control out and explains itself in the description.
+  const locked = Boolean(field.disabled);
+  const shown: typeof field = locked
+    ? {
+        ...field,
+        description: field.description
+          ? `${field.description} (${field.disabled})`
+          : field.disabled,
+      }
+    : field;
+
   if (field.kind === 'boolean') {
     return (
       <RowShell
         htmlFor={id}
-        label={field.label}
-        description={field.description}
+        label={shown.label}
+        description={shown.description}
         control={
           <Switch
             id={id}
             checked={field.value === 'true'}
-            disabled={update.isPending}
+            disabled={update.isPending || locked}
             onCheckedChange={(c) => save(c ? 'true' : 'false')}
           />
         }
@@ -266,10 +278,10 @@ function FieldRow({ field }: { field: SettingsFieldView }) {
     return (
       <SelectRow
         key={field.value}
-        field={field}
+        field={shown}
         id={id}
         onSave={save}
-        saving={update.isPending}
+        saving={update.isPending || locked}
       />
     );
   }
@@ -277,10 +289,10 @@ function FieldRow({ field }: { field: SettingsFieldView }) {
   return (
     <TextRow
       key={field.value}
-      field={field}
+      field={shown}
       id={id}
       onSave={save}
-      saving={update.isPending}
+      saving={update.isPending || locked}
     />
   );
 }

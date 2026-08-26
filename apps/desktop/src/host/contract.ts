@@ -118,6 +118,9 @@ export interface SettingsFieldView {
   group: SettingsGroup;
   /** Widget hint derived from the presets shape. */
   kind: 'boolean' | 'select' | 'text';
+  /** When set, the control is not editable right now — the string is
+   *  the human-readable reason (shown next to the description). */
+  disabled?: string;
 }
 
 // ── Recent repos ─────────────────────────────────────────────────
