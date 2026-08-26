@@ -112,6 +112,7 @@ export * from './lib/hooks/useNavigation.js';
 export * from './lib/hooks/usePaneReducer.js';
 export * from './lib/hooks/usePendingThreadScrollIntoView.js';
 export * from './lib/hooks/usePolling.js';
+export * from './lib/sync/remote-sync.js';
 export * from './lib/hooks/usePrData.js';
 export * from './lib/hooks/usePtySession.js';
 export * from './lib/hooks/useRemoteComments.js';

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { countConflicts } from '@kirby/worktree-manager';
+import { computeConflictCounts } from '../sync/remote-sync.js';
 
 /**
- * Batch conflict checking for all branches at once.
+ * Batch conflict checking for all branches at once — TUI state shell
+ * around the shared {@link computeConflictCounts}.
  * Returns a Map<branch, conflictCount> and a loading flag.
  */
 export function useConflictCounts(branches: string[], lastSynced: number) {
@@ -17,20 +18,7 @@ export function useConflictCounts(branches: string[], lastSynced: number) {
     setLoading(true);
 
     (async () => {
-      const results = new Map<string, number>();
-      const entries = await Promise.all(
-        branches.map(async (branch) => {
-          try {
-            const c = await countConflicts(branch);
-            return [branch, c] as const;
-          } catch {
-            return [branch, 0] as const;
-          }
-        })
-      );
-      for (const [branch, count] of entries) {
-        results.set(branch, count);
-      }
+      const results = await computeConflictCounts(branches);
       if (cancelled) return;
       setCounts(results);
       setLoading(false);

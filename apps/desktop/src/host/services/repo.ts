@@ -28,6 +28,15 @@ export const PROVIDERS: VcsProvider[] = [githubProvider, azureDevOpsProvider];
 
 let activeCwd: string | null = null;
 
+// Installed by main.ts; runs after a repo is (re)opened. Lets the
+// shell start per-repo background work (the remote sync loop) without
+// a service-level import cycle.
+let repoOpenedListener: ((cwd: string) => void) | null = null;
+
+export function setRepoOpenedListener(fn: (cwd: string) => void): void {
+  repoOpenedListener = fn;
+}
+
 /** True when the directory exists and looks like a git repo. */
 export function isGitRepo(cwd: string): boolean {
   try {
@@ -76,6 +85,7 @@ export function openRepo(cwd: string): RepoInfo {
     resetWorktreeResolver();
   }
   applySessionBackend(config);
+  repoOpenedListener?.(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {
     cwd,

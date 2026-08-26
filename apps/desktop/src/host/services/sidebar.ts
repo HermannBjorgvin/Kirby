@@ -11,6 +11,7 @@ import {
   type SidebarItem,
 } from '@kirby/app-core';
 import { PROVIDERS, requireRepo } from './repo.js';
+import { getSyncDecorations } from './remote-sync.js';
 import type { SyncState } from '../contract.js';
 
 /**
@@ -136,14 +137,17 @@ export async function getSidebarModel(): Promise<SidebarItem[]> {
   }
   const sortedSessions = sortSessionsByPrId(sessions, sessionPrMap);
 
+  // Merged/conflict decorations come from the host's remote sync loop
+  // (same shared passes the TUI's hooks drive).
+  const sync = getSyncDecorations();
   return buildSidebarItems(
     sortedSessions,
     orphanPrs,
     categorizedReviews,
     sessionBranchMap,
     sessionPrMap,
-    new Set(),
-    new Map()
+    sync.merged,
+    sync.conflicts
   );
 }
 
@@ -154,6 +158,7 @@ export function getSyncState(): SyncState {
     providerId: provider?.id ?? null,
     providerConfigured: configured,
     lastRemoteSyncAt: cache && cache.cwd === cwd ? cache.fetchedAt : null,
+    lastGitSyncAt: getSyncDecorations().lastGitSyncAt,
     remoteError: lastError,
     remoteSyncing: inflight !== null,
     remoteIntervalMs: remoteIntervalMs(config.prPollInterval),

@@ -3,10 +3,12 @@ import {
   IPC,
   MENU_EVENTS,
   SESSION_EVENTS,
+  SYNC_EVENTS,
   type KirbyHostApi,
   type MenuCommandEvent,
   type SessionDataEvent,
   type SessionExitEvent,
+  type SyncNoticeEvent,
 } from '../host/contract.js';
 
 /**
@@ -89,6 +91,11 @@ const api: KirbyHostApi = {
     const listener = (_e: unknown, payload: MenuCommandEvent) => cb(payload);
     ipcRenderer.on(MENU_EVENTS.command, listener);
     return () => ipcRenderer.removeListener(MENU_EVENTS.command, listener);
+  },
+  onSyncNotice: (cb) => {
+    const listener = (_e: unknown, payload: SyncNoticeEvent) => cb(payload);
+    ipcRenderer.on(SYNC_EVENTS.notice, listener);
+    return () => ipcRenderer.removeListener(SYNC_EVENTS.notice, listener);
   },
   getDesktopPrefs: () => ipcRenderer.invoke(IPC.getDesktopPrefs),
   setDesktopPrefs: (patch) => ipcRenderer.invoke(IPC.setDesktopPrefs, patch),

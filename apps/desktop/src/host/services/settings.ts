@@ -10,6 +10,7 @@ import {
   type SettingsField,
 } from '@kirby/app-core';
 import { PROVIDERS, requireRepo } from './repo.js';
+import { startRemoteSyncLoop } from './remote-sync.js';
 import type { SettingsFieldView, SettingsGroup } from '../contract.js';
 
 /**
@@ -125,5 +126,10 @@ export function updateSettingsFromView(
   persistConfigField(field, normalized, updated);
   if (field.key === 'terminalBackend') {
     applySessionBackend(updated);
+  }
+  // The sync loop's cadence comes from config; restart it so a new
+  // interval takes effect now instead of after the old timer fires.
+  if (field.key === 'mergePollInterval') {
+    startRemoteSyncLoop(requireRepo());
   }
 }

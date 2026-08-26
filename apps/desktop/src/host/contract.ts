@@ -136,6 +136,8 @@ export interface SyncState {
   providerConfigured: boolean;
   /** ms-epoch of the last successful remote fetch, null if never. */
   lastRemoteSyncAt: number | null;
+  /** ms-epoch of the last git sync pass (fetch + ff main), null if never. */
+  lastGitSyncAt: number | null;
   remoteError: string | null;
   remoteSyncing: boolean;
   /** Remote cache TTL in ms (from config, clamped). */
@@ -187,6 +189,17 @@ export type ContextMenuItem =
 export const MENU_EVENTS = {
   command: 'kirby/menu/command',
 } as const;
+
+export const SYNC_EVENTS = {
+  notice: 'kirby/sync/notice',
+} as const;
+
+/** A user-facing event from the host's remote sync loop (auto-deleted
+ *  merged branch, blocked auto-delete, …), toasted by the renderer. */
+export interface SyncNoticeEvent {
+  message: string;
+  kind: 'success' | 'warning';
+}
 
 // ── Reviews ──────────────────────────────────────────────────────
 
@@ -330,6 +343,8 @@ export interface KirbyHostApi {
   showAppMenu(): Promise<void>;
   /** Subscribe to native menu commands. Returns an unsubscribe fn. */
   onMenuCommand(cb: (payload: MenuCommandEvent) => void): () => void;
+  /** Toast-worthy events from the host's remote sync loop. */
+  onSyncNotice(cb: (notice: SyncNoticeEvent) => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
   /** Native about box. */

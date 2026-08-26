@@ -18,7 +18,8 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
 import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
-import { useRefreshRemote, useSidebarModel } from '../lib/queries.js';
+import { useQueryClient } from '@tanstack/react-query';
+import { keys, useRefreshRemote, useSidebarModel } from '../lib/queries.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs } from '../lib/tabs.js';
 import { useCloseTabs } from '../lib/use-close-tabs.js';
@@ -103,6 +104,18 @@ function WorkspaceInner({
       if (alive) tabs.pin(tab.id);
     }
   }, [tabs, items]);
+
+  // The host's remote sync loop toasts its events (auto-deleted merged
+  // branch, blocked auto-delete) and the sidebar refetches to match.
+  const qc = useQueryClient();
+  useEffect(() => {
+    const off = window.kirby.onSyncNotice(({ message, kind }) => {
+      if (kind === 'success') toast.success(message);
+      else toast.warning(message);
+      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
+    });
+    return off;
+  }, [qc, repo.cwd]);
 
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;

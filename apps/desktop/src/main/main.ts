@@ -17,11 +17,20 @@ import {
 import { killAll, probeTmuxAvailability } from '@kirby/app-core';
 import {
   MENU_EVENTS,
+  SYNC_EVENTS,
   type ContextMenuItem,
   type DesktopPrefs,
   type MenuCommand,
 } from '../host/contract.js';
-import { openStartupRepo } from '../host/services/repo.js';
+import {
+  openStartupRepo,
+  setRepoOpenedListener,
+} from '../host/services/repo.js';
+import {
+  setSyncNotifier,
+  startRemoteSyncLoop,
+  stopRemoteSyncLoop,
+} from '../host/services/remote-sync.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
 import { buildMenuTemplate } from './menu.js';
@@ -257,6 +266,16 @@ setSessionBroadcaster((channel, payload) => {
   }
 });
 
+// Remote sync loop: (re)started whenever a repo is opened; its
+// user-facing events (auto-deleted merged branch, …) toast in the
+// renderer.
+setRepoOpenedListener(startRemoteSyncLoop);
+setSyncNotifier((notice) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(SYNC_EVENTS.notice, notice);
+  }
+});
+
 // ── App lifecycle ────────────────────────────────────────────────
 
 // One instance at a time: a second launch focuses the existing
@@ -304,6 +323,7 @@ app.on('window-all-closed', () => {
 
 // Agent PTYs must never outlive the app (same guarantee as the TUI).
 app.on('will-quit', () => {
+  stopRemoteSyncLoop();
   try {
     killAll();
   } catch {

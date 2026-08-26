@@ -51,6 +51,9 @@ export function SidebarRow({
   const pr = item.pr;
   const title = itemTitle(item);
   const rebasing = item.kind === 'session' && item.session.state === 'rebasing';
+  const merged = item.kind === 'session' && item.isMerged;
+  const conflictCount =
+    (item.kind === 'session' ? item.conflictCount : undefined) ?? 0;
 
   const onLaunch = () =>
     launch.mutate(
@@ -152,9 +155,24 @@ export function SidebarRow({
             <span className={cn('truncate', running && 'font-medium')}>
               {title}
             </span>
+            {merged && (
+              <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] font-medium text-success">
+                merged
+              </span>
+            )}
             {rebasing && (
               <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning">
                 rebasing
+              </span>
+            )}
+            {conflictCount > 0 && (
+              <span
+                className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning"
+                title={`${conflictCount} conflict${
+                  conflictCount === 1 ? '' : 's'
+                } against the main branch`}
+              >
+                {conflictCount} conflict{conflictCount === 1 ? '' : 's'}
               </span>
             )}
           </div>
