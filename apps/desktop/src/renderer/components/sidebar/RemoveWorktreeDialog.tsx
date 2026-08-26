@@ -22,10 +22,14 @@ import {
  */
 export function RemoveWorktreeDialog({
   branch,
+  itemKey,
   running,
   onClose,
 }: {
   branch: string;
+  /** The sidebar item's key — a PR-backed worktree's tab is keyed by
+   *  PR id, not branch, so the key can't be derived from the branch. */
+  itemKey: string;
   running: boolean;
   onClose: () => void;
 }) {
@@ -64,7 +68,7 @@ export function RemoveWorktreeDialog({
       {
         onSuccess: () => {
           toast.success(`Removed worktree ${branch}`);
-          tabs.close(`item:branch:${branch}`);
+          tabs.close(`item:${itemKey}`);
           onClose();
         },
         onError: (err) => toast.error(errorMessage(err)),

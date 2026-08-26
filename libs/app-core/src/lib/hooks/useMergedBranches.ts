@@ -14,6 +14,10 @@ export function useMergedBranches(
   onRebaseInProgress: (branch: string) => void
 ) {
   const { config, provider, vcsConfigured } = useConfig();
+  // Depend on the three fields the sweep uses, not the whole config
+  // object — otherwise every unrelated settings edit re-runs the
+  // merged fetch + auto-delete pass.
+  const { vendorAuth, vendorProject, autoDeleteOnMerge } = config;
   const [mergedBranches, setMergedBranches] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const onAutoDeleteRef = useRef(onAutoDelete);
@@ -39,12 +43,19 @@ export function useMergedBranches(
     setLoading(true);
 
     (async () => {
-      const { merged, nextWarned } = await sweepMergedBranches({
+      const { nextWarned } = await sweepMergedBranches({
         provider,
         vcsConfigured,
-        config,
+        config: { vendorAuth, vendorProject, autoDeleteOnMerge },
         branches,
         warnedRebase: warnedRebaseRef.current,
+        // Badges appear as soon as the merged set is known, without
+        // waiting for the (git-heavy) auto-delete pass.
+        onMerged: (merged) => {
+          if (cancelled) return;
+          setMergedBranches(merged);
+          setLoading(false);
+        },
         onAutoDelete: (sessionName, branch) =>
           onAutoDeleteRef.current(sessionName, branch),
         onRebaseInProgress: (branch) => onRebaseInProgressRef.current(branch),
@@ -52,14 +63,21 @@ export function useMergedBranches(
       });
       if (cancelled) return;
       warnedRebaseRef.current = nextWarned;
-      setMergedBranches(merged);
       setLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [lastSynced, provider, vcsConfigured, config, branches]);
+  }, [
+    lastSynced,
+    provider,
+    vcsConfigured,
+    vendorAuth,
+    vendorProject,
+    autoDeleteOnMerge,
+    branches,
+  ]);
 
   return { mergedBranches, loading };
 }

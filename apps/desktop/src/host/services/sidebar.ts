@@ -26,8 +26,8 @@ import type { SyncState } from '../contract.js';
  * poll the model frequently without hammering the provider API. The
  * TUI's `prPollInterval` config drives the TTL.
  *
- * Merge/conflict decorations (mergedBranches, conflictCounts) are
- * omitted for now — they only affect row annotations, not structure.
+ * Merge/conflict decorations (mergedBranches, conflictCounts) come
+ * from the host's remote sync loop (services/remote-sync.ts).
  */
 
 const DEFAULT_REMOTE_MS = 60_000;
@@ -41,6 +41,10 @@ interface RemoteCache {
 let cache: RemoteCache | null = null;
 let inflight: { cwd: string; promise: Promise<BranchPrMap> } | null = null;
 let lastError: string | null = null;
+// Monotonic fetch id: only the latest fetch may commit to the cache,
+// so a slow pre-refresh response can't overwrite a forced refresh's
+// fresher data with a fresh timestamp.
+let fetchSeq = 0;
 
 // No minimum: the TUI honors prPollInterval verbatim, so the desktop's
 // cache TTL does too.
@@ -80,15 +84,20 @@ async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
   // switch mid-fetch) starts its own request so it can't resolve
   // against another repo's (or a pre-change) response.
   if (inflight && inflight.cwd === cwd && !force) return inflight.promise;
+  const seq = ++fetchSeq;
   const promise = provider
     .fetchPullRequests(config.vendorAuth, config.vendorProject)
     .then((prMap) => {
-      cache = { cwd, prMap, fetchedAt: Date.now() };
-      lastError = null;
+      if (seq === fetchSeq) {
+        cache = { cwd, prMap, fetchedAt: Date.now() };
+        lastError = null;
+      }
       return prMap;
     })
     .catch((err: unknown) => {
-      lastError = err instanceof Error ? err.message : String(err);
+      if (seq === fetchSeq) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
       // Serve stale data on failure rather than blanking the sidebar.
       if (cache && cache.cwd === cwd) return cache.prMap;
       return {};

@@ -102,19 +102,41 @@ export async function setThreadResolved(req: ResolveRequest): Promise<void> {
   await provider.setThreadResolved(req);
 }
 
+// IPC-boundary validation: these values arrive from the (sandboxed,
+// remote-content-rendering) renderer and end up interpolated into
+// provider API paths — never trust them structurally.
+function requirePrId(prId: unknown): number {
+  if (typeof prId !== 'number' || !Number.isInteger(prId) || prId <= 0) {
+    throw new Error('Invalid PR id');
+  }
+  return prId;
+}
+
+const VERDICTS: readonly ReviewVerdict[] = [
+  'approve',
+  'approve-with-suggestions',
+  'wait-for-author',
+  'reject',
+];
+
 export async function fetchPrDescription(prId: number): Promise<string> {
+  const id = requirePrId(prId);
   const provider = resolveProvider();
   if (!provider) return '';
-  return provider.fetchPrDescription(prId);
+  return provider.fetchPrDescription(id);
 }
 
 export async function submitReviewVerdict(
   prId: number,
   verdict: ReviewVerdict
 ): Promise<void> {
+  const id = requirePrId(prId);
+  if (!VERDICTS.includes(verdict)) {
+    throw new Error(`Invalid review verdict: ${String(verdict)}`);
+  }
   const provider = resolveProvider();
   if (!provider) throw new Error('No review provider is configured');
-  await provider.submitReviewVerdict(prId, verdict);
+  await provider.submitReviewVerdict(id, verdict);
 }
 
 // ── Diff (git-side, no provider needed) ──────────────────────────

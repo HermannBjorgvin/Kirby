@@ -38,14 +38,14 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
   // to one red button and "wait for author" doesn't exist.
   const isGitHub = repo.providerId === 'github';
 
+  // Which verdict is mid-flight — its button gets the spinner.
+  const pendingVerdict = verdict.isPending ? verdict.variables?.verdict : null;
+
   const submit = (v: ReviewVerdict) =>
     verdict.mutate(
       { prId: pr.id, verdict: v },
       {
-        onSuccess: () =>
-          toast.success(
-            isGitHub && v === 'reject' ? 'Changes requested' : VERDICT_DONE[v]
-          ),
+        onSuccess: () => toast.success(VERDICT_DONE[v]),
         onError: (e) => toast.error(`Review vote failed: ${errorMessage(e)}`),
       }
     );
@@ -77,7 +77,7 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
               disabled={verdict.isPending}
               className="bg-success text-white hover:bg-success/90"
             >
-              {verdict.isPending ? (
+              {pendingVerdict === 'approve' ? (
                 <Loader2Icon className="animate-spin" />
               ) : (
                 <CheckCircle2Icon />
@@ -99,7 +99,12 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
               disabled={verdict.isPending}
               className="border-success/60 text-success hover:bg-success/10 hover:text-success"
             >
-              <MessageSquarePlusIcon /> Approve with suggestions
+              {pendingVerdict === 'approve-with-suggestions' ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <MessageSquarePlusIcon />
+              )}
+              Approve with suggestions
             </Button>
           </Tip>
           {!isGitHub && (
@@ -111,7 +116,12 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
                 disabled={verdict.isPending}
                 className="border-warning/60 text-warning hover:bg-warning/10 hover:text-warning"
               >
-                <ClockIcon /> Wait for author
+                {pendingVerdict === 'wait-for-author' ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <ClockIcon />
+                )}
+                Wait for author
               </Button>
             </Tip>
           )}
@@ -128,7 +138,12 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
               onClick={() => submit('reject')}
               disabled={verdict.isPending}
             >
-              <XCircleIcon /> {isGitHub ? 'Request changes' : 'Reject'}
+              {pendingVerdict === 'reject' ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <XCircleIcon />
+              )}
+              {isGitHub ? 'Request changes' : 'Reject'}
             </Button>
           </Tip>
           {(pr.reviewers ?? []).some((r) => r.decision === 'approved') && (

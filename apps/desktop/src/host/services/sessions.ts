@@ -70,11 +70,30 @@ const known = new Map<string, KnownSession>();
 
 // ── Operations ───────────────────────────────────────────────────
 
-export async function launchAgent(req: SessionLaunchRequest): Promise<{
+// Overlapping launch calls for the same session (double-click racing
+// the renderer's isPending flag) must not double-spawn: the second
+// spawn would dispose the first PTY and attach a duplicate data relay.
+const inflightLaunches = new Map<string, Promise<{ name: string }>>();
+
+export function launchAgent(req: SessionLaunchRequest): Promise<{
   name: string;
 }> {
-  const repoCwd = requireRepo();
+  requireRepo();
   const name = branchToSessionName(req.branch);
+  const existing = inflightLaunches.get(name);
+  if (existing) return existing;
+  const promise = doLaunchAgent(req, name).finally(() =>
+    inflightLaunches.delete(name)
+  );
+  inflightLaunches.set(name, promise);
+  return promise;
+}
+
+async function doLaunchAgent(
+  req: SessionLaunchRequest,
+  name: string
+): Promise<{ name: string }> {
+  const repoCwd = requireRepo();
   // TUI semantics: a live agent is never silently respawned — every
   // TUI launch site checks the registry first. Launching on a branch
   // with a running session just reattaches to it.

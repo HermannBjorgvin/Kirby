@@ -223,13 +223,18 @@ export async function fetchAuthenticatedUserEmail(
 
 // The authenticated user's identity GUID — needed to cast a reviewer
 // vote (the reviewers endpoint has no "me" alias). Cached like the
-// email/team identity above.
-let userIdCache: { id: string; fetchedAt: number } | null = null;
+// email/team identity above; keyed by org because ADO identity ids
+// are org-scoped.
+let userIdCache: { org: string; id: string; fetchedAt: number } | null = null;
 
 export async function fetchAuthenticatedUserId(
   config: AdoConfig
 ): Promise<string> {
-  if (userIdCache && Date.now() - userIdCache.fetchedAt < CACHE_TTL_MS) {
+  if (
+    userIdCache &&
+    userIdCache.org === config.org &&
+    Date.now() - userIdCache.fetchedAt < CACHE_TTL_MS
+  ) {
     return userIdCache.id;
   }
   const url = `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`;
@@ -240,7 +245,7 @@ export async function fetchAuthenticatedUserId(
   const data = (await res.json()) as { authenticatedUser?: { id?: string } };
   const id = data.authenticatedUser?.id;
   if (!id) throw new Error('Could not resolve the authenticated ADO user id');
-  userIdCache = { id, fetchedAt: Date.now() };
+  userIdCache = { org: config.org, id, fetchedAt: Date.now() };
   return id;
 }
 
@@ -385,6 +390,7 @@ export function parseAdoRemoteUrl(
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 let identityCache: {
+  org: string;
   userEmail: string;
   myTeamIds: Set<string>;
   fetchedAt: number;
@@ -393,14 +399,23 @@ let identityCache: {
 async function getCachedIdentity(
   config: AdoConfig
 ): Promise<{ userEmail: string; myTeamIds: Set<string> }> {
-  if (identityCache && Date.now() - identityCache.fetchedAt < CACHE_TTL_MS) {
+  if (
+    identityCache &&
+    identityCache.org === config.org &&
+    Date.now() - identityCache.fetchedAt < CACHE_TTL_MS
+  ) {
     return identityCache;
   }
   const [userEmail, myTeamIds] = await Promise.all([
     fetchAuthenticatedUserEmail(config).catch(() => ''),
     fetchMyTeamIds(config),
   ]);
-  identityCache = { userEmail, myTeamIds, fetchedAt: Date.now() };
+  identityCache = {
+    org: config.org,
+    userEmail,
+    myTeamIds,
+    fetchedAt: Date.now(),
+  };
   return identityCache;
 }
 

@@ -21,6 +21,7 @@ import {
 import {
   itemBranch,
   itemHasWorktree,
+  itemKey,
   itemRunning,
   itemSessionName,
   itemTitle,
@@ -193,6 +194,7 @@ export function SidebarRow({
       {confirmRemove && (
         <RemoveWorktreeDialog
           branch={branch}
+          itemKey={itemKey(item)}
           running={running}
           onClose={() => setConfirmRemove(false)}
         />

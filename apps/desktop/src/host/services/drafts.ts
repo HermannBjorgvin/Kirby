@@ -25,8 +25,11 @@ export function listDraftComments(prId: number): ReviewComment[] {
  *  can't be edited or deleted out from under the poster. */
 function requireEditable(prId: number, id: string): void {
   const existing = readComments(prId).find((c) => c.id === id);
-  if (!existing || existing.status === 'posted') {
+  if (!existing) {
     throw new Error('Draft comment no longer exists');
+  }
+  if (existing.status === 'posted') {
+    throw new Error('Comment is already posted');
   }
   if (existing.status === 'posting') {
     throw new Error('Comment is being posted');
@@ -91,7 +94,13 @@ export async function postDraftComments(
   for (const c of wanted) {
     updateComment(req.prId, c.id, { status: 'posting' });
     try {
-      await postReviewComments([c], ctx, req.event ?? 'COMMENT');
+      // A non-COMMENT event (verdict) must ride exactly one review —
+      // repeating it per comment would file N approvals on GitHub.
+      await postReviewComments(
+        [c],
+        ctx,
+        posted === 0 ? req.event ?? 'COMMENT' : 'COMMENT'
+      );
       posted += 1;
     } catch (err) {
       updateComment(req.prId, c.id, { status: 'draft' });

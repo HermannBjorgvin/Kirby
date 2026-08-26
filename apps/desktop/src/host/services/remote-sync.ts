@@ -34,7 +34,18 @@ let decorations: SyncDecorations = {
 };
 let warnedRebase: ReadonlySet<string> = new Set();
 let timer: ReturnType<typeof setInterval> | null = null;
-let passRunning = false;
+// Every startRemoteSyncLoop bumps the generation; a pass carries the
+// generation it was started under and aborts (via the shared sweep's
+// isCancelled hook) as soon as a newer one exists. This matters
+// because worktree-manager resolves process.cwd() at call time: after
+// a repo switch, a stale pass would otherwise run git operations —
+// including auto-delete — against the *new* repo using the old repo's
+// branch list.
+let generation = 0;
+let lastCwd: string | null = null;
+// Passes are serialized so a repo switch's kickoff pass isn't skipped
+// just because the previous repo's pass is still winding down.
+let queue: Promise<void> = Promise.resolve();
 
 let notifier: ((notice: SyncNoticeEvent) => void) | null = null;
 
@@ -48,17 +59,26 @@ export function getSyncDecorations(): SyncDecorations {
 }
 
 /** (Re)start the loop for a repo — called on every repo open, and when
- *  mergePollInterval changes. State from a previous repo is dropped. */
+ *  mergePollInterval changes. Switching repos drops the previous
+ *  repo's state; a same-repo restart (interval change) keeps the
+ *  current decorations so badges don't blink out until the next pass. */
 export function startRemoteSyncLoop(cwd: string): void {
   stopRemoteSyncLoop();
-  decorations = {
-    merged: new Set(),
-    conflicts: new Map(),
-    lastGitSyncAt: null,
-  };
-  warnedRebase = new Set();
+  generation += 1;
+  const gen = generation;
+  if (cwd !== lastCwd) {
+    decorations = {
+      merged: new Set(),
+      conflicts: new Map(),
+      lastGitSyncAt: null,
+    };
+    warnedRebase = new Set();
+  }
+  lastCwd = cwd;
   const interval = remoteSyncIntervalMs(readConfig(cwd).mergePollInterval);
-  const tick = () => void runSyncPass(cwd);
+  const tick = () => {
+    queue = queue.then(() => runSyncPass(cwd, gen)).catch(() => undefined);
+  };
   timer = setInterval(tick, interval);
   timer.unref?.();
   tick();
@@ -69,9 +89,9 @@ export function stopRemoteSyncLoop(): void {
   timer = null;
 }
 
-async function runSyncPass(cwd: string): Promise<void> {
-  if (passRunning) return;
-  passRunning = true;
+async function runSyncPass(cwd: string, gen: number): Promise<void> {
+  const cancelled = () => gen !== generation;
+  if (cancelled()) return;
   try {
     const config = readConfig(cwd);
     const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
@@ -82,9 +102,11 @@ async function runSyncPass(cwd: string): Promise<void> {
     if (!vcsConfigured) return;
 
     const ts = await syncRemote();
+    if (cancelled()) return;
     const branches = (await listWorktrees())
       .map((w) => w.branch)
       .filter(Boolean);
+    if (cancelled()) return;
 
     const { merged, nextWarned } = await sweepMergedBranches({
       provider,
@@ -92,7 +114,9 @@ async function runSyncPass(cwd: string): Promise<void> {
       config,
       branches,
       warnedRebase,
+      isCancelled: cancelled,
       onAutoDelete: async (_sessionName, branch) => {
+        if (cancelled()) return;
         // Same triple as the TUI's performDelete (kill session, remove
         // worktree, delete branch) — the worktrees service owns it.
         await removeWorktree(branch, true);
@@ -107,15 +131,15 @@ async function runSyncPass(cwd: string): Promise<void> {
           kind: 'warning',
         }),
     });
+    if (cancelled()) return;
     warnedRebase = nextWarned;
 
     const conflicts = await computeConflictCounts(
       branches.filter((b) => !merged.has(b))
     );
+    if (cancelled()) return;
     decorations = { merged, conflicts, lastGitSyncAt: ts };
   } catch (err: unknown) {
     console.error('[desktop] remote sync pass failed:', err);
-  } finally {
-    passRunning = false;
   }
 }

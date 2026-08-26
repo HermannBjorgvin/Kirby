@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../host/contract.js';
 import { useKillSession } from './queries.js';
@@ -68,5 +68,10 @@ export function useCloseTabs(items: SidebarItem[]): {
     if (tabs.activeId) close(tabs.activeId);
   }, [tabs.activeId, close]);
 
-  return { close, closeOthers, closeAll, closeActive };
+  // Stable identity: effects that depend on the returned api (the
+  // native-menu subscription) must not resubscribe on every render.
+  return useMemo(
+    () => ({ close, closeOthers, closeAll, closeActive }),
+    [close, closeOthers, closeAll, closeActive]
+  );
 }

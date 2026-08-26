@@ -76,10 +76,16 @@ export interface MergedSweepResult {
 export async function sweepMergedBranches(opts: {
   provider: VcsProvider | null;
   vcsConfigured: boolean;
-  config: AppConfig;
+  /** Narrow on purpose: callers with a full AppConfig may pass it, but
+   *  the sweep must not depend on unrelated config churn. */
+  config: Pick<AppConfig, 'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge'>;
   branches: string[];
   /** Branches already warned about an in-progress rebase. */
   warnedRebase: ReadonlySet<string>;
+  /** Fires with the merged set as soon as it is known, before the
+   *  (potentially slow) auto-delete pass — lets UIs show merged
+   *  badges without waiting for deletions. */
+  onMerged?: (merged: Set<string>) => void;
   onAutoDelete: (sessionName: string, branch: string) => void | Promise<void>;
   onRebaseInProgress: (branch: string) => void;
   /** Abort between async steps (the TUI passes its effect-cancel flag). */
@@ -91,6 +97,7 @@ export async function sweepMergedBranches(opts: {
     config,
     branches,
     warnedRebase,
+    onMerged,
     onAutoDelete,
     onRebaseInProgress,
     isCancelled = () => false,
@@ -112,7 +119,9 @@ export async function sweepMergedBranches(opts: {
     logError('fetchMergedBranches', err);
     merged = new Set<string>();
   }
-  if (isCancelled() || !config.autoDeleteOnMerge) {
+  if (isCancelled()) return { merged, nextWarned: keepWarned };
+  onMerged?.(merged);
+  if (!config.autoDeleteOnMerge) {
     return { merged, nextWarned: keepWarned };
   }
 
