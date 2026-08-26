@@ -31,7 +31,8 @@ type Action =
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string }
   | { type: 'close-others'; id: string }
-  | { type: 'close-all' };
+  | { type: 'close-all' }
+  | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' };
 
 function pinTab(tabs: Tab[], id: string): Tab[] {
   return tabs.map((t): Tab => {
@@ -99,6 +100,17 @@ function reduce(state: TabsState, action: Action): TabsState {
     }
     case 'close-all':
       return { tabs: [], activeId: null };
+    case 'move': {
+      if (action.id === action.targetId) return state;
+      const from = state.tabs.findIndex((t) => t.id === action.id);
+      if (from < 0) return state;
+      const tabs = [...state.tabs];
+      const [moved] = tabs.splice(from, 1);
+      const at = tabs.findIndex((t) => t.id === action.targetId);
+      if (at < 0) return state;
+      tabs.splice(action.side === 'after' ? at + 1 : at, 0, moved);
+      return { ...state, tabs };
+    }
   }
 }
 
@@ -113,6 +125,8 @@ interface TabsApi extends TabsState {
   closeActive: () => void;
   /** Activate the next (+1) / previous (-1) tab, wrapping around. */
   cycle: (delta: 1 | -1) => void;
+  /** Drag-reorder: place `id` before/after `targetId`. */
+  moveTab: (id: string, targetId: string, side: 'before' | 'after') => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -156,6 +170,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     },
     [state]
   );
+  const moveTab = useCallback(
+    (id: string, targetId: string, side: 'before' | 'after') =>
+      dispatch({ type: 'move', id, targetId, side }),
+    []
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -169,6 +188,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeAll,
       closeActive,
       cycle,
+      moveTab,
     }),
     [
       state,
@@ -181,6 +201,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeAll,
       closeActive,
       cycle,
+      moveTab,
     ]
   );
 

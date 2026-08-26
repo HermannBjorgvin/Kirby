@@ -1,6 +1,7 @@
 import {
   CheckCircle2Icon,
   CircleDotIcon,
+  CodeIcon,
   CopyIcon,
   ExternalLinkIcon,
   GitPullRequestIcon,
@@ -9,11 +10,34 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { cn } from '../../lib/utils.js';
+import { useOpenInEditor } from '../../lib/queries.js';
+import { cn, errorMessage } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
+
+/** Launch the configured external editor on the branch's worktree. */
+export function OpenInEditorButton({ branch }: { branch: string }) {
+  const open = useOpenInEditor();
+  return (
+    <Tip label="Open worktree in editor">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={open.isPending}
+        onClick={() =>
+          open.mutate(branch, {
+            onSuccess: ({ editor }) => toast.success(`Opened in ${editor}`),
+            onError: (e) => toast.error(errorMessage(e)),
+          })
+        }
+      >
+        <CodeIcon /> Editor
+      </Button>
+    </Tip>
+  );
+}
 
 export function PrHeader({ pr }: { pr: PullRequestInfo }) {
   const reviewers = pr.reviewers ?? [];
@@ -101,6 +125,7 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
 
       <div className="flex-1" />
 
+      <OpenInEditorButton branch={pr.sourceBranch} />
       <Tip label="Open on the provider">
         <Button
           variant="ghost"

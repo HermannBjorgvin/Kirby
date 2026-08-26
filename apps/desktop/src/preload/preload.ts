@@ -40,6 +40,7 @@ const api: KirbyHostApi = {
   removeWorktree: (branch, force) =>
     ipcRenderer.invoke(IPC.removeWorktree, branch, force),
   canRemoveBranch: (branch) => ipcRenderer.invoke(IPC.canRemoveBranch, branch),
+  openInEditor: (branch) => ipcRenderer.invoke(IPC.openInEditor, branch),
 
   fetchPullRequests: () => ipcRenderer.invoke(IPC.fetchPullRequests),
   fetchCommentThreads: (prId) =>

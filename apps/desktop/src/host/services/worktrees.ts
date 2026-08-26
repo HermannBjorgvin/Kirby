@@ -9,6 +9,7 @@ import {
   branchToSessionName,
   worktreeSessionName,
 } from '@kirby/worktree-manager';
+import { spawn } from 'node:child_process';
 import { killPersistedTmuxSession, killSession } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
@@ -63,4 +64,24 @@ export async function removeWorktree(
 export function canRemoveBranch(branch: string) {
   requireRepo();
   return canRemoveBr(branch);
+}
+
+/** Open the branch's worktree in the configured editor — the TUI's
+ *  Shift+E: `config.editor || $VISUAL || $EDITOR`, spawned detached.
+ *  createWorktree is idempotent, so PR rows without a checkout work. */
+export async function openInEditor(branch: string): Promise<{
+  editor: string;
+}> {
+  const cwd = requireRepo();
+  const config = readConfig(cwd);
+  const editor = config.editor || process.env.VISUAL || process.env.EDITOR;
+  if (!editor) {
+    throw new Error('No editor configured — set one in Settings');
+  }
+  const path = await createWt(branch);
+  if (!path) {
+    throw new Error(`Failed to resolve a worktree for "${branch}"`);
+  }
+  spawn(editor, [path], { detached: true, stdio: 'ignore' }).unref();
+  return { editor };
 }

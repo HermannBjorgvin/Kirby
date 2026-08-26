@@ -30,7 +30,7 @@ import { DiffPane } from './DiffPane.js';
 import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { type FileEntry } from './FileTree.js';
 import { OverviewPane } from './OverviewPane.js';
-import { PrHeader } from './PrHeader.js';
+import { OpenInEditorButton, PrHeader } from './PrHeader.js';
 import { ReviewRail } from './ReviewRail.js';
 import { ReviewStepper } from './ReviewStepper.js';
 
@@ -467,6 +467,7 @@ function BranchHeader({
       <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
         {fileCount} file{fileCount === 1 ? '' : 's'} changed
       </span>
+      <OpenInEditorButton branch={branch} />
     </header>
   );
 }

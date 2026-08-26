@@ -278,6 +278,12 @@ export function useKillSession(cwd: string) {
   });
 }
 
+export function useOpenInEditor() {
+  return useMutation({
+    mutationFn: (branch: string) => window.kirby.openInEditor(branch),
+  });
+}
+
 export function useRefreshRemote(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({

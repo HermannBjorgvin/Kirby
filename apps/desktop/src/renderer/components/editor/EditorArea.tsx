@@ -191,6 +191,26 @@ function TabButton({
     <div
       role="tab"
       aria-selected={active}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/kirby-tab', tab.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('text/kirby-tab')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
+      }}
+      onDrop={(e) => {
+        const dragged = e.dataTransfer.getData('text/kirby-tab');
+        if (!dragged || dragged === tab.id) return;
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side =
+          e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+        tabs.moveTab(dragged, tab.id, side);
+      }}
       onMouseDown={(e) => {
         if (e.button === 1) {
           e.preventDefault();
@@ -201,7 +221,7 @@ function TabButton({
       onDoubleClick={() => tabs.pin(tab.id)}
       onContextMenu={(e) => void openContextMenu(e)}
       className={cn(
-        'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors',
+        'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
         active
           ? 'bg-tab-active text-foreground'
           : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
@@ -213,7 +233,9 @@ function TabButton({
       <span className="relative flex shrink-0">
         <Icon className="size-4" />
         {snapshot?.active ? (
-          <span className="agent-spinner absolute -right-1 -bottom-1 size-2.5 rounded-full" />
+          <span className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full bg-tab-active p-0.5">
+            <span className="agent-spinner size-2.5 rounded-full" />
+          </span>
         ) : running ? (
           <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
         ) : null}

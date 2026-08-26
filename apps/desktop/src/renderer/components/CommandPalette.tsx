@@ -67,6 +67,13 @@ export function CommandPalette({
       ),
     [items]
   );
+  const plainWorktrees = useMemo(() => items.filter((i) => !i.pr), [items]);
+  const prItems = useMemo(() => items.filter((i) => Boolean(i.pr)), [items]);
+
+  const openItem = (item: SidebarItem) => {
+    close();
+    tabs.openItem(itemKey(item));
+  };
 
   const q = query.trim();
   const exact = (branches.data ?? []).some((b) => b === q);
@@ -117,51 +124,6 @@ export function CommandPalette({
           </CommandGroup>
         )}
 
-        {items.length > 0 && (
-          <CommandGroup heading="Open">
-            {items.map((item) => (
-              <CommandItem
-                key={itemKey(item)}
-                value={`open ${itemTitle(item)} ${itemBranch(item)} ${
-                  item.pr ? `#${item.pr.id}` : ''
-                }`}
-                onSelect={() => {
-                  close();
-                  tabs.openItem(itemKey(item));
-                }}
-              >
-                {item.pr ? <GitPullRequestIcon /> : <GitBranchIcon />}
-                <span className="truncate">{itemTitle(item)}</span>
-                {item.pr && (
-                  <span className="text-muted-foreground">#{item.pr.id}</span>
-                )}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        <CommandGroup heading="Check out branch">
-          {branches.isLoading && (
-            <CommandItem disabled value="__loading">
-              Loading branches…
-            </CommandItem>
-          )}
-          {(branches.data ?? [])
-            .filter((b) => !worktreeBranches.has(b))
-            .slice(0, 200)
-            .map((b) => (
-              <CommandItem
-                key={b}
-                value={`branch ${b}`}
-                onSelect={() => checkout(b)}
-              >
-                <GitBranchIcon />
-                <span className="truncate font-mono">{b}</span>
-              </CommandItem>
-            ))}
-        </CommandGroup>
-
-        <CommandSeparator />
         <CommandGroup heading="Commands">
           <CommandItem
             value="command settings preferences"
@@ -218,7 +180,65 @@ export function CommandPalette({
             Open another repository…
           </CommandItem>
         </CommandGroup>
+
+        <CommandSeparator />
+        {plainWorktrees.length > 0 && (
+          <CommandGroup heading="Worktrees">
+            {plainWorktrees.map((item) => (
+              <OpenItem key={itemKey(item)} item={item} onOpen={openItem} />
+            ))}
+          </CommandGroup>
+        )}
+        {prItems.length > 0 && (
+          <CommandGroup heading="Worktrees w/ pull request">
+            {prItems.map((item) => (
+              <OpenItem key={itemKey(item)} item={item} onOpen={openItem} />
+            ))}
+          </CommandGroup>
+        )}
+
+        <CommandGroup heading="Check out branch">
+          {branches.isLoading && (
+            <CommandItem disabled value="__loading">
+              Loading branches…
+            </CommandItem>
+          )}
+          {(branches.data ?? [])
+            .filter((b) => !worktreeBranches.has(b))
+            .slice(0, 200)
+            .map((b) => (
+              <CommandItem
+                key={b}
+                value={`branch ${b}`}
+                onSelect={() => checkout(b)}
+              >
+                <GitBranchIcon />
+                <span className="truncate font-mono">{b}</span>
+              </CommandItem>
+            ))}
+        </CommandGroup>
       </CommandList>
     </CommandDialog>
+  );
+}
+
+function OpenItem({
+  item,
+  onOpen,
+}: {
+  item: SidebarItem;
+  onOpen: (item: SidebarItem) => void;
+}) {
+  return (
+    <CommandItem
+      value={`open ${itemTitle(item)} ${itemBranch(item)} ${
+        item.pr ? `#${item.pr.id}` : ''
+      }`}
+      onSelect={() => onOpen(item)}
+    >
+      {item.pr ? <GitPullRequestIcon /> : <GitBranchIcon />}
+      <span className="truncate">{itemTitle(item)}</span>
+      {item.pr && <span className="text-muted-foreground">#{item.pr.id}</span>}
+    </CommandItem>
   );
 }

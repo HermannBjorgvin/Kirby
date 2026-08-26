@@ -294,6 +294,11 @@ export interface KirbyHostApi {
   canRemoveBranch(
     branch: string
   ): Promise<{ safe: true } | { safe: false; reason: string }>;
+  /** Open the branch's worktree in the configured external editor
+   *  (config.editor, falling back to $VISUAL / $EDITOR — same as the
+   *  TUI). Creates the worktree if needed. Resolves to the editor
+   *  command used. */
+  openInEditor(branch: string): Promise<{ editor: string }>;
 
   // ── Reviews ──────────────────────────────────────────────────
   fetchPullRequests(): Promise<BranchPrMap>;
@@ -388,6 +393,7 @@ export const IPC = {
   createWorktree: 'kirby/worktree/create',
   removeWorktree: 'kirby/worktree/remove',
   canRemoveBranch: 'kirby/worktree/can-remove',
+  openInEditor: 'kirby/worktree/open-in-editor',
   launchAgent: 'kirby/session/launch',
   listSessions: 'kirby/session/list',
   getSessionActivity: 'kirby/session/activity',

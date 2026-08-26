@@ -51,6 +51,7 @@ export function createHostApi(): KirbyHostApi {
     createWorktree: (branch) => worktrees.createWorktree(branch),
     removeWorktree: (branch, force) => worktrees.removeWorktree(branch, force),
     canRemoveBranch: (branch) => worktrees.canRemoveBranch(branch),
+    openInEditor: (branch) => worktrees.openInEditor(branch),
 
     fetchPullRequests: () => reviews.fetchPullRequests(),
     fetchCommentThreads: (prId) => reviews.fetchCommentThreads(prId),
@@ -174,6 +175,7 @@ export function registerHostHandlers(
     [IPC.createWorktree]: api.createWorktree as HostMethod,
     [IPC.removeWorktree]: api.removeWorktree as HostMethod,
     [IPC.canRemoveBranch]: api.canRemoveBranch as HostMethod,
+    [IPC.openInEditor]: api.openInEditor as HostMethod,
     [IPC.launchAgent]: api.launchAgent as HostMethod,
     [IPC.listSessions]: api.listSessions as HostMethod,
     [IPC.getSessionActivity]: api.getSessionActivity as HostMethod,

@@ -16,6 +16,7 @@ import { useRepo } from '../../lib/repo-context.js';
 import {
   useCreateWorktree,
   useKillSession,
+  useOpenInEditor,
   useLaunchAgent,
 } from '../../lib/queries.js';
 import {
@@ -43,6 +44,7 @@ export function SidebarRow({
   const launch = useLaunchAgent(repo.cwd);
   const kill = useKillSession(repo.cwd);
   const create = useCreateWorktree(repo.cwd);
+  const openEditor = useOpenInEditor();
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const running = itemRunning(item);
@@ -94,6 +96,7 @@ export function SidebarRow({
       items.push({ id: 'checkout', label: 'Check out as worktree' });
     if (pr)
       items.push({ id: 'open-pr', label: 'Open pull request in browser' });
+    items.push({ id: 'open-editor', label: 'Open in editor' });
     items.push({ id: 'copy', label: 'Copy branch name' });
     if (hasWorktree) {
       items.push(
@@ -121,6 +124,12 @@ export function SidebarRow({
         break;
       case 'open-pr':
         if (pr) void window.kirby.openExternal(pr.url);
+        break;
+      case 'open-editor':
+        openEditor.mutate(branch, {
+          onSuccess: ({ editor }) => toast.success(`Opened in ${editor}`),
+          onError: (e) => toast.error(errorMessage(e)),
+        });
         break;
       case 'copy':
         void navigator.clipboard.writeText(branch);

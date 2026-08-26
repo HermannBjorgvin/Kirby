@@ -106,7 +106,7 @@ export function TitleBar({
             <span className="flex-1 truncate text-left">
               Search branches, pull requests, commands…
             </span>
-            <Kbd>{MOD} K</Kbd>
+            <Kbd className="ml-2 h-4 min-w-4 px-1 text-[10px]">{MOD} K</Kbd>
           </button>
         </div>
       )}

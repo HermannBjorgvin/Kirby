@@ -245,18 +245,21 @@
   }
 
   /* Subtle attention pulse for a tab whose agent just finished a work
-     streak and hasn't been looked at yet (the TUI's title flash). */
+     streak and hasn't been looked at yet (the TUI's title flash):
+     blinks toward — but not all the way to — the active-tab shade. */
   @keyframes tab-attention {
     0%,
     100% {
       background-color: transparent;
     }
     50% {
-      background-color: color-mix(in srgb, var(--success) 12%, transparent);
+      background-color: color-mix(in srgb, var(--tab-active) 85%, var(--tab));
     }
   }
+  /* steps(1, end): hold each keyframe value and jump — a binary blink
+     like the TUI's title flash, no easing. */
   .tab-attention {
-    animation: tab-attention 1.4s ease-in-out infinite;
+    animation: tab-attention 1.4s steps(1, end) infinite;
   }
 }
 
