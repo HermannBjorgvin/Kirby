@@ -201,6 +201,14 @@ export interface SyncNoticeEvent {
   kind: 'success' | 'warning';
 }
 
+/** Mirror of app-core's ActivitySnapshot, redeclared so the renderer
+ *  contract stays free of app-core imports. */
+export interface SessionActivitySnapshot {
+  active: boolean;
+  flashing: boolean;
+  exited?: boolean;
+}
+
 // ── Reviews ──────────────────────────────────────────────────────
 
 export interface ReplyRequest {
@@ -314,6 +322,12 @@ export interface KirbyHostApi {
    *  session seeded with the shared review prompt + guidance. */
   launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
   listSessions(): Promise<SessionSummary[]>;
+  /** Debounced per-session agent activity (same registry as the TUI's
+   *  sidebar spinner): `active` = producing output now, `flashing` =
+   *  went idle after a real work streak and the user hasn't looked. */
+  getSessionActivity(): Promise<Record<string, SessionActivitySnapshot>>;
+  /** The user is looking at this session — clears its flashing state. */
+  markSessionSeen(name: string): Promise<void>;
   /** Recent output for a session so a (re)mounted terminal can replay
    *  what it missed before subscribing to live data. */
   getSessionBuffer(name: string): Promise<SessionBuffer>;
@@ -373,6 +387,8 @@ export const IPC = {
   canRemoveBranch: 'kirby/worktree/can-remove',
   launchAgent: 'kirby/session/launch',
   listSessions: 'kirby/session/list',
+  getSessionActivity: 'kirby/session/activity',
+  markSessionSeen: 'kirby/session/seen',
   getSessionBuffer: 'kirby/session/buffer',
   writeSession: 'kirby/session/write',
   resizeSession: 'kirby/session/resize',

@@ -220,6 +220,44 @@
   .app-no-drag {
     -webkit-app-region: no-drag;
   }
+
+  /* Agent-activity spinner: a spinning rainbow ring shown on tabs
+     whose agent is actively producing output (the TUI's sidebar
+     RainbowSpinner, translated to pixels). */
+  @keyframes agent-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .agent-spinner {
+    background: conic-gradient(
+      from 0deg,
+      #f87171,
+      #fbbf24,
+      #34d399,
+      #60a5fa,
+      #c084fc,
+      #f87171
+    );
+    mask: radial-gradient(farthest-side, transparent 52%, #000 60%);
+    -webkit-mask: radial-gradient(farthest-side, transparent 52%, #000 60%);
+    animation: agent-spin 0.9s linear infinite;
+  }
+
+  /* Subtle attention pulse for a tab whose agent just finished a work
+     streak and hasn't been looked at yet (the TUI's title flash). */
+  @keyframes tab-attention {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: color-mix(in srgb, var(--success) 12%, transparent);
+    }
+  }
+  .tab-attention {
+    animation: tab-attention 1.4s ease-in-out infinite;
+  }
 }
 
 /* ── Terminal (wterm) ──────────────────────────────────────────────

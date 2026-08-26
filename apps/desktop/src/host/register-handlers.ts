@@ -71,6 +71,8 @@ export function createHostApi(): KirbyHostApi {
     launchAgent: (req) => sessions.launchAgent(req),
     launchReviewAgent: (req) => sessions.launchReviewAgent(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
+    getSessionActivity: () => Promise.resolve(sessions.getSessionActivity()),
+    markSessionSeen: (name) => Promise.resolve(sessions.markSessionSeen(name)),
     getSessionBuffer: (name) =>
       Promise.resolve(sessions.getSessionBuffer(name)),
     writeSession: (name, data) =>
@@ -174,6 +176,8 @@ export function registerHostHandlers(
     [IPC.canRemoveBranch]: api.canRemoveBranch as HostMethod,
     [IPC.launchAgent]: api.launchAgent as HostMethod,
     [IPC.listSessions]: api.listSessions as HostMethod,
+    [IPC.getSessionActivity]: api.getSessionActivity as HostMethod,
+    [IPC.markSessionSeen]: api.markSessionSeen as HostMethod,
     [IPC.getSessionBuffer]: api.getSessionBuffer as HostMethod,
     [IPC.writeSession]: api.writeSession as HostMethod,
     [IPC.resizeSession]: api.resizeSession as HostMethod,

@@ -248,6 +248,7 @@ function WorkspaceInner({
         onSwitchRepo={onSwitchRepo}
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {closer.confirmDialog}
     </div>
   );
 }

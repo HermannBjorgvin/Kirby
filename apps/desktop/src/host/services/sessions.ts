@@ -5,6 +5,10 @@ import {
   killSession as killSessionEntry,
   isSessionAlive,
   getSpawnedAt,
+  noteInput,
+  noteResize,
+  noteSeen,
+  snapshot as activitySnapshot,
 } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
 import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
@@ -181,13 +185,35 @@ export function listSessions(): SessionSummary[] {
 export function writeSession(name: string, data: string): void {
   const entry = getSession(name);
   if (!entry || entry.exited) throw new Error(`Session ${name} is not running`);
+  // Same as the TUI's input forwarder: without this, the terminal
+  // echoing keystrokes back would count as agent activity.
+  noteInput(name);
   entry.pty.write(data);
 }
 
 export function resizeSession(name: string, cols: number, rows: number): void {
   const entry = getSession(name);
   if (!entry || entry.exited) return;
+  // SIGWINCH redraws aren't agent activity either.
+  noteResize(name);
   entry.pty.resize(cols, rows);
+}
+
+/** Debounced agent-activity snapshots for every session this host has
+ *  launched — the same registry the TUI's sidebar spinner reads. */
+export function getSessionActivity(): Record<
+  string,
+  ReturnType<typeof activitySnapshot>
+> {
+  const out: Record<string, ReturnType<typeof activitySnapshot>> = {};
+  for (const name of known.keys()) {
+    out[name] = activitySnapshot(name);
+  }
+  return out;
+}
+
+export function markSessionSeen(name: string): void {
+  noteSeen(name);
 }
 
 export function killSession(name: string): void {

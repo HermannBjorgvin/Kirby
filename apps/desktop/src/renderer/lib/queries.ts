@@ -44,6 +44,7 @@ export const keys = {
   threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
   prDescription: (cwd: string, prId: number) =>
     ['pr-description', cwd, prId] as const,
+  activity: (cwd: string) => ['session-activity', cwd] as const,
   commentImage: (url: string) => ['comment-image', url] as const,
   drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
 };
@@ -118,6 +119,17 @@ export function useThreads(cwd: string, prId: number) {
     staleTime: 30_000,
     // prId 0 = a worktree without a PR: nothing to fetch.
     enabled: prId > 0,
+  });
+}
+
+/** Debounced per-session agent activity (spinner/blink source). The
+ *  snapshot is an in-memory read host-side, so a 1s poll is cheap. */
+export function useSessionActivity(cwd: string) {
+  return useQuery({
+    queryKey: keys.activity(cwd),
+    queryFn: () => window.kirby.getSessionActivity(),
+    refetchInterval: 1_000,
+    placeholderData: (prev) => prev,
   });
 }
 

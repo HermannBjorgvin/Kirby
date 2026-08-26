@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal, type TerminalHandle } from '@wterm/react';
 import wasmUrl from '@wterm/core/wasm?url';
 import {
@@ -28,6 +28,22 @@ export function SessionTerminal({
   const [ready, setReady] = useState(false);
   const { resolved } = useTheme();
 
+  // Seen-tracking: while the user is looking at this terminal, keep
+  // the host's "last seen" fresh so the tab's attention blink never
+  // fires for output they watched happen. Throttled — data can arrive
+  // many times per second.
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  const lastSeenMarkRef = useRef(0);
+  const markSeen = useCallback(() => {
+    const t = Date.now();
+    if (t - lastSeenMarkRef.current < 1000) return;
+    lastSeenMarkRef.current = t;
+    void window.kirby.markSessionSeen(name);
+  }, [name]);
+
   useEffect(() => {
     if (!ready) return;
     const term = termRef.current;
@@ -38,6 +54,7 @@ export function SessionTerminal({
 
     const offData = window.kirby.onSessionData(({ name: n, data, seq }) => {
       if (n !== name) return;
+      if (activeRef.current) markSeen();
       if (snapshotSeq === null) {
         pending.push({ seq, data });
       } else if (seq > snapshotSeq) {
@@ -74,12 +91,17 @@ export function SessionTerminal({
       offData();
       offExit();
     };
-  }, [name, ready]);
+  }, [name, ready, markSeen]);
 
-  // Grab keyboard focus whenever this pane becomes the active tab.
+  // Grab keyboard focus whenever this pane becomes the active tab, and
+  // mark the session seen (clears the tab's attention blink).
   useEffect(() => {
-    if (active && ready) termRef.current?.focus();
-  }, [active, ready]);
+    if (active && ready) {
+      termRef.current?.focus();
+      lastSeenMarkRef.current = 0; // force an immediate mark
+      markSeen();
+    }
+  }, [active, ready, markSeen]);
 
   // Fit the terminal grid to its pane. autoResize stays ON (with it off
   // the react wrapper pins an inline height of rows*17px and keeps
