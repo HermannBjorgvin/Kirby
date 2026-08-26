@@ -50,6 +50,15 @@ export function ItemView({
   const paneRef = useRef<HTMLDivElement>(null);
   const [launchMenu, setLaunchMenu] = useState(false);
 
+  // The launch dialog portals to <body>, so an inactive-but-mounted
+  // (visibility:hidden) pane would leave it floating over whichever
+  // tab is active now — leaving the tab dismisses it.
+  const [prevActive, setPrevActive] = useState(active);
+  if (active !== prevActive) {
+    setPrevActive(active);
+    if (!active) setLaunchMenu(false);
+  }
+
   const branch = item ? itemBranch(item) : '';
   const sessionRow = useMemo(
     () => items.find((i) => itemBranch(i) === branch && itemSessionName(i)),

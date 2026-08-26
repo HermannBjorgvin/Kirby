@@ -69,7 +69,8 @@ function DialogHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn('flex flex-col gap-1.5 text-left', className)}
+      // pr-8 keeps long titles clear of the absolute-positioned ✕.
+      className={cn('flex flex-col gap-1.5 pr-8 text-left', className)}
       {...props}
     />
   );
