@@ -21,17 +21,31 @@ export function listDraftComments(prId: number): ReviewComment[] {
   return readComments(prId);
 }
 
+/** TUI parity: posted comments are immutable and a comment mid-post
+ *  can't be edited or deleted out from under the poster. */
+function requireEditable(prId: number, id: string): void {
+  const existing = readComments(prId).find((c) => c.id === id);
+  if (!existing || existing.status === 'posted') {
+    throw new Error('Draft comment no longer exists');
+  }
+  if (existing.status === 'posting') {
+    throw new Error('Comment is being posted');
+  }
+}
+
 export function updateDraftComment(
   prId: number,
   id: string,
   patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>
 ): void {
+  requireEditable(prId, id);
   if (!updateComment(prId, id, patch)) {
     throw new Error('Draft comment no longer exists');
   }
 }
 
 export function deleteDraftComment(prId: number, id: string): void {
+  requireEditable(prId, id);
   if (!removeComment(prId, id)) {
     throw new Error('Draft comment no longer exists');
   }
@@ -69,12 +83,25 @@ export async function postDraftComments(
     prId: req.prId,
     headSha: req.headSha,
   };
-  for (const c of wanted) updateComment(req.prId, c.id, { status: 'posting' });
-  try {
-    await postReviewComments(wanted, ctx, req.event ?? 'COMMENT');
-  } catch (err) {
-    for (const c of wanted) updateComment(req.prId, c.id, { status: 'draft' });
-    throw err;
+  // One comment per post call, like the TUI's diff viewer. A batch
+  // that dies mid-way would otherwise reset already-live comments back
+  // to draft (duplicating them on retry); posting singly bounds any
+  // failure to exactly the comment that failed.
+  let posted = 0;
+  for (const c of wanted) {
+    updateComment(req.prId, c.id, { status: 'posting' });
+    try {
+      await postReviewComments([c], ctx, req.event ?? 'COMMENT');
+      posted += 1;
+    } catch (err) {
+      updateComment(req.prId, c.id, { status: 'draft' });
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        posted > 0
+          ? `Posted ${posted} of ${wanted.length}, then failed: ${message}`
+          : message
+      );
+    }
   }
-  return wanted.length;
+  return posted;
 }

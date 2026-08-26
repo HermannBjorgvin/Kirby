@@ -51,13 +51,20 @@ export function RemoveWorktreeDialog({
     };
   }, [branch]);
 
+  // Only these safety reasons may be overridden, matching the TUI:
+  // protected branches and in-progress rebases are hard refusals.
+  const overridable =
+    safety?.safe === false &&
+    (safety.reason === 'uncommitted changes' ||
+      safety.reason === 'not pushed to upstream');
+
   const doRemove = (force: boolean) => {
     remove.mutate(
       { branch, force },
       {
         onSuccess: () => {
           toast.success(`Removed worktree ${branch}`);
-          tabs.close(`item:session:${branch.replace(/[^a-zA-Z0-9._-]/g, '-')}`);
+          tabs.close(`item:branch:${branch}`);
           onClose();
         },
         onError: (err) => toast.error(errorMessage(err)),
@@ -82,7 +89,9 @@ export function RemoveWorktreeDialog({
           <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground">
             <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" />
             <div>
-              <p className="font-medium">Not safe to delete</p>
+              <p className="font-medium">
+                {overridable ? 'Not safe to delete' : 'Cannot delete'}
+              </p>
               <p className="text-muted-foreground">{safety.reason}</p>
             </div>
           </div>
@@ -100,7 +109,7 @@ export function RemoveWorktreeDialog({
             >
               {remove.isPending ? 'Removing…' : 'Remove'}
             </Button>
-          ) : (
+          ) : overridable ? (
             <Button
               variant="destructive"
               disabled={remove.isPending}
@@ -108,7 +117,7 @@ export function RemoveWorktreeDialog({
             >
               {remove.isPending ? 'Removing…' : 'Force remove'}
             </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

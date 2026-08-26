@@ -73,7 +73,14 @@ const known = new Map<string, KnownSession>();
 export async function launchAgent(req: SessionLaunchRequest): Promise<{
   name: string;
 }> {
-  requireRepo();
+  const repoCwd = requireRepo();
+  const name = branchToSessionName(req.branch);
+  // TUI semantics: a live agent is never silently respawned — every
+  // TUI launch site checks the registry first. Launching on a branch
+  // with a running session just reattaches to it.
+  if (isSessionAlive(name)) {
+    return { name };
+  }
   // Resolve-or-create through the same primitive as every TUI launch
   // path. The worktree directory is keyed by the branch *name*, and an
   // existing directory wins even if a different branch has since been
@@ -84,8 +91,10 @@ export async function launchAgent(req: SessionLaunchRequest): Promise<{
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
-  const config = readConfig(wtPath);
-  const name = branchToSessionName(req.branch);
+  // Config comes from the repo root, like the TUI — per-project config
+  // is keyed by cwd hash, so reading from the worktree path resolved a
+  // different (empty) project bag.
+  const config = readConfig(repoCwd);
   launchSession({
     name,
     cwd: wtPath,

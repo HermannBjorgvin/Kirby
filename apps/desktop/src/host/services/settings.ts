@@ -1,6 +1,9 @@
 import { readConfig } from '@kirby/vcs-core';
 import {
+  applySessionBackend,
   buildSettingsFields,
+  getTmuxAvailability,
+  hasAnySession,
   persistConfigField,
   resolveValue,
   updateConfigField,
@@ -96,6 +99,31 @@ export function updateSettingsFromView(
   const { config, fields } = activeFields();
   const field = fields.find((f) => f.label === ref.label && f.key === ref.key);
   if (!field) throw new Error(`Unknown settings field: ${ref.label}`);
-  const updated = updateConfigField(config, field, value);
-  persistConfigField(field, value, updated);
+  // Same guards as the TUI's canApplyFieldChange: never swap the
+  // terminal backend under live sessions, and refuse tmux when the
+  // binary is missing (surfacing the install hint now instead of a
+  // spawn failure later).
+  if (field.key === 'terminalBackend') {
+    if (hasAnySession()) {
+      throw new Error('Close all sessions before switching terminal backend.');
+    }
+    if (value === 'tmux') {
+      const status = getTmuxAvailability();
+      if (status && !status.available) {
+        const hint = status.installHint
+          ? ` — try \`${status.installHint}\``
+          : '';
+        throw new Error(`tmux not installed${hint}`);
+      }
+    }
+  }
+  // The TUI persists a cleared field as undefined (`editBuffer ||
+  // undefined`) so project-level values fall back to global instead
+  // of shadowing it with '' (or 0 for numeric keys).
+  const normalized = value === '' ? undefined : value;
+  const updated = updateConfigField(config, field, normalized);
+  persistConfigField(field, normalized, updated);
+  if (field.key === 'terminalBackend') {
+    applySessionBackend(updated);
+  }
 }

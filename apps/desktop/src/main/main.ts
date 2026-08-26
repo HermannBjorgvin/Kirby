@@ -14,7 +14,7 @@ import {
   setFolderPicker,
   setShellGlue,
 } from '../host/register-handlers.js';
-import { killAll } from '@kirby/app-core';
+import { killAll, probeTmuxAvailability } from '@kirby/app-core';
 import {
   MENU_EVENTS,
   type ContextMenuItem,
@@ -275,6 +275,10 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     nativeTheme.themeSource = prefs.theme;
     installAppMenu();
+    // Cache tmux availability for the settings guard, same as the
+    // TUI's startup probe. Fire-and-forget: the guard treats a
+    // missing probe result as "unknown" and allows the switch.
+    void probeTmuxAvailability().catch(() => undefined);
     const opened = openStartupRepo();
     console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 

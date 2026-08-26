@@ -5,7 +5,11 @@ import {
   createWorktree as createWt,
   removeWorktree as removeWt,
   canRemoveBranch as canRemoveBr,
+  deleteBranch,
+  branchToSessionName,
+  worktreeSessionName,
 } from '@kirby/worktree-manager';
+import { killSession } from '@kirby/app-core';
 import { requireRepo } from './repo.js';
 
 // All worktree-manager functions resolve paths against process.cwd();
@@ -31,12 +35,21 @@ export function createWorktree(branch: string) {
   return createWt(branch);
 }
 
-export function removeWorktree(
+export async function removeWorktree(
   branch: string,
   force: boolean
 ): Promise<boolean> {
   requireRepo();
-  return removeWt(branch, { force });
+  // Mirrors the TUI's performDelete (useSessionManager): kill the
+  // agent, remove the worktree, then delete the branch — removal
+  // without the other two strands a PTY in a deleted directory and
+  // leaves the branch behind.
+  const wt = (await listWts()).find((w) => w.branch === branch);
+  if (wt) killSession(worktreeSessionName(wt));
+  killSession(branchToSessionName(branch));
+  const removed = await removeWt(branch, { force });
+  if (removed) await deleteBranch(branch, true);
+  return removed;
 }
 
 export function canRemoveBranch(branch: string) {

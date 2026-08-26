@@ -30,7 +30,6 @@ import type { SyncState } from '../contract.js';
  */
 
 const DEFAULT_REMOTE_MS = 60_000;
-const MIN_REMOTE_MS = 15_000;
 
 interface RemoteCache {
   cwd: string;
@@ -39,11 +38,13 @@ interface RemoteCache {
 }
 
 let cache: RemoteCache | null = null;
-let inflight: Promise<BranchPrMap> | null = null;
+let inflight: { cwd: string; promise: Promise<BranchPrMap> } | null = null;
 let lastError: string | null = null;
 
+// No minimum: the TUI honors prPollInterval verbatim, so the desktop's
+// cache TTL does too.
 function remoteIntervalMs(interval: number | undefined): number {
-  return Math.max(MIN_REMOTE_MS, interval ?? DEFAULT_REMOTE_MS);
+  return interval ?? DEFAULT_REMOTE_MS;
 }
 
 function resolveProvider(cwd: string) {
@@ -73,8 +74,12 @@ async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
   ) {
     return cache.prMap;
   }
-  if (inflight) return inflight;
-  inflight = provider
+  // Join an in-flight fetch only when it is for this repo and the
+  // caller isn't forcing a refresh — a forced refresh (or a repo
+  // switch mid-fetch) starts its own request so it can't resolve
+  // against another repo's (or a pre-change) response.
+  if (inflight && inflight.cwd === cwd && !force) return inflight.promise;
+  const promise = provider
     .fetchPullRequests(config.vendorAuth, config.vendorProject)
     .then((prMap) => {
       cache = { cwd, prMap, fetchedAt: Date.now() };
@@ -88,9 +93,10 @@ async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
       return {};
     })
     .finally(() => {
-      inflight = null;
+      if (inflight?.promise === promise) inflight = null;
     });
-  return inflight;
+  inflight = { cwd, promise };
+  return promise;
 }
 
 export async function getSidebarModel(): Promise<SidebarItem[]> {

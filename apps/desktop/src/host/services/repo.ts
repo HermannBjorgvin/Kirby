@@ -1,6 +1,17 @@
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig, isVcsConfigured, type AppConfig } from '@kirby/vcs-core';
+import {
+  readConfig,
+  isVcsConfigured,
+  autoDetectProjectConfig,
+  type AppConfig,
+} from '@kirby/vcs-core';
+import {
+  createTemplateResolver,
+  resetWorktreeResolver,
+  setWorktreeResolver,
+} from '@kirby/worktree-manager';
+import { applySessionBackend } from '@kirby/app-core';
 import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import type { VcsProvider } from '@kirby/vcs-core';
@@ -47,7 +58,24 @@ export function openRepo(cwd: string): RepoInfo {
   } catch {
     // Recent-repos bookkeeping must never block opening a repo.
   }
+  // Same startup wiring as the TUI's useSessionManager mount:
+  // auto-detect provider fields on first open, honor a custom
+  // worktreePath template (without it, listWorktrees would only own
+  // the default .claude/worktrees dir), and point the session
+  // registry at the configured terminal backend.
+  try {
+    autoDetectProjectConfig(cwd, PROVIDERS);
+  } catch {
+    // Detection is best-effort; a failing provider probe must not
+    // block opening the repo.
+  }
   const config = readConfig(cwd);
+  if (config.worktreePath) {
+    setWorktreeResolver(createTemplateResolver(config.worktreePath, cwd));
+  } else {
+    resetWorktreeResolver();
+  }
+  applySessionBackend(config);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {
     cwd,
