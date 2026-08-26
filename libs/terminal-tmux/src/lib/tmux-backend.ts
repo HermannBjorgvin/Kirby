@@ -84,6 +84,14 @@ class TmuxBackend implements SessionBackend {
   private killed = false;
 
   constructor(spec: SessionSpec, private readonly tmuxName: string) {
+    // The client must not think it's nested: when Kirby itself runs
+    // inside a tmux window, the inherited TMUX var makes new-session
+    // refuse with "sessions should be nested with care".
+    const clientEnv: Record<string, string | undefined> = {
+      ...(spec.env ?? process.env),
+    };
+    delete clientEnv.TMUX;
+    delete clientEnv.TMUX_PANE;
     // tmux new-session -A: create-or-attach atomically. The local
     // PtySession runs the tmux client; tmux owns the actual shell.
     this.inner = new PtySession(
@@ -104,7 +112,7 @@ class TmuxBackend implements SessionBackend {
         spec.cmd,
         ...spec.args,
       ],
-      { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: spec.env }
+      { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: clientEnv }
     );
   }
 
