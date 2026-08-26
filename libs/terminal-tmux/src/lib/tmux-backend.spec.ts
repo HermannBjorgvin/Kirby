@@ -28,7 +28,7 @@ const {
   const offDataSpy = vi.fn();
   const offExitSpy = vi.fn();
   const tmuxKillSpy = vi.fn();
-  const tmuxHasSessionSpy = vi.fn(() => true);
+  const tmuxHasSessionSpy = vi.fn<(name: string) => boolean>(() => true);
   const tmuxSetOptionSpy = vi.fn();
   class MockPtySession {
     pid = 1234;

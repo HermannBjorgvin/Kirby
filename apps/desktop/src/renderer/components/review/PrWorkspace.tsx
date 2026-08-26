@@ -27,6 +27,7 @@ import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
 import { type CommentListItem } from './CommentsList.js';
 import { DiffPane } from './DiffPane.js';
+import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { type FileEntry } from './FileTree.js';
 import { OverviewPane } from './OverviewPane.js';
 import { PrHeader } from './PrHeader.js';
@@ -75,6 +76,7 @@ export function PrWorkspace({
   const postAll = usePostDrafts(repo.cwd);
   const options = useDiffOptions();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const diffJumpRef = useRef<DiffJumpHandle | null>(null);
 
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
@@ -181,11 +183,7 @@ export function PrWorkspace({
   const jumpToFile = useCallback((path: string) => {
     setSelectedFile(path);
     setMode('diff');
-    requestAnimationFrame(() =>
-      scrollRef.current
-        ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(path)}"]`)
-        ?.scrollIntoView({ block: 'start' })
-    );
+    requestAnimationFrame(() => diffJumpRef.current?.jumpToFile(path));
   }, []);
 
   // Unified, document-ordered comment list: general (Conversation)
@@ -259,22 +257,18 @@ export function PrWorkspace({
     : commentItems;
   const navIndex = navItems.findIndex((i) => i.id === focusThreadId);
 
-  // Scroll to any comment or draft by id; falls back to the file.
+  // Scroll to any comment or draft by id; falls back to the file. Goes
+  // through the virtual list's imperative handle — the target row may
+  // not be materialized as DOM yet.
   const jumpToId = useCallback((id: string, file: string | null) => {
     setFocusThreadId(id);
     setMode('diff');
     if (file) setSelectedFile(file);
     requestAnimationFrame(() => {
-      const root = scrollRef.current;
-      const el = root?.querySelector<HTMLElement>(
-        `[data-thread="${CSS.escape(id)}"], [data-draft="${CSS.escape(id)}"]`
-      );
-      if (el) el.scrollIntoView({ block: 'center' });
-      else if (file)
-        root
-          ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(file)}"]`)
-          ?.scrollIntoView({ block: 'start' });
-      else root?.scrollTo({ top: 0 });
+      const jump = diffJumpRef.current;
+      if (jump?.jumpToId(id)) return;
+      if (file && jump?.jumpToFile(file)) return;
+      scrollRef.current?.scrollTo({ top: 0 });
     });
   }, []);
   const jumpToItem = useCallback(
@@ -435,6 +429,7 @@ export function PrWorkspace({
                   diffError={diff.error ? String(diff.error.message) : null}
                   focusThreadId={focusThreadId}
                   scrollRef={scrollRef}
+                  jumpRef={diffJumpRef}
                   navCount={navItems.length}
                   navIndex={navIndex}
                   onPrev={() => step(-1)}

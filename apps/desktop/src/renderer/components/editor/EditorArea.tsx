@@ -1,7 +1,6 @@
 import {
   GitBranchIcon,
   GitPullRequestIcon,
-  Loader2Icon,
   SettingsIcon,
   XIcon,
 } from 'lucide-react';
@@ -64,15 +63,12 @@ export function EditorArea({
 
   // The tab strip tracks the live state so clicks feel instant; the
   // panes below follow a *deferred* copy, so mounting/unmounting a
-  // heavy pane (a whole-file diff is tens of thousands of nodes) runs
-  // as an interruptible background render instead of blocking the
-  // click. While the two disagree we gray the pane area out.
+  // pane runs as an interruptible background render instead of
+  // blocking the click. No blanket overlay: the virtualized diff and
+  // the rail each show their own skeletons, and the terminal renders
+  // in the first frame.
   const paneTabs = useDeferredValue(tabs.tabs);
   const paneActiveId = useDeferredValue(tabs.activeId);
-  // Overlay only when the *visible* pane is changing — closing a
-  // background tab defers its unmount too, but the user isn't waiting
-  // on anything they can see.
-  const switching = paneActiveId !== tabs.activeId;
 
   // Mount policy: the active tab plus any tab whose branch has a PTY
   // session (its terminal must stay mounted to keep scrollback). Other
@@ -108,11 +104,6 @@ export function EditorArea({
         <div className="flex-1" />
       </div>
       <div className="relative min-h-0 flex-1">
-        {switching && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
-            <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        )}
         {paneTabs.map((tab) => {
           const active = tab.id === paneActiveId;
           if (!active && !hasSession(tab)) return null;

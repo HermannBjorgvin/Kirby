@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DiffLine } from '@kirby/diff';
 import type { CharRange } from './diff-model.js';
 import {
@@ -47,6 +47,60 @@ export function useFileAnalysis(
 
   if (!enabled || !result || result.key !== key) return EMPTY;
   return result.value;
+}
+
+const EMPTY_MAP: ReadonlyMap<string, FileAnalysis> = new Map();
+
+/**
+ * On-demand per-file analyses for the virtualized diff: a file's
+ * tokens + word-diff ranges are requested (once) when it first shows
+ * up in `wanted` — i.e. when one of its rows scrolls into view — and
+ * rows render plain until the worker answers. A new diff or theme
+ * invalidates everything.
+ */
+export function useFileAnalyses(
+  files: ReadonlyMap<string, DiffLine[]>,
+  theme: ResolvedTheme,
+  wanted: ReadonlySet<string>
+): ReadonlyMap<string, FileAnalysis> {
+  // Generation token: new object identity per (files, theme) pair.
+  const gen = useMemo(() => ({ files, theme }), [files, theme]);
+  const [state, setState] = useState<{
+    gen: unknown;
+    results: Map<string, FileAnalysis>;
+  }>(() => ({ gen, results: new Map() }));
+  const requested = useRef<{ gen: unknown; names: Set<string> }>({
+    gen,
+    names: new Set(),
+  });
+
+  useEffect(() => {
+    if (requested.current.gen !== gen) {
+      requested.current = { gen, names: new Set() };
+    }
+    const req = requested.current;
+    for (const file of wanted) {
+      if (req.names.has(file)) continue;
+      const lines = files.get(file);
+      if (!lines || lines.length === 0) continue;
+      req.names.add(file);
+      void analyzeFileInWorker(file, lines, theme)
+        .then((value) => {
+          setState((prev) => {
+            if (requested.current.gen !== gen) return prev;
+            const results =
+              prev.gen === gen ? new Map(prev.results) : new Map();
+            results.set(file, value);
+            return { gen, results };
+          });
+        })
+        .catch(() => {
+          // Highlights degrade to plain text; nothing to store.
+        });
+    }
+  }, [gen, files, theme, wanted]);
+
+  return state.gen === gen ? state.results : EMPTY_MAP;
 }
 
 /** Worker-tokenized fenced code block (comment markdown). */

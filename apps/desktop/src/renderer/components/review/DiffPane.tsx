@@ -7,7 +7,13 @@ import {
   RowsIcon,
   WrapTextIcon,
 } from 'lucide-react';
-import type { RefObject } from 'react';
+import {
+  startTransition,
+  useEffect,
+  useState,
+  type Ref,
+  type RefObject,
+} from 'react';
 import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
@@ -18,8 +24,7 @@ import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { Tip } from '../ui/tooltip.js';
-import { ConversationPanel } from './ConversationPanel.js';
-import { DiffView } from './DiffView.js';
+import { VirtualDiffList, type DiffJumpHandle } from './VirtualDiffList.js';
 
 /**
  * The diff content pane: the diff *settings* toolbar (view / wrap /
@@ -42,6 +47,7 @@ export function DiffPane({
   diffError,
   focusThreadId,
   scrollRef,
+  jumpRef,
   navCount,
   navIndex,
   onPrev,
@@ -60,11 +66,25 @@ export function DiffPane({
   diffError: string | null;
   focusThreadId: string | null;
   scrollRef: RefObject<HTMLDivElement | null>;
+  jumpRef?: Ref<DiffJumpHandle>;
   navCount: number;
   navIndex: number;
   onPrev: () => void;
   onNext: () => void;
 }) {
+  // Terminal-first: the workspace's first frame (header, rail,
+  // terminal) must never wait on the diff. The list mounts in a
+  // follow-up low-priority render; virtualization keeps that render
+  // small, this gate keeps it out of frame one entirely.
+  const [warm, setWarm] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      startTransition(() => setWarm(true))
+    );
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const loading = diffLoading || !warm;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Toolbar
@@ -74,7 +94,7 @@ export function DiffPane({
         onNext={onNext}
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-        {diffLoading && (
+        {loading && (
           <div className="space-y-2 p-4">
             <Skeleton className="h-4 w-1/3" />
             <Skeleton className="h-3 w-full" />
@@ -87,32 +107,26 @@ export function DiffPane({
             {diffError}
           </div>
         )}
-        {(generalThreads.length > 0 || commentsLoading) && (
-          <ConversationPanel
-            threads={generalThreads}
-            loading={commentsLoading}
-            prId={prId}
-            focusThreadId={focusThreadId}
-          />
-        )}
-        {!diffLoading && !diffError && files.length === 0 && (
+        {!loading && !diffError && files.length === 0 && (
           <div className="p-6 text-center text-sm text-muted-foreground">
             No changes between <span className="font-mono">{targetBranch}</span>{' '}
             and <span className="font-mono">{sourceBranch}</span>.
           </div>
         )}
-        {files.map(([filename, lines]) => (
-          <DiffView
-            key={filename}
-            filename={filename}
-            lines={lines}
-            threads={threadsByFile.get(filename) ?? []}
-            drafts={draftsByFile.get(filename) ?? []}
+        {!loading && (
+          <VirtualDiffList
+            files={files}
+            threadsByFile={threadsByFile}
+            draftsByFile={draftsByFile}
+            generalThreads={generalThreads}
+            commentsLoading={commentsLoading}
             prId={prId}
             headSha={headSha}
             focusThreadId={focusThreadId}
+            scrollRef={scrollRef}
+            jumpRef={jumpRef}
           />
-        ))}
+        )}
       </div>
     </div>
   );
