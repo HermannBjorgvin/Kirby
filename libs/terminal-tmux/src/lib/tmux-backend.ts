@@ -6,7 +6,12 @@ import type {
 import { PtySession } from '@kirby/terminal-pty';
 import { isTmuxAvailable } from './is-tmux-available.js';
 import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
-import { tmuxKillSession, tmuxVersion } from './tmux-cli.js';
+import {
+  tmuxHasSession,
+  tmuxKillSession,
+  tmuxSetOption,
+  tmuxVersion,
+} from './tmux-cli.js';
 
 // `new-session -e VAR=value` exists from tmux 3.2. Probed once.
 let envFlagSupport: boolean | null = null;
@@ -114,6 +119,25 @@ class TmuxBackend implements SessionBackend {
       ],
       { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: clientEnv }
     );
+    this.hideStatusBar();
+  }
+
+  /** Kirby embeds the session inside its own chrome: the tmux status
+   *  bar wastes a row and its default green background bleeds into
+   *  renderers that derive a container background from the bottom
+   *  screen row. The session may not exist yet when the constructor
+   *  returns (the client creates it), so retry briefly. Idempotent —
+   *  reattaching to an existing session just sets it again. */
+  private hideStatusBar(): void {
+    const attempt = (remaining: number): void => {
+      if (this.killed) return;
+      if (tmuxHasSession(this.tmuxName)) {
+        tmuxSetOption(this.tmuxName, 'status', 'off');
+        return;
+      }
+      if (remaining > 0) setTimeout(() => attempt(remaining - 1), 200);
+    };
+    attempt(25);
   }
 
   get pid(): number {

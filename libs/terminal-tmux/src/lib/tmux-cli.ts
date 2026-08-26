@@ -51,3 +51,12 @@ export function tmuxKillSession(name: string): TmuxRunResult {
 export function tmuxHasSession(name: string): boolean {
   return runTmux(['has-session', '-t', name]).exitCode === 0;
 }
+
+/** Set a session option (e.g. `status off`). */
+export function tmuxSetOption(
+  name: string,
+  option: string,
+  value: string
+): TmuxRunResult {
+  return runTmux(['set-option', '-t', name, option, value]);
+}
