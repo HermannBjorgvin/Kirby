@@ -116,7 +116,12 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
         homeDir,
         cols,
         rows,
-        env: kirbyEnv,
+        // Isolate any tmux the test spawns onto a socket inside the
+        // test's temp HOME. A tmux *server* keeps the environment it
+        // was started with — a test-spawned server on the user's
+        // default socket would outlive the run and poison every later
+        // real session with this temp HOME (it did, once).
+        env: { TMUX_TMPDIR: homeDir, ...kirbyEnv },
       }),
     });
     if (!spawnRes.ok) {

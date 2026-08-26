@@ -76,6 +76,10 @@ export function spawnSession(
     // child loses PATH/HOME/etc. `env` carries only seed additions
     // (e.g. KIRBY_SEED_PROMPT for the `continue || seed` path).
     env: env ? { ...process.env, ...env } : undefined,
+    // The raw additions travel separately: the tmux backend must push
+    // them into the session env (the server, not the client, spawns
+    // the command).
+    envAdditions: env,
   });
   const emu = new TerminalEmulator(cols, rows);
   const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };

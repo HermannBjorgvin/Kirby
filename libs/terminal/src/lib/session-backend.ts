@@ -16,6 +16,13 @@ export interface SessionSpec {
   cwd: string;
   cols: number;
   rows: number;
+  /** The caller's own additions over the inherited environment (e.g.
+   *  seed variables), separate from the merged `env` below. Backends
+   *  whose session host has its *own* environment (tmux: the server
+   *  keeps the env it was started with) must deliver these into the
+   *  session explicitly — the merged `env` only reaches the client
+   *  process. */
+  envAdditions?: Record<string, string | undefined>;
   /** Complete environment for the spawned process. `undefined` means
    *  "inherit the parent environment" — backends must not treat it as
    *  "empty environment", or the child loses PATH/HOME. Callers that

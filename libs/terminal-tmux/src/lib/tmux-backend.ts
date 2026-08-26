@@ -6,7 +6,44 @@ import type {
 import { PtySession } from '@kirby/terminal-pty';
 import { isTmuxAvailable } from './is-tmux-available.js';
 import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
-import { tmuxKillSession } from './tmux-cli.js';
+import { tmuxKillSession, tmuxVersion } from './tmux-cli.js';
+
+// `new-session -e VAR=value` exists from tmux 3.2. Probed once.
+let envFlagSupport: boolean | null = null;
+function supportsSessionEnvFlag(): boolean {
+  if (envFlagSupport == null) {
+    try {
+      const m = /(\d+)\.(\d+)/.exec(tmuxVersion());
+      envFlagSupport = m
+        ? Number(m[1]) > 3 || (Number(m[1]) === 3 && Number(m[2]) >= 2)
+        : false;
+    } catch {
+      envFlagSupport = false;
+    }
+  }
+  return envFlagSupport;
+}
+
+/**
+ * Environment to inject into the tmux *session* (not just the client).
+ * A tmux server keeps the environment it was started with and uses it
+ * for every command it spawns — so a stale server (started by an old
+ * process, a test run, a different context) silently poisons new
+ * sessions with its HOME/PATH, and the caller's seed additions never
+ * reach the command at all. `-e` pins the essentials per session.
+ */
+function sessionEnvFlags(spec: SessionSpec): string[] {
+  if (!supportsSessionEnvFlag()) return [];
+  const vars = new Map<string, string>();
+  for (const key of ['PATH', 'HOME']) {
+    const value = spec.env?.[key] ?? process.env[key];
+    if (value) vars.set(key, value);
+  }
+  for (const [key, value] of Object.entries(spec.envAdditions ?? {})) {
+    if (value != null) vars.set(key, value);
+  }
+  return [...vars].flatMap(([key, value]) => ['-e', `${key}=${value}`]);
+}
 
 export interface TmuxFactoryOptions {
   /** Optional. Prepended to spec.name (with no separator) before tmux
@@ -62,6 +99,7 @@ class TmuxBackend implements SessionBackend {
         String(spec.cols),
         '-y',
         String(spec.rows),
+        ...sessionEnvFlags(spec),
         '--',
         spec.cmd,
         ...spec.args,
