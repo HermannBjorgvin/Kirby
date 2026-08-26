@@ -60,6 +60,7 @@ function attachRelay(name: string, entry: KnownSession): void {
     broadcast?.('kirby/session/data', { name, data, seq: entry.seq });
   });
   session.pty.onExit((code) => {
+    console.log(`[desktop] session ${name} exited with code ${code}`);
     broadcast?.('kirby/session/exit', { name, code });
   });
 }
@@ -118,6 +119,11 @@ async function doLaunchAgent(
   // is keyed by cwd hash, so reading from the worktree path resolved a
   // different (empty) project bag.
   const config = readConfig(repoCwd);
+  console.log(
+    `[desktop] launching session ${name} in ${wtPath} (backend: ${
+      config.terminalBackend ?? 'pty'
+    })`
+  );
   launchSession({
     name,
     cwd: wtPath,

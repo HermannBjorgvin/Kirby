@@ -11,7 +11,11 @@ import {
   resetWorktreeResolver,
   setWorktreeResolver,
 } from '@kirby/worktree-manager';
-import { applySessionBackend } from '@kirby/app-core';
+import {
+  applySessionBackend,
+  getRepoRoot,
+  getTmuxAvailability,
+} from '@kirby/app-core';
 import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import type { VcsProvider } from '@kirby/vcs-core';
@@ -85,6 +89,28 @@ export function openRepo(cwd: string): RepoInfo {
     resetWorktreeResolver();
   }
   applySessionBackend(config);
+  if (config.terminalBackend === 'tmux') {
+    // The factory silently degrades to PTY in two cases; make both
+    // visible in the dev log so a "why isn't this tmux?" report is
+    // diagnosable from the console alone.
+    const root = getRepoRoot();
+    const tmux = getTmuxAvailability();
+    console.log(
+      `[desktop] session backend: tmux (repo root: ${
+        root ?? 'UNRESOLVED — falling back to pty'
+      }; tmux probe: ${
+        tmux == null
+          ? 'pending'
+          : tmux.available
+          ? 'available'
+          : 'UNAVAILABLE — falling back to pty'
+      })`
+    );
+  } else {
+    console.log(
+      `[desktop] session backend: ${config.terminalBackend ?? 'pty'}`
+    );
+  }
   repoOpenedListener?.(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {
