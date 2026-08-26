@@ -132,7 +132,7 @@ function tmuxNameFor(sessionName: string, repoRoot: string): string {
  *  to reattach at startup. Never throws; false when tmux/repoRoot is
  *  out of the picture. */
 export function isTmuxSessionPersisted(
-  config: AppConfig,
+  config: Pick<AppConfig, 'terminalBackend'>,
   sessionName: string
 ): boolean {
   if (config.terminalBackend !== 'tmux') return false;
@@ -150,7 +150,7 @@ export function isTmuxSessionPersisted(
  *  the registry knows about it — an explicit worktree removal must not
  *  leave a live tmux session working in a deleted directory. */
 export function killPersistedTmuxSession(
-  config: AppConfig,
+  config: Pick<AppConfig, 'terminalBackend'>,
   sessionName: string
 ): void {
   if (config.terminalBackend !== 'tmux') return;

@@ -7,6 +7,8 @@ import {
 } from '@kirby/worktree-manager';
 import { logError } from '@kirby/logger';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
+import { isSessionAlive } from '../pty-registry.js';
+import { isTmuxSessionPersisted } from '../session-backend.js';
 
 // ── Remote sync core ─────────────────────────────────────────────
 //
@@ -78,7 +80,10 @@ export async function sweepMergedBranches(opts: {
   vcsConfigured: boolean;
   /** Narrow on purpose: callers with a full AppConfig may pass it, but
    *  the sweep must not depend on unrelated config churn. */
-  config: Pick<AppConfig, 'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge'>;
+  config: Pick<
+    AppConfig,
+    'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge' | 'terminalBackend'
+  >;
   branches: string[];
   /** Branches already warned about an in-progress rebase. */
   warnedRebase: ReadonlySet<string>;
@@ -127,6 +132,21 @@ export async function sweepMergedBranches(opts: {
 
   const rebasingNow: string[] = [];
   for (const branch of merged) {
+    // A branch with a live agent session — an in-process PTY, or a
+    // persisted tmux session from a previous run — is never
+    // auto-deleted: the user deliberately left that agent running.
+    // It becomes eligible once the session is stopped.
+    const sessionName = branchToSessionName(branch);
+    if (
+      isSessionAlive(sessionName) ||
+      isTmuxSessionPersisted(config, sessionName)
+    ) {
+      logError(
+        'sweepMergedBranches',
+        `Skipping auto-delete of ${branch}: agent session is running`
+      );
+      continue;
+    }
     const check = await canRemoveBranch(branch, true);
     if (isCancelled()) return { merged, nextWarned: keepWarned };
     if (check.safe) {

@@ -17,7 +17,8 @@ export function useMergedBranches(
   // Depend on the three fields the sweep uses, not the whole config
   // object — otherwise every unrelated settings edit re-runs the
   // merged fetch + auto-delete pass.
-  const { vendorAuth, vendorProject, autoDeleteOnMerge } = config;
+  const { vendorAuth, vendorProject, autoDeleteOnMerge, terminalBackend } =
+    config;
   const [mergedBranches, setMergedBranches] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const onAutoDeleteRef = useRef(onAutoDelete);
@@ -46,7 +47,12 @@ export function useMergedBranches(
       const { nextWarned } = await sweepMergedBranches({
         provider,
         vcsConfigured,
-        config: { vendorAuth, vendorProject, autoDeleteOnMerge },
+        config: {
+          vendorAuth,
+          vendorProject,
+          autoDeleteOnMerge,
+          terminalBackend,
+        },
         branches,
         warnedRebase: warnedRebaseRef.current,
         // Badges appear as soon as the merged set is known, without
@@ -76,6 +82,7 @@ export function useMergedBranches(
     vendorAuth,
     vendorProject,
     autoDeleteOnMerge,
+    terminalBackend,
     branches,
   ]);
 
