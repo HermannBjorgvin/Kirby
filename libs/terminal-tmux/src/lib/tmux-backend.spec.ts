@@ -11,6 +11,8 @@ const {
   offDataSpy,
   offExitSpy,
   tmuxKillSpy,
+  tmuxHasSessionSpy,
+  tmuxSetOptionSpy,
   MockPtySession,
 } = vi.hoisted(() => {
   const ptySpawnArgs: {
@@ -26,6 +28,8 @@ const {
   const offDataSpy = vi.fn();
   const offExitSpy = vi.fn();
   const tmuxKillSpy = vi.fn();
+  const tmuxHasSessionSpy = vi.fn(() => true);
+  const tmuxSetOptionSpy = vi.fn();
   class MockPtySession {
     pid = 1234;
     cols: number;
@@ -54,6 +58,8 @@ const {
     offDataSpy,
     offExitSpy,
     tmuxKillSpy,
+    tmuxHasSessionSpy,
+    tmuxSetOptionSpy,
     MockPtySession,
   };
 });
@@ -61,6 +67,13 @@ const {
 vi.mock('@kirby/terminal-pty', () => ({ PtySession: MockPtySession }));
 vi.mock('./tmux-cli.js', () => ({
   tmuxKillSession: (name: string) => tmuxKillSpy(name),
+  tmuxHasSession: (name: string) => tmuxHasSessionSpy(name),
+  tmuxSetOption: (name: string, option: string, value: string) =>
+    tmuxSetOptionSpy(name, option, value),
+  // Below 3.2 so the `-e` session-env flags stay off and the exact
+  // argv assertions in this file remain stable. (The -e behavior is
+  // covered by the tmux e2e test against a real tmux.)
+  tmuxVersion: () => 'tmux 3.1',
 }));
 
 import { createTmuxBackendFactory } from './tmux-backend.js';
@@ -88,6 +101,21 @@ describe('createTmuxBackendFactory', () => {
     offDataSpy.mockReset();
     offExitSpy.mockReset();
     tmuxKillSpy.mockReset();
+    tmuxSetOptionSpy.mockReset();
+    tmuxHasSessionSpy.mockReset();
+    tmuxHasSessionSpy.mockReturnValue(true);
+  });
+
+  it('turns the tmux status bar off once the session exists', () => {
+    const factory = createTmuxBackendFactory({
+      sessionPrefix: 'kirby-abc12345-',
+    });
+    factory(spec());
+    expect(tmuxSetOptionSpy).toHaveBeenCalledWith(
+      'kirby-abc12345-feature-foo',
+      'status',
+      'off'
+    );
   });
 
   it('spawns `tmux new-session -A` with the prefixed, sanitized name', () => {
