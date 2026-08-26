@@ -5,10 +5,15 @@ export type ReviewDecision =
   | 'declined';
 export type BuildStatusState = 'succeeded' | 'failed' | 'pending' | 'none';
 
-/** The current user's review verdict on a PR. ADO maps these to votes
- *  10 / 5; GitHub has no "with suggestions" vote so both submit an
- *  approving review. */
-export type ReviewVerdict = 'approve' | 'approve-with-suggestions';
+/** The current user's review verdict on a PR, in ADO's vocabulary
+ *  (votes 10 / 5 / −5 / −10). GitHub has a smaller one: both approve
+ *  variants submit an approving review, and both wait-for-author and
+ *  reject submit a changes-requested review. */
+export type ReviewVerdict =
+  | 'approve'
+  | 'approve-with-suggestions'
+  | 'wait-for-author'
+  | 'reject';
 
 export interface PullRequestReviewer {
   displayName: string;

@@ -1013,7 +1013,13 @@ export const azureDevOpsProvider: VcsProvider = {
   ): Promise<void> {
     const config = toAdoConfig(auth, project);
     const userId = await fetchAuthenticatedUserId(config);
-    const vote: ReviewerVote = verdict === 'approve' ? 10 : 5;
+    const votes: Record<ReviewVerdict, ReviewerVote> = {
+      approve: 10,
+      'approve-with-suggestions': 5,
+      'wait-for-author': -5,
+      reject: -10,
+    };
+    const vote = votes[verdict];
     const url = `${baseUrl(
       config
     )}/pullrequests/${prId}/reviewers/${userId}?api-version=7.1`;

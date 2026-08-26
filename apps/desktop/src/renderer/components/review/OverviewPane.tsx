@@ -1,11 +1,13 @@
 import {
   CheckCircle2Icon,
   CheckIcon,
+  ClockIcon,
   Loader2Icon,
   MessageSquarePlusIcon,
+  XCircleIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
 import { usePrDescription, useSubmitVerdict } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { errorMessage } from '../../lib/utils.js';
@@ -20,20 +22,31 @@ import { CommentMarkdown } from './CommentMarkdown.js';
  * The PR overview: title, meta, full description, and the review
  * verdict actions (Approve / Approve with suggestions).
  */
+const VERDICT_DONE: Record<ReviewVerdict, string> = {
+  approve: 'Approved',
+  'approve-with-suggestions': 'Approved with suggestions',
+  'wait-for-author': 'Marked as waiting for author',
+  reject: 'Changes requested',
+};
+
 export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
   const { repo } = useRepo();
   const description = usePrDescription(repo.cwd, pr.id);
   const verdict = useSubmitVerdict(repo.cwd);
+  // Speak the provider's language: ADO has four votes; GitHub only
+  // knows approve and request-changes, so the negative side collapses
+  // to one red button and "wait for author" doesn't exist.
+  const isGitHub = repo.providerId === 'github';
 
-  const submit = (v: 'approve' | 'approve-with-suggestions') =>
+  const submit = (v: ReviewVerdict) =>
     verdict.mutate(
       { prId: pr.id, verdict: v },
       {
         onSuccess: () =>
           toast.success(
-            v === 'approve' ? 'Approved' : 'Approved with suggestions'
+            isGitHub && v === 'reject' ? 'Changes requested' : VERDICT_DONE[v]
           ),
-        onError: (e) => toast.error(`Approval failed: ${errorMessage(e)}`),
+        onError: (e) => toast.error(`Review vote failed: ${errorMessage(e)}`),
       }
     );
 
@@ -56,12 +69,13 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
           {pr.isDraft && <Badge variant="outline">Draft</Badge>}
         </div>
 
-        <div className="mt-4 flex items-center gap-2 border-y border-border py-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-y border-border py-3">
           <Tip label="Approve this pull request">
             <Button
               size="sm"
               onClick={() => submit('approve')}
               disabled={verdict.isPending}
+              className="bg-success text-white hover:bg-success/90"
             >
               {verdict.isPending ? (
                 <Loader2Icon className="animate-spin" />
@@ -71,14 +85,50 @@ export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
               Approve
             </Button>
           </Tip>
-          <Tip label="Approve, with non-blocking suggestions">
+          <Tip
+            label={
+              isGitHub
+                ? 'Approve with a non-blocking note (GitHub has no separate vote for this)'
+                : 'Approve, with non-blocking suggestions'
+            }
+          >
             <Button
               variant="outline"
               size="sm"
               onClick={() => submit('approve-with-suggestions')}
               disabled={verdict.isPending}
+              className="border-success/60 text-success hover:bg-success/10 hover:text-success"
             >
               <MessageSquarePlusIcon /> Approve with suggestions
+            </Button>
+          </Tip>
+          {!isGitHub && (
+            <Tip label="Block the PR until the author responds">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => submit('wait-for-author')}
+                disabled={verdict.isPending}
+                className="border-warning/60 text-warning hover:bg-warning/10 hover:text-warning"
+              >
+                <ClockIcon /> Wait for author
+              </Button>
+            </Tip>
+          )}
+          <Tip
+            label={
+              isGitHub
+                ? 'Submit a changes-requested review'
+                : 'Reject this pull request'
+            }
+          >
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => submit('reject')}
+              disabled={verdict.isPending}
+            >
+              <XCircleIcon /> {isGitHub ? 'Request changes' : 'Reject'}
             </Button>
           </Tip>
           {(pr.reviewers ?? []).some((r) => r.decision === 'approved') && (

@@ -848,15 +848,25 @@ export const githubProvider: VcsProvider = {
   ): Promise<void> {
     const { owner, repo } = project;
     if (!owner || !repo) throw new Error('GitHub project not configured');
+    // GitHub's review vocabulary is smaller than ADO's votes: both
+    // approve variants are APPROVE, both negative verdicts are
+    // REQUEST_CHANGES (which requires a body).
+    const approving =
+      verdict === 'approve' || verdict === 'approve-with-suggestions';
+    const bodies: Record<ReviewVerdict, string | null> = {
+      approve: null,
+      'approve-with-suggestions': 'Approved with suggestions — see comments.',
+      'wait-for-author': 'Waiting for author — see comments.',
+      reject: 'Requesting changes — see comments.',
+    };
     const args = [
       'api',
       `repos/${owner}/${repo}/pulls/${prId}/reviews`,
       '-f',
-      'event=APPROVE',
+      `event=${approving ? 'APPROVE' : 'REQUEST_CHANGES'}`,
     ];
-    if (verdict === 'approve-with-suggestions') {
-      args.push('-f', 'body=Approved with suggestions — see comments.');
-    }
+    const body = bodies[verdict];
+    if (body) args.push('-f', `body=${body}`);
     await execFile('gh', args);
   },
 };
