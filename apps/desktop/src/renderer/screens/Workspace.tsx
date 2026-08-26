@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Group,
   Panel,
@@ -11,7 +11,12 @@ import type {
   SidebarItem,
 } from '../../host/contract.js';
 import { AttentionRail } from '../components/AttentionRail.js';
-import { itemBranch, itemKey, itemSessionName } from '../lib/sidebar-model.js';
+import {
+  itemBranch,
+  itemKey,
+  itemRunning,
+  itemSessionName,
+} from '../lib/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
 import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
@@ -87,6 +92,24 @@ function WorkspaceInner({
       localStorage.setItem(SIDEBAR_KEY, h ? '0' : '1');
       return !h;
     });
+
+  // Every running agent gets a tab: restores the tabs for tmux
+  // sessions that survived a restart, and surfaces sessions started
+  // elsewhere. Each session is auto-opened at most once, and never
+  // when its tab already exists (so this can't fight manual closes).
+  const autoOpenedRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const item of items) {
+      const name = itemSessionName(item);
+      if (!name || !itemRunning(item)) continue;
+      if (autoOpenedRef.current.has(name)) continue;
+      autoOpenedRef.current.add(name);
+      const id = `item:${itemKey(item)}`;
+      if (!tabs.tabs.some((t) => t.id === id)) {
+        tabs.openItem(itemKey(item), { preview: false });
+      }
+    }
+  }, [items, tabs]);
 
   // A preview tab whose branch has a live agent is active work, not
   // idle browsing: pin it so preview replacement (clicking another

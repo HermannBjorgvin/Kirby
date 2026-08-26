@@ -4,6 +4,7 @@ import {
   getSession,
   killSession as killSessionEntry,
   isSessionAlive,
+  isTmuxSessionPersisted,
   getSpawnedAt,
   noteInput,
   noteResize,
@@ -11,7 +12,11 @@ import {
   snapshot as activitySnapshot,
 } from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
-import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import {
+  branchToSessionName,
+  createWorktree,
+  listWorktrees,
+} from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import type {
   ReviewLaunchRequest,
@@ -224,4 +229,29 @@ export function markSessionSeen(name: string): void {
 
 export function killSession(name: string): void {
   killSessionEntry(name);
+}
+
+/**
+ * Reattach to tmux sessions that survived a previous run (quit
+ * disposes/detaches by design). `new-session -A` attaches without
+ * disturbing the running command, so this restores the registry, the
+ * activity relay and the sidebar's running state. Called after every
+ * repo open.
+ */
+export async function restorePersistedSessions(): Promise<void> {
+  const cwd = requireRepo();
+  const config = readConfig(cwd);
+  if (config.terminalBackend !== 'tmux') return;
+  for (const wt of await listWorktrees()) {
+    if (!wt.branch) continue;
+    const name = branchToSessionName(wt.branch);
+    if (isSessionAlive(name)) continue;
+    if (!isTmuxSessionPersisted(config, name)) continue;
+    try {
+      await launchAgent({ branch: wt.branch, intent: 'continue-or-blank' });
+      console.log(`[desktop] reattached persisted tmux session ${name}`);
+    } catch (err: unknown) {
+      console.warn(`[desktop] failed to reattach ${name}:`, err);
+    }
+  }
 }

@@ -13,6 +13,9 @@ import { createPtyBackendFactory } from '@kirby/terminal-pty';
 import {
   createTmuxBackendFactory,
   isTmuxAvailable,
+  sanitizeTmuxSessionName,
+  tmuxHasSession,
+  tmuxKillSession,
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
@@ -113,4 +116,49 @@ export function applySessionBackend(config: AppConfig): void {
   const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : null;
   const factory = buildSessionBackendFactory(config, repoRoot);
   setSessionBackendFactory(factory);
+}
+
+/** The tmux session name the backend would use for a registry session
+ *  name — the same composition buildSessionBackendFactory bakes into
+ *  its prefix. */
+function tmuxNameFor(sessionName: string, repoRoot: string): string {
+  return sanitizeTmuxSessionName(
+    `kirby-${projectKey(repoRoot)}-${sessionName}`
+  );
+}
+
+/** True when a tmux session for this registry name survived a previous
+ *  run (dispose-on-quit leaves tmux sessions running by design). Used
+ *  to reattach at startup. Never throws; false when tmux/repoRoot is
+ *  out of the picture. */
+export function isTmuxSessionPersisted(
+  config: AppConfig,
+  sessionName: string
+): boolean {
+  if (config.terminalBackend !== 'tmux') return false;
+  if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
+  const root = getRepoRoot();
+  if (!root) return false;
+  try {
+    return tmuxHasSession(tmuxNameFor(sessionName, root));
+  } catch {
+    return false;
+  }
+}
+
+/** Kill the persisted tmux session for a registry name, whether or not
+ *  the registry knows about it — an explicit worktree removal must not
+ *  leave a live tmux session working in a deleted directory. */
+export function killPersistedTmuxSession(
+  config: AppConfig,
+  sessionName: string
+): void {
+  if (config.terminalBackend !== 'tmux') return;
+  const root = getRepoRoot();
+  if (!root) return;
+  try {
+    tmuxKillSession(tmuxNameFor(sessionName, root));
+  } catch {
+    // no server / no session — nothing to kill
+  }
 }

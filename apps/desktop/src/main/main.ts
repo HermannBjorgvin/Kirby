@@ -32,7 +32,10 @@ import {
   stopRemoteSyncLoop,
 } from '../host/services/remote-sync.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
-import { setSessionBroadcaster } from '../host/services/sessions.js';
+import {
+  restorePersistedSessions,
+  setSessionBroadcaster,
+} from '../host/services/sessions.js';
 import { buildMenuTemplate } from './menu.js';
 import { loadTarget, rendererWebPreferences, windowChrome } from './window.js';
 
@@ -268,8 +271,12 @@ setSessionBroadcaster((channel, payload) => {
 
 // Remote sync loop: (re)started whenever a repo is opened; its
 // user-facing events (auto-deleted merged branch, …) toast in the
-// renderer.
-setRepoOpenedListener(startRemoteSyncLoop);
+// renderer. Persisted tmux sessions from a previous run reattach so
+// their agents show as running immediately.
+setRepoOpenedListener((cwd) => {
+  startRemoteSyncLoop(cwd);
+  void restorePersistedSessions();
+});
 setSyncNotifier((notice) => {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(SYNC_EVENTS.notice, notice);

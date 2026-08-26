@@ -9,7 +9,8 @@ import {
   branchToSessionName,
   worktreeSessionName,
 } from '@kirby/worktree-manager';
-import { killSession } from '@kirby/app-core';
+import { killPersistedTmuxSession, killSession } from '@kirby/app-core';
+import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
 
 // All worktree-manager functions resolve paths against process.cwd();
@@ -47,6 +48,13 @@ export async function removeWorktree(
   const wt = (await listWts()).find((w) => w.branch === branch);
   if (wt) killSession(worktreeSessionName(wt));
   killSession(branchToSessionName(branch));
+  // A tmux session may be running for this branch even when the
+  // registry has never seen it (persisted from a previous run and not
+  // reattached). Kill it by name so the worktree is never deleted out
+  // from under a live agent.
+  const config = readConfig(requireRepo());
+  killPersistedTmuxSession(config, branchToSessionName(branch));
+  if (wt) killPersistedTmuxSession(config, worktreeSessionName(wt));
   const removed = await removeWt(branch, { force });
   if (removed) await deleteBranch(branch, true);
   return removed;
