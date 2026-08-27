@@ -147,8 +147,12 @@ function WorkspaceInner({
       const item = byKey.get(tab.itemKey);
       if (!item) continue;
       const branch = itemBranch(item);
+      // Liveness is `running`, not the presence of a session *name*:
+      // every worktree item carries a name whether or not an agent was
+      // ever started, so keying off the name pinned every preview tab
+      // the moment it opened and preview replacement never happened.
       const alive = items.some(
-        (i) => itemBranch(i) === branch && itemSessionName(i) != null
+        (i) => itemBranch(i) === branch && itemRunning(i)
       );
       if (alive) tabs.pin(tab.id);
     }

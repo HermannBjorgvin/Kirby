@@ -40,6 +40,49 @@ export async function armContextMenuChoice(
 }
 
 /**
+ * Click an item in the native application menu by label.
+ *
+ * The desktop puts several commands only on the OS menu (Settings has
+ * no renderer keybinding — Ctrl+, is a menu accelerator), so a
+ * synthesized key event in the page can never reach them. Walking the
+ * real menu also covers the menu.ts → sendMenuCommand → onMenuCommand
+ * round trip that those commands travel.
+ */
+export async function clickAppMenuItem(
+  app: ElectronApplication,
+  label: string
+): Promise<void> {
+  await app.evaluate(({ Menu }, wanted) => {
+    const menu = Menu.getApplicationMenu();
+    if (!menu) throw new Error('No application menu is installed');
+
+    const seen: string[] = [];
+    const find = (
+      items: Electron.MenuItem[]
+    ): Electron.MenuItem | undefined => {
+      for (const item of items) {
+        if (item.label) seen.push(item.label);
+        if (item.label === wanted) return item;
+        const sub = item.submenu?.items;
+        if (sub) {
+          const hit = find(sub);
+          if (hit) return hit;
+        }
+      }
+      return undefined;
+    };
+
+    const item = find(menu.items);
+    if (!item) {
+      throw new Error(
+        `No application menu item "${wanted}". Saw: ${seen.join(', ')}`
+      );
+    }
+    (item as unknown as { click: () => void }).click();
+  }, label);
+}
+
+/**
  * Arm the next `Menu.popup` to dismiss without choosing anything —
  * the equivalent of pressing Escape over an open context menu.
  */
