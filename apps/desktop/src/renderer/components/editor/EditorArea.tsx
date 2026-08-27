@@ -48,10 +48,32 @@ export function EditorArea({
     () => new Map(items.map((i) => [itemKey(i), i])),
     [items]
   );
+  const byBranch = useMemo(
+    () => new Map(items.map((i) => [itemBranch(i), i])),
+    [items]
+  );
+
+  /**
+   * The sidebar item a tab is showing.
+   *
+   * Falls back to the tab's stamped branch when its key doesn't resolve:
+   * an item re-keys the moment a PR appears (`branch:x` → `pr:42`), and
+   * `sync-items` only catches up in an effect — one render happens
+   * first. Looking up by key alone would make that render treat the tab
+   * as itemless, which unmounts the pane and destroys a live agent's
+   * terminal (its scrollback only partly recoverable from the host's
+   * ring buffer) twice over a PR's life.
+   */
+  const itemFor = (tab: Tab): SidebarItem | undefined => {
+    if (tab.kind !== 'item') return undefined;
+    return (
+      byKey.get(tab.itemKey) ??
+      (tab.branch ? byBranch.get(tab.branch) : undefined)
+    );
+  };
 
   const sessionNameFor = (tab: Tab): string | undefined => {
-    if (tab.kind !== 'item') return undefined;
-    const item = byKey.get(tab.itemKey);
+    const item = itemFor(tab);
     if (!item) return undefined;
     const branch = itemBranch(item);
     for (const i of items) {
@@ -94,7 +116,7 @@ export function EditorArea({
             <TabButton
               key={tab.id}
               tab={tab}
-              item={tab.kind === 'item' ? byKey.get(tab.itemKey) : undefined}
+              item={itemFor(tab)}
               active={tab.id === tabs.activeId}
               closer={closer}
               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
@@ -121,7 +143,7 @@ export function EditorArea({
                   <SettingsView />
                 ) : (
                   <ItemView
-                    item={byKey.get(tab.itemKey)}
+                    item={itemFor(tab)}
                     items={items}
                     itemKey={tab.itemKey}
                     active={active}

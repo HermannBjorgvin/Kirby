@@ -205,7 +205,13 @@ export function buildFlatDiff(
         drafts.push(...(d.byAnchor.get(anchor) ?? []));
       };
       if (!onlyLeft && line.newLine != null) take(anchorKey('R', line.newLine));
-      if ((onlyLeft || line.type === 'remove') && line.oldLine != null) {
+      // A context line carries both an old and a new number, and a
+      // LEFT-side comment anchors to the old one. Taking the L anchor
+      // only for removed lines dropped those comments entirely: they
+      // count as anchored (so they never reach the orphan tail) but no
+      // row ever emitted them. Whole-file diffs make most lines
+      // context lines, and GitHub marks real threads LEFT.
+      if ((onlyLeft || line.type !== 'add') && line.oldLine != null) {
         take(anchorKey('L', line.oldLine));
       }
       if (threads.length === 0 && drafts.length === 0) return;

@@ -71,9 +71,15 @@ export function SessionTerminal({
       }
     });
 
+    // The replay must not land after this effect is torn down: React
+    // StrictMode mounts twice in development, so a second replay would
+    // duplicate the whole scrollback, and a pane closing mid-fetch
+    // would write into a disposed terminal.
+    let cancelled = false;
     void window.kirby
       .getSessionBuffer(name)
       .then(({ data, seq }) => {
+        if (cancelled) return;
         if (data) term.write(data);
         snapshotSeq = seq;
         for (const chunk of pending) {
@@ -82,12 +88,14 @@ export function SessionTerminal({
         pending.length = 0;
       })
       .catch(() => {
+        if (cancelled) return;
         snapshotSeq = 0;
         for (const chunk of pending) term.write(chunk.data);
         pending.length = 0;
       });
 
     return () => {
+      cancelled = true;
       offData();
       offExit();
     };

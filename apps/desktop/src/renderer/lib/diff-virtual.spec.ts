@@ -159,3 +159,53 @@ describe('buildFlatDiff', () => {
     expect(flat.indexById.has('r1')).toBe(false);
   });
 });
+
+describe('LEFT-side comments on unchanged lines', () => {
+  const leftThread = (id: string, oldLine: number): RemoteCommentThread =>
+    ({ ...thread(id, oldLine), side: 'LEFT' } as RemoteCommentThread);
+
+  it('renders a LEFT thread anchored to a context line', () => {
+    const { rows, indexById } = buildFlatDiff(
+      [['a.ts', smallFile]],
+      options({
+        threadsByFile: new Map([['a.ts', [leftThread('t-left', 2)]]]),
+      })
+    );
+    const commentRows = rows.filter((r) => r.kind === 'comments');
+    expect(
+      commentRows.some(
+        (r) => r.kind === 'comments' && r.threads.some((t) => t.id === 't-left')
+      )
+    ).toBe(true);
+    // Reachable by comment navigation, not just visible.
+    expect(indexById.has('t-left')).toBe(true);
+  });
+
+  it('renders it in split view too', () => {
+    const { rows } = buildFlatDiff(
+      [['a.ts', smallFile]],
+      options({
+        view: 'split',
+        threadsByFile: new Map([['a.ts', [leftThread('t-left', 2)]]]),
+      })
+    );
+    expect(
+      rows.some(
+        (r) => r.kind === 'comments' && r.threads.some((t) => t.id === 't-left')
+      )
+    ).toBe(true);
+  });
+
+  it('does not emit it twice', () => {
+    const { rows } = buildFlatDiff(
+      [['a.ts', smallFile]],
+      options({
+        threadsByFile: new Map([['a.ts', [leftThread('t-left', 2)]]]),
+      })
+    );
+    const hits = rows.filter(
+      (r) => r.kind === 'comments' && r.threads.some((t) => t.id === 't-left')
+    );
+    expect(hits).toHaveLength(1);
+  });
+});

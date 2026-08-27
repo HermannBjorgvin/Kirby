@@ -27,6 +27,49 @@ function getGhToken(): Promise<string | null> {
   return ghToken;
 }
 
+/**
+ * Read the body, refusing anything over MAX_BYTES *as it arrives*.
+ *
+ * Buffering first and checking the length afterwards means a comment
+ * can point at an arbitrarily large (or endless, chunked) response and
+ * the main process holds all of it — and an OOM there takes the window
+ * and every live agent PTY with it. Falls back to a plain read only
+ * when the runtime gives no stream.
+ */
+async function readCapped(res: Response): Promise<Uint8Array> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BYTES) {
+    throw new Error(`image too large (${declared} bytes)`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length > MAX_BYTES) {
+      throw new Error(`image too large (${bytes.length} bytes)`);
+    }
+    return bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_BYTES) {
+      await reader.cancel();
+      throw new Error(`image too large (over ${MAX_BYTES} bytes)`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
+
 function isGitHubHost(host: string): boolean {
   return (
     host === 'github.com' ||
@@ -100,10 +143,7 @@ async function download(url: string): Promise<CommentImagePayload | null> {
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.length > MAX_BYTES) {
-    throw new Error(`image too large (${bytes.length} bytes)`);
-  }
+  const bytes = await readCapped(res);
   const contentType = sniffContentType(bytes, res.headers.get('content-type'));
   if (!contentType.startsWith('image/')) {
     throw new Error(`not an image (${contentType})`);
