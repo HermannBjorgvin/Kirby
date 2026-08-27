@@ -57,8 +57,11 @@ test.describe('Tmux backend (e2e)', () => {
     branches = [];
   });
 
-  test.afterEach(() => {
-    cleanupTmuxSessions(branches);
+  // Requests `kirby` so the reap runs against the test's own tmux socket
+  // (TMUX_TMPDIR=homeDir). afterEach runs before fixture teardown, so the
+  // temp home — and the socket inside it — still exists here.
+  test.afterEach(({ kirby }) => {
+    cleanupTmuxSessions(branches, kirby.homeDir);
   });
 
   test('starting an agent creates a real tmux session and streams its output', async ({
@@ -77,7 +80,7 @@ test.describe('Tmux backend (e2e)', () => {
     ).toBeVisible({ timeout: 20_000 });
 
     await expect
-      .poll(() => kirbySessionExists(branch), {
+      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
@@ -99,7 +102,7 @@ test.describe('Tmux backend (e2e)', () => {
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
     await expect
-      .poll(() => kirbySessionExists(branch), {
+      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
@@ -113,7 +116,11 @@ test.describe('Tmux backend (e2e)', () => {
     // Ctrl+Space can be dropped before Ink's sidebar useInput is active,
     // and a longer wait can't recover a key that never arrived. Safe to
     // repeat — killSession no-ops once the registry entry is gone.
-    await pressUntil(kirby.term, 'K', () => !kirbySessionExists(branch));
+    await pressUntil(
+      kirby.term,
+      'K',
+      () => !kirbySessionExists(branch, kirby.homeDir)
+    );
   });
 
   // The feature's whole reason to exist: quitting Kirby must leave the
@@ -133,7 +140,7 @@ test.describe('Tmux backend (e2e)', () => {
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
     await expect
-      .poll(() => kirbySessionExists(branch), {
+      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
@@ -151,7 +158,7 @@ test.describe('Tmux backend (e2e)', () => {
     );
 
     // Kirby is gone; the agent's tmux session is not.
-    expect(kirbySessionExists(branch)).toBe(true);
+    expect(kirbySessionExists(branch, kirby.homeDir)).toBe(true);
   });
 
   test('Settings reports the active backend as Tmux', async ({ kirby }) => {
