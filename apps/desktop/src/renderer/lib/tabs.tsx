@@ -16,15 +16,31 @@ import {
  *   • `settings` is a singleton tab.
  */
 export type Tab =
-  | { id: string; kind: 'item'; itemKey: string; preview: boolean }
+  | {
+      id: string;
+      kind: 'item';
+      itemKey: string;
+      preview: boolean;
+      /** Last-known git branch, stamped by `sync-items`. The stable
+       *  identity a tab falls back on when its itemKey goes stale —
+       *  a worktree's key changes from `branch:x` to `pr:n` the moment
+       *  a PR appears (and back when it closes). */
+      branch?: string;
+    }
   | { id: 'settings'; kind: 'settings'; preview: false };
 
-interface TabsState {
+/** One sidebar item as the tab model needs it: its current key and branch. */
+export interface ItemEntry {
+  itemKey: string;
+  branch: string;
+}
+
+export interface TabsState {
   tabs: Tab[];
   activeId: string | null;
 }
 
-type Action =
+export type TabsAction =
   | { type: 'open-item'; itemKey: string; preview: boolean }
   | { type: 'open-settings' }
   | { type: 'pin'; id: string }
@@ -32,7 +48,8 @@ type Action =
   | { type: 'close'; id: string }
   | { type: 'close-others'; id: string }
   | { type: 'close-all' }
-  | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' };
+  | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
+  | { type: 'sync-items'; entries: ItemEntry[] };
 
 function pinTab(tabs: Tab[], id: string): Tab[] {
   return tabs.map((t): Tab => {
@@ -41,14 +58,21 @@ function pinTab(tabs: Tab[], id: string): Tab[] {
   });
 }
 
-function reduce(state: TabsState, action: Action): TabsState {
+export function reduce(state: TabsState, action: TabsAction): TabsState {
   switch (action.type) {
     case 'open-item': {
       const id = `item:${action.itemKey}`;
-      const existing = state.tabs.find((t) => t.id === id);
+      // Match by itemKey, not id: a re-keyed tab (see `sync-items`)
+      // keeps its original id, and opening its item again must find it
+      // rather than spawn a duplicate.
+      const existing = state.tabs.find(
+        (t) => t.kind === 'item' && t.itemKey === action.itemKey
+      );
       if (existing) {
-        const tabs = action.preview ? state.tabs : pinTab(state.tabs, id);
-        return { tabs, activeId: id };
+        const tabs = action.preview
+          ? state.tabs
+          : pinTab(state.tabs, existing.id);
+        return { tabs, activeId: existing.id };
       }
       const next: Tab = {
         id,
@@ -111,6 +135,74 @@ function reduce(state: TabsState, action: Action): TabsState {
       tabs.splice(action.side === 'after' ? at + 1 : at, 0, moved);
       return { ...state, tabs };
     }
+    case 'sync-items': {
+      // Reconcile open tabs with the current sidebar items. An item's
+      // key changes identity over its life (worktree `branch:x` grows a
+      // PR and becomes `pr:n`; a closed PR reverts) — follow it by
+      // branch so the tab never strands on a key no item carries.
+      const branchOf = new Map<string, string>();
+      const keys = new Set<string>();
+      for (const e of action.entries) {
+        keys.add(e.itemKey);
+        // On a branch collision prefer the PR-bearing key — it is the
+        // newer identity (the sidebar keys any PR-bearing item by PR).
+        const prev = branchOf.get(e.branch);
+        if (
+          !prev ||
+          (prev.startsWith('branch:') && e.itemKey.startsWith('pr:'))
+        )
+          branchOf.set(e.branch, e.itemKey);
+      }
+      const entryBranch = new Map(
+        action.entries.map((e) => [e.itemKey, e.branch])
+      );
+      let changed = false;
+      const remapped = state.tabs.map((t): Tab => {
+        if (t.kind !== 'item') return t;
+        if (keys.has(t.itemKey)) {
+          const branch = entryBranch.get(t.itemKey);
+          if (branch && t.branch !== branch) {
+            changed = true;
+            return { ...t, branch };
+          }
+          return t;
+        }
+        // Stale key. `branch:`-shaped keys carry their branch; older
+        // tabs may have a stamped one from a previous sync.
+        const branch =
+          t.branch ??
+          (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
+        const nextKey = branch ? branchOf.get(branch) : undefined;
+        if (!nextKey || nextKey === t.itemKey) return t;
+        changed = true;
+        return { ...t, itemKey: nextKey, branch };
+      });
+      if (!changed) return state;
+      // Re-keying can collide with a tab already open on the new key
+      // (the user opened the PR by hand while the worktree tab was
+      // stranded). Keep the leftmost, let the survivor inherit pinned
+      // state, and follow the active tab to the survivor.
+      const seen = new Map<string, Tab>();
+      const tabs: Tab[] = [];
+      let activeId = state.activeId;
+      for (const t of remapped) {
+        const key = t.kind === 'item' ? t.itemKey : t.id;
+        const survivor = seen.get(key);
+        if (!survivor) {
+          seen.set(key, t);
+          tabs.push(t);
+          continue;
+        }
+        if (survivor.kind === 'item' && !t.preview && survivor.preview) {
+          const idx = tabs.indexOf(survivor);
+          const pinned: Tab = { ...survivor, preview: false };
+          tabs[idx] = pinned;
+          seen.set(key, pinned);
+        }
+        if (activeId === t.id) activeId = survivor.id;
+      }
+      return { tabs, activeId };
+    }
   }
 }
 
@@ -127,6 +219,8 @@ interface TabsApi extends TabsState {
   cycle: (delta: 1 | -1) => void;
   /** Drag-reorder: place `id` before/after `targetId`. */
   moveTab: (id: string, targetId: string, side: 'before' | 'after') => void;
+  /** Reconcile tab keys/branches with the current sidebar items. */
+  syncItems: (entries: ItemEntry[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -175,6 +269,10 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'move', id, targetId, side }),
     []
   );
+  const syncItems = useCallback(
+    (entries: ItemEntry[]) => dispatch({ type: 'sync-items', entries }),
+    []
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -189,6 +287,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeActive,
       cycle,
       moveTab,
+      syncItems,
     }),
     [
       state,
@@ -202,6 +301,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeActive,
       cycle,
       moveTab,
+      syncItems,
     ]
   );
 

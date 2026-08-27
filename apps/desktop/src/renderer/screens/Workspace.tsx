@@ -93,6 +93,15 @@ function WorkspaceInner({
       return !h;
     });
 
+  // Keep tab identity in step with the sidebar: an item's key changes
+  // when a worktree grows a PR (branch:x → pr:n) or a PR closes, and
+  // the open tab must follow instead of stranding on the old key.
+  useEffect(() => {
+    tabs.syncItems(
+      items.map((i) => ({ itemKey: itemKey(i), branch: itemBranch(i) }))
+    );
+  }, [tabs, items]);
+
   // Every running agent gets a tab: restores the tabs for tmux
   // sessions that survived a restart, and surfaces sessions started
   // elsewhere. Each session is auto-opened at most once, and never
