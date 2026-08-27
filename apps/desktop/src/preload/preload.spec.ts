@@ -77,13 +77,11 @@ describe('preload bridge', () => {
 
   it('forwards arguments untouched, in order, after the channel', () => {
     invoked.length = 0;
-    void api.updateSettingsField('vendorAuth.github.pat', 'secret');
+    const ref = { label: 'Personal Access Token', key: 'pat' };
+    void api.updateSettingsField(ref, 'secret');
     void api.resizeSession('branch-a', 120, 40);
     expect(invoked).toEqual([
-      {
-        channel: IPC.updateSettingsField,
-        args: ['vendorAuth.github.pat', 'secret'],
-      },
+      { channel: IPC.updateSettingsField, args: [ref, 'secret'] },
       { channel: IPC.resizeSession, args: ['branch-a', 120, 40] },
     ]);
   });

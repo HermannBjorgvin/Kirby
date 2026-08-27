@@ -6,6 +6,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -43,6 +44,13 @@ export function fakeAgent(
 export interface DesktopOptions {
   /** Written to $HOME/.kirby/config.json before launch. */
   kirbyConfig?: Record<string, unknown>;
+  /**
+   * Per-project config (vendor, org, repo…), written to the cwd-hashed
+   * path the config store reads it from. Needed for anything gated on a
+   * configured provider — the settings page only lists a provider's
+   * auth fields once one is selected.
+   */
+  projectConfig?: Record<string, unknown>;
   /** Written to $HOME/.kirby/desktop-prefs.json before launch. */
   desktopPrefs?: Record<string, unknown>;
   /** Seed options for the per-test git repo. */
@@ -67,12 +75,13 @@ export interface DesktopApp {
 
 export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   kirbyConfig: [undefined, { option: true }],
+  projectConfig: [undefined, { option: true }],
   desktopPrefs: [undefined, { option: true }],
   repo: [undefined, { option: true }],
   startWithoutRepo: [false, { option: true }],
 
   desktop: async (
-    { kirbyConfig, desktopPrefs, repo, startWithoutRepo },
+    { kirbyConfig, projectConfig, desktopPrefs, repo, startWithoutRepo },
     use,
     testInfo
   ) => {
@@ -84,6 +93,21 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       JSON.stringify({ aiCommand: fakeAgent(), ...kirbyConfig }, null, 2),
       'utf8'
     );
+    if (projectConfig) {
+      // Per-project config lives under a hash of the repo path — see
+      // projectKey() in @kirby/vcs-core's config store.
+      const key = createHash('sha256')
+        .update(repoPath)
+        .digest('hex')
+        .slice(0, 16);
+      const dir = join(homeDir, '.kirby', 'projects', key);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'config.json'),
+        JSON.stringify(projectConfig, null, 2),
+        'utf8'
+      );
+    }
     if (desktopPrefs) {
       writeFileSync(
         join(homeDir, '.kirby', 'desktop-prefs.json'),

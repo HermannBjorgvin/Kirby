@@ -22,6 +22,21 @@ interface KirbyBridge {
   getSessionActivity(): Promise<
     Record<string, { active: boolean; flashing: boolean }>
   >;
+  getSettingsView(): Promise<
+    {
+      label: string;
+      key: string;
+      value: string;
+      masked?: boolean;
+      group: string;
+      kind: 'boolean' | 'select' | 'text';
+      disabled?: string;
+    }[]
+  >;
+  updateSettingsField(
+    ref: { label: string; key: string },
+    value: string
+  ): Promise<void>;
 }
 
 interface Window {

@@ -76,8 +76,12 @@ test.describe('Editor tabs', () => {
     await tab(page, /beta/).click({ button: 'right' });
 
     await expect(tabs(page)).toHaveCount(0);
-    // …and stays empty: nothing re-opens a tab the user closed.
-    await page.waitForTimeout(2_000);
+
+    // …and stays empty through a sidebar refresh. The effect that opens
+    // a tab per running agent reacts to the sidebar model, so a refetch
+    // is when a closed tab would come back if that effect ever stopped
+    // respecting manual closes.
+    await page.locator('aside').getByLabel('Refresh').click();
     await expect(tabs(page)).toHaveCount(0);
   });
 
