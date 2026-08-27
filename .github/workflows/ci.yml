@@ -30,6 +30,11 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      # desktop-e2e drives the real Electron app, which has no headless
+      # mode of its own and needs an X server on the runner.
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - uses: nrwl/nx-set-shas@v4
 
       - run: npx nx affected -t lint test build typecheck e2e
@@ -39,6 +44,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-test-output
-          path: apps/cli-e2e/test-output
+          path: |
+            apps/cli-e2e/test-output
+            apps/desktop-e2e/test-output
           if-no-files-found: ignore
           retention-days: 7

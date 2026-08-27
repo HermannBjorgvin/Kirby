@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+//
+// fake-agent.mjs — scriptable stand-in for an AI agent, spawned through
+// the desktop's normal `aiCommand` path.
+//
+// The desktop only needs two shapes of agent, so this is deliberately
+// smaller than the CLI suite's harness (apps/cli-e2e/src/fixtures):
+//
+//   idle    — prints a banner, then sits at a prompt forever. Session is
+//             alive but `active` is false, so closing its tab must kill
+//             it without a confirmation.
+//   working — never stops producing output, which keeps the activity
+//             registry's `active` flag set and makes the close
+//             confirmation appear.
+//
+// Flags:
+//   --banner=<str>       first line (default "kirby-fake-agent-ready")
+//   --stream             emit a line every --interval-ms, forever
+//   --interval-ms=<n>    stream interval (default 150)
+//   --exit-after-ms=<n>  self-exit after N ms (default never)
+
+const args = Object.fromEntries(
+  process.argv
+    .slice(2)
+    .filter((a) => a.startsWith('--'))
+    .map((a) => {
+      const eq = a.indexOf('=');
+      return eq === -1 ? [a.slice(2), true] : [a.slice(2, eq), a.slice(eq + 1)];
+    })
+);
+
+const banner = args.banner ?? 'kirby-fake-agent-ready';
+const intervalMs = parseInt(args['interval-ms'] ?? '150', 10);
+const exitAfterMs = args['exit-after-ms']
+  ? parseInt(args['exit-after-ms'], 10)
+  : null;
+
+process.stdout.write(banner + '\r\n');
+
+const timers = new Set();
+const shutdown = () => {
+  for (const t of timers) clearInterval(t);
+  process.exit(0);
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+process.on('SIGHUP', shutdown);
+
+if (args.stream) {
+  let n = 0;
+  timers.add(
+    setInterval(() => {
+      n += 1;
+      process.stdout.write(`working ${n}\r\n`);
+    }, intervalMs)
+  );
+} else {
+  // Keep the PTY open without producing output — a real agent waiting
+  // at its prompt. Node would otherwise exit on an empty event loop.
+  timers.add(setInterval(() => undefined, 60_000));
+}
+
+if (exitAfterMs != null) setTimeout(shutdown, exitAfterMs);

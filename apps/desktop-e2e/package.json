@@ -1,0 +1,45 @@
+{
+  "name": "@kirby/desktop-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "nx": {
+    "name": "desktop-e2e",
+    "tags": [
+      "type:app",
+      "scope:desktop-e2e"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
+        ],
+        "inputs": [
+          "default",
+          "^production",
+          {
+            "externalDependencies": [
+              "@playwright/test",
+              "electron"
+            ]
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/test-output/playwright/output",
+          "{projectRoot}/test-output/playwright/report"
+        ],
+        "options": {
+          "command": "node run-e2e.mjs",
+          "cwd": "apps/desktop-e2e"
+        }
+      }
+    }
+  }
+}
