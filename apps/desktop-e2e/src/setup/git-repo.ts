@@ -20,9 +20,26 @@ function git(cwd: string, args: string[]): string {
   });
 }
 
+export interface TestRepoWorktree {
+  branch: string;
+  /** Files to write and commit inside the worktree, path → contents. */
+  files?: Record<string, string>;
+}
+
 export interface TestRepoOptions {
   /** Extra branches to create off the initial commit. */
   branches?: string[];
+  /**
+   * Worktrees to create before the app launches, in the same location
+   * the app uses.
+   *
+   * Seeding a worktree's commits up front (rather than committing into
+   * it mid-test) is what makes diff assertions deterministic: the
+   * renderer caches a fetched diff for 60s, so a commit made after the
+   * pane has already rendered would not show up inside a test's
+   * lifetime.
+   */
+  worktrees?: TestRepoWorktree[];
 }
 
 export function createTestRepo(opts: TestRepoOptions = {}): string {
@@ -39,26 +56,19 @@ export function createTestRepo(opts: TestRepoOptions = {}): string {
   for (const branch of opts.branches ?? []) {
     git(dir, ['branch', branch]);
   }
-  return dir;
-}
 
-/** Commit a file on `branch`, creating the branch if needed. */
-export function commitOnBranch(
-  repo: string,
-  branch: string,
-  file: string,
-  contents: string
-): void {
-  const current = git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
-  const exists = git(repo, ['branch', '--list', branch]).trim().length > 0;
-  git(
-    repo,
-    exists ? ['checkout', '-q', branch] : ['checkout', '-q', '-b', branch]
-  );
-  writeFileSync(join(repo, file), contents, 'utf8');
-  git(repo, ['add', file]);
-  git(repo, ['commit', '-q', '-m', `edit ${file}`]);
-  git(repo, ['checkout', '-q', current]);
+  for (const wt of opts.worktrees ?? []) {
+    const path = join(dir, '.claude', 'worktrees', wt.branch);
+    git(dir, ['worktree', 'add', '-q', path, '-b', wt.branch]);
+    const files = Object.entries(wt.files ?? {});
+    if (files.length === 0) continue;
+    for (const [name, contents] of files) {
+      writeFileSync(join(path, name), contents, 'utf8');
+      git(path, ['add', name]);
+    }
+    git(path, ['commit', '-q', '-m', `seed ${wt.branch}`]);
+  }
+  return dir;
 }
 
 export function cleanupTestRepo(dir: string): void {
