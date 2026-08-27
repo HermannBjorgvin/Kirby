@@ -24,7 +24,12 @@ import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { useQueryClient } from '@tanstack/react-query';
-import { keys, useRefreshRemote, useSidebarModel } from '../lib/queries.js';
+import {
+  keys,
+  useRefreshRemote,
+  useRemovingBranches,
+  useSidebarModel,
+} from '../lib/queries.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs } from '../lib/tabs.js';
 import { useCloseTabs } from '../lib/use-close-tabs.js';
@@ -79,7 +84,19 @@ function WorkspaceInner({
   const tabs = useTabs();
   const model = useSidebarModel(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
-  const items: SidebarItem[] = useMemo(() => model.data ?? [], [model.data]);
+  // Worktrees being removed drop out of the model right away — every
+  // consumer below (sidebar, tabs, attention rail) derives from this one
+  // list, so the whole window reacts on confirm rather than on the git
+  // round-trip. Only the worktree row is hidden: a PR-backed one leaves
+  // an orphan-PR row behind, which the refetch brings in.
+  const removing = useRemovingBranches();
+  const items: SidebarItem[] = useMemo(() => {
+    const all = model.data ?? [];
+    if (removing.size === 0) return all;
+    return all.filter(
+      (i) => i.kind !== 'session' || !removing.has(itemBranch(i))
+    );
+  }, [model.data, removing]);
   const closer = useCloseTabs(items);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);

@@ -1,9 +1,13 @@
+import { useMemo } from 'react';
 import {
   QueryClient,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { errorMessage } from './utils.js';
 import type { ReviewDecision } from '@kirby/vcs-core/types';
 import type {
   PostDraftsRequest,
@@ -264,16 +268,49 @@ export function useCreateWorktree(cwd: string) {
   });
 }
 
+/** Mutation key for worktree removal, so `useRemovingBranches` can see
+ *  which removals are in flight. */
+const REMOVE_WORKTREE_KEY = ['remove-worktree'] as const;
+
 export function useRemoveWorktree(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
+    mutationKey: REMOVE_WORKTREE_KEY,
     mutationFn: ({ branch, force }: { branch: string; force: boolean }) =>
       window.kirby.removeWorktree(branch, force),
-    onSuccess: () => {
+    // Reported here rather than through `mutate`'s own callbacks: the
+    // confirm dialog closes as soon as it fires, and per-call callbacks
+    // are dropped when their component unmounts. Mutation-level ones run
+    // either way, so the outcome is never swallowed.
+    onSuccess: (_r, { branch }) => toast.success(`Removed worktree ${branch}`),
+    onError: (err) => toast.error(errorMessage(err)),
+    onSettled: () => {
       void inv.sidebar();
       void inv.branches();
     },
   });
+}
+
+/**
+ * Branches whose worktree removal is in flight. The sidebar hides their
+ * rows so the list reacts the moment the user confirms, instead of after
+ * the kill-session + git round-trip.
+ *
+ * Derived from mutation state rather than patched into the query cache:
+ * the sidebar re-polls every few seconds, and a poll landing mid-removal
+ * would put the row straight back. This filter also needs no rollback —
+ * a failed removal stops being pending, so its row simply returns.
+ */
+export function useRemovingBranches(): Set<string> {
+  const pending = useMutationState({
+    filters: { mutationKey: REMOVE_WORKTREE_KEY, status: 'pending' },
+    select: (m) =>
+      (m.state.variables as { branch: string } | undefined)?.branch,
+  });
+  return useMemo(
+    () => new Set(pending.filter((b): b is string => Boolean(b))),
+    [pending]
+  );
 }
 
 export function useLaunchAgent(cwd: string) {

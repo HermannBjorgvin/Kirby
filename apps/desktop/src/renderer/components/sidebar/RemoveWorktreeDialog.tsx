@@ -1,6 +1,5 @@
 import { AlertTriangleIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import { useRepo } from '../../lib/repo-context.js';
 import { useRemoveWorktree } from '../../lib/queries.js';
 import { errorMessage } from '../../lib/utils.js';
@@ -62,18 +61,15 @@ export function RemoveWorktreeDialog({
     (safety.reason === 'uncommitted changes' ||
       safety.reason === 'not pushed to upstream');
 
+  // Optimistic: the tab and this dialog close on confirm, and the
+  // sidebar row hides itself for as long as the mutation is pending
+  // (useRemovingBranches). Removal virtually always succeeds; if it
+  // doesn't, the row reappears by itself and the error is toasted from
+  // the mutation, which outlives this component.
   const doRemove = (force: boolean) => {
-    remove.mutate(
-      { branch, force },
-      {
-        onSuccess: () => {
-          toast.success(`Removed worktree ${branch}`);
-          tabs.close(`item:${itemKey}`);
-          onClose();
-        },
-        onError: (err) => toast.error(errorMessage(err)),
-      }
-    );
+    tabs.close(`item:${itemKey}`);
+    onClose();
+    remove.mutate({ branch, force });
   };
 
   return (
@@ -102,24 +98,20 @@ export function RemoveWorktreeDialog({
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={remove.isPending}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
           {safety?.safe !== false ? (
             <Button
               variant="destructive"
-              disabled={!safety || remove.isPending}
+              disabled={!safety}
               onClick={() => doRemove(false)}
             >
-              {remove.isPending ? 'Removing…' : 'Remove'}
+              Remove
             </Button>
           ) : overridable ? (
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() => doRemove(true)}
-            >
-              {remove.isPending ? 'Removing…' : 'Force remove'}
+            <Button variant="destructive" onClick={() => doRemove(true)}>
+              Force remove
             </Button>
           ) : null}
         </DialogFooter>
