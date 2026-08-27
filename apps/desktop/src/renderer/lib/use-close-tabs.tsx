@@ -49,10 +49,18 @@ export function useCloseTabs(items: SidebarItem[]): {
   const collectSessions = useCallback(
     (closing: Tab[]): { name: string; branch: string }[] => {
       const byKey = new Map(items.map((i) => [itemKey(i), i]));
+      const byBranch = new Map(items.map((i) => [itemBranch(i), i]));
       const found = new Map<string, string>();
       for (const tab of closing) {
         if (tab.kind !== 'item') continue;
-        const item = byKey.get(tab.itemKey);
+        // Fall back to the tab's stamped branch when its key doesn't
+        // resolve (an item re-keys when a PR appears on its branch).
+        // Missing the item here would close the tab without killing or
+        // asking about its agent, stranding a session with no tab left
+        // to reattach from.
+        const item =
+          byKey.get(tab.itemKey) ??
+          (tab.branch ? byBranch.get(tab.branch) : undefined);
         if (!item) continue;
         const branch = itemBranch(item);
         for (const i of items) {
