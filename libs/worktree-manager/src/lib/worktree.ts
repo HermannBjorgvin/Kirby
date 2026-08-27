@@ -106,6 +106,36 @@ export interface WorktreeInfo {
   state?: 'rebasing';
 }
 
+/**
+ * Characters that are legal in a git ref but dangerous once a ref is
+ * interpolated into a shell command string.
+ *
+ * `git check-ref-format` rejects spaces, control characters, `~^:?*[`
+ * and backslash — but it permits `` ` ``, `$`, quotes, `;`, `&`, `|`
+ * and parentheses, all of which the shell acts on. Branch names are not
+ * always ours: they arrive from `git branch` output and, for review
+ * work, from whoever opened the pull request.
+ *
+ * The commands below still build shell strings (see the note on
+ * {@link assertShellSafeRef}), so every ref is screened here first.
+ */
+const SHELL_UNSAFE_IN_REF = /[`$"'\\;&|<>()\n\r]/;
+
+/**
+ * Throw unless `ref` is safe to interpolate into a shell command.
+ *
+ * This is a guard, not the real fix: the commands in this module should
+ * pass arguments as argv via `execFile` instead of composing strings,
+ * which would make quoting irrelevant. That migration touches every
+ * call site and its tests, so until then nothing reaches the shell
+ * without passing through here.
+ */
+export function assertShellSafeRef(ref: string, what = 'branch'): void {
+  if (SHELL_UNSAFE_IN_REF.test(ref)) {
+    throw new Error(`Refusing to use an unsafe ${what} name: ${ref}`);
+  }
+}
+
 /** Convert a git branch name to a safe session identifier (replace / with -) */
 export function branchToSessionName(branch: string): string {
   return branch.replace(/\//g, '-');
@@ -158,6 +188,7 @@ async function worktreePathForBranch(branch: string): Promise<string | null> {
  * Returns the worktree path on success, null on failure.
  */
 export async function createWorktree(branch: string): Promise<string | null> {
+  assertShellSafeRef(branch);
   const relativeDir = worktreeDir(branch);
   const absoluteDir = resolve(process.cwd(), relativeDir);
 
@@ -205,9 +236,11 @@ export async function removeWorktree(
   branch: string,
   { force = false }: { force?: boolean } = {}
 ): Promise<boolean> {
+  assertShellSafeRef(branch);
   // Prefer the worktree's real path from git; fall back to the
   // resolver-derived dir only if git doesn't know the branch.
   const target = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
+  assertShellSafeRef(target, 'worktree path');
   try {
     const forceFlag = force ? ' --force' : '';
     await exec(`git worktree remove${forceFlag} "${target}"`, {
@@ -233,6 +266,7 @@ export async function canRemoveBranch(
   branch: string,
   confirmedMerged = false
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
+  assertShellSafeRef(branch);
   // Protected branch guard
   if (
     branch === 'main' ||
@@ -492,6 +526,7 @@ export async function fastForwardMainBranch(): Promise<boolean> {
  * Returns 0 if no conflicts.
  */
 export async function countConflicts(branch: string): Promise<number> {
+  assertShellSafeRef(branch);
   const main = await getMainBranch();
   try {
     await exec(`git merge-tree --write-tree origin/${main} "${branch}"`, {
@@ -515,6 +550,7 @@ export async function deleteBranch(
   branch: string,
   force = false
 ): Promise<boolean> {
+  assertShellSafeRef(branch);
   const flag = force ? '-D' : '-d';
   try {
     await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
@@ -532,6 +568,7 @@ export async function deleteBranch(
 export async function rebaseOntoMaster(
   worktreePath: string
 ): Promise<'success' | 'conflict' | 'error'> {
+  assertShellSafeRef(worktreePath, 'worktree path');
   const main = await getMainBranch();
   try {
     await exec(`git -C "${worktreePath}" fetch origin ${main}`, {

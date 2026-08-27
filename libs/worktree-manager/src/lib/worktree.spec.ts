@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve as pathResolve } from 'node:path';
 import {
+  assertShellSafeRef,
   createWorktree,
   removeWorktree,
   deleteBranch,
@@ -58,7 +59,9 @@ function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
   const cwd = process.cwd();
   const blocks = entries.map(({ branch, dir }) =>
     [
-      `worktree ${cwd}/${dir ?? `.claude/worktrees/${branchToSessionName(branch)}`}`,
+      `worktree ${cwd}/${
+        dir ?? `.claude/worktrees/${branchToSessionName(branch)}`
+      }`,
       'HEAD abc123',
       `branch refs/heads/${branch}`,
       '',
@@ -175,9 +178,7 @@ describe('removeWorktree', () => {
         // Only the real on-disk path can be removed; the branch-derived
         // path does not exist and git errors out.
         if (command.includes(realDir)) return Promise.resolve(resolve());
-        return Promise.reject(
-          new Error("fatal: '...' is not a working tree")
-        );
+        return Promise.reject(new Error("fatal: '...' is not a working tree"));
       }
       return Promise.resolve(resolve());
     });
@@ -222,9 +223,7 @@ describe('removeWorktree', () => {
       }
       if (command.startsWith('git worktree remove')) {
         if (command.includes(realDir)) return Promise.resolve(resolve());
-        return Promise.reject(
-          new Error("fatal: '...' is not a working tree")
-        );
+        return Promise.reject(new Error("fatal: '...' is not a working tree"));
       }
       return Promise.resolve(resolve());
     });
@@ -1107,5 +1106,52 @@ describe('WorktreeResolver', () => {
       expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
       expect(resolver.owns(`${base}-old/stale`)).toBe(false);
     });
+  });
+});
+
+describe('shell-safety guard for refs', () => {
+  it('accepts ordinary branch names', () => {
+    for (const ok of [
+      'main',
+      'feature/add-thing',
+      'release-1.2.3',
+      'user.name/fix_bug',
+      'ünicode-brañch',
+    ]) {
+      expect(() => assertShellSafeRef(ok)).not.toThrow();
+    }
+  });
+
+  // git check-ref-format permits all of these, but the shell acts on
+  // them once a ref is interpolated into a command string.
+  it('rejects refs carrying shell metacharacters', () => {
+    for (const bad of [
+      'evil`id`',
+      'evil$(id)',
+      'evil$HOME',
+      'evil"; id; "',
+      "evil'x",
+      'a&&b',
+      'a|b',
+      'a;b',
+      'a>b',
+      'a\nb',
+    ]) {
+      expect(() => assertShellSafeRef(bad)).toThrow(/unsafe branch name/);
+    }
+  });
+
+  it('names what it rejected', () => {
+    expect(() => assertShellSafeRef('/tmp/x`id`', 'worktree path')).toThrow(
+      /unsafe worktree path name/
+    );
+  });
+
+  it('is enforced by the operations that shell out', async () => {
+    await expect(createWorktree('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(deleteBranch('evil`id`', true)).rejects.toThrow(/unsafe/);
+    await expect(countConflicts('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(canRemoveBranch('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(removeWorktree('evil`id`')).rejects.toThrow(/unsafe/);
   });
 });
