@@ -394,6 +394,7 @@ export function PrWorkspace({
                       drafts={drafts}
                       filesByName={filesByName}
                       fileOrder={fileOrder}
+                      active={active}
                       onExit={() => setMode('diff')}
                       onOpenInDiff={(file) => jumpToFile(file)}
                     />

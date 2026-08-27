@@ -87,6 +87,11 @@ export function startRemoteSyncLoop(cwd: string): void {
 export function stopRemoteSyncLoop(): void {
   if (timer) clearInterval(timer);
   timer = null;
+  // Bump the generation too, so a pass already running is cancelled at
+  // its next checkpoint. Without this, quitting during the auto-delete
+  // step lets `removeWorktree` → `deleteBranch` keep going and the
+  // process can exit between them, leaving an orphaned branch.
+  generation += 1;
 }
 
 async function runSyncPass(cwd: string, gen: number): Promise<void> {

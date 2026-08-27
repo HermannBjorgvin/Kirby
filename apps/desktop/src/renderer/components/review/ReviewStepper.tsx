@@ -58,6 +58,7 @@ export function ReviewStepper({
   drafts,
   filesByName,
   fileOrder,
+  active,
   onExit,
   onOpenInDiff,
 }: {
@@ -66,6 +67,12 @@ export function ReviewStepper({
   drafts: ReviewComment[];
   filesByName: Map<string, DiffLine[]>;
   fileOrder: Map<string, number>;
+  /** Whether this stepper's tab is the visible one. Its shortcuts are
+   *  bound on `window`, and the pane stays mounted while the tab is in
+   *  the background (a live agent keeps its terminal alive), so without
+   *  this a keypress meant for another tab would post or discard a
+   *  draft here. */
+  active: boolean;
   onExit: () => void;
   onOpenInDiff: (file: string) => void;
 }) {
@@ -103,6 +110,7 @@ export function ReviewStepper({
         current.lineEnd
       )}
       filesByName={filesByName}
+      active={active}
       busy={post.isPending || update.isPending || remove.isPending}
       atStart={clamped === 0}
       atEnd={clamped >= ordered.length - 1}
@@ -143,6 +151,7 @@ function StepCard({
   total,
   counts,
   snippet,
+  active,
   busy,
   atStart,
   atEnd,
@@ -160,6 +169,7 @@ function StepCard({
   counts: Record<CommentSeverity, number>;
   snippet: { line: DiffLine; anchored: boolean }[];
   filesByName: Map<string, DiffLine[]>;
+  active: boolean;
   busy: boolean;
   atStart: boolean;
   atEnd: boolean;
@@ -175,9 +185,11 @@ function StepCard({
   const [body, setBody] = useState(draft.body);
   const [severity, setSeverity] = useState<CommentSeverity>(draft.severity);
 
-  // Keyboard shortcuts (ignored while editing the textarea).
+  // Keyboard shortcuts (ignored while editing the textarea, and while
+  // this tab is in the background — `d` discards and `Enter` posts, so
+  // a stray keypress elsewhere in the app must not reach them).
   useEffect(() => {
-    if (editing) return;
+    if (editing || !active) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
@@ -209,7 +221,7 @@ function StepCard({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, draft, onNext, onPrev, onPost, onDiscard, onExit]);
+  }, [editing, active, draft, onNext, onPrev, onPost, onDiscard, onExit]);
 
   const save = () => {
     onSave(body.trim(), severity);

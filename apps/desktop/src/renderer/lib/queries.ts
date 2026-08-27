@@ -214,7 +214,20 @@ export function useSubmitVerdict(cwd: string, providerId?: string) {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(keys.sidebar(cwd), ctx.prev);
     },
-    onSettled: () => void inv.sidebar(),
+    // Re-read the PR from the provider, not from the host's cache.
+    // Plain invalidation refetches the sidebar, but that path serves
+    // remote data from a TTL cache (prPollInterval, a minute by
+    // default) — it would hand back pre-verdict reviewers and revert
+    // the optimistic patch a frame later, every time.
+    onSettled: async () => {
+      try {
+        await window.kirby.refreshRemote();
+      } catch {
+        // Offline or provider hiccup: keep the optimistic state and let
+        // the next poll reconcile rather than reverting to stale data.
+      }
+      void inv.sidebar();
+    },
   });
 }
 

@@ -67,7 +67,15 @@ export function RemoveWorktreeDialog({
   // doesn't, the row reappears by itself and the error is toasted from
   // the mutation, which outlives this component.
   const doRemove = (force: boolean) => {
-    tabs.close(`item:${itemKey}`);
+    // Look the tab up by item key rather than rebuilding its id: a tab
+    // keeps the id it was opened with even after `sync-items` re-keys
+    // it (worktree `branch:x` → `pr:42` once a PR appears), so the
+    // reconstructed id would miss and leave the tab open on a worktree
+    // that no longer exists.
+    const tab = tabs.tabs.find(
+      (t) => t.kind === 'item' && t.itemKey === itemKey
+    );
+    if (tab) tabs.close(tab.id);
     onClose();
     remove.mutate({ branch, force });
   };
