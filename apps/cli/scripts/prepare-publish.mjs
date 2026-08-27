@@ -8,10 +8,14 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertVersionsMatch } from '../../../scripts/shared-version.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distPkgPath = resolve(__dirname, '../dist/package.json');
 const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
+
+// The TUI and the desktop app ship as one release under one version.
+assertVersionsMatch();
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
 // Everything else — ink, react, @kirby/*, @inkjs/ui, @mishieck/ink-titled-box
@@ -37,4 +41,6 @@ const out = {
 };
 
 writeFileSync(distPkgPath, JSON.stringify(out, null, 2) + '\n');
-console.log(`Prepared ${distPkgPath} for publish (name=${out.name}@${out.version})`);
+console.log(
+  `Prepared ${distPkgPath} for publish (name=${out.name}@${out.version})`
+);

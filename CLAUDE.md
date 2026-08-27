@@ -334,9 +334,14 @@ This adds the blocking status without duplicating any inline comments.
 
 ## Publishing to NPM
 
-Published as `@hermannbjorgvin/kirby`. All releases are beta-only and published manually from a local machine — there is no CI workflow for this.
+Two packages ship from this repo, both beta-only and published manually from a local machine — there is no CI workflow for either:
 
-Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
+| Package                                | Source         | Users install                                        |
+| -------------------------------------- | -------------- | ---------------------------------------------------- |
+| `@hermannbjorgvin/kirby` (TUI)         | `apps/cli`     | `npm install -g @hermannbjorgvin/kirby@beta`         |
+| `@hermannbjorgvin/kirby-desktop` (GUI) | `apps/desktop` | `npm install -g @hermannbjorgvin/kirby-desktop@beta` |
+
+**They share one version number.** Both are front-ends over the same core and release together, so a user can compare the two numbers and know what they have. `scripts/shared-version.mjs` enforces it: each package's publish-prep calls `assertVersionsMatch()` and refuses to prepare a mismatched pair.
 
 ### One-time setup
 
@@ -344,7 +349,7 @@ Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
 
 ### How to publish a beta version
 
-1. Bump the version in `apps/cli/package.json`. Every version must end in `-beta.N`:
+1. Bump the version in **both** `apps/cli/package.json` and `apps/desktop/package.json` to the same value. Every version must end in `-beta.N`:
 
    - Patch: `0.0.1-beta.2` or `0.0.2-beta.1`
    - Minor: `0.1.0-beta.1`
@@ -353,16 +358,23 @@ Users install with: `npm install -g @hermannbjorgvin/kirby@beta`
 2. Commit the bump:
 
    ```bash
-   git commit apps/cli/package.json -m "chore: bump kirby to 0.0.1-beta.2"
+   git commit apps/cli/package.json apps/desktop/package.json -m "chore: bump kirby to 1.0.0-beta.5"
    ```
 
 3. Publish:
 
    ```bash
    npx nx run cli:publish
+   npx nx run desktop:publish
    ```
 
-   This runs `build` → `node apps/cli/scripts/prepare-publish.mjs` → `npm publish --tag beta apps/cli/dist`. The `--tag beta` flag keeps the release off the default `latest` dist-tag so users must explicitly opt in with `@beta`.
+   `cli:publish` runs `build` → `prepare-publish.mjs` → `npm publish --tag beta apps/cli/dist`; `desktop:publish` runs `build` → `prepare-install.mjs` → `npm publish --tag beta apps/desktop/dist`. The `--tag beta` flag keeps releases off the default `latest` dist-tag so users must explicitly opt in with `@beta`.
+
+### Desktop packaging notes
+
+`prepare-install.mjs` writes `dist/package.json` (scoped name, `publishConfig.access: public` — a scoped package publishes restricted otherwise), copies the launcher, `apps/desktop/README.md` and the repo `LICENSE` into `dist/` (npm only picks up a README from the pack root), marks the launcher executable, and packs a tarball for `install-global`.
+
+The published package carries two runtime deps: `electron` (the binary the launcher spawns, ~190 MB on install) and `node-pty`. node-pty is N-API based, so its binary loads under Electron with no `@electron/rebuild` step on the user's machine — but it ships prebuilds for macOS and Windows only, so **Linux installs compile it** and need `build-essential` + `python3`. Windows users are pointed at WSL, where the Linux path applies.
 
 ### Build details
 

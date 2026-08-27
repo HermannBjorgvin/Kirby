@@ -66,6 +66,17 @@ export default tseslint.config(
     },
   },
   {
+    // Build/release scripts are workspace tooling, not application
+    // code: they run from the repo root with plain node and are meant
+    // to reach shared helpers there (e.g. scripts/shared-version.mjs).
+    // The module-boundary rule guards the app/lib dependency graph,
+    // which these files are not part of.
+    files: ['apps/*/scripts/**/*.mjs', 'scripts/**/*.mjs'],
+    rules: {
+      '@nx/enforce-module-boundaries': 'off',
+    },
+  },
+  {
     ignores: [
       '**/node_modules',
       '**/dist',

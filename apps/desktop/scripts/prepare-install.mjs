@@ -25,6 +25,10 @@ import {
 import { execSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertVersionsMatch } from '../../../scripts/shared-version.mjs';
+
+// The desktop app and the TUI ship as one release under one version.
+assertVersionsMatch();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(__dirname, '..');
