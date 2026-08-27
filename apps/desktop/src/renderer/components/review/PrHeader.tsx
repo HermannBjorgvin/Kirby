@@ -97,7 +97,7 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
             {reviewers.slice(0, 6).map((r) => (
               <Tip
                 key={r.identifier}
-                label={`${r.displayName}: ${r.decision.replace('-', ' ')}`}
+                label={`${r.displayName}: ${r.decision.replaceAll('-', ' ')}`}
               >
                 <span className="relative">
                   <Avatar name={r.displayName} size="xs" />
@@ -105,7 +105,10 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
                     className={cn(
                       'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
                       r.decision === 'approved' && 'bg-success',
-                      r.decision === 'changes-requested' && 'bg-destructive',
+                      r.decision === 'rejected' && 'bg-destructive',
+                      (r.decision === 'changes-requested' ||
+                        r.decision === 'waiting-for-author') &&
+                        'bg-warning',
                       r.decision === 'no-response' && 'bg-muted-foreground/50',
                       r.decision === 'declined' && 'bg-muted-foreground'
                     )}

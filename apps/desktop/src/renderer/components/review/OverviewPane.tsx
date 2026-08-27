@@ -32,7 +32,7 @@ const VERDICT_DONE: Record<ReviewVerdict, string> = {
 export function OverviewPane({ pr }: { pr: PullRequestInfo }) {
   const { repo } = useRepo();
   const description = usePrDescription(repo.cwd, pr.id);
-  const verdict = useSubmitVerdict(repo.cwd);
+  const verdict = useSubmitVerdict(repo.cwd, repo.providerId ?? undefined);
   // Speak the provider's language: ADO has four votes; GitHub only
   // knows approve and request-changes, so the negative side collapses
   // to one red button and "wait for author" doesn't exist.

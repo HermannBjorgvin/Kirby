@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import type { ReviewDecision } from '@kirby/vcs-core/types';
 import type {
   PostDraftsRequest,
   PullRequestComments,
@@ -13,6 +14,7 @@ import type {
   ReviewLaunchRequest,
   ReviewVerdict,
   SessionLaunchRequest,
+  SidebarItem,
 } from '../../host/contract.js';
 
 /**
@@ -47,6 +49,7 @@ export const keys = {
   activity: (cwd: string) => ['session-activity', cwd] as const,
   commentImage: (url: string) => ['comment-image', url] as const,
   drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
+  reviewViewer: (cwd: string) => ['review-viewer', cwd] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
@@ -142,12 +145,72 @@ export function usePrDescription(cwd: string, prId: number) {
   });
 }
 
-export function useSubmitVerdict(cwd: string) {
+/** What the viewer's reviewer entry becomes for a cast verdict. GitHub
+ *  folds the whole negative side into a changes-requested review. */
+function verdictDecision(
+  verdict: ReviewVerdict,
+  providerId: string | undefined
+): ReviewDecision {
+  if (verdict === 'approve' || verdict === 'approve-with-suggestions')
+    return 'approved';
+  if (providerId === 'github') return 'changes-requested';
+  return verdict === 'wait-for-author' ? 'waiting-for-author' : 'rejected';
+}
+
+export function useSubmitVerdict(cwd: string, providerId?: string) {
+  const qc = useQueryClient();
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: ({ prId, verdict }: { prId: number; verdict: ReviewVerdict }) =>
       window.kirby.submitReviewVerdict(prId, verdict),
-    onSuccess: () => void inv.sidebar(),
+    // Optimistic: the vote succeeds virtually always, so reflect it in
+    // the cached sidebar model immediately (reviewer dots, PR bar and
+    // row badges all derive from it) and roll back only on error.
+    onMutate: async ({ prId, verdict }) => {
+      const viewer = await qc
+        .fetchQuery({
+          queryKey: keys.reviewViewer(cwd),
+          queryFn: () => window.kirby.getReviewViewer(),
+          staleTime: Infinity,
+        })
+        .catch(() => null);
+      if (!viewer) return { prev: undefined };
+      const key = keys.sidebar(cwd);
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<SidebarItem[]>(key);
+      if (prev) {
+        const decision = verdictDecision(verdict, providerId);
+        const me = viewer.identifier.toLowerCase();
+        qc.setQueryData<SidebarItem[]>(
+          key,
+          prev.map((item) => {
+            if (item.pr?.id !== prId) return item;
+            const reviewers = item.pr.reviewers ?? [];
+            const mine = reviewers.some(
+              (r) => r.identifier.toLowerCase() === me
+            );
+            const next = mine
+              ? reviewers.map((r) =>
+                  r.identifier.toLowerCase() === me ? { ...r, decision } : r
+                )
+              : [
+                  ...reviewers,
+                  {
+                    identifier: viewer.identifier,
+                    displayName: 'You',
+                    decision,
+                  },
+                ];
+            return { ...item, pr: { ...item.pr, reviewers: next } };
+          })
+        );
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(keys.sidebar(cwd), ctx.prev);
+    },
+    onSettled: () => void inv.sidebar(),
   });
 }
 

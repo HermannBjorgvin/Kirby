@@ -61,12 +61,12 @@ describe('parseReviewer', () => {
     expect(parseReviewer({ vote: 5 }).decision).toBe('approved');
   });
 
-  it('maps vote -5 to changes-requested', () => {
-    expect(parseReviewer({ vote: -5 }).decision).toBe('changes-requested');
+  it('maps vote -5 to waiting-for-author', () => {
+    expect(parseReviewer({ vote: -5 }).decision).toBe('waiting-for-author');
   });
 
-  it('maps vote -10 to changes-requested', () => {
-    expect(parseReviewer({ vote: -10 }).decision).toBe('changes-requested');
+  it('maps vote -10 to rejected', () => {
+    expect(parseReviewer({ vote: -10 }).decision).toBe('rejected');
   });
 
   it('maps vote 0 to no-response', () => {

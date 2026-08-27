@@ -82,6 +82,18 @@ export async function fetchPullRequests(): Promise<BranchPrMap> {
   return provider.fetchPullRequests();
 }
 
+/** The identifier the provider uses for the authenticated user in
+ *  reviewer lists — GitHub's login, ADO's email (each provider's
+ *  `matchesUser` compares exactly this). Lets the renderer patch the
+ *  viewer's reviewer entry optimistically after a verdict. */
+export function getReviewViewer(): { identifier: string } | null {
+  const cwd = requireRepo();
+  const config = readConfig(cwd);
+  const identifier =
+    config.vendor === 'github' ? config.vendorProject?.username : config.email;
+  return identifier ? { identifier } : null;
+}
+
 export async function fetchCommentThreads(
   prId: number
 ): Promise<PullRequestComments> {

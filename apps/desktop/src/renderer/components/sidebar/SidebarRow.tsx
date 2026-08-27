@@ -10,7 +10,10 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import {
+  isBlockingDecision,
+  type PullRequestInfo,
+} from '@kirby/vcs-core/types';
 import type { ContextMenuItem, SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
@@ -245,7 +248,8 @@ function reviewTone(category: 'needs-review' | 'waiting' | 'approved'): string {
 function PrMeta({ pr }: { pr: PullRequestInfo }) {
   const reviewers = pr.reviewers ?? [];
   const approved = reviewers.filter((r) => r.decision === 'approved').length;
-  const rejected = reviewers.some((r) => r.decision === 'changes-requested');
+  const rejected = reviewers.some((r) => r.decision === 'rejected');
+  const blocked = reviewers.some((r) => isBlockingDecision(r.decision));
   const total = reviewers.length;
   const comments = pr.activeCommentCount ?? 0;
   const ci = pr.buildStatus;
@@ -271,7 +275,9 @@ function PrMeta({ pr }: { pr: PullRequestInfo }) {
         <Tip
           label={
             rejected
-              ? 'Changes requested'
+              ? 'Rejected'
+              : blocked
+              ? 'Waiting for author'
               : `${approved} of ${total} reviewers approved`
           }
         >
@@ -280,12 +286,14 @@ function PrMeta({ pr }: { pr: PullRequestInfo }) {
               'flex items-center gap-0.5 tabular-nums',
               rejected
                 ? 'text-destructive'
+                : blocked
+                ? 'text-warning'
                 : approved === total
                 ? 'text-success'
                 : undefined
             )}
           >
-            {rejected ? (
+            {rejected || blocked ? (
               <XCircleIcon className="size-3" />
             ) : (
               <CircleIcon

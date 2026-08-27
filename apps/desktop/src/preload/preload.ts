@@ -70,6 +70,7 @@ const api: KirbyHostApi = {
     ipcRenderer.invoke(IPC.fetchPrDescription, prId),
   submitReviewVerdict: (prId, verdict) =>
     ipcRenderer.invoke(IPC.submitReviewVerdict, prId, verdict),
+  getReviewViewer: () => ipcRenderer.invoke(IPC.getReviewViewer),
 
   onSessionData: (cb) => {
     const listener = (_e: unknown, payload: SessionDataEvent) => cb(payload);

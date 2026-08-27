@@ -1,4 +1,10 @@
-import type { PullRequestInfo } from '@kirby/vcs-core';
+// NOTE: the renderer must import vcs-core through the pure `/types`
+// subpath — the package root re-exports the config store, whose
+// `node:fs` import blanks the whole window in the browser bundle.
+import {
+  isBlockingDecision,
+  type PullRequestInfo,
+} from '@kirby/vcs-core/types';
 import type { SidebarItem } from '../../host/contract.js';
 import { itemKey } from './sidebar-model.js';
 
@@ -79,7 +85,7 @@ export function buildAttentionModel(
     }
     if (isOwnPr(item)) {
       if (pr.buildStatus === 'failed') add(model.ciFailing, pr, key, open);
-      if (pr.reviewers?.some((r) => r.decision === 'changes-requested')) {
+      if (pr.reviewers?.some((r) => isBlockingDecision(r.decision))) {
         add(model.changesRequested, pr, key, open);
       }
       if ((pr.activeCommentCount ?? 0) > 0) {

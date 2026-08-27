@@ -309,6 +309,9 @@ export interface KirbyHostApi {
   fetchPrDescription(prId: number): Promise<string>;
   /** Cast the current user's review verdict on a PR. */
   submitReviewVerdict(prId: number, verdict: ReviewVerdict): Promise<void>;
+  /** The reviewer-list identifier of the authenticated user (GitHub
+   *  login / ADO email), for optimistic reviewer patches. */
+  getReviewViewer(): Promise<{ identifier: string } | null>;
   /** Download a comment image with the provider's credentials (Azure
    *  DevOps PAT / GitHub token) and return it as a data URL. */
   fetchCommentImage(url: string): Promise<CommentImagePayload | null>;
@@ -408,6 +411,7 @@ export const IPC = {
   setThreadResolved: 'kirby/reviews/resolve',
   fetchPrDescription: 'kirby/reviews/pr-description',
   submitReviewVerdict: 'kirby/reviews/submit-verdict',
+  getReviewViewer: 'kirby/reviews/viewer',
   fetchCommentImage: 'kirby/reviews/comment-image',
   listDraftComments: 'kirby/drafts/list',
   updateDraftComment: 'kirby/drafts/update',

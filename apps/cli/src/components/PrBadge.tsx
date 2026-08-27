@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import { isBlockingDecision, type PullRequestInfo } from '@kirby/vcs-core';
 import { truncate } from '@kirby/app-core';
 
 export const PrBadge = memo(function PrBadge({
@@ -21,11 +21,14 @@ export const PrBadge = memo(function PrBadge({
     (r) => r.decision === 'approved'
   ).length;
   const totalReviewers = reviewers.length;
-  const hasRejected = reviewers.some((r) => r.decision === 'changes-requested');
+  const hasRejected = reviewers.some((r) => r.decision === 'rejected');
+  const hasBlocking = reviewers.some((r) => isBlockingDecision(r.decision));
 
   let reviewColor: string;
   if (hasRejected) {
     reviewColor = 'red';
+  } else if (hasBlocking) {
+    reviewColor = 'yellow';
   } else if (totalReviewers > 0 && approvedCount === totalReviewers) {
     reviewColor = 'green';
   } else {
@@ -36,7 +39,7 @@ export const PrBadge = memo(function PrBadge({
     totalReviewers > 0 ? `${approvedCount}/${totalReviewers} approved` : '';
 
   const activeComments = pr.activeCommentCount ?? 0;
-  const needsAttention = activeComments > 0 || hasRejected;
+  const needsAttention = activeComments > 0 || hasBlocking;
 
   let statusEmoji = '';
   if (reviewColor === 'green' && !needsAttention) {

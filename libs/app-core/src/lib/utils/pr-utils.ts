@@ -1,10 +1,11 @@
 import { branchToSessionName } from '@kirby/worktree-manager';
-import type {
-  BranchPrMap,
-  PullRequestInfo,
-  CategorizedReviews,
-  AppConfig,
-  VcsProvider,
+import {
+  isBlockingDecision,
+  type BranchPrMap,
+  type PullRequestInfo,
+  type CategorizedReviews,
+  type AppConfig,
+  type VcsProvider,
 } from '@kirby/vcs-core';
 
 /**
@@ -49,7 +50,7 @@ export function categorizeReviews(
     if (reviewer.decision === 'declined') continue;
     if (reviewer.decision === 'approved') {
       approvedByYou.push(pr);
-    } else if (reviewer.decision === 'changes-requested') {
+    } else if (isBlockingDecision(reviewer.decision)) {
       waitingForAuthor.push(pr);
     } else {
       needsReview.push(pr);

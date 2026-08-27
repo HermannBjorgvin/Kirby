@@ -1,8 +1,20 @@
 export type ReviewDecision =
   | 'approved'
   | 'changes-requested'
+  | 'waiting-for-author'
+  | 'rejected'
   | 'no-response'
   | 'declined';
+
+/** The blocking (non-approving, non-neutral) decisions. `rejected` is
+ *  the hard no (ADO vote −10); `waiting-for-author` (ADO −5) and
+ *  GitHub's `changes-requested` are the softer "not yet" — UIs color
+ *  the soft ones as warnings and only `rejected` as destructive. */
+export function isBlockingDecision(d: ReviewDecision): boolean {
+  return (
+    d === 'changes-requested' || d === 'waiting-for-author' || d === 'rejected'
+  );
+}
 export type BuildStatusState = 'succeeded' | 'failed' | 'pending' | 'none';
 
 /** The current user's review verdict on a PR, in ADO's vocabulary

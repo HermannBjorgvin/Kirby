@@ -107,7 +107,8 @@ function toAdoConfig(
 function voteToDecision(vote: number, hasDeclined: boolean): ReviewDecision {
   if (hasDeclined) return 'declined';
   if (vote === 10 || vote === 5) return 'approved';
-  if (vote === -5 || vote === -10) return 'changes-requested';
+  if (vote === -5) return 'waiting-for-author';
+  if (vote === -10) return 'rejected';
   return 'no-response';
 }
 

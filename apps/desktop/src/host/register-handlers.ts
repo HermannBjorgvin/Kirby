@@ -60,6 +60,7 @@ export function createHostApi(): KirbyHostApi {
     fetchPrDescription: (prId) => reviews.fetchPrDescription(prId),
     submitReviewVerdict: (prId, verdict) =>
       reviews.submitReviewVerdict(prId, verdict),
+    getReviewViewer: () => Promise.resolve(reviews.getReviewViewer()),
     fetchCommentImage: (url) => commentImages.fetchCommentImage(url),
     listDraftComments: (prId) =>
       Promise.resolve(drafts.listDraftComments(prId)),
@@ -190,6 +191,7 @@ export function registerHostHandlers(
     [IPC.setThreadResolved]: api.setThreadResolved as HostMethod,
     [IPC.fetchPrDescription]: api.fetchPrDescription as HostMethod,
     [IPC.submitReviewVerdict]: api.submitReviewVerdict as HostMethod,
+    [IPC.getReviewViewer]: api.getReviewViewer as HostMethod,
     [IPC.fetchCommentImage]: api.fetchCommentImage as HostMethod,
     [IPC.listDraftComments]: api.listDraftComments as HostMethod,
     [IPC.updateDraftComment]: api.updateDraftComment as HostMethod,
