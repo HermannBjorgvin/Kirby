@@ -42,6 +42,38 @@ export function windowChrome(
   };
 }
 
+/**
+ * Whether the renderer may navigate itself to `target`.
+ *
+ * Only the app's own origin is allowed: the dev server in development,
+ * `file://` for the packaged build. Anything else — a dropped link, a
+ * form submit, a `window.location` write from injected content — would
+ * load a remote page **with the preload bridge still attached**, handing
+ * it worktree removal, session spawn/write and the provider-backed
+ * host calls. Off-site URLs open in the real browser instead
+ * (see the `setWindowOpenHandler` in main.ts).
+ *
+ * Exported separately from the listener so the policy is unit-testable.
+ */
+export function isAllowedNavigation(
+  target: string,
+  devServerUrl: string | undefined
+): boolean {
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'file:') return !devServerUrl;
+  if (!devServerUrl) return false;
+  try {
+    return url.origin === new URL(devServerUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** Where the window loads its content from. */
 export type LoadTarget =
   | { kind: 'dev-server'; url: string }

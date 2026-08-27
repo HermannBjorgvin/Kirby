@@ -37,7 +37,12 @@ import {
   setSessionBroadcaster,
 } from '../host/services/sessions.js';
 import { buildMenuTemplate } from './menu.js';
-import { loadTarget, rendererWebPreferences, windowChrome } from './window.js';
+import {
+  isAllowedNavigation,
+  loadTarget,
+  rendererWebPreferences,
+  windowChrome,
+} from './window.js';
 
 const DIST = join(import.meta.dirname, '..');
 const DEV_SERVER_URL = process.env.KIRBY_VITE_URL;
@@ -168,6 +173,15 @@ function createMainWindow(): BrowserWindow {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // …and the window itself never leaves the app. A navigation would
+  // keep the preload bridge attached, so remote content could drive the
+  // host directly; off-site URLs go to the browser instead.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isAllowedNavigation(url, DEV_SERVER_URL)) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
   });
 
   return win;

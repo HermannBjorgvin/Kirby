@@ -11,6 +11,7 @@ import {
 } from '@kirby/app-core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { startRemoteSyncLoop } from './remote-sync.js';
+import { SECRET_PLACEHOLDER } from '../contract.js';
 import type { SettingsFieldView, SettingsGroup } from '../contract.js';
 
 /**
@@ -81,7 +82,16 @@ export function getSettingsView(): SettingsFieldView[] {
     masked: field.masked,
     description: field.description,
     presets: field.presets?.map((preset) => ({ ...preset })),
-    value: resolveValue(config, field),
+    // Secrets (provider PAT / token) are never sent to the renderer.
+    // It renders PR-authored markdown and provider-hosted images, so
+    // anything it holds is one script-execution foothold away from
+    // being read. A stored secret is represented by a placeholder the
+    // write path treats as "unchanged"; replacing it still works.
+    value: field.masked
+      ? resolveValue(config, field)
+        ? SECRET_PLACEHOLDER
+        : ''
+      : resolveValue(config, field),
     group: groupFor(field),
     kind: kindFor(field),
     // Same gate updateSettingsFromView enforces — surfacing it here
@@ -106,6 +116,10 @@ export function updateSettingsFromView(
   const { config, fields } = activeFields();
   const field = fields.find((f) => f.label === ref.label && f.key === ref.key);
   if (!field) throw new Error(`Unknown settings field: ${ref.label}`);
+  // The renderer only ever saw a placeholder for a stored secret, so
+  // getting it back means the field wasn't edited — writing it would
+  // overwrite the real credential with dots.
+  if (field.masked && value === SECRET_PLACEHOLDER) return;
   // Same guards as the TUI's canApplyFieldChange: never swap the
   // terminal backend under live sessions, and refuse tmux when the
   // binary is missing (surfacing the install hint now instead of a

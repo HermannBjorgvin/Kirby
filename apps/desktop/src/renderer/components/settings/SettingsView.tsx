@@ -1,6 +1,7 @@
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { SECRET_PLACEHOLDER } from '../../../host/contract.js';
 import type {
   SettingsFieldView,
   SettingsGroup,
@@ -404,7 +405,9 @@ function TextRow({
               className={cn('w-64 font-mono', field.masked && 'pr-8')}
               placeholder={field.masked ? '••••••••' : undefined}
             />
-            {field.masked && (
+            {/* A stored secret arrives as a placeholder, never the real
+                value, so there is nothing to reveal until it's edited. */}
+            {field.masked && draft !== SECRET_PLACEHOLDER && (
               <button
                 type="button"
                 onClick={() => setReveal((r) => !r)}

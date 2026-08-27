@@ -12,11 +12,7 @@
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type {
-  AppConfig,
-  PullRequestInfo,
-  ReviewVerdict,
-} from '@kirby/vcs-core';
+import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
 export type { ReviewVerdict };
 import type { LaunchIntent, SidebarItem } from '@kirby/app-core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
@@ -105,6 +101,11 @@ export type SettingsGroup =
   | 'sync'
   | 'terminal'
   | 'provider';
+
+/** Stand-in the host sends instead of a stored secret. Sending it back
+ *  unchanged is a no-op write, so the real credential never has to
+ *  leave the main process for the settings form to work. */
+export const SECRET_PLACEHOLDER = '••••••••';
 
 /** One row of the settings form: the field plus its current value. */
 export interface SettingsFieldView {
@@ -268,7 +269,10 @@ export interface KirbyHostApi {
   forgetRecent(cwd: string): Promise<void>;
 
   // ── Config / settings ────────────────────────────────────────
-  getConfig(): Promise<AppConfig>;
+  // NOTE: there is deliberately no `getConfig` on this bridge. It
+  // returned the whole AppConfig — provider PAT and token included — to
+  // a renderer that displays remote content. Settings are edited
+  // through the masked `SettingsFieldView` instead.
   /** Settings form model: every editable field with its current
    *  resolved display value (same semantics as the CLI's panel). */
   getSettingsView(): Promise<SettingsFieldView[]>;
@@ -384,7 +388,6 @@ export const IPC = {
   selectRepoDirectory: 'kirby/repo/select-directory',
   forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
-  getConfig: 'kirby/config/get',
   getSettingsView: 'kirby/settings/view',
   updateSettingsField: 'kirby/config/update-field',
   getSidebarModel: 'kirby/sidebar/model',

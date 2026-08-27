@@ -25,7 +25,6 @@ const api: KirbyHostApi = {
   selectRepoDirectory: () => ipcRenderer.invoke(IPC.selectRepoDirectory),
   forgetRecent: (cwd) => ipcRenderer.invoke(IPC.forgetRecent, cwd),
 
-  getConfig: () => ipcRenderer.invoke(IPC.getConfig),
   getSettingsView: () => ipcRenderer.invoke(IPC.getSettingsView),
   updateSettingsField: (ref, value) =>
     ipcRenderer.invoke(IPC.updateSettingsField, ref, value),

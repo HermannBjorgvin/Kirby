@@ -7,7 +7,6 @@ import type {
 import { IPC } from './contract.js';
 import * as repo from './services/repo.js';
 import * as prefs from './services/desktop-prefs.js';
-import * as config from './services/config.js';
 import * as settings from './services/settings.js';
 import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
@@ -37,7 +36,6 @@ export function createHostApi(): KirbyHostApi {
     selectRepoDirectory: () => folderPicker(),
     forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
-    getConfig: () => Promise.resolve(config.getConfig()),
     getSettingsView: () => Promise.resolve(settings.getSettingsView()),
     updateSettingsField: (ref, value) =>
       Promise.resolve(settings.updateSettingsFromView(ref, value)),
@@ -164,7 +162,6 @@ export function registerHostHandlers(
     [IPC.listRecentRepos]: api.listRecentRepos as HostMethod,
     [IPC.selectRepoDirectory]: api.selectRepoDirectory as HostMethod,
     [IPC.forgetRecent]: api.forgetRecent as HostMethod,
-    [IPC.getConfig]: api.getConfig as HostMethod,
     [IPC.getSettingsView]: api.getSettingsView as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
     [IPC.getSidebarModel]: api.getSidebarModel as HostMethod,

@@ -17,14 +17,24 @@ import type { PostDraftsRequest } from '../contract.js';
  * poster the TUI uses, so both shells stay interchangeable.
  */
 
+/** IPC-boundary validation, matching reviews.ts. `prId` becomes a path
+ *  segment under ~/.kirby/reviews, so a non-integer value ('../..')
+ *  would write outside the reviews directory entirely. */
+function requirePrId(prId: unknown): number {
+  if (typeof prId !== 'number' || !Number.isInteger(prId) || prId <= 0) {
+    throw new Error('Invalid PR id');
+  }
+  return prId;
+}
+
 export function listDraftComments(prId: number): ReviewComment[] {
-  return readComments(prId);
+  return readComments(requirePrId(prId));
 }
 
 /** TUI parity: posted comments are immutable and a comment mid-post
  *  can't be edited or deleted out from under the poster. */
 function requireEditable(prId: number, id: string): void {
-  const existing = readComments(prId).find((c) => c.id === id);
+  const existing = readComments(requirePrId(prId)).find((c) => c.id === id);
   if (!existing) {
     throw new Error('Draft comment no longer exists');
   }
@@ -41,14 +51,14 @@ export function updateDraftComment(
   id: string,
   patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>
 ): void {
-  requireEditable(prId, id);
+  requireEditable(requirePrId(prId), id);
   if (!updateComment(prId, id, patch)) {
     throw new Error('Draft comment no longer exists');
   }
 }
 
 export function deleteDraftComment(prId: number, id: string): void {
-  requireEditable(prId, id);
+  requireEditable(requirePrId(prId), id);
   if (!removeComment(prId, id)) {
     throw new Error('Draft comment no longer exists');
   }
@@ -63,6 +73,7 @@ export async function postDraftComments(
   req: PostDraftsRequest
 ): Promise<number> {
   const cwd = requireRepo();
+  requirePrId(req.prId);
   const config = readConfig(cwd);
   const vendor = config.vendor;
   if (vendor !== 'github' && vendor !== 'azure-devops') {

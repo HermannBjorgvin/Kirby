@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { loadTarget, rendererWebPreferences, windowChrome } from './window.js';
+import {
+  isAllowedNavigation,
+  loadTarget,
+  rendererWebPreferences,
+  windowChrome,
+} from './window.js';
 
 describe('rendererWebPreferences', () => {
   it('never grants Node access to the renderer', () => {
@@ -42,5 +47,38 @@ describe('loadTarget', () => {
   it('falls back to the built index.html on disk', () => {
     const target = loadTarget(undefined, '/app/renderer/index.html');
     expect(target).toEqual({ kind: 'file', path: '/app/renderer/index.html' });
+  });
+});
+
+describe('isAllowedNavigation', () => {
+  const DEV = 'http://localhost:5173';
+
+  it('allows the dev server origin in development', () => {
+    expect(isAllowedNavigation('http://localhost:5173/index.html', DEV)).toBe(
+      true
+    );
+  });
+
+  it('rejects any other origin in development', () => {
+    expect(isAllowedNavigation('https://evil.example/', DEV)).toBe(false);
+    // Same host, different port is a different origin.
+    expect(isAllowedNavigation('http://localhost:9999/', DEV)).toBe(false);
+  });
+
+  it('allows only file:// in the packaged app', () => {
+    expect(
+      isAllowedNavigation('file:///app/renderer/index.html', undefined)
+    ).toBe(true);
+    expect(isAllowedNavigation('https://evil.example/', undefined)).toBe(false);
+  });
+
+  it('rejects file:// while the dev server is in use', () => {
+    expect(isAllowedNavigation('file:///etc/passwd', DEV)).toBe(false);
+  });
+
+  it('rejects non-http schemes and unparseable targets', () => {
+    expect(isAllowedNavigation('javascript:alert(1)', DEV)).toBe(false);
+    expect(isAllowedNavigation('not a url', DEV)).toBe(false);
+    expect(isAllowedNavigation('', undefined)).toBe(false);
   });
 });
