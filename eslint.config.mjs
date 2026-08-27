@@ -77,6 +77,44 @@ export default tseslint.config(
     },
   },
   {
+    // The desktop renderer is a sandboxed browser context: no Node, no
+    // `require`. Importing a *value* from a library that touches
+    // node:fs (or a native module) pulls that builtin into the bundle,
+    // where it cannot work — the dev server happily serves it and the
+    // window renders black on launch, with the real cause buried in a
+    // Vite warning. Types are erased at compile time and stay allowed,
+    // which is how the renderer already consumes these libraries.
+    //
+    // Anything the renderer genuinely needs at runtime belongs behind
+    // the host bridge (src/host/contract.ts) or in a browser-safe entry
+    // point, the way @kirby/vcs-core exposes its `./types` subpath.
+    files: ['apps/desktop/src/renderer/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@kirby/app-core',
+            '@kirby/logger',
+            '@kirby/review-comments',
+            '@kirby/terminal-pty',
+            '@kirby/terminal-tmux',
+            '@kirby/vcs-core',
+            '@kirby/vcs-github',
+            '@kirby/worktree-manager',
+          ].map((name) => ({
+            name,
+            allowTypeImports: true,
+            message:
+              `${name} runs on Node and cannot be imported for its values ` +
+              'in the sandboxed renderer. Use `import type`, go through ' +
+              'window.kirby, or import a browser-safe subpath.',
+          })),
+        },
+      ],
+    },
+  },
+  {
     ignores: [
       '**/node_modules',
       '**/dist',
