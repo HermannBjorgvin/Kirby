@@ -120,14 +120,14 @@ export function buildSessionBackendFactory(
 }
 
 /** Apply the resolved factory to the registry. Call this on startup
- *  and whenever `config.terminalBackend` changes (which the Settings
- *  UI gates to empty-registry).
+ *  and from the settings write path whenever `config.terminalBackend`
+ *  changes (which both shells gate to empty-registry).
  *
  *  Resolves `repoRoot` lazily so the default PTY backend doesn't pay a
- *  `git rev-parse` fork on every boot. This runs inside a `useEffect`,
- *  where a throw would surface as an unhandled error and take the
- *  render down, so the lookup never throws — outside a working tree it
- *  yields `null` and the tmux selection degrades to PTY. */
+ *  `git rev-parse` fork on every boot. Callers sit on paths where a
+ *  throw would take startup or an input handler down, so the lookup
+ *  never throws — outside a working tree it yields `null` and the tmux
+ *  selection degrades to PTY. */
 export function applySessionBackend(config: AppConfig): void {
   const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : null;
   const factory = buildSessionBackendFactory(config, repoRoot);

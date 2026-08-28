@@ -9,21 +9,20 @@ import type {
   RemoteCommentReply,
   ReviewDecision,
   ReviewVerdict,
-  BuildStatusState,
 } from '@kirby/vcs-core';
 import { sanitizeBody } from '@kirby/vcs-core';
-import { log, logNetwork } from '@kirby/logger';
+import { log } from '@kirby/logger';
+import type { AdoConfig } from './client.js';
+import { authHeaders, baseUrl, tracedFetch } from './client.js';
+import {
+  combineBuildStatus,
+  fetchPrBuildRuns,
+  fetchPrBuildStatus,
+} from './build-status.js';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
 type ReviewerVote = 10 | 5 | 0 | -5 | -10;
-
-interface AdoConfig {
-  org: string;
-  project: string;
-  repo: string;
-  pat: string;
-}
 
 interface RawReviewer {
   displayName?: string;
@@ -32,64 +31,6 @@ interface RawReviewer {
   vote?: number;
   hasDeclined?: boolean;
   isContainer?: boolean;
-}
-
-// ── Internal helpers ───────────────────────────────────────────────
-
-function authHeaders(pat: string): Record<string, string> {
-  return {
-    Authorization: `Basic ${Buffer.from(`:${pat}`).toString('base64')}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-function baseUrl(config: AdoConfig): string {
-  return `https://dev.azure.com/${config.org}/${config.project}/_apis/git/repositories/${config.repo}`;
-}
-
-/**
- * fetch wrapper that emits one debug-level log per request +
- * response. URLs are passed through verbatim (they don't carry the
- * PAT — that lives in the Authorization header which is never
- * logged). Response bodies are NOT included; only status + size +
- * (optional) caller-supplied summary. Gated behind
- * `KIRBY_LOG_LEVEL=debug` so day-to-day runs stay quiet.
- */
-async function tracedFetch(
-  context: string,
-  url: string,
-  init?: RequestInit & { bodyForLog?: unknown }
-): Promise<Response> {
-  const startedAt = Date.now();
-  const method = (init?.method ?? 'GET').toUpperCase();
-  logNetwork('ado.network', `→ ${method} ${url}`, {
-    body: init?.bodyForLog,
-  });
-  try {
-    const res = await fetch(url, init);
-    const durationMs = Date.now() - startedAt;
-    logNetwork(
-      'ado.network',
-      `← ${res.status} ${method} ${url} (${durationMs}ms)`,
-      {
-        ok: res.ok,
-        statusText: res.statusText,
-        context,
-      }
-    );
-    return res;
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    logNetwork(
-      'ado.network',
-      `× ${method} ${url} (${durationMs}ms) — fetch failed`,
-      {
-        context,
-        error: err instanceof Error ? err.message : String(err),
-      }
-    );
-    throw err;
-  }
 }
 
 function toAdoConfig(
@@ -168,111 +109,6 @@ export function countActiveThreads(
     );
     return hasHumanComment;
   }).length;
-}
-
-function mapRawState(raw: string | undefined): BuildStatusState {
-  // `notSet` is zero in Azure's enum, and the field is simply absent
-  // from the JSON when it holds that value — the entries that arrive
-  // with no `state` at all are the ones describing a queued check.
-  if (raw === undefined) return 'pending';
-  switch (raw) {
-    case 'succeeded':
-      return 'succeeded';
-    case 'failed':
-    case 'error':
-      return 'failed';
-    case 'pending':
-    case 'notSet':
-      return 'pending';
-    default:
-      return 'none';
-  }
-}
-
-/** One entry from a pull request's status list. */
-export interface AdoPrStatus {
-  state?: string;
-  /** Identifies the check this status is about. Two entries sharing a
-   *  context are the same check reporting twice, not two checks. */
-  context?: { genre?: string; name?: string };
-  /** Per-PR sequential id: higher is newer. */
-  id?: number;
-  creationDate?: string;
-  updatedDate?: string;
-  /** The PR iteration (push) the status was posted against. */
-  iterationId?: number;
-}
-
-/** Key identifying the check a status belongs to. */
-function statusContextKey(status: AdoPrStatus, index: number): string {
-  const genre = status.context?.genre;
-  const name = status.context?.name;
-  // Without a context there is nothing to group on, so each entry
-  // stands alone and contributes its own verdict — the old behaviour,
-  // which is right when the entries really are separate checks.
-  if (!genre && !name) return `@${index}`;
-  return `${genre ?? ''}/${name ?? ''}`;
-}
-
-/** Later of two statuses for the same check. */
-function isNewer(a: AdoPrStatus, b: AdoPrStatus): boolean {
-  if ((a.iterationId ?? 0) !== (b.iterationId ?? 0)) {
-    return (a.iterationId ?? 0) > (b.iterationId ?? 0);
-  }
-  const at = Date.parse(a.creationDate ?? a.updatedDate ?? '');
-  const bt = Date.parse(b.creationDate ?? b.updatedDate ?? '');
-  if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return at > bt;
-  // Same instant, or undated: fall back to the sequential id. Two
-  // statuses posted in the same second is normal for a fast pipeline.
-  return (a.id ?? 0) > (b.id ?? 0);
-}
-
-/**
- * The current build state of a pull request, from its status list.
- *
- * Azure appends to that list rather than replacing: re-running a
- * pipeline, or pushing a fix, leaves the old entry in place and adds a
- * new one. Reducing over every entry therefore made one failure
- * permanent — a pull request that failed and was then fixed reported
- * `failed` for the rest of its life, and no amount of refreshing could
- * clear it, because the data really did still say so.
- *
- * So each check gets one vote: entries are grouped by their context and
- * only the newest in each group is counted. Newest means the highest
- * iteration, then the latest date, then the highest id — a pipeline
- * that finishes twice within the same second still resolves in order.
- * Aggregation across checks is unchanged: any failure is a failure,
- * then any pending, then success.
- *
- * `notApplicable` takes part in that contest rather than being filtered
- * out first. It is a check saying it does not apply here, and when that
- * is its latest word it retracts whatever it said earlier — a check that
- * failed, was re-run, and then declared itself not applicable should
- * leave no mark. It still casts no vote of its own.
- */
-export function deriveBuildStatus(statuses: AdoPrStatus[]): BuildStatusState {
-  const latestPerContext = new Map<string, AdoPrStatus>();
-  statuses.forEach((status, index) => {
-    const key = statusContextKey(status, index);
-    const seen = latestPerContext.get(key);
-    if (!seen || isNewer(status, seen)) latestPerContext.set(key, status);
-  });
-
-  let hasFailed = false;
-  let hasPending = false;
-  let hasSucceeded = false;
-  for (const status of latestPerContext.values()) {
-    if (status.state === 'notApplicable') continue;
-    const mapped = mapRawState(status.state);
-    if (mapped === 'failed') hasFailed = true;
-    if (mapped === 'pending') hasPending = true;
-    if (mapped === 'succeeded') hasSucceeded = true;
-  }
-
-  if (hasFailed) return 'failed';
-  if (hasPending) return 'pending';
-  if (hasSucceeded) return 'succeeded';
-  return 'none';
 }
 
 export async function fetchAuthenticatedUserEmail(
@@ -406,127 +242,6 @@ export async function fetchActiveCommentCount(
       comments?: { commentType?: string }[];
     }[]
   );
-}
-
-export async function fetchPrBuildStatus(
-  config: AdoConfig,
-  prId: number
-): Promise<BuildStatusState> {
-  const url = `${baseUrl(
-    config
-  )}/pullrequests/${prId}/statuses?api-version=7.1`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { value?: unknown[] };
-  return deriveBuildStatus((data.value ?? []) as AdoPrStatus[]);
-}
-
-/** One pipeline run, as the builds API reports it. */
-export interface AdoBuildRun {
-  id?: number;
-  /** `notStarted` | `inProgress` | `completed` | `cancelling` | … */
-  status?: string;
-  /** Only meaningful once `status` is `completed`. */
-  result?: string;
-  definition?: { id?: number; name?: string };
-  finishTime?: string;
-  queueTime?: string;
-}
-
-function mapRunResult(run: AdoBuildRun): BuildStatusState {
-  // Queued or still going: no verdict yet, but something is happening.
-  if (run.status !== 'completed') return 'pending';
-  // A partial success is a pipeline that did not pass: calling it green
-  // hides the part that broke, and there is no warning state to put it
-  // in.
-  switch (run.result) {
-    case 'succeeded':
-      return 'succeeded';
-    case 'failed':
-    case 'partiallySucceeded':
-      return 'failed';
-    case 'canceled':
-      // Nobody learned anything from a cancelled run.
-      return 'none';
-    default:
-      return 'none';
-  }
-}
-
-/**
- * The verdict from the pipelines that ran against a pull request.
- *
- * Same shape of problem as the status list: a definition that has been
- * re-run appears more than once, so only its newest run speaks for it.
- * Runs are ordered newest-first by the API, and the build id rises
- * monotonically, so the highest id per definition wins.
- */
-export function deriveBuildRunStatus(runs: AdoBuildRun[]): BuildStatusState {
-  const latestPerDefinition = new Map<number | string, AdoBuildRun>();
-  runs.forEach((run, index) => {
-    const key = run.definition?.id ?? `@${index}`;
-    const seen = latestPerDefinition.get(key);
-    if (!seen || (run.id ?? 0) > (seen.id ?? 0)) {
-      latestPerDefinition.set(key, run);
-    }
-  });
-
-  let hasFailed = false;
-  let hasPending = false;
-  let hasSucceeded = false;
-  for (const run of latestPerDefinition.values()) {
-    const mapped = mapRunResult(run);
-    if (mapped === 'failed') hasFailed = true;
-    if (mapped === 'pending') hasPending = true;
-    if (mapped === 'succeeded') hasSucceeded = true;
-  }
-  if (hasFailed) return 'failed';
-  if (hasPending) return 'pending';
-  if (hasSucceeded) return 'succeeded';
-  return 'none';
-}
-
-/** Worst of two verdicts — a red anywhere makes the pull request red. */
-export function combineBuildStatus(
-  a: BuildStatusState,
-  b: BuildStatusState
-): BuildStatusState {
-  if (a === 'failed' || b === 'failed') return 'failed';
-  if (a === 'pending' || b === 'pending') return 'pending';
-  if (a === 'succeeded' || b === 'succeeded') return 'succeeded';
-  return 'none';
-}
-
-/**
- * Pipeline runs for a pull request.
- *
- * Azure builds a pull request against its *merge* ref, not the source
- * branch, so `refs/pull/{id}/merge` is where the runs are — querying the
- * source branch returns nothing at all.
- *
- * This is a separate call from the status list because the two carry
- * different things, and a repository that reports CI one way usually
- * does not report it the other. Reading only the statuses is why a
- * failing pull request could show no CI result: the pipeline had failed,
- * and the coverage check that posts a status withdrew a few seconds
- * later precisely because the build gave it nothing to measure.
- */
-export async function fetchPrBuildRuns(
-  config: AdoConfig,
-  prId: number
-): Promise<BuildStatusState> {
-  const branch = encodeURIComponent(`refs/pull/${prId}/merge`);
-  const url =
-    `https://dev.azure.com/${config.org}/${config.project}/_apis/build/builds` +
-    `?branchName=${branch}&$top=20&api-version=7.1`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { value?: unknown[] };
-  return deriveBuildRunStatus((data.value ?? []) as AdoBuildRun[]);
 }
 
 /**
@@ -767,47 +482,81 @@ function sanitizeAdoThreadForLog(thread: AdoThread): unknown {
   };
 }
 
-function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
-  const humanComments = (thread.comments ?? []).filter(
-    (c) => c.commentType !== 'system'
-  );
-  if (humanComments.length === 0) {
-    log(
-      'info',
-      'ado.transformThread',
-      `thread ${thread.id} dropped (no human comments)`,
-      { raw: sanitizeAdoThreadForLog(thread) }
-    );
-    return null;
-  }
+/**
+ * A line ref as it stands now, or the one ADO recorded when it could
+ * still track the line.
+ *
+ * ADO keeps `threadContext` populated across iterations, but when the
+ * line a thread was anchored to is removed in a later push the current
+ * ref goes null and only `trackingCriteria.orig*` survives. Mirrors
+ * GitHub's `originalLine` fallback so outdated threads still render
+ * inline at the line they were originally placed on.
+ */
+function trackedLine(
+  current: AdoLineRef | undefined,
+  original: AdoLineRef | undefined
+): number | undefined {
+  return current?.line ?? original?.line;
+}
 
+/** True when a line could only be recovered from the tracking
+ *  metadata — which is what makes a thread outdated. */
+function cameFromTracking(
+  current: AdoLineRef | undefined,
+  resolved: number | undefined
+): boolean {
+  return current?.line == null && resolved != null;
+}
+
+/** A thread's four line refs, resolved current-or-original. */
+interface ThreadLines {
+  leftStart: number | undefined;
+  leftEnd: number | undefined;
+  rightStart: number | undefined;
+  rightEnd: number | undefined;
+  usedFallback: boolean;
+}
+
+function resolveThreadLines(thread: AdoThread): ThreadLines {
   const ctx = thread.threadContext;
-  const hasFile = ctx?.filePath != null;
   const orig = thread.pullRequestThreadContext?.trackingCriteria;
+  const leftStart = trackedLine(ctx?.leftFileStart, orig?.origLeftFileStart);
+  const leftEnd = trackedLine(ctx?.leftFileEnd, orig?.origLeftFileEnd);
+  const rightStart = trackedLine(ctx?.rightFileStart, orig?.origRightFileStart);
+  const rightEnd = trackedLine(ctx?.rightFileEnd, orig?.origRightFileEnd);
+  return {
+    leftStart,
+    leftEnd,
+    rightStart,
+    rightEnd,
+    usedFallback:
+      cameFromTracking(ctx?.leftFileStart, leftStart) ||
+      cameFromTracking(ctx?.rightFileStart, rightStart),
+  };
+}
 
-  // Resolve current vs. original line refs per side. ADO can keep
-  // `threadContext` populated across iterations, but when the line a
-  // thread was anchored to is removed in a later push, the current
-  // ref goes null and only `trackingCriteria.orig*` survives. Mirrors
-  // GitHub's `originalLine` fallback so outdated threads still render
-  // inline at the line they were originally placed on.
-  const leftStart = ctx?.leftFileStart?.line ?? orig?.origLeftFileStart?.line;
-  const leftEnd = ctx?.leftFileEnd?.line ?? orig?.origLeftFileEnd?.line;
-  const rightStart =
-    ctx?.rightFileStart?.line ?? orig?.origRightFileStart?.line;
-  const rightEnd = ctx?.rightFileEnd?.line ?? orig?.origRightFileEnd?.line;
+/** Where a thread renders in the diff. */
+interface ThreadAnchor {
+  lineStart: number | null;
+  lineEnd: number | null;
+  side: 'LEFT' | 'RIGHT';
+  isOutdated: boolean;
+  /** The intermediate values, carried through for the diagnostic log
+   *  only — a misplaced comment is otherwise hard to reproduce. */
+  trace: ThreadLines & { isLeftSide: boolean; fileLevelOnly: boolean };
+}
+
+function resolveThreadAnchor(
+  thread: AdoThread,
+  hasFile: boolean
+): ThreadAnchor {
+  const lines = resolveThreadLines(thread);
+  const { leftStart, leftEnd, rightStart, rightEnd } = lines;
 
   // Side selection: LEFT when the thread is anchored to a deleted/old
-  // line (left side has a ref, right side doesn't) — same heuristic
-  // as before, but applied to the resolved (current OR original) refs.
+  // line (left side has a ref, right side doesn't), applied to the
+  // resolved (current OR original) refs.
   const isLeftSide = leftStart != null && rightStart == null;
-
-  // We hit the outdated path when the current threadContext was null
-  // and we had to read from trackingCriteria. Set isOutdated so the
-  // card shows the dim "(outdated)" tag.
-  const usedFallback =
-    (ctx?.leftFileStart?.line == null && leftStart != null) ||
-    (ctx?.rightFileStart?.line == null && rightStart != null);
 
   // ADO sometimes returns a file-anchored thread with NO line refs
   // anywhere — `threadContext` has `filePath` but every `*FileStart/End`
@@ -828,37 +577,64 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
     rightStart == null &&
     rightEnd == null;
 
-  const resolvedLineStart = fileLevelOnly
-    ? 1
-    : isLeftSide
-    ? leftStart ?? null
-    : rightStart ?? null;
-  const resolvedLineEnd = fileLevelOnly
-    ? 1
-    : isLeftSide
-    ? leftEnd ?? null
-    : rightEnd ?? null;
-  const resolvedSide = fileLevelOnly ? 'RIGHT' : isLeftSide ? 'LEFT' : 'RIGHT';
+  const trace = { ...lines, isLeftSide, fileLevelOnly };
+  if (fileLevelOnly) {
+    return { lineStart: 1, lineEnd: 1, side: 'RIGHT', isOutdated: true, trace };
+  }
+  const start = isLeftSide ? leftStart : rightStart;
+  const end = isLeftSide ? leftEnd : rightEnd;
+  return {
+    lineStart: start ?? null,
+    lineEnd: end ?? null,
+    side: isLeftSide ? 'LEFT' : 'RIGHT',
+    // We hit the outdated path when the current threadContext was null
+    // and we had to read from trackingCriteria. The card then shows the
+    // dim "(outdated)" tag.
+    isOutdated: lines.usedFallback,
+    trace,
+  };
+}
+
+function toRemoteReply(comment: AdoThreadComment): RemoteCommentReply {
+  return {
+    id: String(comment.id ?? ''),
+    author:
+      comment.author?.displayName ?? comment.author?.uniqueName ?? 'unknown',
+    body: sanitizeBody(comment.content ?? ''),
+    createdAt: comment.publishedDate ?? '',
+  };
+}
+
+function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
+  const humanComments = (thread.comments ?? []).filter(
+    (c) => c.commentType !== 'system'
+  );
+  if (humanComments.length === 0) {
+    log(
+      'info',
+      'ado.transformThread',
+      `thread ${thread.id} dropped (no human comments)`,
+      { raw: sanitizeAdoThreadForLog(thread) }
+    );
+    return null;
+  }
+
+  const ctx = thread.threadContext;
+  const hasFile = ctx?.filePath != null;
+  const anchor = resolveThreadAnchor(thread, hasFile);
 
   const result: RemoteCommentThread = {
     id: String(thread.id ?? ''),
-    file: hasFile ? ctx!.filePath!.replace(/^\//, '') ?? null : null,
-    lineStart: resolvedLineStart,
-    lineEnd: resolvedLineEnd,
-    side: resolvedSide,
+    file: hasFile ? ctx!.filePath!.replace(/^\//, '') : null,
+    lineStart: anchor.lineStart,
+    lineEnd: anchor.lineEnd,
+    side: anchor.side,
     isResolved: adoStatusToResolved(thread.status),
-    isOutdated: usedFallback || fileLevelOnly,
+    isOutdated: anchor.isOutdated,
     // All ADO threads (inline + general) share the same thread
     // resource and support status transitions.
     canResolve: true,
-    comments: humanComments.map(
-      (c): RemoteCommentReply => ({
-        id: String(c.id ?? ''),
-        author: c.author?.displayName ?? c.author?.uniqueName ?? 'unknown',
-        body: sanitizeBody(c.content ?? ''),
-        createdAt: c.publishedDate ?? '',
-      })
-    ),
+    comments: humanComments.map(toRemoteReply),
   };
 
   log(
@@ -869,15 +645,7 @@ function transformAdoThread(thread: AdoThread): RemoteCommentThread | null {
     }-${result.lineEnd ?? '?'} outdated=${result.isOutdated}`,
     {
       raw: sanitizeAdoThreadForLog(thread),
-      resolved: {
-        leftStart,
-        leftEnd,
-        rightStart,
-        rightEnd,
-        isLeftSide,
-        usedFallback,
-        fileLevelOnly,
-      },
+      resolved: anchor.trace,
       output: {
         file: result.file,
         lineStart: result.lineStart,

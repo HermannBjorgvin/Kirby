@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
+import { revealThreadEndOffset } from '../utils/diff-scroll.js';
 
 export interface UsePendingThreadScrollIntoViewOptions {
   /** Thread id to scroll into view, or null when nothing is pending. */
@@ -17,13 +18,39 @@ export interface UsePendingThreadScrollIntoViewOptions {
 }
 
 /**
- * After a reply posts the row map grows; if the new reply lands
- * below the current viewport the user can't see what they just
- * posted. The reply-mode success handler sets
- * `pane.pendingScrollThreadId`; we wait for `commentPositions` /
- * `rowMap` to reflect the post-reply layout, then scroll the
- * thread's bottom into view (one row of breathing room) and clear
- * the pending id.
+ * Reveals a thread's bottom edge after a reply posts, so the user can
+ * see what they just wrote.
+ *
+ * ## Why this is an effect and not a call at the intent origin
+ *
+ * The intent originates in `handleReplyModeInput`'s success callback
+ * (`apps/cli/src/utils/reply-mode.ts`), which only sets the pending
+ * id. It cannot do the scroll math itself, because the numbers the
+ * math needs do not exist yet at that moment:
+ *
+ *   - The reply is appended to the thread by `useRemoteComments`'
+ *     optimistic `setComments` (`libs/app-core/src/lib/hooks/
+ *     useRemoteComments.ts`), which is a React state update queued
+ *     during the same task — no render has flushed when the caller's
+ *     `.then()` runs.
+ *   - `rowStart` / `rowSpan` come from `buildRowMap`, which runs in a
+ *     render memo downstream of that state. The row map the input
+ *     handler closes over is the pre-reply one, and the thread's
+ *     `rowSpan` is exactly what the new reply changes — using it
+ *     would under-scroll by the height of the reply the user is
+ *     trying to see. That is the bug this hook exists to avoid.
+ *
+ * So the round trip is load-bearing: the pending id means "reveal
+ * this thread once the layout reflects it". The guards below are the
+ * wait — `commentPositions` and `rowMap` are rebuilt asynchronously
+ * (the diff text itself loads async too), so early passes legitimately
+ * have no entry for the thread and must fall through untouched rather
+ * than clear the signal. The id is cleared only on the pass that
+ * actually scrolls, which is also what makes this fire once.
+ *
+ * The scroll math is `revealThreadEndOffset` (pure, unit-tested in
+ * `libs/app-core/src/lib/utils/diff-scroll.spec.ts`); this hook owns
+ * only the timing.
  */
 export function usePendingThreadScrollIntoView({
   pendingThreadId,
@@ -38,14 +65,18 @@ export function usePendingThreadScrollIntoView({
     if (!pendingThreadId) return;
     const info = commentPositions.get(pendingThreadId);
     if (!info) return;
+    // Not in the row map yet — the post-reply layout hasn't landed.
+    // Leave the signal set and wait for the render that has it.
     const rowEntry = rowMap.positions[info.headerLine];
     if (!rowEntry) return;
-    const viewportHeight = Math.max(1, paneRows - 3);
-    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-    const threadEndRow = rowEntry.rowStart + rowEntry.rowSpan - 1;
-    const minScrollOffset = Math.max(0, threadEndRow - viewportHeight + 2);
-    setDiffScrollOffset((cur) =>
-      Math.min(Math.max(cur, minScrollOffset), maxScroll)
+    setDiffScrollOffset((current) =>
+      revealThreadEndOffset({
+        current,
+        rowStart: rowEntry.rowStart,
+        rowSpan: rowEntry.rowSpan,
+        totalRows: diffTotalRows,
+        paneRows,
+      })
     );
     setPendingScrollThreadId(null);
   }, [

@@ -128,6 +128,48 @@ describe('usePendingThreadScrollIntoView', () => {
     unmount();
   });
 
+  // The reason the pending id survives a render instead of the scroll
+  // being computed where the reply is posted: the row map that carries
+  // the thread's grown rowSpan only exists a render later. A pass with
+  // no row-map entry must leave the signal armed, and the pass that
+  // finally has one must scroll using ITS numbers.
+  it('waits for the row map to reflect the reply, then scrolls with the grown span', async () => {
+    const setDiffScrollOffset = vi.fn();
+    const setPendingScrollThreadId = vi.fn();
+    const baseOpts: UsePendingThreadScrollIntoViewOptions = {
+      pendingThreadId: 't1',
+      commentPositions: new Map([['t1', { headerLine: 0, refStartLine: 0 }]]),
+      // Pre-reply pass: the thread isn't in the row map yet.
+      rowMap: makeRowMap([]),
+      diffTotalRows: 100,
+      paneRows: 10,
+      setDiffScrollOffset,
+      setPendingScrollThreadId,
+    };
+    const { rerender, unmount } = mountHook(baseOpts);
+    await flush();
+    expect(setDiffScrollOffset).not.toHaveBeenCalled();
+    // Signal still armed — nothing cleared it.
+    expect(setPendingScrollThreadId).not.toHaveBeenCalled();
+
+    // Post-reply layout lands: the thread now spans rows 50..56 (the
+    // pre-reply span was 5; the new reply added 2 rows).
+    rerender({
+      ...baseOpts,
+      rowMap: makeRowMap([{ rowStart: 50, rowSpan: 7 }]),
+    });
+    await flush();
+    expect(setDiffScrollOffset).toHaveBeenCalledTimes(1);
+    const updater = setDiffScrollOffset.mock.calls[0]![0] as (
+      n: number
+    ) => number;
+    // Reveals row 56, not the pre-reply end row 54 — scrolling to the
+    // stale span would leave the new reply below the fold.
+    expect(updater(0)).toBe(51);
+    expect(setPendingScrollThreadId).toHaveBeenCalledWith(null);
+    unmount();
+  });
+
   it('does not re-fire after the pending id is cleared', async () => {
     const setDiffScrollOffset = vi.fn();
     const setPendingScrollThreadId = vi.fn();
