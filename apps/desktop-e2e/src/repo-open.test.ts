@@ -12,7 +12,10 @@ import { newWorktreeButton } from './setup/app.js';
  */
 
 test.describe('Repo picker', () => {
-  test.use({ startWithoutRepo: true });
+  test.use({
+    startWithoutRepo: true,
+    repo: { worktrees: [{ branch: 'inner' }] },
+  });
 
   test('starts on the picker when there is no repo to open', async ({
     desktop,
@@ -58,6 +61,23 @@ test.describe('Repo picker', () => {
     } finally {
       rmSync(notARepo, { recursive: true, force: true });
     }
+  });
+
+  test('opens a git worktree, whose .git is a file not a directory', async ({
+    desktop,
+  }) => {
+    const { page, repoPath } = desktop;
+    // Kirby's own worktrees look like this, and so does any submodule:
+    // `.git` is a file pointing at the real git dir. Refusing them
+    // would refuse the very thing the app is about.
+    const worktree = join(repoPath, '.claude', 'worktrees', 'inner');
+    await page.getByPlaceholder('/path/to/repository').fill(worktree);
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+
+    await expect(newWorktreeButton(page)).toBeVisible({ timeout: 30_000 });
+    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+      cwd: worktree,
+    });
   });
 
   test('the Open button stays disabled until a path is typed', async ({

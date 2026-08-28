@@ -7,10 +7,18 @@ import {
   afterAll,
   afterEach,
 } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getRepo, isGitRepo, openStartupRepo } from './repo.js';
+import {
+  activeRepoIs,
+  forgetRecentRepo,
+  getRepo,
+  isGitRepo,
+  listRecentRepos,
+  openRepo,
+  openStartupRepo,
+} from './repo.js';
 import { loadRecents, saveRecents } from './recent-repos.js';
 import type { RecentRepo } from '@kirby/vcs-core';
 
@@ -79,5 +87,80 @@ describe('openStartupRepo', () => {
 
   it('returns null with no start dir and empty recents', () => {
     expect(openStartupRepo({ KIRBY_START_DIR: undefined }, [])).toBeNull();
+  });
+});
+
+describe('isGitRepo (worktrees and submodules)', () => {
+  it('accepts a checkout whose .git is a file', () => {
+    // git worktrees and submodules point at the real git dir with a
+    // file, not a directory; rejecting those would hide every worktree
+    // from the picker.
+    const base = mkdtempSync(join(tmpdir(), 'kirby-repo-file-'));
+    const wt = join(base, 'wt');
+    mkdirSync(wt, { recursive: true });
+    writeFileSync(join(wt, '.git'), 'gitdir: /elsewhere/.git/worktrees/wt\n');
+    try {
+      expect(isGitRepo(wt)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a directory that does not exist', () => {
+    expect(isGitRepo(join(tmpdir(), 'kirby-definitely-not-here'))).toBe(false);
+  });
+});
+
+describe('opening a repository', () => {
+  it('refuses a directory that is not a repository', () => {
+    // The picker relies on this to keep the user on the picker with an
+    // error, rather than opening an empty workspace over nothing.
+    expect(() => openRepo(plainDir)).toThrow(/Not a git repository/);
+  });
+
+  it('leaves the active repo alone when the open fails', () => {
+    openRepo(gitDir);
+    expect(getRepo()?.cwd).toBe(gitDir);
+
+    expect(() => openRepo(plainDir)).toThrow();
+    // A failed switch must not strand the app between two repos.
+    expect(getRepo()?.cwd).toBe(gitDir);
+    expect(activeRepoIs(gitDir)).toBe(true);
+  });
+
+  it('tracks which repo long-running work belongs to', () => {
+    openRepo(gitDir);
+    expect(activeRepoIs(gitDir)).toBe(true);
+    expect(activeRepoIs(plainDir)).toBe(false);
+  });
+});
+
+describe('recent repositories', () => {
+  it('records an opened repo, newest first', () => {
+    saveRecents([]);
+    openRepo(gitDir);
+    expect(listRecentRepos()[0].cwd).toBe(gitDir);
+  });
+
+  it('marks a recent that no longer exists as invalid rather than dropping it', () => {
+    // The picker greys these out, which tells the user what happened;
+    // silently removing them looks like Kirby lost their repo.
+    const dead = join(tmpdir(), 'kirby-gone-forever');
+    saveRecents(recents([gitDir, dead]));
+    const listed = listRecentRepos();
+    expect(listed.map((r) => r.cwd)).toContain(dead);
+    expect(listed.find((r) => r.cwd === dead)?.valid).toBe(false);
+    expect(listed.find((r) => r.cwd === gitDir)?.valid).toBe(true);
+  });
+
+  it('forgets a repo on request', () => {
+    saveRecents(recents([gitDir, plainDir]));
+    forgetRecentRepo(plainDir);
+    expect(listRecentRepos().map((r) => r.cwd)).toEqual([gitDir]);
+  });
+
+  it('caps the list so it stays a menu rather than a history', () => {
+    saveRecents(recents(Array.from({ length: 25 }, (_, i) => `/repo-${i}`)));
+    expect(listRecentRepos().length).toBeLessThanOrEqual(10);
   });
 });

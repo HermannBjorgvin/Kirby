@@ -45,14 +45,16 @@ export function setRepoOpenedListener(fn: (cwd: string) => void): void {
 /** True when the directory exists and looks like a git repo. */
 export function isGitRepo(cwd: string): boolean {
   try {
-    return statSync(join(cwd, '.git')).isDirectory();
+    // A worktree or submodule has a .git *file* pointing at the real
+    // git dir, so both shapes count. Checking `isDirectory()` first and
+    // handling the file in a catch never worked: statSync succeeds on a
+    // file, so it simply returned false and the fallback was
+    // unreachable — which refused to open a worktree, in the app whose
+    // subject is worktrees.
+    const entry = statSync(join(cwd, '.git'));
+    return entry.isDirectory() || entry.isFile();
   } catch {
-    // Worktrees/submodules have a .git *file* pointing at the real dir.
-    try {
-      return statSync(join(cwd, '.git')).isFile();
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
