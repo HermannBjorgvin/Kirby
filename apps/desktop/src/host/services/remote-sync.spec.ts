@@ -23,11 +23,16 @@ const env = vi.hoisted(() => ({
   notices: [] as { message: string; kind: string }[],
   /** Resolvers for each syncRemote() call, in order. */
   pending: [] as ((ts: number) => void)[],
+  rejects: [] as ((e: Error) => void)[],
+  sweepThrows: false,
   autoDelete: null as string | null,
 }));
 
 function nextSync(): Promise<number> {
-  return new Promise<number>((resolve) => env.pending.push(resolve));
+  return new Promise<number>((resolve, reject) => {
+    env.pending.push(resolve);
+    env.rejects.push(reject);
+  });
 }
 
 vi.mock('./repo.js', () => ({
@@ -59,6 +64,7 @@ vi.mock('@kirby/app-core', () => ({
     onAutoDelete: (session: string, branch: string) => Promise<void>;
   }) => {
     env.sweeps += 1;
+    if (env.sweepThrows) throw new Error('provider unreachable');
     if (env.autoDelete) {
       await opts.onAutoDelete(env.autoDelete, env.autoDelete);
     }
@@ -84,6 +90,8 @@ beforeEach(async () => {
   env.removed = [];
   env.notices = [];
   env.pending = [];
+  env.rejects = [];
+  env.sweepThrows = false;
   env.autoDelete = null;
 
   vi.resetModules();
@@ -201,5 +209,58 @@ describe('gating and effects', () => {
     await flush();
 
     expect(env.removed).toEqual([]);
+  });
+});
+
+describe('when git or the provider is unreachable', () => {
+  async function completeAPass(ts = 1000) {
+    await flush();
+    env.pending[env.pending.length - 1](ts);
+    await flush();
+  }
+
+  it('keeps the badges from the last good pass when a fetch fails', async () => {
+    env.merged = new Set(['feature/a']);
+    sync.startRemoteSyncLoop('/repo-a');
+    await completeAPass(1000);
+    expect(sync.getSyncDecorations().merged.size).toBe(1);
+
+    // Second pass: the fetch fails, as it does on a dropped network or
+    // an upstream that has gone away.
+    sync.startRemoteSyncLoop('/repo-a');
+    await flush();
+    env.rejects[env.rejects.length - 1](new Error('could not resolve host'));
+    await flush();
+
+    // Badges are still true as of the last successful pass; blanking
+    // them would report every branch as unmerged and conflict-free.
+    expect(sync.getSyncDecorations().merged.size).toBe(1);
+    expect(sync.getSyncDecorations().lastGitSyncAt).toBe(1000);
+  });
+
+  it('survives the sweep itself failing', async () => {
+    env.sweepThrows = true;
+    sync.startRemoteSyncLoop('/repo-a');
+    await completeAPass();
+
+    // A provider error mid-pass is caught; nothing is auto-deleted on
+    // the strength of a half-finished answer.
+    expect(env.removed).toEqual([]);
+    expect(sync.getSyncDecorations().lastGitSyncAt).toBeNull();
+  });
+
+  it('runs again after a failure rather than giving up', async () => {
+    sync.startRemoteSyncLoop('/repo-a');
+    await flush();
+    env.rejects[0](new Error('offline'));
+    await flush();
+
+    // A transient failure must not leave the app permanently stale;
+    // the next pass has to go out.
+    env.sweepThrows = false;
+    sync.startRemoteSyncLoop('/repo-a');
+    await completeAPass(2000);
+    expect(env.sweeps).toBe(1);
+    expect(sync.getSyncDecorations().lastGitSyncAt).toBe(2000);
   });
 });
