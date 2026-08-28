@@ -1,5 +1,5 @@
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { SECRET_PLACEHOLDER } from '../../../host/contract.js';
 import type {
@@ -12,6 +12,7 @@ import {
 } from '../../lib/desktop-prefs.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useSettingsView, useUpdateSetting } from '../../lib/queries.js';
+import { persistedValue, type PendingSave } from '../../lib/settings-save.js';
 import { useTheme, type ThemePreference } from '../../lib/theme.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
@@ -232,20 +233,14 @@ function FieldRow({ field }: { field: SettingsFieldView }) {
   const update = useUpdateSetting(repo.cwd);
   const id = `field-${field.key}-${field.label.replace(/\W+/g, '-')}`;
 
-  // What this field was last known to hold, tracked locally as well as
-  // from the server. The guard below exists so blurring an untouched
-  // field is not a write; comparing against `field.value` alone made it
-  // drop real edits, because that value only catches up when the query
-  // refetches. Save, then edit again inside that window, and the second
-  // edit looked unchanged and vanished.
-  const savedRef = useRef(field.value);
-  useEffect(() => {
-    savedRef.current = field.value;
-  }, [field.value]);
+  // The last save made from this row, held only until the settings
+  // query catches up with it — see `persistedValue` for why blurring an
+  // untouched field cannot simply compare against `field.value`.
+  const pendingRef = useRef<PendingSave | null>(null);
 
   const save = (value: string, label = field.label) => {
-    if (value === savedRef.current) return;
-    savedRef.current = value;
+    if (value === persistedValue(field.value, pendingRef.current)) return;
+    pendingRef.current = { base: field.value, value };
     update.mutate(
       { ref: { label: field.label, key: field.key }, value },
       {
