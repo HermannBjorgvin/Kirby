@@ -10,7 +10,18 @@ export function parseUnifiedDiff(diffText: string): Map<string, DiffLine[]> {
   let oldLine = 0;
   let newLine = 0;
 
-  for (const splitLine of diffText.split('\n')) {
+  const rawLines = diffText.split('\n');
+  // `git diff` output ends with a newline, so splitting leaves a final
+  // empty string. An empty line is otherwise read as unchanged context
+  // below, which appended a blank row to the last file of every diff —
+  // numbered one past the end of the file. Harmless to look at, but it
+  // claims a line that does not exist, and comment anchoring resolves
+  // against exactly these numbers.
+  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+    rawLines.pop();
+  }
+
+  for (const splitLine of rawLines) {
     // Strip any trailing CR — CRLF source files leave \r on every
     // diff line, which when rendered drives wterm's cursor back to
     // column 0 mid-row and overlays the next row's content visually
