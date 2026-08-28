@@ -15,10 +15,18 @@ import type * as SessionsModule from './sessions.js';
 const state = vi.hoisted(() => ({
   cwd: '/repo-a',
   alive: new Set<string>(),
-  spawns: [] as { name: string; cwd: string; config: unknown }[],
+  spawns: [] as {
+    name: string;
+    cwd: string;
+    config: unknown;
+    request: unknown;
+  }[],
   killed: [] as string[],
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
+  worktrees: [] as { branch?: string }[],
+  persistedTmux: new Set<string>(),
+  createFails: new Set<string>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -32,19 +40,33 @@ vi.mock('@kirby/vcs-core', () => ({
 
 vi.mock('@kirby/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
-  createWorktree: (branch: string) =>
-    Promise.resolve(`${state.cwd}/.claude/worktrees/${branch}`),
-  listWorktrees: () => Promise.resolve([]),
+  createWorktree: (branch: string) => {
+    if (state.createFails.has(branch)) {
+      return Promise.reject(new Error(`git refused ${branch}`));
+    }
+    return Promise.resolve(`${state.cwd}/.claude/worktrees/${branch}`);
+  },
+  listWorktrees: () => Promise.resolve(state.worktrees),
 }));
 
 vi.mock('@kirby/app-core', () => ({
-  buildReviewLaunchRequest: () => ({ branch: 'x', intent: 'review' }),
-  launchSession: (spec: { name: string; cwd: string; config: unknown }) => {
+  buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
+    intent: 'review',
+    prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
+    systemGuidance: 'guidance',
+  }),
+  launchSession: (spec: {
+    name: string;
+    cwd: string;
+    config: unknown;
+    request: unknown;
+  }) => {
     state.alive.add(spec.name);
     state.spawns.push({
       name: spec.name,
       cwd: spec.cwd,
       config: spec.config,
+      request: spec.request,
     });
   },
   getSession: (name: string) =>
@@ -64,7 +86,8 @@ vi.mock('@kirby/app-core', () => ({
     state.alive.delete(name);
   },
   isSessionAlive: (name: string) => state.alive.has(name),
-  isTmuxSessionPersisted: () => false,
+  isTmuxSessionPersisted: (_config: unknown, name: string) =>
+    state.persistedTmux.has(name),
   getSpawnedAt: () => 1000,
   noteInput: () => undefined,
   noteResize: () => undefined,
@@ -83,7 +106,9 @@ let getSessionActivity: typeof sessions.getSessionActivity;
 let getSessionBuffer: typeof sessions.getSessionBuffer;
 let killSession: typeof sessions.killSession;
 let launchAgent: typeof sessions.launchAgent;
+let launchReviewAgent: typeof sessions.launchReviewAgent;
 let listSessions: typeof sessions.listSessions;
+let restorePersistedSessions: typeof sessions.restorePersistedSessions;
 
 beforeEach(async () => {
   state.cwd = '/repo-a';
@@ -92,6 +117,9 @@ beforeEach(async () => {
   state.killed = [];
   state.onData = new Map();
   state.configByCwd = {};
+  state.worktrees = [];
+  state.persistedTmux = new Set();
+  state.createFails = new Set();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -100,7 +128,9 @@ beforeEach(async () => {
     getSessionBuffer,
     killSession,
     launchAgent,
+    launchReviewAgent,
     listSessions,
+    restorePersistedSessions,
   } = sessions);
   sessions.setSessionBroadcaster(() => undefined);
 });
@@ -221,5 +251,104 @@ describe('session buffer', () => {
     const { data } = getSessionBuffer('big');
     expect(data.length).toBeLessThanOrEqual(512 * 1024);
     expect(data.length).toBeGreaterThan(0);
+  });
+});
+
+describe('launchReviewAgent', () => {
+  it('launches on the pull request branch with the review prompt', async () => {
+    // The prompt and guidance come from app-core so the desktop and the
+    // TUI seed a review identically; the branch is the PR's source, not
+    // whatever is checked out.
+    await launchReviewAgent({
+      pr: { id: 42, sourceBranch: 'feature/review' },
+      instruction: 'focus on error handling',
+    } as Parameters<typeof launchReviewAgent>[0]);
+
+    expect(state.spawns).toHaveLength(1);
+    expect(state.spawns[0].name).toBe('feature-review');
+    expect(state.spawns[0].request).toMatchObject({
+      intent: 'review',
+      prompt: 'review #42: focus on error handling',
+      systemGuidance: 'guidance',
+    });
+  });
+
+  it('goes through the same de-duplication as a plain launch', async () => {
+    const pr = { id: 1, sourceBranch: 'dup' };
+    await Promise.all([
+      launchReviewAgent({ pr } as Parameters<typeof launchReviewAgent>[0]),
+      launchReviewAgent({ pr } as Parameters<typeof launchReviewAgent>[0]),
+    ]);
+    expect(state.spawns).toHaveLength(1);
+  });
+});
+
+describe('restorePersistedSessions', () => {
+  beforeEach(() => {
+    state.configByCwd['/repo-a'] = { terminalBackend: 'tmux' };
+    state.worktrees = [{ branch: 'kept' }];
+    state.persistedTmux = new Set(['kept']);
+  });
+
+  it('reattaches a tmux session that outlived the last run', async () => {
+    await restorePersistedSessions();
+    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
+  });
+
+  it('does nothing at all on the pty backend', async () => {
+    // Only tmux sessions survive a quit; there is nothing to reattach.
+    state.configByCwd['/repo-a'] = { terminalBackend: 'pty' };
+    await restorePersistedSessions();
+    expect(state.spawns).toEqual([]);
+  });
+
+  it('skips a worktree with no branch', async () => {
+    // A detached HEAD has no branch to derive a session name from.
+    state.worktrees = [{ branch: undefined }, { branch: 'kept' }];
+    await restorePersistedSessions();
+    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
+  });
+
+  it('skips a session that is already running', async () => {
+    state.alive.add('kept');
+    await restorePersistedSessions();
+    expect(state.spawns).toEqual([]);
+  });
+
+  it('skips a branch with no persisted tmux session', async () => {
+    // Otherwise every worktree would spawn a fresh agent on startup.
+    state.persistedTmux = new Set();
+    await restorePersistedSessions();
+    expect(state.spawns).toEqual([]);
+  });
+
+  it('keeps going when one worktree fails to reattach', async () => {
+    state.worktrees = [{ branch: 'broken' }, { branch: 'kept' }];
+    state.persistedTmux = new Set(['broken', 'kept']);
+    state.createFails = new Set(['broken']);
+
+    await restorePersistedSessions();
+    // One bad worktree must not cost the user every other agent.
+    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
+  });
+
+  it('stops the moment another repository is opened', async () => {
+    // Every iteration awaits, and the user can switch repo meanwhile.
+    // Carrying on would run the old repo's branch names against the new
+    // checkout, and createWorktree would happily create each one from
+    // its HEAD — phantom branches, worktrees and agents.
+    state.worktrees = [{ branch: 'first' }, { branch: 'second' }];
+    state.persistedTmux = new Set(['first', 'second']);
+    state.configByCwd['/repo-b'] = { terminalBackend: 'tmux' };
+
+    const original = state.cwd;
+    state.onData.set('first', () => undefined);
+    const promise = restorePersistedSessions();
+    // Switch repositories while the first reattach is in flight.
+    state.cwd = '/repo-b';
+    await promise;
+
+    expect(state.cwd).not.toBe(original);
+    expect(state.spawns.map((s) => s.name)).not.toContain('second');
   });
 });
