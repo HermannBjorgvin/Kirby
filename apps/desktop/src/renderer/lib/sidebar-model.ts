@@ -140,36 +140,86 @@ export function groupSections(items: SidebarItem[]): SidebarSection[] {
 // ── Pull request status cluster ──────────────────────────────────
 
 /**
- * A pull request row shows one indicator carrying two independent
- * facts, so the two have to stay separable at a glance:
+ * A pull request row shows one circle standing for two independent
+ * facts, so what each visual channel means has to be decided rather
+ * than left to fall out of the code:
  *
- *   colour  — where the pull request stands with people
- *   glyph   — where it stands with CI
- *   filled  — nothing left to wait for on either axis
+ *   colour — the worst thing standing in the way
+ *   glyph  — which of the two axes that thing is
+ *   filled — nothing outstanding on either
  *
- * Collapsing them into a single "good/bad" reading is what made a
- * request that was only waiting on a reviewer look identical to one
- * whose build never reported.
+ * Colour is deliberately asymmetric. CI can only ever make a row more
+ * urgent, never less: a passing build does not lift a request that
+ * nobody has approved, while a failing one is red however many
+ * approvals it has. Green therefore means people have signed off, which
+ * makes it rare enough to be worth noticing in a long list.
  */
 export type ApprovalState = 'rejected' | 'blocked' | 'approved' | 'partial';
-export type CiGlyph = 'passed' | 'failed' | 'running' | 'absent';
+export type CiState = 'passed' | 'failed' | 'running' | 'absent';
+export type StatusTone = 'red' | 'yellow' | 'green' | 'muted';
+export type StatusGlyph =
+  | 'rejected'
+  | 'waiting'
+  | 'approved'
+  | 'partial'
+  | 'ci-failed'
+  | 'ci-running'
+  | 'ci-absent'
+  | 'ci-passed';
 
 export interface PrStatusIndicator {
   approval: ApprovalState;
-  /** What CI has to say. `absent` covers both "never ran" and
-   *  "withdrew" — Azure checks that end `notApplicable` land here. */
-  ci: CiGlyph;
+  /** `absent` covers both "never ran" and "withdrew" — Azure checks
+   *  that end `notApplicable` land here. */
+  ci: CiState;
+  tone: StatusTone;
+  glyph: StatusGlyph;
   label: string;
   filled: boolean;
   approved: number;
   total: number;
 }
 
+/**
+ * How much each state demands attention. The glyph shows whichever axis
+ * scores higher, so the circle depicts the thing actually holding the
+ * request up rather than always depicting CI — which is what produced a
+ * green tick sitting inside a red circle on a rejected request.
+ *
+ * Approvals win a tie: they are somebody's decision, and CI is still
+ * spelled out in the tooltip either way.
+ */
+const APPROVAL_SEVERITY: Record<ApprovalState, number> = {
+  rejected: 3,
+  blocked: 2,
+  partial: 1,
+  approved: 0,
+};
+const CI_SEVERITY: Record<CiState, number> = {
+  failed: 3,
+  running: 2,
+  absent: 1,
+  passed: 0,
+};
+
+const APPROVAL_GLYPH: Record<ApprovalState, StatusGlyph> = {
+  rejected: 'rejected',
+  blocked: 'waiting',
+  partial: 'partial',
+  approved: 'approved',
+};
+const CI_GLYPH: Record<CiState, StatusGlyph> = {
+  failed: 'ci-failed',
+  running: 'ci-running',
+  absent: 'ci-absent',
+  passed: 'ci-passed',
+};
+
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-function ciPhrase(ci: CiGlyph): string {
+function ciPhrase(ci: CiState): string {
   if (ci === 'passed') return 'CI passed';
   if (ci === 'failed') return 'CI failed';
   if (ci === 'running') return 'CI running';
@@ -184,25 +234,36 @@ function approvalPhrase(
   const of = `${approved} of ${plural(total, 'reviewer')} approved`;
   if (approval === 'rejected') return `changes rejected (${of})`;
   if (approval === 'blocked') return `waiting for the author (${of})`;
-  if (approval === 'approved')
+  if (approval === 'approved') {
     return `all ${plural(total, 'reviewer')} approved`;
+  }
   if (total === 0) return 'no reviewers yet';
   return `waiting on ${plural(total - approved, 'approval')} (${of})`;
 }
 
-function ciGlyph(buildStatus: string | undefined): CiGlyph {
+function ciState(buildStatus: string | undefined): CiState {
   if (buildStatus === 'succeeded') return 'passed';
   if (buildStatus === 'failed') return 'failed';
   if (buildStatus === 'pending') return 'running';
   return 'absent';
 }
 
+function toneFor(approval: ApprovalState, ci: CiState): StatusTone {
+  if (ci === 'failed' || approval === 'rejected') return 'red';
+  if (ci === 'running' || approval === 'blocked') return 'yellow';
+  // Only approvals earn green. A passing build on a request nobody has
+  // approved is not progress anyone can act on.
+  if (approval === 'approved') return 'green';
+  return 'muted';
+}
+
 /**
- * Both axes of a pull request's state, and the sentence describing them.
+ * Both axes of a pull request's state, how to draw them, and the
+ * sentence describing them.
  *
- * The only cell that gets its own wording is the one a reader acts on:
+ * The one cell with its own wording is the one a reader acts on:
  * approvals in and CI green means the request can be merged, and saying
- * so is more use than making them read two clauses and conclude it.
+ * so beats making them read two clauses and draw the conclusion.
  */
 export function prStatusIndicator(
   reviewers: { decision: ReviewDecision }[],
@@ -211,7 +272,7 @@ export function prStatusIndicator(
 ): PrStatusIndicator {
   const total = reviewers.length;
   const approved = reviewers.filter((r) => r.decision === 'approved').length;
-  const ci = ciGlyph(buildStatus);
+  const ci = ciState(buildStatus);
 
   const approval: ApprovalState = reviewers.some(
     (r) => r.decision === 'rejected'
@@ -223,12 +284,26 @@ export function prStatusIndicator(
     ? 'approved'
     : 'partial';
 
+  const glyph =
+    CI_SEVERITY[ci] > APPROVAL_SEVERITY[approval]
+      ? CI_GLYPH[ci]
+      : APPROVAL_GLYPH[approval];
+
   const ready = approval === 'approved' && ci === 'passed';
   const label = ready
     ? `Ready to merge — CI passed, all ${plural(total, 'reviewer')} approved`
     : `${ciPhrase(ci)} — ${approvalPhrase(approval, approved, total)}`;
 
-  return { approval, ci, label, filled: ready, approved, total };
+  return {
+    approval,
+    ci,
+    tone: toneFor(approval, ci),
+    glyph,
+    label,
+    filled: ready,
+    approved,
+    total,
+  };
 }
 
 /** Tooltip for the comment count. */

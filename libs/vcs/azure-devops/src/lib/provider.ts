@@ -423,6 +423,112 @@ export async function fetchPrBuildStatus(
   return deriveBuildStatus((data.value ?? []) as AdoPrStatus[]);
 }
 
+/** One pipeline run, as the builds API reports it. */
+export interface AdoBuildRun {
+  id?: number;
+  /** `notStarted` | `inProgress` | `completed` | `cancelling` | … */
+  status?: string;
+  /** Only meaningful once `status` is `completed`. */
+  result?: string;
+  definition?: { id?: number; name?: string };
+  finishTime?: string;
+  queueTime?: string;
+}
+
+function mapRunResult(run: AdoBuildRun): BuildStatusState {
+  // Queued or still going: no verdict yet, but something is happening.
+  if (run.status !== 'completed') return 'pending';
+  // A partial success is a pipeline that did not pass: calling it green
+  // hides the part that broke, and there is no warning state to put it
+  // in.
+  switch (run.result) {
+    case 'succeeded':
+      return 'succeeded';
+    case 'failed':
+    case 'partiallySucceeded':
+      return 'failed';
+    case 'canceled':
+      // Nobody learned anything from a cancelled run.
+      return 'none';
+    default:
+      return 'none';
+  }
+}
+
+/**
+ * The verdict from the pipelines that ran against a pull request.
+ *
+ * Same shape of problem as the status list: a definition that has been
+ * re-run appears more than once, so only its newest run speaks for it.
+ * Runs are ordered newest-first by the API, and the build id rises
+ * monotonically, so the highest id per definition wins.
+ */
+export function deriveBuildRunStatus(runs: AdoBuildRun[]): BuildStatusState {
+  const latestPerDefinition = new Map<number | string, AdoBuildRun>();
+  runs.forEach((run, index) => {
+    const key = run.definition?.id ?? `@${index}`;
+    const seen = latestPerDefinition.get(key);
+    if (!seen || (run.id ?? 0) > (seen.id ?? 0)) {
+      latestPerDefinition.set(key, run);
+    }
+  });
+
+  let hasFailed = false;
+  let hasPending = false;
+  let hasSucceeded = false;
+  for (const run of latestPerDefinition.values()) {
+    const mapped = mapRunResult(run);
+    if (mapped === 'failed') hasFailed = true;
+    if (mapped === 'pending') hasPending = true;
+    if (mapped === 'succeeded') hasSucceeded = true;
+  }
+  if (hasFailed) return 'failed';
+  if (hasPending) return 'pending';
+  if (hasSucceeded) return 'succeeded';
+  return 'none';
+}
+
+/** Worst of two verdicts — a red anywhere makes the pull request red. */
+export function combineBuildStatus(
+  a: BuildStatusState,
+  b: BuildStatusState
+): BuildStatusState {
+  if (a === 'failed' || b === 'failed') return 'failed';
+  if (a === 'pending' || b === 'pending') return 'pending';
+  if (a === 'succeeded' || b === 'succeeded') return 'succeeded';
+  return 'none';
+}
+
+/**
+ * Pipeline runs for a pull request.
+ *
+ * Azure builds a pull request against its *merge* ref, not the source
+ * branch, so `refs/pull/{id}/merge` is where the runs are — querying the
+ * source branch returns nothing at all.
+ *
+ * This is a separate call from the status list because the two carry
+ * different things, and a repository that reports CI one way usually
+ * does not report it the other. Reading only the statuses is why a
+ * failing pull request could show no CI result: the pipeline had failed,
+ * and the coverage check that posts a status withdrew a few seconds
+ * later precisely because the build gave it nothing to measure.
+ */
+export async function fetchPrBuildRuns(
+  config: AdoConfig,
+  prId: number
+): Promise<BuildStatusState> {
+  const branch = encodeURIComponent(`refs/pull/${prId}/merge`);
+  const url =
+    `https://dev.azure.com/${config.org}/${config.project}/_apis/build/builds` +
+    `?branchName=${branch}&$top=20&api-version=7.1`;
+  const res = await fetch(url, { headers: authHeaders(config.pat) });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as { value?: unknown[] };
+  return deriveBuildRunStatus((data.value ?? []) as AdoBuildRun[]);
+}
+
 /**
  * Parse org, project, and repo from an Azure DevOps git remote URL.
  * Supports both SSH and HTTPS formats.
@@ -995,14 +1101,21 @@ export const azureDevOpsProvider: VcsProvider = {
 
     const withDetails = await Promise.all(
       prs.map(async (pr) => {
-        const [activeCommentCount, buildStatus] = await Promise.all([
-          fetchActiveCommentCount(config, pr.id),
-          fetchPrBuildStatus(config, pr.id),
-        ]);
+        // CI reaches a pull request by two unrelated routes and a repo
+        // usually only uses one: pipelines run against the merge ref,
+        // while other checks post to the status list. Reading only the
+        // statuses showed no CI result for pull requests whose build had
+        // plainly failed. A failure on either route is a failure.
+        const [activeCommentCount, statusVerdict, runVerdict] =
+          await Promise.all([
+            fetchActiveCommentCount(config, pr.id),
+            fetchPrBuildStatus(config, pr.id),
+            fetchPrBuildRuns(config, pr.id).catch(() => 'none' as const),
+          ]);
         return {
           ...pr,
           activeCommentCount,
-          buildStatus,
+          buildStatus: combineBuildStatus(statusVerdict, runVerdict),
         } satisfies PullRequestInfo;
       })
     );

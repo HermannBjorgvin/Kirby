@@ -8,6 +8,8 @@ import {
   fetchActivePullRequests,
   fetchActiveCommentCount,
   fetchPrBuildStatus,
+  deriveBuildRunStatus,
+  combineBuildStatus,
   parseAdoRemoteUrl,
   azureDevOpsProvider,
   fetchAuthenticatedUserEmail,
@@ -507,6 +509,135 @@ describe('deriveBuildStatus', () => {
   });
 });
 
+/**
+ * Pipeline runs, the other half of a pull request's CI.
+ *
+ * Azure builds a pull request against `refs/pull/{id}/merge`, and this
+ * repository reports CI that way while posting only a coverage check to
+ * the status list — a check that withdraws when the build fails, since
+ * a failed build produces nothing to measure. Reading the statuses
+ * alone therefore reported "no CI result" for a pull request that was
+ * plainly red.
+ */
+describe('deriveBuildRunStatus', () => {
+  const run = (over: Record<string, unknown> = {}) => ({
+    id: 1,
+    status: 'completed',
+    result: 'succeeded',
+    definition: { id: 442, name: 'nx' },
+    ...over,
+  });
+
+  it('reads a completed run by its result', () => {
+    expect(deriveBuildRunStatus([run()])).toBe('succeeded');
+    expect(deriveBuildRunStatus([run({ result: 'failed' })])).toBe('failed');
+  });
+
+  it('treats a run that has not finished as in progress', () => {
+    expect(deriveBuildRunStatus([run({ status: 'inProgress' })])).toBe(
+      'pending'
+    );
+    expect(
+      deriveBuildRunStatus([run({ status: 'notStarted', result: undefined })])
+    ).toBe('pending');
+  });
+
+  it('does not call a partial success green', () => {
+    // Something in the pipeline broke; there is no warning state to put
+    // it in, and green would hide it.
+    expect(deriveBuildRunStatus([run({ result: 'partiallySucceeded' })])).toBe(
+      'failed'
+    );
+  });
+
+  it('draws no conclusion from a cancelled run', () => {
+    expect(deriveBuildRunStatus([run({ result: 'canceled' })])).toBe('none');
+  });
+
+  it('lets a re-run supersede the failure it replaced', () => {
+    // Same hazard as the status list: a definition that ran twice must
+    // be spoken for by its newest run only.
+    expect(
+      deriveBuildRunStatus([
+        run({ id: 10, result: 'failed' }),
+        run({ id: 20, result: 'succeeded' }),
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('keeps one verdict per definition', () => {
+    // A green pipeline must not hide a different one that is red.
+    expect(
+      deriveBuildRunStatus([
+        run({ id: 20, result: 'succeeded', definition: { id: 1, name: 'a' } }),
+        run({ id: 10, result: 'failed', definition: { id: 2, name: 'b' } }),
+      ])
+    ).toBe('failed');
+  });
+
+  it('returns none when nothing ran', () => {
+    expect(deriveBuildRunStatus([])).toBe('none');
+  });
+
+  it('reads a recorded failing build', () => {
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/pr-builds-failed.json', import.meta.url),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildRunStatus>[0] };
+    expect(deriveBuildRunStatus(recorded.value)).toBe('failed');
+  });
+});
+
+describe('combineBuildStatus', () => {
+  it('lets a failure on either route win', () => {
+    expect(combineBuildStatus('failed', 'succeeded')).toBe('failed');
+    expect(combineBuildStatus('succeeded', 'failed')).toBe('failed');
+    expect(combineBuildStatus('none', 'failed')).toBe('failed');
+  });
+
+  it('reports work in progress ahead of a success', () => {
+    expect(combineBuildStatus('succeeded', 'pending')).toBe('pending');
+  });
+
+  it('reports a success over silence', () => {
+    expect(combineBuildStatus('none', 'succeeded')).toBe('succeeded');
+  });
+
+  it('stays silent only when both routes are', () => {
+    expect(combineBuildStatus('none', 'none')).toBe('none');
+  });
+
+  it('surfaces the failing build behind a withdrawn coverage check', () => {
+    // The recorded pair from the pull request that reported no CI while
+    // failing: the statuses withdrew seconds after the build went red.
+    const statuses = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-withdrawn-after-build-failure.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+    const builds = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/pr-builds-failed.json', import.meta.url),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildRunStatus>[0] };
+
+    expect(deriveBuildStatus(statuses.value)).toBe('none');
+    expect(
+      combineBuildStatus(
+        deriveBuildStatus(statuses.value),
+        deriveBuildRunStatus(builds.value)
+      )
+    ).toBe('failed');
+  });
+});
+
 describe('fetchActivePullRequests', () => {
   beforeEach(() => mockFetch.mockReset());
 
@@ -886,7 +1017,9 @@ describe('azureDevOpsProvider', () => {
           ],
         })
       );
-      // PR 42: threads then statuses
+      // Each pull request costs three calls, issued in this order:
+      // threads, statuses, then pipeline runs.
+      // PR 42
       mockFetch.mockResolvedValueOnce(
         jsonResponse({
           value: [
@@ -898,11 +1031,13 @@ describe('azureDevOpsProvider', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ value: [{ state: 'succeeded' }] })
       );
-      // PR 43: threads then statuses
+      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
+      // PR 43
       mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ value: [{ state: 'failed' }] })
       );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
 
       const result = await azureDevOpsProvider.fetchPullRequests(
         { pat: 'test-pat' },
@@ -942,6 +1077,73 @@ describe('azureDevOpsProvider', () => {
         url: 'https://dev.azure.com/myorg/myproject/_git/myrepo/pullrequest/43',
       });
     });
+  });
+
+  // Placed after the ordered test above: this one warms the
+  // provider's module-level identity cache, which would otherwise
+  // let that test skip two fetches and misalign its queue.
+  it('reports a failing pipeline even when the status list is clean', async () => {
+    // The reported bug: a pull request showed no CI result while its
+    // build was red. The coverage check that posts statuses withdraws
+    // when the build fails, so the status list alone says nothing.
+    //
+    // Answers by URL rather than in call order: the provider caches
+    // identity lookups between tests, so how many calls precede these
+    // is not something a test should depend on.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('connectionData'))
+        return Promise.resolve(
+          jsonResponse({
+            authenticatedUser: {
+              properties: { Account: { $value: 'me@example.com' } },
+            },
+          })
+        );
+      if (url.includes('/pullrequests?'))
+        return Promise.resolve(
+          jsonResponse({
+            value: [
+              {
+                pullRequestId: 77013,
+                sourceRefName: 'refs/heads/feat-a',
+                isDraft: false,
+                reviewers: [],
+              },
+            ],
+          })
+        );
+      if (url.includes('/statuses'))
+        return Promise.resolve(
+          jsonResponse({ value: [{ state: 'notApplicable' }] })
+        );
+      if (url.includes('/build/builds'))
+        return Promise.resolve(
+          jsonResponse({
+            value: [
+              {
+                id: 556771,
+                status: 'completed',
+                result: 'failed',
+                definition: { id: 442, name: 'nx' },
+              },
+            ],
+          })
+        );
+      return Promise.resolve(jsonResponse({ value: [] }));
+    });
+
+    const result = await azureDevOpsProvider.fetchPullRequests(
+      { pat: 'test-pat' },
+      testProject
+    );
+    expect(result['feat-a']?.buildStatus).toBe('failed');
+
+    // and it asked the merge ref, not the source branch, which is
+    // where Azure actually builds a pull request
+    const urls = mockFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes('refs%2Fpull%2F77013%2Fmerge'))).toBe(
+      true
+    );
   });
 
   // ── Mention rewriting ─────────────────────────────────────────

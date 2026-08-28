@@ -247,13 +247,14 @@ describe('applyPendingRemovals', () => {
 /**
  * The status cluster on a pull request row.
  *
- * One indicator carries two independent facts — colour for where the
- * request stands with people, glyph for where it stands with CI — so
- * the table below walks the whole grid rather than the few cells that
- * happened to come up. The failure this guards against is the two axes
- * collapsing into one "good/bad" reading, which is what made a request
- * waiting on a reviewer indistinguishable from one whose build never
- * reported.
+ * One circle stands for two independent facts, and every visual channel
+ * is a decision: colour is the worst thing in the way, glyph is which
+ * axis that thing is, fill is nothing outstanding at all. The grid
+ * below is the agreed table written down, and it is asserted whole
+ * rather than by example — the bugs here have all been cells nobody
+ * thought to check. A green circle with a failing build inside it
+ * shipped precisely because "approved" and "CI failed" were only ever
+ * tested apart.
  */
 describe('prStatusIndicator', () => {
   const isBlocking = (d: ReviewDecision) =>
@@ -270,46 +271,72 @@ describe('prStatusIndicator', () => {
   const APPROVED: ReviewDecision[] = ['approved', 'approved'];
   const PARTIAL: ReviewDecision[] = ['approved', 'no-response'];
 
+  /** reviewers × CI → tone, glyph. The table, verbatim. */
   const GRID: [string, ReviewDecision[], string | undefined, string, string][] =
     [
-      // reviewers        CI            → approval    glyph
-      ['rejected', REJECTED, 'succeeded', 'rejected', 'passed'],
-      ['rejected', REJECTED, 'failed', 'rejected', 'failed'],
-      ['rejected', REJECTED, 'pending', 'rejected', 'running'],
-      ['rejected', REJECTED, undefined, 'rejected', 'absent'],
-      ['blocked', BLOCKED, 'succeeded', 'blocked', 'passed'],
-      ['blocked', BLOCKED, 'failed', 'blocked', 'failed'],
-      ['blocked', BLOCKED, 'pending', 'blocked', 'running'],
-      ['blocked', BLOCKED, undefined, 'blocked', 'absent'],
-      ['approved', APPROVED, 'succeeded', 'approved', 'passed'],
-      ['approved', APPROVED, 'failed', 'approved', 'failed'],
-      ['approved', APPROVED, 'pending', 'approved', 'running'],
-      ['approved', APPROVED, undefined, 'approved', 'absent'],
-      ['partial', PARTIAL, 'succeeded', 'partial', 'passed'],
-      ['partial', PARTIAL, 'failed', 'partial', 'failed'],
-      ['partial', PARTIAL, 'pending', 'partial', 'running'],
-      ['partial', PARTIAL, undefined, 'partial', 'absent'],
+      ['rejected + passed', REJECTED, 'succeeded', 'red', 'rejected'],
+      ['rejected + failed', REJECTED, 'failed', 'red', 'rejected'],
+      ['rejected + running', REJECTED, 'pending', 'red', 'rejected'],
+      ['rejected + no result', REJECTED, undefined, 'red', 'rejected'],
+
+      ['waiting + passed', BLOCKED, 'succeeded', 'yellow', 'waiting'],
+      ['waiting + failed', BLOCKED, 'failed', 'red', 'ci-failed'],
+      ['waiting + running', BLOCKED, 'pending', 'yellow', 'waiting'],
+      ['waiting + no result', BLOCKED, undefined, 'yellow', 'waiting'],
+
+      ['approved + passed', APPROVED, 'succeeded', 'green', 'approved'],
+      ['approved + failed', APPROVED, 'failed', 'red', 'ci-failed'],
+      ['approved + running', APPROVED, 'pending', 'yellow', 'ci-running'],
+      ['approved + no result', APPROVED, undefined, 'green', 'ci-absent'],
+
+      ['partial + passed', PARTIAL, 'succeeded', 'muted', 'partial'],
+      ['partial + failed', PARTIAL, 'failed', 'red', 'ci-failed'],
+      ['partial + running', PARTIAL, 'pending', 'yellow', 'ci-running'],
+      ['partial + no result', PARTIAL, undefined, 'muted', 'partial'],
     ];
 
-  it.each(GRID)(
-    '%s reviewers with CI %s → %s / %s',
-    (_name, decisions, ci, approval, glyph) => {
-      const out = call(decisions, ci);
-      expect(out.approval).toBe(approval);
-      expect(out.ci).toBe(glyph);
-    }
-  );
+  it.each(GRID)('%s → %s %s', (_name, decisions, ci, tone, glyph) => {
+    const out = call(decisions, ci);
+    expect({ tone: out.tone, glyph: out.glyph }).toEqual({ tone, glyph });
+  });
 
-  it('reads the two axes independently across the whole grid', () => {
-    // The regression this pins: CI must never change the approval axis,
-    // and reviewers must never change the CI axis.
-    for (const [, decisions, ci, approval, glyph] of GRID) {
-      const out = call(decisions, ci);
-      expect(`${out.approval}/${out.ci}`).toBe(`${approval}/${glyph}`);
+  it('always shows red when CI failed, whatever the reviewers say', () => {
+    // The reported bug: an approved request with a red build drew green.
+    for (const [, decisions] of GRID) {
+      expect(call(decisions, 'failed').tone).toBe('red');
     }
   });
 
-  it('fills the shape only when there is nothing left to wait for', () => {
+  it('always shows red when a reviewer rejected, whatever CI says', () => {
+    for (const ci of ['succeeded', 'failed', 'pending', undefined]) {
+      expect(call(REJECTED, ci).tone).toBe('red');
+    }
+  });
+
+  it('never draws a tick inside a rejection', () => {
+    // A green check in a red circle is what made this unreadable.
+    for (const ci of ['succeeded', 'failed', 'pending', undefined]) {
+      expect(call(REJECTED, ci).glyph).toBe('rejected');
+    }
+  });
+
+  it('does not let a passing build turn an unapproved request green', () => {
+    // CI can escalate a row's urgency; it cannot vouch for it.
+    expect(call(PARTIAL, 'succeeded').tone).toBe('muted');
+    expect(call([], 'succeeded').tone).toBe('muted');
+  });
+
+  it('keeps both axes readable however the glyph resolves', () => {
+    // Whichever axis wins the glyph, the other is still recoverable —
+    // approvals from the count, CI from the sentence.
+    for (const [, decisions, ci] of GRID) {
+      const out = call(decisions, ci);
+      expect(out.total).toBe(decisions.length);
+      expect(out.label).toMatch(/CI (passed|failed|running)|No CI result/);
+    }
+  });
+
+  it('fills the shape only when nothing at all is outstanding', () => {
     expect(call(APPROVED, 'succeeded').filled).toBe(true);
     for (const [, decisions, ci] of GRID) {
       const out = call(decisions, ci);
@@ -318,15 +345,13 @@ describe('prStatusIndicator', () => {
     }
   });
 
-  it('says a fully green request can be merged, rather than making you infer it', () => {
+  it('says a fully green request can be merged rather than making you infer it', () => {
     expect(call(APPROVED, 'succeeded').label).toBe(
       'Ready to merge — CI passed, all 2 reviewers approved'
     );
   });
 
-  it('names both axes when either is outstanding', () => {
-    // The case from the screenshot: waiting on the author with no CI
-    // verdict at all. Both facts have to survive into the sentence.
+  it('names both axes in every other cell', () => {
     expect(
       call(['waiting-for-author', 'no-response', 'no-response']).label
     ).toBe('No CI result — waiting for the author (0 of 3 reviewers approved)');
@@ -336,16 +361,15 @@ describe('prStatusIndicator', () => {
     expect(call(PARTIAL, 'succeeded').label).toBe(
       'CI passed — waiting on 1 approval (1 of 2 reviewers approved)'
     );
-    expect(call(REJECTED, 'failed').label).toBe(
-      'CI failed — changes rejected (1 of 2 reviewers approved)'
+    expect(call(PARTIAL, 'failed').label).toBe(
+      'CI failed — waiting on 1 approval (1 of 2 reviewers approved)'
     );
   });
 
   it('handles a pull request nobody is reviewing yet', () => {
     const out = call([], 'succeeded');
     expect(out.total).toBe(0);
-    expect(out.approval).toBe('partial');
-    expect(out.filled).toBe(false);
+    expect(out.tone).toBe('muted');
     expect(out.label).toBe('CI passed — no reviewers yet');
   });
 });
