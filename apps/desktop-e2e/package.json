@@ -36,7 +36,7 @@
           "{projectRoot}/test-output/playwright/report"
         ],
         "options": {
-          "command": "node run-e2e.mjs --grep-invert @visual",
+          "command": "node run-e2e.mjs",
           "cwd": "apps/desktop-e2e"
         }
       },

@@ -18,6 +18,12 @@
 //   --stream             emit a line every --interval-ms, forever
 //   --interval-ms=<n>    stream interval (default 150)
 //   --exit-after-ms=<n>  self-exit after N ms (default never)
+//   --echo               echo each completed line of stdin back, so a test
+//                        can prove input travelled renderer → IPC → PTY →
+//                        agent → back. Line-buffered on purpose: a PTY in
+//                        raw mode delivers one keystroke at a time, so an
+//                        immediate echo would answer "hello" with five
+//                        separate lines.
 
 const args = Object.fromEntries(
   process.argv
@@ -45,6 +51,22 @@ const shutdown = () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 process.on('SIGHUP', shutdown);
+
+if (args.echo) {
+  if (process.stdin.isTTY) process.stdin.setRawMode(true);
+  let line = '';
+  process.stdin.on('data', (chunk) => {
+    for (const ch of chunk.toString()) {
+      if (ch === '\r' || ch === '\n') {
+        process.stdout.write(`echo:${line}\r\n`);
+        line = '';
+      } else {
+        line += ch;
+      }
+    }
+  });
+  process.stdin.resume();
+}
 
 if (args.stream) {
   let n = 0;

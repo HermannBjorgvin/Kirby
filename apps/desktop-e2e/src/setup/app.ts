@@ -49,6 +49,31 @@ export function agentSpinner(page: Page): Locator {
   return page.locator('.agent-spinner');
 }
 
+/**
+ * Text that is actually on screen.
+ *
+ * Panes for tabs with a live session stay mounted and are hidden with
+ * CSS rather than unmounted, so a bare `getByText` happily matches the
+ * *other* terminal's output. Anything asserting what the user can see
+ * has to filter to the visible one.
+ */
+export function visibleText(page: Page, text: string | RegExp): Locator {
+  return page.getByText(text).filter({ visible: true }).first();
+}
+
+/**
+ * Focus the on-screen terminal so keystrokes reach the agent.
+ *
+ * wterm keeps a hidden textarea and focuses it itself; clicking the
+ * rendered output instead moves focus off it, and everything typed
+ * afterwards goes nowhere.
+ */
+export async function focusTerminal(page: Page): Promise<void> {
+  const input = page.locator('textarea').filter({ visible: true }).first();
+  await input.waitFor({ state: 'visible' });
+  await input.focus();
+}
+
 /** The command palette's input, once open. */
 export function paletteInput(page: Page): Locator {
   return page.getByPlaceholder('Branch name, pull request, or command…');

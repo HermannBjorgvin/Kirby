@@ -31,10 +31,17 @@ const FAKE_AGENT = join(HERE, 'fake-agent.mjs');
  *   fakeAgent({ stream: true }) → continuously producing output
  */
 export function fakeAgent(
-  opts: { stream?: boolean; intervalMs?: number; exitAfterMs?: number } = {}
+  opts: {
+    stream?: boolean;
+    intervalMs?: number;
+    exitAfterMs?: number;
+    /** Echo stdin back, for testing the input round trip. */
+    echo?: boolean;
+  } = {}
 ): string {
   const flags = [`--banner=kirby-fake-agent-ready`];
   if (opts.stream) flags.push('--stream');
+  if (opts.echo) flags.push('--echo');
   if (opts.intervalMs != null) flags.push(`--interval-ms=${opts.intervalMs}`);
   if (opts.exitAfterMs != null)
     flags.push(`--exit-after-ms=${opts.exitAfterMs}`);

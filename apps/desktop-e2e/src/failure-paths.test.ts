@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { createWorktree, openPalette, sidebarRow, tabs } from './setup/app.js';
+import {
+  agentSpinner,
+  createWorktree,
+  openPalette,
+  sidebarRow,
+  tabs,
+} from './setup/app.js';
 import { armContextMenuChoice } from './setup/menu.js';
 
 /**
@@ -57,6 +63,10 @@ test.describe('An agent that exits immediately', () => {
     await expect(page.getByText(/session exited/i).first()).toBeVisible({
       timeout: 30_000,
     });
+    // The exit notice is pushed the instant the PTY closes, but the
+    // activity map the close path reads is polled once a second — so
+    // wait for the UI to agree the agent is idle rather than racing it.
+    await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await page
       .getByRole('tab', { name: /short-lived/ })

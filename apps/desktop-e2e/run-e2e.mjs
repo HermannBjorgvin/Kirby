@@ -15,7 +15,19 @@
 import { spawnSync } from 'node:child_process';
 
 const passthrough = process.argv.slice(2);
-const playwright = ['npx', 'playwright', 'test', ...passthrough];
+
+// The screenshot suite is meaningful only inside the pinned container
+// (see run-visual.mjs), so a plain run leaves it out rather than
+// failing it against baselines drawn by a different renderer. A caller
+// that selects tests itself — run-visual.mjs does — is left alone.
+const selectsTests = passthrough.some((a) => a.startsWith('--grep'));
+const playwright = [
+  'npx',
+  'playwright',
+  'test',
+  ...(selectsTests ? [] : ['--grep-invert', '@visual']),
+  ...passthrough,
+];
 
 const headed = process.env.KIRBY_E2E_HEADED === '1';
 const wantsXvfb = process.platform === 'linux' && !headed;
