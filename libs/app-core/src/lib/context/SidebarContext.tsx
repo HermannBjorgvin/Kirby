@@ -2,9 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
@@ -36,6 +34,62 @@ export function resolveSelectedIndex(
   const idx = items.findIndex((item) => getItemKey(item) === selectedKey);
   if (idx >= 0) return idx;
   return Math.min(Math.max(0, lastValidIndex), items.length - 1);
+}
+
+/**
+ * The sidebar's selection anchor.
+ *
+ * `key` is the identity of the selected row; `index` is the row it
+ * resolved to the last time the list was looked at. Both travel
+ * together so a delete has somewhere to land: when `key` is gone from
+ * `items`, `index` says where it used to be.
+ */
+export interface SidebarSelection {
+  key: string | null;
+  index: number;
+}
+
+export const INITIAL_SELECTION: SidebarSelection = { key: null, index: 0 };
+
+/**
+ * Re-anchor a selection against a new `items` array.
+ *
+ * Resolves the anchor (key first, index as the delete fallback) and
+ * then adopts whatever row that landed on, so the *next* list change
+ * follows the row the cursor is actually sitting on rather than the
+ * key of a row that no longer exists. Without the adoption step, a
+ * delete followed by a re-sort would drag the cursor back to a stale
+ * numeric position.
+ *
+ * Returns the input object unchanged when nothing moved — the caller
+ * uses that identity to skip a redundant state write.
+ */
+export function reconcileSelection(
+  items: SidebarItem[],
+  selection: SidebarSelection
+): SidebarSelection {
+  const index = resolveSelectedIndex(items, selection.key, selection.index);
+  const item = items[index];
+  const key = item ? getItemKey(item) : null;
+  if (key === selection.key && index === selection.index) return selection;
+  return { key, index };
+}
+
+/**
+ * Selection produced by an explicit `selectByKey`.
+ *
+ * A key that isn't in the list yet (the branch picker selects a
+ * session the moment it's created, before the sidebar has refreshed)
+ * keeps the current row under the cursor and waits — the key wins as
+ * soon as its row appears.
+ */
+export function selectionForKey(
+  items: SidebarItem[],
+  key: string,
+  current: SidebarSelection
+): SidebarSelection {
+  const index = items.findIndex((item) => getItemKey(item) === key);
+  return { key, index: index >= 0 ? index : current.index };
 }
 
 /**
@@ -96,14 +150,16 @@ const SidebarContext = createContext<SidebarContextValue | null>(null);
 export function SidebarProvider({ children }: { children: ReactNode }) {
   const sessionCtx = useSessionData();
   const { vcsConfigured } = useConfig();
-  // Sole source of truth for what's selected. Every render derives
-  // `selectedIndex` by looking up the key in the current items array.
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-
-  // Mirror of the last valid numeric index. A `ref` (not state)
-  // because this is bookkeeping for the fallback path — mutating it
-  // during render doesn't need to trigger a re-render.
-  const lastValidIndexRef = useRef(0);
+  // Sole source of truth for what's selected: the row's identity key
+  // plus the index it resolved to. Navigation writes both; the render
+  // below re-anchors them whenever `items` change.
+  const [selection, setSelection] =
+    useState<SidebarSelection>(INITIAL_SELECTION);
+  // The `items` array `selection` was last anchored against. `null`
+  // until the first render has reconciled.
+  const [anchoredItems, setAnchoredItems] = useState<SidebarItem[] | null>(
+    null
+  );
 
   const items = useMemo(
     () =>
@@ -132,33 +188,24 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const totalItems = items.length;
 
-  // ── Derive selectedIndex from selectedKey + items ────────────────
-  // Pure derivation on every render — no setState called here.
-  const selectedIndex = resolveSelectedIndex(
-    items,
-    selectedKey,
-    lastValidIndexRef.current
-  );
-  lastValidIndexRef.current = selectedIndex;
+  // ── Re-anchor the selection when `items` change ──────────────────
+  // React's "adjust state while rendering" pattern: the list changed
+  // under us, so the anchor is re-resolved (and a deleted row's
+  // neighbour adopted) here, before any child sees a stale index —
+  // rather than in an effect that has to be lied to about its deps to
+  // keep from looping. Navigation between list changes needs nothing:
+  // `selectByKey` / `moveSelection` write an already-resolved anchor.
+  let current = selection;
+  if (anchoredItems !== items) {
+    current = reconcileSelection(items, selection);
+    setAnchoredItems(items);
+    if (current !== selection) setSelection(current);
+  }
 
-  const resolvedItem = items[selectedIndex];
-  const resolvedKey = resolvedItem ? getItemKey(resolvedItem) : null;
-
-  // ── Reconcile key on items change ────────────────────────────────
-  // If the selected item disappeared (delete / merge) or `selectedKey`
-  // was null on mount, sync `selectedKey` to the fallback item. Runs
-  // only when `items` change — navigation via `selectByKey` resolves
-  // synchronously in the derivation above and doesn't need the effect.
-  useEffect(() => {
-    if (resolvedKey !== selectedKey) {
-      setSelectedKey(resolvedKey);
-    }
-    // selectedKey intentionally omitted so we only fire on items change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  const selectedIndex = current.index;
 
   // ── Derived values (cheap — no useMemo needed) ───────────────────
-  const selectedItem = resolvedItem;
+  const selectedItem = items[selectedIndex];
   const selectedPr = selectedItem ? getPrFromItem(selectedItem) : undefined;
   const sessionNameForTerminal = !selectedItem
     ? null
@@ -169,16 +216,16 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   // ── Navigation helpers ───────────────────────────────────────────
   const selectByKey = useCallback(
     (key: string) => {
-      setSelectedKey(
-        translateSelectKey(
-          key,
-          sessionCtx.sessionBranchMap,
-          sessionCtx.sessionPrMap,
-          sessionCtx.categorizedReviews
-        )
+      const translated = translateSelectKey(
+        key,
+        sessionCtx.sessionBranchMap,
+        sessionCtx.sessionPrMap,
+        sessionCtx.categorizedReviews
       );
+      setSelection((prev) => selectionForKey(items, translated, prev));
     },
     [
+      items,
       sessionCtx.sessionBranchMap,
       sessionCtx.sessionPrMap,
       sessionCtx.categorizedReviews,
@@ -193,7 +240,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       );
       const item = items[newIdx];
       if (item) {
-        setSelectedKey(getItemKey(item));
+        setSelection({ key: getItemKey(item), index: newIdx });
       }
     },
     [items, selectedIndex]
@@ -208,7 +255,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       ) {
         const item = items[i];
         if (item && isItemActive(item)) {
-          setSelectedKey(getItemKey(item));
+          setSelection({ key: getItemKey(item), index: i });
           return;
         }
       }
