@@ -5,6 +5,7 @@ import type {
   ReviewComment,
   RowMap,
 } from '@kirby/review-comments';
+import { maxDiffScrollOffset } from '../utils/diff-scroll.js';
 
 export interface UseAutoSelectFirstCommentOptions {
   /** The currently opened diff file. The hook arms once per file change. */
@@ -97,8 +98,7 @@ export function useAutoSelectFirstComment({
 
     autoSelectedFileRef.current = file;
     setSelectedCommentId(first.id);
-    const viewportHeight = Math.max(1, paneRows - 3);
-    const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
+    const maxScroll = maxDiffScrollOffset(diffTotalRows, paneRows);
     setDiffScrollOffset(
       Math.min(Math.max(0, rowEntry.rowStart - 2), maxScroll)
     );
