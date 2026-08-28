@@ -92,10 +92,28 @@ export function CommandPalette({
     // and go through tabs.openItem above). The pane shows its loading
     // state until the sidebar model catches up.
     const existing = items.find((i) => itemBranch(i) === branch);
-    tabs.openItem(existing ? itemKey(existing) : `branch:${branch}`);
+    const key = existing ? itemKey(existing) : `branch:${branch}`;
+    // Whether this checkout is what put the tab on screen, decided
+    // before opening it — `tabs.tabs` inside the callbacks below is the
+    // array from this render, which does not include the tab we are
+    // about to add.
+    const tabId = `item:${key}`;
+    const wasOpen =
+      existing != null ||
+      tabs.tabs.some(
+        (t) => t.kind === 'item' && (t.itemKey === key || t.id === tabId)
+      );
+    tabs.openItem(key);
     create.mutate(branch, {
       onSuccess: () => toast.success(`Worktree ready: ${branch}`, { id }),
-      onError: (err) => toast.error(errorMessage(err), { id }),
+      onError: (err) => {
+        toast.error(errorMessage(err), { id });
+        // Take the optimistic tab back down with the error: its item is
+        // never arriving, so it would otherwise sit on "Preparing…" for
+        // the rest of the session. A tab that was already open is the
+        // user's, not ours to close.
+        if (!wasOpen) tabs.close(tabId);
+      },
     });
   };
 

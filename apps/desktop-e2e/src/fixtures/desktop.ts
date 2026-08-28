@@ -123,6 +123,12 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // pinning ozone to x11) is what actually makes the run headless.
     const parentEnv = { ...process.env };
     delete parentEnv.WAYLAND_DISPLAY;
+    // The app reads these as fallbacks when no editor is configured, so
+    // inheriting whatever the developer happens to export makes the
+    // "no editor" path pass here and fail on a colleague's machine (or
+    // the reverse). Tests that want one set it through config.
+    delete parentEnv.EDITOR;
+    delete parentEnv.VISUAL;
 
     const app = await electron.launch({
       args: [

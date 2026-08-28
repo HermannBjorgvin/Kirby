@@ -32,9 +32,19 @@ export function listAllBranches() {
   return listAllBr();
 }
 
-export function createWorktree(branch: string) {
+export async function createWorktree(branch: string): Promise<string> {
   requireRepo();
-  return createWt(branch);
+  const path = await createWt(branch);
+  // The resolver answers `null` for anything git refused — an invalid
+  // ref name, a branch already checked out elsewhere. Returning that as
+  // a success made the renderer's mutation resolve, toast "Worktree
+  // ready", and leave the optimistically-opened tab on its loading
+  // state forever, because no sidebar item was ever coming. The launch
+  // and open-in-editor paths already throw here; this one did not.
+  if (!path) {
+    throw new Error(`Failed to create a worktree for "${branch}"`);
+  }
+  return path;
 }
 
 export async function removeWorktree(
