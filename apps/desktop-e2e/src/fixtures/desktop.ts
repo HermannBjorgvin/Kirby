@@ -37,11 +37,14 @@ export function fakeAgent(
     exitAfterMs?: number;
     /** Echo stdin back, for testing the input round trip. */
     echo?: boolean;
+    /** Stop streaming after this long, but stay alive. */
+    streamMs?: number;
   } = {}
 ): string {
   const flags = [`--banner=kirby-fake-agent-ready`];
   if (opts.stream) flags.push('--stream');
   if (opts.echo) flags.push('--echo');
+  if (opts.streamMs != null) flags.push(`--stream-ms=${opts.streamMs}`);
   if (opts.intervalMs != null) flags.push(`--interval-ms=${opts.intervalMs}`);
   if (opts.exitAfterMs != null)
     flags.push(`--exit-after-ms=${opts.exitAfterMs}`);

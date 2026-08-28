@@ -17,6 +17,9 @@
 //   --banner=<str>       first line (default "kirby-fake-agent-ready")
 //   --stream             emit a line every --interval-ms, forever
 //   --interval-ms=<n>    stream interval (default 150)
+//   --stream-ms=<n>      stop streaming after N ms but stay alive — an
+//                        agent that finished a piece of work and is now
+//                        waiting at its prompt
 //   --exit-after-ms=<n>  self-exit after N ms (default never)
 //   --echo               echo each completed line of stdin back, so a test
 //                        can prove input travelled renderer → IPC → PTY →
@@ -70,12 +73,20 @@ if (args.echo) {
 
 if (args.stream) {
   let n = 0;
-  timers.add(
-    setInterval(() => {
-      n += 1;
-      process.stdout.write(`working ${n}\r\n`);
-    }, intervalMs)
-  );
+  const ticker = setInterval(() => {
+    n += 1;
+    process.stdout.write(`working ${n}\r\n`);
+  }, intervalMs);
+  timers.add(ticker);
+  if (args['stream-ms']) {
+    setTimeout(() => {
+      clearInterval(ticker);
+      timers.delete(ticker);
+      process.stdout.write('done\r\n');
+      // Stay alive, quiet, as an agent waiting for its next instruction.
+      timers.add(setInterval(() => undefined, 60_000));
+    }, parseInt(args['stream-ms'], 10));
+  }
 } else {
   // Keep the PTY open without producing output — a real agent waiting
   // at its prompt. Node would otherwise exit on an empty event loop.
