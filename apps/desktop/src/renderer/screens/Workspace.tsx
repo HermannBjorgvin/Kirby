@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Group,
   Panel,
@@ -32,7 +32,7 @@ import {
   useSidebarModel,
 } from '../lib/queries.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
-import { TabsProvider, useTabs } from '../lib/tabs.js';
+import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs.js';
 import { useCloseTabs } from '../lib/use-close-tabs.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
@@ -107,53 +107,32 @@ function WorkspaceInner({
       return !h;
     });
 
-  // Keep tab identity in step with the sidebar: an item's key changes
-  // when a worktree grows a PR (branch:x → pr:n) or a PR closes, and
-  // the open tab must follow instead of stranding on the old key.
-  useEffect(() => {
-    tabs.syncItems(
-      items.map((i) => ({ itemKey: itemKey(i), branch: itemBranch(i) }))
-    );
-  }, [tabs, items]);
+  // The sidebar as the tab model sees it.
+  const entries: ItemEntry[] = useMemo(
+    () =>
+      items.map((i) => ({
+        itemKey: itemKey(i),
+        branch: itemBranch(i),
+        running: itemRunning(i),
+        sessionName: itemSessionName(i),
+      })),
+    [items]
+  );
 
-  // Every running agent gets a tab: restores the tabs for tmux
-  // sessions that survived a restart, and surfaces sessions started
-  // elsewhere. Each session is auto-opened at most once, and never
-  // when its tab already exists (so this can't fight manual closes).
-  const autoOpenedRef = useRef(new Set<string>());
+  // The one place the two stores are reconciled. The reducer follows
+  // items whose key changed (a worktree grows a PR: branch:x → pr:n,
+  // and back when it closes), opens a tab for each newly running
+  // agent, and pins preview tabs that have an agent behind them —
+  // atomically, so no render ever sees a half-reconciled strip.
+  //
+  // `tabs` (the whole api, which changes identity on every dispatch)
+  // is the dependency on purpose: opening a preview tab is itself a
+  // reason to re-run, since the branch it lands on may already be
+  // live. Re-running settles — every step above is idempotent and
+  // returns the same state object once there is nothing left to do.
   useEffect(() => {
-    for (const item of items) {
-      const name = itemSessionName(item);
-      if (!name || !itemRunning(item)) continue;
-      if (autoOpenedRef.current.has(name)) continue;
-      autoOpenedRef.current.add(name);
-      const id = `item:${itemKey(item)}`;
-      if (!tabs.tabs.some((t) => t.id === id)) {
-        tabs.openItem(itemKey(item), { preview: false });
-      }
-    }
-  }, [items, tabs]);
-
-  // A preview tab whose branch has a live agent is active work, not
-  // idle browsing: pin it so preview replacement (clicking another
-  // sidebar item) can never swallow the tab out from under the agent.
-  useEffect(() => {
-    const byKey = new Map(items.map((i) => [itemKey(i), i]));
-    for (const tab of tabs.tabs) {
-      if (tab.kind !== 'item' || !tab.preview) continue;
-      const item = byKey.get(tab.itemKey);
-      if (!item) continue;
-      const branch = itemBranch(item);
-      // Liveness is `running`, not the presence of a session *name*:
-      // every worktree item carries a name whether or not an agent was
-      // ever started, so keying off the name pinned every preview tab
-      // the moment it opened and preview replacement never happened.
-      const alive = items.some(
-        (i) => itemBranch(i) === branch && itemRunning(i)
-      );
-      if (alive) tabs.pin(tab.id);
-    }
-  }, [tabs, items]);
+    tabs.syncItems(entries);
+  }, [tabs, entries]);
 
   // The host's remote sync loop toasts its events (auto-deleted merged
   // branch, blocked auto-delete) and the sidebar refetches to match.
