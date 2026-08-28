@@ -1,5 +1,5 @@
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { SECRET_PLACEHOLDER } from '../../../host/contract.js';
 import type {
@@ -232,8 +232,20 @@ function FieldRow({ field }: { field: SettingsFieldView }) {
   const update = useUpdateSetting(repo.cwd);
   const id = `field-${field.key}-${field.label.replace(/\W+/g, '-')}`;
 
+  // What this field was last known to hold, tracked locally as well as
+  // from the server. The guard below exists so blurring an untouched
+  // field is not a write; comparing against `field.value` alone made it
+  // drop real edits, because that value only catches up when the query
+  // refetches. Save, then edit again inside that window, and the second
+  // edit looked unchanged and vanished.
+  const savedRef = useRef(field.value);
+  useEffect(() => {
+    savedRef.current = field.value;
+  }, [field.value]);
+
   const save = (value: string, label = field.label) => {
-    if (value === field.value) return;
+    if (value === savedRef.current) return;
+    savedRef.current = value;
     update.mutate(
       { ref: { label: field.label, key: field.key }, value },
       {
@@ -330,8 +342,10 @@ function SelectRow({
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => onSave(draft)}
-              onKeyDown={(e) => e.key === 'Enter' && onSave(draft)}
+              onBlur={(e) => onSave(e.currentTarget.value)}
+              onKeyDown={(e) =>
+                e.key === 'Enter' && onSave(e.currentTarget.value)
+              }
               className="w-48 font-mono"
               placeholder="custom value"
             />
@@ -400,8 +414,14 @@ function TextRow({
               value={draft}
               disabled={saving}
               onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => onSave(draft)}
-              onKeyDown={(e) => e.key === 'Enter' && onSave(draft)}
+              // Read the value off the element rather than the render
+              // closure: a keypress that lands before React has
+              // re-rendered would otherwise save the value from before
+              // the edit, which the unchanged-guard then drops entirely.
+              onBlur={(e) => onSave(e.currentTarget.value)}
+              onKeyDown={(e) =>
+                e.key === 'Enter' && onSave(e.currentTarget.value)
+              }
               className={cn('w-64 font-mono', field.masked && 'pr-8')}
               placeholder={field.masked ? '••••••••' : undefined}
             />
