@@ -120,4 +120,101 @@ describe('open-item after re-key', () => {
     expect(state.tabs[0].kind === 'item' && state.tabs[0].itemKey).toBe('pr:1');
     expect(state.activeId).toBe('item:branch:a');
   });
+
+  describe('reordering by drag', () => {
+    const three = (): TabsState => {
+      let state: TabsState = { tabs: [], activeId: null };
+      for (const key of ['a', 'b', 'c']) {
+        state = reduce(state, {
+          type: 'open-item',
+          itemKey: key,
+          preview: false,
+        });
+      }
+      return state;
+    };
+    const order = (state: TabsState) =>
+      state.tabs.map((t) => (t.kind === 'item' ? t.itemKey : t.id));
+
+    it('drops a tab after its target', () => {
+      const state = reduce(three(), {
+        type: 'move',
+        id: 'item:a',
+        targetId: 'item:c',
+        side: 'after',
+      });
+      expect(order(state)).toEqual(['b', 'c', 'a']);
+    });
+
+    it('drops a tab before its target', () => {
+      const state = reduce(three(), {
+        type: 'move',
+        id: 'item:c',
+        targetId: 'item:a',
+        side: 'before',
+      });
+      expect(order(state)).toEqual(['c', 'a', 'b']);
+    });
+
+    it('drops before a target that sits later in the strip', () => {
+      // The discriminating case for the index arithmetic: removing the
+      // dragged tab shifts the target down one, so a target index read
+      // before the removal inserts a slot too far right and the tab
+      // lands after its target instead of before it.
+      const state = reduce(three(), {
+        type: 'move',
+        id: 'item:a',
+        targetId: 'item:c',
+        side: 'before',
+      });
+      expect(order(state)).toEqual(['b', 'a', 'c']);
+    });
+
+    it('handles a short backwards move without losing the tab', () => {
+      // Removing the dragged tab shifts every later index down by one,
+      // which is exactly where an off-by-one would land.
+      const state = reduce(three(), {
+        type: 'move',
+        id: 'item:b',
+        targetId: 'item:c',
+        side: 'after',
+      });
+      expect(order(state)).toEqual(['a', 'c', 'b']);
+    });
+
+    it('ignores a drop onto itself', () => {
+      const before = three();
+      const after = reduce(before, {
+        type: 'move',
+        id: 'item:b',
+        targetId: 'item:b',
+        side: 'after',
+      });
+      expect(after).toBe(before);
+    });
+
+    it('ignores a drop onto a tab that is gone', () => {
+      // The dragged tab must come back, not vanish with the failed move.
+      const before = three();
+      const after = reduce(before, {
+        type: 'move',
+        id: 'item:a',
+        targetId: 'item:missing',
+        side: 'after',
+      });
+      expect(order(after)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('keeps the active tab active wherever it lands', () => {
+      const before = three();
+      const after = reduce(before, {
+        type: 'move',
+        id: before.activeId as string,
+        targetId: 'item:a',
+        side: 'before',
+      });
+      expect(after.activeId).toBe(before.activeId);
+      expect(after.tabs.some((t) => t.id === after.activeId)).toBe(true);
+    });
+  });
 });

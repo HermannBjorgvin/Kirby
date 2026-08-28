@@ -48,6 +48,15 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     id: fc.constantFrom('settings', ...KEYS.map((k) => `item:${k}`)),
   }),
   fc.record({ type: fc.constant('close-all' as const) }),
+  // Drag-to-reorder. Included because a reorder that drops or
+  // duplicates a tab breaks the same invariants everything else here
+  // protects.
+  fc.record({
+    type: fc.constant('move' as const),
+    id: fc.constantFrom('settings', ...KEYS.map((k) => `item:${k}`)),
+    targetId: fc.constantFrom('settings', ...KEYS.map((k) => `item:${k}`)),
+    side: fc.constantFrom<'before' | 'after'>('before', 'after'),
+  }),
   // The interesting one: the sidebar re-keying items underneath.
   fc
     .array(
