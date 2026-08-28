@@ -204,7 +204,7 @@ export function PrWorkspace({
   // first, then per file [threads + drafts] by line. Powers both the
   // sidebar Comments list and the diff toolbar's prev/next nav, so both
   // move between remote comments AND agent drafts.
-  const commentItems = useMemo<CommentListItem[]>(() => {
+  const allCommentItems = useMemo<CommentListItem[]>(() => {
     const order = new Map(files.map(([f], i) => [f, i]));
     type Row = CommentListItem & {
       file: string | null;
@@ -266,10 +266,14 @@ export function PrWorkspace({
     return rows;
   }, [files, general, inlineThreads, drafts]);
 
-  const navItems = options.hideResolved
-    ? commentItems.filter((i) => !i.resolved)
-    : commentItems;
-  const navIndex = navItems.findIndex((i) => i.id === focusThreadId);
+  // One filtered list for everything that walks comments: the rail's
+  // Comments list, and the toolbar's prev/next. Hiding resolved threads
+  // in the diff while still listing them in the rail — and letting nav
+  // jump to one that is not rendered — was the inconsistency here.
+  const commentItems = options.hideResolved
+    ? allCommentItems.filter((i) => !i.resolved)
+    : allCommentItems;
+  const navIndex = commentItems.findIndex((i) => i.id === focusThreadId);
 
   // Scroll to any comment or draft by id; falls back to the file. Goes
   // through the virtual list's imperative handle — the target row may
@@ -293,10 +297,12 @@ export function PrWorkspace({
     [commentItems, jumpToId]
   );
   const step = (delta: number) => {
-    if (navItems.length === 0) return;
+    if (commentItems.length === 0) return;
     const next =
-      navIndex < 0 ? 0 : (navIndex + delta + navItems.length) % navItems.length;
-    const target = navItems[next] as { id: string; file?: string | null };
+      navIndex < 0
+        ? 0
+        : (navIndex + delta + commentItems.length) % commentItems.length;
+    const target = commentItems[next] as { id: string; file?: string | null };
     jumpToId(target.id, target.file ?? null);
   };
 
@@ -445,7 +451,7 @@ export function PrWorkspace({
                   focusThreadId={focusThreadId}
                   scrollRef={scrollRef}
                   jumpRef={diffJumpRef}
-                  navCount={navItems.length}
+                  navCount={commentItems.length}
                   navIndex={navIndex}
                   onPrev={() => step(-1)}
                   onNext={() => step(1)}

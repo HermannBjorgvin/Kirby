@@ -1,3 +1,4 @@
+import type { ReviewDecision } from '@kirby/vcs-core/types';
 import type { SidebarItem } from '../../host/contract.js';
 
 export type SectionKey =
@@ -134,4 +135,88 @@ export function groupSections(items: SidebarItem[]): SidebarSection[] {
     label: SECTION_LABEL[k],
     items: map.get(k) ?? [],
   }));
+}
+
+// ── Pull request status cluster ──────────────────────────────────
+
+/** How the approvals indicator should read for a pull request. */
+export interface ApprovalIndicator {
+  /**
+   * `rejected` and `blocked` are somebody's decision to stop the pull
+   * request; `approved` is everyone through. `ready` is the state worth
+   * distinguishing: the build is green and nothing is blocking, only
+   * approvals are outstanding — the request is waiting on people rather
+   * than on itself.
+   */
+  kind: 'rejected' | 'blocked' | 'approved' | 'ready' | 'partial';
+  /** Tooltip text; says what the shape means rather than naming it. */
+  label: string;
+  /** Filled = nothing left to wait for. */
+  filled: boolean;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * The approvals half of a pull request's status cluster.
+ *
+ * Kept out of the component because the interesting part is the
+ * precedence: a rejection outranks a green build, and a green build
+ * with approvals outstanding has to be visibly different from both "all
+ * done" and "nothing has happened yet" — otherwise a request that is
+ * only waiting on a reviewer looks the same as one whose build has not
+ * run.
+ */
+export function approvalIndicator(
+  reviewers: { decision: ReviewDecision }[],
+  buildStatus: string | undefined,
+  isBlocking: (decision: ReviewDecision) => boolean
+): ApprovalIndicator {
+  const total = reviewers.length;
+  const approved = reviewers.filter((r) => r.decision === 'approved').length;
+  const of = `${approved} of ${plural(total, 'reviewer')} approved`;
+
+  if (reviewers.some((r) => r.decision === 'rejected')) {
+    return {
+      kind: 'rejected',
+      label: `Changes rejected — ${of}`,
+      filled: false,
+    };
+  }
+  if (reviewers.some((r) => isBlocking(r.decision))) {
+    return {
+      kind: 'blocked',
+      label: `Waiting for the author — ${of}`,
+      filled: false,
+    };
+  }
+  if (total > 0 && approved === total) {
+    return { kind: 'approved', label: `All ${of}`, filled: true };
+  }
+  if (buildStatus === 'succeeded') {
+    return {
+      kind: 'ready',
+      label: `CI passed — waiting on ${plural(
+        total - approved,
+        'approval'
+      )} (${of})`,
+      filled: false,
+    };
+  }
+  return { kind: 'partial', label: of, filled: false };
+}
+
+/** Tooltip for the CI indicator. */
+export function buildStatusLabel(buildStatus: string): string {
+  if (buildStatus === 'succeeded') return 'CI passed';
+  if (buildStatus === 'failed') return 'CI failed';
+  if (buildStatus === 'pending') return 'CI running';
+  return `CI ${buildStatus}`;
+}
+
+/** Tooltip for the comment count. */
+export function unresolvedCommentsLabel(count: number): string {
+  return `${plural(count, 'unresolved comment')}`;
 }

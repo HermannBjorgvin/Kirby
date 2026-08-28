@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo, ReviewDecision } from '@kirby/vcs-core';
 import type { SidebarItem } from '../../host/contract.js';
 import {
   applyPendingRemovals,
+  approvalIndicator,
+  buildStatusLabel,
   groupSections,
   itemBranch,
   itemHasWorktree,
   itemKey,
   itemRunning,
   itemSessionName,
+  unresolvedCommentsLabel,
   SECTION_ORDER,
 } from './sidebar-model.js';
 
@@ -239,5 +242,78 @@ describe('applyPendingRemovals', () => {
     applyPendingRemovals([reviewRow], new Set([branch]));
     expect(reviewRow.sessionName).toBe('feature-colour');
     expect(reviewRow.running).toBe(true);
+  });
+});
+
+/**
+ * The status cluster on a pull request row.
+ *
+ * The shape carries the meaning — filled versus outlined, green versus
+ * muted — so the rule worth pinning is the precedence between them. In
+ * particular a green build must not make a rejected pull request look
+ * fine, and "waiting on people" must be visibly distinct from both
+ * "done" and "nothing has run yet".
+ */
+describe('approvalIndicator', () => {
+  const isBlocking = (d: ReviewDecision) =>
+    d === 'changes-requested' || d === 'waiting-for-author' || d === 'rejected';
+  const call = (decisions: ReviewDecision[], ci?: string) =>
+    approvalIndicator(
+      decisions.map((decision) => ({ decision })),
+      ci,
+      isBlocking
+    );
+
+  it('marks a fully approved request as done, and fills the shape', () => {
+    const out = call(['approved', 'approved'], 'succeeded');
+    expect(out.kind).toBe('approved');
+    expect(out.filled).toBe(true);
+  });
+
+  it('distinguishes a green build waiting on approvals', () => {
+    // The case this exists for: nothing is wrong, it just needs people.
+    const out = call(['approved', 'no-response'], 'succeeded');
+    expect(out.kind).toBe('ready');
+    expect(out.filled).toBe(false);
+    expect(out.label).toMatch(/CI passed/);
+    expect(out.label).toMatch(/1 approval/);
+  });
+
+  it('does not claim readiness while the build is still running', () => {
+    expect(call(['approved', 'no-response'], 'pending').kind).toBe('partial');
+    expect(call(['approved', 'no-response'], undefined).kind).toBe('partial');
+    expect(call(['approved', 'no-response'], 'failed').kind).toBe('partial');
+  });
+
+  it('lets a rejection outrank a green build', () => {
+    const out = call(['rejected', 'approved'], 'succeeded');
+    expect(out.kind).toBe('rejected');
+    expect(out.filled).toBe(false);
+  });
+
+  it('lets a blocking decision outrank a green build', () => {
+    expect(call(['changes-requested'], 'succeeded').kind).toBe('blocked');
+  });
+
+  it('counts approvals in the label whatever the state', () => {
+    expect(call(['approved', 'no-response'], 'failed').label).toBe(
+      '1 of 2 reviewers approved'
+    );
+    expect(call(['approved'], 'succeeded').label).toMatch(
+      /All 1 of 1 reviewer/
+    );
+  });
+});
+
+describe('status cluster tooltips', () => {
+  it('says what the CI icon means rather than echoing the enum', () => {
+    expect(buildStatusLabel('succeeded')).toBe('CI passed');
+    expect(buildStatusLabel('failed')).toBe('CI failed');
+    expect(buildStatusLabel('pending')).toBe('CI running');
+  });
+
+  it('calls comments unresolved, and gets the plural right', () => {
+    expect(unresolvedCommentsLabel(1)).toBe('1 unresolved comment');
+    expect(unresolvedCommentsLabel(3)).toBe('3 unresolved comments');
   });
 });

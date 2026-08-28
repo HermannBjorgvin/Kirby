@@ -23,11 +23,14 @@ import {
   useLaunchAgent,
 } from '../../lib/queries.js';
 import {
+  approvalIndicator,
+  buildStatusLabel,
   itemBranch,
   itemHasWorktree,
   itemKey,
   itemRunning,
   itemSessionName,
+  unresolvedCommentsLabel,
   itemTitle,
 } from '../../lib/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
@@ -247,17 +250,26 @@ function reviewTone(category: 'needs-review' | 'waiting' | 'approved'): string {
 /** Right-aligned compact status cluster: CI, approvals, comments. */
 function PrMeta({ pr }: { pr: PullRequestInfo }) {
   const reviewers = pr.reviewers ?? [];
-  const approved = reviewers.filter((r) => r.decision === 'approved').length;
-  const rejected = reviewers.some((r) => r.decision === 'rejected');
-  const blocked = reviewers.some((r) => isBlockingDecision(r.decision));
   const total = reviewers.length;
   const comments = pr.activeCommentCount ?? 0;
   const ci = pr.buildStatus;
+  const approval = approvalIndicator(reviewers, ci, isBlockingDecision);
+
+  // A green outline says the build is green and only approvals are
+  // outstanding; filled says there is nothing left to wait for.
+  const approvalTone =
+    approval.kind === 'rejected'
+      ? 'text-destructive'
+      : approval.kind === 'blocked'
+      ? 'text-warning'
+      : approval.kind === 'approved' || approval.kind === 'ready'
+      ? 'text-success'
+      : undefined;
 
   return (
     <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
       {ci && ci !== 'none' && (
-        <Tip label={`CI ${ci}`}>
+        <Tip label={buildStatusLabel(ci)}>
           <span className="flex items-center">
             {ci === 'succeeded' && (
               <CheckCircle2Icon className="size-3.5 text-success" />
@@ -272,40 +284,26 @@ function PrMeta({ pr }: { pr: PullRequestInfo }) {
         </Tip>
       )}
       {total > 0 && (
-        <Tip
-          label={
-            rejected
-              ? 'Rejected'
-              : blocked
-              ? 'Waiting for author'
-              : `${approved} of ${total} reviewers approved`
-          }
-        >
+        <Tip label={approval.label}>
           <span
             className={cn(
               'flex items-center gap-0.5 tabular-nums',
-              rejected
-                ? 'text-destructive'
-                : blocked
-                ? 'text-warning'
-                : approved === total
-                ? 'text-success'
-                : undefined
+              approvalTone
             )}
           >
-            {rejected || blocked ? (
+            {approval.kind === 'rejected' || approval.kind === 'blocked' ? (
               <XCircleIcon className="size-3" />
             ) : (
               <CircleIcon
-                className={cn('size-3', approved === total && 'fill-current')}
+                className={cn('size-3', approval.filled && 'fill-current')}
               />
             )}
-            {approved}/{total}
+            {reviewers.filter((r) => r.decision === 'approved').length}/{total}
           </span>
         </Tip>
       )}
       {comments > 0 && (
-        <Tip label={`${comments} open comment${comments === 1 ? '' : 's'}`}>
+        <Tip label={unresolvedCommentsLabel(comments)}>
           <span className="flex items-center gap-0.5 tabular-nums">
             <MessageSquareIcon className="size-3" />
             {comments}

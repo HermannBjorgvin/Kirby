@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { useOpenInEditor } from '../../lib/queries.js';
+import { unresolvedCommentsLabel } from '../../lib/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
@@ -119,10 +120,12 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
           </span>
         )}
         {(pr.activeCommentCount ?? 0) > 0 && (
-          <span className="flex items-center gap-0.5 text-muted-foreground">
-            <MessageSquareIcon className="size-3.5" />
-            {pr.activeCommentCount}
-          </span>
+          <Tip label={unresolvedCommentsLabel(pr.activeCommentCount ?? 0)}>
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <MessageSquareIcon className="size-3.5" />
+              {pr.activeCommentCount} unresolved
+            </span>
+          </Tip>
         )}
       </span>
 
