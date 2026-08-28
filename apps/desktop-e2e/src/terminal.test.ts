@@ -171,13 +171,19 @@ test.describe('Pasting an image', () => {
     await launch(page, 'pasting');
 
     await pasteImage(page);
-    // The agent echoes on end-of-line, so the path only comes back once
-    // the line is terminated.
-    await page.keyboard.press('Enter');
 
-    await expect(
-      visibleText(page, /echo:.*kirby-pasted-images.*\.png/)
-    ).toBeVisible({ timeout: 15_000 });
+    // The paste is a round trip — read the file, hand it to the host,
+    // write it to disk, then type the path — while the agent only
+    // echoes once a line is terminated. Pressing Enter once races that:
+    // send it too early and the newline arrives ahead of the path,
+    // which then sits in the buffer un-echoed forever. Retry the
+    // newline instead of guessing how long the round trip takes.
+    await expect(async () => {
+      await page.keyboard.press('Enter');
+      await expect(
+        visibleText(page, /echo:.*kirby-pasted-images.*\.png/)
+      ).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
   });
 
   test('leaves an ordinary text paste to the terminal', async ({ desktop }) => {
@@ -197,10 +203,13 @@ test.describe('Pasting an image', () => {
         })
       );
     });
-    await page.keyboard.press('Enter');
-
-    await expect(visibleText(page, /echo:plain-text-paste/)).toBeVisible({
-      timeout: 15_000,
-    });
+    // Same race as the image case: the pasted text reaches the PTY over
+    // IPC, so a single Enter can beat it there.
+    await expect(async () => {
+      await page.keyboard.press('Enter');
+      await expect(visibleText(page, /echo:plain-text-paste/)).toBeVisible({
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 30_000 });
   });
 });

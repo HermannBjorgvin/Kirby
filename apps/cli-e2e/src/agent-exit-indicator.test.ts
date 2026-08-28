@@ -48,11 +48,21 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
 
     // Escape back to the sidebar; the row should flip. Selected +
     // stopped → ◎
-    await kirby.term.write('\x00');
-    await waitForSidebarFocused(kirby.term);
+    //
+    // Retried rather than given a longer timeout. Nothing here waits for
+    // the keystroke to have reached the PTY, for the agent to have died,
+    // or for the registry to have noticed, so the escape can land while
+    // the row is still legitimately ◉ — and a repaint of the sidebar is
+    // what shows the new state. Re-escaping drives that repaint instead
+    // of waiting for one. On CI, which runs this about half again as
+    // slow as a local machine, a fixed 8s wait was losing the race.
     const stoppedRow = kirby.term.page.locator('.term-row', {
       hasText: new RegExp(`◎.*${branch}`),
     });
-    await expect(stoppedRow).toBeVisible({ timeout: 8_000 });
+    await expect(async () => {
+      await kirby.term.write('\x00');
+      await waitForSidebarFocused(kirby.term);
+      await expect(stoppedRow).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
   });
 });
