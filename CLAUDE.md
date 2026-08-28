@@ -57,6 +57,58 @@
 - **Run tests via NX:** `npx nx test worktree-manager`
 - **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
 
+### Desktop Tests (`apps/desktop`, `apps/desktop-e2e`)
+
+```sh
+npx nx test desktop              # unit (vitest)
+npx nx e2e desktop-e2e           # e2e: launches the built Electron app
+npx nx e2e:visual desktop-e2e    # screenshots, inside a pinned container
+```
+
+**E2E drives the real app.** `apps/desktop-e2e` uses Playwright's Electron
+driver to launch the _built_ desktop app against a throwaway git repo with an
+isolated `HOME`, so tests exercise the actual main process, preload bridge and
+renderer. `nx e2e` depends on `desktop:build` — but when invoking
+`node run-e2e.mjs` directly, **rebuild first** (`npx nx build desktop`) or you
+are testing the previous build.
+
+The fixture (`src/fixtures/desktop.ts`) gives each test a repo (optionally
+seeded with branches and worktrees, including mid-rebase / detached-HEAD /
+deleted-directory states), a `~/.kirby` of its own, a scriptable fake agent for
+`aiCommand`, and **fails any test whose renderer throws** — an ErrorBoundary
+otherwise turns a crash into a blank pane that assertions pass straight over.
+
+**It runs headless, always.** `run-e2e.mjs` wraps the run in xvfb on Linux even
+when `DISPLAY` is set, because otherwise the app steals focus and anything you
+do meanwhile changes what the tests see. `KIRBY_E2E_HEADED=1` to watch it. On
+Wayland that is not enough on its own: Electron talks to the compositor through
+`WAYLAND_DISPLAY` and ignores the X display xvfb hands it, so the fixture drops
+that variable and pins `--ozone-platform=x11`.
+
+**Screenshots run in a container** (`run-visual.mjs`, tagged `@visual`, excluded
+from the default `e2e` target). Fonts differ between machines, and a pixel-ratio
+tolerance is far stricter on a small dialog than on a full window — CI failed
+both dialogs at 4% while passing everything else. Everything renders in the
+Playwright image pinned to our Playwright version, in CI and locally alike, so
+the tolerance is **zero**: any differing pixel fails. Regenerate baselines with
+`node run-visual.mjs --update-snapshots`, and review the diff before accepting.
+
+**Native menus** are reachable from tests: `setup/menu.ts` arms a one-shot
+interception of `Menu.popup` (context menus) and clicks application-menu items
+directly. Several commands have no other route — Ctrl+, is a menu accelerator,
+not a renderer keybinding.
+
+**Property tests** (`fast-check`) cover the tab reducer and the diff model,
+where the bugs have been invariant violations rather than missing examples:
+every comment emitted exactly once, one tab per item, `activeId` always
+resolving. They use random seeds, so a failure may appear on CI and not
+locally — the reported counterexample is the bug, not noise. Pin any it finds
+as a worked case.
+
+**When adding a test, break the code on purpose and confirm it fails.** Several
+tests here looked thorough and caught nothing until a deliberate mutation showed
+which case actually discriminates.
+
 ### E2E Tests (Playwright + wterm)
 
 E2E tests run Kirby in headless Chromium via the `apps/cli-wterm-host/` bridge
