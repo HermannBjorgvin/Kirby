@@ -1,15 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { PullRequestComments } from '@kirby/vcs-core';
+import {
+  deriveBuildStatus,
+  deriveBuildRunStatus,
+  combineBuildStatus,
+  fetchPrBuildStatus,
+} from './build-status.js';
 import {
   parseReviewer,
   parsePullRequest,
   countActiveThreads,
-  deriveBuildStatus,
   fetchActivePullRequests,
   fetchActiveCommentCount,
-  fetchPrBuildStatus,
-  deriveBuildRunStatus,
-  combineBuildStatus,
   parseAdoRemoteUrl,
   azureDevOpsProvider,
   fetchAuthenticatedUserEmail,
@@ -1414,5 +1417,288 @@ describe('azureDevOpsProvider', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.threads[0].comments[0].body).toBe('@Alice hi');
     });
+  });
+});
+
+// ── Thread anchoring ────────────────────────────────────────────────
+//
+// `fetchCommentThreads` is the only route to the thread transform, so
+// these drive the provider with a single canned /threads response and
+// assert where each thread lands. The payloads are the shapes ADO
+// actually emits: live line refs, refs that have gone null with only
+// `trackingCriteria` left, and a file-anchored thread carrying no line
+// refs at all.
+
+describe('fetchCommentThreads thread anchoring', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    _clearMentionCacheForTests();
+  });
+
+  const comment = {
+    id: 7,
+    commentType: 'text',
+    content: 'take a look',
+    author: { displayName: 'Alice' },
+    publishedDate: '2026-04-24T00:00:00Z',
+  };
+
+  async function transform(threads: unknown[]): Promise<PullRequestComments> {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ value: threads }));
+    return azureDevOpsProvider.fetchCommentThreads!(
+      { pat: 't' },
+      testProject,
+      1
+    );
+  }
+
+  it('anchors a right-side thread to its current line refs', async () => {
+    const { threads } = await transform([
+      {
+        id: 1,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 10 },
+          rightFileEnd: { line: 12 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads).toHaveLength(1);
+    expect(threads[0]).toMatchObject({
+      id: '1',
+      file: 'src/foo.ts',
+      lineStart: 10,
+      lineEnd: 12,
+      side: 'RIGHT',
+      isOutdated: false,
+      isResolved: false,
+      canResolve: true,
+    });
+  });
+
+  it('anchors to the left side when only the left refs are present', async () => {
+    const { threads } = await transform([
+      {
+        id: 2,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          leftFileStart: { line: 4 },
+          leftFileEnd: { line: 5 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 4,
+      lineEnd: 5,
+      side: 'LEFT',
+      isOutdated: false,
+    });
+  });
+
+  it('prefers the right side when both sides carry refs', async () => {
+    const { threads } = await transform([
+      {
+        id: 3,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          leftFileStart: { line: 4 },
+          leftFileEnd: { line: 4 },
+          rightFileStart: { line: 9 },
+          rightFileEnd: { line: 9 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 9,
+      lineEnd: 9,
+      side: 'RIGHT',
+      isOutdated: false,
+    });
+  });
+
+  it('falls back to trackingCriteria and marks the thread outdated', async () => {
+    const { threads } = await transform([
+      {
+        id: 4,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origRightFileStart: { line: 30 },
+            origRightFileEnd: { line: 31 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 30,
+      lineEnd: 31,
+      side: 'RIGHT',
+      isOutdated: true,
+    });
+  });
+
+  it('falls back to the original left refs on a deleted line', async () => {
+    const { threads } = await transform([
+      {
+        id: 5,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origLeftFileStart: { line: 8 },
+            origLeftFileEnd: { line: 8 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 8,
+      lineEnd: 8,
+      side: 'LEFT',
+      isOutdated: true,
+    });
+  });
+
+  it('keeps a live line ref in preference to the tracked original', async () => {
+    const { threads } = await transform([
+      {
+        id: 6,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 42 },
+          rightFileEnd: { line: 42 },
+        },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origRightFileStart: { line: 30 },
+            origRightFileEnd: { line: 30 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 42,
+      lineEnd: 42,
+      isOutdated: false,
+    });
+  });
+
+  it('pins a file-anchored thread with no line refs to line 1, outdated', async () => {
+    const { threads } = await transform([
+      {
+        id: 7,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      file: 'src/foo.ts',
+      lineStart: 1,
+      lineEnd: 1,
+      side: 'RIGHT',
+      isOutdated: true,
+    });
+  });
+
+  it('routes a thread with no file to the general comments', async () => {
+    const { threads, generalComments } = await transform([
+      { id: 8, status: 'active', comments: [comment] },
+    ]);
+    expect(threads).toHaveLength(0);
+    expect(generalComments).toHaveLength(1);
+    expect(generalComments[0]).toMatchObject({
+      file: null,
+      lineStart: null,
+      lineEnd: null,
+      side: 'RIGHT',
+      isOutdated: false,
+    });
+  });
+
+  it('drops a thread whose comments are all system comments', async () => {
+    const { threads, generalComments } = await transform([
+      {
+        id: 9,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [{ id: 1, commentType: 'system', content: 'voted 10' }],
+      },
+    ]);
+    expect(threads).toHaveLength(0);
+    expect(generalComments).toHaveLength(0);
+  });
+
+  it('keeps the human comments of a mixed thread and maps their fields', async () => {
+    const { threads } = await transform([
+      {
+        id: 10,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [
+          { id: 1, commentType: 'system', content: 'updated the PR' },
+          {
+            id: 2,
+            commentType: 'text',
+            content: 'please rename',
+            author: { uniqueName: 'bob@example.com' },
+            publishedDate: '2026-04-24T09:00:00Z',
+          },
+          { id: 3, commentType: 'text', content: 'no author here' },
+        ],
+      },
+    ]);
+    expect(threads[0].comments).toEqual([
+      {
+        id: '2',
+        author: 'bob@example.com',
+        body: 'please rename',
+        createdAt: '2026-04-24T09:00:00Z',
+      },
+      { id: '3', author: 'unknown', body: 'no author here', createdAt: '' },
+    ]);
+  });
+
+  it.each([
+    ['fixed', true],
+    ['wontFix', true],
+    ['closed', true],
+    ['byDesign', true],
+    ['active', false],
+    ['pending', false],
+    [undefined, false],
+  ])('maps thread status %s to isResolved %s', async (status, expected) => {
+    const { threads } = await transform([
+      {
+        id: 11,
+        status,
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0].isResolved).toBe(expected);
   });
 });
