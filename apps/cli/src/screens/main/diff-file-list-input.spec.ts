@@ -5,7 +5,12 @@ import type {
   PlanValue,
   SessionActionsContextValue,
 } from '@kirby/app-core';
-import { ACTIONS, NORMIE_PRESET, resolveAction } from '@kirby/app-core';
+import {
+  ACTIONS,
+  NORMIE_PRESET,
+  planItemKey,
+  resolveAction,
+} from '@kirby/app-core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { DiffFile } from '@kirby/diff';
 import { handleDiffFileListInput } from './diff-file-list-input.js';
@@ -91,6 +96,11 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
     reviewConfirm: null,
     reviewInstruction: '',
     reconnectKey: 0,
+    annotatingPlanKey: null,
+    annotationBuffer: '',
+    priorPaneMode: 'terminal',
+    planCheckoutIndex: 0,
+    planCheckoutTarget: null,
     ...initial,
   };
 
@@ -188,6 +198,32 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
       return state.reconnectKey as number;
     },
     setReconnectKey: updater<number>('reconnectKey'),
+    get annotatingPlanKey() {
+      return state.annotatingPlanKey as string | null;
+    },
+    setAnnotatingPlanKey: (k) => {
+      state.annotatingPlanKey = k;
+    },
+    get annotationBuffer() {
+      return state.annotationBuffer as string;
+    },
+    setAnnotationBuffer: updater<string>('annotationBuffer'),
+    get priorPaneMode() {
+      return state.priorPaneMode as PaneModeValue['priorPaneMode'];
+    },
+    setPriorPaneMode: (m) => {
+      state.priorPaneMode = m;
+    },
+    get planCheckoutIndex() {
+      return state.planCheckoutIndex as number;
+    },
+    setPlanCheckoutIndex: updater<number>('planCheckoutIndex'),
+    get planCheckoutTarget() {
+      return state.planCheckoutTarget as PaneModeValue['planCheckoutTarget'];
+    },
+    setPlanCheckoutTarget: (t) => {
+      state.planCheckoutTarget = t;
+    },
   } as PaneModeValue;
 }
 
@@ -202,6 +238,8 @@ function makeCtx(overrides: {
     replyToThread?: ReturnType<typeof vi.fn>;
     toggleResolved?: ReturnType<typeof vi.fn>;
   };
+  plan?: Partial<Record<keyof PlanValue, unknown>>;
+  prId?: number;
 }): DiffFileListHandlerCtx {
   const {
     pane,
@@ -211,6 +249,8 @@ function makeCtx(overrides: {
     listViewportRows,
     sessions,
     remoteCtx,
+    plan,
+    prId,
   } = overrides;
   return {
     pane,
@@ -269,7 +309,9 @@ function makeCtx(overrides: {
       list: vi.fn().mockReturnValue([]),
       count: vi.fn().mockReturnValue(0),
       clear: vi.fn(),
+      ...plan,
     } as unknown as PlanValue,
+    prId,
   } as DiffFileListHandlerCtx;
 }
 
@@ -664,5 +706,364 @@ describe('diff-file-list handler — open (Enter) on a comment', () => {
     handleDiffFileListInput('', makeKey({ return: true }), ctx);
     expect(pane.paneMode).toBe('diff-file');
     expect(pane.diffViewFile).toBe('a.ts');
+  });
+
+  it('Enter on an empty list leaves the pane alone', () => {
+    // Nothing to open: `open` is gated on diffDisplayCount > 0, so the
+    // pane must not hop to the viewer with a null file.
+    const pane = makePane({ diffFileIndex: 0 });
+    const ctx = makeCtx({ pane, files: [], shownGeneralComments: [] });
+    handleDiffFileListInput('', makeKey({ return: true }), ctx);
+    expect(pane.paneMode).toBe('diff');
+    expect(pane.diffViewFile).toBeNull();
+    expect(pane.replyingToThreadId).toBeNull();
+  });
+});
+
+// ── back ─────────────────────────────────────────────────────────
+
+describe('diff-file-list handler — back', () => {
+  it('Esc returns to the PR detail pane', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+    });
+    handleDiffFileListInput('', makeKey({ escape: true }), ctx);
+    expect(pane.paneMode).toBe('pr-detail');
+  });
+});
+
+// ── toggle-skipped ───────────────────────────────────────────────
+
+describe('diff-file-list handler — toggle-skipped', () => {
+  it('s flips showSkipped and resets selection and scroll', () => {
+    // The visible file set changes under the cursor, so the handler
+    // rewinds to the top rather than leaving a stale index/offset.
+    const pane = makePane({
+      diffFileIndex: 3,
+      diffListScrollRow: 9,
+      showSkipped: false,
+    });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts'), makeFile('b.ts')],
+      shownGeneralComments: [makeThread('t1'), makeThread('t2')],
+    });
+    handleDiffFileListInput('s', makeKey(), ctx);
+    expect(pane.showSkipped).toBe(true);
+    expect(pane.diffFileIndex).toBe(0);
+    expect(pane.diffListScrollRow).toBe(0);
+  });
+
+  it('s toggles back off', () => {
+    const pane = makePane({ showSkipped: true });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [],
+    });
+    handleDiffFileListInput('s', makeKey(), ctx);
+    expect(pane.showSkipped).toBe(false);
+  });
+});
+
+// ── toggle-thread-resolved status messages ───────────────────────
+
+describe('diff-file-list handler — resolve status feedback', () => {
+  it('flashes progress then success when the toggle succeeds', async () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      sessions: { flashStatus },
+      remoteCtx: { toggleResolved: vi.fn().mockResolvedValue(true) },
+    });
+    handleDiffFileListInput('v', makeKey(), ctx);
+    expect(flashStatus).toHaveBeenCalledWith('Resolving thread...');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(flashStatus).toHaveBeenCalledWith('Thread resolved');
+  });
+
+  it('stays silent past the progress message when the toggle reports failure', async () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      sessions: { flashStatus },
+      remoteCtx: { toggleResolved: vi.fn().mockResolvedValue(false) },
+    });
+    handleDiffFileListInput('v', makeKey(), ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(flashStatus).toHaveBeenCalledTimes(1);
+    expect(flashStatus).toHaveBeenCalledWith('Resolving thread...');
+  });
+
+  it('reports the error message when the toggle rejects', async () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      sessions: { flashStatus },
+      remoteCtx: {
+        toggleResolved: vi.fn().mockRejectedValue(new Error('offline')),
+      },
+    });
+    handleDiffFileListInput('v', makeKey(), ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(flashStatus).toHaveBeenCalledWith('Failed: offline');
+  });
+
+  it('reopening an already-resolved thread flashes the reopen wording', async () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const resolved = makeThread('target');
+    resolved.isResolved = true;
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [resolved],
+      sessions: { flashStatus },
+    });
+    handleDiffFileListInput('v', makeKey(), ctx);
+    expect(flashStatus).toHaveBeenCalledWith('Reopening thread...');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(flashStatus).toHaveBeenCalledWith('Thread reopened');
+  });
+});
+
+// ── plan-toggle ──────────────────────────────────────────────────
+
+describe('diff-file-list handler — plan-toggle', () => {
+  it('a on a selected comment toggles a remote snapshot into the plan', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const toggle = vi.fn().mockReturnValue(true);
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target', 'please fix')],
+      sessions: { flashStatus },
+      plan: { toggle },
+      prId: 42,
+    });
+    handleDiffFileListInput('a', makeKey(), ctx);
+    expect(toggle).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({
+        kind: 'remote',
+        id: 'target',
+        body: 'please fix',
+      })
+    );
+    expect(flashStatus).toHaveBeenCalledWith('Added to plan');
+  });
+
+  it('a flashes the removal wording when the item was already in the plan', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      sessions: { flashStatus },
+      plan: { toggle: vi.fn().mockReturnValue(false) },
+      prId: 42,
+    });
+    handleDiffFileListInput('a', makeKey(), ctx);
+    expect(flashStatus).toHaveBeenCalledWith('Removed from plan');
+  });
+
+  it('a on a file row is a no-op', () => {
+    const pane = makePane({ diffFileIndex: 0 });
+    const toggle = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      plan: { toggle },
+      prId: 42,
+    });
+    handleDiffFileListInput('a', makeKey(), ctx);
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('a is a no-op before the PR id has resolved', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const toggle = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      plan: { toggle },
+      // no prId
+    });
+    handleDiffFileListInput('a', makeKey(), ctx);
+    expect(toggle).not.toHaveBeenCalled();
+  });
+});
+
+// ── plan-annotate ────────────────────────────────────────────────
+
+describe('diff-file-list handler — plan-annotate', () => {
+  it('Shift+A adds the comment and opens the note composer empty', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const add = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      plan: { add, list: vi.fn().mockReturnValue([]) },
+      prId: 7,
+    });
+    handleDiffFileListInput('A', makeKey({ shift: true }), ctx);
+    expect(add).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ kind: 'remote', id: 'target' })
+    );
+    expect(pane.annotatingPlanKey).toBe(planItemKey('remote', 'target'));
+    expect(pane.annotationBuffer).toBe('');
+  });
+
+  it('Shift+A seeds the composer with the existing annotation', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      plan: {
+        add: vi.fn(),
+        list: vi.fn().mockReturnValue([
+          { kind: 'remote', id: 'target', annotation: 'old note' },
+          { kind: 'remote', id: 'other', annotation: 'wrong note' },
+        ]),
+      },
+      prId: 7,
+    });
+    handleDiffFileListInput('A', makeKey({ shift: true }), ctx);
+    expect(pane.annotationBuffer).toBe('old note');
+  });
+
+  it('Shift+A on a file row is a no-op', () => {
+    const pane = makePane({ diffFileIndex: 0 });
+    const add = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      plan: { add },
+      prId: 7,
+    });
+    handleDiffFileListInput('A', makeKey({ shift: true }), ctx);
+    expect(add).not.toHaveBeenCalled();
+    expect(pane.annotatingPlanKey).toBeNull();
+  });
+});
+
+// ── plan-annotate mode guard ─────────────────────────────────────
+
+describe('diff-file-list handler — plan-annotate mode guard', () => {
+  it('printable characters edit the note instead of firing actions', () => {
+    // 'r' is bound to reply-to-thread; while composing a note it must
+    // only reach the annotation buffer.
+    const pane = makePane({
+      diffFileIndex: 1,
+      annotatingPlanKey: planItemKey('remote', 'target'),
+      annotationBuffer: '',
+    });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      prId: 7,
+    });
+    handleDiffFileListInput('r', makeKey(), ctx);
+    expect(pane.annotationBuffer).toBe('r');
+    expect(pane.replyingToThreadId).toBeNull();
+  });
+
+  it('Enter commits the note and closes the composer', () => {
+    const annotate = vi.fn();
+    const pane = makePane({
+      diffFileIndex: 1,
+      annotatingPlanKey: planItemKey('remote', 'target'),
+      annotationBuffer: 'note',
+    });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      plan: { annotate },
+      prId: 7,
+    });
+    handleDiffFileListInput('', makeKey({ return: true }), ctx);
+    expect(annotate).toHaveBeenCalledWith(7, 'remote', 'target', 'note');
+    expect(pane.annotatingPlanKey).toBeNull();
+    // Enter did not fall through to `open`.
+    expect(pane.paneMode).toBe('diff');
+  });
+});
+
+// ── plan-checkout ────────────────────────────────────────────────
+
+describe('diff-file-list handler — plan-checkout', () => {
+  it('c on an empty plan says so and stays put', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      sessions: { flashStatus },
+      plan: { count: vi.fn().mockReturnValue(0) },
+      prId: 7,
+    });
+    handleDiffFileListInput('c', makeKey(), ctx);
+    expect(flashStatus).toHaveBeenCalledWith('Plan is empty');
+    expect(pane.paneMode).toBe('diff');
+  });
+
+  it('c with a non-empty plan opens the checkout pane from the top', () => {
+    const pane = makePane({
+      diffFileIndex: 1,
+      planCheckoutIndex: 4,
+      planCheckoutTarget: 'inject',
+    });
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      plan: { count: vi.fn().mockReturnValue(2) },
+      prId: 7,
+    });
+    handleDiffFileListInput('c', makeKey(), ctx);
+    expect(pane.paneMode).toBe('plan-checkout');
+    // Esc out of checkout must land back on the list, not the terminal.
+    expect(pane.priorPaneMode).toBe('diff');
+    expect(pane.planCheckoutIndex).toBe(0);
+    expect(pane.planCheckoutTarget).toBeNull();
+  });
+
+  it('c is a no-op before the PR id has resolved', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      sessions: { flashStatus },
+      plan: { count: vi.fn().mockReturnValue(2) },
+      // no prId
+    });
+    handleDiffFileListInput('c', makeKey(), ctx);
+    expect(flashStatus).toHaveBeenCalledWith('Plan is empty');
+    expect(pane.paneMode).toBe('diff');
   });
 });
