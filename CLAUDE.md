@@ -93,6 +93,20 @@ Playwright image pinned to our Playwright version, in CI and locally alike, so
 the tolerance is **zero**: any differing pixel fails. Regenerate baselines with
 `node run-visual.mjs --update-snapshots`, and review the diff before accepting.
 
+**Integration tests** (`nx e2e:integration desktop-e2e`, tagged
+`@integration`) read the permanent fixture pull requests in the shared sandbox
+repo through the real provider — the only coverage of the review workspace,
+since everything else runs offline. They are read-only, and skipped without
+`GH_TOKEN`. The app needs that token handed to it explicitly: each test gets an
+isolated `HOME`, so the `gh` CLI it authenticates through cannot see stored
+credentials. Locally: `GH_TOKEN=$(gh auth token) npx nx e2e:integration
+desktop-e2e`.
+
+When configuring a provider from a test, project fields go under
+`vendorProject` — with that key absent the host auto-detects from the git remote
+and overwrites what you set, which presents as the provider silently returning
+nothing.
+
 **Native menus** are reachable from tests: `setup/menu.ts` arms a one-shot
 interception of `Menu.popup` (context menus) and clicks application-menu items
 directly. Several commands have no other route — Ctrl+, is a menu accelerator,
