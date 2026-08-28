@@ -116,6 +116,14 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       );
     }
 
+    // On a Wayland session Electron talks to the compositor through
+    // WAYLAND_DISPLAY and ignores DISPLAY altogether — so xvfb hands it
+    // a virtual X server it never looks at, and the window opens on the
+    // developer's real desktop anyway. Dropping the variable (and
+    // pinning ozone to x11) is what actually makes the run headless.
+    const parentEnv = { ...process.env };
+    delete parentEnv.WAYLAND_DISPLAY;
+
     const app = await electron.launch({
       args: [
         APP_DIR,
@@ -123,10 +131,11 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
         // software rendering is both available and deterministic.
         '--no-sandbox',
         '--disable-gpu',
+        '--ozone-platform=x11',
       ],
       cwd: WORKSPACE_ROOT,
       env: {
-        ...process.env,
+        ...parentEnv,
         // Isolates config.json, desktop-prefs.json, recents *and*
         // Electron's own userData dir (so the single-instance lock
         // never makes one test's launch quit against another's).

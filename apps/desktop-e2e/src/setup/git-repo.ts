@@ -1,7 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 /**
  * Throwaway git repositories for the desktop e2e suite.
@@ -46,6 +52,14 @@ export interface TestRepoWorktree {
 }
 
 export interface TestRepoOptions {
+  /**
+   * Directory name for the repo, inside a random parent.
+   *
+   * The repo's basename is on screen in three places (title bar,
+   * sidebar header, status bar), so screenshot tests need it fixed —
+   * otherwise every run differs by the tempdir's random suffix.
+   */
+  name?: string;
   /** Extra branches to create off the initial commit. */
   branches?: string[];
   /**
@@ -62,7 +76,9 @@ export interface TestRepoOptions {
 }
 
 export function createTestRepo(opts: TestRepoOptions = {}): string {
-  const dir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-'));
+  const parent = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-'));
+  const dir = opts.name ? join(parent, opts.name) : parent;
+  if (opts.name) mkdirSync(dir);
   git(dir, ['init', '-q', '-b', 'main']);
   git(dir, ['config', 'user.email', 'test@kirby.dev']);
   git(dir, ['config', 'user.name', 'Kirby Test']);
@@ -138,8 +154,14 @@ export function createTestRepo(opts: TestRepoOptions = {}): string {
 }
 
 export function cleanupTestRepo(dir: string): void {
+  // A named repo lives one level inside the tempdir we made, so remove
+  // that parent rather than leaking it.
+  const parent = dirname(dir);
+  const target = basename(parent).startsWith('kirby-desktop-e2e-')
+    ? parent
+    : dir;
   try {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true });
   } catch {
     /* best effort */
   }
