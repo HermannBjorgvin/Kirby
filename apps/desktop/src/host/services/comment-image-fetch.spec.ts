@@ -16,16 +16,22 @@ import { fetchCommentImage, resetCommentImageCache } from './comment-images.js';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0]);
 const MAX_BYTES = 20 * 1024 * 1024;
 
+const creds = vi.hoisted(() => ({
+  ghToken: null as string | null,
+  config: {} as Record<string, unknown>,
+}));
+
 vi.mock('./repo.js', () => ({ requireRepo: () => '/repo' }));
-vi.mock('@kirby/vcs-core', () => ({ readConfig: () => ({}) }));
+vi.mock('@kirby/vcs-core', () => ({ readConfig: () => creds.config }));
 vi.mock('node:child_process', () => ({
-  // `gh auth token` — no token available in tests.
+  // Stands in for `gh auth token`.
   execFile: (
     _cmd: string,
     _args: string[],
     _opts: unknown,
     cb: (err: Error | null, stdout: string) => void
-  ) => cb(new Error('no gh'), ''),
+  ) =>
+    creds.ghToken ? cb(null, creds.ghToken + '\n') : cb(new Error('no gh'), ''),
 }));
 
 interface StubOptions {
@@ -94,7 +100,17 @@ beforeEach(() => {
   resetCommentImageCache();
   cancelled = 0;
   reads = 0;
+  creds.ghToken = null;
+  creds.config = {};
 });
+
+/** The Authorization header sent with the last request, if any. */
+function sentAuth(): string | undefined {
+  const mock = globalThis.fetch as unknown as {
+    mock: { calls: [string, { headers: Record<string, string> }][] };
+  };
+  return mock.mock.calls[0]?.[1]?.headers?.authorization;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -195,6 +211,63 @@ describe('caching', () => {
     // A cached rejection would make one flaky request permanent for the
     // life of the process.
     const out = await fetchCommentImage('https://example.test/i.png');
+    expect(out?.contentType).toBe('image/png');
+  });
+});
+
+describe('which credential reaches which host', () => {
+  /**
+   * Comment bodies are written by whoever opened the pull request, and
+   * the image URLs in them are theirs to choose. Attaching the user's
+   * GitHub token to `https://attacker.example/pixel.png` would hand it
+   * over, so host matching is a security boundary, not a convenience.
+   */
+
+  it('sends the gh token to GitHub attachment hosts', async () => {
+    creds.ghToken = 'gho_secret';
+    stubFetch();
+    await fetchCommentImage(
+      'https://user-images.githubusercontent.com/1/a.png'
+    );
+    expect(sentAuth()).toBe('Bearer gho_secret');
+  });
+
+  it('sends the Azure PAT as basic auth to Azure hosts', async () => {
+    creds.config = { vendorAuth: { pat: 'ado_secret' } };
+    stubFetch();
+    await fetchCommentImage('https://dev.azure.com/org/_apis/attachment');
+    expect(sentAuth()).toBe(
+      `Basic ${Buffer.from(':ado_secret').toString('base64')}`
+    );
+  });
+
+  it('sends nothing at all to any other host', async () => {
+    creds.ghToken = 'gho_secret';
+    creds.config = { vendorAuth: { pat: 'ado_secret' } };
+    stubFetch();
+    await fetchCommentImage('https://attacker.example/pixel.png');
+    expect(sentAuth()).toBeUndefined();
+  });
+
+  it('is not fooled by a host that merely ends in the right words', async () => {
+    creds.ghToken = 'gho_secret';
+    stubFetch();
+    // `notgithub.com` and `github.com.evil.test` are not GitHub.
+    await fetchCommentImage('https://github.com.evil.test/a.png');
+    expect(sentAuth()).toBeUndefined();
+
+    resetCommentImageCache();
+    stubFetch();
+    await fetchCommentImage('https://notgithubusercontent.com/a.png');
+    expect(sentAuth()).toBeUndefined();
+  });
+
+  it('fetches anonymously when the gh CLI has no token', async () => {
+    // Signed-out users still see public images rather than an error.
+    creds.ghToken = null;
+    stubFetch();
+    const out = await fetchCommentImage('https://github.com/a.png');
+    expect(sentAuth()).toBeUndefined();
     expect(out?.contentType).toBe('image/png');
   });
 });
