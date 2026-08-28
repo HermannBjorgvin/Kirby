@@ -77,6 +77,11 @@ export interface DesktopOptions {
    */
   repoPathOverride?: string;
   /**
+   * Agent-authored draft review comments, keyed by pull request id, as
+   * `kirby util add-comment` would have left them.
+   */
+  drafts?: Record<number, unknown[]>;
+  /**
    * Hand the app a GitHub token. Its HOME is isolated, so the `gh` CLI
    * it authenticates through cannot see the developer's stored
    * credentials; without this it behaves as a repo with no provider.
@@ -103,6 +108,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   startWithoutRepo: [false, { option: true }],
   repoPathOverride: [undefined, { option: true }],
   githubToken: [undefined, { option: true }],
+  drafts: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -113,6 +119,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       startWithoutRepo,
       repoPathOverride,
       githubToken,
+      drafts,
     },
     use,
     testInfo
@@ -138,6 +145,16 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       writeFileSync(
         join(dir, 'config.json'),
         JSON.stringify(projectConfig, null, 2),
+        'utf8'
+      );
+    }
+    for (const [prId, comments] of Object.entries(drafts ?? {})) {
+      // Same layout the review agent writes to: ~/.kirby/reviews/pr-<id>.
+      const dir = join(homeDir, '.kirby', 'reviews', `pr-${prId}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'comments.json'),
+        JSON.stringify({ prId: Number(prId), comments }, null, 2),
         'utf8'
       );
     }
