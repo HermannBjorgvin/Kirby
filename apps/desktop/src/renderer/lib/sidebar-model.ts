@@ -139,81 +139,96 @@ export function groupSections(items: SidebarItem[]): SidebarSection[] {
 
 // ── Pull request status cluster ──────────────────────────────────
 
-/** How the approvals indicator should read for a pull request. */
-export interface ApprovalIndicator {
-  /**
-   * `rejected` and `blocked` are somebody's decision to stop the pull
-   * request; `approved` is everyone through. `ready` is the state worth
-   * distinguishing: the build is green and nothing is blocking, only
-   * approvals are outstanding — the request is waiting on people rather
-   * than on itself.
-   */
-  kind: 'rejected' | 'blocked' | 'approved' | 'ready' | 'partial';
-  /** Tooltip text; says what the shape means rather than naming it. */
+/**
+ * A pull request row shows one indicator carrying two independent
+ * facts, so the two have to stay separable at a glance:
+ *
+ *   colour  — where the pull request stands with people
+ *   glyph   — where it stands with CI
+ *   filled  — nothing left to wait for on either axis
+ *
+ * Collapsing them into a single "good/bad" reading is what made a
+ * request that was only waiting on a reviewer look identical to one
+ * whose build never reported.
+ */
+export type ApprovalState = 'rejected' | 'blocked' | 'approved' | 'partial';
+export type CiGlyph = 'passed' | 'failed' | 'running' | 'absent';
+
+export interface PrStatusIndicator {
+  approval: ApprovalState;
+  /** What CI has to say. `absent` covers both "never ran" and
+   *  "withdrew" — Azure checks that end `notApplicable` land here. */
+  ci: CiGlyph;
   label: string;
-  /** Filled = nothing left to wait for. */
   filled: boolean;
+  approved: number;
+  total: number;
 }
 
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
+function ciPhrase(ci: CiGlyph): string {
+  if (ci === 'passed') return 'CI passed';
+  if (ci === 'failed') return 'CI failed';
+  if (ci === 'running') return 'CI running';
+  return 'No CI result';
+}
+
+function approvalPhrase(
+  approval: ApprovalState,
+  approved: number,
+  total: number
+): string {
+  const of = `${approved} of ${plural(total, 'reviewer')} approved`;
+  if (approval === 'rejected') return `changes rejected (${of})`;
+  if (approval === 'blocked') return `waiting for the author (${of})`;
+  if (approval === 'approved')
+    return `all ${plural(total, 'reviewer')} approved`;
+  if (total === 0) return 'no reviewers yet';
+  return `waiting on ${plural(total - approved, 'approval')} (${of})`;
+}
+
+function ciGlyph(buildStatus: string | undefined): CiGlyph {
+  if (buildStatus === 'succeeded') return 'passed';
+  if (buildStatus === 'failed') return 'failed';
+  if (buildStatus === 'pending') return 'running';
+  return 'absent';
+}
+
 /**
- * The approvals half of a pull request's status cluster.
+ * Both axes of a pull request's state, and the sentence describing them.
  *
- * Kept out of the component because the interesting part is the
- * precedence: a rejection outranks a green build, and a green build
- * with approvals outstanding has to be visibly different from both "all
- * done" and "nothing has happened yet" — otherwise a request that is
- * only waiting on a reviewer looks the same as one whose build has not
- * run.
+ * The only cell that gets its own wording is the one a reader acts on:
+ * approvals in and CI green means the request can be merged, and saying
+ * so is more use than making them read two clauses and conclude it.
  */
-export function approvalIndicator(
+export function prStatusIndicator(
   reviewers: { decision: ReviewDecision }[],
   buildStatus: string | undefined,
   isBlocking: (decision: ReviewDecision) => boolean
-): ApprovalIndicator {
+): PrStatusIndicator {
   const total = reviewers.length;
   const approved = reviewers.filter((r) => r.decision === 'approved').length;
-  const of = `${approved} of ${plural(total, 'reviewer')} approved`;
+  const ci = ciGlyph(buildStatus);
 
-  if (reviewers.some((r) => r.decision === 'rejected')) {
-    return {
-      kind: 'rejected',
-      label: `Changes rejected — ${of}`,
-      filled: false,
-    };
-  }
-  if (reviewers.some((r) => isBlocking(r.decision))) {
-    return {
-      kind: 'blocked',
-      label: `Waiting for the author — ${of}`,
-      filled: false,
-    };
-  }
-  if (total > 0 && approved === total) {
-    return { kind: 'approved', label: `All ${of}`, filled: true };
-  }
-  if (buildStatus === 'succeeded') {
-    return {
-      kind: 'ready',
-      label: `CI passed — waiting on ${plural(
-        total - approved,
-        'approval'
-      )} (${of})`,
-      filled: false,
-    };
-  }
-  return { kind: 'partial', label: of, filled: false };
-}
+  const approval: ApprovalState = reviewers.some(
+    (r) => r.decision === 'rejected'
+  )
+    ? 'rejected'
+    : reviewers.some((r) => isBlocking(r.decision))
+    ? 'blocked'
+    : total > 0 && approved === total
+    ? 'approved'
+    : 'partial';
 
-/** Tooltip for the CI indicator. */
-export function buildStatusLabel(buildStatus: string): string {
-  if (buildStatus === 'succeeded') return 'CI passed';
-  if (buildStatus === 'failed') return 'CI failed';
-  if (buildStatus === 'pending') return 'CI running';
-  return `CI ${buildStatus}`;
+  const ready = approval === 'approved' && ci === 'passed';
+  const label = ready
+    ? `Ready to merge — CI passed, all ${plural(total, 'reviewer')} approved`
+    : `${ciPhrase(ci)} — ${approvalPhrase(approval, approved, total)}`;
+
+  return { approval, ci, label, filled: ready, approved, total };
 }
 
 /** Tooltip for the comment count. */

@@ -1,0 +1,251 @@
+{
+  "value": [
+    {
+      "iterationId": 1,
+      "id": 1,
+      "description": "Coverage status check queued for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:20:59.9286711Z",
+      "updatedDate": "2026-06-24T13:20:59.9286711Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 2,
+      "id": 2,
+      "description": "Coverage status check queued for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:25:45.9335866Z",
+      "updatedDate": "2026-06-24T13:25:45.9335866Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 1,
+      "id": 3,
+      "state": "failed",
+      "description": "Coverage status check failed for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:26:08.7998968Z",
+      "updatedDate": "2026-06-24T13:26:08.7998968Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 3,
+      "id": 4,
+      "description": "Coverage status check queued for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:28:57.8743922Z",
+      "updatedDate": "2026-06-24T13:28:57.8743922Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 2,
+      "id": 5,
+      "state": "failed",
+      "description": "Coverage status check failed for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:29:14.8635404Z",
+      "updatedDate": "2026-06-24T13:29:14.8635404Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 3,
+      "id": 6,
+      "state": "pending",
+      "description": "Coverage status check in progress for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:35:45.4453972Z",
+      "updatedDate": "2026-06-24T13:35:45.4453972Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 3,
+      "id": 7,
+      "state": "notApplicable",
+      "description": "Coverage status check not applicable for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:35:45.8184727Z",
+      "updatedDate": "2026-06-24T13:35:45.8184727Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 4,
+      "id": 8,
+      "description": "Coverage status check queued for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T13:59:21.284305Z",
+      "updatedDate": "2026-06-24T13:59:21.284305Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 4,
+      "id": 9,
+      "state": "pending",
+      "description": "Coverage status check in progress for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T14:06:04.8973074Z",
+      "updatedDate": "2026-06-24T14:06:04.8973074Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    },
+    {
+      "iterationId": 4,
+      "id": 10,
+      "state": "notApplicable",
+      "description": "Coverage status check not applicable for example-nx",
+      "context": {
+        "name": "codecoverage",
+        "genre": "example-nx"
+      },
+      "creationDate": "2026-06-24T14:06:05.450973Z",
+      "updatedDate": "2026-06-24T14:06:05.450973Z",
+      "createdBy": {
+        "displayName": "Coverage Bot",
+        "url": "https://vssps.dev.azure.com/example-org/_apis/Identities/00000000-0000-0000-0000-000000000001",
+        "_links": {
+          "avatar": {
+            "href": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001"
+          }
+        },
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "coverage-bot@example.test",
+        "imageUrl": "https://dev.azure.com/example-org/_apis/GraphProfile/MemberAvatars/aad.00000000000000000000000000000001",
+        "descriptor": "aad.00000000000000000000000000000001"
+      }
+    }
+  ],
+  "count": 10
+}

@@ -479,6 +479,26 @@ describe('deriveBuildStatus', () => {
     expect(deriveBuildStatus(recorded.value)).toBe('none');
   });
 
+  it('follows one check through four iterations to its withdrawal', () => {
+    // A second recording, from a pull request whose coverage check ran
+    // on every push: failed twice on iterations it has since moved past,
+    // went pending on the current one, then withdrew a second later.
+    // Ten entries, one context, and the only thing that speaks for the
+    // check is its last word.
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-four-iterations-withdrawn.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+
+    expect(recorded.value).toHaveLength(10);
+    expect(deriveBuildStatus(recorded.value)).toBe('none');
+  });
+
   it('still counts context-less entries separately', () => {
     // Nothing to group on, so the pre-existing behaviour holds.
     expect(

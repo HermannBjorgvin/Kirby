@@ -1,7 +1,7 @@
 import {
   CheckCircle2Icon,
+  CircleDashedIcon,
   CircleDotIcon,
-  CircleIcon,
   GitBranchIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
@@ -23,13 +23,12 @@ import {
   useLaunchAgent,
 } from '../../lib/queries.js';
 import {
-  approvalIndicator,
-  buildStatusLabel,
   itemBranch,
   itemHasWorktree,
   itemKey,
   itemRunning,
   itemSessionName,
+  prStatusIndicator,
   unresolvedCommentsLabel,
   itemTitle,
 } from '../../lib/sidebar-model.js';
@@ -247,61 +246,50 @@ function reviewTone(category: 'needs-review' | 'waiting' | 'approved'): string {
   return 'text-muted-foreground';
 }
 
-/** Right-aligned compact status cluster: CI, approvals, comments. */
+/**
+ * Right-aligned status cluster. One circle carries both axes — its
+ * colour is where the pull request stands with people, its glyph where
+ * it stands with CI — followed by the approval count and the unresolved
+ * comment count.
+ */
 function PrMeta({ pr }: { pr: PullRequestInfo }) {
-  const reviewers = pr.reviewers ?? [];
-  const total = reviewers.length;
+  const status = prStatusIndicator(
+    pr.reviewers ?? [],
+    pr.buildStatus,
+    isBlockingDecision
+  );
   const comments = pr.activeCommentCount ?? 0;
-  const ci = pr.buildStatus;
-  const approval = approvalIndicator(reviewers, ci, isBlockingDecision);
 
-  // A green outline says the build is green and only approvals are
-  // outstanding; filled says there is nothing left to wait for.
-  const approvalTone =
-    approval.kind === 'rejected'
+  const tone =
+    status.approval === 'rejected'
       ? 'text-destructive'
-      : approval.kind === 'blocked'
+      : status.approval === 'blocked'
       ? 'text-warning'
-      : approval.kind === 'approved' || approval.kind === 'ready'
+      : status.approval === 'approved'
       ? 'text-success'
       : undefined;
 
   return (
     <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-      {ci && ci !== 'none' && (
-        <Tip label={buildStatusLabel(ci)}>
-          <span className="flex items-center">
-            {ci === 'succeeded' && (
-              <CheckCircle2Icon className="size-3.5 text-success" />
-            )}
-            {ci === 'failed' && (
-              <XCircleIcon className="size-3.5 text-destructive" />
-            )}
-            {ci === 'pending' && (
-              <CircleDotIcon className="size-3.5 animate-pulse text-warning" />
-            )}
-          </span>
-        </Tip>
-      )}
-      {total > 0 && (
-        <Tip label={approval.label}>
-          <span
-            className={cn(
-              'flex items-center gap-0.5 tabular-nums',
-              approvalTone
-            )}
-          >
-            {approval.kind === 'rejected' || approval.kind === 'blocked' ? (
-              <XCircleIcon className="size-3" />
-            ) : (
-              <CircleIcon
-                className={cn('size-3', approval.filled && 'fill-current')}
-              />
-            )}
-            {reviewers.filter((r) => r.decision === 'approved').length}/{total}
-          </span>
-        </Tip>
-      )}
+      <Tip label={status.label}>
+        <span className={cn('flex items-center gap-0.5 tabular-nums', tone)}>
+          {status.ci === 'passed' && (
+            <CheckCircle2Icon
+              className={cn('size-3.5', status.filled && 'fill-current')}
+            />
+          )}
+          {status.ci === 'failed' && <XCircleIcon className="size-3.5" />}
+          {status.ci === 'running' && (
+            <CircleDotIcon className="size-3.5 animate-pulse" />
+          )}
+          {status.ci === 'absent' && <CircleDashedIcon className="size-3.5" />}
+          {status.total > 0 && (
+            <>
+              {status.approved}/{status.total}
+            </>
+          )}
+        </span>
+      </Tip>
       {comments > 0 && (
         <Tip label={unresolvedCommentsLabel(comments)}>
           <span className="flex items-center gap-0.5 tabular-nums">
