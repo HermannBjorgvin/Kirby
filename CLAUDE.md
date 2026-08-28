@@ -68,9 +68,11 @@ npx nx e2e:visual desktop-e2e    # screenshots, inside a pinned container
 **E2E drives the real app.** `apps/desktop-e2e` uses Playwright's Electron
 driver to launch the _built_ desktop app against a throwaway git repo with an
 isolated `HOME`, so tests exercise the actual main process, preload bridge and
-renderer. `nx e2e` depends on `desktop:build` — but when invoking
-`node run-e2e.mjs` directly, **rebuild first** (`npx nx build desktop`) or you
-are testing the previous build.
+renderer. The nx targets depend on `desktop:build` — but `node run-e2e.mjs`
+and `node run-visual.mjs` do not, so when invoking either directly **rebuild
+first** (`npx nx build desktop`) or you are testing the previous build. This
+bites hardest on the screenshots: a stale bundle matches the old baselines
+locally and fails on CI, which builds.
 
 The fixture (`src/fixtures/desktop.ts`) gives each test a repo (optionally
 seeded with branches and worktrees, including mid-rebase / detached-HEAD /
