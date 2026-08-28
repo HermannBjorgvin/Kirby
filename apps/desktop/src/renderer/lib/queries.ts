@@ -56,6 +56,14 @@ export const keys = {
   commentImage: (url: string) => ['comment-image', url] as const,
   drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
   reviewViewer: (cwd: string) => ['review-viewer', cwd] as const,
+  // Diff-worker results (see lib/highlight.ts). `linesId` is an
+  // identity token for the DiffLine[] instance, not its content — two
+  // arrays with the same lines are two cache entries, one array is
+  // always one entry however many components ask for it.
+  fileAnalysis: (file: string, linesId: number, theme: string) =>
+    ['file-analysis', file, linesId, theme] as const,
+  codeTokens: (tag: string, theme: string, code: string) =>
+    ['code-tokens', tag, theme, code] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
