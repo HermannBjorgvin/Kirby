@@ -9,8 +9,8 @@ import type { TmuxStatus } from '@kirby/terminal-tmux';
 // write paths (cycle-left/right and edit-toggle), which a direct unit
 // test of the predicate would miss.
 const { hasAnySessionMock, getTmuxAvailabilityMock } = vi.hoisted(() => ({
-  hasAnySessionMock: vi.fn<[], boolean>(),
-  getTmuxAvailabilityMock: vi.fn<[], TmuxStatus | null>(),
+  hasAnySessionMock: vi.fn<() => boolean>(),
+  getTmuxAvailabilityMock: vi.fn<() => TmuxStatus | null>(),
 }));
 
 vi.mock('@kirby/app-core', async (importOriginal) => ({

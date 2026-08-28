@@ -255,6 +255,68 @@ GH_TOKEN=<integration-pat> gh api \
 - **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Runs `npx playwright install --with-deps chromium` before `nx affected` (needed for `cli-e2e`). Uploads `apps/cli-e2e/test-output/` as an artifact on failure. Integration tests skipped (no `GH_TOKEN`).
 - **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e:integration cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state.
 
+## Linting
+
+`eslint.config.mjs` is the single flat config; the three e2e projects
+extend it. Beyond `typescript-eslint` strict + `react-hooks` v7
+(recommended, at **error** — that is the React team's compiler-powered
+analysis, and it passes clean), it enforces four groups.
+
+**Size and shape budgets — warnings, and a ratchet.** `max-lines` 300
+(blank lines and comments excluded), `complexity` 20, `max-depth` 4 at
+error. These are set where they bound what gets _added_ rather than
+where they would be comfortable: a file grows past 300 lines and a
+function past 20 branches one plausible edit at a time, and nobody
+reviews that as growth. Tighten `complexity` toward 15 then 12 as the
+list clears — at 10 it reports 90 functions, which is a list nobody
+acts on. Two files carry a 900-line ceiling instead
+(`libs/vcs/*/provider.ts`, `keybindings/registry.ts`): they are a REST
+surface and an action catalog, and splitting either spreads one lookup
+table across files. Specs are exempt from `max-lines` only.
+
+**Type-aware rules** (`projectService`, ~19s workspace-wide).
+`no-floating-promises` is why the block exists: Kirby is almost
+entirely async git, PTY and provider calls, and a dropped promise there
+is a silent no-op plus an unhandled rejection. `ignoreVoid` keeps
+deliberate fire-and-forget expressible — `void doThing()` puts the
+intent on the page. Also `no-misused-promises`, `await-thenable`, and
+`switch-exhaustiveness-check` (a `default` counts), which catches the
+"added a union member, missed one of its switches" half-landing.
+
+**Ink rules** (`tools/eslint-plugin-ink.mjs`, TUI only). Ink enforces
+its layout contract at _runtime_ by throwing, so a bad component
+type-checks, builds, ships, and dies the first time that branch
+renders. `no-raw-text` and `no-layout-inside-text` are clean today and
+exist to stay that way; `no-bare-process-exit` is off for `main.tsx`
+and `commands/**`, which legitimately own exiting. The rules resolve
+components through their import, so a renamed `Text` still counts and a
+non-Ink `Box` does not.
+
+These are local because the obvious dependency does not work:
+`eslint-plugin-react-doctor` ships 22 `ink-*` rules that, enabled at
+error, report nothing against a file violating three of them outright
+— under both its ESLint bridge and native oxlint. The rest of that
+plugin is also a poor fit here: 61% of what `recommended` reports on
+this codebase comes from two rules premised on React Compiler, which
+we do not run.
+
+**Test hygiene.** `@vitest/eslint-plugin` on `*.spec.*`;
+`eslint-plugin-playwright` covers the e2e suites from their own
+configs. `vitest/no-focused-tests` is the one that matters — a stray
+`.only` leaves CI green while running one test, which is worse than a
+red build because nothing signals it.
+
+Everything except `max-depth` and the Ink and vitest rules is a
+**warning**. The app predates the budgets; the point is a downward
+ratchet, not a wall. Current standing: **0 errors, 107 warnings.**
+
+**`apps/cli` specs are type-checked** via `apps/cli/tsconfig.spec.json`
+— it did not exist, so 26 spec files and `src/test-utils/**` were
+excluded from every `tsc` invocation. Adding it surfaced two dozen real
+errors, including `vi.fn<[], boolean>()` (vitest v1 syntax) typing
+mocks as `never`. When adding a project, check its `tsconfig.json`
+references the spec project as well as the app one.
+
 ## Project Structure
 
 ```

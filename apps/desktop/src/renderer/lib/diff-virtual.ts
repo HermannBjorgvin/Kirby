@@ -228,6 +228,25 @@ export function buildFlatDiff(
       for (const x of drafts) indexById.set(x.id, index);
     };
 
+    /**
+     * A side-by-side row and the comment cards hanging off each half.
+     * Either side can be absent where the two files differ in length.
+     */
+    const pushSplitPair = (row: Extract<SplitRow, { kind: 'pair' }>) => {
+      rows.push({
+        key: `p:${file}:${row.left?.index ?? 'x'}:${row.right?.index ?? 'x'}`,
+        kind: 'split-pair',
+        file,
+        row,
+      });
+      if (row.left) {
+        pushComments(row.left.line, `l${row.left.index}`, true, false);
+      }
+      if (row.right) {
+        pushComments(row.right.line, `r${row.right.index}`, false, false);
+      }
+    };
+
     if (opts.view === 'split') {
       const split = buildSplitRows(lines, unified);
       for (const row of split) {
@@ -255,20 +274,7 @@ export function buildFlatDiff(
           });
           pushComments(lines[row.index], `s${row.index}`, false, false);
         } else {
-          rows.push({
-            key: `p:${file}:${row.left?.index ?? 'x'}:${
-              row.right?.index ?? 'x'
-            }`,
-            kind: 'split-pair',
-            file,
-            row,
-          });
-          if (row.left) {
-            pushComments(row.left.line, `l${row.left.index}`, true, false);
-          }
-          if (row.right) {
-            pushComments(row.right.line, `r${row.right.index}`, false, false);
-          }
+          pushSplitPair(row);
         }
       }
     } else {

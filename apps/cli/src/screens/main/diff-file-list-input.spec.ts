@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type {
   KeyPress,
   PaneModeValue,
+  PlanValue,
   SessionActionsContextValue,
 } from '@kirby/app-core';
 import { ACTIONS, NORMIE_PRESET, resolveAction } from '@kirby/app-core';
@@ -224,11 +225,22 @@ function makeCtx(overrides: {
       ...shownGeneralComments.map(() => 5),
     ],
     listViewportRows: listViewportRows ?? 10,
+    // Resolution runs against the real Normie preset, so these tests
+    // break if a binding moves — which is the point of driving the
+    // handler through `resolve` rather than passing action IDs in.
     keybinds: {
-      resolve: (input, key, context) =>
-        resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
+      presetId: NORMIE_PRESET.id,
+      presetName: NORMIE_PRESET.name,
+      bindings: NORMIE_PRESET.bindings,
+      resolve: (
+        input: string,
+        key: KeyPress,
+        context: Parameters<typeof resolveAction>[2]
+      ) => resolveAction(input, key, context, NORMIE_PRESET.bindings, ACTIONS),
       getHintKeys: () => '',
       getNavKeys: () => '',
+      getHints: () => [],
+      isCustom: () => false,
     },
     sessions: {
       flashStatus: vi.fn(),
@@ -244,6 +256,20 @@ function makeCtx(overrides: {
       toggleResolved: vi.fn().mockResolvedValue(true),
       ...remoteCtx,
     },
+    // Empty plan store: none of the list-navigation paths under test
+    // read it, but the handler ctx carries one, and leaving it off
+    // meant the harness had drifted from the shape production passes.
+    plan: {
+      snapshot: new Map(),
+      add: vi.fn(),
+      remove: vi.fn(),
+      has: vi.fn().mockReturnValue(false),
+      toggle: vi.fn().mockReturnValue(true),
+      annotate: vi.fn(),
+      list: vi.fn().mockReturnValue([]),
+      count: vi.fn().mockReturnValue(0),
+      clear: vi.fn(),
+    } as unknown as PlanValue,
   } as DiffFileListHandlerCtx;
 }
 

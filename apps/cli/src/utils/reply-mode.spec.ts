@@ -44,10 +44,10 @@ function makePane(initial: Partial<ReplyModePane> = {}): ReplyModePane {
     get replyBuffer() {
       return state.replyBuffer;
     },
-    setReplyingToThreadId: (id) => {
+    setReplyingToThreadId: (id: string | null) => {
       state.replyingToThreadId = id;
     },
-    setReplyBuffer: (upd) => {
+    setReplyBuffer: (upd: string | ((prev: string) => string)) => {
       state.replyBuffer =
         typeof upd === 'function' ? upd(state.replyBuffer) : upd;
     },

@@ -9,6 +9,7 @@ import type {
   KeyDescriptorConfig,
   VcsProvider,
 } from './types.js';
+import { detectProvider } from './registry.js';
 
 const WM_DIR = join(homedir(), '.kirby');
 const GLOBAL_CONFIG_PATH = join(WM_DIR, 'config.json');
@@ -166,6 +167,23 @@ export function isVcsConfigured(
 }
 
 /**
+ * Copy fields the config does not already have, recording each one as
+ * newly detected. What the user (or an earlier detection) already set
+ * wins — auto-detection fills blanks, it does not overwrite.
+ */
+function fillBlankFields(
+  target: Record<string, string>,
+  extra: Record<string, string>,
+  detected: Record<string, string>
+): void {
+  for (const [key, value] of Object.entries(extra)) {
+    if (target[key]) continue;
+    target[key] = value;
+    detected[key] = value;
+  }
+}
+
+/**
  * Auto-detect project config from the git repo.
  * Tries each provider's parseRemoteUrl to fill vendor + vendorProject.
  * Fills email from `git config user.email`.
@@ -188,17 +206,12 @@ export function autoDetectProjectConfig(
         encoding: 'utf8',
         stdio: 'pipe',
       }).trim();
-      for (const provider of providers) {
-        const parsed = provider.parseRemoteUrl(remoteUrl);
-        if (parsed) {
-          cfg.vendor = provider.id;
-          cfg.vendorProject = parsed;
-          detected.vendor = provider.id;
-          for (const [k, v] of Object.entries(parsed)) {
-            detected[k] = v;
-          }
-          break;
-        }
+      const match = detectProvider(remoteUrl, providers);
+      if (match) {
+        cfg.vendor = match.provider.id;
+        cfg.vendorProject = match.projectConfig;
+        detected.vendor = match.provider.id;
+        Object.assign(detected, match.projectConfig);
       }
     } catch {
       // git remote may fail — not critical
@@ -212,12 +225,7 @@ export function autoDetectProjectConfig(
       const extra = matchedProvider.autoDetectFields();
       if (extra) {
         cfg.vendorProject ??= {};
-        for (const [k, v] of Object.entries(extra)) {
-          if (!cfg.vendorProject[k]) {
-            cfg.vendorProject[k] = v;
-            detected[k] = v;
-          }
-        }
+        fillBlankFields(cfg.vendorProject, extra, detected);
       }
     } catch {
       // autoDetectFields may fail — not critical

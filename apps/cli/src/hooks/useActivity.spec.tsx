@@ -32,6 +32,9 @@ class MockPty {
   emit(data: string) {
     this.dataCb?.(data);
   }
+  exit(code: number) {
+    this.exitCb?.(code);
+  }
   asPty(): SessionBackend {
     return this as unknown as SessionBackend;
   }

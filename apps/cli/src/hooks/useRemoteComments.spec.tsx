@@ -16,7 +16,6 @@ function makeThread(
   overrides: Partial<RemoteCommentThread> & { id: string }
 ): RemoteCommentThread {
   return {
-    id: overrides.id,
     file: 'foo.ts',
     lineStart: 1,
     lineEnd: 1,
