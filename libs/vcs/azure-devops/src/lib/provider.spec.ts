@@ -254,6 +254,185 @@ describe('deriveBuildStatus', () => {
       deriveBuildStatus([{ state: 'notApplicable' }, { state: 'succeeded' }])
     ).toBe('succeeded');
   });
+
+  /**
+   * Azure appends to a pull request's status list instead of replacing
+   * entries, so the history of a check is all present at once. Counting
+   * every entry made a single failure permanent: a pull request that
+   * failed and was then fixed reported `failed` until it was merged, and
+   * refreshing could never clear it because the response really did
+   * still contain the failure.
+   *
+   * These are all about which entry speaks for a check. The cases above
+   * stay valid — statuses with no context are distinct checks, and each
+   * still gets its own vote.
+   */
+  const ci = { genre: 'continuous-integration', name: 'build' };
+  const cd = { genre: 'continuous-integration', name: 'deploy' };
+
+  it('lets a re-run supersede the failure it replaced', () => {
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('does not let an old success mask a current failure', () => {
+    // The same ordering hazard in the other direction: newest wins,
+    // whichever way the check went.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('failed');
+  });
+
+  it('is not fooled by the newest entry arriving first in the list', () => {
+    // Azure does not promise an order, so position must not decide it.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('keeps one vote per check, so a second check still counts', () => {
+    // Deduping must not collapse genuinely different checks: the fixed
+    // build should not hide the deploy that is still failing.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 3,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: cd,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('failed');
+  });
+
+  it('prefers the later iteration even when the stale run reported last', () => {
+    // A new push re-runs the check, and the previous iteration's verdict
+    // is about code that is no longer there. A slow pipeline can post
+    // that stale verdict after the new one, giving it the higher id —
+    // so the iteration has to outrank both the id and the clock, or
+    // finishing an old run turns a good pull request red.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          iterationId: 2,
+          id: 5,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          iterationId: 1,
+          id: 9,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('orders by date when there are no ids to compare', () => {
+    expect(
+      deriveBuildStatus([
+        { state: 'failed', context: ci, creationDate: '2026-01-01T11:00:00Z' },
+        {
+          state: 'succeeded',
+          context: ci,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('falls back to the id when two entries share a timestamp', () => {
+    // A fast pipeline can post twice inside the same second.
+    const at = '2026-01-01T10:00:00Z';
+    expect(
+      deriveBuildStatus([
+        { state: 'failed', context: ci, id: 1, creationDate: at },
+        { state: 'succeeded', context: ci, id: 2, creationDate: at },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('groups on the whole context, not just the name', () => {
+    // Same name under a different genre is a different check.
+    expect(
+      deriveBuildStatus([
+        { state: 'succeeded', context: { genre: 'a', name: 'check' }, id: 2 },
+        { state: 'failed', context: { genre: 'b', name: 'check' }, id: 1 },
+      ])
+    ).toBe('failed');
+  });
+
+  it('does not let notApplicable displace a real verdict', () => {
+    // Declining to run is not a result, so it must not win on recency.
+    expect(
+      deriveBuildStatus([
+        { state: 'succeeded', context: ci, id: 1 },
+        { state: 'notApplicable', context: ci, id: 2 },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('still counts context-less entries separately', () => {
+    // Nothing to group on, so the pre-existing behaviour holds.
+    expect(
+      deriveBuildStatus([{ state: 'succeeded' }, { state: 'failed' }])
+    ).toBe('failed');
+  });
 });
 
 describe('fetchActivePullRequests', () => {
