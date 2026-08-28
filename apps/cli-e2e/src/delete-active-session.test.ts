@@ -75,10 +75,20 @@ test.describe('Delete active session', () => {
       // The actual assertion: pressing delete must open the Y/N confirm
       // modal because the PTY is still running, even though the branch
       // itself is git-clean and pushed.
-      await kirby.term.type('x');
-      await expect(kirby.term.getByText('Confirm Delete').first()).toBeVisible({
-        timeout: 10_000,
-      });
+      //
+      // The press is retried because returning from the terminal to the
+      // sidebar is not instantaneous and the hint row above is on
+      // screen either way, so it is no signal that focus has landed —
+      // a keystroke sent into that gap goes to the PTY and is simply
+      // lost, with nothing left to wait for. Observed as an occasional
+      // CI failure that does not reproduce on a developer machine.
+      // Repeating is harmless: the modal itself only answers y/n/Esc.
+      await expect(async () => {
+        await kirby.term.type('x');
+        await expect(
+          kirby.term.getByText('Confirm Delete').first()
+        ).toBeVisible({ timeout: 3_000 });
+      }).toPass({ timeout: 20_000 });
       await expect(
         kirby.term.getByText(/session is active/i).first()
       ).toBeVisible();
