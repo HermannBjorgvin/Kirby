@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   parseReviewer,
@@ -417,14 +418,65 @@ describe('deriveBuildStatus', () => {
     ).toBe('failed');
   });
 
-  it('does not let notApplicable displace a real verdict', () => {
-    // Declining to run is not a result, so it must not win on recency.
+  it('lets notApplicable retract the same check’s earlier verdict', () => {
+    // Taken from a real pull request: a coverage check failed on the
+    // first iteration and then reported "not applicable" on the second.
+    // Its last word is that it does not apply, so it should leave no
+    // mark at all rather than the failure standing.
     expect(
       deriveBuildStatus([
-        { state: 'succeeded', context: ci, id: 1 },
-        { state: 'notApplicable', context: ci, id: 2 },
+        { state: 'failed', context: ci, id: 3, iterationId: 1 },
+        { state: 'notApplicable', context: ci, id: 5, iterationId: 2 },
       ])
-    ).toBe('succeeded');
+    ).toBe('none');
+  });
+
+  it('does not let notApplicable silence a different check', () => {
+    // Retraction is scoped to the check that issued it.
+    expect(
+      deriveBuildStatus([
+        { state: 'notApplicable', context: ci, id: 2 },
+        { state: 'failed', context: cd, id: 1 },
+      ])
+    ).toBe('failed');
+  });
+
+  it('treats a missing state as queued, not as no result', () => {
+    // Azure omits `state` when it is `notSet` (zero in its enum); those
+    // entries are the ones describing a check that has been queued.
+    expect(deriveBuildStatus([{ state: undefined, context: ci, id: 1 }])).toBe(
+      'pending'
+    );
+  });
+
+  /**
+   * A real response, recorded from a pull request that showed red in
+   * Kirby while Azure showed nothing wrong, then anonymised. It is one
+   * coverage check reporting five times across two iterations: queued
+   * twice, failed on iteration 1, pending on iteration 2, and finally
+   * not applicable — so the failure it is remembered by belongs to code
+   * that has since been replaced, and the check has since withdrawn.
+   *
+   * Kept as a file rather than hand-written objects because the details
+   * that broke us are the ones nobody thinks to invent: `state` missing
+   * altogether on the queued entries, two iterations interleaved, and a
+   * retraction arriving one second after a pending.
+   */
+  it('reads a recorded Azure response the way Azure does', () => {
+    // Read rather than imported: keeping it out of the module graph
+    // means the recording stays a data file, with no bearing on how the
+    // project compiles.
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-failed-then-not-applicable.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+
+    expect(deriveBuildStatus(recorded.value)).toBe('none');
   });
 
   it('still counts context-less entries separately', () => {

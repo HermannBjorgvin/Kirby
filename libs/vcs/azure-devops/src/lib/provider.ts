@@ -171,6 +171,10 @@ export function countActiveThreads(
 }
 
 function mapRawState(raw: string | undefined): BuildStatusState {
+  // `notSet` is zero in Azure's enum, and the field is simply absent
+  // from the JSON when it holds that value — the entries that arrive
+  // with no `state` at all are the ones describing a queued check.
+  if (raw === undefined) return 'pending';
   switch (raw) {
     case 'succeeded':
       return 'succeeded';
@@ -239,13 +243,16 @@ function isNewer(a: AdoPrStatus, b: AdoPrStatus): boolean {
  * that finishes twice within the same second still resolves in order.
  * Aggregation across checks is unchanged: any failure is a failure,
  * then any pending, then success.
+ *
+ * `notApplicable` takes part in that contest rather than being filtered
+ * out first. It is a check saying it does not apply here, and when that
+ * is its latest word it retracts whatever it said earlier — a check that
+ * failed, was re-run, and then declared itself not applicable should
+ * leave no mark. It still casts no vote of its own.
  */
 export function deriveBuildStatus(statuses: AdoPrStatus[]): BuildStatusState {
   const latestPerContext = new Map<string, AdoPrStatus>();
   statuses.forEach((status, index) => {
-    // `notApplicable` means the check declined to run, so it is not a
-    // verdict — and must not displace the check's real one either.
-    if (status.state === 'notApplicable') return;
     const key = statusContextKey(status, index);
     const seen = latestPerContext.get(key);
     if (!seen || isNewer(status, seen)) latestPerContext.set(key, status);
@@ -255,6 +262,7 @@ export function deriveBuildStatus(statuses: AdoPrStatus[]): BuildStatusState {
   let hasPending = false;
   let hasSucceeded = false;
   for (const status of latestPerContext.values()) {
+    if (status.state === 'notApplicable') continue;
     const mapped = mapRawState(status.state);
     if (mapped === 'failed') hasFailed = true;
     if (mapped === 'pending') hasPending = true;
