@@ -37,6 +37,14 @@ interface KirbyBridge {
     ref: { label: string; key: string },
     value: string
   ): Promise<void>;
+  openRepo(cwd: string): Promise<{ cwd: string }>;
+  getRepo(): Promise<{ cwd: string } | null>;
+  launchAgent(req: {
+    branch: string;
+    intent: string;
+  }): Promise<{ name: string }>;
+  killSession(name: string): Promise<void>;
+  getSessionBuffer(name: string): Promise<{ data: string; seq: number }>;
 }
 
 interface Window {
