@@ -93,4 +93,31 @@ describe('open-item after re-key', () => {
     expect(s.tabs).toHaveLength(1);
     expect(s.activeId).toBe('item:branch:feat-x');
   });
+
+  it('reuses the re-keyed tab when its original key is opened again', () => {
+    // Found by the property test: the palette opens `branch:x` whenever
+    // the branch is not in the sidebar model yet, which after a re-key
+    // produced a second tab carrying the first one's id. Panes are
+    // keyed by tab id, so the two rendered each other's content.
+    let state: TabsState = { tabs: [], activeId: null };
+    state = reduce(state, {
+      type: 'open-item',
+      itemKey: 'branch:a',
+      preview: false,
+    });
+    state = reduce(state, {
+      type: 'sync-items',
+      entries: [{ itemKey: 'pr:1', branch: 'a' }],
+    });
+    state = reduce(state, {
+      type: 'open-item',
+      itemKey: 'branch:a',
+      preview: false,
+    });
+
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0].id).toBe('item:branch:a');
+    expect(state.tabs[0].kind === 'item' && state.tabs[0].itemKey).toBe('pr:1');
+    expect(state.activeId).toBe('item:branch:a');
+  });
 });

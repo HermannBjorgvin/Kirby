@@ -65,8 +65,17 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
       // Match by itemKey, not id: a re-keyed tab (see `sync-items`)
       // keeps its original id, and opening its item again must find it
       // rather than spawn a duplicate.
+      //
+      // …and match by id as well, for the mirror case: a tab opened as
+      // `branch:x` and since re-keyed to `pr:n` still carries the id
+      // `item:branch:x`, so opening `branch:x` again — which the
+      // palette does whenever the branch isn't in the sidebar model yet
+      // — would otherwise create a second tab sharing that id. Panes
+      // are keyed by tab id, so two of them render each other's
+      // content and closing one acts on the wrong tab.
       const existing = state.tabs.find(
-        (t) => t.kind === 'item' && t.itemKey === action.itemKey
+        (t) =>
+          t.kind === 'item' && (t.itemKey === action.itemKey || t.id === id)
       );
       if (existing) {
         const tabs = action.preview
