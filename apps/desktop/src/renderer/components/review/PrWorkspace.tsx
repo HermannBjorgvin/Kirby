@@ -1,5 +1,5 @@
 import { GitBranchIcon, PanelLeftOpenIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Group,
   Panel,
@@ -13,10 +13,10 @@ import type {
   ReviewComment,
 } from '../../../host/contract.js';
 import { useDiffOptions } from '../../lib/diff-options.js';
-import { parseDiffInWorker } from '../../lib/diff-worker-client.js';
 import {
   useDiff,
   useDraftComments,
+  useParsedDiff,
   usePostDrafts,
   useThreads,
   useWorktreeDiff,
@@ -36,6 +36,10 @@ import { ReviewRail } from './ReviewRail.js';
 import { ReviewStepper } from './ReviewStepper.js';
 
 type Mode = 'diff' | 'agent' | 'review' | 'overview';
+
+/** Shared empty parse, so "no files yet" keeps a stable identity and
+ *  the derived lists below are not rebuilt on every render. */
+const NO_FILES: [string, DiffLine[]][] = [];
 
 /**
  * The review workspace for a PR: a persistent left rail (Agent · Files
@@ -111,32 +115,14 @@ export function PrWorkspace({
     if (active && running) setMode('agent');
   }
   // Whole-file diffs can be megabytes; the parse runs in the diff
-  // worker so opening a tab never blocks the UI thread on it.
-  const [parsed, setParsed] = useState<{
-    text: string;
-    files: [string, DiffLine[]][];
-  } | null>(null);
-  useEffect(() => {
-    const text = diff.data;
-    if (text == null) return;
-    let cancelled = false;
-    void parseDiffInWorker(text)
-      .then((files) => {
-        if (!cancelled) setParsed({ text, files });
-      })
-      .catch(() => {
-        if (!cancelled) setParsed({ text, files: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [diff.data]);
-  const files = useMemo<[string, DiffLine[]][]>(
-    () => (parsed && parsed.text === diff.data ? parsed.files : []),
-    [parsed, diff.data]
-  );
+  // worker so opening a tab never blocks the UI thread on it. The query
+  // is keyed on the patch content, so what it hands back always belongs
+  // to the text on screen — while a newer patch is parsing there is no
+  // data for its key and the viewer shows no files, never the old ones.
+  const parsed = useParsedDiff(diff.data);
+  const files = parsed.data ?? NO_FILES;
   const diffPending =
-    diff.isLoading || (diff.data != null && parsed?.text !== diff.data);
+    diff.isLoading || (diff.data != null && parsed.data === undefined);
   const inlineThreads = useMemo(
     () => comments.data?.threads ?? [],
     [comments.data]
