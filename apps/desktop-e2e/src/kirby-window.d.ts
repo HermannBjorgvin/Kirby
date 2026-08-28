@@ -45,6 +45,7 @@ interface KirbyBridge {
   }): Promise<{ name: string }>;
   killSession(name: string): Promise<void>;
   getSessionBuffer(name: string): Promise<{ data: string; seq: number }>;
+  listRecentRepos(): Promise<{ cwd: string; valid: boolean }[]>;
 }
 
 interface Window {
