@@ -36,7 +36,36 @@
           "{projectRoot}/test-output/playwright/report"
         ],
         "options": {
-          "command": "node run-e2e.mjs",
+          "command": "node run-e2e.mjs --grep-invert @visual",
+          "cwd": "apps/desktop-e2e"
+        }
+      },
+      "e2e:visual": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
+        ],
+        "inputs": [
+          "default",
+          "^production",
+          {
+            "externalDependencies": [
+              "@playwright/test",
+              "electron"
+            ]
+          }
+        ],
+        "outputs": [
+          "{projectRoot}/test-output/playwright/output"
+        ],
+        "options": {
+          "command": "node run-visual.mjs",
           "cwd": "apps/desktop-e2e"
         }
       }

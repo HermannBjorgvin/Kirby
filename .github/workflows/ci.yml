@@ -37,7 +37,11 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v4
 
-      - run: npx nx affected -t lint test build typecheck e2e
+      # `e2e:visual` runs the screenshot suite inside a pinned container
+      # (see apps/desktop-e2e/run-visual.mjs). Baselines are generated in
+      # that same image, so the runner's own fonts never enter into it
+      # and the comparison can hold at zero tolerance.
+      - run: npx nx affected -t lint test build typecheck e2e e2e:visual
 
       - name: Upload Playwright test output on failure
         if: failure()

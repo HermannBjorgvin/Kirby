@@ -19,17 +19,26 @@ import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
  *   • A small pixel-ratio tolerance absorbs font antialiasing between
  *     machines while still failing on anything that moved.
  *
- * A diff here means "look at it", not "something is broken": update the
- * baseline with `npx playwright test --update-snapshots` once you have.
+ * These run only inside the pinned container (`nx e2e:visual
+ * desktop-e2e`), which is the whole point: fonts differ between this
+ * machine, another developer's and the CI runner, and a pixel-ratio
+ * tolerance is far stricter on a small dialog than on a full window.
+ * The default `e2e` target skips them.
+ *
+ * A diff here means "look at it", not "something is broken": regenerate
+ * with `node run-visual.mjs --update-snapshots` once you have.
  */
 
+// Zero tolerance. Everything renders in one pinned container, so there
+// is no cross-machine antialiasing to absorb — any differing pixel is a
+// real change, and a tolerance would only hide small ones.
 const shot = {
   animations: 'disabled',
   caret: 'hide',
-  maxDiffPixelRatio: 0.02,
+  maxDiffPixels: 0,
 } as const;
 
-test.describe('Visual', () => {
+test.describe('Visual @visual', () => {
   test.use({ repo: { name: 'kirby-visual' } });
 
   test('empty workspace', async ({ desktop }) => {
@@ -83,7 +92,7 @@ test.describe('Visual', () => {
   });
 });
 
-test.describe('Visual (diff)', () => {
+test.describe('Visual (diff) @visual', () => {
   test.use({
     repo: {
       name: 'kirby-visual',
@@ -109,7 +118,7 @@ test.describe('Visual (diff)', () => {
   });
 });
 
-test.describe('Visual (light theme)', () => {
+test.describe('Visual (light theme) @visual', () => {
   test.use({
     repo: { name: 'kirby-visual' },
     desktopPrefs: { theme: 'light', nativeFrame: false },
