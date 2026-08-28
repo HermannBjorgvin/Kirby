@@ -12,6 +12,7 @@ import type {
 import {
   ACTIONS,
   PRESETS,
+  applySessionBackend,
   buildControlsRows,
   buildSettingsFields,
   descriptorFromKeypress,
@@ -21,6 +22,7 @@ import {
   hasAnySession,
   getTmuxAvailability,
   resolveValue,
+  updateConfigField,
 } from '@kirby/app-core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
 
@@ -57,6 +59,32 @@ function canApplyFieldChange(
     }
   }
   return true;
+}
+
+/** Write a settings field, honouring its guard and running whatever
+ *  side effect the write owns.
+ *
+ *  `terminalBackend` is the only field with such an effect: the pty
+ *  registry's backend factory has to be rebuilt to match the new
+ *  selection. It belongs on the write path rather than in a render
+ *  effect keyed on the config value, because this is the point where
+ *  {@link canApplyFieldChange} has just established there is no live
+ *  session — the only moment the swap is safe. A blocked change
+ *  therefore never reaches `applySessionBackend`.
+ *
+ *  `updateField` routes the new config through React state, so the
+ *  value to apply is recomputed here with the same `updateConfigField`
+ *  the context uses. */
+function writeFieldChange(
+  field: SettingsField,
+  value: string | undefined,
+  ctx: SettingsHandlerCtx
+): void {
+  if (!canApplyFieldChange(field, value, ctx)) return;
+  ctx.config.updateField(field, value);
+  if (field.key === 'terminalBackend') {
+    applySessionBackend(updateConfigField(ctx.config.config, field, value));
+  }
 }
 
 // ── Shared context slice types ────────────────────────────────────
@@ -134,10 +162,7 @@ export function handleSettingsInput(
       if (field.key === 'keybindPreset' && preset.value) {
         ctx.keybinds.setPreset(preset.value);
       } else {
-        const value = preset.value ?? undefined;
-        if (canApplyFieldChange(field, value, ctx)) {
-          ctx.config.updateField(field, value);
-        }
+        writeFieldChange(field, preset.value ?? undefined, ctx);
       }
     }
     return;
@@ -158,10 +183,7 @@ export function handleSettingsInput(
       const effectiveValue = currentValue || namedPresets[0]!.value;
       let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
       idx = (idx + 1) % namedPresets.length;
-      const value = namedPresets[idx]!.value ?? undefined;
-      if (canApplyFieldChange(field, value, ctx)) {
-        ctx.config.updateField(field, value);
-      }
+      writeFieldChange(field, namedPresets[idx]!.value ?? undefined, ctx);
       return;
     }
     ctx.settings.setEditingField(field.key);

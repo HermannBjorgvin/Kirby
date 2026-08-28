@@ -1,8 +1,9 @@
 import { AlertTriangleIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { useRepo } from '../../lib/repo-context.js';
-import { useRemoveWorktree } from '../../lib/queries.js';
-import { errorMessage } from '../../lib/utils.js';
+import {
+  useBranchRemovalSafety,
+  useRemoveWorktree,
+} from '../../lib/queries.js';
 import { useTabs } from '../../lib/tabs.js';
 import { Button } from '../ui/button.js';
 import {
@@ -35,24 +36,9 @@ export function RemoveWorktreeDialog({
   const { repo } = useRepo();
   const tabs = useTabs();
   const remove = useRemoveWorktree(repo.cwd);
-  const [safety, setSafety] = useState<
-    { safe: true } | { safe: false; reason: string } | null
-  >(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    window.kirby
-      .canRemoveBranch(branch)
-      .then((r) => {
-        if (!cancelled) setSafety(r);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setSafety({ safe: false, reason: errorMessage(err) });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [branch]);
+  // `undefined` until the host answers — the confirm button stays
+  // disabled for as long as that is the case.
+  const { data: safety } = useBranchRemovalSafety(repo.cwd, branch);
 
   // Only these safety reasons may be overridden, matching the TUI:
   // protected branches and in-progress rebases are hard refusals.

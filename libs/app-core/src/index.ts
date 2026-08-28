@@ -56,6 +56,7 @@ export * from './lib/utils/running-tabs.js';
 export * from './lib/utils/scroll-window.js';
 export * from './lib/utils/truncate.js';
 export * from './lib/utils/virtual-viewport.js';
+export * from './lib/utils/diff-scroll.js';
 export * from './lib/utils/pr-utils.js';
 export * from './lib/utils/diff-fetcher.js';
 export * from './lib/utils/worktree-diff.js';

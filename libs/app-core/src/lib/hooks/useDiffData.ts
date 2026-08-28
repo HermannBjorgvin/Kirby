@@ -190,16 +190,28 @@ interface FilesCacheEntry {
   targetRef: string;
 }
 
+// Returned whenever no PR is selected. Module-level so the identity is
+// stable across renders — consumers (and the containers' memo deps)
+// would otherwise see a "new" empty list on every render. Neither is
+// ever mutated: every update below builds a fresh value.
+const NO_FILES: DiffFile[] = [];
+const NO_FILE_DIFFS = new Map<string, string>();
+
 export function useDiffData(
   prNumber: number | null,
   sourceBranch: string,
   targetBranch: string,
   headSha: string | undefined
 ) {
-  const [files, setFiles] = useState<DiffFile[]>([]);
+  // `loadedFiles` / `loadedFileDiffs` hold whatever the last load
+  // produced. What the caller sees is derived from `prNumber` below —
+  // see the `files` / `fileDiffs` bindings.
+  const [loadedFiles, setFiles] = useState<DiffFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fileDiffs, setFileDiffs] = useState<Map<string, string>>(new Map());
+  const [loadedFileDiffs, setFileDiffs] = useState<Map<string, string>>(
+    new Map()
+  );
   const [fileDiffLoading, setFileDiffLoading] = useState<string | null>(null);
   // Caches scoped to the current mount — MainTabBody remounts on every
   // sidebar-item switch, which is intentional: switching to another
@@ -241,13 +253,20 @@ export function useDiffData(
     }
   }, [prNumber, sourceBranch, targetBranch, headSha, cacheKey]);
 
-  // Auto-load files when prNumber or headSha changes.
+  // "No PR selected" is not a state the hook has to be walked into —
+  // it's a property of the argument. Deriving it here rather than
+  // having an effect write emptiness into state means the empty view
+  // is correct on the very first render, with no intermediate commit
+  // showing the previous PR's files. The loaded state stays put and is
+  // simply not read.
+  const files = prNumber ? loadedFiles : NO_FILES;
+  const fileDiffs = prNumber ? loadedFileDiffs : NO_FILE_DIFFS;
+
+  // Auto-load files when prNumber or headSha changes. A fetch is the
+  // one thing here that genuinely needs an effect.
   useEffect(() => {
     if (prNumber) {
       loadFiles();
-    } else {
-      setFiles([]);
-      setFileDiffs(new Map());
     }
   }, [prNumber, loadFiles]);
 
