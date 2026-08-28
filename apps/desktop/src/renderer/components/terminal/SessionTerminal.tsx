@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal, type TerminalHandle } from '@wterm/react';
 import wasmUrl from '@wterm/core/wasm?url';
+import { toast } from 'sonner';
 import {
   estimateTerminalGrid,
   measureTerminalGrid,
 } from '../../lib/terminal-grid.js';
 import { useTheme } from '../../lib/theme.js';
+import { errorMessage } from '../../lib/utils.js';
 
 /**
  * One agent terminal bound to a host PTY. The component stays mounted
@@ -100,6 +102,51 @@ export function SessionTerminal({
       offExit();
     };
   }, [name, ready, markSeen]);
+
+  // Pasting a picture into the terminal.
+  //
+  // wterm's own paste handler reads `clipboardData.getData('text')` and
+  // returns when there is none, so a copied screenshot lands nowhere
+  // and the paste looks like it simply did not happen. A PTY carries
+  // text, so the image cannot be forwarded as-is: the host writes it to
+  // a temp file and we type the path, which is how a terminal agent
+  // takes an image.
+  //
+  // Capture phase on the wrapper, so this runs before wterm's listener
+  // on the textarea inside it. Text pastes are left alone — they fall
+  // through to wterm, which already brackets and sanitises them.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !ready) return;
+    const onPaste = (event: ClipboardEvent) => {
+      const file = [...(event.clipboardData?.items ?? [])]
+        .find((i) => i.kind === 'file' && i.type.startsWith('image/'))
+        ?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void (async () => {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const path = await window.kirby.saveClipboardImage(bytes, file.type);
+          // Trailing space so whatever the user types next does not run
+          // into the path, and bracketed when the app asked for it —
+          // the same shape wterm gives a text paste.
+          const payload = `${path} `;
+          const bracketed =
+            termRef.current?.instance?.bridge?.bracketedPaste() === true;
+          await window.kirby.writeSession(
+            name,
+            bracketed ? `\x1b[200~${payload}\x1b[201~` : payload
+          );
+        } catch (err) {
+          toast.error(errorMessage(err));
+        }
+      })();
+    };
+    el.addEventListener('paste', onPaste, true);
+    return () => el.removeEventListener('paste', onPaste, true);
+  }, [ready, name]);
 
   // Grab keyboard focus whenever this pane becomes the active tab, and
   // mark the session seen (clears the tab's attention blink).

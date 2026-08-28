@@ -65,6 +65,8 @@ const api: KirbyHostApi = {
   resizeSession: (name, cols, rows) =>
     ipcRenderer.invoke(IPC.resizeSession, name, cols, rows),
   killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
+  saveClipboardImage: (data, mimeType) =>
+    ipcRenderer.invoke(IPC.saveClipboardImage, data, mimeType),
   fetchPrDescription: (prId) =>
     ipcRenderer.invoke(IPC.fetchPrDescription, prId),
   submitReviewVerdict: (prId, verdict) =>

@@ -179,6 +179,89 @@ describe('categorizeReviews', () => {
     const result = categorizeReviews(prMap, mockConfig, mockProvider);
     expect(result.needsReview).toEqual([]);
   });
+
+  /**
+   * A draft is the author saying the branch is not ready to be looked
+   * at. Listing it under "Needs Your Review" puts a job on the reviewer
+   * that they cannot clear — reviewing it does not remove it, because
+   * the author has not asked yet.
+   */
+  it('keeps a draft out of "needs review"', () => {
+    const prMap: BranchPrMap = {
+      'branch-a': makePr({
+        id: 1,
+        isDraft: true,
+        createdByIdentifier: 'other@test.com',
+        reviewers: [
+          {
+            displayName: 'Me',
+            identifier: 'me@test.com',
+            decision: 'no-response',
+          },
+        ],
+      }),
+    };
+    const result = categorizeReviews(prMap, mockConfig, mockProvider);
+    expect(result.needsReview).toEqual([]);
+    expect(result.waitingForAuthor).toEqual([]);
+    expect(result.approvedByYou).toEqual([]);
+  });
+
+  it('still lists a ready PR that is otherwise identical', () => {
+    // Guards the filter against widening into "drop every review PR".
+    const prMap: BranchPrMap = {
+      'branch-a': makePr({
+        id: 1,
+        isDraft: false,
+        createdByIdentifier: 'other@test.com',
+        reviewers: [
+          {
+            displayName: 'Me',
+            identifier: 'me@test.com',
+            decision: 'no-response',
+          },
+        ],
+      }),
+    };
+    expect(
+      categorizeReviews(prMap, mockConfig, mockProvider).needsReview
+    ).toHaveLength(1);
+  });
+
+  it('keeps a draft you have already ruled on, in its own bucket', () => {
+    // Both remaining buckets record a decision the reviewer made, so a
+    // draft belongs there: "Waiting for Author" is precisely where a PR
+    // sent back to draft after changes were requested should sit.
+    const prMap: BranchPrMap = {
+      'branch-a': makePr({
+        id: 1,
+        isDraft: true,
+        createdByIdentifier: 'other@test.com',
+        reviewers: [
+          {
+            displayName: 'Me',
+            identifier: 'me@test.com',
+            decision: 'changes-requested',
+          },
+        ],
+      }),
+      'branch-b': makePr({
+        id: 2,
+        isDraft: true,
+        createdByIdentifier: 'other@test.com',
+        reviewers: [
+          {
+            displayName: 'Me',
+            identifier: 'me@test.com',
+            decision: 'approved',
+          },
+        ],
+      }),
+    };
+    const result = categorizeReviews(prMap, mockConfig, mockProvider);
+    expect(result.waitingForAuthor.map((p) => p.id)).toEqual([1]);
+    expect(result.approvedByYou.map((p) => p.id)).toEqual([2]);
+  });
 });
 
 describe('buildSessionLookups', () => {

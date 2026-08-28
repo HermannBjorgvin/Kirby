@@ -1,10 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
+    // Declarations go beside the build output, not into it: `dist` is
+    // the esbuild bundle's directory and the esbuild executor clears it
+    // on every build, which deletes the .d.ts files `tsconfig.spec.json`
+    // resolves this project through — `nx build cli` would leave
+    // `nx typecheck cli` failing with TS6305 until it re-emitted.
+    "outDir": "out-tsc/app",
     "types": ["node"],
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo"
+    "tsBuildInfoFile": "out-tsc/app/tsconfig.app.tsbuildinfo"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [

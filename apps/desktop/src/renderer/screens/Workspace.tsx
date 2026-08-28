@@ -12,6 +12,7 @@ import type {
 } from '../../host/contract.js';
 import { AttentionRail } from '../components/AttentionRail.js';
 import {
+  applyPendingRemovals,
   itemBranch,
   itemKey,
   itemRunning,
@@ -87,16 +88,12 @@ function WorkspaceInner({
   // Worktrees being removed drop out of the model right away — every
   // consumer below (sidebar, tabs, attention rail) derives from this one
   // list, so the whole window reacts on confirm rather than on the git
-  // round-trip. Only the worktree row is hidden: a PR-backed one leaves
-  // an orphan-PR row behind, which the refetch brings in.
+  // round-trip.
   const removing = useRemovingBranches();
-  const items: SidebarItem[] = useMemo(() => {
-    const all = model.data ?? [];
-    if (removing.size === 0) return all;
-    return all.filter(
-      (i) => i.kind !== 'session' || !removing.has(itemBranch(i))
-    );
-  }, [model.data, removing]);
+  const items: SidebarItem[] = useMemo(
+    () => applyPendingRemovals(model.data ?? [], removing),
+    [model.data, removing]
+  );
   const closer = useCloseTabs(items);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);

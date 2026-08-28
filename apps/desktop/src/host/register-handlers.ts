@@ -13,6 +13,7 @@ import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
 import * as commentImages from './services/comment-images.js';
+import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 
 /**
@@ -80,6 +81,8 @@ export function createHostApi(): KirbyHostApi {
     resizeSession: (name, cols, rows) =>
       Promise.resolve(sessions.resizeSession(name, cols, rows)),
     killSession: (name) => Promise.resolve(sessions.killSession(name)),
+    saveClipboardImage: (data, mimeType) =>
+      Promise.resolve(clipboardImage.saveClipboardImage(data, mimeType)),
     onSessionData: () => {
       // Events are pushed via setSessionBroadcaster; the preload side
       // subscribes directly to ipcRenderer events. Nothing to do here.
@@ -182,6 +185,7 @@ export function registerHostHandlers(
     [IPC.writeSession]: api.writeSession as HostMethod,
     [IPC.resizeSession]: api.resizeSession as HostMethod,
     [IPC.killSession]: api.killSession as HostMethod,
+    [IPC.saveClipboardImage]: api.saveClipboardImage as HostMethod,
     [IPC.fetchPullRequests]: api.fetchPullRequests as HostMethod,
     [IPC.fetchCommentThreads]: api.fetchCommentThreads as HostMethod,
     [IPC.replyToThread]: api.replyToThread as HostMethod,

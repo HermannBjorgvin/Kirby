@@ -87,6 +87,9 @@ vi.mock('./services/sessions.js', () =>
 vi.mock('./services/comment-images.js', () =>
   recorder('commentImages', ['fetchCommentImage'])
 );
+vi.mock('./services/clipboard-image.js', () =>
+  recorder('clipboardImage', ['saveClipboardImage'])
+);
 vi.mock('./services/drafts.js', () =>
   recorder('drafts', [
     'listDraftComments',
@@ -153,6 +156,11 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
   ['fetchFileDiffText', ['feature', 'main', 'a.ts'], 'reviews.getFileDiffText'],
 
   ['fetchCommentImage', ['https://x/y.png'], 'commentImages.fetchCommentImage'],
+  [
+    'saveClipboardImage',
+    [new Uint8Array([1, 2]), 'image/png'],
+    'clipboardImage.saveClipboardImage',
+  ],
 
   ['listDraftComments', [7], 'drafts.listDraftComments'],
   ['updateDraftComment', [7, 'id', { body: 'x' }], 'drafts.updateDraftComment'],

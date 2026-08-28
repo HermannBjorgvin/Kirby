@@ -85,6 +85,35 @@ export function itemHasWorktree(item: SidebarItem): boolean {
   return Boolean(item.sessionName);
 }
 
+/**
+ * Reflect worktree removals that have been confirmed but not yet
+ * finished, so the whole window reacts when the user clicks Remove
+ * rather than when git and the session teardown are done.
+ *
+ * The two row kinds want opposite treatment, which is the part that is
+ * easy to get wrong: a plain worktree row *is* the worktree and goes,
+ * but a PR row outlives its checkout — the pull request is still open
+ * and still belongs in its review section. Dropping it would blank a
+ * row the refetch then puts straight back. So the PR row stays and only
+ * the parts that describe a worktree are cleared, which is also what
+ * takes "Stop agent" and "Remove worktree…" out of its context menu and
+ * stops its running indicator.
+ *
+ * Nothing here needs rolling back: a failed removal stops being
+ * pending, and the rows return exactly as they were.
+ */
+export function applyPendingRemovals(
+  items: SidebarItem[],
+  removing: ReadonlySet<string>
+): SidebarItem[] {
+  if (removing.size === 0) return items;
+  return items.flatMap((item) => {
+    if (!removing.has(itemBranch(item))) return [item];
+    if (item.kind === 'session') return [];
+    return [{ ...item, sessionName: undefined, running: undefined }];
+  });
+}
+
 export interface SidebarSection {
   key: SectionKey;
   label: string;

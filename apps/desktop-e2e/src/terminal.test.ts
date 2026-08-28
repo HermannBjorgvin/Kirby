@@ -128,3 +128,79 @@ test.describe('Two agents at once', () => {
     await expect(sidebarRow(page, /beta/)).toBeVisible();
   });
 });
+
+test.describe('Pasting an image', () => {
+  test.use({ kirbyConfig: { aiCommand: fakeAgent({ echo: true }) } });
+
+  /**
+   * A PTY carries text, so an image on the clipboard has to become a
+   * file the agent can open. wterm's own paste handler reads only
+   * `getData('text')` and silently drops everything else, which is what
+   * made pasting a screenshot look like a no-op.
+   *
+   * Playwright cannot put an image on the real system clipboard, so the
+   * paste event is synthesised — that still exercises the whole path
+   * that matters: our capture-phase listener, the bridge, the host
+   * writing the file, and the path arriving at the agent through the
+   * PTY.
+   */
+  async function pasteImage(page: Page, type = 'image/png') {
+    await focusTerminal(page);
+    await page.evaluate((mimeType) => {
+      const target = document.querySelector('textarea') ?? document.body;
+      const data = new DataTransfer();
+      // A one-pixel PNG's worth of bytes — the host stores whatever it
+      // is handed, so the content only has to be non-empty.
+      data.items.add(
+        new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'x', {
+          type: mimeType,
+        })
+      );
+      target.dispatchEvent(
+        new ClipboardEvent('paste', {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    }, type);
+  }
+
+  test('sends the agent a path to the pasted image', async ({ desktop }) => {
+    const { page } = desktop;
+    await launch(page, 'pasting');
+
+    await pasteImage(page);
+    // The agent echoes on end-of-line, so the path only comes back once
+    // the line is terminated.
+    await page.keyboard.press('Enter');
+
+    await expect(
+      visibleText(page, /echo:.*kirby-pasted-images.*\.png/)
+    ).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('leaves an ordinary text paste to the terminal', async ({ desktop }) => {
+    const { page } = desktop;
+    await launch(page, 'pasting-text');
+
+    await focusTerminal(page);
+    await page.evaluate(() => {
+      const target = document.querySelector('textarea') ?? document.body;
+      const data = new DataTransfer();
+      data.setData('text/plain', 'plain-text-paste');
+      target.dispatchEvent(
+        new ClipboardEvent('paste', {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    });
+    await page.keyboard.press('Enter');
+
+    await expect(visibleText(page, /echo:plain-text-paste/)).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+});

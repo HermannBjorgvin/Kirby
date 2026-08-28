@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { SidebarItem } from '../../host/contract.js';
 import {
+  applyPendingRemovals,
   groupSections,
   itemBranch,
+  itemHasWorktree,
   itemKey,
+  itemRunning,
   itemSessionName,
   SECTION_ORDER,
 } from './sidebar-model.js';
@@ -172,5 +175,69 @@ describe('groupSections', () => {
   it('keeps every item — grouping loses nothing', () => {
     const total = groupSections(items).reduce((n, s) => n + s.items.length, 0);
     expect(total).toBe(items.length);
+  });
+});
+
+/**
+ * What the window shows between "Remove" being clicked and git being
+ * done. The mistake worth guarding is treating both row kinds the same:
+ * hiding every row for the branch blanks a pull request that is still
+ * open, and hiding neither leaves a worktree on screen that is already
+ * being deleted.
+ */
+describe('applyPendingRemovals', () => {
+  const branch = 'feature/colour';
+  const worktreeRow: SidebarItem = {
+    kind: 'session',
+    session: session('feature-colour', true),
+    branch,
+    isMerged: false,
+  };
+  const reviewRow: SidebarItem = {
+    kind: 'review-pr',
+    pr: pr({ sourceBranch: branch }),
+    category: 'needs-review',
+    sessionName: 'feature-colour',
+    running: true,
+  };
+
+  it('returns the list untouched when nothing is being removed', () => {
+    const items = [worktreeRow, reviewRow];
+    expect(applyPendingRemovals(items, new Set())).toBe(items);
+  });
+
+  it('drops the worktree row — the row is the worktree', () => {
+    expect(applyPendingRemovals([worktreeRow], new Set([branch]))).toEqual([]);
+  });
+
+  it('keeps the PR row, because the pull request outlives its checkout', () => {
+    const [row] = applyPendingRemovals([reviewRow], new Set([branch]));
+    expect(row.kind).toBe('review-pr');
+    expect(row.pr?.id).toBe(reviewRow.pr?.id);
+  });
+
+  it('strips the worktree state off the PR row it keeps', () => {
+    // This is what takes "Stop agent" and "Remove worktree…" out of the
+    // row's context menu and stops its running indicator, rather than
+    // leaving them live against a worktree that is going away.
+    const [row] = applyPendingRemovals([reviewRow], new Set([branch]));
+    expect(itemHasWorktree(row)).toBe(false);
+    expect(itemRunning(row)).toBe(false);
+  });
+
+  it('leaves rows for other branches completely alone', () => {
+    const other: SidebarItem = {
+      kind: 'session',
+      session: session('unrelated', true),
+      branch: 'unrelated',
+      isMerged: false,
+    };
+    expect(applyPendingRemovals([other], new Set([branch]))).toEqual([other]);
+  });
+
+  it('does not mutate the item it was given', () => {
+    applyPendingRemovals([reviewRow], new Set([branch]));
+    expect(reviewRow.sessionName).toBe('feature-colour');
+    expect(reviewRow.running).toBe(true);
   });
 });

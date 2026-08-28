@@ -349,6 +349,11 @@ export interface KirbyHostApi {
   writeSession(name: string, data: string): Promise<void>;
   resizeSession(name: string, cols: number, rows: number): Promise<void>;
   killSession(name: string): Promise<void>;
+  /** Write an image pasted into a terminal to a temp file and return
+   *  its path, which is how a terminal agent can be given a picture —
+   *  a PTY carries text, not bytes. Rejects anything that is not a
+   *  recognised image type. */
+  saveClipboardImage(data: Uint8Array, mimeType: string): Promise<string>;
   /** Subscribe to PTY output. Returns an unsubscribe function. */
   onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
   onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
@@ -408,6 +413,7 @@ export const IPC = {
   writeSession: 'kirby/session/write',
   resizeSession: 'kirby/session/resize',
   killSession: 'kirby/session/kill',
+  saveClipboardImage: 'kirby/session/clipboard-image',
   fetchPullRequests: 'kirby/reviews/prs',
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',

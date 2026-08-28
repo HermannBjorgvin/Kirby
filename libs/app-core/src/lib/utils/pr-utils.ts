@@ -52,7 +52,12 @@ export function categorizeReviews(
       approvedByYou.push(pr);
     } else if (isBlockingDecision(reviewer.decision)) {
       waitingForAuthor.push(pr);
-    } else {
+    } else if (!pr.isDraft) {
+      // A draft is not asking for review yet, so it does not belong in
+      // "Needs Your Review" — being listed there is a standing job that
+      // cannot be cleared. The other two buckets still take drafts:
+      // both record a decision already made, and one of them ("Waiting
+      // for Author") is exactly where a PR put back into draft belongs.
       needsReview.push(pr);
     }
   }
