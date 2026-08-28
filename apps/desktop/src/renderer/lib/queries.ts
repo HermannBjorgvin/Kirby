@@ -7,12 +7,14 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { loadDesktopPrefs } from './desktop-prefs.js';
 import { errorMessage } from './utils.js';
 import type { ReviewDecision } from '@kirby/vcs-core/types';
 import type {
   PostDraftsRequest,
   PullRequestComments,
   ReplyRequest,
+  RepoInfo,
   ResolveRequest,
   ReviewComment,
   ReviewLaunchRequest,
@@ -56,9 +58,61 @@ export const keys = {
   commentImage: (url: string) => ['comment-image', url] as const,
   drafts: (cwd: string, prId: number) => ['drafts', cwd, prId] as const,
   reviewViewer: (cwd: string) => ['review-viewer', cwd] as const,
+  branchRemoval: (cwd: string, branch: string) =>
+    ['branch-removal', cwd, branch] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
+
+/**
+ * The boot read behind the repo gate: which repository the host is on,
+ * and the one-time load of the desktop prefs.
+ *
+ * The prefs ride along rather than getting a key of their own because
+ * the gate has to wait for both before it paints — the repo decides
+ * which screen renders, the prefs decide the theme and window frame it
+ * renders with — and a second gating query would have to be exempted
+ * from every cache reset to avoid re-entering its loading state.
+ *
+ * A host that cannot name a repository has none open, which is a
+ * screen (the picker), not an error. Resolving to `null` instead of
+ * rejecting is what keeps a failing host off the loading screen.
+ */
+export async function loadRepoGate(): Promise<RepoInfo | null> {
+  const [repo] = await Promise.all([
+    window.kirby.getRepo().catch(() => null),
+    loadDesktopPrefs(),
+  ]);
+  return repo;
+}
+
+export function useRepoGate() {
+  return useQuery({
+    queryKey: keys.repo,
+    queryFn: loadRepoGate,
+    // Written by hand when the user opens or leaves a repository; there
+    // is nothing to re-poll, and a refetch would re-run the prefs load.
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * Drop everything cached for the repository being left.
+ *
+ * Every other key is repo-scoped — sidebar, diffs, threads, settings —
+ * and in-flight mutation state goes too, so a worktree removal pending
+ * in the old repo cannot hide a same-named row in the new one.
+ *
+ * The repo entry itself is deliberately spared: the gate observes it,
+ * and removing it would drop that observer into its pending state for
+ * a frame, flashing the loading screen between two workspaces.
+ */
+export function resetRepoScopedCache(qc: QueryClient): void {
+  qc.removeQueries({
+    predicate: (query) => query.queryKey[0] !== keys.repo[0],
+  });
+  qc.getMutationCache().clear();
+}
 
 export function useVersion() {
   return useQuery({
@@ -103,6 +157,40 @@ export function useAllBranches(cwd: string, enabled = true) {
     queryFn: () => window.kirby.listAllBranches(),
     enabled,
     staleTime: 30_000,
+  });
+}
+
+export type BranchRemovalSafety =
+  | { safe: true }
+  | { safe: false; reason: string };
+
+/**
+ * Whether git will let this branch and its worktree go. A refusal is a
+ * verdict, not a failure, so a host call that throws is folded into an
+ * unsafe answer: the dialog reads one value and defaults to refusing
+ * when it cannot tell, rather than offering a confirm button behind an
+ * error state nobody renders.
+ */
+export function loadBranchRemovalSafety(
+  branch: string
+): Promise<BranchRemovalSafety> {
+  return window.kirby.canRemoveBranch(branch).catch((err: unknown) => ({
+    safe: false as const,
+    reason: errorMessage(err),
+  }));
+}
+
+/**
+ * The verdict is a snapshot of the working tree, so it is not kept past
+ * the dialog that asked for it (`gcTime: 0`) — reopening after a commit
+ * or a push has to ask again instead of replaying the old answer.
+ */
+export function useBranchRemovalSafety(cwd: string, branch: string) {
+  return useQuery({
+    queryKey: keys.branchRemoval(cwd, branch),
+    queryFn: () => loadBranchRemovalSafety(branch),
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
