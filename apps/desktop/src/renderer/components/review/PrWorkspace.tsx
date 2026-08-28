@@ -19,6 +19,7 @@ import {
   useDraftComments,
   usePostDrafts,
   useThreads,
+  useWorktreeDiff,
 } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { cn, errorMessage } from '../../lib/utils.js';
@@ -70,7 +71,20 @@ export function PrWorkspace({
 }) {
   const { repo } = useRepo();
   const prId = pr?.id ?? 0;
-  const diff = useDiff(repo.cwd, branch, baseBranch);
+  // A pull request is reviewed against its commits — that is what the
+  // comment threads anchor to. A worktree without one has nothing to
+  // anchor, so it shows the working tree instead and follows the agent
+  // as it edits, which is the whole reason to have the pane open while
+  // one is running.
+  const isWorktreeOnly = pr == null;
+  const commitDiff = useDiff(repo.cwd, branch, baseBranch, {
+    enabled: !isWorktreeOnly,
+  });
+  const workingDiff = useWorktreeDiff(repo.cwd, branch, baseBranch, {
+    enabled: isWorktreeOnly,
+    live: running,
+  });
+  const diff = isWorktreeOnly ? workingDiff : commitDiff;
   const comments = useThreads(repo.cwd, prId);
   const draftsQuery = useDraftComments(repo.cwd, prId);
   const postAll = usePostDrafts(repo.cwd);

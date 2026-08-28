@@ -92,6 +92,8 @@ export function createHostApi(): KirbyHostApi {
 
     fetchDiffText: (sourceBranch, targetBranch) =>
       reviews.getDiffText(sourceBranch, targetBranch),
+    fetchWorktreeDiffText: (branch, targetBranch) =>
+      worktrees.getWorktreeDiffText(branch, targetBranch),
     fetchFileDiffText: (sourceBranch, targetBranch, file) =>
       reviews.getFileDiffText(sourceBranch, targetBranch, file),
 
@@ -200,6 +202,7 @@ export function registerHostHandlers(
     [IPC.postDraftComments]: api.postDraftComments as HostMethod,
     [IPC.launchReviewAgent]: api.launchReviewAgent as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
+    [IPC.fetchWorktreeDiffText]: api.fetchWorktreeDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,
     [IPC.openExternal]: api.openExternal as HostMethod,
     [IPC.showContextMenu]: api.showContextMenu as HostMethod,

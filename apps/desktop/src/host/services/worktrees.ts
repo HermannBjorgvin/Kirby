@@ -10,7 +10,11 @@ import {
   worktreeSessionName,
 } from '@kirby/worktree-manager';
 import { spawn } from 'node:child_process';
-import { killPersistedTmuxSession, killSession } from '@kirby/app-core';
+import {
+  fetchWorktreeDiffText,
+  killPersistedTmuxSession,
+  killSession,
+} from '@kirby/app-core';
 import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
 
@@ -74,6 +78,22 @@ export async function removeWorktree(
 export function canRemoveBranch(branch: string) {
   requireRepo();
   return canRemoveBr(branch);
+}
+
+/**
+ * Live diff of a branch's worktree against its base, including work the
+ * agent has not committed. Empty when the branch has no worktree —
+ * there is no working tree to look at, and the caller falls back to the
+ * commit-range diff.
+ */
+export async function getWorktreeDiffText(
+  branch: string,
+  targetBranch: string
+): Promise<string> {
+  requireRepo();
+  const wt = (await listWts()).find((w) => w.branch === branch);
+  if (!wt) return '';
+  return fetchWorktreeDiffText(wt.path, targetBranch);
 }
 
 /** Open the branch's worktree in the configured editor — the TUI's

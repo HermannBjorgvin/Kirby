@@ -47,6 +47,8 @@ export const keys = {
   sessions: (cwd: string) => ['sessions', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
+  worktreeDiff: (cwd: string, branch: string, target: string) =>
+    ['worktree-diff', cwd, branch, target] as const,
   threads: (cwd: string, prId: number) => ['threads', cwd, prId] as const,
   prDescription: (cwd: string, prId: number) =>
     ['pr-description', cwd, prId] as const,
@@ -111,11 +113,52 @@ export function useSettingsView(cwd: string) {
   });
 }
 
-export function useDiff(cwd: string, source: string, target: string) {
+export function useDiff(
+  cwd: string,
+  source: string,
+  target: string,
+  opts: { enabled?: boolean } = {}
+) {
   return useQuery({
     queryKey: keys.diff(cwd, source, target),
     queryFn: () => window.kirby.fetchDiffText(source, target),
+    enabled: opts.enabled ?? true,
     staleTime: 60_000,
+  });
+}
+
+/**
+ * The working state of a worktree, refreshed while its agent runs so
+ * the diff tracks what the agent is doing instead of what it last
+ * committed.
+ *
+ * This is deliberately a different query from `useDiff`, not a mode of
+ * it. A pull request is reviewed against its commits — that is what the
+ * comments anchor to and what the author asked to have read — so a PR
+ * tab must not start showing somebody's uncommitted scratch work. Only
+ * a worktree without a PR gets the live view.
+ *
+ * Polled rather than watched: a recursive `fs.watch` over a checkout
+ * means an inotify handle per directory, and `node_modules` alone
+ * exhausts the default budget on Linux. The interval matches the draft
+ * comment poll, and stops when the agent does — an idle worktree only
+ * changes when the user does something the app already invalidates on.
+ */
+export function useWorktreeDiff(
+  cwd: string,
+  branch: string,
+  target: string,
+  opts: { enabled: boolean; live: boolean }
+) {
+  return useQuery({
+    queryKey: keys.worktreeDiff(cwd, branch, target),
+    queryFn: () => window.kirby.fetchWorktreeDiffText(branch, target),
+    enabled: opts.enabled,
+    refetchInterval: opts.live ? 2_000 : false,
+    // Keep the previous patch on screen while the next one is in
+    // flight, so a poll does not blank the viewer every two seconds.
+    placeholderData: (prev) => prev,
+    staleTime: 0,
   });
 }
 

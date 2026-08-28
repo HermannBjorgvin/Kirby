@@ -56,6 +56,7 @@ vi.mock('./services/worktrees.js', () =>
     'removeWorktree',
     'canRemoveBranch',
     'openInEditor',
+    'getWorktreeDiffText',
   ])
 );
 vi.mock('./services/reviews.js', () =>
@@ -154,6 +155,11 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
   ['getReviewViewer', [], 'reviews.getReviewViewer'],
   ['fetchDiffText', ['feature', 'main'], 'reviews.getDiffText'],
   ['fetchFileDiffText', ['feature', 'main', 'a.ts'], 'reviews.getFileDiffText'],
+  [
+    'fetchWorktreeDiffText',
+    ['feature', 'main'],
+    'worktrees.getWorktreeDiffText',
+  ],
 
   ['fetchCommentImage', ['https://x/y.png'], 'commentImages.fetchCommentImage'],
   [

@@ -360,6 +360,11 @@ export interface KirbyHostApi {
 
   // ── Diff ─────────────────────────────────────────────────────
   fetchDiffText(sourceBranch: string, targetBranch: string): Promise<string>;
+  /** Diff of a branch's worktree against its base including uncommitted
+   *  and untracked work — what an agent has done so far, as opposed to
+   *  what it has committed. Empty string when the branch has no
+   *  worktree. */
+  fetchWorktreeDiffText(branch: string, targetBranch: string): Promise<string>;
   fetchFileDiffText(
     sourceBranch: string,
     targetBranch: string,
@@ -428,6 +433,7 @@ export const IPC = {
   postDraftComments: 'kirby/drafts/post',
   launchReviewAgent: 'kirby/session/launch-review',
   fetchDiffText: 'kirby/diff/text',
+  fetchWorktreeDiffText: 'kirby/diff/worktree-text',
   fetchFileDiffText: 'kirby/diff/file-text',
   openExternal: 'kirby/shell/open-external',
   showContextMenu: 'kirby/shell/context-menu',

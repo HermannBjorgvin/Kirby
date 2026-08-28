@@ -86,6 +86,8 @@ const api: KirbyHostApi = {
 
   fetchDiffText: (sourceBranch, targetBranch) =>
     ipcRenderer.invoke(IPC.fetchDiffText, sourceBranch, targetBranch),
+  fetchWorktreeDiffText: (branch, targetBranch) =>
+    ipcRenderer.invoke(IPC.fetchWorktreeDiffText, branch, targetBranch),
   fetchFileDiffText: (sourceBranch, targetBranch, file) =>
     ipcRenderer.invoke(IPC.fetchFileDiffText, sourceBranch, targetBranch, file),
 

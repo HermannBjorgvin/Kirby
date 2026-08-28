@@ -1,4 +1,6 @@
-import { test, expect } from './fixtures/desktop.js';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import { sidebarRow } from './setup/app.js';
 
 const BRANCH = 'diff-work';
@@ -105,5 +107,67 @@ test.describe('Diff viewer', () => {
     await expect(
       page.getByText('hello from the worktree').first()
     ).toBeVisible();
+  });
+});
+
+test.describe('Live worktree diff', () => {
+  const LIVE = 'live-work';
+  test.use({
+    repo: {
+      worktrees: [{ branch: LIVE, files: { 'committed.txt': 'one\n' } }],
+    },
+    kirbyConfig: { aiCommand: fakeAgent({ stream: true }) },
+  });
+
+  /**
+   * A worktree's diff has to show what the agent has *done*, not what it
+   * has committed — an agent that has been editing for ten minutes and
+   * has not committed yet would otherwise leave the pane looking empty,
+   * which is the opposite of watching it work.
+   */
+  test('shows work the agent has not committed', async ({ desktop }) => {
+    const { page, repoPath } = desktop;
+    const worktree = join(repoPath, '.claude', 'worktrees', LIVE);
+
+    // Edit a tracked file and add a brand new one, without committing.
+    writeFileSync(join(worktree, 'committed.txt'), 'one\ntwo\n');
+    writeFileSync(join(worktree, 'invented.txt'), 'written by the agent\n');
+
+    await sidebarRow(page, new RegExp(LIVE)).click();
+
+    await expect(page.getByText('invented.txt').first()).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText('written by the agent').first()).toBeVisible();
+    // The uncommitted edit to the tracked file too.
+    await expect(page.getByText('two').first()).toBeVisible();
+  });
+
+  test('picks up a change made while the pane is open', async ({ desktop }) => {
+    const { page, repoPath } = desktop;
+    const worktree = join(repoPath, '.claude', 'worktrees', LIVE);
+
+    await sidebarRow(page, new RegExp(LIVE)).click();
+    await expect(page.getByText('committed.txt').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Start the agent: the poll only runs while one is working, which is
+    // the only time the tree changes underneath the viewer.
+    await page
+      .getByRole('button', { name: /(Re)?launch agent/i })
+      .filter({ visible: true })
+      .first()
+      .click();
+    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    writeFileSync(join(worktree, 'appeared-later.txt'), 'after the fact\n');
+
+    // No click, no refresh — the pane catches up on its own.
+    await expect(page.getByText('appeared-later.txt').first()).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });
