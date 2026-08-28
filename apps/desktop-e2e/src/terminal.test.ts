@@ -53,6 +53,7 @@ test.describe('Terminal input', () => {
     // The fake agent echoes what it is given, so seeing this proves the
     // whole chain — not just that the renderer drew the keystroke.
     await typeAndExpectEcho(page, 'hello');
+    await expect(visibleText(page, /echo:hello/)).toBeVisible();
   });
 
   test('typing does not count as the agent being busy', async ({ desktop }) => {

@@ -68,6 +68,22 @@
           "command": "node run-visual.mjs",
           "cwd": "apps/desktop-e2e"
         }
+      },
+      "e2e:integration": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
+        ],
+        "options": {
+          "command": "node run-e2e.mjs --grep @integration",
+          "cwd": "apps/desktop-e2e"
+        }
       }
     }
   }

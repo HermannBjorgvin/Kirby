@@ -70,6 +70,18 @@ export interface DesktopOptions {
    * pointing KIRBY_START_DIR at the test repo.
    */
   startWithoutRepo?: boolean;
+  /**
+   * Open this path instead of a freshly created throwaway repo. The
+   * caller owns its lifecycle — used by the integration tests, which
+   * clone the shared sandbox repo once per file.
+   */
+  repoPathOverride?: string;
+  /**
+   * Hand the app a GitHub token. Its HOME is isolated, so the `gh` CLI
+   * it authenticates through cannot see the developer's stored
+   * credentials; without this it behaves as a repo with no provider.
+   */
+  githubToken?: string;
 }
 
 export interface DesktopApp {
@@ -89,13 +101,24 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   desktopPrefs: [undefined, { option: true }],
   repo: [undefined, { option: true }],
   startWithoutRepo: [false, { option: true }],
+  repoPathOverride: [undefined, { option: true }],
+  githubToken: [undefined, { option: true }],
 
   desktop: async (
-    { kirbyConfig, projectConfig, desktopPrefs, repo, startWithoutRepo },
+    {
+      kirbyConfig,
+      projectConfig,
+      desktopPrefs,
+      repo,
+      startWithoutRepo,
+      repoPathOverride,
+      githubToken,
+    },
     use,
     testInfo
   ) => {
-    const repoPath = createTestRepo(repo ?? {});
+    const ownsRepo = !repoPathOverride;
+    const repoPath = repoPathOverride ?? createTestRepo(repo ?? {});
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-home-'));
     mkdirSync(join(homeDir, '.kirby'), { recursive: true });
     writeFileSync(
@@ -163,6 +186,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
         // pinning the socket dir keeps a test-spawned server off the
         // developer's default socket.
         TMUX_TMPDIR: homeDir,
+        ...(githubToken ? { GH_TOKEN: githubToken } : {}),
       },
       timeout: 60_000,
     });
@@ -224,7 +248,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       } catch {
         /* already gone */
       }
-      cleanupTestRepo(repoPath);
+      if (ownsRepo) cleanupTestRepo(repoPath);
       await rm(homeDir, { recursive: true, force: true }).catch(
         () => undefined
       );
