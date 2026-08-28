@@ -101,6 +101,81 @@ describe('matchesKey', () => {
     const desc: KeyDescriptor = {};
     expect(matchesKey(desc, 'a', makeKey())).toBe(false);
   });
+
+  it('a descriptor whose only flag is false never matches', () => {
+    // `{ flags: { downArrow: false } }` asks for nothing, so it must not
+    // fall through and swallow the Down key — or every keypress.
+    const desc: KeyDescriptor = { flags: { downArrow: false } };
+    expect(matchesKey(desc, '', makeKey({ downArrow: true }))).toBe(false);
+    expect(matchesKey(desc, '', makeKey())).toBe(false);
+  });
+
+  it('every flag a descriptor names must be set', () => {
+    const desc: KeyDescriptor = { flags: { escape: true, tab: true } };
+    expect(matchesKey(desc, '', makeKey({ escape: true, tab: true }))).toBe(
+      true
+    );
+    expect(matchesKey(desc, '', makeKey({ escape: true }))).toBe(false);
+    expect(matchesKey(desc, '', makeKey({ tab: true }))).toBe(false);
+  });
+
+  // ── Modifiers discriminate in both directions ───────────────────
+  //
+  // A descriptor that asks for a modifier must not fire without it,
+  // and one that doesn't ask must not fire with it. Only the latter
+  // half was covered, which is the half that lets Ctrl+Down fall
+  // through to plain Down.
+
+  it('Ctrl+f descriptor does NOT match plain f', () => {
+    const desc: KeyDescriptor = { input: 'f', ctrl: true };
+    expect(matchesKey(desc, 'f', makeKey())).toBe(false);
+  });
+
+  it('Shift+Down descriptor does NOT match plain Down', () => {
+    const desc: KeyDescriptor = { shift: true, flags: { downArrow: true } };
+    expect(matchesKey(desc, '', makeKey({ downArrow: true }))).toBe(false);
+  });
+
+  it('plain downArrow does NOT match Ctrl+Down', () => {
+    // Normie binds scroll to Down and next-section to Ctrl+Down.
+    const desc: KeyDescriptor = { flags: { downArrow: true } };
+    expect(matchesKey(desc, '', makeKey({ downArrow: true, ctrl: true }))).toBe(
+      false
+    );
+  });
+
+  it('plain j does NOT match Meta+j', () => {
+    const desc: KeyDescriptor = { input: 'j' };
+    expect(matchesKey(desc, 'j', makeKey({ meta: true }))).toBe(false);
+  });
+
+  it('Meta+x descriptor matches only with meta held', () => {
+    const desc: KeyDescriptor = { input: 'x', meta: true };
+    expect(matchesKey(desc, 'x', makeKey({ meta: true }))).toBe(true);
+    expect(matchesKey(desc, 'x', makeKey())).toBe(false);
+  });
+
+  it('lowercase descriptor does NOT match Shift+key', () => {
+    // The uppercase exemption is for 'K', not for 'k'.
+    const desc: KeyDescriptor = { input: 'k' };
+    expect(matchesKey(desc, 'k', makeKey({ shift: true }))).toBe(false);
+  });
+
+  it('uppercase exemption covers shift only, not ctrl', () => {
+    const desc: KeyDescriptor = { input: 'K' };
+    expect(matchesKey(desc, 'K', makeKey({ shift: true, ctrl: true }))).toBe(
+      false
+    );
+  });
+
+  it('the meta exemption is for Escape only — Tab still rejects meta', () => {
+    // Ink sets key.meta for Escape because \x1b is the Alt prefix. No
+    // other key gets that pass.
+    const desc: KeyDescriptor = { flags: { tab: true } };
+    expect(matchesKey(desc, '', makeKey({ tab: true, meta: true }))).toBe(
+      false
+    );
+  });
 });
 
 // ── resolveAction ────────────────────────────────────────────────
@@ -133,6 +208,54 @@ describe('resolveAction', () => {
   it('scopes resolution to the given context', () => {
     expect(resolveAction('j', makeKey(), 'settings', bindings, actions)).toBe(
       'other.down'
+    );
+  });
+
+  it('an action bound in another context does not fire', () => {
+    // 'q' is a sidebar binding only. Pressing it in settings must do
+    // nothing rather than quitting the app.
+    expect(
+      resolveAction('q', makeKey(), 'settings', bindings, actions)
+    ).toBeNull();
+  });
+
+  it('matches on a later descriptor of the same action', () => {
+    // test.down is bound to both 'j' and Down; the second one has to
+    // be reached.
+    expect(
+      resolveAction(
+        '',
+        makeKey({ downArrow: true }),
+        'sidebar',
+        bindings,
+        actions
+      )
+    ).toBe('test.down');
+  });
+
+  it('skips actions the preset leaves unbound', () => {
+    const withUnbound: ActionDef[] = [
+      { id: 'test.unbound', label: 'Unbound', context: 'sidebar' },
+      ...actions,
+    ];
+    expect(
+      resolveAction('j', makeKey(), 'sidebar', bindings, withUnbound)
+    ).toBe('test.down');
+  });
+
+  it('breaks a tie by action-catalog order', () => {
+    // Two actions in one context can share a key once a user rebinds.
+    // The earlier entry in ACTIONS wins, deterministically.
+    const clashing: ActionDef[] = [
+      { id: 'first', label: 'First', context: 'sidebar' },
+      { id: 'second', label: 'Second', context: 'sidebar' },
+    ];
+    const shared: Record<string, KeyDescriptor[]> = {
+      first: [{ input: 'j' }],
+      second: [{ input: 'j' }],
+    };
+    expect(resolveAction('j', makeKey(), 'sidebar', shared, clashing)).toBe(
+      'first'
     );
   });
 });
@@ -173,6 +296,46 @@ describe('descriptorFromKeypress', () => {
   it('returns null for empty input', () => {
     expect(descriptorFromKeypress('', makeKey())).toBeNull();
   });
+
+  it('returns null for a bare modifier press', () => {
+    expect(descriptorFromKeypress('', makeKey({ ctrl: true }))).toBeNull();
+  });
+
+  it('captures Ctrl+f', () => {
+    const desc = descriptorFromKeypress('f', makeKey({ ctrl: true }));
+    expect(desc).toEqual({ input: 'f', ctrl: true });
+    expect(matchesKey(desc!, 'f', makeKey({ ctrl: true }))).toBe(true);
+    expect(matchesKey(desc!, 'f', makeKey())).toBe(false);
+  });
+
+  it('captures Meta+x', () => {
+    const desc = descriptorFromKeypress('x', makeKey({ meta: true }));
+    expect(desc).toEqual({ input: 'x', meta: true });
+    expect(matchesKey(desc!, 'x', makeKey({ meta: true }))).toBe(true);
+  });
+
+  it('captures Ctrl+Down as a flag descriptor, not a character', () => {
+    const desc = descriptorFromKeypress(
+      '',
+      makeKey({ downArrow: true, ctrl: true })
+    );
+    expect(desc).toEqual({ flags: { downArrow: true }, ctrl: true });
+    expect(
+      matchesKey(desc!, '', makeKey({ downArrow: true, ctrl: true }))
+    ).toBe(true);
+    expect(matchesKey(desc!, '', makeKey({ downArrow: true }))).toBe(false);
+  });
+
+  it('captures Escape with the meta Ink attaches to it', () => {
+    const desc = descriptorFromKeypress(
+      '',
+      makeKey({ escape: true, meta: true })
+    );
+    expect(desc).toEqual({ flags: { escape: true }, meta: true });
+    expect(matchesKey(desc!, '', makeKey({ escape: true, meta: true }))).toBe(
+      true
+    );
+  });
 });
 
 // ── findConflict ─────────────────────────────────────────────────
@@ -208,5 +371,37 @@ describe('findConflict', () => {
     expect(
       findConflict('z', makeKey(), 'sidebar', bindings, actions, 'a.one')
     ).toBeNull();
+  });
+
+  it('does not report a clash from another context', () => {
+    // The same key in two contexts is the normal case, not a conflict.
+    const crossContext: ActionDef[] = [
+      ...actions,
+      { id: 'b.one', label: 'Elsewhere', context: 'settings' },
+    ];
+    const crossBindings: Record<string, KeyDescriptor[]> = {
+      ...bindings,
+      'b.one': [{ input: 'k' }],
+    };
+    expect(
+      findConflict(
+        'k',
+        makeKey(),
+        'settings',
+        crossBindings,
+        crossContext,
+        'b.one'
+      )
+    ).toBeNull();
+  });
+
+  it('skips actions the preset leaves unbound', () => {
+    const withUnbound: ActionDef[] = [
+      { id: 'a.unbound', label: 'Unbound', context: 'sidebar' },
+      ...actions,
+    ];
+    expect(
+      findConflict('k', makeKey(), 'sidebar', bindings, withUnbound, 'a.one')
+    ).toBe('a.two');
   });
 });
