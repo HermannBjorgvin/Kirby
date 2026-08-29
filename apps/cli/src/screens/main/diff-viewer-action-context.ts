@@ -6,6 +6,83 @@ import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
+/** Walking the comments forwards and backwards is the same walk with
+ *  every comparison mirrored, so the direction is named once here
+ *  instead of being re-decided on each line of the search. */
+interface CommentWalk {
+  /** Sorts header lines into visiting order. */
+  order: (a: number, b: number) => number;
+  /** True when `pos` lies ahead of the current selection. */
+  ahead: (pos: number, current: number) => boolean;
+  /** Where a comment with no known header line sorts to — the far end,
+   *  so an unplaced comment is reached last rather than first. */
+  unplaced: number;
+  /** Stands in for the current header line when nothing is selected. */
+  origin: number;
+  /** Index the walk starts from when nothing is selected. */
+  originIndex: number;
+  /** One step on from `from`, wrapping at the ends. */
+  step: (from: number, length: number) => number;
+}
+
+const WALKS: Record<'next' | 'prev', CommentWalk> = {
+  next: {
+    order: (a, b) => a - b,
+    ahead: (pos, current) => pos > current,
+    unplaced: Infinity,
+    origin: -1,
+    originIndex: -1,
+    step: (from, length) => (from + 1) % length,
+  },
+  prev: {
+    order: (a, b) => b - a,
+    ahead: (pos, current) => pos < current,
+    unplaced: -1,
+    origin: Infinity,
+    originIndex: 0,
+    step: (from, length) => (from <= 0 ? length - 1 : from - 1),
+  },
+};
+
+/** Rendered order: comments are visited by the line they are anchored
+ *  to, so the walk follows what the reader sees. Falls off the end
+ *  onto the first entry, making the walk cyclic. */
+function findByHeaderLine(
+  walk: CommentWalk,
+  currentId: string | null,
+  pool: ReviewComment[],
+  positions: Map<string, CommentPositionInfo>
+): string | undefined {
+  const currentHeader =
+    (currentId ? positions.get(currentId) : undefined)?.headerLine ??
+    walk.origin;
+
+  const sorted = pool
+    .map((c) => ({
+      id: c.id,
+      pos: positions.get(c.id)?.headerLine ?? walk.unplaced,
+    }))
+    .sort((a, b) => walk.order(a.pos, b.pos));
+
+  const found = sorted.find(
+    (c) => walk.ahead(c.pos, currentHeader) && c.id !== currentId
+  );
+  return (found ?? sorted[0])?.id;
+}
+
+/** Fallback for a file whose rows have not been measured yet: walk the
+ *  candidate list in the order it arrived. */
+function findByListIndex(
+  walk: CommentWalk,
+  currentId: string | null,
+  pool: ReviewComment[]
+): string | undefined {
+  const currentIdx = currentId
+    ? pool.findIndex((c) => c.id === currentId)
+    : walk.originIndex;
+  return pool[walk.step(currentIdx, pool.length)]?.id;
+}
+
 export function findAdjacentCommentId(
   direction: 'next' | 'prev',
   currentId: string | null,
@@ -16,42 +93,10 @@ export function findAdjacentCommentId(
   const pool = filter ? candidates.filter(filter) : candidates;
   if (pool.length === 0) return undefined;
 
-  if (positions && positions.size > 0) {
-    const currentInfo = currentId ? positions.get(currentId) : undefined;
-    const currentHeader =
-      direction === 'next'
-        ? currentInfo?.headerLine ?? -1
-        : currentInfo?.headerLine ?? Infinity;
-
-    const sorted = pool
-      .map((c) => ({
-        id: c.id,
-        pos:
-          positions.get(c.id)?.headerLine ??
-          (direction === 'next' ? Infinity : -1),
-      }))
-      .sort((a, b) => (direction === 'next' ? a.pos - b.pos : b.pos - a.pos));
-
-    const found =
-      direction === 'next'
-        ? sorted.find((c) => c.pos > currentHeader && c.id !== currentId)
-        : sorted.find((c) => c.pos < currentHeader && c.id !== currentId);
-
-    return (found ?? sorted[0])?.id;
-  }
-
-  const currentIdx = currentId
-    ? pool.findIndex((c) => c.id === currentId)
-    : direction === 'next'
-    ? -1
-    : 0;
-  const nextIdx =
-    direction === 'next'
-      ? (currentIdx + 1) % pool.length
-      : currentIdx <= 0
-      ? pool.length - 1
-      : currentIdx - 1;
-  return pool[nextIdx]?.id;
+  const walk = WALKS[direction];
+  return positions && positions.size > 0
+    ? findByHeaderLine(walk, currentId, pool, positions)
+    : findByListIndex(walk, currentId, pool);
 }
 
 export function scrollToComment(
