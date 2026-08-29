@@ -334,14 +334,50 @@ configs. `vitest/no-focused-tests` is the one that matters — a stray
 red build because nothing signals it.
 
 Everything except `max-depth` and the Ink and vitest rules is a
-**warning**. The app predates the budgets; the point is a downward
-ratchet, not a wall. Current standing, across all 17 projects
-(`nx run-many -t lint --all`): **0 errors, 124 warnings**, of which the
-three e2e suites contribute 48 under their own Playwright configs —
-measure with `--all` or you will read a smaller number and think the
-ratchet moved. What remains is dominated by `react/button-has-type`
-(27), `no-floating-promises` (25) and the Playwright rules; `max-lines`
-and `complexity` are both at zero.
+**warning**. The app predated the budgets, so the point was a downward
+ratchet rather than a wall — and the ratchet has arrived. Current
+standing, across all 17 projects (`nx run-many -t lint --all`): **0
+errors, 0 warnings**. Measure with `--all`: the three e2e suites lint
+under their own Playwright configs and are invisible otherwise, which
+is how a smaller number once read as clean.
+
+Zero is now the baseline, so a warning is a regression and there is no
+backlog to hide in. Two of the categories that got it there were not
+cosmetic, and are worth knowing before reintroducing the pattern:
+
+- **`no-floating-promises` was a crash.** Nothing awaits
+  `asyncOps.run` and nothing installs an `unhandledRejection` handler,
+  so a git call rejecting inside one ended the process. `run` reports
+  failures through `setOperationErrorHandler` — `SessionProvider`
+  points it at the toast rail — and never rejects. Do not restore a
+  version that rejects, and do not silence this rule with `void` where
+  the rejection has nowhere to go.
+- **`playwright/no-wait-for-timeout`** is off for
+  `apps/cli-e2e/src/setup/waits.ts` alone. Every fixed wait in the TUI
+  suite goes through `settleFor(page, ms, reason)`, whose reason
+  becomes a test step. Most waits there are load-bearing — proving a
+  toast never fires, outlasting the resize debounce, or letting Ink's
+  `useInput` see a filter its closure captured a render ago — so
+  reach for an auto-waiting assertion first and `settleFor` only for
+  those cases.
+
+**Inline suppressions are down to six, each with a `--` rationale**:
+four `no-control-regex` (a terminal escape sequence starts with the
+byte the rule flags), one `exhaustive-deps` in `useReviewComments` (a
+revision counter is the change signal for a file on disk, and there is
+no snapshot to derive from), and one `react-hooks/incompatible-library`
+in `VirtualDiffList` (the virtualizer hands back methods, and this
+build does not run React Compiler anyway). Anything new should clear
+the same bar: say why the rule cannot apply here, not that it is
+inconvenient.
+
+Two rule-level notes worth keeping. `react-hooks` v7 is
+compiler-powered, so a suppression can **hide analysis of the whole
+hook** — removing the render-phase ref writes in `useMergedBranches`
+surfaced a synchronous `setState` nobody had seen. And an inline
+`eslint-disable` naming a plugin rule is a **hard error in the
+pre-commit hook**, which runs eslint without the Playwright plugin
+registered; scope those in the project's `eslint.config.mjs` instead.
 
 **`apps/cli` specs are type-checked** via `apps/cli/tsconfig.spec.json`
 — it did not exist, so 26 spec files and `src/test-utils/**` were
