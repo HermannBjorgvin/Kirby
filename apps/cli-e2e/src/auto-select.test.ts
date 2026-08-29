@@ -129,9 +129,7 @@ test.describe('@integration Auto-select first comment', () => {
       pr38.selected().first(),
       30
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     // Open the PR's file list.
     await kirby.term.press('d');
@@ -163,9 +161,10 @@ test.describe('@integration Auto-select first comment', () => {
       fileSelected,
       40
     );
-    if (!fileLanded) {
-      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
-    }
+    expect(
+      fileLanded,
+      `Could not land diff-list selection on ${fileBasename}`
+    ).toBe(true);
 
     await kirby.term.press('Enter');
 
@@ -244,9 +243,7 @@ test.describe('@integration Auto-select first comment', () => {
       pr38.selected().first(),
       30
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
     await kirby.term.press('d');
     await kirby.term.page
       .locator('.term-row', { hasText: /\.(c|h)\b/ })
@@ -268,9 +265,10 @@ test.describe('@integration Auto-select first comment', () => {
       fileSelected,
       40
     );
-    if (!fileLanded) {
-      throw new Error(`Could not land diff-list selection on ${fileBasename}`);
-    }
+    expect(
+      fileLanded,
+      `Could not land diff-list selection on ${fileBasename}`
+    ).toBe(true);
     await kirby.term.press('Enter');
 
     // Pre-fix the seeded dead local id sat at navPool[0] and

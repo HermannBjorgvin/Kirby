@@ -78,6 +78,11 @@ if (hasGhToken) {
   );
 }
 
+/** Best-effort cleanup: the PR only exists if creation got that far. */
+function closeIfOpened(prNumber: number | undefined): void {
+  if (prNumber) closePullRequest(TEST_REPO, prNumber);
+}
+
 test.describe('@integration Navigation Jump', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
@@ -149,7 +154,7 @@ test.describe('@integration Navigation Jump', () => {
       ).toBeHidden();
     } finally {
       // Cleanup GitHub resources (best-effort)
-      if (prNumberA) closePullRequest(TEST_REPO, prNumberA);
+      closeIfOpened(prNumberA);
       deleteRemoteBranch(TEST_REPO, branchA);
       deleteRemoteBranch(TEST_REPO, branchB);
     }

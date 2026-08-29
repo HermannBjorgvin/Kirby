@@ -155,7 +155,7 @@ test.describe('Adding comments to the plan', () => {
     await page.getByRole('button', { name: /Prompt preview/ }).click();
     const preview = page.locator('pre');
     await expect(preview).toBeVisible();
-    const text = (await preview.textContent()) ?? '';
+    const text = (await preview.textContent())!;
     expect(text).toContain('Resolve these PR review comments:');
     expect(text.indexOf(NAMING)).toBeLessThan(text.indexOf(UNBOUNDED));
     expect(text).toContain('### 1. undo.c:2');

@@ -1,4 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
+import { wtermHost } from './setup/constants.js';
 import {
   createSession,
   pressUntil,
@@ -37,7 +38,7 @@ test.describe('Quit with active agent (#56)', () => {
     kirby,
     baseURL,
   }) => {
-    const host = baseURL ?? 'http://localhost:5174';
+    const host = wtermHost(baseURL);
 
     await createSession(kirby.term, 'busy-q');
 

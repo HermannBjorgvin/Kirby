@@ -166,9 +166,7 @@ test.describe('@integration Comments Fixture', () => {
       pr38.selected().first(),
       20
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     await kirby.term.press('d');
 
@@ -351,9 +349,7 @@ test.describe('@integration Comments Fixture', () => {
       pr38.selected().first(),
       20
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     // Open the general-comments pane (vim preset binds this to plain C).
     await kirby.term.press('C');

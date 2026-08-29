@@ -1,4 +1,5 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
+import { wtermHost } from './setup/constants.js';
 import {
   createSession,
   pressUntil,
@@ -130,7 +131,7 @@ test.describe('Tmux backend (e2e)', () => {
     kirby,
     baseURL,
   }) => {
-    const host = baseURL ?? 'http://localhost:5174';
+    const host = wtermHost(baseURL);
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
