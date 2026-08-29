@@ -18,9 +18,39 @@
  * empty result rather than failing, so a test declares only what it
  * cares about.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-const scenario = JSON.parse(readFileSync(process.env.KIRBY_FAKE_GH, 'utf8'));
+const scenarioPath = process.env.KIRBY_FAKE_GH;
+const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
+
+/**
+ * Persist the scenario back to disk.
+ *
+ * Mutations have to stick, or the app's refetch immediately undoes what
+ * the user just did: a reply vanishes and a resolved thread comes back
+ * open. Each `gh` invocation is its own process, so the file is the
+ * only place that state can live.
+ */
+function save() {
+  writeFileSync(scenarioPath, JSON.stringify(scenario, null, 2), 'utf8');
+}
+
+/**
+ * Find a review thread by the id the reader hands back. The fallback id
+ * is positional *within its pull request* (see threadNode), so it has
+ * to be computed the same way here.
+ */
+function findThread(id) {
+  for (const pr of prs) {
+    const threads = pr.threads ?? [];
+    for (let i = 0; i < threads.length; i++) {
+      if ((threads[i].id ?? `thread-${i + 1}`) === id) {
+        return { pr, t: threads[i] };
+      }
+    }
+  }
+  return undefined;
+}
 const prs = scenario.prs ?? [];
 const argv = process.argv.slice(2);
 
@@ -159,7 +189,78 @@ if (argv[0] === 'api' && argv[1] === 'graphql') {
     });
   }
 
-  // Mutations (reply, resolve). Nothing reads the payload back.
+  // ── Mutations ──
+  if (query.includes('addPullRequestReviewThreadReply')) {
+    const found = findThread(vars.threadId);
+    const comment = {
+      id: `reply-${Date.now()}`,
+      author: scenario.username ?? 'kirby-tester',
+      body: vars.body,
+      createdAt: new Date().toISOString(),
+    };
+    if (found) {
+      found.t.comments = [...(found.t.comments ?? []), comment];
+      save();
+    }
+    out({
+      data: {
+        addPullRequestReviewThreadReply: {
+          comment: {
+            id: comment.id,
+            body: comment.body,
+            createdAt: comment.createdAt,
+            author: { login: comment.author },
+          },
+        },
+      },
+    });
+  }
+
+  if (query.includes('addComment(')) {
+    const pr = prs.find((p) => `PR_${p.number}` === vars.subjectId);
+    const comment = {
+      author: scenario.username ?? 'kirby-tester',
+      body: vars.body,
+      createdAt: new Date().toISOString(),
+    };
+    if (pr) {
+      pr.generalComments = [...(pr.generalComments ?? []), comment];
+      save();
+    }
+    out({
+      data: {
+        addComment: {
+          commentEdge: {
+            node: {
+              id: `general-${Date.now()}`,
+              body: comment.body,
+              createdAt: comment.createdAt,
+              author: { login: comment.author },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  // Order matters: 'unresolveReviewThread(' contains
+  // 'resolveReviewThread(', so the negative has to be tested first.
+  const unresolving = query.includes('unresolveReviewThread(');
+  const resolving = !unresolving && query.includes('resolveReviewThread(');
+  if (resolving || unresolving) {
+    const found = findThread(vars.threadId);
+    if (found) {
+      found.t.isResolved = resolving;
+      save();
+    }
+    const key = resolving ? 'resolveReviewThread' : 'unresolveReviewThread';
+    out({
+      data: {
+        [key]: { thread: { id: vars.threadId, isResolved: resolving } },
+      },
+    });
+  }
+
   out({ data: {} });
 }
 

@@ -16,12 +16,19 @@ Two front ends over the same core. Install both:
 
 ```sh
 npm install -g @hermannbjorgvin/kirby-desktop   # desktop app
-npm install -g @hermannbjorgvin/kirby           # terminal UI, and the `kirby` cli utils
+npm install -g @hermannbjorgvin/kirby                # terminal UI, and the `kirby` cli utils
 ```
 
 Then run `kirby-desktop` or `kirby` from any project directory.
 
-Review agents record their comments by running `kirby util add-comment`, so agent-drafted reviews need `kirby` on your `PATH` even if you only open the desktop app. Everything else works without it.
+Both, because review agents record their comments by running `kirby util add-comment` — so agent-drafted reviews need `kirby` on your `PATH` even if you only open the desktop app. Everything else works without it.
+
+### Customizable and agent agnostic
+
+- **Pick your agent** - Claude, Codex, Gemini, Copilot, or OpenCode, configurable per project.
+- **Customizable keybindings** - Normie and Vim presets out of the box, remappable from the Controls panel.
+
+> Kirby is early-stage software. It works well enough that we rely on it every day, but expect rough edges and breaking changes.
 
 ## Features
 
@@ -31,14 +38,16 @@ Review agents record their comments by running `kirby util add-comment`, so agen
 
 - **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session, so several features can be in flight without stashing or disturbing your main checkout.
 - **PR status next to every worktree** - open, draft or merged, CI result, review status and conflict count, inline in the sidebar. One circle carries both axes: red when a build failed or someone rejected, green and filled only when CI passed _and_ everyone approved.
-- **GitHub and Azure DevOps** - both supported today, though not equally well exercised — see [Version control providers](#version-control-providers).
-- **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and rebases onto the base with one key.
+- **GitHub and Azure DevOps** - see [Version control providers](#version-control-providers).
+- **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and a shortcut to auto rebase to lastest main/master
 
 ### Agent-drafted reviews
 
 ![Stepping through agent-written draft comments in severity order, posting one and skipping to the next](docs/media/review.gif)
 
 Point an agent at a pull request and have it review the diff. It leaves inline draft comments anchored to the lines they're about, and you walk through them in severity order — edit, discard, skip, or post. You stay the author of record; the agent just does the first pass.
+
+This is the feature that needs the CLI installed alongside the desktop app.
 
 ### Plan comments into a cart
 
@@ -48,43 +57,40 @@ The other direction: on a PR you're resolving, add the comments you want to addr
 
 ### Review in place
 
-Browse files and diffs, read threads, reply, resolve and reopen without leaving Kirby. The desktop adds whole-file diffs with folding, split and unified views, and word-level highlighting.
+![A pull request's overview with its description and approve buttons, then the diff in split and unified views, replying to a reviewer's thread and resolving it](docs/media/review-in-place.gif)
 
-### Customizable and agent agnostic
+The pull request's own overview and verdict buttons, then the diff: browse files, read threads, reply, resolve and reopen, split or unified — without leaving Kirby. Whole-file diffs with folding and word-level highlighting are desktop-only.
 
-- **Pick your agent** - Claude, Codex, Gemini, Copilot, or OpenCode, configurable per project.
-- **Customizable keybindings** - Normie and Vim presets out of the box, remappable from the Controls panel.
-- **Light and dark** - the desktop follows your system theme, or pin one.
+### Light and dark themes
+
+The most important feature of any software
 
 ![The review workspace wiped between the dark and light themes](docs/media/theme.gif)
 
-> Kirby is early-stage software. It works well enough that we rely on it every day, but expect rough edges and breaking changes.
-
 ## The terminal UI
 
-Most of the work goes into the desktop app now, but `kirby` is the whole thing without a window — same core, same config, same worktrees, shared with the desktop.
+Most of the work goes into the desktop app now, but `kirby` is the whole thing without a window — same core, same config, same worktrees, shared with the desktop. Run `kirby` in your repo root to bring up the TUI.
 
 ![The Kirby TUI: the sidebar with CI and review state, a pull request diff with reviewers' threads inline, queueing a comment with a note, and sending the plan to an agent](docs/media/tui.gif)
 
-Sidebar status, diffs with threads inline, `a`/`A` to queue a comment with a note, `enter` to send the plan to an agent. Split, word-level and folded diffs are desktop-only.
-
 ## Prerequisites
 
-- git
+- `git`
+- `node` and `npm`
 - An agent CLI on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`
 - `kirby` on your `PATH` for agent-drafted reviews, including when you use the desktop app
 - For GitHub: the `gh` CLI, authenticated
 - For Azure DevOps: a personal access token with repo and pull request access
 - `tmux` (optional) — agent sessions then survive quitting and are reattached next launch
-- On Linux, the desktop app compiles `node-pty` during install: `sudo apt install build-essential python3`
+- On Linux, the desktop app compiles `node-pty` during install: `build-essential` and `python3` required.
 
 ## Version control providers
 
-| Provider                              | Auth                   | Tested                                       |
-| ------------------------------------- | ---------------------- | -------------------------------------------- |
-| GitHub                                | authenticated `gh` CLI | unit, offline e2e, live integration          |
-| Azure DevOps                          | personal access token  | unit + recorded API responses; no live tests |
-| GitLab, Bitbucket, Gitea, self-hosted | not supported          | —                                            |
+| Provider                  | Auth                   | Tested                                       |
+| ------------------------- | ---------------------- | -------------------------------------------- |
+| GitHub                    | authenticated `gh` CLI | unit, offline e2e, live integration          |
+| Azure DevOps              | personal access token  | unit + recorded API responses; no live tests |
+| GitLab, Bitbucket, etc... | not supported          | —                                            |
 
 An Azure DevOps regression won't be caught by CI, so bug reports help. Providers sit behind one interface (`libs/vcs/`) — more can be added, PRs welcome.
 

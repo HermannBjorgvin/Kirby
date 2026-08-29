@@ -229,6 +229,11 @@ async function installCursor(page) {
   });
 }
 
+/** Wait for a locator to show up, without an assertion library. */
+async function waitFor(page, locator, timeout = 20_000) {
+  await locator.first().waitFor({ state: 'visible', timeout });
+}
+
 /** Glide the mouse to a locator like a hand would, then settle. */
 async function glide(page, locator, { dwell = 350 } = {}) {
   const box = await locator.boundingBox();
@@ -599,6 +604,78 @@ async function demoReview(scenario) {
   toGif('review');
 }
 
+/**
+ * Reviewing in place: the pull request's own overview, then the diff —
+ * split view, a reply on a reviewer's thread, and resolving it. The
+ * only take that shows the Overview pane, which is where the
+ * description and the approve actions live.
+ */
+async function demoReviewInPlace(scenario) {
+  const { app, page } = await launchApp(scenario);
+  await installCursor(page);
+  await openPr(page, /Add a command palette/);
+  await card(page, 'runs the whole command list')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 });
+  await sleep(800);
+  const rec = startRecording('review-in-place');
+  await sleep(700);
+
+  // The overview: title, description, and the verdict buttons.
+  await click(page, page.getByRole('button', { name: 'Overview' }), {
+    dwell: 500,
+  });
+  await sleep(3000);
+
+  // Back to the diff, and into split view.
+  await click(
+    page,
+    page
+      .getByRole('button', { name: /palette\.ts/ })
+      .filter({ visible: true })
+      .last()
+  );
+  await sleep(1600);
+  await click(page, page.getByRole('button', { name: /^Split$/ }), {
+    dwell: 500,
+  });
+  await sleep(2600);
+  await click(page, page.getByRole('button', { name: /^Unified$/ }), {
+    dwell: 500,
+  });
+  await sleep(1400);
+
+  // Reply on a reviewer's thread, and resolve it.
+  const thread = card(page, 'runs the whole command list');
+  await thread.scrollIntoViewIfNeeded();
+  await click(page, thread.getByRole('button', { name: /Reply…/ }), {
+    dwell: 500,
+  });
+  const box = thread.getByPlaceholder(/Write a reply/);
+  await box.waitFor({ state: 'visible' });
+  await sleep(400);
+  await box.pressSequentially('Good call — memoized per prefix.', {
+    delay: 45,
+  });
+  await sleep(500);
+  await click(page, thread.getByRole('button', { name: /^Reply$/ }));
+  await waitFor(page, thread.getByText('Good call — memoized per prefix.'));
+  await sleep(1600);
+
+  await click(page, thread.getByRole('button', { name: /^Resolve$/ }), {
+    dwell: 500,
+  });
+  await waitFor(page, thread.getByText('Resolved'));
+  await park(page);
+  await sleep(2400);
+
+  await rec.stop();
+  await app.close();
+  // Mostly-still UI between clicks: a capped palette and a lower frame
+  // rate cost nothing visible here and about a third of the file.
+  toGif('review-in-place', { fps: 10, colors: 128 });
+}
+
 async function demoPlan(scenario) {
   const { app, page } = await launchApp(scenario);
   await installCursor(page);
@@ -683,6 +760,7 @@ const demos = {
   hero: demoHero,
   worktrees: demoWorktrees,
   review: demoReview,
+  'review-in-place': demoReviewInPlace,
   plan: demoPlan,
   tui: demoTui,
 };
