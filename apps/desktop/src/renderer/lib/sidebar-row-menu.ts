@@ -1,15 +1,45 @@
-import type { ContextMenuItem } from '../../host/contract.js';
-
 /** What a sidebar row's native context menu can do. */
-export type SidebarRowCommand =
-  | 'open'
-  | 'launch'
-  | 'kill'
-  | 'checkout'
-  | 'open-pr'
-  | 'open-editor'
-  | 'copy'
-  | 'remove';
+const SIDEBAR_ROW_COMMANDS = [
+  'open',
+  'launch',
+  'kill',
+  'checkout',
+  'open-pr',
+  'open-editor',
+  'copy',
+  'remove',
+] as const;
+
+export type SidebarRowCommand = (typeof SIDEBAR_ROW_COMMANDS)[number];
+
+/**
+ * Narrow what the native menu resolves to.
+ *
+ * `showContextMenu` is one IPC call shared by every context menu in the
+ * app, so it can only promise `string | null`. Checking the id against
+ * the list here is what turns that back into a union — which is what
+ * makes the caller's `switch` exhaustive, so adding a command without
+ * handling it fails the build instead of rendering an entry that does
+ * nothing when clicked.
+ */
+export function isSidebarRowCommand(
+  chosen: string | null
+): chosen is SidebarRowCommand {
+  return (
+    chosen !== null &&
+    (SIDEBAR_ROW_COMMANDS as readonly string[]).includes(chosen)
+  );
+}
+
+/** A menu entry whose id the compiler checks against the command list. */
+type SidebarRowMenuEntry =
+  | { type: 'separator' }
+  | {
+      id: SidebarRowCommand;
+      label: string;
+      enabled?: boolean;
+      danger?: boolean;
+    };
 
 export interface SidebarRowMenuState {
   /** The row has a checkout on disk. */
@@ -32,9 +62,9 @@ export interface SidebarRowMenuState {
  */
 export function sidebarRowMenuItems(
   state: SidebarRowMenuState
-): ContextMenuItem[] {
+): SidebarRowMenuEntry[] {
   const { hasWorktree, running, hasPr } = state;
-  const items: ContextMenuItem[] = [
+  const items: SidebarRowMenuEntry[] = [
     { id: 'open', label: 'Open' },
     { type: 'separator' },
   ];

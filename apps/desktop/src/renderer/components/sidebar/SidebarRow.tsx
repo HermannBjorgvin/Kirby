@@ -16,7 +16,10 @@ import {
   itemSessionName,
   itemTitle,
 } from '../../lib/sidebar-model.js';
-import { sidebarRowMenuItems } from '../../lib/sidebar-row-menu.js';
+import {
+  isSidebarRowCommand,
+  sidebarRowMenuItems,
+} from '../../lib/sidebar-row-menu.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { PrMeta } from './PrMeta.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';
@@ -79,6 +82,7 @@ export function SidebarRow({
     const chosen = await window.kirby.showContextMenu(
       sidebarRowMenuItems({ hasWorktree, running, hasPr: Boolean(pr) })
     );
+    if (!isSidebarRowCommand(chosen)) return;
     switch (chosen) {
       case 'open':
         onOpen(false);
