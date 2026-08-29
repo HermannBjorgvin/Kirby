@@ -292,9 +292,11 @@ analysis, and it passes clean), it enforces four groups.
 error. These are set where they bound what gets _added_ rather than
 where they would be comfortable: a file grows past 300 lines and a
 function past 20 branches one plausible edit at a time, and nobody
-reviews that as growth. Tighten `complexity` toward 15 then 12 as the
-list clears — at 10 it reports 90 functions, which is a list nobody
-acts on. Two files carry a 900-line ceiling instead
+reviews that as growth. **Both lists are now empty** — no file exceeds
+300 and no function exceeds 20 — so the next tightening is real:
+`complexity` to 15 then 12, and `max-lines` below 300. At `complexity`
+10 it reports 90 functions, which is a list nobody acts on. Two files
+carry a 900-line ceiling instead
 (`libs/vcs/*/provider.ts`, `keybindings/registry.ts`): they are a REST
 surface and an action catalog, and splitting either spreads one lookup
 table across files. Specs are exempt from `max-lines` only.
@@ -333,7 +335,13 @@ red build because nothing signals it.
 
 Everything except `max-depth` and the Ink and vitest rules is a
 **warning**. The app predates the budgets; the point is a downward
-ratchet, not a wall. Current standing: **0 errors, 100 warnings.**
+ratchet, not a wall. Current standing, across all 17 projects
+(`nx run-many -t lint --all`): **0 errors, 124 warnings**, of which the
+three e2e suites contribute 48 under their own Playwright configs —
+measure with `--all` or you will read a smaller number and think the
+ratchet moved. What remains is dominated by `react/button-has-type`
+(27), `no-floating-promises` (25) and the Playwright rules; `max-lines`
+and `complexity` are both at zero.
 
 **`apps/cli` specs are type-checked** via `apps/cli/tsconfig.spec.json`
 — it did not exist, so 26 spec files and `src/test-utils/**` were
