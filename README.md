@@ -31,8 +31,22 @@ The CLI is not only the terminal UI — it is also how agents write review comme
 
 - **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session. Spin them up, switch between them, and tear them down without stashing or disturbing your main checkout. Built for monorepos where several features are in progress at the same time.
 - **PR status next to every worktree** - the sidebar shows each branch's pull request state inline: open, draft, or merged, CI result, review status, and conflict count against the base. One circle carries both axes — colour is whatever is holding the request up, and it only fills in when CI has passed _and_ everyone has approved — so a failing build reads red at a glance and a ready-to-merge branch reads green. Most worktree tools stop at the branch name; Kirby tells you where the branch actually stands.
-- **GitHub and Azure DevOps** - both supported today. Support for other providers can be added via pull request.
+- **GitHub and Azure DevOps** - both supported today, though not equally well exercised — see below.
 - **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and rebases onto the base with one key.
+
+### Version control providers
+
+| Provider                          | Status        | Authentication                                                                                            | How it's tested                                                                                                                                                                        |
+| --------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GitHub**                        | Supported     | the [`gh` CLI](https://cli.github.com), already authenticated — Kirby stores no credential of its own     | Unit tests, an offline end-to-end suite that serves whole pull requests from a stand-in `gh`, and an integration suite that reads permanent fixture pull requests on a real repository |
+| **Azure DevOps**                  | Supported     | a Personal Access Token with repo and pull-request access, stored in `~/.kirby/` and never sent to the UI | Unit tests, including recorded real API responses for the fiddly parts. **No live integration tests** — nothing in CI talks to a real Azure DevOps instance                            |
+| **GitLab**                        | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
+| **Bitbucket**                     | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
+| Gitea, self-hosted, anything else | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
+
+The two supported providers are not exercised to the same depth, which is worth knowing before you rely on one. GitHub is tested against the real thing on every pull request. Azure DevOps is covered by unit tests and daily use, but a regression in it will not be caught by CI talking to a live server — so bug reports from Azure DevOps users are especially useful.
+
+Providers sit behind one interface (`libs/vcs/core`, with `libs/vcs/github` and `libs/vcs/azure-devops` implementing it), so GitLab, Bitbucket or anything else can be added without touching the rest of Kirby. Pull requests welcome.
 
 ### Agent-drafted reviews
 
@@ -76,7 +90,7 @@ That whole loop is the TUI: the sidebar with CI and approval state per pull requ
 - An agent CLI on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`
 - `kirby` on your `PATH` for agent-drafted reviews, including when you use the desktop app
 - For GitHub: the `gh` CLI, authenticated
-- For Azure DevOps: a personal access token with repo and pull request access
+- For Azure DevOps: a personal access token with repo and pull request access (see the provider table above)
 - `tmux` (optional) — agent sessions then survive quitting and are reattached next launch
 - On Linux, the desktop app compiles `node-pty` during install: `sudo apt install build-essential python3`
 
