@@ -16,6 +16,7 @@ import {
   usePlan,
   useDiffFileViewerViewModel,
 } from '@kirby/app-core';
+import { diffViewportHeight } from '@kirby/core';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { handleDiffViewerInput } from './main-input.js';
 
@@ -87,7 +88,7 @@ export function DiffFileViewerContainer({
   const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(
     (delta: number) => {
-      const viewportHeight = Math.max(1, terminal.paneRows - 3);
+      const viewportHeight = diffViewportHeight(terminal.paneRows);
       const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
       setDiffScrollOffset((o) => Math.max(0, Math.min(o + delta, maxScroll)));
     },

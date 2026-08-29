@@ -1,3 +1,4 @@
+import { diffViewportHeight } from '@kirby/core';
 import type { RowMap } from '@kirby/review-comments';
 
 export interface VisibleEntry {
@@ -44,8 +45,10 @@ export function diffViewerViewport(opts: {
 }): DiffViewport {
   const { rowMap, entryCount, scrollOffset, paneRows } = opts;
 
-  // Chrome: header + divider + hints = 3 lines
-  const viewportHeight = Math.max(1, paneRows - 3);
+  // Chrome: header + divider + hints = 3 lines. Shared with the
+  // keyboard scroll handlers via @kirby/core so the two cannot
+  // disagree about where the fold is.
+  const viewportHeight = diffViewportHeight(paneRows);
 
   // Row-based slice: pick every entry whose [rowStart, rowStart+rowSpan]
   // overlaps the viewport's [scrollOffset, scrollOffset+viewportHeight]

@@ -1,4 +1,9 @@
-import { handleTextInput, type KeyPress, type ActionId } from '@kirby/core';
+import {
+  diffViewportHeight,
+  handleTextInput,
+  type KeyPress,
+  type ActionId,
+} from '@kirby/core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { updateComment, removeComment } from '@kirby/review-comments';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
@@ -63,7 +68,7 @@ export function handleDiffViewerInput(
   key: KeyPress,
   ctx: DiffViewerHandlerCtx
 ): void {
-  const viewportHeight = Math.max(1, ctx.terminal.paneRows - 3);
+  const viewportHeight = diffViewportHeight(ctx.terminal.paneRows);
   // diffTotalRows is the row-count total now — `scrollOffset` is a
   // physical row offset, not a slot index.
   const maxScroll = Math.max(0, ctx.diffTotalRows - viewportHeight);
