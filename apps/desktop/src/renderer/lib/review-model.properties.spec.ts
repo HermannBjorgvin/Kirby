@@ -154,10 +154,14 @@ describe('buildCommentRows order', () => {
     fc.assert(
       fc.property(inputs, ({ files, general, inline, draft }) => {
         const rows = buildCommentRows(files, general, inline, draft);
+        // -1 / Infinity make an absent group satisfy the comparison,
+        // so the assertion runs on every generated case rather than
+        // being skipped on the ones that have only one kind of row.
         const lastGeneral = lastIndexWhere(rows, (r) => r.file == null);
         const firstFiled = rows.findIndex((r) => r.file != null);
-        if (lastGeneral >= 0 && firstFiled >= 0)
-          expect(lastGeneral).toBeLessThan(firstFiled);
+        expect(lastGeneral).toBeLessThan(
+          firstFiled >= 0 ? firstFiled : Infinity
+        );
       })
     );
   });
@@ -171,8 +175,9 @@ describe('buildCommentRows order', () => {
         );
         const lastKnown = lastIndexWhere(rows, (r) => diffed.has(r.file!));
         const firstUnknown = rows.findIndex((r) => !diffed.has(r.file!));
-        if (lastKnown >= 0 && firstUnknown >= 0)
-          expect(lastKnown).toBeLessThan(firstUnknown);
+        expect(lastKnown).toBeLessThan(
+          firstUnknown >= 0 ? firstUnknown : Infinity
+        );
       })
     );
   });
@@ -184,6 +189,7 @@ describe('buildCommentRows order', () => {
     fc.assert(
       fc.property(inputs, ({ files, general, inline, draft }) => {
         const rows = buildCommentRows(files, general, inline, draft);
+        const notTransitive: string[] = [];
         for (const a of rows)
           for (const b of rows) {
             expect(sign(compareCommentRows(a, b))).toBe(
@@ -192,11 +198,13 @@ describe('buildCommentRows order', () => {
             for (const c of rows) {
               if (
                 compareCommentRows(a, b) <= 0 &&
-                compareCommentRows(b, c) <= 0
+                compareCommentRows(b, c) <= 0 &&
+                compareCommentRows(a, c) > 0
               )
-                expect(compareCommentRows(a, c)).toBeLessThanOrEqual(0);
+                notTransitive.push(`${a.id} <= ${b.id} <= ${c.id}`);
             }
           }
+        expect(notTransitive).toEqual([]);
       })
     );
   });
@@ -272,12 +280,12 @@ describe('stepComment stays inside the list', () => {
         fc.constantFrom(-1, 1),
         (list, rawIndex, delta) => {
           const visible = visibleComments(list, true);
-          if (visible.length === 0) {
-            expect(stepComment(visible, -1, delta)).toBeNull();
-            return;
-          }
           const index = rawIndex < visible.length ? rawIndex : -1;
-          expect(stepComment(visible, index, delta)!.resolved).toBe(false);
+          const stepped = stepComment(visible, index, delta);
+          // Null exactly when nothing is visible, and never a resolved
+          // comment otherwise — both halves on every generated case.
+          expect(stepped === null).toBe(visible.length === 0);
+          expect(stepped?.resolved ?? false).toBe(false);
         }
       )
     );

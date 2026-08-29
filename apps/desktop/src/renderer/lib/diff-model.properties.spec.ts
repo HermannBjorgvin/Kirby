@@ -264,11 +264,21 @@ describe('buildSplitRows', () => {
     fc.assert(
       fc.property(diffLines, (lines) => {
         const split = buildSplitRows(lines, buildUnifiedRows(lines));
-        for (const r of split) {
-          if (r.kind !== 'pair') continue;
-          if (r.left) expect(r.left.line.type).toBe('remove');
-          if (r.right) expect(r.right.line.type).toBe('add');
-        }
+        // Gathered rather than asserted per row: an empty list is the
+        // property, and a failure names the type that landed wrong.
+        const misplaced = split.flatMap((r) =>
+          r.kind === 'pair'
+            ? [
+                ...(r.left && r.left.line.type !== 'remove'
+                  ? [`left:${r.left.line.type}`]
+                  : []),
+                ...(r.right && r.right.line.type !== 'add'
+                  ? [`right:${r.right.line.type}`]
+                  : []),
+              ]
+            : []
+        );
+        expect(misplaced).toEqual([]);
       }),
       { numRuns: 300 }
     );

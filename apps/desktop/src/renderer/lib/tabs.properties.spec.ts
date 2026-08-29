@@ -131,8 +131,7 @@ describe('tab reducer invariants', () => {
     fc.assert(
       fc.property(sequence, (actions) => {
         const { tabs, activeId } = run(actions);
-        if (tabs.length > 0) expect(activeId).not.toBeNull();
-        else expect(activeId).toBeNull();
+        expect(activeId === null).toBe(tabs.length === 0);
       }),
       { numRuns: 500 }
     );
