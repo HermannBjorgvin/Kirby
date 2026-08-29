@@ -539,6 +539,25 @@ Two packages ship from this repo, both beta-only and published manually from a l
 | `@hermannbjorgvin/kirby` (TUI)         | `apps/cli`     | `npm install -g @hermannbjorgvin/kirby@beta`         |
 | `@hermannbjorgvin/kirby-desktop` (GUI) | `apps/desktop` | `npm install -g @hermannbjorgvin/kirby-desktop@beta` |
 
+**Users need both, and packaging cannot fix that — it is documented
+instead.** A review agent records what it finds by running `kirby util
+add-comment`, which ships only in the CLI package, so agent-drafted
+reviews do not work on a desktop-only install. Both READMEs say so.
+Two things were measured before settling for documentation, so nobody
+re-derives them: npm does **not** put a dependency's `bin` on the
+user's PATH for a global install (only the named package's bins are
+linked — the dependency's is not installed anywhere in the prefix), so
+having the desktop depend on the CLI achieves nothing; and two global
+packages declaring the same bin name **hard-error** on the second
+install ("Remove the existing file and try again"), so giving the
+desktop its own `kirby` bin would make installing both impossible in
+either order. The remaining option, if this ever becomes worth it, is
+for the desktop to ship a private `kirby` beside its own binary and
+prepend that directory to the PATH of the sessions it spawns — the
+agent's environment, never the user's. `apps/cli/src/commands/util.ts`
+is 110 lines whose only import is `@kirby/review-comments`, which the
+desktop already bundles.
+
 **They share one version number.** Both are front-ends over the same core and release together, so a user can compare the two numbers and know what they have. `scripts/shared-version.mjs` enforces it: each package's publish-prep calls `assertVersionsMatch()` and refuses to prepare a mismatched pair.
 
 ### One-time setup
