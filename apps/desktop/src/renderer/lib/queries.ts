@@ -64,6 +64,15 @@ export const keys = {
   reviewViewer: (cwd: string) => ['review-viewer', cwd] as const,
   branchRemoval: (cwd: string, branch: string) =>
     ['branch-removal', cwd, branch] as const,
+  // Diff-worker results (see lib/highlight.ts). `linesKey` is a hash of
+  // the lines' types and contents, not of the array instance, so the
+  // same lines are one cache entry however many arrays hold them —
+  // which is what keeps the review walkthrough, whose snippet array is
+  // rebuilt every render, off the worker.
+  fileAnalysis: (file: string, linesKey: string, theme: string) =>
+    ['file-analysis', file, linesKey, theme] as const,
+  codeTokens: (tag: string, theme: string, code: string) =>
+    ['code-tokens', tag, theme, code] as const,
 };
 
 // ── Queries ──────────────────────────────────────────────────────
