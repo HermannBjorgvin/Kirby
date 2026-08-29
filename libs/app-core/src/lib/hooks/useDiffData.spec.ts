@@ -300,13 +300,14 @@ describe('fetchAllFiles parsing', () => {
     });
   });
 
-  it('loses the counts when git compacts a rename into brace form', async () => {
-    // Known limitation, pinned so a fix is a deliberate change rather than
-    // an accident: when the two paths share a prefix git writes
-    // "src/{old => new}.ts", which contains neither full path, so the
-    // containment fallback finds nothing and the counts default to zero.
+  // Git compacts a rename's two paths into one display string whenever
+  // they share anything, which is most renames — a file moved within its
+  // own directory always does. The reconstructed pair is what the counts
+  // are keyed by, so these are the shapes git actually emits (verified
+  // against a real repo), not invented ones.
+  it('reads the counts when git compacts a rename into brace form', async () => {
     const { files } = await parseWith(
-      '3\t1\tsrc/{old => new}.ts\n',
+      '3\t1\tsrc/{old.ts => new.ts}\n',
       'R096\tsrc/old.ts\tsrc/new.ts\n'
     );
 
@@ -314,7 +315,52 @@ describe('fetchAllFiles parsing', () => {
       filename: 'src/new.ts',
       previousFilename: 'src/old.ts',
       status: 'renamed',
-      additions: 0,
+      additions: 3,
+      deletions: 1,
+    });
+  });
+
+  it('reads the counts when the compacted sides span directories', async () => {
+    const { files } = await parseWith(
+      '1\t0\tsrc/{deep/two.ts => new.ts}\n',
+      'R075\tsrc/deep/two.ts\tsrc/new.ts\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'src/new.ts',
+      previousFilename: 'src/deep/two.ts',
+      additions: 1,
+      deletions: 0,
+    });
+  });
+
+  // An empty side reassembles into a doubled slash that matches nothing.
+  // It only ever happens on one side, so these two pin that the *other*
+  // side carries the join — one case per direction.
+  it('reads the counts when a rename only adds a directory level', async () => {
+    const { files } = await parseWith(
+      '1\t0\ta/{ => b}/file.ts\n',
+      'R100\ta/file.ts\ta/b/file.ts\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'a/b/file.ts',
+      previousFilename: 'a/file.ts',
+      additions: 1,
+      deletions: 0,
+    });
+  });
+
+  it('reads the counts when a rename removes a directory level', async () => {
+    const { files } = await parseWith(
+      '1\t0\ta/{b => }/file.ts\n',
+      'R075\ta/b/file.ts\ta/file.ts\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'a/file.ts',
+      previousFilename: 'a/b/file.ts',
+      additions: 1,
       deletions: 0,
     });
   });

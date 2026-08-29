@@ -137,9 +137,42 @@ function parseNumstat(stdout: string): Map<string, NumstatEntry> {
 }
 
 /**
- * numstat keys a rename by git's combined "old => new" path while
- * name-status reports the two sides separately, so an exact lookup misses
- * and we fall back to the first entry that mentions either side.
+ * The two paths behind numstat's combined rename key, or null if the key
+ * is an ordinary path.
+ *
+ * numstat reports a rename as one display string rather than two paths.
+ * When the sides share nothing it is `old => new`, but as soon as they
+ * share a prefix or a suffix — which a file moved within its own
+ * directory always does — git compacts the differing middle into braces:
+ *
+ *   src/{old.ts => new.ts}      both sides share `src/`
+ *   src/{deep/two.ts => new.ts} the middles span directories
+ *   a/{ => b}/file.ts           a side can be empty, when the rename only
+ *                               adds or removes a directory level
+ *
+ * An empty side reassembles into a path with a doubled slash, which
+ * matches nothing — but only ever on *one* side, and the caller matches
+ * on both, so the other side always carries the join. Collapsing the
+ * slash here would be code no test can reach.
+ */
+function splitRenameKey(key: string): { from: string; to: string } | null {
+  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(key);
+  if (braced) {
+    const [, prefix, from, to, suffix] = braced;
+    return { from: `${prefix}${from}${suffix}`, to: `${prefix}${to}${suffix}` };
+  }
+  const plain = key.indexOf(' => ');
+  if (plain === -1) return null;
+  return { from: key.slice(0, plain), to: key.slice(plain + 4) };
+}
+
+/**
+ * The counts for a file, given numstat keyed as numstat keys things.
+ *
+ * A rename's entry is filed under git's combined display string, so it is
+ * found by reconstructing the pair that string describes and matching on
+ * either side — not by asking whether the string happens to contain the
+ * path, which it does not once git compacts it.
  */
 function lookupStats(
   entries: Map<string, NumstatEntry>,
@@ -150,9 +183,13 @@ function lookupStats(
   if (exact) return exact;
 
   for (const [key, val] of entries) {
+    const pair = splitRenameKey(key);
+    if (!pair) continue;
     if (
-      key.includes(filename) ||
-      (previousFilename && key.includes(previousFilename))
+      pair.to === filename ||
+      pair.from === filename ||
+      (previousFilename &&
+        (pair.from === previousFilename || pair.to === previousFilename))
     ) {
       return val;
     }
