@@ -12,15 +12,21 @@ export default [
     rules: {},
   },
   {
-    // Integration tests gate themselves on GH_TOKEN: without one there
-    // is no GitHub to talk to. That is a capability check, not a
-    // disabled test — the same suite runs for real in the integration
-    // job. Set here rather than inline, because the pre-commit hook
-    // runs eslint without this plugin registered and an inline
-    // rule-specific directive fails there.
-    files: ['**/*.integration.test.ts'],
+    // A test gated on a missing capability — no GH_TOKEN, no tmux — is
+    // a capability check, not a disabled test: the same suite runs for
+    // real in the integration job, and on a machine that has the thing.
+    // `allowConditional` permits the in-body `test.skip(...)` statement
+    // those use. Note what it does NOT do: the option ignores the
+    // arguments, so a bare `test.skip()` in a body passes too. What
+    // stays reported is the modifier form — `test.skip('name', fn)` and
+    // `test.describe.skip(...)` — a test declared and marked skipped,
+    // which is the one that silently stops running for good. Set here
+    // rather than inline, because the pre-commit hook runs eslint
+    // without this plugin registered and an inline rule-specific
+    // directive fails there.
+    files: ['**/*.test.ts'],
     rules: {
-      'playwright/no-skipped-test': 'off',
+      'playwright/no-skipped-test': ['warn', { allowConditional: true }],
     },
   },
 ];
