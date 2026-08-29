@@ -322,7 +322,7 @@ export function PrWorkspace({
               onPrev={() => step(-1)}
               onNext={() => step(1)}
               onExitReview={() => setMode('diff')}
-              onOpenInDiff={jumpToFile}
+              onOpenInDiff={(file) => jumpToFile(file)}
             />
           </Panel>
         </Group>
