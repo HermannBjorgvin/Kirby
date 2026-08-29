@@ -76,7 +76,9 @@ export function reconcileSelection(
 }
 
 /**
- * Selection produced by an explicit `selectByKey`.
+ * Resolve an explicitly requested key (`selectByKey`) against a list,
+ * without adopting anything: the requested key stays the anchor even
+ * when no row carries it.
  *
  * A key that isn't in the list yet (the branch picker selects a
  * session the moment it's created, before the sidebar has refreshed)
@@ -151,8 +153,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const sessionCtx = useSessionData();
   const { vcsConfigured } = useConfig();
   // Sole source of truth for what's selected: the row's identity key
-  // plus the index it resolved to. Navigation writes both; the render
-  // below re-anchors them whenever `items` change.
+  // plus the index it last resolved to, which is what a delete falls
+  // back to. The render below anchors both against the current list.
   const [selection, setSelection] =
     useState<SidebarSelection>(INITIAL_SELECTION);
   // The `items` array `selection` was last anchored against. `null`
@@ -188,18 +190,36 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const totalItems = items.length;
 
-  // ── Re-anchor the selection when `items` change ──────────────────
-  // React's "adjust state while rendering" pattern: the list changed
-  // under us, so the anchor is re-resolved (and a deleted row's
-  // neighbour adopted) here, before any child sees a stale index —
-  // rather than in an effect that has to be lied to about its deps to
-  // keep from looping. Navigation between list changes needs nothing:
-  // `selectByKey` / `moveSelection` write an already-resolved anchor.
+  // ── Anchor the selection against the committed `items` ───────────
+  // React's "adjust state while rendering" pattern, doing two separate
+  // jobs — rather than an effect that has to be lied to about its deps
+  // to keep from looping.
+  //
+  // Every render re-resolves the anchor key against the list that is
+  // actually committed. That has to happen here and not in the
+  // callback that asked for the row: a callback closes over the
+  // `items` of the render that created it, and the callers that matter
+  // hold one across awaited git work (branch picker, plan checkout,
+  // confirm dialogs), by which time a refresh has published a
+  // different list. Resolving there would resolve against a list
+  // nobody is looking at any more.
+  //
+  // Adoption — taking the row the anchor landed on as the new key — is
+  // the part that only makes sense when the list itself changed, so a
+  // delete followed by a re-sort follows the row the cursor is sitting
+  // on instead of dragging it back to a stale numeric position.
+  //
+  // Both helpers are idempotent, so the state write settles on the
+  // next pass rather than looping.
   let current = selection;
   if (anchoredItems !== items) {
     current = reconcileSelection(items, selection);
     setAnchoredItems(items);
-    if (current !== selection) setSelection(current);
+  } else if (current.key !== null) {
+    current = selectionForKey(items, current.key, current);
+  }
+  if (current.key !== selection.key || current.index !== selection.index) {
+    setSelection(current);
   }
 
   const selectedIndex = current.index;
@@ -222,10 +242,14 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
         sessionCtx.sessionPrMap,
         sessionCtx.categorizedReviews
       );
-      setSelection((prev) => selectionForKey(items, translated, prev));
+      // Stores the key only — which row owns it is a question about
+      // the committed list, and the render above is the only place
+      // that knows which list that is.
+      setSelection((prev) =>
+        prev.key === translated ? prev : { key: translated, index: prev.index }
+      );
     },
     [
-      items,
       sessionCtx.sessionBranchMap,
       sessionCtx.sessionPrMap,
       sessionCtx.categorizedReviews,
