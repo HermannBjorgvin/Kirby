@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks -- `use` is Playwright's fixture callback, not a React hook */
 import {
   test as base,
   expect,
@@ -208,7 +207,10 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       drafts,
       fakeGitHub,
     },
-    use,
+    // Playwright's fixture callback. Named `provide` rather than the
+    // conventional `use` so it does not read as a React hook call to
+    // the react-hooks rules, which run over this workspace.
+    provide,
     testInfo
   ) => {
     const ownsRepo = !repoPathOverride;
@@ -302,7 +304,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
 
     let used = false;
     try {
-      await use({
+      await provide({
         app,
         page,
         repoPath,

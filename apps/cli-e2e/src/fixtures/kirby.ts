@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks -- `use` is Playwright's fixture callback, not a React hook */
 import {
   test as base,
   expect,
@@ -94,7 +93,10 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
 
   kirby: async (
     { page, baseURL, kirbyConfig, kirbyEnv, cols, rows, kirbyRepoPath },
-    use
+    // Playwright's fixture callback. Named `provide` rather than the
+    // conventional `use` so it does not read as a React hook call to
+    // the react-hooks rules, which run over this workspace.
+    provide
   ) => {
     const host = baseURL ?? 'http://localhost:5174';
     const ownsRepo = !kirbyRepoPath;
@@ -183,7 +185,7 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     };
 
     try {
-      await use({ term, repoPath, homeDir });
+      await provide({ term, repoPath, homeDir });
     } catch (err) {
       if (consoleMessages.length) {
         console.error(
