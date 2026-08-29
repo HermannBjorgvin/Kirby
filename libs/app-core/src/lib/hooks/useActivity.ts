@@ -1,6 +1,6 @@
 import { useCallback, useState, useSyncExternalStore } from 'react';
-import { snapshot, type ActivitySnapshot } from '../activity.js';
-import { FLASH_INTERVAL_MS } from '../activity-config.js';
+import { snapshot, type ActivitySnapshot } from '@kirby/core';
+import { FLASH_INTERVAL_MS } from '@kirby/core';
 
 const TICK_MS = 100;
 

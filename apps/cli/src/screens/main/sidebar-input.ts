@@ -1,4 +1,4 @@
-import type { KeyPress } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
 import type { SidebarInputCtx } from './input-types.js';
 import {
   SIDEBAR_ACTIONS,

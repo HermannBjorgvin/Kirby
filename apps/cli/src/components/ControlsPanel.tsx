@@ -5,10 +5,8 @@ import {
   useKeybinds,
   useSettingsState,
   useSettingsActions,
-  ACTIONS,
-  buildControlsRows,
-  getBindingRows,
 } from '@kirby/app-core';
+import { ACTIONS, buildControlsRows, getBindingRows } from '@kirby/core';
 import { handleControlsInput } from '../input-handlers.js';
 
 // ── Hints sub-component (isolates context subscription from parent) ──

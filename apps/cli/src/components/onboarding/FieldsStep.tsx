@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Text, Box, useInput } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
-import { useConfig, handleTextInput } from '@kirby/app-core';
-import { resolveValue, type SettingsField } from '@kirby/app-core';
+import { useConfig } from '@kirby/app-core';
+import { handleTextInput } from '@kirby/core';
+import { resolveValue, type SettingsField } from '@kirby/core';
 
 interface FieldsStepProps {
   provider: VcsProvider;

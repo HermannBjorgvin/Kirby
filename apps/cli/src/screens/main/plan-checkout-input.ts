@@ -1,10 +1,10 @@
-import type { KeyPress } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
 import {
   hasSession,
   checkoutPlan,
   composePlanPrompt,
   planItemKey,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { PlanCheckoutHandlerCtx } from './input-types.js';

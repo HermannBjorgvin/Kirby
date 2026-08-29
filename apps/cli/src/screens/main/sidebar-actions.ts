@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { SidebarItem } from '@kirby/app-core';
+import type { SidebarItem } from '@kirby/core';
 import {
   getSpawnedAt,
   hasSession,
@@ -8,7 +8,7 @@ import {
   getItemKey,
   getPrFromItem,
   orderRunningTabs,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import {
   canRemoveBranch,
   createWorktree,

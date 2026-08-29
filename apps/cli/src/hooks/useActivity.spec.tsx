@@ -3,15 +3,17 @@ import { Text, Box } from 'ink';
 import { render } from 'ink-testing-library';
 import type { SessionBackend } from '@kirby/terminal';
 import {
-  attach,
-  __resetActivityForTests as resetActivity,
-  ACTIVITY_IDLE_MS,
   useActivityStatus,
   useSpinnerFrame,
   __resetForTests as resetHooks,
   __timerActiveForTests,
   __subscriberCountForTests,
 } from '@kirby/app-core';
+import {
+  attach,
+  __resetActivityForTests as resetActivity,
+  ACTIVITY_IDLE_MS,
+} from '@kirby/core';
 import { RainbowSpinner } from '../components/RainbowSpinner.js';
 
 class MockPty {

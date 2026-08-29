@@ -62,6 +62,18 @@ export default tseslint.config(
               sourceTag: 'type:lib',
               onlyDependOnLibsWithTags: ['type:lib'],
             },
+            // @kirby/core is the shell-agnostic half of the app: git,
+            // worktrees, PTYs, config, providers and pure helpers. The
+            // React layer (@kirby/app-core) depends on it and never the
+            // reverse, so a hook can never be reached from a git call.
+            // This is a tag constraint rather than a comment because
+            // the rule it replaces — "keep the TUI and desktop
+            // converged" — was a paragraph in CLAUDE.md, and it did not
+            // hold.
+            {
+              sourceTag: 'scope:core',
+              notDependOnLibsWithTags: ['scope:app-core'],
+            },
           ],
         },
       ],
@@ -164,6 +176,43 @@ export default tseslint.config(
     },
   },
   {
+    // @kirby/core is rendered *over*, never *with*. Importing React
+    // here is how the boundary erodes: a pure sequence grows a
+    // useCallback, and from then on the other shell cannot call it
+    // without reimplementing it — which is how the TUI and the desktop
+    // ended up with two copies of worktree deletion that had silently
+    // diverged.
+    //
+    // Anything that needs React belongs in @kirby/app-core, which
+    // depends on this library. The plan store is the worked example:
+    // the store is here, its useSyncExternalStore binding is there.
+    files: ['libs/core/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react',
+              message:
+                '@kirby/core is shell-agnostic and must not import React. ' +
+                'Put the hook or context in @kirby/app-core and keep the ' +
+                'logic here.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['react-dom', 'ink', 'electron', '@kirby/app-core'],
+              message:
+                '@kirby/core must not depend on a shell or on the React ' +
+                'layer. Invert the dependency: the shell calls core.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Ink enforces its layout contract at runtime by throwing, so a
     // component that breaks it type-checks, builds, ships, and takes
     // down the TUI the first time that branch renders. See
@@ -258,6 +307,7 @@ export default tseslint.config(
         {
           paths: [
             '@kirby/app-core',
+            '@kirby/core',
             '@kirby/logger',
             '@kirby/review-comments',
             '@kirby/terminal-pty',

@@ -62,7 +62,7 @@ vi.mock('@kirby/worktree-manager', () => ({
     (wt.branch ?? 'detached').replace(/\//g, '-'),
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   isSessionAlive: () => false,
   buildSessionLookups: () => ({
     sessionBranchMap: new Map<string, string>(),

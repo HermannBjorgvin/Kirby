@@ -3,12 +3,14 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import {
   useSessionData,
   runningTabsFromItems,
+  useSidebar,
+} from '@kirby/app-core';
+import {
   getItemKey,
   getSpawnedAt,
-  useSidebar,
   tabDigit,
   type RunningSessionItem,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { useMemo } from 'react';
 import { theme } from '../theme.js';
 

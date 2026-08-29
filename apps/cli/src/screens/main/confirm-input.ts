@@ -5,7 +5,7 @@ import {
   launchSession,
   getPrFromItem,
   buildReviewLaunchRequest,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { createWorktree } from '@kirby/worktree-manager';
 import type { ConfirmHandlerCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';

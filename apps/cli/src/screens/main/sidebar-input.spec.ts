@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { KeyPress, SidebarItem } from '@kirby/app-core';
+import type { KeyPress, SidebarItem } from '@kirby/core';
 import type { SidebarInputCtx } from './input-types.js';
 
 // Mock the PTY registry — handleSidebarInput's tab-switch path now
@@ -8,7 +8,7 @@ import type { SidebarInputCtx } from './input-types.js';
 // stand-in registry: a name present in it is a live PTY entry.
 // Individual tests set it to control order (and staleness).
 let spawnedAtMap = new Map<string, number>();
-vi.mock('@kirby/app-core', async (importOriginal) => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => spawnedAtMap.get(name),
   hasSession: (name: string) => spawnedAtMap.has(name),

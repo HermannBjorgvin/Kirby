@@ -28,7 +28,7 @@ vi.mock('node:child_process', () => ({
   },
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   killSession: (name: string) => calls.log.push(`kill:${name}`),
   killPersistedTmuxSession: (_config: unknown, name: string) =>
     calls.log.push(`kill-tmux:${name}`),

@@ -1,7 +1,6 @@
 import { memo, useMemo } from 'react';
 import { Text, Box, useInput } from 'ink';
 import {
-  computeScrollWindow,
   useBranchPickerState,
   useBranchPickerActions,
   useSessionActions,
@@ -11,6 +10,7 @@ import {
   useLayout,
   useSidebar,
 } from '@kirby/app-core';
+import { computeScrollWindow } from '@kirby/core';
 import { handleBranchPickerInput } from '../main/branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({

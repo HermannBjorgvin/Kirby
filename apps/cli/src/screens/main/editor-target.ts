@@ -3,7 +3,7 @@ import {
   worktreeSessionName,
   type WorktreeInfo,
 } from '@kirby/worktree-manager';
-import type { SidebarItem } from '@kirby/app-core';
+import type { SidebarItem } from '@kirby/core';
 
 export interface EditorTargetDeps {
   listWorktrees: () => Promise<WorktreeInfo[]>;

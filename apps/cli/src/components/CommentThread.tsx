@@ -7,7 +7,7 @@ import {
   estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
-import { planItemKey } from '@kirby/app-core';
+import { planItemKey } from '@kirby/core';
 import {
   cardBorderColor,
   collapseBody,

@@ -14,8 +14,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Text } from 'ink';
 import { render } from 'ink-testing-library';
-import type { AgentSession, SidebarContextValue } from '@kirby/app-core';
-import { SidebarProvider, useSidebar, getItemKey } from '@kirby/app-core';
+import type { SidebarContextValue } from '@kirby/app-core';
+import type { AgentSession } from '@kirby/core';
+import { SidebarProvider, useSidebar } from '@kirby/app-core';
+import { getItemKey } from '@kirby/core';
 
 // Identities have to be stable across renders: SidebarProvider memoises
 // `items` on these fields, and a fresh Map every render would make the

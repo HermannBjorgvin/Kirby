@@ -3,7 +3,7 @@ import {
   remoteSyncIntervalMs,
   sweepMergedBranches,
   syncRemote,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { listWorktrees } from '@kirby/worktree-manager';
 import { readConfig } from '@kirby/vcs-core';
 import { PROVIDERS } from './repo.js';

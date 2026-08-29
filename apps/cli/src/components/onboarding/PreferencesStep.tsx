@@ -2,11 +2,7 @@ import { useState } from 'react';
 import { Text, Box, useInput } from 'ink';
 import type { AppConfig } from '@kirby/vcs-core';
 import { useConfig } from '@kirby/app-core';
-import {
-  BOOL_PRESETS,
-  resolveValue,
-  type SettingsField,
-} from '@kirby/app-core';
+import { BOOL_PRESETS, resolveValue, type SettingsField } from '@kirby/core';
 
 interface PrefItem {
   field: SettingsField;

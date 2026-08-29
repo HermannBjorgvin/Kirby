@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { KeyPress } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
 import {
   handleReplyModeInput,
   type ReplyModePane,

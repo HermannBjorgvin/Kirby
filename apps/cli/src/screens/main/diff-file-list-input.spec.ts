@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type {
-  KeyPress,
   PaneModeValue,
   PlanValue,
   SessionActionsContextValue,
 } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
 import {
   ACTIONS,
   NORMIE_PRESET,
   planItemKey,
   resolveAction,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { DiffFile } from '@kirby/diff';
 import { handleDiffFileListInput } from './diff-file-list-input.js';

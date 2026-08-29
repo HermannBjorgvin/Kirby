@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { ReviewComment } from '@kirby/app-core';
-import { truncate, useKeybindResolve, planItemKey } from '@kirby/app-core';
+import type { ReviewComment } from '@kirby/core';
+import { useKeybindResolve } from '@kirby/app-core';
+import { truncate, planItemKey } from '@kirby/core';
 import type { DiffFile } from '@kirby/diff';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { partitionFiles } from '@kirby/diff';

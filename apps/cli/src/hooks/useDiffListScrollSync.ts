@@ -7,7 +7,7 @@ import {
   scrollIntoView,
   totalRows,
   type ItemBounds,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import {
   itemKey,
   type DiffListLayout,

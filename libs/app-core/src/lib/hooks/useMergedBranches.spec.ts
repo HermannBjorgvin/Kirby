@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffRebaseWarnings } from './useMergedBranches.js';
+import { diffRebaseWarnings } from '@kirby/core';
 
 describe('diffRebaseWarnings', () => {
   it('warns for every newly-rebasing branch on first sight', () => {

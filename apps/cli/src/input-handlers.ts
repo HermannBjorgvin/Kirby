@@ -1,14 +1,14 @@
 import type {
   ConfigContextValue,
   KeybindContextValue,
-  KeyPress,
   SessionActionsContextValue,
-  SettingsField,
   TerminalLayout,
   AsyncOpsValue as AsyncOpsContextValue,
   SettingsValue as SettingsModalValue,
   NavValue as NavContextValue,
 } from '@kirby/app-core';
+import type { KeyPress, SettingsField } from '@kirby/core';
+import { updateConfigField } from '@kirby/app-core';
 import {
   ACTIONS,
   PRESETS,
@@ -22,8 +22,7 @@ import {
   hasAnySession,
   getTmuxAvailability,
   resolveValue,
-  updateConfigField,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
 
 /** Guard for `terminalBackend` field changes. Returns true if the

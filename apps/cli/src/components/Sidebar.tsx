@@ -2,18 +2,20 @@ import { memo, useEffect, useMemo, type ReactNode } from 'react';
 import { Text, Box } from 'ink';
 import { Divider } from './Divider.js';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AgentSession, SidebarItem } from '@kirby/app-core';
+import type { AgentSession, SidebarItem } from '@kirby/core';
 import {
-  computeScrollWindow,
   useConfig,
   useKeybindResolve,
   useActivityStatus,
   useFlashPhase,
+  LAYOUT,
+} from '@kirby/app-core';
+import {
+  computeScrollWindow,
   noteSeen,
   remove as removeInactiveAlert,
-  LAYOUT,
   tabDigit,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { PrBadge } from './PrBadge.js';
 import { RainbowSpinner } from './RainbowSpinner.js';
 import { SidebarLayout } from './SidebarLayout.js';

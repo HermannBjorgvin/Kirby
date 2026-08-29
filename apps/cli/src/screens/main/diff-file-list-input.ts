@@ -1,4 +1,4 @@
-import type { ActionId, KeyPress } from '@kirby/app-core';
+import type { ActionId, KeyPress } from '@kirby/core';
 import {
   planItemKey,
   snapshotRemote,
@@ -6,7 +6,7 @@ import {
   scrollIntoView,
   stepNext,
   stepPrev,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { getDisplayFiles } from '@kirby/diff';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';

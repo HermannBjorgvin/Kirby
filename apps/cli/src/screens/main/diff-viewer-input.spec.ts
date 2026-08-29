@@ -11,13 +11,15 @@ import {
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { DiffFile } from '@kirby/diff';
 import {
+  type SessionActionsContextValue,
+  type PlanValue,
+} from '@kirby/app-core';
+import {
   ACTIONS,
   NORMIE_PRESET,
   resolveAction,
   type KeyPress,
-  type SessionActionsContextValue,
-  type PlanValue,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { handleDiffViewerInput } from './diff-viewer-input.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 

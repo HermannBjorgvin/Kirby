@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem, AgentSession } from '../types.js';
+import type { SidebarItem, AgentSession } from '@kirby/core';
 import type { SidebarSelection } from './SidebarContext.js';
 import {
   INITIAL_SELECTION,

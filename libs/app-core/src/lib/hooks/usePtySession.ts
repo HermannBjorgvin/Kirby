@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { MouseTrackingMode } from '@kirby/terminal';
-import { getSession } from '../pty-registry.js';
-import type { PtyEntry } from '../pty-registry.js';
-import { noteInput, noteResize } from '../activity.js';
+import { getSession } from '@kirby/core';
+import type { PtyEntry } from '@kirby/core';
+import { noteInput, noteResize } from '@kirby/core';
 
 export function usePtySession(
   sessionName: string | null,

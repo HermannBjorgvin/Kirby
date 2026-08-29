@@ -9,7 +9,6 @@ import {
   useNavActions,
   useAsyncOps,
   useInactiveAlertWatcher,
-  dequeueOldest,
   useBranchPickerState,
   useBranchPickerActions,
   useDeleteConfirmState,
@@ -23,8 +22,8 @@ import {
   useKeybinds,
   useSidebar,
   usePaneReducer,
-  getItemKey,
 } from '@kirby/app-core';
+import { dequeueOldest, getItemKey } from '@kirby/core';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { handleConfirmInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';

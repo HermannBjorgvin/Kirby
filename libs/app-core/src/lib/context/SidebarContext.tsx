@@ -8,9 +8,9 @@ import {
 import type { ReactNode } from 'react';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
-import type { SidebarItem } from '../types.js';
-import { getItemKey, getPrFromItem, isItemActive } from '../types.js';
-import { buildSidebarItems } from '../utils/sidebar-items.js';
+import type { SidebarItem } from '@kirby/core';
+import { getItemKey, getPrFromItem, isItemActive } from '@kirby/core';
+import { buildSidebarItems } from '@kirby/core';
 import { useSessionData } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
 

@@ -1,4 +1,4 @@
-import { handleTextInput, type KeyPress, launchSession } from '@kirby/app-core';
+import { handleTextInput, type KeyPress, launchSession } from '@kirby/core';
 import type { AppConfig } from '@kirby/vcs-core';
 import {
   createWorktree,

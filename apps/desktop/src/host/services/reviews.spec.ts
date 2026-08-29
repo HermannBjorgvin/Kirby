@@ -29,7 +29,7 @@ const env = vi.hoisted(() => ({
   calls: [] as { method: string; args: unknown[] }[],
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   fetchDiffText: (...args: unknown[]) => {
     env.calls.push({ method: 'fetchDiffText', args });
     return Promise.resolve('diff');

@@ -1,5 +1,5 @@
-import type { ReviewComment, PlanItem } from '@kirby/app-core';
-import { snapshotLocal, snapshotRemote } from '@kirby/app-core';
+import type { ReviewComment, PlanItem } from '@kirby/core';
+import { snapshotLocal, snapshotRemote } from '@kirby/core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { CommentPositionInfo } from '@kirby/review-comments';
 import type { DiffViewerHandlerCtx } from './input-types.js';

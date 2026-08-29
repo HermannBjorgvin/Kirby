@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { partitionFiles, type DiffFile } from '@kirby/diff';
-import { planItemKey } from '../plan/plan-types.js';
+import { partitionFiles } from '@kirby/diff';
+import { planItemKey } from '@kirby/core';
 import { useConfig } from '../context/ConfigContext.js';
 import { usePlan } from '../context/PlanContext.js';
 import type { PaneModeValue } from '../hooks/usePaneReducer.js';
@@ -99,4 +99,3 @@ export function useDiffFileListViewModel({
 }
 
 export type DiffFileListViewModel = ReturnType<typeof useDiffFileListViewModel>;
-export type { DiffFile };

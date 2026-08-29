@@ -26,6 +26,9 @@
       "path": "../../libs/review-comments/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/core/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/vcs/core/tsconfig.lib.json"
     },
     {

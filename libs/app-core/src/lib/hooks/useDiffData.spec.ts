@@ -5,8 +5,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // (for git fetch / diff) and `diff-fetcher` (for `resolveRef` /
 // `fetchFileDiffText`) reach for the same module, so a single mock
 // covers the whole graph.
+//
+// The real module is spread back in because importing @kirby/core
+// loads its whole barrel, and worktree-manager promisifies `exec` at
+// module scope — a mock that supplies only `execFile` makes the import
+// throw before any test runs.
 const execFileMock = vi.fn();
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   execFile: (cmd: string, args: string[], opts: unknown, cb: any) => {
     // promisified execFile passes (cmd, args, opts?, cb) — opts may
     // be a function if omitted.

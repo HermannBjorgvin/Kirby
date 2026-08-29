@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { KeyPress } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
 import type { AppConfig } from '@kirby/vcs-core';
 import type { TmuxStatus } from '@kirby/terminal-tmux';
 
@@ -18,7 +18,7 @@ const { hasAnySessionMock, getTmuxAvailabilityMock, applyBackendMock } =
 // `updateConfigField` is deliberately left real: the assertions below
 // check the config handed to applySessionBackend actually carries the
 // newly selected backend, which a stubbed updater would hide.
-vi.mock('@kirby/app-core', async (importOriginal) => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   hasAnySession: () => hasAnySessionMock(),
   getTmuxAvailability: () => getTmuxAvailabilityMock(),
@@ -26,7 +26,7 @@ vi.mock('@kirby/app-core', async (importOriginal) => ({
 }));
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from '@kirby/app-core';
+import { buildSettingsFields } from '@kirby/core';
 
 const fieldIndexOf = (key: string) =>
   buildSettingsFields(null).findIndex((f) => f.key === key);

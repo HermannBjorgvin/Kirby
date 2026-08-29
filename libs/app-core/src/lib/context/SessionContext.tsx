@@ -9,7 +9,7 @@ import {
   findOrphanPrs,
   categorizeReviews as categorizePrReviews,
   buildSessionLookups,
-} from '../utils/pr-utils.js';
+} from '@kirby/core';
 import { useSessionManager } from '../hooks/useSessionManager.js';
 import { usePrData } from '../hooks/usePrData.js';
 import { useRemoteSync } from '../hooks/useRemoteSync.js';
@@ -19,8 +19,8 @@ import { useConfig } from './ConfigContext.js';
 import { useBranchPickerActions } from './ModalContext.js';
 import { useToastActions } from './ToastContext.js';
 import type { ToastVariant } from './ToastContext.js';
-import type { AgentSession } from '../types.js';
-import { sortSessionsByPrId } from '../utils/session-sort.js';
+import type { AgentSession } from '@kirby/core';
+import { sortSessionsByPrId } from '@kirby/core';
 
 // ── Data context (consumed by SidebarProvider, changes on data refresh) ──
 

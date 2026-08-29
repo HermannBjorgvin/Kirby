@@ -7,10 +7,7 @@ import { githubProvider } from '@kirby/vcs-github';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import {
-  killAll,
   settlePendingRuns,
-  applySessionBackend,
-  probeTmuxAvailability,
   ConfigProvider,
   useConfig,
   KeybindProvider,
@@ -26,6 +23,11 @@ import {
   SidebarProvider,
   ToastProvider,
 } from '@kirby/app-core';
+import {
+  killAll,
+  applySessionBackend,
+  probeTmuxAvailability,
+} from '@kirby/core';
 import {
   repoTitle,
   setWindowTitle,

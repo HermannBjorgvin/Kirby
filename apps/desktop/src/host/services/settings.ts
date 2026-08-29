@@ -1,14 +1,13 @@
 import { readConfig } from '@kirby/vcs-core';
+import { persistConfigField, updateConfigField } from '@kirby/app-core';
 import {
   applySessionBackend,
   buildSettingsFields,
   getTmuxAvailability,
   hasAnySession,
-  persistConfigField,
   resolveValue,
-  updateConfigField,
   type SettingsField,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { startRemoteSyncLoop } from './remote-sync.js';
 import { SECRET_PLACEHOLDER } from '../contract.js';

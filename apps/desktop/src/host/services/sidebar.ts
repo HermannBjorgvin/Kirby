@@ -9,7 +9,7 @@ import {
   sortSessionsByPrId,
   type AgentSession,
   type SidebarItem,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { getSyncDecorations } from './remote-sync.js';
 import type { SyncState } from '../contract.js';

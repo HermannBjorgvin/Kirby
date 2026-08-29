@@ -5,7 +5,7 @@ import type {
   ReviewComment,
   RowMap,
 } from '@kirby/review-comments';
-import { maxDiffScrollOffset } from '../utils/diff-scroll.js';
+import { maxDiffScrollOffset } from '@kirby/core';
 
 export interface UseAutoSelectFirstCommentOptions {
   /** The currently opened diff file. The hook arms once per file change. */

@@ -1,4 +1,4 @@
-import { type ActionId, planItemKey } from '@kirby/app-core';
+import { type ActionId, planItemKey } from '@kirby/core';
 import {
   readComments,
   updateComment,

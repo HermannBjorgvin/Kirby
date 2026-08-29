@@ -21,7 +21,7 @@ import {
   annotate,
   clear,
   __resetPlanStoreForTest,
-} from '@kirby/app-core';
+} from '@kirby/core';
 
 const PR_ID = 1;
 const plan = {

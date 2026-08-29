@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { snapshot } from '../activity.js';
-import { enqueue as enqueueAlert } from '../inactive-alerts.js';
+import { snapshot } from '@kirby/core';
+import { enqueue as enqueueAlert } from '@kirby/core';
 import { useToastActions } from '../context/ToastContext.js';
 import { useConfig } from '../context/ConfigContext.js';
 import { useSessionData } from '../context/SessionContext.js';

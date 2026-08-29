@@ -8,10 +8,10 @@ import {
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from '../types.js';
+import type { AgentSession } from '@kirby/core';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, isSessionAlive, onSessionExit } from '../pty-registry.js';
+import { killSession, isSessionAlive, onSessionExit } from '@kirby/core';
 
 export function useSessionManager(
   providers: VcsProvider[],

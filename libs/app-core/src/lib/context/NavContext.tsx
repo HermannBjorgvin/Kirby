@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Focus } from '../types.js';
+import type { Focus } from '@kirby/core';
 
 // Split navigation state into a state context (re-renders on focus
 // change — needed by components that style themselves differently when

@@ -1,7 +1,4 @@
 import type {
-  DiffFile,
-  ReviewComment,
-  SidebarItem,
   SessionActionsContextValue,
   ConfigContextValue,
   SidebarContextValue,
@@ -12,6 +9,7 @@ import type {
   PaneModeValue,
   PlanValue,
 } from '@kirby/app-core';
+import type { DiffFile, ReviewComment, SidebarItem } from '@kirby/core';
 import type {
   PullRequestInfo,
   RemoteCommentThread,

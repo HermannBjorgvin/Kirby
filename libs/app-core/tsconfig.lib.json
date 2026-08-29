@@ -12,19 +12,16 @@
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "references": [
     {
-      "path": "../diff/tsconfig.lib.json"
-    },
-    {
-      "path": "../terminal-tmux/tsconfig.lib.json"
-    },
-    {
-      "path": "../terminal-pty/tsconfig.lib.json"
-    },
-    {
       "path": "../logger/tsconfig.lib.json"
     },
     {
+      "path": "../terminal/tsconfig.lib.json"
+    },
+    {
       "path": "../review-comments/tsconfig.lib.json"
+    },
+    {
+      "path": "../diff/tsconfig.lib.json"
     },
     {
       "path": "../worktree-manager/tsconfig.lib.json"
@@ -33,7 +30,7 @@
       "path": "../vcs/core/tsconfig.lib.json"
     },
     {
-      "path": "../terminal/tsconfig.lib.json"
+      "path": "../core/tsconfig.lib.json"
     }
   ],
   "exclude": [

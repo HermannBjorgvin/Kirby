@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useConfig } from '../context/ConfigContext.js';
-import { sweepMergedBranches } from '../sync/remote-sync.js';
-
-// Re-exported from its original home so existing importers keep working;
-// the logic lives in the shared sync module now.
-export { diffRebaseWarnings } from '../sync/remote-sync.js';
+import { sweepMergedBranches } from '@kirby/core';
 
 /** TUI state shell around the shared {@link sweepMergedBranches}. */
 export function useMergedBranches(

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsField } from '@kirby/app-core';
+import type { SettingsField } from '@kirby/core';
 import { SECRET_PLACEHOLDER } from '../contract.js';
 
 /**
@@ -40,12 +40,20 @@ vi.mock('@kirby/vcs-core', () => ({
   readConfig: () => state.config,
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   buildSettingsFields: () => state.fields,
   hasAnySession: () => state.hasSession,
   getTmuxAvailability: () => state.tmux,
   resolveValue: (_config: unknown, field: SettingsField) =>
     state.resolved[field.key] ?? '',
+  applySessionBackend: () => {
+    state.backendApplied += 1;
+  },
+}));
+
+// updateConfigField/persistConfigField are pure, but they live in
+// ConfigContext.tsx and so ship from @kirby/app-core.
+vi.mock('@kirby/app-core', () => ({
   updateConfigField: (
     config: Record<string, unknown>,
     field: SettingsField,
@@ -53,9 +61,6 @@ vi.mock('@kirby/app-core', () => ({
   ) => ({ ...config, [field.key]: value }),
   persistConfigField: (field: SettingsField, value: string | undefined) => {
     state.persisted.push({ key: field.key, value });
-  },
-  applySessionBackend: () => {
-    state.backendApplied += 1;
   },
 }));
 

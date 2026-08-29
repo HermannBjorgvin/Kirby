@@ -10,9 +10,9 @@ import type { SessionBackend } from '@kirby/terminal';
 import {
   attach,
   noteSeen,
-  __resetForTests as resetActivity,
-} from '../activity.js';
-import { ACTIVITY_IDLE_MS } from '../activity-config.js';
+  __resetActivityForTests as resetActivity,
+} from '@kirby/core';
+import { ACTIVITY_IDLE_MS } from '@kirby/core';
 import {
   activityStatusSnapshot,
   spinnerTicks,

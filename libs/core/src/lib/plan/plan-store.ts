@@ -1,11 +1,12 @@
-import { useSyncExternalStore } from 'react';
 import type { PlanItem } from './plan-types.js';
 import { planItemKey } from './plan-types.js';
 
 // ── Module-local store ───────────────────────────────────────────
 //
 // Same pattern as useAsyncOperation.ts: a module-local, copy-on-write
-// Map is the authority; consumers read it through useSyncExternalStore.
+// Map is the authority; consumers read it through subscribe/getSnapshot
+// (the TUI binds them with useSyncExternalStore — see app-core's
+// use-plan-store.ts).
 // Every mutation replaces the Map (and the affected array) with a new
 // reference so React detects the change by identity and re-renders.
 //
@@ -15,14 +16,14 @@ import { planItemKey } from './plan-types.js';
 let plans = new Map<number, PlanItem[]>();
 const listeners = new Set<() => void>();
 
-function subscribe(cb: () => void): () => void {
+export function subscribe(cb: () => void): () => void {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);
   };
 }
 
-function getSnapshot(): ReadonlyMap<number, PlanItem[]> {
+export function getSnapshot(): ReadonlyMap<number, PlanItem[]> {
   return plans;
 }
 
@@ -123,21 +124,4 @@ export function clear(prId: number): void {
 export function __resetPlanStoreForTest(): void {
   plans = new Map();
   notify();
-}
-
-// ── Hook ─────────────────────────────────────────────────────────
-
-export function usePlanStore() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
-  return {
-    snapshot,
-    add,
-    remove,
-    has,
-    toggle,
-    annotate,
-    list,
-    count,
-    clear,
-  };
 }

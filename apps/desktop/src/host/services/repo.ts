@@ -16,7 +16,7 @@ import {
   getRepoRoot,
   getTmuxAvailability,
   resetRepoRoot,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import type { VcsProvider } from '@kirby/vcs-core';

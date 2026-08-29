@@ -14,7 +14,8 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "@kirby/core": "0.0.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.14"

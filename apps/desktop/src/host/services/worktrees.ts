@@ -14,7 +14,7 @@ import {
   fetchWorktreeDiffText,
   killPersistedTmuxSession,
   killSession,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
 

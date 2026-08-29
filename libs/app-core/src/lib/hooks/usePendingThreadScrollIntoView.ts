@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
-import { revealThreadEndOffset } from '../utils/diff-scroll.js';
+import { revealThreadEndOffset } from '@kirby/core';
 
 export interface UsePendingThreadScrollIntoViewOptions {
   /** Thread id to scroll into view, or null when nothing is pending. */

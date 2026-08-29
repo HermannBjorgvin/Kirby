@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem, AgentSession } from '@kirby/app-core';
+import type { SidebarItem, AgentSession } from '@kirby/core';
 import type { SidebarContextValue } from '@kirby/app-core';
 import type { SessionDataContextValue } from '@kirby/app-core';
 // vi.mock calls are hoisted above imports, so a static import is
@@ -24,6 +24,10 @@ vi.mock('@kirby/app-core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useSidebar: () => sidebarValue,
   useSessionData: () => sessionValue,
+}));
+
+vi.mock('@kirby/core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => spawnedAtMap.get(name),
 }));
 

@@ -4,7 +4,7 @@ import type {
   PullRequestComments,
   ReviewVerdict,
 } from '@kirby/vcs-core';
-import { fetchDiffText, fetchFileDiffText } from '@kirby/app-core';
+import { fetchDiffText, fetchFileDiffText } from '@kirby/core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import type { ReplyRequest, ResolveRequest } from '../contract.js';
 

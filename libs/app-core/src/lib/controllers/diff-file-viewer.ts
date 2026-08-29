@@ -6,7 +6,7 @@ import {
   getCommentPositions,
   buildRowMap,
 } from '@kirby/review-comments';
-import { planItemKey } from '../plan/plan-types.js';
+import { planItemKey } from '@kirby/core';
 import { usePlan } from '../context/PlanContext.js';
 import { useAutoSelectFirstComment } from '../hooks/useAutoSelectFirstComment.js';
 import { usePendingThreadScrollIntoView } from '../hooks/usePendingThreadScrollIntoView.js';

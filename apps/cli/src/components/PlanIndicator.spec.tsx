@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import { PlanIndicatorContent } from './PlanIndicator.js';
-import type { RemotePlanItem } from '@kirby/app-core';
+import type { RemotePlanItem } from '@kirby/core';
 
 function remote(id: string, annotation?: string): RemotePlanItem {
   return {

@@ -49,7 +49,7 @@ vi.mock('@kirby/worktree-manager', () => ({
   listWorktrees: () => Promise.resolve(state.worktrees),
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
     intent: 'review',
     prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,

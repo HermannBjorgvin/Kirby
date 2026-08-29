@@ -1,5 +1,6 @@
-import type { PlanValue, PlanItem } from '@kirby/app-core';
-import { handleTextInput, type KeyPress } from '@kirby/app-core';
+import type { PlanValue } from '@kirby/app-core';
+import type { PlanItem } from '@kirby/core';
+import { handleTextInput, type KeyPress } from '@kirby/core';
 
 // Shared plan-annotation input handling.
 //

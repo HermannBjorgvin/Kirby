@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Focus } from '../types.js';
+import type { Focus } from '@kirby/core';
 
 export function useNavigation() {
   const [focus, setFocus] = useState<Focus>('sidebar');

@@ -14,7 +14,7 @@
 
 import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
 export type { ReviewVerdict };
-import type { LaunchIntent, SidebarItem } from '@kirby/app-core';
+import type { LaunchIntent, SidebarItem } from '@kirby/core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
 export type { CommentSeverity, ReviewComment };
 import type { WorktreeInfo } from '@kirby/worktree-manager';
@@ -30,7 +30,7 @@ export type {
   RemoteCommentReply,
   RemoteCommentThread,
 };
-export type { SidebarItem } from '@kirby/app-core';
+export type { SidebarItem } from '@kirby/core';
 
 export interface KirbyVersionInfo {
   /** kirby-desktop package version */

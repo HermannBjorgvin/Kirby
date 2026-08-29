@@ -56,7 +56,7 @@ vi.mock('@kirby/worktree-manager', () => ({
     Promise.resolve(env.branches.map((branch) => ({ branch }))),
 }));
 
-vi.mock('@kirby/app-core', () => ({
+vi.mock('@kirby/core', () => ({
   remoteSyncIntervalMs: () => 3_600_000,
   syncRemote: () => nextSync(),
   sweepMergedBranches: async (opts: {

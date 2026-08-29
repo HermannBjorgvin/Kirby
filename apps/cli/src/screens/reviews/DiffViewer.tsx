@@ -2,11 +2,8 @@ import { memo } from 'react';
 import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import type { AnnotatedLine } from '@kirby/review-comments';
-import {
-  useKeybindResolve,
-  planItemKey,
-  languageFromFilename,
-} from '@kirby/app-core';
+import { useKeybindResolve } from '@kirby/app-core';
+import { planItemKey, languageFromFilename } from '@kirby/core';
 import {
   CommentThreadCard,
   LocalCommentCard,

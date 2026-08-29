@@ -7,9 +7,8 @@ import {
   useSettingsState,
   useSettingsActions,
   useSessionActions,
-  buildSettingsFields,
-  resolveValue,
 } from '@kirby/app-core';
+import { buildSettingsFields, resolveValue } from '@kirby/core';
 import { handleSettingsInput } from '../input-handlers.js';
 
 function SettingsHints({ enterAction }: { enterAction: 'toggle' | 'edit' }) {

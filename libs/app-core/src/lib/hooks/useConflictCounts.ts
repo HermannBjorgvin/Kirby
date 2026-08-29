@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { computeConflictCounts } from '../sync/remote-sync.js';
+import { computeConflictCounts } from '@kirby/core';
 
 /**
  * Batch conflict checking for all branches at once — TUI state shell

@@ -1,4 +1,4 @@
-import { handleTextInput, type KeyPress, type ActionId } from '@kirby/app-core';
+import { handleTextInput, type KeyPress, type ActionId } from '@kirby/core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { updateComment, removeComment } from '@kirby/review-comments';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';

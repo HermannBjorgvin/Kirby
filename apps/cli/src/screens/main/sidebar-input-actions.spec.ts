@@ -8,7 +8,7 @@ import {
   resolveAction,
   type KeyPress,
   type SidebarItem,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import type { SidebarInputCtx } from './input-types.js';
 
 // Characterization suite for handleSidebarInput's action dispatch.
@@ -25,7 +25,7 @@ import type { SidebarInputCtx } from './input-types.js';
 let liveSessions = new Set<string>();
 const killSessionMock = vi.fn();
 
-vi.mock('@kirby/app-core', async (importOriginal) => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => (liveSessions.has(name) ? 1 : undefined),
   hasSession: (name: string) => liveSessions.has(name),

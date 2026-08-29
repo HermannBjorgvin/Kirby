@@ -10,7 +10,7 @@ import {
   noteResize,
   noteSeen,
   snapshot as activitySnapshot,
-} from '@kirby/app-core';
+} from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
 import {
   branchToSessionName,

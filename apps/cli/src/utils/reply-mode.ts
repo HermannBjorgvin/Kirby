@@ -1,4 +1,4 @@
-import { handleTextInput, type KeyPress } from '@kirby/app-core';
+import { handleTextInput, type KeyPress } from '@kirby/core';
 import type { RemoteCommentReply } from '@kirby/vcs-core';
 
 // Shared reply-mode input handling.

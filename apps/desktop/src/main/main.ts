@@ -14,7 +14,7 @@ import {
   setFolderPicker,
   setShellGlue,
 } from '../host/register-handlers.js';
-import { killAll, probeTmuxAvailability } from '@kirby/app-core';
+import { killAll, probeTmuxAvailability } from '@kirby/core';
 import {
   MENU_EVENTS,
   SYNC_EVENTS,

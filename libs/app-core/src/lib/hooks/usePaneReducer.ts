@@ -1,8 +1,8 @@
 import { useMemo, useReducer } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { PaneMode, SidebarItem } from '../types.js';
-import { getPrFromItem } from '../types.js';
-import { hasSession } from '../pty-registry.js';
+import type { PaneMode, SidebarItem } from '@kirby/core';
+import { getPrFromItem } from '@kirby/core';
+import { hasSession } from '@kirby/core';
 
 // ── State ────────────────────────────────────────────────────────
 

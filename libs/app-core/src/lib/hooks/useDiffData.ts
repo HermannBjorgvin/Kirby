@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { DiffFile } from '../types.js';
-import { resolveRef, fetchFileDiffText } from '../utils/diff-fetcher.js';
+import type { DiffFile } from '@kirby/core';
+import { resolveRef, fetchFileDiffText } from '@kirby/core';
 import { beginOp } from './useAsyncOperation.js';
 
 const execFile = promisify(execFileCb);
