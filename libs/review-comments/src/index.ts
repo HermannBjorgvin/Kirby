@@ -14,18 +14,26 @@ export {
 export { postReviewComments, type PostContext } from './lib/comment-poster.js';
 export type {
   AnnotatedLine,
-  InsertionMap,
   CommentPositionInfo,
-  RemoteInsertionMap,
-  RowMap,
-  RowMapEntry,
-  BuildRowMapInputs,
 } from './lib/comment-renderer.js';
+export {
+  interleaveComments,
+  getCommentPositions,
+} from './lib/comment-renderer.js';
+export type {
+  InsertionMap,
+  RemoteInsertionMap,
+} from './lib/comment-placement.js';
 export {
   computeInsertionMap,
   computeRemoteInsertionMap,
-  interleaveComments,
-  getCommentPositions,
+} from './lib/comment-placement.js';
+export type {
+  RowMap,
+  RowMapEntry,
+  BuildRowMapInputs,
+} from './lib/comment-rows.js';
+export {
   buildRowMap,
   estimateBodyRows,
   estimateCardRows,
@@ -33,4 +41,4 @@ export {
   REPLY_INPUT_ROWS,
   estimateReplyInputRows,
   EDIT_INPUT_SLACK_ROWS,
-} from './lib/comment-renderer.js';
+} from './lib/comment-rows.js';
