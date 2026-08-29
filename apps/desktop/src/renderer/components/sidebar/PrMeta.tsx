@@ -21,13 +21,6 @@ import {
 import { cn } from '../../lib/utils.js';
 import { Tip } from '../ui/tooltip.js';
 
-/**
- * Right-aligned status cluster. One circle carries both axes — its
- * colour is the worst thing standing in the way, its glyph says which
- * axis that is — followed by the approval count, which keeps approvals
- * legible even while the glyph is showing CI, and the unresolved
- * comment count.
- */
 const TONE_CLASS: Record<StatusTone, string | undefined> = {
   red: 'text-destructive',
   yellow: 'text-warning',
@@ -63,6 +56,13 @@ function StatusGlyphIcon({
   }
 }
 
+/**
+ * Right-aligned status cluster. One circle carries both axes — its
+ * colour is the worst thing standing in the way, its glyph says which
+ * axis that is — followed by the approval count, which keeps approvals
+ * legible even while the glyph is showing CI, and the unresolved
+ * comment count.
+ */
 export function PrMeta({ pr }: { pr: PullRequestInfo }) {
   const status = prStatusIndicator(
     pr.reviewers ?? [],

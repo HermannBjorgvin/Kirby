@@ -31,6 +31,16 @@ describe('sidebarRowMenuItems', () => {
     expect(busy).not.toContain('launch');
   });
 
+  it('offers neither on a row with no checkout, however it is flagged', () => {
+    // Both actions address a worktree, so neither is offered without
+    // one — a stale `running` flag on a PR row must not put a Stop
+    // agent entry in front of the user with nothing to stop.
+    const none = ids({ hasWorktree: false, running: true, hasPr: true });
+    expect(none).not.toContain('kill');
+    expect(none).not.toContain('launch');
+    expect(none).toContain('checkout');
+  });
+
   it('offers the pull request only when there is one', () => {
     expect(
       ids({ hasWorktree: true, running: false, hasPr: false })

@@ -19,11 +19,13 @@ import {
 import { Switch } from '../ui/switch.js';
 import { RowShell } from './RowShell.js';
 
+/** Sentinel value for the select's "Custom…" entry, which is not a
+ *  preset but an escape hatch into a free-text box. */
+const CUSTOM = '__custom__';
+
 /** One host-supplied setting, in whichever of the three shapes its
  *  field kind calls for: a switch, a preset select with a custom
  *  escape hatch, or a text box. */
-const CUSTOM = '__custom__';
-
 export function FieldRow({
   field,
   updatedAt,
