@@ -17,7 +17,7 @@ import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/queries.js';
+} from '../../lib/mutations.js';
 import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';

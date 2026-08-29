@@ -14,10 +14,10 @@ import {
   useDiff,
   useDraftComments,
   useParsedDiff,
-  usePostDrafts,
   useThreads,
   useWorktreeDiff,
 } from '../../lib/queries.js';
+import { usePostDrafts } from '../../lib/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useCommentNavigator } from '../../lib/use-comment-navigator.js';
 import { usePlanCheckout } from '../../lib/use-plan-checkout.js';

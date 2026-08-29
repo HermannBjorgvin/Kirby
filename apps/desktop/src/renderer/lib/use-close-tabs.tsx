@@ -10,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog.js';
-import { useKillSession, useSessionActivity } from './queries.js';
+import { useSessionActivity } from './queries.js';
+import { useKillSession } from './mutations.js';
 import { useRepo } from './repo-context.js';
 import { itemBranch, itemKey, itemSessionName } from './sidebar-model.js';
 import { useTabs, type Tab } from './tabs.js';

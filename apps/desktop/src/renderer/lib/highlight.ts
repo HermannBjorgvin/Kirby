@@ -14,7 +14,7 @@ import {
   type FileAnalysis,
   type LineTokens,
 } from './diff-worker-client.js';
-import { keys } from './queries.js';
+import { keys } from './query-keys.js';
 import type { ResolvedTheme } from './theme.js';
 
 export type { LineTokens };

@@ -3,14 +3,13 @@ import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
+import { useAllBranches, useSessions } from '../../lib/queries.js';
 import {
-  useAllBranches,
   useCreateWorktree,
   useKillSession,
   useLaunchAgent,
   useLaunchReview,
-  useSessions,
-} from '../../lib/queries.js';
+} from '../../lib/mutations.js';
 import {
   itemBranch,
   itemHasWorktree,

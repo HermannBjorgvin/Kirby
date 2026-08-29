@@ -14,7 +14,7 @@ import type {
 import { snapshotRemote } from '@kirby/core/plan';
 import { usePlan, usePlanControls } from '../../lib/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useReply, useSetResolved } from '../../lib/queries.js';
+import { useReply, useSetResolved } from '../../lib/mutations.js';
 import {
   firstNonEmptyLine,
   threadExpanded,

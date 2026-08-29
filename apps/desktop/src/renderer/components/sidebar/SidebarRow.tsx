@@ -24,7 +24,7 @@ import {
   useKillSession,
   useOpenInEditor,
   useLaunchAgent,
-} from '../../lib/queries.js';
+} from '../../lib/mutations.js';
 import {
   itemBranch,
   itemHasWorktree,

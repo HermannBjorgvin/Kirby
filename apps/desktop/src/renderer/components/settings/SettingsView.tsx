@@ -11,7 +11,8 @@ import {
   useDesktopPrefs,
 } from '../../lib/desktop-prefs.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useSettingsView, useUpdateSetting } from '../../lib/queries.js';
+import { useSettingsView } from '../../lib/queries.js';
+import { useUpdateSetting } from '../../lib/mutations.js';
 import { persistedValue, type PendingSave } from '../../lib/settings-save.js';
 import { useTheme, type ThemePreference } from '../../lib/theme.js';
 import { cn, errorMessage } from '../../lib/utils.js';

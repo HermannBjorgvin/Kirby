@@ -1,9 +1,7 @@
 import { AlertTriangleIcon } from 'lucide-react';
 import { useRepo } from '../../lib/repo-context.js';
-import {
-  useBranchRemovalSafety,
-  useRemoveWorktree,
-} from '../../lib/queries.js';
+import { useBranchRemovalSafety } from '../../lib/queries.js';
+import { useRemoveWorktree } from '../../lib/mutations.js';
 import { useTabs } from '../../lib/tabs.js';
 import { Button } from '../ui/button.js';
 import {

@@ -25,12 +25,9 @@ import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  keys,
-  useRefreshRemote,
-  useRemovingBranches,
-  useSidebarModel,
-} from '../lib/queries.js';
+import { keys } from '../lib/query-keys.js';
+import { useSidebarModel } from '../lib/queries.js';
+import { useRefreshRemote, useRemovingBranches } from '../lib/mutations.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs.js';
 import { useCloseTabs } from '../lib/use-close-tabs.js';

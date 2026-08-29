@@ -7,7 +7,7 @@ import {
 import { useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useRefreshRemote } from '../../lib/queries.js';
+import { useRefreshRemote } from '../../lib/mutations.js';
 import {
   groupSections,
   itemKey,

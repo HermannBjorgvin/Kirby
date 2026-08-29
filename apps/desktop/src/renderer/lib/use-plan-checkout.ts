@@ -14,7 +14,7 @@ import type {
 } from '../../host/contract.js';
 import { usePlan, type PlanApi } from './plan.js';
 import { planSummary } from './plan-model.js';
-import { useCheckoutPlan } from './queries.js';
+import { useCheckoutPlan } from './mutations.js';
 import { estimateTerminalGrid } from './terminal-grid.js';
 import { errorMessage } from './utils.js';
 

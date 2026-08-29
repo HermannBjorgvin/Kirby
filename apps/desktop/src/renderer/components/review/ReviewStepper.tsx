@@ -24,7 +24,7 @@ import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/queries.js';
+} from '../../lib/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import {

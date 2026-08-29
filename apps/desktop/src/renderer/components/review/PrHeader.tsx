@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { useOpenInEditor } from '../../lib/queries.js';
+import { useOpenInEditor } from '../../lib/mutations.js';
 import { unresolvedCommentsLabel } from '../../lib/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';

@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
-import { usePrDescription, useSubmitVerdict } from '../../lib/queries.js';
+import { usePrDescription } from '../../lib/queries.js';
+import { useSubmitVerdict } from '../../lib/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
