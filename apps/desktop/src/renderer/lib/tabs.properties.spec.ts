@@ -1,11 +1,12 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_TABS,
   reduce,
   type ItemEntry,
   type TabsAction,
   type TabsState,
-} from './tabs.js';
+} from './tabs-model.js';
 
 /**
  * Property tests for the tab reducer, alongside the worked cases in
@@ -57,21 +58,31 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     targetId: fc.constantFrom('settings', ...KEYS.map((k) => `item:${k}`)),
     side: fc.constantFrom<'before' | 'after'>('before', 'after'),
   }),
-  // The interesting one: the sidebar re-keying items underneath.
+  // The interesting one: the sidebar re-keying items underneath, and
+  // agents coming and going on them — `sync-items` opens a tab for a
+  // newly running agent and pins previews that have one, so those run
+  // against the same invariants as everything else.
   fc
     .array(
       fc.constantFrom<ItemEntry>(
         { itemKey: 'branch:a', branch: 'a' },
         { itemKey: 'pr:1', branch: 'a' },
         { itemKey: 'branch:b', branch: 'b' },
-        { itemKey: 'pr:2', branch: 'b' }
+        { itemKey: 'pr:2', branch: 'b' },
+        { itemKey: 'branch:a', branch: 'a', sessionName: 'sa', running: true },
+        { itemKey: 'pr:1', branch: 'a', sessionName: 'sa', running: true },
+        { itemKey: 'branch:b', branch: 'b', sessionName: 'sb', running: true },
+        { itemKey: 'pr:2', branch: 'b', sessionName: 'sb', running: true },
+        // A worktree that has a session name but no live agent — the
+        // shape that once pinned every preview tab on sight.
+        { itemKey: 'branch:a', branch: 'a', sessionName: 'sa' }
       ),
       { maxLength: 4 }
     )
     .map((entries) => ({ type: 'sync-items' as const, entries }))
 );
 
-const EMPTY: TabsState = { tabs: [], activeId: null };
+const EMPTY: TabsState = EMPTY_TABS;
 
 const run = (actions: TabsAction[]): TabsState => actions.reduce(reduce, EMPTY);
 

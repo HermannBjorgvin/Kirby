@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { reduce, type TabsState } from './tabs.js';
+import {
+  EMPTY_TABS,
+  reduce,
+  type ItemEntry,
+  type TabsState,
+} from './tabs-model.js';
 
 const open = (state: TabsState, itemKey: string, preview = false) =>
   reduce(state, { type: 'open-item', itemKey, preview });
 
-const sync = (
-  state: TabsState,
-  entries: { itemKey: string; branch: string }[]
-) => reduce(state, { type: 'sync-items', entries });
+const sync = (state: TabsState, entries: ItemEntry[]) =>
+  reduce(state, { type: 'sync-items', entries });
 
-const empty: TabsState = { tabs: [], activeId: null };
+const empty: TabsState = EMPTY_TABS;
 
 describe('sync-items', () => {
   it('re-keys a worktree tab when its branch grows a PR', () => {
@@ -85,6 +88,175 @@ describe('sync-items', () => {
   });
 });
 
+describe('sync-items opens a tab per running agent', () => {
+  const live: ItemEntry = {
+    itemKey: 'branch:feat-x',
+    branch: 'feat-x',
+    sessionName: 'kirby-feat-x',
+    running: true,
+  };
+
+  it('opens a pinned tab for an agent it has not seen before', () => {
+    const s = sync(empty, [live]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].id).toBe('item:branch:feat-x');
+    expect(s.tabs[0].preview).toBe(false);
+    expect(s.activeId).toBe('item:branch:feat-x');
+  });
+
+  it('leaves an idle worktree alone even though it has a session name', () => {
+    // Every worktree row carries a session name whether or not an agent
+    // was ever started; only `running` means there is one.
+    const s = sync(empty, [{ ...live, running: false }]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('does not reopen a tab the user closed while the agent runs', () => {
+    let s = sync(empty, [live]);
+    s = reduce(s, { type: 'close', id: 'item:branch:feat-x' });
+    expect(s.tabs).toEqual([]);
+    // The sidebar keeps reporting the agent on every poll.
+    s = sync(s, [live]);
+    s = sync(s, [live]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('does not reopen running agents after Close All', () => {
+    let s = sync(empty, [live]);
+    s = reduce(s, { type: 'close-all' });
+    s = sync(s, [live]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('does not activate a tab the user already opened when its agent starts', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = open(s, 'branch:other');
+    s = sync(s, [live, { itemKey: 'branch:other', branch: 'other' }]);
+    expect(s.activeId).toBe('item:branch:other');
+  });
+
+  it('reopens once the agent stops and a new one starts', () => {
+    let s = sync(empty, [live]);
+    s = reduce(s, { type: 'close-all' });
+    s = sync(s, [{ ...live, running: false }]);
+    expect(s.tabs).toEqual([]);
+    // A different session on the same item is a new agent — but still
+    // only once it is actually running.
+    s = sync(s, [{ ...live, sessionName: 'kirby-feat-x-2', running: false }]);
+    expect(s.tabs).toEqual([]);
+    s = sync(s, [{ ...live, sessionName: 'kirby-feat-x-2' }]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.activeId).toBe('item:branch:feat-x');
+  });
+
+  it('does not steal activation from the tab the user is looking at', () => {
+    let s = open(empty, 'branch:other');
+    s = sync(s, [{ itemKey: 'branch:other', branch: 'other' }, live]);
+    // The agent's tab opened…
+    expect(s.tabs.map((t) => t.id)).toContain('item:branch:feat-x');
+    s = reduce(s, { type: 'activate', id: 'item:branch:other' });
+    // …and does not grab focus back on the next poll.
+    s = sync(s, [{ itemKey: 'branch:other', branch: 'other' }, live]);
+    expect(s.activeId).toBe('item:branch:other');
+  });
+
+  it('keeps one tab when the running item is re-keyed by a PR', () => {
+    let s = sync(empty, [live]);
+    s = sync(s, [{ ...live, itemKey: 'pr:42' }]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].kind === 'item' && s.tabs[0].itemKey).toBe('pr:42');
+    // The id is what keeps the agent's terminal pane mounted.
+    expect(s.tabs[0].id).toBe('item:branch:feat-x');
+  });
+
+  it('does not follow a collapsed duplicate when its agent starts', () => {
+    // The discriminating case for *which* strip the already-open guard
+    // is asked about. Three tabs; `branch:x` and `pr:1` are the same
+    // item under two identities, so this sync re-keys `branch:x` to
+    // `pr:1` and collapses the hand-opened `pr:1` tab into it. The
+    // collapsed tab is the one carrying the id `item:pr:1` — the very
+    // id auto-open reads to decide the agent already has a tab.
+    //
+    // Collapsing a duplicate is not the user closing a tab, so it must
+    // not hand auto-open a licence to move the focus. The guard is
+    // asked about the strip as it stood before re-keying, where
+    // `item:pr:1` was open, and the answer is: leave it alone.
+    const entries: ItemEntry[] = [
+      { itemKey: 'branch:c', branch: 'c' },
+      { itemKey: 'pr:1', branch: 'x', sessionName: 'kirby-x', running: true },
+    ];
+    let s = open(empty, 'branch:c');
+    s = open(s, 'branch:x');
+    s = open(s, 'pr:1');
+    s = reduce(s, { type: 'activate', id: 'item:branch:c' });
+    expect(s.activeId).toBe('item:branch:c');
+
+    s = sync(s, entries);
+
+    // The duplicate collapsed, as it always did…
+    expect(s.tabs.map((t) => t.id)).toEqual(['item:branch:c', 'item:branch:x']);
+    // …and the session counts as auto-opened, so a later poll can't
+    // retry the move.
+    expect(s.autoOpened).toContain('kirby-x');
+    // …but the user is still looking at what they were looking at.
+    expect(s.activeId).toBe('item:branch:c');
+
+    s = sync(s, entries);
+    expect(s.activeId).toBe('item:branch:c');
+  });
+});
+
+describe('sync-items pins previews with a live agent', () => {
+  it('pins a preview tab once an agent is running on its branch', () => {
+    let s = open(empty, 'branch:feat-x', true);
+    s = sync(s, [
+      {
+        itemKey: 'branch:feat-x',
+        branch: 'feat-x',
+        sessionName: 'kirby-feat-x',
+        running: true,
+      },
+    ]);
+    expect(s.tabs[0].preview).toBe(false);
+  });
+
+  it('leaves a preview tab previewable while nothing runs on it', () => {
+    // The bug this replaced pinned on the *presence* of a session name,
+    // which every worktree has — so preview replacement never happened.
+    let s = open(empty, 'branch:feat-x', true);
+    s = sync(s, [
+      {
+        itemKey: 'branch:feat-x',
+        branch: 'feat-x',
+        sessionName: 'kirby-feat-x',
+      },
+    ]);
+    expect(s.tabs[0].preview).toBe(true);
+
+    // …so the next single click still replaces it rather than stacking.
+    s = open(s, 'branch:other', true);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].kind === 'item' && s.tabs[0].itemKey).toBe('branch:other');
+  });
+
+  it('pins a preview whose own row has no agent but whose branch does', () => {
+    // A PR row and its worktree row are separate items on one branch;
+    // the host attaches the live session to whichever it knows about.
+    let s = open(empty, 'pr:42', true);
+    s = sync(s, [
+      { itemKey: 'pr:42', branch: 'feat-x' },
+      {
+        itemKey: 'branch:feat-x',
+        branch: 'feat-x',
+        sessionName: 'kirby-feat-x',
+        running: true,
+      },
+    ]);
+    const pr = s.tabs.find((t) => t.kind === 'item' && t.itemKey === 'pr:42');
+    expect(pr?.preview).toBe(false);
+  });
+});
+
 describe('open-item after re-key', () => {
   it('activates the re-keyed tab instead of duplicating it', () => {
     let s = open(empty, 'branch:feat-x');
@@ -99,7 +271,7 @@ describe('open-item after re-key', () => {
     // the branch is not in the sidebar model yet, which after a re-key
     // produced a second tab carrying the first one's id. Panes are
     // keyed by tab id, so the two rendered each other's content.
-    let state: TabsState = { tabs: [], activeId: null };
+    let state: TabsState = EMPTY_TABS;
     state = reduce(state, {
       type: 'open-item',
       itemKey: 'branch:a',
@@ -123,7 +295,7 @@ describe('open-item after re-key', () => {
 
   describe('reordering by drag', () => {
     const three = (): TabsState => {
-      let state: TabsState = { tabs: [], activeId: null };
+      let state: TabsState = EMPTY_TABS;
       for (const key of ['a', 'b', 'c']) {
         state = reduce(state, {
           type: 'open-item',
