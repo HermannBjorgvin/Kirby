@@ -132,7 +132,10 @@ export function Sidebar({
               }
             >
               <CollapsibleTrigger asChild>
-                <button className="flex h-[22px] w-full items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
+                <button
+                  type="button"
+                  className="flex h-[22px] w-full items-center gap-1 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                >
                   <ChevronRightIcon
                     className={cn(
                       'size-3.5 transition-transform',

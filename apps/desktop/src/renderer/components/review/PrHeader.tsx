@@ -52,6 +52,7 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
         <span className="shrink-0 text-sm text-muted-foreground">#{pr.id}</span>
         <Tip label="Copy branch name">
           <button
+            type="button"
             onClick={() => {
               void navigator.clipboard.writeText(pr.sourceBranch);
               toast.success('Branch name copied');

@@ -48,6 +48,7 @@ export function CommentsList({
   return (
     <div className="flex min-h-0 flex-col border-t border-border">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
       >
@@ -67,6 +68,7 @@ export function CommentsList({
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
           {items.map((item) => (
             <button
+              type="button"
               key={item.id}
               onClick={() => onJump(item)}
               onContextMenu={(e) => {

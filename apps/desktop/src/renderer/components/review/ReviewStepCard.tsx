@@ -148,6 +148,7 @@ export function StepCard({
         <div className="mx-auto max-w-3xl space-y-3 p-4">
           {/* Location */}
           <button
+            type="button"
             onClick={onOpenInDiff}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             title="Open this file in the diff"

@@ -238,6 +238,7 @@ export function FoldRow({
         </Button>
       </Tip>
       <button
+        type="button"
         onClick={() => onExpand(fold, 'all')}
         className="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
       >

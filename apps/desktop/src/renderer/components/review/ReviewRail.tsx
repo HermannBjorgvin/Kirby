@@ -101,6 +101,7 @@ export function ReviewRail({
       {hasPr && (
         <div className="shrink-0 px-2 pb-1">
           <button
+            type="button"
             onClick={onOverview}
             className={cn(
               'flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-base transition-colors',
@@ -121,6 +122,7 @@ export function ReviewRail({
         {running ? (
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={onSelectAgent}
               className={cn(
                 'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
@@ -169,6 +171,7 @@ export function ReviewRail({
       {drafts.length > 0 && (
         <div className="shrink-0 border-b border-border px-2 py-2">
           <button
+            type="button"
             onClick={onReview}
             className={cn(
               'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',

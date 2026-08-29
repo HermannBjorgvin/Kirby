@@ -149,6 +149,7 @@ function Toolbar({
       <div className="flex items-center rounded-md border border-border p-0.5">
         <Tip label="Unified view">
           <button
+            type="button"
             onClick={() => setDiffOptions({ view: 'unified' })}
             className={cn(
               'flex h-5 items-center gap-1 rounded px-1.5 text-xs',
@@ -162,6 +163,7 @@ function Toolbar({
         </Tip>
         <Tip label="Side-by-side view">
           <button
+            type="button"
             onClick={() => setDiffOptions({ view: 'split' })}
             className={cn(
               'flex h-5 items-center gap-1 rounded px-1.5 text-xs',

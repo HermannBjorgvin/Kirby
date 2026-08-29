@@ -34,6 +34,7 @@ export function SettingsView() {
       <nav className="w-44 shrink-0 border-r border-border bg-sidebar/60 py-3">
         {visibleGroups.map((g) => (
           <button
+            type="button"
             key={g.key}
             onClick={() => jump(g.key)}
             className={cn(

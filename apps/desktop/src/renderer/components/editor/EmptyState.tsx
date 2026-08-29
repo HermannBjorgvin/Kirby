@@ -20,6 +20,7 @@ export function EmptyState({
       <div className="mt-6 grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-2 text-sm">
         <span className="text-right">Search &amp; commands</span>
         <button
+          type="button"
           onClick={onOpenPalette}
           className="flex items-center gap-1 hover:text-foreground"
         >

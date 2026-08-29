@@ -45,6 +45,7 @@ export function DiffFileHeader({
   return (
     <div className="sticky top-0 z-10 flex h-8 items-center gap-2 border-b border-border bg-background/95 px-2 backdrop-blur">
       <button
+        type="button"
         onClick={onToggleOpen}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         aria-expanded={open}
@@ -87,6 +88,7 @@ export function DiffFileHeader({
       </span>
       <Tip label={viewed ? 'Mark as not viewed' : 'Mark as viewed'}>
         <button
+          type="button"
           onClick={onToggleViewed}
           className={cn(
             'ml-1 flex h-5 items-center gap-1 rounded border px-1.5 text-xs transition-colors',

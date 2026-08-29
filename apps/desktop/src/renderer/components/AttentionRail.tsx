@@ -126,6 +126,7 @@ function AttentionChip({
       <Tip label={`${label}${tipExtra}`} side="right">
         <DropdownMenuTrigger asChild>
           <button
+            type="button"
             aria-label={label}
             className={cn(
               'relative flex size-7 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent',

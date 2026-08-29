@@ -212,6 +212,7 @@ function ThreadSummary({
       )}
     >
       <button
+        type="button"
         onClick={onToggle}
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
         aria-expanded={expanded}

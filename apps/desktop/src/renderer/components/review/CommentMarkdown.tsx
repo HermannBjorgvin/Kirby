@@ -82,6 +82,7 @@ function CommentImage({ src, alt }: ComponentProps<'img'>) {
         <ImageOffIcon className="size-3.5" />
         <span>{alt || 'image'}</span>
         <button
+          type="button"
           className="inline-flex items-center gap-1 text-primary hover:underline"
           onClick={() => void window.kirby.openExternal(url)}
         >

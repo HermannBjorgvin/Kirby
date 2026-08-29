@@ -111,6 +111,7 @@ export function RepoOpen({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
                   className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
                 >
                   <button
+                    type="button"
                     onClick={() => void open(r.cwd)}
                     disabled={!r.valid || busy}
                     className="min-w-0 flex-1 text-left disabled:opacity-50"

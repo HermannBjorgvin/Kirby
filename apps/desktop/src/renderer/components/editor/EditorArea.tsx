@@ -295,6 +295,7 @@ function TabButton({
         </span>
       )}
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           closer.close(tab.id);

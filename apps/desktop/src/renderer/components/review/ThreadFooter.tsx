@@ -73,6 +73,7 @@ export function ThreadFooter({
         </div>
       ) : (
         <button
+          type="button"
           onClick={() => setComposing(true)}
           className="flex h-7 flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-sm text-muted-foreground hover:border-ring"
         >

@@ -99,6 +99,7 @@ export function TitleBar({
       {repo && onOpenPalette && (
         <div className="app-no-drag flex shrink-0 justify-center">
           <button
+            type="button"
             onClick={onOpenPalette}
             className="flex h-6 w-[min(34rem,40vw)] items-center gap-2 rounded-md border border-border bg-background/60 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
           >
@@ -147,7 +148,10 @@ function RepoMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="app-no-drag flex h-6 max-w-72 items-center gap-1 rounded-md px-2 text-base font-medium transition-colors hover:bg-accent">
+        <button
+          type="button"
+          className="app-no-drag flex h-6 max-w-72 items-center gap-1 rounded-md px-2 text-base font-medium transition-colors hover:bg-accent"
+        >
           <span className="truncate">{basename(repo.cwd)}</span>
           <ChevronDownIcon className="size-3.5 opacity-60" />
         </button>

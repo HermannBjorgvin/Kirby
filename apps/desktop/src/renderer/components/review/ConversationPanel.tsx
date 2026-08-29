@@ -24,6 +24,7 @@ export function ConversationPanel({
   return (
     <section className="border-b border-border bg-muted/20">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex h-8 w-full items-center gap-1.5 px-2 text-sm hover:bg-accent/60"
       >

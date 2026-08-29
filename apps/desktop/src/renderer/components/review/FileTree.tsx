@@ -110,6 +110,7 @@ export function FileTree({
   return (
     <div className={cn('flex flex-col', open ? 'h-full' : 'shrink-0')}>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
         aria-expanded={open}
@@ -172,6 +173,7 @@ function TreeRow({
     return (
       <div>
         <button
+          type="button"
           onClick={() => setOpen((o) => !o)}
           style={pad}
           className="flex h-[22px] w-full items-center gap-1 pr-2 text-base text-foreground/90 hover:bg-accent"
@@ -203,6 +205,7 @@ function TreeRow({
   const isSel = selected === entry.path;
   return (
     <button
+      type="button"
       onClick={() => onSelect(entry.path)}
       style={{ paddingLeft: 8 + depth * 12 + 16 }}
       title={entry.path}
