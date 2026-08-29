@@ -2,6 +2,7 @@ import {
   BookOpenIcon,
   BotIcon,
   ClipboardCheckIcon,
+  ClipboardListIcon,
   Loader2Icon,
   PanelLeftCloseIcon,
   PlayIcon,
@@ -35,6 +36,10 @@ export function ReviewRail({
   onReview,
   postingAll,
   onPostAll,
+  planCount,
+  planNoted,
+  planActive,
+  onPlan,
   entries,
   diffLoading,
   selectedFile,
@@ -59,6 +64,11 @@ export function ReviewRail({
   onReview: () => void;
   postingAll: boolean;
   onPostAll: () => void;
+  /** Comments queued for the agent; the entry hides at zero. */
+  planCount: number;
+  planNoted: number;
+  planActive: boolean;
+  onPlan: () => void;
   entries: FileEntry[];
   diffLoading: boolean;
   selectedFile: string | null;
@@ -190,6 +200,36 @@ export function ReviewRail({
             )}
             Post all {drafts.length} draft{drafts.length === 1 ? '' : 's'}
           </Button>
+        </div>
+      )}
+
+      {/* Plan — the comments queued for the agent, and the way in to
+          sending them. Hidden at zero, like "Review ready" above it:
+          an empty cart is not a thing to look at. */}
+      {planCount > 0 && (
+        <div className="shrink-0 border-b border-border px-2 py-2">
+          <button
+            type="button"
+            onClick={onPlan}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
+              planActive
+                ? 'border-primary bg-primary/10'
+                : 'border-border hover:bg-sidebar-accent'
+            )}
+          >
+            <ClipboardListIcon className="size-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-medium">Plan</span>
+              <span className="block text-xs text-muted-foreground">
+                {planCount} comment{planCount === 1 ? '' : 's'}
+                {planNoted > 0 && ` · ${planNoted} with a note`}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums">
+              {planCount}
+            </span>
+          </button>
         </div>
       )}
 

@@ -5,12 +5,14 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
+import type { PlanItem } from '@kirby/core/plan';
 import { type Mode } from '../../lib/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { DiffPane } from './DiffPane.js';
 import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { OverviewPane } from './OverviewPane.js';
+import { PlanPane } from './PlanPane.js';
 import { ReviewStepper } from './ReviewStepper.js';
 
 /**
@@ -48,6 +50,7 @@ export function ContentPane({
   onNext,
   onExitReview,
   onOpenInDiff,
+  plan,
 }: {
   effMode: Mode;
   pr?: PullRequestInfo;
@@ -77,6 +80,17 @@ export function ContentPane({
   onNext: () => void;
   onExitReview: () => void;
   onOpenInDiff: (file: string) => void;
+  /** Everything the plan pane needs; absent on a bare worktree tab. */
+  plan?: {
+    items: PlanItem[];
+    agentRunning: boolean;
+    sending: boolean;
+    onRemove: (item: PlanItem) => void;
+    onAnnotate: (item: PlanItem, note: string) => void;
+    onShowInDiff: (item: PlanItem) => void;
+    onClear: () => void;
+    onSend: (mode: 'inject' | 'new-session') => void;
+  };
 }) {
   return (
     <div className="relative h-full min-h-0">
@@ -109,6 +123,21 @@ export function ContentPane({
               onOpenInDiff={onOpenInDiff}
             />
           )}
+        </div>
+      )}
+      {plan && effMode === 'plan' && (
+        <div className="absolute inset-0">
+          <PlanPane
+            items={plan.items}
+            branch={branch}
+            agentRunning={plan.agentRunning}
+            sending={plan.sending}
+            onRemove={plan.onRemove}
+            onAnnotate={plan.onAnnotate}
+            onShowInDiff={plan.onShowInDiff}
+            onClear={plan.onClear}
+            onSend={plan.onSend}
+          />
         </div>
       )}
       {pr && effMode === 'overview' && (

@@ -1,5 +1,6 @@
 import {
   buildReviewLaunchRequest,
+  checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
   killSession as killSessionEntry,
@@ -19,6 +20,8 @@ import {
 } from '@kirby/worktree-manager';
 import { activeRepoIs, requireRepo } from './repo.js';
 import type {
+  PlanCheckoutRequest,
+  PlanCheckoutResult,
   ReviewLaunchRequest,
   SessionBuffer,
   SessionLaunchRequest,
@@ -75,6 +78,27 @@ function attachRelay(name: string, entry: KnownSession): void {
     console.log(`[desktop] session ${name} exited with code ${code}`);
     broadcast?.('kirby/session/exit', { name, code });
   });
+}
+
+/**
+ * Record a freshly spawned PTY and start relaying its output.
+ *
+ * `seq` is deliberately carried over when the name is respawned. A
+ * mounted terminal remembers the sequence number its replayed snapshot
+ * ended at and ignores anything at or below it, so restarting a session
+ * behind a pane that is still on screen — relaunching a finished agent,
+ * or restarting one with a plan — would emit chunks numbered from 1
+ * again and the pane would drop every one of them. The scrollback
+ * *is* reset: the new agent starts with an empty screen.
+ */
+function adoptSession(name: string, branch: string, repoCwd: string): void {
+  const prev = known.get(name);
+  const entry: KnownSession =
+    prev && prev.repoCwd === repoCwd
+      ? Object.assign(prev, { branch, chunks: [], bytes: 0 })
+      : { branch, repoCwd, chunks: [], bytes: 0, seq: 0 };
+  known.set(name, entry);
+  attachRelay(name, entry);
 }
 
 // ── Known sessions ───────────────────────────────────────────────
@@ -179,15 +203,7 @@ async function doLaunchAgent(
       systemGuidance: req.systemGuidance,
     },
   });
-  const entry: KnownSession = {
-    branch: req.branch,
-    repoCwd,
-    chunks: [],
-    bytes: 0,
-    seq: 0,
-  };
-  known.set(name, entry);
-  attachRelay(name, entry);
+  adoptSession(name, req.branch, repoCwd);
   return { name };
 }
 
@@ -216,6 +232,70 @@ export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
     cols: req.cols,
     rows: req.rows,
   });
+}
+
+// Double-sends land here the way double-clicks land on launch: the
+// renderer disables the button while a send is in flight, but the
+// second click can beat the state update. Joining the in-flight
+// promise makes the second one a no-op instead of a second spawn.
+// (A checkout racing a plain launch of the same branch is not
+// serialized — the loser's PTY is disposed by the winner's spawn,
+// which is the same outcome as two launches racing.)
+const inflightCheckouts = new Map<string, Promise<PlanCheckoutResult>>();
+
+/**
+ * Send a composed plan to the agent for `req.pr`.
+ *
+ * The three-state decision — inject into a live agent, respawn it, or
+ * create the worktree and start one — lives in @kirby/core and is
+ * shared with the TUI. What the desktop adds is its own bookkeeping:
+ * the ownership guard, and adopting whatever PTY comes out so its
+ * output reaches the renderer.
+ */
+export function checkoutPlan(
+  req: PlanCheckoutRequest
+): Promise<PlanCheckoutResult> {
+  const repoCwd = requireRepo();
+  const name = branchToSessionName(req.pr.sourceBranch);
+  // Never inject into, or restart, an agent belonging to a repository
+  // other than the open one — the registry is keyed by bare branch
+  // name, so the names collide (see KnownSession.repoCwd).
+  if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
+  const existing = inflightCheckouts.get(name);
+  if (existing) return existing;
+  const promise = doCheckoutPlan(req, name, repoCwd).finally(() =>
+    inflightCheckouts.delete(name)
+  );
+  inflightCheckouts.set(name, promise);
+  return promise;
+}
+
+async function doCheckoutPlan(
+  req: PlanCheckoutRequest,
+  name: string,
+  repoCwd: string
+): Promise<PlanCheckoutResult> {
+  const config = readConfig(repoCwd);
+  // core reports failures by flashing a status line, which the TUI has
+  // and the host does not. Capture the message and reject with it: the
+  // renderer toasts it and leaves the plan intact for a retry.
+  let failure: string | null = null;
+  const result = await checkoutPlanCore({
+    pr: req.pr,
+    prompt: req.prompt,
+    paneCols: clampDim(req.cols, DEFAULT_COLS),
+    paneRows: clampDim(req.rows, DEFAULT_ROWS),
+    mode: req.mode,
+    config,
+    flashStatus: (msg) => {
+      failure ??= msg;
+    },
+  });
+  if (result === 'failed') {
+    throw new Error(failure ?? 'Could not send the plan to the agent');
+  }
+  if (result === 'spawned') adoptSession(name, req.pr.sourceBranch, repoCwd);
+  return result;
 }
 
 function clampDim(value: number | undefined, fallback: number): number {

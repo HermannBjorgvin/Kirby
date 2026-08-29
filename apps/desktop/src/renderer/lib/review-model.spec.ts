@@ -76,21 +76,28 @@ function files(...names: string[]): [string, DiffLine[]][] {
 // ── resolveMode ──────────────────────────────────────────────────
 
 describe('resolveMode', () => {
-  const ALL: Mode[] = ['diff', 'agent', 'review', 'overview'];
-  const NOTHING = { hasSession: false, hasDrafts: false, hasPr: false };
-  const EVERYTHING = { hasSession: true, hasDrafts: true, hasPr: true };
+  const ALL: Mode[] = ['diff', 'agent', 'review', 'overview', 'plan'];
+  const NOTHING = {
+    hasSession: false,
+    hasDrafts: false,
+    hasPr: false,
+    hasPlan: false,
+  };
+  const EVERYTHING = {
+    hasSession: true,
+    hasDrafts: true,
+    hasPr: true,
+    hasPlan: true,
+  };
 
   it('keeps every mode when its own precondition holds', () => {
     expect(ALL.map((m) => resolveMode(m, EVERYTHING))).toEqual(ALL);
   });
 
   it('falls every mode back to the diff when nothing is available', () => {
-    expect(ALL.map((m) => resolveMode(m, NOTHING))).toEqual([
-      'diff',
-      'diff',
-      'diff',
-      'diff',
-    ]);
+    expect(ALL.map((m) => resolveMode(m, NOTHING))).toEqual(
+      ALL.map(() => 'diff')
+    );
   });
 
   /**
@@ -102,13 +109,15 @@ describe('resolveMode', () => {
       resolveMode(mode, { ...NOTHING, hasSession: true }),
       resolveMode(mode, { ...NOTHING, hasDrafts: true }),
       resolveMode(mode, { ...NOTHING, hasPr: true }),
+      resolveMode(mode, { ...NOTHING, hasPlan: true }),
     ]);
     expect(grid).toEqual([
-      // requested       session-only  drafts-only  pr-only
-      /* diff     */ ['diff', 'diff', 'diff'],
-      /* agent    */ ['agent', 'diff', 'diff'],
-      /* review   */ ['diff', 'review', 'diff'],
-      /* overview */ ['diff', 'diff', 'overview'],
+      // requested       session-only  drafts-only  pr-only   plan-only
+      /* diff     */ ['diff', 'diff', 'diff', 'diff'],
+      /* agent    */ ['agent', 'diff', 'diff', 'diff'],
+      /* review   */ ['diff', 'review', 'diff', 'diff'],
+      /* overview */ ['diff', 'diff', 'overview', 'diff'],
+      /* plan     */ ['diff', 'diff', 'diff', 'plan'],
     ]);
   });
 
@@ -117,7 +126,29 @@ describe('resolveMode', () => {
     // the walkthrough is gone, and the answer is the diff — never the
     // agent, which the user did not ask for.
     expect(
-      resolveMode('review', { hasSession: true, hasDrafts: false, hasPr: true })
+      resolveMode('review', {
+        hasSession: true,
+        hasDrafts: false,
+        hasPr: true,
+        hasPlan: false,
+      })
+    ).toBe('diff');
+  });
+
+  /**
+   * Emptying the cart while looking at it is the ordinary way out of
+   * the plan pane — remove the last row and there is nothing left to
+   * send. Stranding the user on an empty checkout screen was the bug
+   * this covers; the TUI drops back the same way.
+   */
+  it('leaves the plan pane when its last item is removed', () => {
+    expect(
+      resolveMode('plan', {
+        hasSession: true,
+        hasDrafts: true,
+        hasPr: true,
+        hasPlan: false,
+      })
     ).toBe('diff');
   });
 });

@@ -15,7 +15,7 @@ import type { FileEntry } from '../components/review/FileTree.js';
  */
 
 /** Which pane of the review workspace is showing. */
-export type Mode = 'diff' | 'agent' | 'review' | 'overview';
+export type Mode = 'diff' | 'agent' | 'review' | 'overview' | 'plan';
 
 /** What each mode needs in order to be showable at all. */
 export interface ModeContext {
@@ -25,14 +25,17 @@ export interface ModeContext {
   hasDrafts: boolean;
   /** The tab is a pull request, not a bare worktree. */
   hasPr: boolean;
+  /** At least one comment queued in this PR's plan. */
+  hasPlan: boolean;
 }
 
 /**
  * The pane actually rendered. A mode is a *request*: the agent pane
- * needs a session, the walkthrough needs drafts and the overview needs
- * a PR, and any of those can disappear underneath a mode that is
- * already selected (the last draft gets posted, a session is stopped
- * and removed). Rather than reset the request, every mode falls back
+ * needs a session, the walkthrough needs drafts, the overview needs a
+ * PR and the plan needs something in it, and any of those can disappear
+ * underneath a mode that is already selected (the last draft gets
+ * posted, a session is stopped and removed, the last queued comment is
+ * dropped). Rather than reset the request, every mode falls back
  * to the diff, which is the one pane that is always available — so
  * when the precondition comes back, so does the pane.
  */
@@ -40,6 +43,7 @@ export function resolveMode(mode: Mode, ctx: ModeContext): Mode {
   if (mode === 'agent' && ctx.hasSession) return 'agent';
   if (mode === 'review' && ctx.hasDrafts) return 'review';
   if (mode === 'overview' && ctx.hasPr) return 'overview';
+  if (mode === 'plan' && ctx.hasPlan) return 'plan';
   return 'diff';
 }
 

@@ -27,6 +27,10 @@ const state = vi.hoisted(() => ({
   worktrees: [] as { branch?: string }[],
   persistedTmux: new Set<string>(),
   createFails: new Set<string>(),
+  /** Prompts core's checkoutPlan delivered into a live agent. */
+  injected: [] as { name: string; prompt: string }[],
+  /** Branch names whose checkout core should report as failed. */
+  checkoutFails: new Set<string>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -50,6 +54,34 @@ vi.mock('@kirby/worktree-manager', () => ({
 }));
 
 vi.mock('@kirby/core', () => ({
+  // Stands in for the real orchestrator, whose own branching is tested
+  // in libs/core. What matters here is what the *desktop* does with
+  // each outcome: inject changes nothing it tracks, a spawn has to be
+  // adopted so its output reaches the renderer.
+  checkoutPlan: (deps: {
+    pr: { sourceBranch: string };
+    prompt: string;
+    mode: 'inject' | 'new-session';
+    flashStatus: (msg: string) => void;
+  }) => {
+    const name = deps.pr.sourceBranch.replace(/\//g, '-');
+    if (state.checkoutFails.has(deps.pr.sourceBranch)) {
+      deps.flashStatus(`Failed to create worktree for ${deps.pr.sourceBranch}`);
+      return Promise.resolve('failed');
+    }
+    if (state.alive.has(name) && deps.mode === 'inject') {
+      state.injected.push({ name, prompt: deps.prompt });
+      return Promise.resolve('injected');
+    }
+    state.alive.add(name);
+    state.spawns.push({
+      name,
+      cwd: `/wt/${deps.pr.sourceBranch}`,
+      config: null,
+      request: { intent: 'seed', prompt: deps.prompt },
+    });
+    return Promise.resolve('spawned');
+  },
   buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
     intent: 'review',
     prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
@@ -106,6 +138,7 @@ let getSessionActivity: typeof sessions.getSessionActivity;
 let getSessionBuffer: typeof sessions.getSessionBuffer;
 let killSession: typeof sessions.killSession;
 let launchAgent: typeof sessions.launchAgent;
+let checkoutPlan: typeof sessions.checkoutPlan;
 let launchReviewAgent: typeof sessions.launchReviewAgent;
 let listSessions: typeof sessions.listSessions;
 let restorePersistedSessions: typeof sessions.restorePersistedSessions;
@@ -120,10 +153,13 @@ beforeEach(async () => {
   state.worktrees = [];
   state.persistedTmux = new Set();
   state.createFails = new Set();
+  state.injected = [];
+  state.checkoutFails = new Set();
 
   vi.resetModules();
   sessions = await import('./sessions.js');
   ({
+    checkoutPlan,
     getSessionActivity,
     getSessionBuffer,
     killSession,
@@ -350,5 +386,89 @@ describe('restorePersistedSessions', () => {
 
     expect(state.cwd).not.toBe(original);
     expect(state.spawns.map((s) => s.name)).not.toContain('second');
+  });
+});
+
+// ── Plan checkout ────────────────────────────────────────────────
+
+describe('checkoutPlan', () => {
+  const pr = { id: 7, sourceBranch: 'feature/x' } as never;
+  const req = (mode: 'inject' | 'new-session' = 'new-session') => ({
+    pr,
+    prompt: 'Resolve these PR review comments:\n\n### 1. a.ts:1\n@a: fix it',
+    mode,
+  });
+
+  it('adopts a spawned session so its output reaches the renderer', async () => {
+    // core does the spawning; without the host adopting it, the PTY
+    // runs with nothing relaying it and the terminal pane stays blank.
+    await expect(checkoutPlan(req())).resolves.toBe('spawned');
+    emit('feature-x', 'agent says hello');
+    expect(getSessionBuffer('feature-x').data).toBe('agent says hello');
+    expect(listSessions().map((s) => s.name)).toEqual(['feature-x']);
+  });
+
+  it('injecting neither spawns nor disturbs the scrollback', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    emit('feature-x', 'existing conversation');
+    state.spawns = [];
+
+    await expect(checkoutPlan(req('inject'))).resolves.toBe('injected');
+
+    expect(state.spawns).toEqual([]);
+    expect(state.injected).toEqual([
+      { name: 'feature-x', prompt: req().prompt },
+    ]);
+    // The pane is showing this text; a reset would blank it.
+    expect(getSessionBuffer('feature-x').data).toBe('existing conversation');
+  });
+
+  /**
+   * A mounted terminal remembers the sequence number its replay ended
+   * at and drops anything at or below it. Numbering a restarted
+   * session's chunks from 1 again therefore makes the new agent look
+   * dead in a pane that is still on screen — which is exactly the pane
+   * you are looking at when you restart one with a plan.
+   */
+  it('keeps chunk numbering monotonic when it restarts a session', async () => {
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    emit('feature-x', 'first run');
+    const before = getSessionBuffer('feature-x').seq;
+    expect(before).toBe(1);
+
+    await checkoutPlan(req('new-session'));
+    emit('feature-x', 'second run');
+
+    const after = getSessionBuffer('feature-x');
+    expect(after.seq).toBeGreaterThan(before);
+    // The scrollback itself does start over — it is a new agent.
+    expect(after.data).toBe('second run');
+  });
+
+  it('rejects with the reason, so the plan can be retried', async () => {
+    state.checkoutFails.add('feature/x');
+    await expect(checkoutPlan(req())).rejects.toThrow(
+      'Failed to create worktree for feature/x'
+    );
+  });
+
+  it('refuses to deliver into another repository’s agent', async () => {
+    state.cwd = '/repo-a';
+    await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
+    state.cwd = '/repo-b';
+
+    expect(() => checkoutPlan(req('inject'))).toThrow(
+      'already running for another repository'
+    );
+    expect(state.injected).toEqual([]);
+  });
+
+  it('collapses a double-send into one delivery', async () => {
+    const [a, b] = await Promise.all([
+      checkoutPlan(req()),
+      checkoutPlan(req()),
+    ]);
+    expect([a, b]).toEqual(['spawned', 'spawned']);
+    expect(state.spawns).toHaveLength(1);
   });
 });

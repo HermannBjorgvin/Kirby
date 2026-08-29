@@ -5,12 +5,14 @@ import {
   CornerDownRightIcon,
   MessageSquareIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type {
   RemoteCommentReply,
   RemoteCommentThread,
 } from '../../../host/contract.js';
+import { snapshotRemote } from '@kirby/core/plan';
+import { usePlan, usePlanControls } from '../../lib/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useReply, useSetResolved } from '../../lib/queries.js';
 import {
@@ -22,6 +24,7 @@ import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
+import { PlanAttachment, PlanControls } from './PlanControls.js';
 import { ThreadFooter } from './ThreadFooter.js';
 
 /**
@@ -43,6 +46,13 @@ export function ThreadCard({
   focused?: boolean;
 }) {
   const { repo } = useRepo();
+  const plan = usePlan(prId);
+  const planControls = usePlanControls(
+    plan,
+    'remote',
+    thread.id,
+    useCallback(() => snapshotRemote(thread), [thread])
+  );
   const reply = useReply(repo.cwd);
   const resolve = useSetResolved(repo.cwd);
   const [draft, setDraft] = useState('');
@@ -101,8 +111,12 @@ export function ThreadCard({
       ref={ref}
       data-thread={thread.id}
       className={cn(
-        'max-w-[900px] overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs transition-shadow',
-        thread.isResolved ? 'border-success/30' : 'border-border',
+        'group/card max-w-[900px] overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs transition-shadow',
+        planControls.inPlan
+          ? 'border-primary/40'
+          : thread.isResolved
+          ? 'border-success/30'
+          : 'border-border',
         focused && 'ring-2 ring-primary/50'
       )}
     >
@@ -113,6 +127,13 @@ export function ThreadCard({
         location={showLocation ? location : null}
         expanded={expanded}
         onToggle={() => setOverride(!expanded)}
+        inPlan={planControls.inPlan}
+        hasNote={planControls.note !== undefined}
+        onTogglePlan={planControls.toggleInPlan}
+        onNote={() => {
+          setOverride(true);
+          planControls.startNote();
+        }}
       />
 
       {expanded && (
@@ -123,6 +144,14 @@ export function ThreadCard({
               <Message key={r.id} comment={r} reply />
             ))}
           </div>
+
+          <PlanAttachment
+            composing={planControls.composing}
+            note={planControls.note}
+            onSave={planControls.saveNote}
+            onCancel={planControls.cancelNote}
+            onEdit={planControls.startNote}
+          />
 
           <ThreadFooter
             canResolve={thread.canResolve}
@@ -153,6 +182,10 @@ function ThreadSummary({
   location,
   expanded,
   onToggle,
+  inPlan,
+  hasNote,
+  onTogglePlan,
+  onNote,
 }: {
   thread: RemoteCommentThread;
   author: string;
@@ -161,12 +194,20 @@ function ThreadSummary({
   location: string | null;
   expanded: boolean;
   onToggle: () => void;
+  inPlan: boolean;
+  hasNote: boolean;
+  onTogglePlan: () => void;
+  onNote: () => void;
 }) {
   return (
     <div
       className={cn(
         'flex items-center gap-2 px-3 py-1.5 text-sm',
-        thread.isResolved ? 'bg-success/5' : 'bg-muted/40',
+        inPlan
+          ? 'bg-primary/5'
+          : thread.isResolved
+          ? 'bg-success/5'
+          : 'bg-muted/40',
         expanded && 'border-b border-border'
       )}
     >
@@ -198,6 +239,12 @@ function ThreadSummary({
         </span>
       </button>
       <span className="flex shrink-0 items-center gap-1">
+        <PlanControls
+          inPlan={inPlan}
+          hasNote={hasNote}
+          onToggle={onTogglePlan}
+          onNote={onNote}
+        />
         {thread.isOutdated && <Badge variant="outline">Outdated</Badge>}
         {thread.isResolved && (
           <Badge variant="success">

@@ -7,9 +7,11 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
+import { snapshotLocal } from '@kirby/core/plan';
+import { usePlan, usePlanControls } from '../../lib/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
   useDeleteDraft,
@@ -33,6 +35,7 @@ import {
   SEVERITY_RAIL,
 } from '../../lib/severity.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
+import { PlanAttachment, PlanControls } from './PlanControls.js';
 
 /**
  * A draft review comment written by the agent (`kirby util
@@ -53,6 +56,13 @@ export function DraftCard({
   focused?: boolean;
 }) {
   const { repo } = useRepo();
+  const plan = usePlan(prId);
+  const planControls = usePlanControls(
+    plan,
+    'local',
+    draft.id,
+    useCallback(() => snapshotLocal(draft), [draft])
+  );
   const update = useUpdateDraft(repo.cwd);
   const remove = useDeleteDraft(repo.cwd);
   const post = usePostDrafts(repo.cwd);
@@ -98,12 +108,18 @@ export function DraftCard({
       ref={ref}
       data-draft={draft.id}
       className={cn(
-        'max-w-[900px] overflow-hidden rounded-lg border border-dashed border-border border-l-[3px] bg-card text-card-foreground shadow-xs transition-shadow',
+        'group/card max-w-[900px] overflow-hidden rounded-lg border border-dashed border-l-[3px] bg-card text-card-foreground shadow-xs transition-shadow',
+        planControls.inPlan ? 'border-primary/40' : 'border-border',
         SEVERITY_RAIL[draft.severity],
         focused && 'ring-2 ring-primary/50'
       )}
     >
-      <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-sm">
+      <div
+        className={cn(
+          'flex items-center gap-2 border-b border-border px-3 py-1.5 text-sm',
+          planControls.inPlan ? 'bg-primary/5' : 'bg-muted/40'
+        )}
+      >
         <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="font-medium">Draft</span>
         <Badge variant={SEVERITY_BADGE[draft.severity]}>{draft.severity}</Badge>
@@ -115,6 +131,12 @@ export function DraftCard({
         <span className="ml-auto text-xs text-muted-foreground">
           {relativeTime(draft.createdAt)}
         </span>
+        <PlanControls
+          inPlan={planControls.inPlan}
+          hasNote={planControls.note !== undefined}
+          onToggle={planControls.toggleInPlan}
+          onNote={planControls.startNote}
+        />
       </div>
 
       {editing ? (
@@ -165,6 +187,16 @@ export function DraftCard({
         <div className="px-3 py-2">
           <CommentMarkdown markdown={draft.body} />
         </div>
+      )}
+
+      {!editing && (
+        <PlanAttachment
+          composing={planControls.composing}
+          note={planControls.note}
+          onSave={planControls.saveNote}
+          onCancel={planControls.cancelNote}
+          onEdit={planControls.startNote}
+        />
       )}
 
       {!editing && (

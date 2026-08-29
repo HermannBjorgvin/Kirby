@@ -7,6 +7,7 @@ import {
 } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import { type DiffLine } from '@kirby/diff';
+import type { PlanItem } from '@kirby/core/plan';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { useDiffOptions } from '../../lib/diff-options.js';
 import {
@@ -18,6 +19,7 @@ import {
   useWorktreeDiff,
 } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
+import { usePlanCheckout } from '../../lib/use-plan-checkout.js';
 import {
   buildCommentRows,
   buildFileEntries,
@@ -102,6 +104,7 @@ export function PrWorkspace({
   const options = useDiffOptions();
   const scrollRef = useRef<HTMLDivElement>(null);
   const diffJumpRef = useRef<DiffJumpHandle | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
@@ -154,11 +157,6 @@ export function PrWorkspace({
   const filesByName = useMemo(() => new Map(files), [files]);
 
   const hasDrafts = drafts.length > 0;
-  const effMode = resolveMode(mode, {
-    hasSession: Boolean(sessionName),
-    hasDrafts,
-    hasPr: pr != null,
-  });
 
   const entries = useMemo<FileEntry[]>(
     () => buildFileEntries(files, threadsByFile, draftsByFile),
@@ -214,8 +212,35 @@ export function PrWorkspace({
     jumpToId(target.id, target.file ?? null);
   };
 
+  // ── The plan ───────────────────────────────────────────────────
+  const showPlanItemInDiff = useCallback(
+    (item: PlanItem) => jumpToId(item.id, item.file),
+    [jumpToId]
+  );
+  const backToAgent = useCallback(() => setMode('agent'), []);
+  const plan = usePlanCheckout({
+    cwd: repo.cwd,
+    pr,
+    running,
+    paneRef: rootRef,
+    onSent: backToAgent,
+    onShowInDiff: showPlanItemInDiff,
+  });
+
+  // Which pane is actually showing. Computed last because it asks
+  // whether the plan has anything in it — every mode falls back to the
+  // diff when its own precondition is gone (see resolveMode).
+  const effMode = resolveMode(mode, {
+    hasSession: Boolean(sessionName),
+    hasDrafts,
+    hasPr: pr != null,
+    // A plan belongs to a pull request: it is a queue of *its* review
+    // comments, and the prompt names them. A bare worktree has none.
+    hasPlan: plan.count > 0,
+  });
+
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div ref={rootRef} className="flex h-full min-h-0 min-w-0 flex-col">
       {pr ? (
         <PrHeader pr={pr} />
       ) : (
@@ -280,6 +305,10 @@ export function PrWorkspace({
                       }
                     )
                   }
+                  planCount={plan.count}
+                  planNoted={plan.noted}
+                  planActive={effMode === 'plan'}
+                  onPlan={() => setMode('plan')}
                   entries={entries}
                   diffLoading={diffPending}
                   selectedFile={effMode === 'diff' ? selectedFile : null}
@@ -323,6 +352,7 @@ export function PrWorkspace({
               onNext={() => step(1)}
               onExitReview={() => setMode('diff')}
               onOpenInDiff={(file) => jumpToFile(file)}
+              plan={plan.wiring}
             />
           </Panel>
         </Group>

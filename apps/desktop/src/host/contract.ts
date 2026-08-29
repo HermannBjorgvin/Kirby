@@ -236,6 +236,32 @@ export interface ReviewLaunchRequest {
   rows?: number;
 }
 
+/**
+ * Deliver a plan — the comments the user queued for this pull request,
+ * already composed into one prompt — to the agent in its worktree.
+ *
+ * The prompt is composed in the renderer rather than here because the
+ * plan pane shows the user the exact text before sending it, and
+ * composing it twice is how the preview and the delivery drift apart.
+ */
+export interface PlanCheckoutRequest {
+  pr: PullRequestInfo;
+  /** Output of `composePlanPrompt` — sent verbatim. */
+  prompt: string;
+  /**
+   * Only meaningful when an agent is already running on the branch:
+   * `inject` types the plan into the conversation it is already having,
+   * `new-session` restarts it seeded with the plan.
+   */
+  mode: 'inject' | 'new-session';
+  /** Initial PTY size for a spawn — the renderer knows the pane. */
+  cols?: number;
+  rows?: number;
+}
+
+/** What checkout did, so the renderer can say which one happened. */
+export type PlanCheckoutResult = 'injected' | 'spawned';
+
 export interface PostDraftsRequest {
   prId: number;
   /** Subset to post; every draft when omitted. */
@@ -336,6 +362,10 @@ export interface KirbyHostApi {
   /** Create the PR's worktree if needed and start/continue a review
    *  session seeded with the shared review prompt + guidance. */
   launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
+  /** Send a composed plan to the PR's agent, creating the worktree and
+   *  starting one when there is none. Rejects with the reason on
+   *  failure, leaving the plan intact for a retry. */
+  checkoutPlan(req: PlanCheckoutRequest): Promise<PlanCheckoutResult>;
   listSessions(): Promise<SessionSummary[]>;
   /** Debounced per-session agent activity (same registry as the TUI's
    *  sidebar spinner): `active` = producing output now, `flashing` =
@@ -432,6 +462,7 @@ export const IPC = {
   deleteDraftComment: 'kirby/drafts/delete',
   postDraftComments: 'kirby/drafts/post',
   launchReviewAgent: 'kirby/session/launch-review',
+  checkoutPlan: 'kirby/session/checkout-plan',
   fetchDiffText: 'kirby/diff/text',
   fetchWorktreeDiffText: 'kirby/diff/worktree-text',
   fetchFileDiffText: 'kirby/diff/file-text',

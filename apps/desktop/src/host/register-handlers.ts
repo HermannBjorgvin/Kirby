@@ -71,6 +71,7 @@ export function createHostApi(): KirbyHostApi {
 
     launchAgent: (req) => sessions.launchAgent(req),
     launchReviewAgent: (req) => sessions.launchReviewAgent(req),
+    checkoutPlan: (req) => sessions.checkoutPlan(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
     getSessionActivity: () => Promise.resolve(sessions.getSessionActivity()),
     markSessionSeen: (name) => Promise.resolve(sessions.markSessionSeen(name)),
@@ -201,6 +202,7 @@ export function registerHostHandlers(
     [IPC.deleteDraftComment]: api.deleteDraftComment as HostMethod,
     [IPC.postDraftComments]: api.postDraftComments as HostMethod,
     [IPC.launchReviewAgent]: api.launchReviewAgent as HostMethod,
+    [IPC.checkoutPlan]: api.checkoutPlan as HostMethod,
     [IPC.fetchDiffText]: api.fetchDiffText as HostMethod,
     [IPC.fetchWorktreeDiffText]: api.fetchWorktreeDiffText as HostMethod,
     [IPC.fetchFileDiffText]: api.fetchFileDiffText as HostMethod,

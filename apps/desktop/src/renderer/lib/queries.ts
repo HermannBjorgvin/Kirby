@@ -14,6 +14,7 @@ import { parseDiffInWorker } from './diff-worker-client.js';
 import { errorMessage } from './utils.js';
 import type { ReviewDecision } from '@kirby/vcs-core/types';
 import type {
+  PlanCheckoutRequest,
   PostDraftsRequest,
   PullRequestComments,
   ReplyRequest,
@@ -512,6 +513,22 @@ export function useLaunchReview(cwd: string) {
   return useMutation({
     mutationFn: (req: ReviewLaunchRequest) =>
       window.kirby.launchReviewAgent(req),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.branches();
+    },
+  });
+}
+
+/**
+ * Send a plan to the PR's agent. Invalidates the sidebar because a
+ * spawn turns a review PR into a session row, and the branch list
+ * because the checkout may have created the worktree.
+ */
+export function useCheckoutPlan(cwd: string) {
+  const inv = useInvalidator(cwd);
+  return useMutation({
+    mutationFn: (req: PlanCheckoutRequest) => window.kirby.checkoutPlan(req),
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
