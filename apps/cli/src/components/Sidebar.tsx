@@ -1,285 +1,17 @@
-import { memo, useEffect, useMemo, type ReactNode } from 'react';
+import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import { Divider } from './Divider.js';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AgentSession, SidebarItem } from '@kirby/core';
+import type { SidebarItem } from '@kirby/core';
+import { useConfig, useKeybindResolve } from '@kirby/app-core';
 import {
-  useConfig,
-  useKeybindResolve,
-  useActivityStatus,
-  useFlashPhase,
-  LAYOUT,
-} from '@kirby/app-core';
-import {
-  computeScrollWindow,
-  noteSeen,
-  remove as removeInactiveAlert,
-  tabDigit,
-} from '@kirby/core';
-import { PrBadge } from './PrBadge.js';
-import { RainbowSpinner } from './RainbowSpinner.js';
+  SECTION_LABELS,
+  buildSidebarRows,
+  sidebarAvailableLines,
+  sidebarRowHeights,
+  sidebarScrollWindow,
+  type RenderRow,
+} from './sidebar-model.js';
+import { PrItemRow, SectionHeader, SessionItemRow } from './SidebarRows.js';
 import { SidebarLayout } from './SidebarLayout.js';
-
-// ── Constants ───────────────────────────────────────────────────
-
-// Rows the sidebar does NOT get for scrollable items:
-//   - Pane border (top + bottom)       → LAYOUT.PANE_BORDER_ROWS
-//   - Pane title row ("Kirby")         → LAYOUT.PANE_TITLE_ROWS
-// This compensates for the fact that Sidebar gets `termRows` (the full
-// terminal height) but actually renders inside a smaller flex slot.
-const SIDEBAR_CHROME_ROWS = LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS;
-const LEGEND_LINES = 2; // "passed/failed/pending" + "needs attention/approved"
-
-// ── Section header detection ────────────────────────────────────
-
-type SectionKey =
-  | 'worktrees'
-  | 'pull-requests'
-  | 'draft-pull-requests'
-  | 'needs-review'
-  | 'waiting'
-  | 'approved';
-
-function getSectionKey(item: SidebarItem): SectionKey {
-  if (item.kind === 'session') {
-    if (!item.pr) return 'worktrees';
-    return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
-  }
-  if (item.kind === 'orphan-pr')
-    return item.pr.isDraft ? 'draft-pull-requests' : 'pull-requests';
-  return item.category;
-}
-
-const SECTION_LABELS: Record<SectionKey, { title: string; color: string }> = {
-  worktrees: { title: 'Worktrees', color: 'cyan' },
-  'pull-requests': { title: 'Pull Requests', color: 'blue' },
-  'draft-pull-requests': { title: 'Draft Pull Requests', color: 'gray' },
-  'needs-review': { title: 'Needs Your Review', color: 'red' },
-  waiting: { title: 'Waiting for Author', color: 'yellow' },
-  approved: { title: 'Approved by You', color: 'green' },
-};
-
-// ── Sub-components ──────────────────────────────────────────────
-
-// Leaf component that owns the "needs attention" flash cadence. The
-// row's conflict/badge siblings don't reconcile on every phase flip,
-// but the enclosing <Text wrap="truncate"> does re-measure at ~1.43Hz —
-// Ink's truncation needs the whole string in one <Text>, so the flash
-// can't be a pure sibling of the title text.
-function FlashingTitle({
-  children,
-  bold,
-}: {
-  children: ReactNode;
-  bold: boolean;
-}) {
-  const phase = useFlashPhase();
-  return (
-    <Text bold={bold} color={phase === 0 ? 'gray' : 'white'}>
-      {children}
-    </Text>
-  );
-}
-
-const SessionItemRow = memo(function SessionItemRow({
-  session,
-  selected,
-  pr,
-  sidebarWidth,
-  isMerged,
-  conflictCount,
-  vcsConfigured,
-  tabNumber,
-}: {
-  session: AgentSession;
-  selected: boolean;
-  pr: PullRequestInfo | undefined;
-  sidebarWidth: number;
-  isMerged: boolean;
-  conflictCount: number | undefined;
-  vcsConfigured: boolean;
-  /** 1..10 if this session has a quick-switch tab; undefined otherwise. */
-  tabNumber: number | undefined;
-}) {
-  // Single icon column: selected state (◉ ring) overrides, otherwise
-  // running state (● filled green / ○ hollow gray). Saves 2 chars vs.
-  // the old "› " + "● " two-column layout.
-  let icon: string;
-  let iconColor: string;
-  if (selected) {
-    icon = session.running ? '◉' : '◎';
-    iconColor = 'cyan';
-  } else {
-    icon = session.running ? '●' : '○';
-    iconColor = session.running ? 'green' : 'gray';
-  }
-
-  const activity = useActivityStatus(session.name);
-  const title = pr?.title || session.name;
-
-  // The selected row is what the user is looking at, so ack any output
-  // (poll while selected, plus a final ack on deselect) — that way the
-  // row does not flash the moment it is deselected. Runs at 1Hz; flash
-  // requires ACTIVITY_IDLE_MS (2s) of silence after data, so a single
-  // missed tick at the tail can't make the flash appear for content
-  // the user actually saw.
-  useEffect(() => {
-    if (!selected) return;
-    noteSeen(session.name);
-    // Visiting acks any pending inactive-alert: the user is here, they
-    // don't need a queued jump back to a session they're already on.
-    removeInactiveAlert(session.name);
-    const id = setInterval(() => noteSeen(session.name), 1000);
-    return () => {
-      clearInterval(id);
-      noteSeen(session.name);
-    };
-  }, [selected, session.name]);
-
-  // Short-circuit animations for the selected row: the user can see it
-  // live in the terminal pane, so the indicator would be visual noise.
-  const showFlash = !selected && activity.flashing;
-  const showSpinner = !selected && activity.active;
-
-  return (
-    <Box flexDirection="column">
-      <Box>
-        <Box flexGrow={1} flexShrink={1} minWidth={0}>
-          <Text wrap="truncate">
-            {tabNumber != null ? (
-              <Text color="cyan" bold>
-                {tabDigit(tabNumber)}{' '}
-              </Text>
-            ) : null}
-            <Text color={iconColor}>{icon} </Text>
-            {showFlash ? (
-              <FlashingTitle bold={selected}>{title}</FlashingTitle>
-            ) : (
-              <Text bold={selected}>{title}</Text>
-            )}
-            {isMerged ? (
-              <Text dimColor color="green">
-                {' '}
-                merged
-              </Text>
-            ) : null}
-            {session.state === 'rebasing' ? (
-              <Text color="yellow"> rebasing</Text>
-            ) : null}
-          </Text>
-        </Box>
-        <Box flexShrink={0} marginLeft={1} width={1}>
-          {showSpinner ? <RainbowSpinner /> : <Text> </Text>}
-        </Box>
-      </Box>
-      {conflictCount != null && conflictCount > 0 ? (
-        <Text dimColor color="yellow">
-          {'  '}
-          {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
-        </Text>
-      ) : null}
-      {vcsConfigured ? <PrBadge pr={pr} sidebarWidth={sidebarWidth} /> : null}
-    </Box>
-  );
-});
-
-const OrphanPrRow = memo(function OrphanPrRow({
-  pr,
-  selected,
-  sidebarWidth,
-  running,
-}: {
-  pr: PullRequestInfo;
-  selected: boolean;
-  sidebarWidth: number;
-  running?: boolean;
-}) {
-  let icon: string;
-  let iconColor: string;
-  if (selected) {
-    icon = running ? '◉' : '◎';
-    iconColor = 'cyan';
-  } else if (running != null) {
-    icon = running ? '●' : '○';
-    iconColor = running ? 'green' : 'gray';
-  } else {
-    icon = '○';
-    iconColor = 'gray';
-  }
-
-  return (
-    <Box flexDirection="column">
-      <Text wrap="truncate">
-        <Text color={iconColor}>{icon} </Text>
-        <Text bold={selected}>{pr.title || pr.sourceBranch}</Text>
-      </Text>
-      <PrBadge pr={pr} sidebarWidth={sidebarWidth} />
-    </Box>
-  );
-});
-
-const ReviewPrRow = memo(function ReviewPrRow({
-  pr,
-  selected,
-  sidebarWidth,
-  running,
-}: {
-  pr: PullRequestInfo;
-  selected: boolean;
-  sidebarWidth: number;
-  running?: boolean;
-}) {
-  let icon: string;
-  let iconColor: string;
-  if (selected) {
-    icon = running ? '◉' : '◎';
-    iconColor = 'cyan';
-  } else if (running != null) {
-    icon = running ? '●' : '○';
-    iconColor = running ? 'green' : 'gray';
-  } else {
-    icon = '○';
-    iconColor = 'gray';
-  }
-
-  return (
-    <Box flexDirection="column">
-      <Text wrap="truncate">
-        <Text color={iconColor}>{icon} </Text>
-        <Text bold={selected}>{pr.title || pr.sourceBranch}</Text>
-      </Text>
-      <PrBadge
-        pr={pr}
-        sidebarWidth={sidebarWidth}
-        author={pr.createdByDisplayName || 'unknown'}
-      />
-    </Box>
-  );
-});
-
-function SectionHeader({
-  title,
-  color,
-  count,
-  first,
-}: {
-  title: string;
-  color: string;
-  count: number;
-  first: boolean;
-}) {
-  return (
-    <Box marginTop={first ? 0 : 1}>
-      <Divider
-        title={`${title} (${count})`}
-        titleColor={color}
-        dividerColor="gray"
-      />
-    </Box>
-  );
-}
-
-// ── Main component ──────────────────────────────────────────────
 
 export interface SidebarProps {
   items: SidebarItem[];
@@ -339,135 +71,35 @@ export const Sidebar = memo(function Sidebar({
 
   const keybindLineCount = sidebarHints.length;
 
-  // Build renderable rows (items + section headers)
-  type RenderRow =
-    | { type: 'header'; key: SectionKey; count: number; first: boolean }
-    | { type: 'item'; item: SidebarItem; itemIndex: number };
+  const rows = useMemo(() => buildSidebarRows(items), [items]);
+  const rowHeights = useMemo(
+    () => sidebarRowHeights(rows, vcsConfigured),
+    [rows, vcsConfigured]
+  );
 
-  const rows = useMemo(() => {
-    const result: RenderRow[] = [];
-    let lastSection: SectionKey | null = null;
-    let isFirst = true;
-
-    // Count items per section for the header
-    const sectionCounts = new Map<SectionKey, number>();
-    for (const item of items) {
-      const key = getSectionKey(item);
-      sectionCounts.set(key, (sectionCounts.get(key) ?? 0) + 1);
-    }
-
-    items.forEach((item, idx) => {
-      const section = getSectionKey(item);
-      // Insert section header at every section transition
-      if (section !== lastSection) {
-        result.push({
-          type: 'header',
-          key: section,
-          count: sectionCounts.get(section) ?? 0,
-          first: isFirst,
-        });
-        isFirst = false;
-        lastSection = section;
-      }
-      result.push({ type: 'item', item, itemIndex: idx });
-    });
-    return result;
-  }, [items]);
-
-  // Compute height of each row based on its content
-  const rowHeights = useMemo(() => {
-    return rows.map((row): number => {
-      if (row.type === 'header') return row.first ? 1 : 2; // divider (+ marginTop if not first)
-      const { item } = row;
-      if (item.kind === 'session') {
-        let h = 1; // title line
-        if (item.conflictCount != null && item.conflictCount > 0) h++;
-        if (vcsConfigured) h++; // PrBadge (badge or "(no PR)")
-        return h;
-      }
-      if (item.kind === 'orphan-pr') return 2; // title + badge
-      return 3; // review: title + badge + "by author"
-    });
-  }, [rows, vcsConfigured]);
-
-  // Compute scroll window using actual row heights
-  const { fullyVisibleRows, gap, aboveCount, belowCount } = useMemo(() => {
-    // Total non-item lines: sidebar chrome + keybinds margin + keybind lines + optional legend
-    const chromeLines =
-      SIDEBAR_CHROME_ROWS +
-      1 +
-      keybindLineCount +
-      (vcsConfigured && !hintsHidden ? 1 + LEGEND_LINES : 0);
-    const availableLines = termRows - chromeLines;
-    const totalHeight = rowHeights.reduce((a, b) => a + b, 0);
-
-    if (totalHeight <= availableLines) {
-      return { fullyVisibleRows: rows, gap: 0, aboveCount: 0, belowCount: 0 };
-    }
-
-    // Reserve space for scroll indicators (↑/↓ more)
-    const budget = availableLines - 2;
-
-    // Estimate how many rows fit (from top) to get a maxVisible for centering
-    let fitCount = 0;
-    let fitHeight = 0;
-    for (const height of rowHeights) {
-      if (fitHeight + height > budget) break;
-      fitHeight += height;
-      fitCount++;
-    }
-
-    const selectedRowIdx = Math.max(
-      0,
-      rows.findIndex((r) => r.type === 'item' && r.itemIndex === selectedIndex)
-    );
-
-    // Use computeScrollWindow for centering, then verify with actual heights
-    let start = computeScrollWindow({
-      totalItems: rows.length,
-      selectedIndex: selectedRowIdx,
-      maxVisible: Math.max(1, fitCount),
-    }).windowStart;
-
-    // From start, greedily add rows that fully fit within budget
-    const greedySlice = (from: number) => {
-      let count = 0;
-      let height = 0;
-      for (let i = from; i < rows.length; i++) {
-        if (height + rowHeights[i] > budget) break;
-        height += rowHeights[i];
-        count++;
-      }
-      return { count, height };
-    };
-
-    let { count: fullCount, height: usedHeight } = greedySlice(start);
-
-    // If selected row fell outside the visible window (row heights vary),
-    // slide the window forward until the selected row is included.
-    while (selectedRowIdx >= start + fullCount && start < rows.length - 1) {
-      start++;
-      ({ count: fullCount, height: usedHeight } = greedySlice(start));
-    }
-
-    const gap = budget - usedHeight;
-    const nextIdx = start + fullCount;
-
-    return {
-      fullyVisibleRows: rows.slice(start, start + fullCount),
-      gap,
-      aboveCount: start,
-      belowCount: Math.max(0, rows.length - nextIdx),
-    };
-  }, [
-    rows,
-    rowHeights,
-    selectedIndex,
-    termRows,
-    vcsConfigured,
-    keybindLineCount,
-    hintsHidden,
-  ]);
+  const { fullyVisibleRows, gap, aboveCount, belowCount } = useMemo(
+    () =>
+      sidebarScrollWindow({
+        rows,
+        rowHeights,
+        selectedIndex,
+        availableLines: sidebarAvailableLines({
+          termRows,
+          keybindLineCount,
+          vcsConfigured,
+          hintsHidden,
+        }),
+      }),
+    [
+      rows,
+      rowHeights,
+      selectedIndex,
+      termRows,
+      vcsConfigured,
+      keybindLineCount,
+      hintsHidden,
+    ]
+  );
 
   const renderRow = (row: RenderRow) => {
     if (row.type === 'header') {
@@ -502,7 +134,7 @@ export const Sidebar = memo(function Sidebar({
     }
     if (item.kind === 'orphan-pr') {
       return (
-        <OrphanPrRow
+        <PrItemRow
           key={`o-${item.pr.id}`}
           pr={item.pr}
           selected={selected}
@@ -512,12 +144,13 @@ export const Sidebar = memo(function Sidebar({
       );
     }
     return (
-      <ReviewPrRow
+      <PrItemRow
         key={`r-${item.pr.id}`}
         pr={item.pr}
         selected={selected}
         sidebarWidth={sidebarWidth}
         running={item.running}
+        author={item.pr.createdByDisplayName || 'unknown'}
       />
     );
   };
