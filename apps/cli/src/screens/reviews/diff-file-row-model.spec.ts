@@ -93,9 +93,14 @@ describe('fileRowText', () => {
       previousFilename: 'src/lib/' + 'o'.repeat(60),
       status: 'renamed',
     });
-    const flat = fileRowText({ ...base, file: renamed, maxWidth: 60 }).name;
+    // 32 columns leaves 21 for the name, and an odd budget goes to the
+    // new name: 10 columns for the old, 11 for the new. Rounding it the
+    // other way shifts a character off the name the user is looking for.
+    const flat = fileRowText({ ...base, file: renamed, maxWidth: 32 }).name;
     expect(flat).toContain(' → ');
     const [before, after] = flat.split(' → ');
+    expect(before).toHaveLength(10);
+    expect(after).toHaveLength(11);
     expect(before!.endsWith('...')).toBe(true);
     expect(after!.endsWith('...')).toBe(true);
 
