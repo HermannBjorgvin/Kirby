@@ -24,8 +24,9 @@ vi.mock('node:child_process', async (importOriginal) => ({
   },
 }));
 
-const NUMSTAT = '5\t2\tsrc/foo.ts\n10\t0\tsrc/bar.ts\n';
-const NAME_STATUS = 'M\tsrc/foo.ts\nA\tsrc/bar.ts\n';
+// `-z`: records are NUL-terminated (see parseNumstat in @kirby/app-core).
+const NUMSTAT = '5\t2\tsrc/foo.ts\0' + '10\t0\tsrc/bar.ts\0';
+const NAME_STATUS = 'M\0src/foo.ts\0' + 'A\0src/bar.ts\0';
 const FOO_DIFF = 'diff --git a/src/foo.ts b/src/foo.ts\n@@ -1 +1 @@\n-a\n+b\n';
 
 function installGitMock(): { calls: string[][] } {

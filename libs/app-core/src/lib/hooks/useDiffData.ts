@@ -116,117 +116,90 @@ interface NumstatEntry {
 }
 
 /**
- * Parse `git diff --numstat`: "<added>\t<deleted>\t<file>", or "-\t-\t<file>"
- * for a binary file, which has no line counts to report.
+ * Parse `git diff --numstat -z` into per-path line counts.
+ *
+ * `-z` terminates each record with NUL instead of a newline, and — the
+ * reason it is used — reports a rename's two paths as their own records
+ * rather than folding them into one display string. Without it git emits
+ * `src/{old.ts => new.ts}`, which contains neither full path, and the
+ * join against name-status silently reported +0 -0 for any file moved
+ * within its own directory.
+ *
+ * A record is `<added>\t<deleted>\t<path>`, or `-\t-\t<path>` for a
+ * binary file, which has no line counts to report. For a rename or copy
+ * the path is empty and the old and new paths follow as the next two
+ * records; both are filed, so either side of the pair finds the counts.
+ *
+ * `-z` also turns off path quoting, so a path arrives raw and may itself
+ * contain a tab — hence everything past the two counts is the path.
  */
 function parseNumstat(stdout: string): Map<string, NumstatEntry> {
   const entries = new Map<string, NumstatEntry>();
-  for (const line of stdout.trim().split('\n')) {
-    if (!line) continue;
-    const parts = line.split('\t');
+  const records = stdout.split('\0');
+  let i = 0;
+  while (i < records.length) {
+    const head = records[i++];
+    if (!head) continue;
+    const parts = head.split('\t');
+    if (parts.length < 3) continue;
     const binary = parts[0] === '-' && parts[1] === '-';
-    // A path may itself contain tabs, so it is everything past the counts.
-    const filename = parts.slice(2).join('\t');
-    entries.set(filename, {
+    const entry: NumstatEntry = {
       additions: binary ? 0 : Number(parts[0]),
       deletions: binary ? 0 : Number(parts[1]),
       binary,
-    });
+    };
+    const inline = parts.slice(2).join('\t');
+    if (inline) {
+      entries.set(inline, entry);
+      continue;
+    }
+    const from = records[i++];
+    const to = records[i++];
+    if (from) entries.set(from, entry);
+    if (to) entries.set(to, entry);
   }
   return entries;
 }
 
-/**
- * The two paths behind numstat's combined rename key, or null if the key
- * is an ordinary path.
- *
- * numstat reports a rename as one display string rather than two paths.
- * When the sides share nothing it is `old => new`, but as soon as they
- * share a prefix or a suffix — which a file moved within its own
- * directory always does — git compacts the differing middle into braces:
- *
- *   src/{old.ts => new.ts}      both sides share `src/`
- *   src/{deep/two.ts => new.ts} the middles span directories
- *   a/{ => b}/file.ts           a side can be empty, when the rename only
- *                               adds or removes a directory level
- *
- * An empty side reassembles into a path with a doubled slash, which
- * matches nothing — but only ever on *one* side, and the caller matches
- * on both, so the other side always carries the join. Collapsing the
- * slash here would be code no test can reach.
- */
-function splitRenameKey(key: string): { from: string; to: string } | null {
-  const braced = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(key);
-  if (braced) {
-    const [, prefix, from, to, suffix] = braced;
-    return { from: `${prefix}${from}${suffix}`, to: `${prefix}${to}${suffix}` };
-  }
-  const plain = key.indexOf(' => ');
-  if (plain === -1) return null;
-  return { from: key.slice(0, plain), to: key.slice(plain + 4) };
-}
-
-/**
- * The counts for a file, given numstat keyed as numstat keys things.
- *
- * A rename's entry is filed under git's combined display string, so it is
- * found by reconstructing the pair that string describes and matching on
- * either side — not by asking whether the string happens to contain the
- * path, which it does not once git compacts it.
- */
+/** The counts for a file. A rename is filed under both of its paths, so
+ *  either side finds it. */
 function lookupStats(
   entries: Map<string, NumstatEntry>,
   filename: string,
   previousFilename: string | undefined
 ): NumstatEntry | undefined {
-  const exact = entries.get(filename);
-  if (exact) return exact;
-
-  for (const [key, val] of entries) {
-    const pair = splitRenameKey(key);
-    if (!pair) continue;
-    if (
-      pair.to === filename ||
-      pair.from === filename ||
-      (previousFilename &&
-        (pair.from === previousFilename || pair.to === previousFilename))
-    ) {
-      return val;
-    }
-  }
-  return undefined;
+  return (
+    entries.get(filename) ??
+    (previousFilename ? entries.get(previousFilename) : undefined)
+  );
 }
 
 /**
- * Where a `--name-status` line's path fields are. A rename or copy carries
- * both the old and new path; every other status carries one.
+ * Join `git diff --name-status -z` output against the per-file numstat.
+ *
+ * Under `-z` the status letter and each path are their own NUL-terminated
+ * record, so a rename or copy is three records and everything else is
+ * two. Nothing is split on tabs, which is what lets a path contain one.
  */
-function splitPaths(parts: string[]): {
-  filename: string;
-  previousFilename: string | undefined;
-} {
-  const statusLetter = parts[0];
-  if (statusLetter.startsWith('R') || statusLetter.startsWith('C')) {
-    return { filename: parts[2], previousFilename: parts[1] };
-  }
-  return { filename: parts[1], previousFilename: undefined };
-}
-
-/** Join `git diff --name-status` output against the per-file numstat. */
 function toDiffFiles(
   stdout: string,
   entries: Map<string, NumstatEntry>
 ): DiffFile[] {
   const files: DiffFile[] = [];
-  for (const line of stdout.trim().split('\n')) {
-    if (!line) continue;
-    const parts = line.split('\t');
-    const { filename, previousFilename } = splitPaths(parts);
+  const records = stdout.split('\0');
+  let i = 0;
+  while (i < records.length) {
+    const status = records[i++];
+    if (!status) continue;
+    const renameOrCopy = status.startsWith('R') || status.startsWith('C');
+    const previousFilename = renameOrCopy ? records[i++] : undefined;
+    const filename = records[i++];
+    if (!filename) continue;
     const stats = lookupStats(entries, filename, previousFilename);
 
     files.push({
       filename,
-      status: mapNameStatus(parts[0]),
+      status: mapNameStatus(status),
       additions: stats?.additions ?? 0,
       deletions: stats?.deletions ?? 0,
       binary: stats?.binary ?? false,
@@ -253,12 +226,12 @@ export async function fetchAllFiles(
   const range = `${targetRef}...${sourceRef}`;
   const { stdout: numstatOut } = await execFile(
     'git',
-    ['diff', '--numstat', range],
+    ['diff', '--numstat', '-z', range],
     { maxBuffer: 10 * 1024 * 1024 }
   );
   const { stdout: nameStatusOut } = await execFile(
     'git',
-    ['diff', '--name-status', range],
+    ['diff', '--name-status', '-z', range],
     { maxBuffer: 10 * 1024 * 1024 }
   );
 

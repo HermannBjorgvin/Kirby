@@ -65,9 +65,9 @@ function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
       'HEAD abc123',
       `branch refs/heads/${branch}`,
       '',
-    ].join('\n')
+    ].join('\0')
   );
-  return resolve(blocks.join('\n'));
+  return resolve(blocks.join('\0'));
 }
 
 beforeEach(() => {
@@ -217,7 +217,7 @@ describe('removeWorktree', () => {
               'HEAD bbb222',
               'detached',
               '',
-            ].join('\n')
+            ].join('\0')
           )
         );
       }
@@ -395,7 +395,7 @@ describe('canRemoveBranch', () => {
     const wtPath = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
     const gitdir = `${process.cwd()}/.git/worktrees/investigate-ci-performance`;
     mockExec.mockResolvedValueOnce(
-      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\n'))
+      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\0'))
     );
     mockReadFileSync.mockImplementation(((p: string) => {
       if (p === `${wtPath}/.git`) return `gitdir: ${gitdir}\n`;
@@ -467,7 +467,7 @@ describe('parseWorktrees', () => {
       'HEAD 789abc',
       'branch refs/heads/fix/bug',
       '',
-    ].join('\n');
+    ].join('\0');
 
     const result = parseWorktrees(output);
     expect(result).toHaveLength(3);
@@ -501,7 +501,7 @@ describe('parseWorktrees', () => {
       'HEAD f6d61737bd',
       'detached',
       '',
-    ].join('\n');
+    ].join('\0');
 
     const result = parseWorktrees(output);
     expect(result).toHaveLength(2);
@@ -514,7 +514,7 @@ describe('parseWorktrees', () => {
 
   it('should handle bare worktrees', () => {
     const output = ['worktree /home/user/repo', 'HEAD abc123', 'bare', ''].join(
-      '\n'
+      '\0'
     );
 
     const result = parseWorktrees(output);
@@ -544,7 +544,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -565,7 +565,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -614,7 +614,7 @@ describe('listWorktrees', () => {
           'HEAD 111222',
           'branch refs/heads/other',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -639,7 +639,7 @@ describe('listWorktrees', () => {
           'HEAD 789abc',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -661,7 +661,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'detached',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
     mockReadFileSync.mockImplementation(((p: string) => {
@@ -687,7 +687,7 @@ describe('listWorktrees', () => {
   it('should recover branch from rebase-apply when rebase-merge missing', async () => {
     const wtPath = `${cwd}/.claude/worktrees/feature-am`;
     mockExec.mockResolvedValueOnce(
-      resolve([`worktree ${wtPath}`, 'HEAD def456', 'detached', ''].join('\n'))
+      resolve([`worktree ${wtPath}`, 'HEAD def456', 'detached', ''].join('\0'))
     );
     mockReadFileSync.mockImplementation(((p: string) => {
       if (p === `${wtPath}/.git`) {
@@ -722,7 +722,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
     mockReadFileSync.mockImplementation(((p: string) => {

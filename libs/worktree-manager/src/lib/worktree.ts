@@ -294,6 +294,11 @@ export async function canRemoveBranch(
 
   // Uncommitted changes
   try {
+    // Deliberately not `-z`: this output is only ever tested for
+    // emptiness, so NUL termination would buy nothing. Add it before
+    // parsing the entries — the newline form renders a rename as
+    // `old -> new` in one field, which is the same trap `--numstat`
+    // set with its brace form (see parseNumstat in @kirby/app-core).
     const { stdout: status } = await exec(
       `git -C "${dir}" status --porcelain`,
       { encoding: 'utf8' }
@@ -325,7 +330,11 @@ export async function canRemoveBranch(
   return { safe: true };
 }
 
-/** List local git branches */
+/** List local git branches.
+ *
+ * No `-z` here: `git branch` has no such flag, and needs none — git
+ * rejects a ref name containing a control character, so a branch name
+ * can never contain the newline this splits on. */
 export async function listBranches(): Promise<string[]> {
   try {
     const { stdout } = await exec("git branch --format='%(refname:short)'", {
@@ -377,13 +386,21 @@ export async function listAllBranches(): Promise<string[]> {
   }
 }
 
-/** Parse `git worktree list --porcelain` output into WorktreeInfo[] */
+/**
+ * Parse `git worktree list --porcelain -z` output into WorktreeInfo[].
+ *
+ * `-z` terminates each attribute with NUL rather than a newline, which
+ * is what makes a worktree path containing one parseable at all — the
+ * newline-delimited form would split such a path across two attributes
+ * and lose the worktree. Blocks are separated by the empty attribute
+ * that terminates each one, so an extra NUL.
+ */
 export function parseWorktrees(output: string): WorktreeInfo[] {
   const results: WorktreeInfo[] = [];
-  const blocks = output.split('\n\n').filter((b) => b.trim().length > 0);
+  const blocks = output.split('\0\0').filter((b) => b.length > 0);
 
   for (const block of blocks) {
-    const lines = block.trim().split('\n');
+    const lines = block.split('\0').filter(Boolean);
     let path = '';
     let branch = '';
     let bare = false;
@@ -463,7 +480,7 @@ export function recoverRebaseBranch(worktreePath: string): string | null {
  */
 export async function listWorktrees(): Promise<WorktreeInfo[]> {
   try {
-    const { stdout } = await exec('git worktree list --porcelain', {
+    const { stdout } = await exec('git worktree list --porcelain -z', {
       encoding: 'utf8',
     });
     const owned = parseWorktrees(stdout).filter(

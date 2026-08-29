@@ -53,8 +53,8 @@ function recorder(handlers: ((c: CallShape) => string | Error | undefined)[]) {
 
 const sourceSha = 'a'.repeat(40);
 const targetSha = 'b'.repeat(40);
-const NUMSTAT = '5\t2\tsrc/foo.ts\n10\t0\tsrc/bar.ts\n';
-const NAME_STATUS = 'M\tsrc/foo.ts\nA\tsrc/bar.ts\n';
+const NUMSTAT = '5\t2\tsrc/foo.ts\0' + '10\t0\tsrc/bar.ts\0';
+const NAME_STATUS = 'M\0src/foo.ts\0' + 'A\0src/bar.ts\0';
 
 function gitHandlers(opts: { localOriginSourceSha?: string | null } = {}) {
   return [
@@ -266,13 +266,15 @@ describe('fetchAllFiles parsing', () => {
     return fetchAllFiles('feature', 'main', undefined);
   }
 
-  it('takes a rename from the third path field and finds its combined numstat key', async () => {
-    // numstat keys the rename by "old => new" while name-status splits the
-    // two apart, so the exact lookup misses and the fallback scan has to
-    // find it. Pins both halves of the join.
+  // Both git calls use `-z`, so a record is NUL-terminated and a rename
+  // carries its two paths as their own records instead of one combined
+  // display string. That removes the whole class of parsing this used to
+  // need: git compacts `src/old.ts -> src/new.ts` into
+  // `src/{old.ts => new.ts}` for humans, and never does under `-z`.
+  it('reads a rename, whose two paths arrive as separate records', async () => {
     const { files } = await parseWith(
-      '3\t1\told.ts => new.ts\n',
-      'R096\told.ts\tnew.ts\n'
+      '3\t1\t\0old.ts\0new.ts\0',
+      'R096\0old.ts\0new.ts\0'
     );
 
     expect(files).toHaveLength(1);
@@ -285,10 +287,26 @@ describe('fetchAllFiles parsing', () => {
     });
   });
 
+  // The case that used to report +0 -0: a file moved within its own
+  // directory is exactly when git compacts the paths in the human format.
+  it('reads a rename that stays inside its own directory', async () => {
+    const { files } = await parseWith(
+      '3\t1\t\0src/old.ts\0src/new.ts\0',
+      'R096\0src/old.ts\0src/new.ts\0'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'src/new.ts',
+      previousFilename: 'src/old.ts',
+      additions: 3,
+      deletions: 1,
+    });
+  });
+
   it('reads a copy the same way as a rename', async () => {
     const { files } = await parseWith(
-      '2\t0\ta.ts => b.ts\n',
-      'C075\ta.ts\tb.ts\n'
+      '2\t0\t\0a.ts\0b.ts\0',
+      'C075\0a.ts\0b.ts\0'
     );
 
     expect(files[0]).toMatchObject({
@@ -300,66 +318,19 @@ describe('fetchAllFiles parsing', () => {
     });
   });
 
-  // Git compacts a rename's two paths into one display string whenever
-  // they share anything, which is most renames — a file moved within its
-  // own directory always does. The reconstructed pair is what the counts
-  // are keyed by, so these are the shapes git actually emits (verified
-  // against a real repo), not invented ones.
-  it('reads the counts when git compacts a rename into brace form', async () => {
+  // `-z` also turns off path quoting, so a path with a tab in it arrives
+  // raw. numstat still separates its counts with tabs, so the path is
+  // everything past the second one — and name-status gives it a record of
+  // its own, where it cannot be confused with the status letter.
+  it('reads a path containing a tab', async () => {
     const { files } = await parseWith(
-      '3\t1\tsrc/{old.ts => new.ts}\n',
-      'R096\tsrc/old.ts\tsrc/new.ts\n'
+      '1\t0\tsrc/we\tird.ts\0',
+      'M\0src/we\tird.ts\0'
     );
 
+    expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({
-      filename: 'src/new.ts',
-      previousFilename: 'src/old.ts',
-      status: 'renamed',
-      additions: 3,
-      deletions: 1,
-    });
-  });
-
-  it('reads the counts when the compacted sides span directories', async () => {
-    const { files } = await parseWith(
-      '1\t0\tsrc/{deep/two.ts => new.ts}\n',
-      'R075\tsrc/deep/two.ts\tsrc/new.ts\n'
-    );
-
-    expect(files[0]).toMatchObject({
-      filename: 'src/new.ts',
-      previousFilename: 'src/deep/two.ts',
-      additions: 1,
-      deletions: 0,
-    });
-  });
-
-  // An empty side reassembles into a doubled slash that matches nothing.
-  // It only ever happens on one side, so these two pin that the *other*
-  // side carries the join — one case per direction.
-  it('reads the counts when a rename only adds a directory level', async () => {
-    const { files } = await parseWith(
-      '1\t0\ta/{ => b}/file.ts\n',
-      'R100\ta/file.ts\ta/b/file.ts\n'
-    );
-
-    expect(files[0]).toMatchObject({
-      filename: 'a/b/file.ts',
-      previousFilename: 'a/file.ts',
-      additions: 1,
-      deletions: 0,
-    });
-  });
-
-  it('reads the counts when a rename removes a directory level', async () => {
-    const { files } = await parseWith(
-      '1\t0\ta/{b => }/file.ts\n',
-      'R075\ta/b/file.ts\ta/file.ts\n'
-    );
-
-    expect(files[0]).toMatchObject({
-      filename: 'a/file.ts',
-      previousFilename: 'a/b/file.ts',
+      filename: 'src/we\tird.ts',
       additions: 1,
       deletions: 0,
     });
@@ -369,8 +340,8 @@ describe('fetchAllFiles parsing', () => {
     // numstat writes "-" for both counts on a binary file, and Number('-')
     // is NaN — which would reach the UI as a blank count.
     const { files } = await parseWith(
-      '-\t-\tassets/logo.png\n',
-      'M\tassets/logo.png\n'
+      '-\t-\tassets/logo.png\0',
+      'M\0assets/logo.png\0'
     );
 
     expect(files[0]).toMatchObject({
@@ -382,7 +353,7 @@ describe('fetchAllFiles parsing', () => {
   });
 
   it('defaults counts to zero when numstat has no entry for the file', async () => {
-    const { files } = await parseWith('', 'A\tsrc/only.ts\n');
+    const { files } = await parseWith('', 'A\0src/only.ts\0');
 
     expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({
@@ -396,8 +367,8 @@ describe('fetchAllFiles parsing', () => {
 
   it('maps each name-status letter to its status', async () => {
     const { files } = await parseWith(
-      '1\t0\ta.ts\n0\t1\tb.ts\n1\t1\tc.ts\n1\t1\td.ts\n',
-      'A\ta.ts\nD\tb.ts\nT\tc.ts\nM\td.ts\n'
+      '1\t0\ta.ts\0' + '0\t1\tb.ts\0' + '1\t1\tc.ts\0' + '1\t1\td.ts\0',
+      'A\0a.ts\0' + 'D\0b.ts\0' + 'T\0c.ts\0' + 'M\0d.ts\0'
     );
 
     expect(files.map((f) => f.status)).toEqual([
