@@ -61,6 +61,9 @@ describe('PtySession', () => {
     session.dispose();
   });
 
+  // The per-test timeout is the assertion's other half: a process that
+  // never exits leaves `exited` pending and vitest fails the test on
+  // time, which is why there is no hand-rolled race here.
   it('dispose kills the process', async () => {
     const session = new PtySession('cat', []);
     const exited = new Promise<void>((resolve) => {
@@ -68,14 +71,9 @@ describe('PtySession', () => {
     });
 
     session.dispose();
-    // Should resolve within a reasonable time
-    await Promise.race([
-      exited,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('process did not exit')), 3000)
-      ),
-    ]);
-  });
+
+    await expect(exited).resolves.toBeUndefined();
+  }, 3000);
 
   it('write after dispose is a no-op', () => {
     const session = new PtySession('cat', []);

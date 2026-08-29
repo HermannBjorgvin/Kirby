@@ -28,6 +28,16 @@ export function lineAnchors(line: DiffLine): string[] {
   return out;
 }
 
+/**
+ * React key identifying a diff line by what it *is* rather than where
+ * it currently sits. Both sides are included because an added and a
+ * removed line can share a number, and the type separates the hunk
+ * headers, which carry no number at all.
+ */
+export function lineKey(line: DiffLine): string {
+  return `${line.type}:${line.oldLine ?? ''}:${line.newLine ?? ''}`;
+}
+
 // ── Folding ──────────────────────────────────────────────────────
 
 export type UnifiedRow =

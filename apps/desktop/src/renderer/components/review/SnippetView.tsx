@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import type { DiffLine } from '@kirby/diff';
+import { lineKey } from '../../lib/diff-model.js';
 import { useFileAnalysis, type LineTokens } from '../../lib/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
@@ -67,7 +68,7 @@ export function SnippetView({
         >
           {rows.slice(firstAnchored, lastAnchored + 1).map(({ line }, k) => (
             <SnippetRow
-              key={firstAnchored + k}
+              key={lineKey(line)}
               line={line}
               tokens={tokens?.[firstAnchored + k]}
             />

@@ -41,8 +41,8 @@ export function ShortcutsDialog({
             <div key={label} className="contents">
               <span className="text-muted-foreground">{label}</span>
               <span className="flex items-center gap-1">
-                {keys.map((k, i) => (
-                  <Kbd key={i}>{k}</Kbd>
+                {keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
                 ))}
               </span>
             </div>

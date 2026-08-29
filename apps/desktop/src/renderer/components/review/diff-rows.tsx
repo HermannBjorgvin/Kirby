@@ -82,7 +82,7 @@ export function LineContent({
     const end = pos + tok.content.length;
     pos = end;
     out.push(
-      <span key={j} style={{ color: tok.color }}>
+      <span key={start} style={{ color: tok.color }}>
         {splitRanges(tok.content, shiftRanges(ranges, start, end), emphasis, j)}
       </span>
     );
@@ -114,10 +114,13 @@ function splitRanges(
   if (!ranges || ranges.length === 0) return text;
   const out: ReactNode[] = [];
   let pos = 0;
-  ranges.forEach((r, i) => {
+  ranges.forEach((r) => {
     if (r.start > pos) out.push(text.slice(pos, r.start));
     out.push(
-      <mark key={`${keyPrefix}-${i}`} className={cn('text-inherit', emphasis)}>
+      <mark
+        key={`${keyPrefix}-${r.start}`}
+        className={cn('text-inherit', emphasis)}
+      >
         {text.slice(r.start, r.end)}
       </mark>
     );

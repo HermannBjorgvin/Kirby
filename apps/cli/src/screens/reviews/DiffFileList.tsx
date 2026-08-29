@@ -140,9 +140,9 @@ export const DiffFileList = memo(function DiffFileList({
             if (item.kind === 'file') {
               return (
                 <Box flexDirection="column">
-                  {item.dirs.map((dir, d) => (
+                  {item.dirs.map((dir) => (
                     <DirRow
-                      key={`d:${d}:${dir.name}`}
+                      key={`d:${dir.depth}:${dir.name}`}
                       name={dir.name}
                       depth={dir.depth}
                     />

@@ -90,9 +90,9 @@ describe('DiffRow — content boundary', () => {
     ];
     const tree = (
       <>
-        {lines.map((l, i) => (
+        {lines.map((l) => (
           <DiffRow
-            key={i}
+            key={l.oldLine}
             line={l}
             highlighted={false}
             language="typescript"
