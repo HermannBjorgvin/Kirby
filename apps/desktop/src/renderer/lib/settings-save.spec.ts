@@ -11,17 +11,21 @@ import { persistedValue, type PendingSave } from './settings-save.js';
  */
 function fieldRow(initial: string) {
   let server = initial;
+  // Stands in for the query's `dataUpdatedAt`, which advances on every
+  // result the query produces, whether or not the value moved.
+  let updatedAt = 1;
   let pending: PendingSave | null = null;
   const writes: string[] = [];
   return {
     /** The settings query came back — our own save, or someone else's. */
     refetch(value: string) {
       server = value;
+      updatedAt += 1;
     },
     /** Blur, Enter, or a select changing. */
     submit(value: string) {
-      if (value === persistedValue(server, pending)) return;
-      pending = { base: server, value };
+      if (value === persistedValue(server, updatedAt, pending)) return;
+      pending = { seenAt: updatedAt, base: server, value };
       writes.push(value);
     },
     writes,
@@ -84,5 +88,47 @@ describe('settings save guard', () => {
     row.refetch('/tmp/from-the-tui');
     row.submit('/tmp/from-the-tui');
     expect(row.writes).toEqual(['/tmp/first']);
+  });
+
+  it('lets go of a save when a result shares its stamp but not its value', () => {
+    // `dataUpdatedAt` is a wall clock, so two results can land inside
+    // the same millisecond and the stamp alone stops discriminating. A
+    // result carrying a value the save was not made against belongs to
+    // somebody else either way.
+    const pending: PendingSave = {
+      seenAt: 1000,
+      base: '/tmp/a',
+      value: '/tmp/b',
+    };
+    expect(persistedValue('/tmp/c', 1000, pending)).toBe('/tmp/c');
+  });
+
+  it('repeats a save the query answered without carrying it', () => {
+    // A fetch already in flight when we wrote resolves reporting the
+    // old value. The query has spoken, so the record is spent and the
+    // still-dirty control writes again. That redundant write is the
+    // price of never republishing a stale value, and is deliberate:
+    // matching on the value instead would keep the record alive past
+    // the point where it can still be told apart from an outside edit.
+    const row = fieldRow('/tmp/a');
+    row.submit('/tmp/b');
+    row.refetch('/tmp/a');
+    row.submit('/tmp/b');
+    expect(row.writes).toEqual(['/tmp/b', '/tmp/b']);
+  });
+
+  it('does not write back a value an outside writer restored after our save landed', () => {
+    // ABA. Disk holds A; we save B; the query catches up and reports B
+    // — our own write landing, the ordinary path. Then the TUI (or a
+    // second window) puts A back and the query reports A. The field now
+    // displays A, and blurring it must not write anything: A is already
+    // what is on disk. Treating our B as still-pending here republishes
+    // it over the outside writer's A.
+    const row = fieldRow('/tmp/a');
+    row.submit('/tmp/b');
+    row.refetch('/tmp/b');
+    row.refetch('/tmp/a');
+    row.submit('/tmp/a');
+    expect(row.writes).toEqual(['/tmp/b']);
   });
 });

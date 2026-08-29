@@ -139,7 +139,11 @@ export function SettingsView() {
                   <AppearanceRows />
                 ) : (
                   (byGroup.get(g.key) ?? []).map((f) => (
-                    <FieldRow key={`${f.key}:${f.label}`} field={f} />
+                    <FieldRow
+                      key={`${f.key}:${f.label}`}
+                      field={f}
+                      updatedAt={view.dataUpdatedAt}
+                    />
                   ))
                 )}
               </div>
@@ -228,19 +232,29 @@ function AppearanceRows() {
 
 const CUSTOM = '__custom__';
 
-function FieldRow({ field }: { field: SettingsFieldView }) {
+function FieldRow({
+  field,
+  updatedAt,
+}: {
+  field: SettingsFieldView;
+  /** `dataUpdatedAt` of the settings query this `field` came from. */
+  updatedAt: number;
+}) {
   const { repo } = useRepo();
   const update = useUpdateSetting(repo.cwd);
   const id = `field-${field.key}-${field.label.replace(/\W+/g, '-')}`;
 
   // The last save made from this row, held only until the settings
-  // query catches up with it — see `persistedValue` for why blurring an
-  // untouched field cannot simply compare against `field.value`.
+  // query answers again — see `persistedValue` for why blurring an
+  // untouched field cannot simply compare against `field.value`, and
+  // why the record retires on the query speaking rather than on the
+  // value it reports.
   const pendingRef = useRef<PendingSave | null>(null);
 
   const save = (value: string, label = field.label) => {
-    if (value === persistedValue(field.value, pendingRef.current)) return;
-    pendingRef.current = { base: field.value, value };
+    if (value === persistedValue(field.value, updatedAt, pendingRef.current))
+      return;
+    pendingRef.current = { seenAt: updatedAt, base: field.value, value };
     update.mutate(
       { ref: { label: field.label, key: field.key }, value },
       {
