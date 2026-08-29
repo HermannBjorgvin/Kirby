@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
 import { contentKey } from './content-key.js';
-import type { CharRange } from './diff-model.js';
+import type { CharRange, SplitCell } from './diff-model.js';
 import {
   analyzeFileInWorker,
   tokenizeCodeInWorker,
@@ -231,4 +231,43 @@ export function useHighlightedCodeBlock(
   return tag ? data ?? null : null;
 }
 
-export type { CharRange };
+/** What the highlighter has to say about one rendered line. */
+export interface LineHighlight {
+  /** Shiki tokens, absent for a file it could not tokenize. */
+  tokens: LineTokens | undefined;
+  /** Word-diff ranges, absent for a line that is not part of a pair. */
+  ranges: CharRange[] | undefined;
+}
+
+/** Shared "the highlighter has nothing" answer, so rows that render
+ *  before their analysis arrives keep a stable prop identity. */
+const NO_HIGHLIGHT: LineHighlight = { tokens: undefined, ranges: undefined };
+
+/**
+ * The analysis for one line of a file, by its index in that file's
+ * `DiffLine[]`. Absent at every step: the file may have no analysis
+ * yet, a file the highlighter could not tokenize has `tokens: null`,
+ * and only the lines of a change pair have word ranges.
+ */
+export function lineHighlight(
+  analysis: FileAnalysis | undefined,
+  index: number
+): LineHighlight {
+  if (!analysis) return NO_HIGHLIGHT;
+  return {
+    tokens: analysis.tokens?.[index],
+    ranges: analysis.wordRanges.get(index),
+  };
+}
+
+/** The same for a split-view cell, which is null on the blank side of
+ *  an unpaired change. */
+export function cellHighlight(
+  analysis: FileAnalysis | undefined,
+  cell: SplitCell | null
+): LineHighlight {
+  if (!cell) return NO_HIGHLIGHT;
+  return lineHighlight(analysis, cell.index);
+}
+
+export type { CharRange, FileAnalysis };

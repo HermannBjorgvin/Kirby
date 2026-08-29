@@ -4,6 +4,7 @@ import {
   CodeIcon,
   CopyIcon,
   ExternalLinkIcon,
+  GitBranchIcon,
   GitPullRequestIcon,
   MessageSquareIcon,
   XCircleIcon,
@@ -141,6 +142,34 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
           <ExternalLinkIcon /> Open
         </Button>
       </Tip>
+    </header>
+  );
+}
+
+/** Header for a worktree tab without a PR: branch → base + files count. */
+export function BranchHeader({
+  branch,
+  baseBranch,
+  fileCount,
+}: {
+  branch: string;
+  baseBranch: string;
+  fileCount: number;
+}) {
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
+      <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="flex min-w-0 shrink items-center gap-2">
+        <span className="truncate font-medium">{branch}</span>
+        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
+          diff vs {baseBranch}
+        </span>
+      </span>
+      <div className="flex-1" />
+      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+        {fileCount} file{fileCount === 1 ? '' : 's'} changed
+      </span>
+      <OpenInEditorButton branch={branch} />
     </header>
   );
 }

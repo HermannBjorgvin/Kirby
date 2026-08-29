@@ -1,11 +1,9 @@
 import {
   CheckCircle2Icon,
-  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CornerDownRightIcon,
   MessageSquareIcon,
-  RotateCcwIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -15,12 +13,16 @@ import type {
 } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useReply, useSetResolved } from '../../lib/queries.js';
+import {
+  firstNonEmptyLine,
+  threadExpanded,
+  threadLocation,
+} from '../../lib/thread-model.js';
 import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';
-import { Button } from '../ui/button.js';
-import { Textarea } from '../ui/textarea.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
+import { ThreadFooter } from './ThreadFooter.js';
 
 /**
  * One review thread. The root comment and every reply render as
@@ -53,7 +55,7 @@ export function ThreadCard({
     setPrevFocused(focused);
     if (focused) setOverride(null);
   }
-  const expanded = override ?? (focused || !thread.isResolved);
+  const expanded = threadExpanded(override, focused, thread.isResolved);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,12 +94,7 @@ export function ThreadCard({
       { onError: (e) => toast.error(errorMessage(e)) }
     );
 
-  const location =
-    thread.file != null
-      ? `${thread.file}${
-          thread.lineStart != null ? `:${thread.lineStart}` : ''
-        }`
-      : null;
+  const location = threadLocation(thread);
 
   return (
     <div
@@ -109,50 +106,14 @@ export function ThreadCard({
         focused && 'ring-2 ring-primary/50'
       )}
     >
-      {/* Summary header */}
-      <div
-        className={cn(
-          'flex items-center gap-2 px-3 py-1.5 text-sm',
-          thread.isResolved ? 'bg-success/5' : 'bg-muted/40',
-          expanded && 'border-b border-border'
-        )}
-      >
-        <button
-          onClick={() => setOverride(!expanded)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          aria-expanded={expanded}
-        >
-          {expanded ? (
-            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="shrink-0 font-medium">{root.author}</span>
-          {showLocation && location && (
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {location}
-            </span>
-          )}
-          {!expanded && (
-            <span className="min-w-0 truncate text-muted-foreground">
-              — {root.body.split('\n').find((l) => l.trim()) ?? ''}
-            </span>
-          )}
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-            {thread.comments.length} comment
-            {thread.comments.length === 1 ? '' : 's'}
-          </span>
-        </button>
-        <span className="flex shrink-0 items-center gap-1">
-          {thread.isOutdated && <Badge variant="outline">Outdated</Badge>}
-          {thread.isResolved && (
-            <Badge variant="success">
-              <CheckCircle2Icon /> Resolved
-            </Badge>
-          )}
-        </span>
-      </div>
+      <ThreadSummary
+        thread={thread}
+        author={root.author}
+        preview={root.body}
+        location={showLocation ? location : null}
+        expanded={expanded}
+        onToggle={() => setOverride(!expanded)}
+      />
 
       {expanded && (
         <>
@@ -163,81 +124,87 @@ export function ThreadCard({
             ))}
           </div>
 
-          {/* Footer: reply + resolve */}
-          <div className="flex items-start gap-2 border-t border-border bg-muted/20 px-3 py-2">
-            {composing ? (
-              <div className="flex flex-1 flex-col gap-2">
-                <Textarea
-                  autoFocus
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      send();
-                    }
-                    if (e.key === 'Escape') setComposing(false);
-                  }}
-                  placeholder="Write a reply… Markdown supported. ⌘/Ctrl+Enter to send."
-                  className="min-h-20 bg-background"
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setComposing(false)}
-                  >
-                    Cancel
-                  </Button>
-                  {thread.canResolve && !thread.isResolved && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => send(true)}
-                      disabled={reply.isPending || !draft.trim()}
-                    >
-                      <CheckIcon /> Reply & resolve
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={() => send()}
-                    disabled={reply.isPending || !draft.trim()}
-                  >
-                    {reply.isPending ? 'Sending…' : 'Reply'}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setComposing(true)}
-                className="flex h-7 flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-sm text-muted-foreground hover:border-ring"
-              >
-                <CornerDownRightIcon className="size-3.5" />
-                Reply…
-              </button>
-            )}
-            {thread.canResolve && !composing && (
-              <Button
-                variant={thread.isResolved ? 'ghost' : 'outline'}
-                size="sm"
-                onClick={toggleResolved}
-                disabled={resolve.isPending}
-              >
-                {thread.isResolved ? (
-                  <>
-                    <RotateCcwIcon /> Reopen
-                  </>
-                ) : (
-                  <>
-                    <CheckIcon /> Resolve
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          <ThreadFooter
+            canResolve={thread.canResolve}
+            isResolved={thread.isResolved}
+            composing={composing}
+            setComposing={setComposing}
+            draft={draft}
+            setDraft={setDraft}
+            sending={reply.isPending}
+            resolving={resolve.isPending}
+            onSend={send}
+            onToggleResolved={toggleResolved}
+          />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The card's collapsed-state row: disclosure, author, location, a
+ * one-line preview while closed, and the outdated/resolved badges.
+ */
+function ThreadSummary({
+  thread,
+  author,
+  preview,
+  location,
+  expanded,
+  onToggle,
+}: {
+  thread: RemoteCommentThread;
+  author: string;
+  preview: string;
+  /** Already null when the caller does not want it shown. */
+  location: string | null;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-3 py-1.5 text-sm',
+        thread.isResolved ? 'bg-success/5' : 'bg-muted/40',
+        expanded && 'border-b border-border'
+      )}
+    >
+      <button
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        aria-expanded={expanded}
+      >
+        {expanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 font-medium">{author}</span>
+        {location && (
+          <span className="truncate font-mono text-xs text-muted-foreground">
+            {location}
+          </span>
+        )}
+        {!expanded && (
+          <span className="min-w-0 truncate text-muted-foreground">
+            — {firstNonEmptyLine(preview)}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+          {thread.comments.length} comment
+          {thread.comments.length === 1 ? '' : 's'}
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-1">
+        {thread.isOutdated && <Badge variant="outline">Outdated</Badge>}
+        {thread.isResolved && (
+          <Badge variant="success">
+            <CheckCircle2Icon /> Resolved
+          </Badge>
+        )}
+      </span>
     </div>
   );
 }

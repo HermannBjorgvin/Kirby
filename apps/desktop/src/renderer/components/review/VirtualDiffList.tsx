@@ -20,7 +20,11 @@ import {
   type FileDisplayState,
   type FlatRow,
 } from '../../lib/diff-virtual.js';
-import { useFileAnalyses } from '../../lib/highlight.js';
+import {
+  cellHighlight,
+  lineHighlight,
+  useFileAnalyses,
+} from '../../lib/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { CommentBlock, OrphanBlock } from './CommentBlock.js';
 import { ConversationPanel } from './ConversationPanel.js';
@@ -208,53 +212,45 @@ export function VirtualDiffList({
         );
       case 'unified': {
         const line = linesByFile.get(row.file)![row.index];
-        const analysis = analyses.get(row.file);
+        const hl = lineHighlight(analyses.get(row.file), row.index);
         return (
           <UnifiedRow
             line={line}
-            tokens={analysis?.tokens?.[row.index]}
-            ranges={analysis?.wordRanges.get(row.index)}
+            tokens={hl.tokens}
+            ranges={hl.ranges}
             wrap={options.wrap}
           />
         );
       }
       case 'split-context': {
         const line = linesByFile.get(row.file)![row.index];
-        const analysis = analyses.get(row.file);
+        const { tokens } = lineHighlight(analyses.get(row.file), row.index);
         const cell = { index: row.index, line };
         return (
           <div className="grid grid-cols-2">
-            <SplitCell
-              cell={cell}
-              tokens={analysis?.tokens?.[row.index]}
-              side="L"
-              wrap
-            />
-            <SplitCell
-              cell={cell}
-              tokens={analysis?.tokens?.[row.index]}
-              side="R"
-              wrap
-            />
+            <SplitCell cell={cell} tokens={tokens} side="L" wrap />
+            <SplitCell cell={cell} tokens={tokens} side="R" wrap />
           </div>
         );
       }
       case 'split-pair': {
         const analysis = analyses.get(row.file);
         const { left, right } = row.row;
+        const hlLeft = cellHighlight(analysis, left);
+        const hlRight = cellHighlight(analysis, right);
         return (
           <div className="grid grid-cols-2">
             <SplitCell
               cell={left}
-              tokens={left ? analysis?.tokens?.[left.index] : undefined}
-              ranges={left ? analysis?.wordRanges.get(left.index) : undefined}
+              tokens={hlLeft.tokens}
+              ranges={hlLeft.ranges}
               side="L"
               wrap
             />
             <SplitCell
               cell={right}
-              tokens={right ? analysis?.tokens?.[right.index] : undefined}
-              ranges={right ? analysis?.wordRanges.get(right.index) : undefined}
+              tokens={hlRight.tokens}
+              ranges={hlRight.ranges}
               side="R"
               wrap
             />
