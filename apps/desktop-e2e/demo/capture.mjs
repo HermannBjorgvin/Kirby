@@ -12,6 +12,9 @@
  * Output lands in docs/media/.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { chromium } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -228,6 +231,156 @@ async function park(page) {
   await page.mouse.move(DIP.width * 0.55, DIP.height * 0.45, { steps: 20 });
 }
 
+// ── The terminal UI ──────────────────────────────────────────────
+//
+// The TUI is an Ink app in a PTY, so there is no window to record. It
+// is driven through the same bridge the cli-e2e suite uses: the wterm
+// host spawns Kirby on a PTY and streams it to a browser page that is
+// nothing but a full-bleed terminal. Chromium runs in app mode (no
+// tabs, no toolbar, no scrollbars), so the recording is the terminal
+// and nothing else.
+
+const TUI_PORT = 5178;
+const TUI_ORIGIN = `http://localhost:${TUI_PORT}`;
+
+/** Environment for a browser that must render on our Xvfb display. */
+function browserEnv() {
+  const env = { ...process.env, DISPLAY };
+  delete env.WAYLAND_DISPLAY;
+  return env;
+}
+
+async function startWtermHost() {
+  const host = spawn(
+    'node',
+    [join(ROOT, 'apps', 'cli-wterm-host', 'dist', 'main.js')],
+    { cwd: ROOT, env: { ...process.env, PORT: String(TUI_PORT) } }
+  );
+  host.stdout?.on('data', () => undefined);
+  host.stderr?.on('data', (d) => process.stderr.write(`[wterm] ${d}`));
+  // Wait for the port rather than a fixed sleep.
+  for (let i = 0; i < 100; i++) {
+    try {
+      await fetch(TUI_ORIGIN, { method: 'HEAD' });
+      return host;
+    } catch {
+      await sleep(100);
+    }
+  }
+  host.kill('SIGTERM');
+  throw new Error('wterm host did not come up');
+}
+
+/**
+ * Spawn Kirby on the host's PTY, then open it in a chrome-less browser
+ * sized to the terminal grid.
+ */
+async function launchTui(scenario, { cols = 132, rows = 34 } = {}) {
+  const res = await fetch(`${TUI_ORIGIN}/spawn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repoPath: scenario.repo,
+      homeDir: scenario.home,
+      cols,
+      rows,
+      env: { ...scenario.env, TMUX_TMPDIR: scenario.home },
+    }),
+  });
+  if (!res.ok) throw new Error(`/spawn failed: ${res.status}`);
+
+  // A persistent context, because that is the only launch Playwright
+  // attaches to an `--app` window: `chromium.launch` opens its own
+  // about:blank and reports zero contexts for the app one.
+  const ctx = await chromium.launchPersistentContext(
+    mkdtempSync(join(tmpdir(), 'kirby-demo-chrome-')),
+    {
+      headless: false,
+      // Same trap as the Electron fixture: Chromium talks to the
+      // compositor through WAYLAND_DISPLAY and ignores the X display
+      // Xvfb hands it, so the window opens on the developer's real
+      // desktop and the recording is a black screen. Drop the variable
+      // and pin ozone to x11.
+      env: browserEnv(),
+      viewport: null,
+      args: [
+        `--app=${TUI_ORIGIN}`,
+        '--ozone-platform=x11',
+        `--window-size=${DIP.width},${DIP.height}`,
+        '--window-position=0,0',
+        '--force-device-scale-factor=2',
+        '--hide-scrollbars',
+        '--no-first-run',
+        '--disable-infobars',
+      ],
+    }
+  );
+  const page = ctx.pages()[0];
+  if (!page) throw new Error('the app window never opened');
+  currentPage = page;
+  await page.waitForLoadState('domcontentloaded');
+  // Kirby has painted its first frame once its own name is on screen.
+  await page
+    .getByText('Kirby')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 });
+  return { browser: ctx, page };
+}
+
+/** The TUI takes keys, not clicks — type at a human pace. */
+async function keys(page, seq, { delay = 260 } = {}) {
+  for (const k of seq) {
+    await page.keyboard.press(k);
+    await sleep(delay);
+  }
+}
+
+async function demoTui(scenario) {
+  const host = await startWtermHost();
+  let browser;
+  try {
+    ({ browser } = await launchTui(scenario));
+    const page = currentPage;
+    await sleep(1200);
+    const rec = startRecording('tui');
+    await sleep(1200);
+
+    // Down the sidebar and back up: a worktree, then the pull
+    // requests with their CI and review state, then the review queue.
+    // The rows carry the same two axes the desktop's circles do, spelled
+    // out in the legend at the bottom left.
+    await keys(page, ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown'], {
+      delay: 850,
+    });
+    await sleep(1000);
+    // Back up to the pull request with review comments on it.
+    await keys(page, ['ArrowUp', 'ArrowUp', 'ArrowUp'], { delay: 700 });
+    await sleep(1300);
+
+    // Its changed files, then the diff itself, with the reviewers'
+    // threads inline against the code they are about.
+    await page.keyboard.press('d');
+    await sleep(2200);
+    await page.keyboard.press('Enter');
+    await sleep(2200);
+    // On to the file the reviewers actually commented on — their
+    // threads render inline, against the lines they are about.
+    await page.keyboard.press('ArrowRight');
+    await sleep(2200);
+    await keys(page, ['j', 'j', 'j', 'j', 'j', 'j'], { delay: 420 });
+    await sleep(3200);
+
+    await rec.stop();
+    toGif('tui');
+  } finally {
+    await browser?.close().catch(() => undefined);
+    await fetch(`${TUI_ORIGIN}/kill`, { method: 'POST' }).catch(
+      () => undefined
+    );
+    host.kill('SIGTERM');
+  }
+}
+
 // ── Demos ────────────────────────────────────────────────────────
 
 async function openPr(page, title) {
@@ -283,6 +436,18 @@ async function demoWorktrees(scenario) {
   await sleep(600);
   const rec = startRecording('worktrees');
   await sleep(700);
+
+  // Open on the sidebar's status column. Each pull request's circle
+  // carries both axes — the build and the reviewers — and its tooltip
+  // says which one is holding the row up.
+  const failing = page
+    .locator('aside')
+    .getByRole('button', { name: /Retry transient/ });
+  await glide(page, failing.locator('[data-slot="tooltip-trigger"]').first(), {
+    dwell: 2600,
+  });
+  await park(page);
+  await sleep(600);
 
   await page.keyboard.press('Control+k');
   const input = page.getByPlaceholder('Branch name, pull request, or command…');
@@ -445,6 +610,7 @@ const demos = {
   worktrees: demoWorktrees,
   review: demoReview,
   plan: demoPlan,
+  tui: demoTui,
 };
 const picked =
   which === 'all' ? Object.keys(demos) : which.split(',').filter(Boolean);

@@ -86,9 +86,11 @@ _built_ app under a dedicated Xvfb display at 2x scale, records with
 `ffmpeg -f x11grab` and writes the GIFs and stills in `docs/media/`. It
 reuses the fake `gh` below for pull requests, plus a demo agent whose
 output is paced to look like work rather than to be asserted against,
-so a capture needs no token, no network and no real agent. Recordings
-land in the gitignored `docs/media/raw/`; a failed take leaves the
-frame it died on there.
+so a capture needs no token, no network and no real agent. The TUI demo
+records through the same wterm bridge `cli-e2e` uses, since an Ink app
+on a PTY has no window to grab, and `theme-slider.py` composites the two
+hero stills into the light/dark wipe. Recordings land in the gitignored
+`docs/media/raw/`; a failed take leaves the frame it died on there.
 
 **A fake `gh` makes pull requests exist offline.** The GitHub provider
 reaches GitHub only by running the `gh` CLI, so `setup/fake-gh.ts` puts

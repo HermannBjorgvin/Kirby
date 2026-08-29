@@ -177,6 +177,17 @@ export function buildScenario() {
     git(path, ['commit', '-q', '-m', `feat: ${branch}`]);
   };
 
+  /** A branch with a commit but no worktree: a pull request you have
+   *  not checked out yet. */
+  const branchOnly = (branch, mutate) => {
+    const path = join(repo, '.claude', 'tmp-' + branch);
+    git(repo, ['worktree', 'add', '-q', path, '-b', branch]);
+    mutate(path);
+    git(path, ['add', '.']);
+    git(path, ['commit', '-q', '-m', `feat: ${branch}`]);
+    git(repo, ['worktree', 'remove', '--force', path]);
+  };
+
   worktree('command-palette', (p) => {
     writeFileSync(join(p, 'src', 'palette.ts'), PALETTE_PR);
     writeFileSync(join(p, 'src', 'keyboard.ts'), KEYBOARD_PR);
@@ -184,6 +195,28 @@ export function buildScenario() {
   worktree('session-restore', (p) => {
     writeFileSync(join(p, 'src', 'session.ts'), SESSION_PR);
   });
+  // Two pull requests with nothing checked out, purely so the sidebar
+  // shows what CI and review state look like: one whose build is
+  // failing, one that is approved and green.
+  branchOnly('retry-backoff', (p) => {
+    writeFileSync(
+      join(p, 'src', 'retry.ts'),
+      `export async function retry<T>(fn: () => Promise<T>, times = 3) {\n` +
+        `  for (let i = 0; ; i++) {\n` +
+        `    try {\n      return await fn();\n    } catch (err) {\n` +
+        `      if (i >= times) throw err;\n` +
+        `      await new Promise((r) => setTimeout(r, 2 ** i * 100));\n` +
+        `    }\n  }\n}\n`
+    );
+  });
+  branchOnly('keyboard-nav', (p) => {
+    writeFileSync(
+      join(p, 'src', 'focus.ts'),
+      `export function focusNext(items: HTMLElement[], from: number) {\n` +
+        `  items[(from + 1) % items.length]?.focus();\n}\n`
+    );
+  });
+
   // A PR-less worktree, so the sidebar shows its Worktrees section.
   worktree('perf-flamegraph', (p) => {
     writeFileSync(
@@ -351,6 +384,32 @@ function github() {
             createdAt: hoursAgo(5),
           },
         ],
+      },
+      {
+        number: 124,
+        title: 'Retry transient network failures with backoff',
+        headRefName: 'retry-backoff',
+        baseRefName: 'main',
+        author: 'hermannb',
+        // Red in the sidebar: a failing build escalates a row whatever
+        // the reviewers think of it.
+        rollup: 'FAILURE',
+        body: 'Exponential backoff around the transient failures.',
+        reviews: [{ author: 'marcusv', state: 'APPROVED' }],
+        threads: [],
+      },
+      {
+        number: 119,
+        title: 'Roving tabindex for the toolbar',
+        headRefName: 'keyboard-nav',
+        baseRefName: 'main',
+        author: 'hermannb',
+        // Green and filled: CI passed and every reviewer approved, which
+        // is the only combination that reads as ready to merge.
+        rollup: 'SUCCESS',
+        body: 'Arrow keys move focus within the toolbar; Tab leaves it.',
+        reviews: [{ author: 'sofia-codes', state: 'APPROVED' }],
+        threads: [],
       },
       {
         number: 131,

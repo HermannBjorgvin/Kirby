@@ -28,7 +28,7 @@ Then run `kirby-desktop` or `kirby` from any project directory.
 ![Creating a branch from the command palette, which opens a worktree and a tab, then launching an agent in it](docs/media/worktrees.gif)
 
 - **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session. Spin them up, switch between them, and tear them down without stashing or disturbing your main checkout. Built for monorepos where several features are in progress at the same time.
-- **PR status next to every worktree** - the sidebar shows each branch's pull request state inline: open, draft, or merged, CI result, review status, and conflict count against the base. Most worktree tools stop at the branch name; Kirby tells you where the branch actually stands.
+- **PR status next to every worktree** - the sidebar shows each branch's pull request state inline: open, draft, or merged, CI result, review status, and conflict count against the base. One circle carries both axes — colour is whatever is holding the request up, and it only fills in when CI has passed _and_ everyone has approved — so a failing build reads red at a glance and a ready-to-merge branch reads green. Most worktree tools stop at the branch name; Kirby tells you where the branch actually stands.
 - **GitHub and Azure DevOps** - both supported today. Support for other providers can be added via pull request.
 - **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and rebases onto the base with one key.
 
@@ -52,13 +52,19 @@ Browse a PR's files and diffs, read comment threads, reply, and resolve or reope
 
 - **Pick your agent** - Claude, Codex, Gemini, Copilot, or OpenCode, configurable per project.
 - **Customizable keybindings** - Normie and Vim presets out of the box, remappable from the Controls panel.
-- **Light and dark** - the desktop follows your system theme, or pin one. (The screenshot at the top of this page is already showing you yours.)
+- **Light and dark** - the desktop follows your system theme, or pin one.
+
+![The review workspace wiped between the dark and light themes](docs/media/theme.gif)
 
 > Kirby is early-stage software. It works well enough that we rely on it every day, but expect rough edges and breaking changes.
 
 ## The terminal UI
 
-Everything above except the desktop-only chrome is in the TUI too — same core, same config, same worktrees. The sidebar lists your branches with their PR status and lets you start an agent session and worktree from any of them.
+The desktop app is where most of the work goes now, but Kirby runs just as well as a TUI — same core, same config, same worktrees, and it will happily share them with the desktop. If you live in a terminal or work over SSH, `kirby` is the whole thing without a window.
+
+![The Kirby TUI: moving down the sidebar past worktrees and pull requests with their CI and review state, opening a pull request's changed files, and reading the diff with reviewers' threads inline](docs/media/tui.gif)
+
+Everything in the features above is here too: worktree sessions, PR status with CI and approvals, the diff with comment threads inline, agent-drafted reviews, and the same add-to-plan cart (`a` on a comment). The split, word-level and folded diffs are desktop-only.
 
 <img alt="Kirby's terminal UI, with the branch sidebar on the left and an agent session on the right" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
 
