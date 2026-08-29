@@ -1,4 +1,4 @@
-import { GitBranchIcon, PanelLeftOpenIcon } from 'lucide-react';
+import { PanelLeftOpenIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Group,
@@ -8,10 +8,6 @@ import {
 import { toast } from 'sonner';
 import { type DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type {
-  RemoteCommentThread,
-  ReviewComment,
-} from '../../../host/contract.js';
 import { useDiffOptions } from '../../lib/diff-options.js';
 import {
   useDiff,
@@ -22,20 +18,28 @@ import {
   useWorktreeDiff,
 } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { cn, errorMessage } from '../../lib/utils.js';
-import { SessionTerminal } from '../terminal/SessionTerminal.js';
+import {
+  buildCommentRows,
+  buildFileEntries,
+  diffIsPending,
+  groupDraftsByFile,
+  groupThreadsByFile,
+  navIndexOf,
+  resolveMode,
+  stepComment,
+  unpostedDrafts,
+  visibleComments,
+  type Mode,
+} from '../../lib/review-model.js';
+import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
+import { ContentPane } from './ContentPane.js';
 import { type CommentListItem } from './CommentsList.js';
-import { DiffPane } from './DiffPane.js';
 import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { type FileEntry } from './FileTree.js';
-import { OverviewPane } from './OverviewPane.js';
-import { OpenInEditorButton, PrHeader } from './PrHeader.js';
+import { BranchHeader, PrHeader } from './PrHeader.js';
 import { ReviewRail } from './ReviewRail.js';
-import { ReviewStepper } from './ReviewStepper.js';
-
-type Mode = 'diff' | 'agent' | 'review' | 'overview';
 
 /** Shared empty parse, so "no files yet" keeps a stable identity and
  *  the derived lists below are not rebuilt on every render. */
@@ -48,6 +52,9 @@ const NO_FILES: [string, DiffLine[]][] = [];
  * selecting the agent shows its terminal (which stays mounted so its
  * scrollback survives). The diff's own toolbar lives inside the diff
  * pane, so it's gone while the terminal is showing.
+ *
+ * What to show is decided in `lib/review-model.ts`; this component
+ * wires that to the queries, the refs and the markup.
  */
 export function PrWorkspace({
   pr,
@@ -121,8 +128,7 @@ export function PrWorkspace({
   // data for its key and the viewer shows no files, never the old ones.
   const parsed = useParsedDiff(diff.data);
   const files = parsed.data ?? NO_FILES;
-  const diffPending =
-    diff.isLoading || (diff.data != null && parsed.data === undefined);
+  const diffPending = diffIsPending(diff.isLoading, diff.data, parsed.data);
   const inlineThreads = useMemo(
     () => comments.data?.threads ?? [],
     [comments.data]
@@ -132,23 +138,14 @@ export function PrWorkspace({
     [comments.data]
   );
   const drafts = useMemo(
-    () => (draftsQuery.data ?? []).filter((d) => d.status !== 'posted'),
+    () => unpostedDrafts(draftsQuery.data ?? []),
     [draftsQuery.data]
   );
-  const draftsByFile = useMemo(() => {
-    const map = new Map<string, ReviewComment[]>();
-    for (const d of drafts)
-      (map.get(d.file) ?? map.set(d.file, []).get(d.file)!).push(d);
-    return map;
-  }, [drafts]);
-  const threadsByFile = useMemo(() => {
-    const map = new Map<string, RemoteCommentThread[]>();
-    for (const t of inlineThreads) {
-      if (t.file == null) continue;
-      (map.get(t.file) ?? map.set(t.file, []).get(t.file)!).push(t);
-    }
-    return map;
-  }, [inlineThreads]);
+  const draftsByFile = useMemo(() => groupDraftsByFile(drafts), [drafts]);
+  const threadsByFile = useMemo(
+    () => groupThreadsByFile(inlineThreads),
+    [inlineThreads]
+  );
 
   const fileOrder = useMemo(
     () => new Map(files.map(([f], i) => [f, i])),
@@ -157,26 +154,14 @@ export function PrWorkspace({
   const filesByName = useMemo(() => new Map(files), [files]);
 
   const hasDrafts = drafts.length > 0;
-  const effMode: Mode =
-    mode === 'agent' && sessionName
-      ? 'agent'
-      : mode === 'review' && hasDrafts
-      ? 'review'
-      : mode === 'overview' && pr
-      ? 'overview'
-      : 'diff';
+  const effMode = resolveMode(mode, {
+    hasSession: Boolean(sessionName),
+    hasDrafts,
+    hasPr: pr != null,
+  });
 
   const entries = useMemo<FileEntry[]>(
-    () =>
-      files.map(([filename, lines]) => ({
-        path: filename,
-        additions: lines.filter((l) => l.type === 'add').length,
-        deletions: lines.filter((l) => l.type === 'remove').length,
-        comments: (threadsByFile.get(filename) ?? []).filter(
-          (t) => !t.isResolved
-        ).length,
-        drafts: (draftsByFile.get(filename) ?? []).length,
-      })),
+    () => buildFileEntries(files, threadsByFile, draftsByFile),
     [files, threadsByFile, draftsByFile]
   );
 
@@ -190,76 +175,17 @@ export function PrWorkspace({
   // first, then per file [threads + drafts] by line. Powers both the
   // sidebar Comments list and the diff toolbar's prev/next nav, so both
   // move between remote comments AND agent drafts.
-  const allCommentItems = useMemo<CommentListItem[]>(() => {
-    const order = new Map(files.map(([f], i) => [f, i]));
-    type Row = CommentListItem & {
-      file: string | null;
-      line: number;
-      fileRank: number;
-    };
-    const rows: Row[] = [];
-    for (const t of general) {
-      const root = t.comments[0];
-      rows.push({
-        id: t.id,
-        kind: 'thread',
-        author: root?.author ?? '',
-        where: 'Conversation',
-        preview: root?.body ?? '',
-        resolved: t.isResolved,
-        file: null,
-        line: 0,
-        fileRank: -1,
-      });
-    }
-    for (const t of inlineThreads) {
-      const root = t.comments[0];
-      rows.push({
-        id: t.id,
-        kind: 'thread',
-        author: root?.author ?? '',
-        where: `${t.file?.split('/').pop() ?? ''}${
-          t.lineStart != null ? `:${t.lineStart}` : ''
-        }`,
-        preview: root?.body ?? '',
-        resolved: t.isResolved,
-        file: t.file,
-        line: t.lineStart ?? 0,
-        fileRank: order.get(t.file ?? '') ?? Number.MAX_SAFE_INTEGER,
-      });
-    }
-    for (const d of drafts) {
-      rows.push({
-        id: d.id,
-        kind: 'draft',
-        author: 'Draft',
-        where: `${d.file.split('/').pop()}:${d.lineStart}`,
-        preview: d.body,
-        resolved: false,
-        severity: d.severity,
-        file: d.file,
-        line: d.lineStart,
-        fileRank: order.get(d.file) ?? Number.MAX_SAFE_INTEGER,
-      });
-    }
-    rows.sort((a, b) => {
-      const ga = a.file == null ? 0 : 1;
-      const gb = b.file == null ? 0 : 1;
-      if (ga !== gb) return ga - gb;
-      if (a.fileRank !== b.fileRank) return a.fileRank - b.fileRank;
-      return a.line - b.line;
-    });
-    return rows;
-  }, [files, general, inlineThreads, drafts]);
+  const allCommentItems = useMemo(
+    () => buildCommentRows(files, general, inlineThreads, drafts),
+    [files, general, inlineThreads, drafts]
+  );
 
   // One filtered list for everything that walks comments: the rail's
   // Comments list, and the toolbar's prev/next. Hiding resolved threads
   // in the diff while still listing them in the rail — and letting nav
   // jump to one that is not rendered — was the inconsistency here.
-  const commentItems = options.hideResolved
-    ? allCommentItems.filter((i) => !i.resolved)
-    : allCommentItems;
-  const navIndex = commentItems.findIndex((i) => i.id === focusThreadId);
+  const commentItems = visibleComments(allCommentItems, options.hideResolved);
+  const navIndex = navIndexOf(commentItems, focusThreadId);
 
   // Scroll to any comment or draft by id; falls back to the file. Goes
   // through the virtual list's imperative handle — the target row may
@@ -278,17 +204,13 @@ export function PrWorkspace({
   const jumpToItem = useCallback(
     (item: CommentListItem) => {
       const row = commentItems.find((r) => r.id === item.id);
-      jumpToId(item.id, (row as { file?: string | null })?.file ?? null);
+      jumpToId(item.id, row?.file ?? null);
     },
     [commentItems, jumpToId]
   );
   const step = (delta: number) => {
-    if (commentItems.length === 0) return;
-    const next =
-      navIndex < 0
-        ? 0
-        : (navIndex + delta + commentItems.length) % commentItems.length;
-    const target = commentItems[next] as { id: string; file?: string | null };
+    const target = stepComment(commentItems, navIndex, delta);
+    if (!target) return;
     jumpToId(target.id, target.file ?? null);
   };
 
@@ -372,109 +294,39 @@ export function PrWorkspace({
           )}
 
           <Panel id="review-content" minSize="30%" className="min-w-0">
-            <div className="relative h-full min-h-0">
-              {sessionName && (
-                <div
-                  className={cn(
-                    'absolute inset-0',
-                    effMode !== 'agent' && 'invisible'
-                  )}
-                >
-                  <SessionTerminal
-                    name={sessionName}
-                    active={active && effMode === 'agent'}
-                  />
-                </div>
-              )}
-              {hasDrafts && (
-                <div
-                  className={cn(
-                    'absolute inset-0',
-                    effMode !== 'review' && 'invisible'
-                  )}
-                >
-                  {effMode === 'review' && (
-                    <ReviewStepper
-                      prId={prId}
-                      headSha={pr?.headSha}
-                      drafts={drafts}
-                      filesByName={filesByName}
-                      fileOrder={fileOrder}
-                      active={active}
-                      onExit={() => setMode('diff')}
-                      onOpenInDiff={(file) => jumpToFile(file)}
-                    />
-                  )}
-                </div>
-              )}
-              {pr && effMode === 'overview' && (
-                <div className="absolute inset-0">
-                  <OverviewPane pr={pr} />
-                </div>
-              )}
-              <div
-                className={cn(
-                  'absolute inset-0',
-                  effMode !== 'diff' && 'invisible'
-                )}
-              >
-                <DiffPane
-                  prId={prId}
-                  headSha={pr?.headSha}
-                  sourceBranch={branch}
-                  targetBranch={baseBranch}
-                  files={files}
-                  threadsByFile={threadsByFile}
-                  draftsByFile={draftsByFile}
-                  generalThreads={
-                    options.hideResolved
-                      ? general.filter((t) => !t.isResolved)
-                      : general
-                  }
-                  commentsLoading={comments.isLoading}
-                  diffLoading={diffPending}
-                  diffError={diff.error ? String(diff.error.message) : null}
-                  focusThreadId={focusThreadId}
-                  scrollRef={scrollRef}
-                  jumpRef={diffJumpRef}
-                  navCount={commentItems.length}
-                  navIndex={navIndex}
-                  onPrev={() => step(-1)}
-                  onNext={() => step(1)}
-                />
-              </div>
-            </div>
+            <ContentPane
+              effMode={effMode}
+              pr={pr}
+              prId={prId}
+              branch={branch}
+              baseBranch={baseBranch}
+              sessionName={sessionName}
+              active={active}
+              files={files}
+              filesByName={filesByName}
+              fileOrder={fileOrder}
+              threadsByFile={threadsByFile}
+              draftsByFile={draftsByFile}
+              general={general}
+              hideResolved={options.hideResolved}
+              drafts={drafts}
+              hasDrafts={hasDrafts}
+              commentsLoading={comments.isLoading}
+              diffPending={diffPending}
+              diffError={diff.error}
+              focusThreadId={focusThreadId}
+              scrollRef={scrollRef}
+              jumpRef={diffJumpRef}
+              navCount={commentItems.length}
+              navIndex={navIndex}
+              onPrev={() => step(-1)}
+              onNext={() => step(1)}
+              onExitReview={() => setMode('diff')}
+              onOpenInDiff={jumpToFile}
+            />
           </Panel>
         </Group>
       </div>
     </div>
-  );
-}
-
-/** Header for a worktree tab without a PR: branch → base + files count. */
-function BranchHeader({
-  branch,
-  baseBranch,
-  fileCount,
-}: {
-  branch: string;
-  baseBranch: string;
-  fileCount: number;
-}) {
-  return (
-    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
-      <GitBranchIcon className="size-4 shrink-0 text-muted-foreground" />
-      <span className="flex min-w-0 shrink items-center gap-2">
-        <span className="truncate font-medium">{branch}</span>
-        <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
-          diff vs {baseBranch}
-        </span>
-      </span>
-      <div className="flex-1" />
-      <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
-        {fileCount} file{fileCount === 1 ? '' : 's'} changed
-      </span>
-      <OpenInEditorButton branch={branch} />
-    </header>
   );
 }
