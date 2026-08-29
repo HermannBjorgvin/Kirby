@@ -2,7 +2,7 @@
 
 A desktop app and a terminal UI for running AI coding agents across git worktrees, with pull request status and code review built in.
 
-Kirby started as a way to solve my own workflow. I spend my working hours in a large monorepo, usually with several features and reviews in flight at once, and I wanted one place to manage the worktrees and agent sessions that go with them and to help me automate PR reviews while remaining familiar with the source code. It's early and still moving fast, @minigod and I have been using it as our daily worktree manager and now I feel it is feature complete enough to share with others who might have a similar workflow.
+Kirby started as a way to solve my own workflow. I spend my working hours in a large monorepo, usually with several features and reviews in flight at once, and I wanted one place to manage the worktrees and agent sessions that go with them and to help me automate reviewing pull requests while remaining familiar with the source code.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
@@ -12,14 +12,16 @@ Kirby started as a way to solve my own workflow. I spend my working hours in a l
 
 ## Installation
 
-Two front ends over the same core — install either, or both.
+Two front ends over the same core. Install both:
 
 ```sh
 npm install -g @hermannbjorgvin/kirby-desktop@beta   # desktop app
-npm install -g @hermannbjorgvin/kirby                # terminal UI
+npm install -g @hermannbjorgvin/kirby                # terminal UI, and the `kirby` command
 ```
 
 Then run `kirby-desktop` or `kirby` from any project directory.
+
+The CLI is not only the terminal UI — it is also how agents write review comments. Both front ends hand the agent the same instruction to run `kirby util add-comment`, so **agent-drafted reviews need `kirby` on your `PATH` even if you only ever open the desktop app.** Everything else in the desktop works without it.
 
 ## Features
 
@@ -37,6 +39,8 @@ Then run `kirby-desktop` or `kirby` from any project directory.
 ![Stepping through agent-written draft comments in severity order, posting one and skipping to the next](docs/media/review.gif)
 
 Point an agent at a pull request and have it review the diff. It leaves inline draft comments anchored to the lines they're about, and you walk through them in severity order — edit, discard, skip, or post. You stay the author of record; the agent just does the first pass.
+
+The agent writes those comments by running `kirby util add-comment`, so this is the feature that needs the CLI installed alongside the desktop app.
 
 ### Plan comments into a cart
 
@@ -70,6 +74,7 @@ That whole loop is the TUI: the sidebar with CI and approval state per pull requ
 
 - git
 - An agent CLI on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`
+- `kirby` on your `PATH` for agent-drafted reviews, including when you use the desktop app
 - For GitHub: the `gh` CLI, authenticated
 - For Azure DevOps: a personal access token with repo and pull request access
 - `tmux` (optional) — agent sessions then survive quitting and are reattached next launch
