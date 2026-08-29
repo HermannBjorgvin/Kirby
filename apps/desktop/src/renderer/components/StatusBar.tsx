@@ -7,7 +7,7 @@ import {
   TerminalIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { SidebarItem } from '../../host/contract.js';
+import type { SidebarItem, SyncState } from '../../host/contract.js';
 import { useRepo } from '../lib/repo-context.js';
 import { useRefreshRemote, useSyncState, useVersion } from '../lib/queries.js';
 import { itemRunning } from '../lib/sidebar-model.js';
@@ -39,7 +39,6 @@ export function StatusBar({
   }, []);
 
   const s = sync.data;
-  const syncing = refresh.isPending || s?.remoteSyncing;
 
   return (
     <footer className="flex h-[22px] shrink-0 select-none items-center border-t border-border bg-statusbar px-2 text-xs text-statusbar-foreground">
@@ -48,55 +47,13 @@ export function StatusBar({
         <span className="font-medium">{basename(repo.cwd)}</span>
       </Segment>
 
-      {s && !s.providerId && (
-        <Segment
-          label="No VCS provider configured — open Settings"
-          onClick={onOpenSettings}
-        >
-          <CloudOffIcon className="size-3" />
-          No provider
-        </Segment>
-      )}
-      {s && s.providerId && !s.providerConfigured && (
-        <Segment
-          label={`${providerName(
-            s.providerId
-          )} needs credentials — open Settings`}
-          onClick={onOpenSettings}
-          className="text-warning"
-        >
-          <AlertCircleIcon className="size-3" />
-          {providerName(s.providerId)} not configured
-        </Segment>
-      )}
-      {s && s.providerId && s.providerConfigured && (
-        <Segment
-          label={
-            s.remoteError
-              ? `Last sync failed: ${s.remoteError}`
-              : `Refresh pull requests (auto every ${Math.round(
-                  s.remoteIntervalMs / 1000
-                )}s)`
-          }
-          onClick={() => refresh.mutate()}
-          className={cn(s.remoteError && 'text-destructive')}
-        >
-          {syncing ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : s.remoteError ? (
-            <AlertCircleIcon className="size-3" />
-          ) : (
-            <RefreshCwIcon className="size-3" />
-          )}
-          {providerName(s.providerId)}
-          <span className="text-muted-foreground">
-            {syncing
-              ? 'syncing…'
-              : s.lastRemoteSyncAt
-              ? `synced ${relativeTime(s.lastRemoteSyncAt)}`
-              : 'not synced'}
-          </span>
-        </Segment>
+      {s && (
+        <ProviderSegment
+          sync={s}
+          refreshing={refresh.isPending}
+          onRefresh={() => refresh.mutate()}
+          onOpenSettings={onOpenSettings}
+        />
       )}
 
       <div className="flex-1" />
@@ -113,6 +70,80 @@ export function StatusBar({
         </span>
       </Segment>
     </footer>
+  );
+}
+
+/**
+ * The provider's state, in three: none configured, one configured but
+ * missing credentials, or a working one reporting its last sync. Only
+ * the last is a refresh button — the other two open Settings, which is
+ * where the thing they're complaining about gets fixed.
+ */
+function ProviderSegment({
+  sync: s,
+  refreshing,
+  onRefresh,
+  onOpenSettings,
+}: {
+  sync: SyncState;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onOpenSettings: () => void;
+}) {
+  if (!s.providerId) {
+    return (
+      <Segment
+        label="No VCS provider configured — open Settings"
+        onClick={onOpenSettings}
+      >
+        <CloudOffIcon className="size-3" />
+        No provider
+      </Segment>
+    );
+  }
+  if (!s.providerConfigured) {
+    return (
+      <Segment
+        label={`${providerName(
+          s.providerId
+        )} needs credentials — open Settings`}
+        onClick={onOpenSettings}
+        className="text-warning"
+      >
+        <AlertCircleIcon className="size-3" />
+        {providerName(s.providerId)} not configured
+      </Segment>
+    );
+  }
+  const syncing = refreshing || s.remoteSyncing;
+  return (
+    <Segment
+      label={
+        s.remoteError
+          ? `Last sync failed: ${s.remoteError}`
+          : `Refresh pull requests (auto every ${Math.round(
+              s.remoteIntervalMs / 1000
+            )}s)`
+      }
+      onClick={onRefresh}
+      className={cn(s.remoteError && 'text-destructive')}
+    >
+      {syncing ? (
+        <Loader2Icon className="size-3 animate-spin" />
+      ) : s.remoteError ? (
+        <AlertCircleIcon className="size-3" />
+      ) : (
+        <RefreshCwIcon className="size-3" />
+      )}
+      {providerName(s.providerId)}
+      <span className="text-muted-foreground">
+        {syncing
+          ? 'syncing…'
+          : s.lastRemoteSyncAt
+          ? `synced ${relativeTime(s.lastRemoteSyncAt)}`
+          : 'not synced'}
+      </span>
+    </Segment>
   );
 }
 

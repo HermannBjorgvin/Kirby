@@ -128,6 +128,31 @@ function anchorComments<T extends { side: 'LEFT' | 'RIGHT' }>(
   return { byAnchor, orphans, pinned };
 }
 
+/** Every anchor key this file's lines can carry a comment on. */
+function presentAnchors(lines: readonly DiffLine[]): Set<string> {
+  const present = new Set<string>();
+  for (const l of lines) for (const a of lineAnchors(l)) present.add(a);
+  return present;
+}
+
+/**
+ * The tail row under a file, holding comments whose anchor line the
+ * diff doesn't contain. Emits nothing when there are none.
+ */
+function pushOrphans(
+  rows: FlatRow[],
+  indexById: Map<string, number>,
+  file: string,
+  threads: RemoteCommentThread[],
+  drafts: ReviewComment[]
+): void {
+  if (threads.length === 0 && drafts.length === 0) return;
+  const index = rows.length;
+  rows.push({ key: `o:${file}`, kind: 'orphans', file, threads, drafts });
+  for (const x of threads) indexById.set(x.id, index);
+  for (const x of drafts) indexById.set(x.id, index);
+}
+
 export function buildFlatDiff(
   files: readonly [string, DiffLine[]][],
   opts: {
@@ -178,8 +203,7 @@ export function buildFlatDiff(
     });
     if (!open) continue;
 
-    const present = new Set<string>();
-    for (const l of lines) for (const a of lineAnchors(l)) present.add(a);
+    const present = presentAnchors(lines);
     const t = anchorComments(present, visibleThreads, (x) =>
       x.lineStart == null ? null : x.lineEnd ?? x.lineStart
     );
@@ -247,24 +271,20 @@ export function buildFlatDiff(
       }
     };
 
-    if (opts.view === 'split') {
-      const split = buildSplitRows(lines, unified);
-      for (const row of split) {
+    const pushFold = (from: number, to: number) => {
+      rows.push({ key: `f:${file}:${from}`, kind: 'fold', file, from, to });
+    };
+    const pushHunk = (index: number) => {
+      rows.push({ key: `k:${file}:${index}`, kind: 'hunk', file, index });
+    };
+
+    /** Side-by-side: every row pairs a left and a right half. */
+    const appendSplitRows = () => {
+      for (const row of buildSplitRows(lines, unified)) {
         if (row.kind === 'fold') {
-          rows.push({
-            key: `f:${file}:${row.from}`,
-            kind: 'fold',
-            file,
-            from: row.from,
-            to: row.to,
-          });
+          pushFold(row.from, row.to);
         } else if (row.kind === 'hunk') {
-          rows.push({
-            key: `k:${file}:${row.index}`,
-            kind: 'hunk',
-            file,
-            index: row.index,
-          });
+          pushHunk(row.index);
         } else if (row.kind === 'context') {
           rows.push({
             key: `s:${file}:${row.index}`,
@@ -277,26 +297,18 @@ export function buildFlatDiff(
           pushSplitPair(row);
         }
       }
-    } else {
+    };
+
+    /** One column: each visible line is its own row. */
+    const appendUnifiedRows = () => {
       for (const row of unified) {
         if (row.kind === 'fold') {
-          rows.push({
-            key: `f:${file}:${row.from}`,
-            kind: 'fold',
-            file,
-            from: row.from,
-            to: row.to,
-          });
+          pushFold(row.from, row.to);
           continue;
         }
         const line = lines[row.index];
         if (line.type === 'hunk-header') {
-          rows.push({
-            key: `k:${file}:${row.index}`,
-            kind: 'hunk',
-            file,
-            index: row.index,
-          });
+          pushHunk(row.index);
           continue;
         }
         rows.push({
@@ -307,20 +319,12 @@ export function buildFlatDiff(
         });
         pushComments(line, `u${row.index}`, false, true);
       }
-    }
+    };
 
-    if (t.orphans.length > 0 || d.orphans.length > 0) {
-      const index = rows.length;
-      rows.push({
-        key: `o:${file}`,
-        kind: 'orphans',
-        file,
-        threads: t.orphans,
-        drafts: d.orphans,
-      });
-      for (const x of t.orphans) indexById.set(x.id, index);
-      for (const x of d.orphans) indexById.set(x.id, index);
-    }
+    if (opts.view === 'split') appendSplitRows();
+    else appendUnifiedRows();
+
+    pushOrphans(rows, indexById, file, t.orphans, d.orphans);
   }
 
   return { rows, indexById, fileIndex, stats };
