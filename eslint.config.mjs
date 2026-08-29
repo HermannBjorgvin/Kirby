@@ -311,7 +311,15 @@ export default tseslint.config(
     //
     // Anything the renderer genuinely needs at runtime belongs behind
     // the host bridge (src/host/contract.ts) or in a browser-safe entry
-    // point, the way @kirby/vcs-core exposes its `./types` subpath.
+    // point, the way @kirby/vcs-core exposes its `./types` subpath and
+    // @kirby/core its `./plan` one.
+    //
+    // The `patterns` block is what keeps that list honest. Blocking the
+    // package names alone left every subpath of them wide open, so a
+    // `@kirby/core/session` import would have sailed through and taken
+    // node:child_process with it. Subpaths are blocked as a group and
+    // the browser-safe ones named back in, which makes adding another
+    // one a deliberate edit here rather than a silent import.
     files: ['apps/desktop/src/renderer/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
@@ -335,6 +343,23 @@ export default tseslint.config(
               'in the sandboxed renderer. Use `import type`, go through ' +
               'window.kirby, or import a browser-safe subpath.',
           })),
+          patterns: [
+            {
+              group: [
+                '@kirby/*/*',
+                // Browser-safe by construction, and tested as such.
+                '!@kirby/core/plan',
+                '!@kirby/app-core/plan',
+                '!@kirby/vcs-core/types',
+              ],
+              allowTypeImports: true,
+              message:
+                'Only explicitly browser-safe @kirby subpaths may be ' +
+                'imported for their values in the sandboxed renderer. ' +
+                'Add one to the allowed list here only once it is free ' +
+                'of node: builtins and native modules.',
+            },
+          ],
         },
       ],
     },

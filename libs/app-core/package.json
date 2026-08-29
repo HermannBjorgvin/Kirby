@@ -11,6 +11,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./plan": {
+      "types": "./src/lib/plan/use-plan-store.ts",
+      "import": "./src/lib/plan/use-plan-store.ts",
+      "default": "./src/lib/plan/use-plan-store.ts"
+    },
     "./package.json": "./package.json"
   },
   "dependencies": {

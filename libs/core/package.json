@@ -11,6 +11,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./plan": {
+      "types": "./src/plan.ts",
+      "import": "./src/plan.ts",
+      "default": "./src/plan.ts"
+    },
     "./package.json": "./package.json"
   },
   "nx": {
