@@ -9,12 +9,14 @@ import {
   useKillSession,
   useLaunchAgent,
   useLaunchReview,
+  useSessions,
 } from '../../lib/queries.js';
 import {
   itemBranch,
   itemHasWorktree,
   itemRunning,
   itemSessionName,
+  liveSessionName,
 } from '../../lib/sidebar-model.js';
 import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { errorMessage } from '../../lib/utils.js';
@@ -46,6 +48,7 @@ export function ItemView({
   const launch = useLaunchAgent(repo.cwd);
   const launchReview = useLaunchReview(repo.cwd);
   const kill = useKillSession(repo.cwd);
+  const sessions = useSessions(repo.cwd);
   const create = useCreateWorktree(repo.cwd);
   const paneRef = useRef<HTMLDivElement>(null);
   const [launchMenu, setLaunchMenu] = useState(false);
@@ -86,12 +89,13 @@ export function ItemView({
     );
   }
 
-  const sessionName =
+  const rowSessionName =
     itemSessionName(item) ??
     (sessionRow ? itemSessionName(sessionRow) : undefined);
+  const sessionName = liveSessionName(rowSessionName, sessions.data ?? []);
   const running =
     itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false);
-  const hasWorktree = Boolean(sessionName) || itemHasWorktree(item);
+  const hasWorktree = Boolean(rowSessionName) || itemHasWorktree(item);
   const pr = item.pr ?? sessionRow?.pr;
 
   // Half-width: a PR launch lands in the split review workspace where

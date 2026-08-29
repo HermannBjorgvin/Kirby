@@ -12,6 +12,7 @@ import {
   itemSessionName,
   unresolvedCommentsLabel,
   SECTION_ORDER,
+  liveSessionName,
 } from './sidebar-model.js';
 
 /**
@@ -378,5 +379,30 @@ describe('status cluster tooltips', () => {
   it('calls comments unresolved, and gets the plural right', () => {
     expect(unresolvedCommentsLabel(1)).toBe('1 unresolved comment');
     expect(unresolvedCommentsLabel(3)).toBe('3 unresolved comments');
+  });
+});
+
+// ── liveSessionName ──────────────────────────────────────────────
+
+/**
+ * Every worktree row carries a session *name* whether or not an agent
+ * has ever run in it — the name is derived from the branch. Treating
+ * that as "a session exists" is what made a fresh worktree offer to
+ * relaunch an agent it never had.
+ */
+describe('liveSessionName', () => {
+  it('keeps a name the host has actually launched', () => {
+    expect(liveSessionName('feature-x', [{ name: 'feature-x' }])).toBe(
+      'feature-x'
+    );
+  });
+
+  it('drops a name no session exists for', () => {
+    expect(liveSessionName('feature-x', [{ name: 'other' }])).toBeUndefined();
+    expect(liveSessionName('feature-x', [])).toBeUndefined();
+  });
+
+  it('has nothing to resolve when the row has no name', () => {
+    expect(liveSessionName(undefined, [{ name: 'feature-x' }])).toBeUndefined();
   });
 });

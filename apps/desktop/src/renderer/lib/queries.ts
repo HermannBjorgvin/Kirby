@@ -303,6 +303,22 @@ export function useThreads(cwd: string, prId: number) {
   });
 }
 
+/**
+ * Sessions the host has actually launched this run — running, or ended
+ * with their final frame kept. This is the "does a PTY exist?" signal:
+ * the sidebar names a would-be session for every worktree, so a name
+ * alone must never be read as one existing (it is what made a fresh
+ * worktree offer "Relaunch agent").
+ */
+export function useSessions(cwd: string) {
+  return useQuery({
+    queryKey: keys.sessions(cwd),
+    queryFn: () => window.kirby.listSessions(),
+    refetchInterval: 2_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 /** Debounced per-session agent activity (spinner/blink source). The
  *  snapshot is an in-memory read host-side, so a 1s poll is cheap. */
 export function useSessionActivity(cwd: string) {
@@ -436,6 +452,7 @@ function useInvalidator(cwd: string) {
     sidebar: () => qc.invalidateQueries({ queryKey: keys.sidebar(cwd) }),
     sync: () => qc.invalidateQueries({ queryKey: keys.sync(cwd) }),
     branches: () => qc.invalidateQueries({ queryKey: keys.branches(cwd) }),
+    sessions: () => qc.invalidateQueries({ queryKey: keys.sessions(cwd) }),
     settings: () => qc.invalidateQueries({ queryKey: keys.settings(cwd) }),
     threads: (prId: number) =>
       qc.invalidateQueries({ queryKey: keys.threads(cwd, prId) }),
@@ -504,7 +521,10 @@ export function useLaunchAgent(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: (req: SessionLaunchRequest) => window.kirby.launchAgent(req),
-    onSuccess: () => void inv.sidebar(),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.sessions();
+    },
   });
 }
 
@@ -516,6 +536,7 @@ export function useLaunchReview(cwd: string) {
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
+      void inv.sessions();
     },
   });
 }
@@ -532,6 +553,7 @@ export function useCheckoutPlan(cwd: string) {
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
+      void inv.sessions();
     },
   });
 }
@@ -577,7 +599,10 @@ export function useKillSession(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: (name: string) => window.kirby.killSession(name),
-    onSuccess: () => void inv.sidebar(),
+    onSuccess: () => {
+      void inv.sidebar();
+      void inv.sessions();
+    },
   });
 }
 

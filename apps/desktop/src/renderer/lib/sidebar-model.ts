@@ -310,3 +310,22 @@ export function prStatusIndicator(
 export function unresolvedCommentsLabel(count: number): string {
   return `${plural(count, 'unresolved comment')}`;
 }
+
+/**
+ * The session name a row can actually be driven through, or undefined.
+ *
+ * The sidebar names a would-be session for every worktree, launched or
+ * not — the name is derived from the branch. Only a name the host has
+ * really launched has a PTY behind it, so reading the row's name as
+ * "a session exists" offered to *re*launch an agent that had never run
+ * and mounted a terminal pane with nothing in it.
+ */
+export function liveSessionName(
+  rowSessionName: string | undefined,
+  sessions: readonly { name: string }[]
+): string | undefined {
+  if (rowSessionName == null) return undefined;
+  return sessions.some((s) => s.name === rowSessionName)
+    ? rowSessionName
+    : undefined;
+}

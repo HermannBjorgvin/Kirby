@@ -7,9 +7,9 @@ const BRANCH = 'agent-work';
 const SESSION = BRANCH;
 
 async function launchAgent(page: Page) {
-  // The rail labels this "Relaunch agent" whenever the item carries a
-  // session *name*, which every worktree does — so match both spellings
-  // rather than pinning copy this test isn't about.
+  // "Launch agent" on a fresh worktree, "Relaunch agent" once a
+  // session has existed — match both spellings rather than pinning
+  // copy this test isn't about.
   await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
   await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
     timeout: 30_000,
@@ -28,6 +28,33 @@ async function sessionRunning(page: Page): Promise<boolean> {
 }
 
 test.describe('Agent sessions', () => {
+  /**
+   * The sidebar names a would-be session for every worktree, whether or
+   * not one was ever launched. Reading that name as "a session exists"
+   * offered to *re*launch an agent that had never run, and mounted a
+   * terminal pane with no PTY behind it.
+   */
+  test('a worktree with no agent offers to launch one, not relaunch', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, BRANCH);
+
+    await expect(
+      page.getByRole('button', { name: 'Launch agent', exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Relaunch agent/i })
+    ).toHaveCount(0);
+
+    // And once one has run, it is a relaunch.
+    await launchAgent(page);
+    await page.evaluate(() => window.kirby.killSession('agent-work'));
+    await expect(
+      page.getByRole('button', { name: /Relaunch agent/i })
+    ).toBeVisible({ timeout: 15_000 });
+  });
+
   test('launching an agent starts a session and shows its output', async ({
     desktop,
   }) => {

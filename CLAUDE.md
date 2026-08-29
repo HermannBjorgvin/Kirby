@@ -80,6 +80,16 @@ deleted-directory states), a `~/.kirby` of its own, a scriptable fake agent for
 `aiCommand`, and **fails any test whose renderer throws** — an ErrorBoundary
 otherwise turns a crash into a blank pane that assertions pass straight over.
 
+**README media is generated, not hand-recorded** (`apps/desktop-e2e/demo/`,
+its own README). `node apps/desktop-e2e/demo/capture.mjs` drives the
+_built_ app under a dedicated Xvfb display at 2x scale, records with
+`ffmpeg -f x11grab` and writes the GIFs and stills in `docs/media/`. It
+reuses the fake `gh` below for pull requests, plus a demo agent whose
+output is paced to look like work rather than to be asserted against,
+so a capture needs no token, no network and no real agent. Recordings
+land in the gitignored `docs/media/raw/`; a failed take leaves the
+frame it died on there.
+
 **A fake `gh` makes pull requests exist offline.** The GitHub provider
 reaches GitHub only by running the `gh` CLI, so `setup/fake-gh.ts` puts
 an executable named `gh` at the front of the app's PATH and answers from

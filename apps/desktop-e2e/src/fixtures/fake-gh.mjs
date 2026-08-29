@@ -163,16 +163,30 @@ if (argv[0] === 'api' && argv[1] === 'graphql') {
   out({ data: {} });
 }
 
-// ── gh api repos/<owner>/<repo>/pulls/<n> --jq '.body // ""' ──
-const pullPath = argv[1]?.match(/^repos\/[^/]+\/[^/]+\/pulls\/(\d+)$/);
-if (argv[0] === 'api' && pullPath) {
-  const pr = prs.find((p) => String(p.number) === pullPath[1]);
-  out(pr?.body ?? '');
-}
+// ── gh api repos/<owner>/<repo>/pulls/<n>/reviews --input - ──
+// Posting draft comments (review-comments' poster). The JSON review
+// arrives on stdin; consume it before answering, or the parent's
+// write races the exit and dies on EPIPE.
+if (
+  argv[0] === 'api' &&
+  /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/.test(argv[1] ?? '') &&
+  argv.includes('--input')
+) {
+  let body = '';
+  process.stdin.on('data', (c) => (body += c));
+  process.stdin.on('end', () => out({ id: 1, body: JSON.parse(body).body }));
+} else {
+  // ── gh api repos/<owner>/<repo>/pulls/<n> --jq '.body // ""' ──
+  const pullPath = argv[1]?.match(/^repos\/[^/]+\/[^/]+\/pulls\/(\d+)$/);
+  if (argv[0] === 'api' && pullPath) {
+    const pr = prs.find((p) => String(p.number) === pullPath[1]);
+    out(pr?.body ?? '');
+  }
 
-if (argv[0] === 'api' && argv[1] === '/user') {
-  out({ login: scenario.username ?? 'kirby-tester' });
-}
+  if (argv[0] === 'api' && argv[1] === '/user') {
+    out({ login: scenario.username ?? 'kirby-tester' });
+  }
 
-process.stderr.write(`fake gh: unhandled invocation: ${argv.join(' ')}\n`);
-process.exit(1);
+  process.stderr.write(`fake gh: unhandled invocation: ${argv.join(' ')}\n`);
+  process.exit(1);
+}
