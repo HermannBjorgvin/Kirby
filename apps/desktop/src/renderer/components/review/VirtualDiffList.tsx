@@ -101,6 +101,12 @@ export function VirtualDiffList({
   );
   const rows = flat.rows;
 
+  // React Compiler declines to memoize a component that calls this,
+  // because the virtualizer hands back methods rather than values. That
+  // is a property of @tanstack/react-virtual and not something this
+  // file can restructure — and the desktop build does not run the
+  // compiler, so the notice describes an optimisation that never runs.
+  // eslint-disable-next-line react-hooks/incompatible-library -- see above
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
