@@ -1,5 +1,4 @@
 import { Text, Box } from 'ink';
-import { CARD_INDENT } from '../../components/CommentThread.js';
 
 // Note composer shown while annotating a plan item (Shift+A). Rendered
 // *in place of* the comment card so it occupies the same slot — the card
@@ -8,9 +7,20 @@ import { CARD_INDENT } from '../../components/CommentThread.js';
 export function PlanAnnotateInput({
   buffer,
   width,
+  height,
+  indent,
 }: {
   buffer: string;
   width: number;
+  /**
+   * Fixed height, for the virtualised file list: there the composer has
+   * to occupy exactly the rows the card it replaces was measured at, or
+   * entering and leaving annotate mode shifts everything below it. The
+   * unvirtualised viewer lets it size to its content.
+   */
+  height?: number;
+  /** Left spacer matching the card's own indent, where cards have one. */
+  indent?: number;
 }) {
   const box = (
     <Box
@@ -20,6 +30,7 @@ export function PlanAnnotateInput({
       marginBottom={1}
       paddingX={1}
       width={width}
+      height={height}
     >
       <Text wrap="truncate-end">
         <Text bold color="green">
@@ -33,9 +44,10 @@ export function PlanAnnotateInput({
       </Text>
     </Box>
   );
+  if (!indent) return box;
   return (
     <Box>
-      <Box width={CARD_INDENT} flexShrink={0} />
+      <Box width={indent} flexShrink={0} />
       {box}
     </Box>
   );

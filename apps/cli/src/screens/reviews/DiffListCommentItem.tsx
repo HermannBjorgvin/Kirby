@@ -2,6 +2,7 @@ import { Text, Box } from 'ink';
 import { planItemKey } from '@kirby/core';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { CommentThreadCard } from '../../components/CommentThread.js';
+import { PlanAnnotateInput } from './PlanAnnotateInput.js';
 
 /**
  * A general PR comment in the unified file/comment stream: the "PR
@@ -52,26 +53,11 @@ export function DiffListCommentItem({
   const composerHeight = span - (withHeading ? 2 : 0) - 1;
   const card =
     annotatingPlanKey === pKey ? (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor="green"
-        marginBottom={1}
-        paddingX={1}
+      <PlanAnnotateInput
+        buffer={annotationBuffer ?? ''}
         width={cardWidth}
         height={composerHeight}
-      >
-        <Text wrap="truncate-end">
-          <Text bold color="green">
-            EDITING NOTE
-          </Text>
-          <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
-        </Text>
-        <Text wrap="wrap">
-          {annotationBuffer ?? ''}
-          <Text color="green">▍</Text>
-        </Text>
-      </Box>
+      />
     ) : (
       <CommentThreadCard
         thread={thread}

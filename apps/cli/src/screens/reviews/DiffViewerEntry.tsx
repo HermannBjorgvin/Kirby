@@ -73,7 +73,11 @@ export function DiffViewerEntry({
     // While annotating this item, the composer takes the card's slot.
     if (annotatingPlanKey === pKey) {
       return (
-        <PlanAnnotateInput buffer={annotationBuffer ?? ''} width={cardWidth} />
+        <PlanAnnotateInput
+          buffer={annotationBuffer ?? ''}
+          width={cardWidth}
+          indent={CARD_INDENT}
+        />
       );
     }
     return (
@@ -92,7 +96,11 @@ export function DiffViewerEntry({
   const pKey = planItemKey('local', line.comment.id);
   if (annotatingPlanKey === pKey) {
     return (
-      <PlanAnnotateInput buffer={annotationBuffer ?? ''} width={cardWidth} />
+      <PlanAnnotateInput
+        buffer={annotationBuffer ?? ''}
+        width={cardWidth}
+        indent={CARD_INDENT}
+      />
     );
   }
   return (
