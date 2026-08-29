@@ -146,7 +146,7 @@ test.describe('@integration Navigation Jump', () => {
       // 8. Selection is NOT on session A's PR row
       await expect(
         sidebarLocator(kirby.term.page, `e2e: ${branchA}`).selected()
-      ).not.toBeVisible();
+      ).toBeHidden();
     } finally {
       // Cleanup GitHub resources (best-effort)
       if (prNumberA) closePullRequest(TEST_REPO, prNumberA);

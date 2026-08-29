@@ -56,7 +56,7 @@ test.describe('Resize does not trigger activity', () => {
 
     // 6. The toast "resized is idle" should NOT appear — the resize
     //    output was suppressed and never counted as activity.
-    await expect(kirby.term.getByText('resized is idle')).not.toBeVisible();
+    await expect(kirby.term.getByText('resized is idle')).toBeHidden();
 
     // 7. Ctrl+Space from 'other' should NOT jump to 'resized' (queue
     //    should be empty) — it should just focus the sidebar.
