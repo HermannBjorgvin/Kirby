@@ -7,7 +7,7 @@ import { noteSeen, remove as removeInactiveAlert, tabDigit } from '@kirby/core';
 import { Divider } from './Divider.js';
 import { PrBadge } from './PrBadge.js';
 import { RainbowSpinner } from './RainbowSpinner.js';
-import { rowIcon } from './sidebar-model.js';
+import { rowIcon } from './sidebar-layout.js';
 
 // Leaf component that owns the "needs attention" flash cadence. The
 // row's conflict/badge siblings don't reconcile on every phase flip,

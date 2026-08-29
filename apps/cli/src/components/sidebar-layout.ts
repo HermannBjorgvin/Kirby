@@ -213,8 +213,10 @@ export function sidebarScrollWindow(opts: {
 /**
  * The single icon column: selection wins over running state (◉ / ◎ in
  * cyan), otherwise the row shows whether an agent is alive in it
- * (● green / ○ gray). A row that cannot have an agent — a pull request
- * with no worktree — reads as not running, which is what it is.
+ * (● green / ○ gray). Saves 2 chars vs. the old "› " + "● " two-column
+ * layout, which is why the caret column is gone and should stay gone.
+ * A row that cannot have an agent — a pull request with no worktree —
+ * reads as not running, which is what it is.
  */
 export function rowIcon(
   selected: boolean,

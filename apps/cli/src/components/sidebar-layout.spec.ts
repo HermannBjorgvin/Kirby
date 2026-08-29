@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { SidebarItem } from '@kirby/core';
+import { LAYOUT } from '@kirby/app-core';
 import {
   buildSidebarRows,
   getSectionKey,
   rowIcon,
+  sidebarAvailableLines,
   sidebarRowHeights,
   sidebarScrollWindow,
   type RenderRow,
-} from './sidebar-model.js';
+} from './sidebar-layout.js';
 
 function pr(over: Partial<PullRequestInfo> = {}): PullRequestInfo {
   return {
@@ -126,6 +128,72 @@ describe('sidebarRowHeights', () => {
   });
 });
 
+describe('sidebarAvailableLines', () => {
+  /** Rows the pane's own frame takes, whatever the hints do. */
+  const FRAME = LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS;
+
+  it('charges the pane frame, the hint block and the blank line above it', () => {
+    // The blank line separating the list from the hints is a row too —
+    // forget it and the last item renders under the first hint.
+    expect(
+      sidebarAvailableLines({
+        termRows: 40,
+        keybindLineCount: 4,
+        vcsConfigured: false,
+        hintsHidden: false,
+      })
+    ).toBe(40 - FRAME - 1 - 4);
+  });
+
+  it('charges the badge legend only when it is actually drawn', () => {
+    const opts = { termRows: 40, keybindLineCount: 4 };
+    const legend = 1 + 2; // its own blank line + two legend rows
+
+    // Drawn: a VCS is configured and the hints are showing.
+    expect(
+      sidebarAvailableLines({
+        ...opts,
+        vcsConfigured: true,
+        hintsHidden: false,
+      })
+    ).toBe(40 - FRAME - 1 - 4 - legend);
+
+    // Not drawn: hiding the hints hides the legend with them. Charging
+    // for it anyway budgets three rows for nothing, so the bottom item
+    // hides behind a "↓ 1 more" that has nothing under it.
+    expect(
+      sidebarAvailableLines({ ...opts, vcsConfigured: true, hintsHidden: true })
+    ).toBe(40 - FRAME - 1 - 4);
+
+    // Not drawn: no VCS, so there are no badges to explain.
+    expect(
+      sidebarAvailableLines({
+        ...opts,
+        vcsConfigured: false,
+        hintsHidden: false,
+      })
+    ).toBe(40 - FRAME - 1 - 4);
+    expect(
+      sidebarAvailableLines({
+        ...opts,
+        vcsConfigured: false,
+        hintsHidden: true,
+      })
+    ).toBe(40 - FRAME - 1 - 4);
+  });
+
+  it('shrinks row for row as the hint block grows', () => {
+    const at = (keybindLineCount: number) =>
+      sidebarAvailableLines({
+        termRows: 30,
+        keybindLineCount,
+        vcsConfigured: false,
+        hintsHidden: false,
+      });
+    expect(at(0) - at(5)).toBe(5);
+  });
+});
+
 describe('sidebarScrollWindow', () => {
   /** `n` item rows, each `height` lines tall. */
   function uniform(n: number, height: number) {
@@ -154,6 +222,26 @@ describe('sidebarScrollWindow', () => {
     });
   });
 
+  it('treats an exact fit as fitting, not as one row too many', () => {
+    // Rows summing to exactly the available height must take the
+    // no-scroll path. Off by one here and a list that fits sprouts
+    // "↑ 0 more" / "↓ 1 more" and drops its last row.
+    const { rows, rowHeights } = uniform(10, 1);
+    expect(
+      sidebarScrollWindow({
+        rows,
+        rowHeights,
+        selectedIndex: 0,
+        availableLines: 10,
+      })
+    ).toEqual({
+      fullyVisibleRows: rows,
+      gap: 0,
+      aboveCount: 0,
+      belowCount: 0,
+    });
+  });
+
   it('reports what is hidden on each side of the window', () => {
     const { rows, rowHeights } = uniform(20, 1);
     const win = sidebarScrollWindow({
@@ -162,11 +250,16 @@ describe('sidebarScrollWindow', () => {
       selectedIndex: 10,
       availableLines: 8, // 6 usable once the two markers are reserved
     });
+    // Six one-row items fill the budget exactly, so the selection sits
+    // centred with seven rows above it. Counting a row that exactly
+    // fills the remaining budget as not fitting would shift the whole
+    // window by one.
     expect(win.fullyVisibleRows).toHaveLength(6);
+    expect(win.aboveCount).toBe(7);
+    expect(win.belowCount).toBe(7);
     expect(win.aboveCount + win.fullyVisibleRows.length + win.belowCount).toBe(
       20
     );
-    expect(win.aboveCount).toBeGreaterThan(0);
   });
 
   it('keeps the selected row inside the window when rows differ in height', () => {
