@@ -1,64 +1,92 @@
 import type { KeyPress } from '../input/key-press.js';
 import type { KeyDescriptor, InputContext, ActionDef } from './registry.js';
 
+/**
+ * A descriptor that names neither a character nor a special key can
+ * never fire. `{}` is the obvious case; `{ flags: { escape: false } }`
+ * is the one that bites, because it is truthy and would otherwise fall
+ * through and match every keypress that happens to have no modifiers.
+ */
+function isBindable(descriptor: KeyDescriptor): boolean {
+  if (descriptor.input !== undefined) return true;
+  if (!descriptor.flags) return false;
+  return Object.values(descriptor.flags).some((required) => required === true);
+}
+
+/** Every special key the descriptor asks for is down. */
+function flagsHeld(descriptor: KeyDescriptor, key: KeyPress): boolean {
+  if (!descriptor.flags) return true;
+  return Object.entries(descriptor.flags).every(
+    ([flag, required]) => !required || key[flag as keyof KeyPress]
+  );
+}
+
+/**
+ * A modifier has to agree in both directions: one the descriptor asks
+ * for must be held, and one it stays silent about must not be — else
+ * plain "Down" swallows "Shift+Down" and the more specific binding is
+ * unreachable.
+ */
+function modifierAgrees(required: boolean | undefined, held: boolean): boolean {
+  return (required === true) === Boolean(held);
+}
+
+/**
+ * Ink reports a capital letter as shift+letter, so `{ input: 'K' }`
+ * already means shift and must not be rejected for a modifier it never
+ * spelled out. Single characters only — 'K' is shifted, 'Kb' is not a
+ * key.
+ */
+function shiftIsImplicit(descriptor: KeyDescriptor): boolean {
+  const char = descriptor.input;
+  return char !== undefined && char.length === 1 && /[A-Z]/.test(char);
+}
+
+function modifiersAgree(descriptor: KeyDescriptor, key: KeyPress): boolean {
+  if (!modifierAgrees(descriptor.ctrl, key.ctrl)) return false;
+  if (
+    !shiftIsImplicit(descriptor) &&
+    !modifierAgrees(descriptor.shift, key.shift)
+  )
+    return false;
+  // Ink sets key.meta for Escape itself, since \x1b is also the Alt
+  // prefix. Escape bindings would never match if that counted.
+  if (key.escape === true) return true;
+  return modifierAgrees(descriptor.meta, key.meta);
+}
+
 /** Check whether a keypress matches a single key descriptor */
 export function matchesKey(
   descriptor: KeyDescriptor,
   input: string,
   key: KeyPress
 ): boolean {
-  // Must have at least input or flags to match
-  if (descriptor.input === undefined && !descriptor.flags) return false;
+  return (
+    isBindable(descriptor) &&
+    (descriptor.input === undefined || descriptor.input === input) &&
+    flagsHeld(descriptor, key) &&
+    modifiersAgree(descriptor, key)
+  );
+}
 
-  // Check character match
-  if (descriptor.input !== undefined && descriptor.input !== input)
-    return false;
-
-  // Check special key flags — all specified flags must be true
-  if (descriptor.flags) {
-    for (const [flag, required] of Object.entries(descriptor.flags)) {
-      if (required && !key[flag as keyof KeyPress]) return false;
-    }
+/**
+ * The first of `candidates` that this keypress fires, in catalog
+ * order — which is how a tie between two actions sharing a key is
+ * broken. Actions the preset leaves unbound are skipped.
+ */
+function firstActionMatching(
+  candidates: readonly ActionDef[],
+  input: string,
+  key: KeyPress,
+  bindings: Record<string, KeyDescriptor[]>
+): string | null {
+  for (const action of candidates) {
+    const descriptors = bindings[action.id];
+    if (!descriptors) continue;
+    if (descriptors.some((desc) => matchesKey(desc, input, key)))
+      return action.id;
   }
-
-  // If only flags specified (no input), make sure we're not matching on a
-  // regular character press that just happens to have no flags set
-  if (descriptor.input === undefined && descriptor.flags) {
-    const hasAnyFlag = Object.entries(descriptor.flags).some(
-      ([, v]) => v === true
-    );
-    if (!hasAnyFlag) return false;
-  }
-
-  // Check modifiers — if a descriptor doesn't mention a modifier,
-  // it should only match when that modifier is NOT pressed.
-  // This prevents plain "Down" from swallowing "Shift+Down".
-  //
-  // Special case for shift: Ink auto-sets key.shift=true for uppercase
-  // letters (A-Z), so a descriptor with input='K' implicitly includes
-  // shift. Only enforce shift mismatch for non-character keys (flags).
-  if (descriptor.ctrl === true && !key.ctrl) return false;
-  if (descriptor.ctrl !== true && key.ctrl) return false;
-
-  const isUppercaseChar =
-    descriptor.input !== undefined &&
-    descriptor.input.length === 1 &&
-    /[A-Z]/.test(descriptor.input);
-  if (!isUppercaseChar) {
-    if (descriptor.shift === true && !key.shift) return false;
-    if (descriptor.shift !== true && key.shift) return false;
-  }
-
-  // Special case for meta: Ink sets key.meta=true for Escape itself
-  // (since \x1b is also the Alt prefix). Don't reject escape-flagged
-  // descriptors for having meta set.
-  const isEscapeKey = key.escape === true;
-  if (!isEscapeKey) {
-    if (descriptor.meta === true && !key.meta) return false;
-    if (descriptor.meta !== true && key.meta) return false;
-  }
-
-  return true;
+  return null;
 }
 
 /**
@@ -72,16 +100,12 @@ export function resolveAction(
   bindings: Record<string, KeyDescriptor[]>,
   actions: readonly ActionDef[]
 ): string | null {
-  const contextActions = actions.filter((a) => a.context === context);
-
-  for (const action of contextActions) {
-    const descriptors = bindings[action.id];
-    if (!descriptors) continue;
-    for (const desc of descriptors) {
-      if (matchesKey(desc, input, key)) return action.id;
-    }
-  }
-  return null;
+  return firstActionMatching(
+    actions.filter((a) => a.context === context),
+    input,
+    key,
+    bindings
+  );
 }
 
 /**
@@ -96,17 +120,12 @@ export function findConflict(
   actions: readonly ActionDef[],
   excludeActionId: string
 ): string | null {
-  const contextActions = actions.filter(
-    (a) => a.context === context && a.id !== excludeActionId
+  return firstActionMatching(
+    actions.filter((a) => a.context === context && a.id !== excludeActionId),
+    input,
+    key,
+    bindings
   );
-  for (const action of contextActions) {
-    const descriptors = bindings[action.id];
-    if (!descriptors) continue;
-    for (const desc of descriptors) {
-      if (matchesKey(desc, input, key)) return action.id;
-    }
-  }
-  return null;
 }
 
 /**
