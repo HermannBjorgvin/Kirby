@@ -168,6 +168,42 @@ describe('sync-items opens a tab per running agent', () => {
     // The id is what keeps the agent's terminal pane mounted.
     expect(s.tabs[0].id).toBe('item:branch:feat-x');
   });
+
+  it('does not follow a collapsed duplicate when its agent starts', () => {
+    // The discriminating case for *which* strip the already-open guard
+    // is asked about. Three tabs; `branch:x` and `pr:1` are the same
+    // item under two identities, so this sync re-keys `branch:x` to
+    // `pr:1` and collapses the hand-opened `pr:1` tab into it. The
+    // collapsed tab is the one carrying the id `item:pr:1` — the very
+    // id auto-open reads to decide the agent already has a tab.
+    //
+    // Collapsing a duplicate is not the user closing a tab, so it must
+    // not hand auto-open a licence to move the focus. The guard is
+    // asked about the strip as it stood before re-keying, where
+    // `item:pr:1` was open, and the answer is: leave it alone.
+    const entries: ItemEntry[] = [
+      { itemKey: 'branch:c', branch: 'c' },
+      { itemKey: 'pr:1', branch: 'x', sessionName: 'kirby-x', running: true },
+    ];
+    let s = open(empty, 'branch:c');
+    s = open(s, 'branch:x');
+    s = open(s, 'pr:1');
+    s = reduce(s, { type: 'activate', id: 'item:branch:c' });
+    expect(s.activeId).toBe('item:branch:c');
+
+    s = sync(s, entries);
+
+    // The duplicate collapsed, as it always did…
+    expect(s.tabs.map((t) => t.id)).toEqual(['item:branch:c', 'item:branch:x']);
+    // …and the session counts as auto-opened, so a later poll can't
+    // retry the move.
+    expect(s.autoOpened).toContain('kirby-x');
+    // …but the user is still looking at what they were looking at.
+    expect(s.activeId).toBe('item:branch:c');
+
+    s = sync(s, entries);
+    expect(s.activeId).toBe('item:branch:c');
+  });
 });
 
 describe('sync-items pins previews with a live agent', () => {

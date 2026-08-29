@@ -157,7 +157,14 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
     }
     case 'sync-items':
       return pinLive(
-        autoOpenRunning(rekey(state, action.entries), action.entries),
+        autoOpenRunning(
+          rekey(state, action.entries),
+          action.entries,
+          // The strip as the user last saw it. Auto-open's already-open
+          // guard is a question about history, and re-keying is not
+          // part of the history it asks about — see `autoOpenRunning`.
+          state.tabs
+        ),
         action.entries
       );
   }
@@ -240,8 +247,22 @@ function rekey(state: TabsState, entries: ItemEntry[]): TabsState {
  * keeps reporting the agent — and never when a tab for its key is
  * already open, so this can't steal focus from what the user is
  * looking at either.
+ *
+ * `openTabs` answers that already-open question, and it is the strip
+ * *before* `rekey` ran, not after. The two differ only where re-keying
+ * collapsed a duplicate onto the survivor: the tab carrying the id
+ * `item:<key>` is gone from the new strip, but it was open, and the
+ * collapse was bookkeeping rather than the user closing anything.
+ * Asking the post-rekey strip answers "no tab" there, and the
+ * `open-item` that follows finds the survivor by its itemKey and
+ * activates it — moving the focus off whatever the user had in front
+ * of them, on a sidebar poll they never asked for.
  */
-function autoOpenRunning(state: TabsState, entries: ItemEntry[]): TabsState {
+function autoOpenRunning(
+  state: TabsState,
+  entries: ItemEntry[],
+  openTabs: readonly Tab[]
+): TabsState {
   const opened = new Set(state.autoOpened);
   let next = state;
   let changed = false;
@@ -250,7 +271,7 @@ function autoOpenRunning(state: TabsState, entries: ItemEntry[]): TabsState {
     if (opened.has(e.sessionName)) continue;
     opened.add(e.sessionName);
     changed = true;
-    if (next.tabs.some((t) => t.id === `item:${e.itemKey}`)) continue;
+    if (openTabs.some((t) => t.id === `item:${e.itemKey}`)) continue;
     next = reduce(next, {
       type: 'open-item',
       itemKey: e.itemKey,
