@@ -82,3 +82,15 @@ legible at a size a README can carry.
 - Playwright only attaches to an `--app` window through
   `launchPersistentContext`; `chromium.launch` opens its own about:blank
   and reports no contexts for the app window at all.
+- In the TUI, count keystrokes from a known edge, never relatively: the
+  first key can land before Ink is listening and be swallowed, which
+  shifts every later position by one and lands the take on the wrong
+  pull request. Walking to the top, where the selection clamps, and
+  counting down from there is stable.
+- A terminal only has its _visible_ rows in the DOM, so a `getByText`
+  wait must name something the current viewport shows — not code that
+  is scrolled out of view.
+- `Shift+Down` (next comment) moves the selection reliably once and is a
+  coin toss the second time, which is why the take queues one comment
+  rather than two. `a` toggles, so a jump that silently fails un-queues
+  what the previous one added.

@@ -90,14 +90,38 @@ function startRecording(name) {
   return rec;
 }
 
-function toGif(name, { width = 960, fps = 12, start = 0, end } = {}) {
+/** One frame of the Xvfb display, for looking at a failed take. */
+function grabDisplay(out) {
+  spawnSync('ffmpeg', [
+    '-y',
+    '-loglevel',
+    'error',
+    '-f',
+    'x11grab',
+    '-video_size',
+    `${PX.width}x${PX.height}`,
+    '-i',
+    DISPLAY,
+    '-frames:v',
+    '1',
+    out,
+  ]);
+}
+
+function toGif(
+  name,
+  { width = 960, fps = 12, colors = 0, start = 0, end } = {}
+) {
   const src = join(RAW, `${name}.mkv`);
   const gif = join(MEDIA, `${name}.gif`);
   const trim = [
     ...(start ? ['-ss', String(start)] : []),
     ...(end ? ['-to', String(end)] : []),
   ];
-  const filters = `fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
+  // Capping the palette is worth a lot on a terminal, which uses a
+  // handful of colours and would otherwise pay for a full 256 of them.
+  const cap = colors ? `:max_colors=${colors}` : '';
+  const filters = `fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff${cap}[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
   const res = spawnSync(
     'ffmpeg',
     ['-y', '-loglevel', 'error', ...trim, '-i', src, '-vf', filters, gif],
@@ -335,6 +359,21 @@ async function keys(page, seq, { delay = 260 } = {}) {
   }
 }
 
+/** Wait for text to appear in the terminal, then hold on it. */
+async function waitTui(page, text, { hold = 900, timeout = 30_000 } = {}) {
+  await page.getByText(text).first().waitFor({ state: 'visible', timeout });
+  await sleep(hold);
+}
+
+/**
+ * The TUI, doing the thing Kirby is for: read the review comments on a
+ * pull request, queue the ones worth acting on, and hand them to an
+ * agent working in that branch's worktree.
+ *
+ * Waits are on text rather than on the clock wherever the app has to do
+ * something first — a diff to load, an agent to spawn — so the take
+ * does not race the app on a slower machine.
+ */
 async function demoTui(scenario) {
   const host = await startWtermHost();
   let browser;
@@ -343,35 +382,70 @@ async function demoTui(scenario) {
     const page = currentPage;
     await sleep(1200);
     const rec = startRecording('tui');
-    await sleep(1200);
+    await sleep(1100);
 
-    // Down the sidebar and back up: a worktree, then the pull
-    // requests with their CI and review state, then the review queue.
-    // The rows carry the same two axes the desktop's circles do, spelled
-    // out in the legend at the bottom left.
+    // Down the sidebar and back: worktrees, then pull requests with
+    // their CI and review state — the same two axes the desktop's
+    // status circles carry, spelled out in the legend bottom left.
+    //
+    // Counting relative moves is not enough: the first key can land
+    // before Ink is listening and be swallowed, which silently shifts
+    // every later position by one. Walking to the top (where the
+    // selection clamps) and counting down from there always lands on
+    // the row this take is about.
     await keys(page, ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown'], {
-      delay: 850,
+      delay: 620,
     });
-    await sleep(1000);
-    // Back up to the pull request with review comments on it.
-    await keys(page, ['ArrowUp', 'ArrowUp', 'ArrowUp'], { delay: 700 });
+    await sleep(800);
+    await keys(page, Array(6).fill('ArrowUp'), { delay: 260 });
+    await sleep(500);
+    await page.keyboard.press('ArrowDown');
+    await sleep(900);
+
+    // Into the diff, on the file the reviewers commented on.
+    await page.keyboard.press('d');
+    await waitTui(page, /keyboard\.ts/, { hold: 1000 });
+    await page.keyboard.press('Enter');
+    await sleep(1200);
+    await page.keyboard.press('ArrowRight');
     await sleep(1300);
 
-    // Its changed files, then the diff itself, with the reviewers'
-    // threads inline against the code they are about.
-    await page.keyboard.press('d');
-    await sleep(2200);
+    // Jump to the reviewers' thread and queue it with a note on how it
+    // should be handled — the same cart the desktop has, and `A` is the
+    // add-with-note the desktop spells out in a composer.
+    //
+    // One comment, not two: `Shift+Down` moves the selection once
+    // reliably, and a second jump lands often enough to be a coin toss,
+    // which would silently toggle the first comment back off.
+    await page.keyboard.press('Shift+ArrowDown');
+    await waitTui(page, /registry grows per plugin/, { hold: 1200 });
+    await page.keyboard.press('A');
+    await sleep(700);
+    await page.keyboard.type('Cache per query prefix so backspace is free.', {
+      delay: 55,
+    });
+    await sleep(800);
     await page.keyboard.press('Enter');
-    await sleep(2200);
-    // On to the file the reviewers actually commented on — their
-    // threads render inline, against the lines they are about.
-    await page.keyboard.press('ArrowRight');
-    await sleep(2200);
-    await keys(page, ['j', 'j', 'j', 'j', 'j', 'j'], { delay: 420 });
-    await sleep(3200);
+    await waitTui(page, /Added to plan|Plan/, { hold: 1000 });
+
+    // Check out: the queued comments become one prompt.
+    await page.keyboard.press('c');
+    await waitTui(page, /Plan Checkout/, { hold: 2200 });
+    await page.keyboard.press('Enter');
+
+    // And the agent picks it up in the branch's own worktree, seeded
+    // with the composed plan — the note included.
+    await waitTui(page, /connected to workspace/, { hold: 900 });
+    await waitTui(page, /Editing/, { hold: 2600, timeout: 40_000 });
 
     await rec.stop();
-    toGif('tui');
+    // A terminal is mostly still between keystrokes, so it carries a
+    // lower frame rate without looking choppy — and this take is the
+    // longest of the set.
+    toGif('tui', { fps: 10, colors: 64 });
+  } catch (err) {
+    grabDisplay(join(RAW, 'tui-failed.png'));
+    throw err;
   } finally {
     await browser?.close().catch(() => undefined);
     await fetch(`${TUI_ORIGIN}/kill`, { method: 'POST' }).catch(
@@ -623,10 +697,10 @@ try {
     try {
       await demos[name](scenario);
     } catch (err) {
-      // Leave a still of where it died next to the raw recordings.
-      await currentPage
-        ?.screenshot({ path: join(RAW, `${name}-failed.png`) })
-        .catch(() => undefined);
+      // Grab the display, not the page: a page screenshot of the
+      // terminal window comes back blank, and what is wanted is the
+      // frame the take died on.
+      grabDisplay(join(RAW, `${name}-failed.png`));
       await currentRec?.stop();
       throw err;
     }

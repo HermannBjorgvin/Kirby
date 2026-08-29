@@ -62,9 +62,9 @@ Browse a PR's files and diffs, read comment threads, reply, and resolve or reope
 
 The desktop app is where most of the work goes now, but Kirby runs just as well as a TUI — same core, same config, same worktrees, and it will happily share them with the desktop. If you live in a terminal or work over SSH, `kirby` is the whole thing without a window.
 
-![The Kirby TUI: moving down the sidebar past worktrees and pull requests with their CI and review state, opening a pull request's changed files, and reading the diff with reviewers' threads inline](docs/media/tui.gif)
+![The Kirby TUI: walking the sidebar past worktrees and pull requests with their CI and review state, opening a pull request's diff with the reviewers' threads inline, queueing a comment with a note, and sending the plan to an agent that starts working in the branch's worktree](docs/media/tui.gif)
 
-Everything in the features above is here too: worktree sessions, PR status with CI and approvals, the diff with comment threads inline, agent-drafted reviews, and the same add-to-plan cart (`a` on a comment). The split, word-level and folded diffs are desktop-only.
+That whole loop is the TUI: the sidebar with CI and approval state per pull request, the diff with comment threads inline, `a`/`A` to queue a comment for the agent with a note on how to handle it, and `enter` at checkout to hand it over — the agent then runs in that branch's worktree, in the pane on the right. The split, word-level and folded diffs are desktop-only.
 
 <img alt="Kirby's terminal UI, with the branch sidebar on the left and an agent session on the right" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
 
