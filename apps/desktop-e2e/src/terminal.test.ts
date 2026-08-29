@@ -107,6 +107,32 @@ test.describe('Two agents at once', () => {
     ).toEqual(['alpha', 'beta']);
   });
 
+  test('coming back to a tab does not replay its scrollback on top of itself', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+
+    await launch(page, 'alpha');
+    await typeAndExpectEcho(page, 'from-alpha');
+    await launch(page, 'beta');
+
+    // The pane replays the host's ring buffer once, when it mounts.
+    // Anything that makes that run again on a tab switch — reading the
+    // active tab inside the subscription rather than beside it is the
+    // easy way in — writes the entire history into the terminal a
+    // second time, under the copy already there.
+    await tab(page, /alpha/).click();
+    await expect(visibleText(page, /echo:from-alpha/)).toBeVisible();
+    // The pane asks for the buffer as it re-renders, so this read is
+    // queued behind any the switch provoked: once it answers, a second
+    // replay would already have been written.
+    await page.evaluate(() => window.kirby.getSessionBuffer('alpha'));
+
+    await expect(page.getByText(BANNER).filter({ visible: true })).toHaveCount(
+      1
+    );
+  });
+
   test('stopping one leaves the other running', async ({ desktop }) => {
     const { page } = desktop;
     await launch(page, 'alpha');

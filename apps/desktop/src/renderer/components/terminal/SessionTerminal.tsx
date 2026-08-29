@@ -34,10 +34,6 @@ export function SessionTerminal({
   // the host's "last seen" fresh so the tab's attention blink never
   // fires for output they watched happen. Throttled — data can arrive
   // many times per second.
-  const activeRef = useRef(active);
-  useEffect(() => {
-    activeRef.current = active;
-  }, [active]);
   const lastSeenMarkRef = useRef(0);
   const markSeen = useCallback(() => {
     const t = Date.now();
@@ -45,6 +41,19 @@ export function SessionTerminal({
     lastSeenMarkRef.current = t;
     void window.kirby.markSessionSeen(name);
   }, [name]);
+
+  // Its own subscription, deliberately. The replay effect below must
+  // not depend on `active`: re-running it re-reads the host's ring
+  // buffer, so a tab switch would paste the entire scrollback in again.
+  // Listening, on the other hand, is free — `onSessionData` is a bare
+  // IPC event listener and the replay comes from `getSessionBuffer` —
+  // so this half can come and go with the active tab on its own.
+  useEffect(() => {
+    if (!active || !ready) return;
+    return window.kirby.onSessionData(({ name: n }) => {
+      if (n === name) markSeen();
+    });
+  }, [active, ready, name, markSeen]);
 
   useEffect(() => {
     if (!ready) return;
@@ -56,7 +65,6 @@ export function SessionTerminal({
 
     const offData = window.kirby.onSessionData(({ name: n, data, seq }) => {
       if (n !== name) return;
-      if (activeRef.current) markSeen();
       if (snapshotSeq === null) {
         pending.push({ seq, data });
       } else if (seq > snapshotSeq) {
@@ -101,7 +109,7 @@ export function SessionTerminal({
       offData();
       offExit();
     };
-  }, [name, ready, markSeen]);
+  }, [name, ready]);
 
   // Pasting a picture into the terminal.
   //
