@@ -252,11 +252,11 @@ export const LocalCommentCard = memo(function LocalCommentCard({
           </Text>
         ) : (
           <>
-            {body.lines.map((line, i) => (
-              <Text key={i} wrap="wrap">
-                {line || ' '}
-              </Text>
-            ))}
+            {/* One Text, not one per line: the lines are a positional
+                split of a single string, so there is no identity to key
+                them by, and Ink wraps an embedded newline the same way
+                it wraps a sibling row. */}
+            <Text wrap="wrap">{body.lines.join('\n')}</Text>
             {body.hiddenCount > 0 && (
               <Text dimColor>… {body.hiddenCount} more lines</Text>
             )}

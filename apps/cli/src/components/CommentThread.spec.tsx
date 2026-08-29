@@ -363,3 +363,27 @@ describe('estimateCardRows matches the rendered card exactly', () => {
     expect(estimateCardRows(thread, CONTENT_WIDTH)).toBe(real);
   });
 });
+
+// The card renders a draft body as one <Text> holding the newlines
+// rather than one <Text> per line, so this pins the thing that would
+// break if the lines were ever joined on anything but '\n': a blank
+// line inside a body is a blank rendered row, and the paragraphs
+// either side of it stay on rows of their own.
+describe('LocalCommentCard — body line breaks', () => {
+  it('keeps a blank line between paragraphs as a blank row', () => {
+    const comment = makeReview({ body: 'first para\n\nthird para' });
+    const { lastFrame } = render(
+      <LocalCommentCard comment={comment} selected maxWidth={40} />
+    );
+    const rows = stripAnsi(lastFrame() ?? '')
+      .split('\n')
+      .map((r) => r.replace(/[│╭╮╰╯─]/g, '').trim());
+
+    const first = rows.findIndex((r) => r === 'first para');
+    const third = rows.findIndex((r) => r === 'third para');
+
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(third).toBe(first + 2);
+    expect(rows[first + 1]).toBe('');
+  });
+});

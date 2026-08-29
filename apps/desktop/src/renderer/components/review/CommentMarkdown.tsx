@@ -166,12 +166,21 @@ function HighlightedCodeBlock({ code, tag }: { code: string; tag: string }) {
   const { resolved } = useTheme();
   const lines = code.split('\n');
   const tokens = useHighlightedCodeBlock(code, tag, resolved);
+  // The index is the identity here, so the usual objection to keying by
+  // it does not apply: `lines` and `tokens` are a positional split of
+  // one static `code` string, nothing reorders, and every span is a
+  // leaf with no state. The "stable" alternative would be a character
+  // offset, which is strictly worse — inserting a line changes the
+  // offset of every line below it and remounts the whole block, where
+  // the index reuses them.
   return (
     <code className="block">
       {lines.map((line, i) => (
+        // eslint-disable-next-line react/no-array-index-key -- positional split; see above
         <span key={i} className="block">
           {tokens?.[i]
             ? tokens[i].map((tok, j) => (
+                // eslint-disable-next-line react/no-array-index-key -- as above, within the line
                 <span key={j} style={{ color: tok.color }}>
                   {tok.content}
                 </span>
