@@ -6,6 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
+import { contentKey } from './content-key.js';
 import type { CharRange } from './diff-model.js';
 import {
   analyzeFileInWorker,
@@ -21,25 +22,68 @@ export type { LineTokens };
 const EMPTY: FileAnalysis = { tokens: null, wordRanges: new Map() };
 
 /**
- * Identity token for a DiffLine[] instance, so a worker result can be
- * cached under a key that is cheap to compute yet never collides.
+ * The worker's answer for a line is a pure function of its `type` and
+ * `content` — shiki tokenizes the joined contents, and the word-diff
+ * pairs removes with adds by type. Line numbers steer neither, so they
+ * stay out of the key and two identical snippets share one analysis.
  *
- * Content hashing would be O(file) on the render path, and keying on
- * `lines.length` would let two same-length snippets of one file share
- * (wrong) tokens. Arrays here come from the parsed diff and are
- * memoized by their producers, so identity is both stable across
- * scrolling and distinct whenever the content is.
+ * NUL separates, and appears in neither a type nor a line of a text
+ * diff (git calls a file with one binary and stops emitting lines).
  */
-const lineIds = new WeakMap<readonly DiffLine[], number>();
-let nextLineId = 1;
-
-export function linesId(lines: readonly DiffLine[]): number {
-  let id = lineIds.get(lines);
-  if (id === undefined) {
-    id = nextLineId++;
-    lineIds.set(lines, id);
+function linesContent(lines: readonly DiffLine[]): string {
+  const parts = new Array<string>(lines.length);
+  for (let i = 0; i < lines.length; i++) {
+    parts[i] = `${lines[i].type}\0${lines[i].content}`;
   }
-  return id;
+  return parts.join('\0');
+}
+
+/**
+ * Content key for a DiffLine[], memoized on the array instance.
+ *
+ * Identity alone does not work. It is stable on the virtualized path,
+ * where `linesByFile` is memoized, but not in the review walkthrough:
+ * `ReviewStepper` calls `snippetAround` inline in its JSX, `StepCard`
+ * is not memoized, and `SnippetView` maps `rows` to `lines` — so every
+ * render mints a fresh array of the same seven lines, and an identity
+ * key would re-tokenize each time. That re-tokenizing is the thing the
+ * worker exists to avoid.
+ *
+ * Content alone does not work either, at whole-file sizes. Measured
+ * here (node 22), serializing and hashing a `DiffLine[]`:
+ *
+ * |     lines |   text | linesContent + contentKey |
+ * | --------- | ------ | ------------------------- |
+ * |         7 |  <1 KB | 0.004 ms                  |
+ * |       500 |  31 KB | 0.07 ms                   |
+ * |     3 000 | 191 KB | 0.49 ms                   |
+ * |    20 000 | 1.3 MB | 4.13 ms                   |
+ * |    60 000 | 3.9 MB | 12.34 ms                  |
+ *
+ * Whole-file diffs (`-U99999`) reach the bottom rows, and paying that
+ * on every scroll frame would be worse than the bug.
+ *
+ * So: hash the content, and memoize the hash on the array. The two
+ * paths then each get what they need from a different half. Big arrays
+ * are memoized by their producer, so the hash is paid once per parse,
+ * for the files actually on screen, and a scroll frame is a WeakMap
+ * hit (~0 ms). Snippet arrays miss the WeakMap every render — and it
+ * does not matter, because 0.004 ms later they produce *the same key*
+ * as the render before.
+ *
+ * The key has to be a short string either way: TanStack re-runs
+ * `JSON.stringify` over a query key on every render of every observer,
+ * which is 0.0002 ms for this and 5.6 ms for a raw 20 000-line array.
+ */
+const lineKeys = new WeakMap<readonly DiffLine[], string>();
+
+export function linesKey(lines: readonly DiffLine[]): string {
+  let key = lineKeys.get(lines);
+  if (key === undefined) {
+    key = contentKey(linesContent(lines));
+    lineKeys.set(lines, key);
+  }
+  return key;
 }
 
 /**
@@ -58,7 +102,7 @@ export function fileAnalysisQuery(
   theme: ResolvedTheme
 ) {
   return queryOptions({
-    queryKey: keys.fileAnalysis(filename, linesId(lines), theme),
+    queryKey: keys.fileAnalysis(filename, linesKey(lines), theme),
     queryFn: () => analyzeFileInWorker(filename, lines, theme),
     staleTime: Infinity,
     retry: false,
