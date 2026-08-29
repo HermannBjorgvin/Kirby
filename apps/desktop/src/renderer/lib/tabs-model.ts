@@ -67,74 +67,18 @@ function pinTab(tabs: Tab[], id: string): Tab[] {
 
 export function reduce(state: TabsState, action: TabsAction): TabsState {
   switch (action.type) {
-    case 'open-item': {
-      const id = `item:${action.itemKey}`;
-      // Match by itemKey, not id: a re-keyed tab (see `sync-items`)
-      // keeps its original id, and opening its item again must find it
-      // rather than spawn a duplicate.
-      //
-      // …and match by id as well, for the mirror case: a tab opened as
-      // `branch:x` and since re-keyed to `pr:n` still carries the id
-      // `item:branch:x`, so opening `branch:x` again — which the
-      // palette does whenever the branch isn't in the sidebar model yet
-      // — would otherwise create a second tab sharing that id. Panes
-      // are keyed by tab id, so two of them render each other's
-      // content and closing one acts on the wrong tab.
-      const existing = state.tabs.find(
-        (t) =>
-          t.kind === 'item' && (t.itemKey === action.itemKey || t.id === id)
-      );
-      if (existing) {
-        const tabs = action.preview
-          ? state.tabs
-          : pinTab(state.tabs, existing.id);
-        return { ...state, tabs, activeId: existing.id };
-      }
-      const next: Tab = {
-        id,
-        kind: 'item',
-        itemKey: action.itemKey,
-        preview: action.preview,
-      };
-      // Replace the current preview tab (if any) instead of stacking.
-      const previewIdx = state.tabs.findIndex((t) => t.preview);
-      if (action.preview && previewIdx >= 0) {
-        const tabs = [...state.tabs];
-        tabs[previewIdx] = next;
-        return { ...state, tabs, activeId: id };
-      }
-      return { ...state, tabs: [...state.tabs, next], activeId: id };
-    }
-    case 'open-settings': {
-      if (state.tabs.some((t) => t.id === 'settings')) {
-        return { ...state, activeId: 'settings' };
-      }
-      return {
-        ...state,
-        tabs: [
-          ...state.tabs,
-          { id: 'settings', kind: 'settings', preview: false },
-        ],
-        activeId: 'settings',
-      };
-    }
+    case 'open-item':
+      return openItem(state, action.itemKey, action.preview);
+    case 'open-settings':
+      return openSettings(state);
     case 'pin':
       return { ...state, tabs: pinTab(state.tabs, action.id) };
     case 'activate':
       return state.tabs.some((t) => t.id === action.id)
         ? { ...state, activeId: action.id }
         : state;
-    case 'close': {
-      const idx = state.tabs.findIndex((t) => t.id === action.id);
-      if (idx < 0) return state;
-      const tabs = state.tabs.filter((t) => t.id !== action.id);
-      let activeId = state.activeId;
-      if (state.activeId === action.id) {
-        const neighbour = tabs[Math.min(idx, tabs.length - 1)];
-        activeId = neighbour?.id ?? null;
-      }
-      return { ...state, tabs, activeId };
-    }
+    case 'close':
+      return closeTab(state, action.id);
     case 'close-others': {
       const tabs = state.tabs.filter((t) => t.id === action.id);
       return { ...state, tabs, activeId: tabs[0]?.id ?? null };
@@ -144,17 +88,8 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
       // act, and re-opening the running agents on the next sidebar poll
       // would undo it.
       return { ...state, tabs: [], activeId: null };
-    case 'move': {
-      if (action.id === action.targetId) return state;
-      const from = state.tabs.findIndex((t) => t.id === action.id);
-      if (from < 0) return state;
-      const tabs = [...state.tabs];
-      const [moved] = tabs.splice(from, 1);
-      const at = tabs.findIndex((t) => t.id === action.targetId);
-      if (at < 0) return state;
-      tabs.splice(action.side === 'after' ? at + 1 : at, 0, moved);
-      return { ...state, tabs };
-    }
+    case 'move':
+      return moveTab(state, action.id, action.targetId, action.side);
     case 'sync-items':
       return pinLive(
         autoOpenRunning(
@@ -168,6 +103,90 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
         action.entries
       );
   }
+}
+
+/**
+ * Activate the tab for an item, opening one if none is on it yet.
+ *
+ * The search matches by itemKey, not id: a re-keyed tab (see
+ * `sync-items`) keeps its original id, and opening its item again must
+ * find it rather than spawn a duplicate.
+ *
+ * …and by id as well, for the mirror case: a tab opened as `branch:x`
+ * and since re-keyed to `pr:n` still carries the id `item:branch:x`, so
+ * opening `branch:x` again — which the palette does whenever the branch
+ * isn't in the sidebar model yet — would otherwise create a second tab
+ * sharing that id. Panes are keyed by tab id, so two of them render
+ * each other's content and closing one acts on the wrong tab.
+ */
+function openItem(
+  state: TabsState,
+  itemKey: string,
+  preview: boolean
+): TabsState {
+  const id = `item:${itemKey}`;
+  const existing = state.tabs.find(
+    (t) => t.kind === 'item' && (t.itemKey === itemKey || t.id === id)
+  );
+  if (existing) {
+    const tabs = preview ? state.tabs : pinTab(state.tabs, existing.id);
+    return { ...state, tabs, activeId: existing.id };
+  }
+  const next: Tab = { id, kind: 'item', itemKey, preview };
+  // Replace the current preview tab (if any) instead of stacking.
+  const previewIdx = state.tabs.findIndex((t) => t.preview);
+  if (preview && previewIdx >= 0) {
+    const tabs = [...state.tabs];
+    tabs[previewIdx] = next;
+    return { ...state, tabs, activeId: id };
+  }
+  return { ...state, tabs: [...state.tabs, next], activeId: id };
+}
+
+/** Settings is a singleton tab: open it once, activate it thereafter. */
+function openSettings(state: TabsState): TabsState {
+  if (state.tabs.some((t) => t.id === 'settings')) {
+    return { ...state, activeId: 'settings' };
+  }
+  return {
+    ...state,
+    tabs: [...state.tabs, { id: 'settings', kind: 'settings', preview: false }],
+    activeId: 'settings',
+  };
+}
+
+/**
+ * Drop a tab, and when it was the active one hand focus to the tab that
+ * slid into its place (the last tab, if it was the rightmost).
+ */
+function closeTab(state: TabsState, id: string): TabsState {
+  const idx = state.tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return state;
+  const tabs = state.tabs.filter((t) => t.id !== id);
+  let activeId = state.activeId;
+  if (state.activeId === id) {
+    const neighbour = tabs[Math.min(idx, tabs.length - 1)];
+    activeId = neighbour?.id ?? null;
+  }
+  return { ...state, tabs, activeId };
+}
+
+/** Drag-reorder: lift a tab out of the strip and drop it beside another. */
+function moveTab(
+  state: TabsState,
+  id: string,
+  targetId: string,
+  side: 'before' | 'after'
+): TabsState {
+  if (id === targetId) return state;
+  const from = state.tabs.findIndex((t) => t.id === id);
+  if (from < 0) return state;
+  const tabs = [...state.tabs];
+  const [moved] = tabs.splice(from, 1);
+  const at = tabs.findIndex((t) => t.id === targetId);
+  if (at < 0) return state;
+  tabs.splice(side === 'after' ? at + 1 : at, 0, moved);
+  return { ...state, tabs };
 }
 
 /**

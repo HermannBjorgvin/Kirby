@@ -77,6 +77,17 @@ export function buildUnifiedRows(
     if (opts.expanded?.has(i)) visible[i] = 1;
   }
 
+  return foldHiddenRuns(visible);
+}
+
+/**
+ * Second half of the fold: emit a row per visible line, and collapse
+ * each run of hidden ones into a fold. Runs shorter than MIN_FOLD are
+ * emitted as lines instead — a fold marker costs more height than the
+ * lines it would hide.
+ */
+function foldHiddenRuns(visible: Uint8Array): UnifiedRow[] {
+  const n = visible.length;
   const rows: UnifiedRow[] = [];
   let i = 0;
   while (i < n) {
