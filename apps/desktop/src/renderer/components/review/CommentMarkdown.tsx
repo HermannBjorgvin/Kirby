@@ -1,8 +1,11 @@
 import { ExternalLinkIcon, ImageOffIcon } from 'lucide-react';
-import { useState, type ComponentProps } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useHighlightedCodeBlock } from '../../lib/highlight.js';
+import {
+  useHighlightedCodeBlock,
+  type LineTokens,
+} from '../../lib/highlight.js';
 import { useCommentImage } from '../../lib/queries.js';
 import { useTheme } from '../../lib/theme.js';
 import { cn } from '../../lib/utils.js';
@@ -162,32 +165,61 @@ function MarkdownCode({
   );
 }
 
+/** Running start offset for each item, given their lengths. */
+function startsOf(lengths: number[]): number[] {
+  const starts: number[] = [];
+  lengths.reduce((at, len) => {
+    starts.push(at);
+    return at + len;
+  }, 0);
+  return starts;
+}
+
 function HighlightedCodeBlock({ code, tag }: { code: string; tag: string }) {
   const { resolved } = useTheme();
-  const lines = code.split('\n');
   const tokens = useHighlightedCodeBlock(code, tag, resolved);
-  // The index is the identity here, so the usual objection to keying by
-  // it does not apply: `lines` and `tokens` are a positional split of
-  // one static `code` string, nothing reorders, and every span is a
-  // leaf with no state. The "stable" alternative would be a character
-  // offset, which is strictly worse — inserting a line changes the
-  // offset of every line below it and remounts the whole block, where
-  // the index reuses them.
+
+  // Each row carries where it starts in `code`, so a line and a token
+  // are keyed by their character offset — a position in the document
+  // rather than a position in an array. The rendered DOM is the same
+  // either way; this is only about what identifies a row to React.
+  const rows = useMemo(() => {
+    const lines = code.split('\n');
+    // +1 per line for the newline the split consumed.
+    const starts = startsOf(lines.map((line) => line.length + 1));
+    return lines.map((line, i) => ({
+      start: starts[i],
+      line,
+      tokens: tokens?.[i],
+    }));
+  }, [code, tokens]);
+
   return (
     <code className="block">
-      {lines.map((line, i) => (
-        // eslint-disable-next-line react/no-array-index-key -- positional split; see above
-        <span key={i} className="block">
-          {tokens?.[i]
-            ? tokens[i].map((tok, j) => (
-                // eslint-disable-next-line react/no-array-index-key -- as above, within the line
-                <span key={j} style={{ color: tok.color }}>
-                  {tok.content}
-                </span>
-              ))
-            : line || ' '}
+      {rows.map((row) => (
+        <span key={row.start} className="block">
+          {row.tokens ? (
+            <TokenLine tokens={row.tokens} start={row.start} />
+          ) : (
+            row.line || ' '
+          )}
         </span>
       ))}
     </code>
+  );
+}
+
+/** Colour spans for one line, keyed by each token's offset in the file. */
+function TokenLine({ tokens, start }: { tokens: LineTokens; start: number }) {
+  const starts = startsOf(tokens.map((tok) => tok.content.length));
+  const spans = tokens.map((tok, i) => ({ tok, at: start + starts[i] }));
+  return (
+    <>
+      {spans.map(({ tok, at }) => (
+        <span key={at} style={{ color: tok.color }}>
+          {tok.content}
+        </span>
+      ))}
+    </>
   );
 }

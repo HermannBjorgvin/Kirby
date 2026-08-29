@@ -45,7 +45,7 @@ export function repoTitle(cwd: string = process.cwd()): string {
  * terminals.
  */
 function sanitize(title: string): string {
-  // eslint-disable-next-line no-control-regex
+  // eslint-disable-next-line no-control-regex -- the control characters ARE the input being removed
   return title.replace(/[\x00-\x1f\x7f-\x9f]/g, '');
 }
 
