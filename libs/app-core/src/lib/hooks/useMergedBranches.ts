@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useConfig } from '../context/ConfigContext.js';
 import { sweepMergedBranches } from '@kirby/core';
 
@@ -17,12 +17,11 @@ export function useMergedBranches(
     config;
   const [mergedBranches, setMergedBranches] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const onAutoDeleteRef = useRef(onAutoDelete);
-  // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
-  onAutoDeleteRef.current = onAutoDelete;
-  const onRebaseInProgressRef = useRef(onRebaseInProgress);
-  // eslint-disable-next-line react-hooks/refs -- keep callback ref in sync without re-running the effect
-  onRebaseInProgressRef.current = onRebaseInProgress;
+  // Effect events: the sweep must see the latest callbacks without the
+  // callbacks' identity re-running it. A new prop identity here would
+  // restart a git-heavy merged-branch pass on every parent render.
+  const autoDelete = useEffectEvent(onAutoDelete);
+  const rebaseInProgress = useEffectEvent(onRebaseInProgress);
   // Branches we've already toasted a rebase-in-progress warning for, so a
   // worktree stuck mid-rebase across many syncs isn't re-toasted each time.
   const warnedRebaseRef = useRef<Set<string>>(new Set());
@@ -37,9 +36,12 @@ export function useMergedBranches(
       return;
 
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
+      // Inside the async body, not beside it: a synchronous setState in
+      // an effect makes React re-render before the effect has done
+      // anything, and the pass this flags is about to start anyway.
+      setLoading(true);
       const { nextWarned } = await sweepMergedBranches({
         provider,
         vcsConfigured,
@@ -58,9 +60,8 @@ export function useMergedBranches(
           setMergedBranches(merged);
           setLoading(false);
         },
-        onAutoDelete: (sessionName, branch) =>
-          onAutoDeleteRef.current(sessionName, branch),
-        onRebaseInProgress: (branch) => onRebaseInProgressRef.current(branch),
+        onAutoDelete: (sessionName, branch) => autoDelete(sessionName, branch),
+        onRebaseInProgress: (branch) => rebaseInProgress(branch),
         isCancelled: () => cancelled,
       });
       if (cancelled) return;
