@@ -50,6 +50,9 @@
     },
     {
       "path": "./apps/desktop-e2e"
+    },
+    {
+      "path": "./libs/core"
     }
   ]
 }
