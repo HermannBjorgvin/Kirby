@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { render, Box, useApp } from 'ink';
+import { readConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
@@ -71,18 +72,6 @@ function App() {
   const deleteConfirm = useDeleteConfirmState();
   const { termRows } = useLayout();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
-
-  // Wire the active terminal backend factory into pty-registry whenever
-  // the config selection changes. The Settings UI gates this to empty
-  // registry, so existing sessions are never stranded on a stale factory.
-  const terminalBackend = config.terminalBackend;
-  useEffect(() => {
-    applySessionBackend(config);
-    // Only react to backend changes; other config edits don't need to
-    // rebuild the factory. Capturing config in scope is fine — the
-    // factory only reads `terminalBackend`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalBackend]);
 
   const showOnboarding =
     !onboardingComplete && !!config.vendor && !!provider && !vcsConfigured;
@@ -157,6 +146,15 @@ process.on('SIGTERM', () => {
 // startup fallback (tmux requested but unavailable → PTY) sees a
 // populated cache. Probe is memoized; ~ms cost on `tmux -V`.
 await probeTmuxAvailability();
+
+// Wire the selected terminal backend factory into pty-registry, from
+// the same on-disk config ConfigProvider is about to read (this runs
+// after the optional chdir, so per-project config resolves against the
+// target repo). From here the Settings write path re-applies it on
+// change — see `writeFieldChange` in input-handlers.ts. Doing it there
+// rather than in a render effect keeps the factory swap on the code
+// path that has already checked no session is live.
+applySessionBackend(readConfig());
 
 render(
   <ConfigProvider providers={providers}>

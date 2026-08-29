@@ -39,8 +39,7 @@ type HookValue = ReturnType<typeof useRemoteComments>;
 
 // Stable empty objects shared across renders so the hook's internal
 // useCallback dep array doesn't change on every render (which would
-// re-run the fetch effect and potentially race its setState against
-// the `mountedRef` cleanup).
+// re-run the fetch effect and re-fire the request).
 const EMPTY_AUTH = Object.freeze({}) as Record<string, string>;
 const EMPTY_PROJECT = Object.freeze({}) as Record<string, string>;
 
@@ -48,17 +47,23 @@ const EMPTY_PROJECT = Object.freeze({}) as Record<string, string>;
 function mountProbe(
   prId: number | null,
   provider: VcsProvider | null,
-  onResolvedChange?: () => void
-): { outRef: { current: HookValue | null }; unmount: () => void } {
+  onResolvedChange?: () => void,
+  onFetchError?: (message: string) => void
+): {
+  outRef: { current: HookValue | null };
+  unmount: () => void;
+  setPrId: (next: number | null) => void;
+} {
   const outRef: { current: HookValue | null } = { current: null };
 
-  function Probe() {
+  function Probe({ prId: currentPrId }: { prId: number | null }) {
     const value = useRemoteComments(
-      prId,
+      currentPrId,
       provider,
       EMPTY_AUTH,
       EMPTY_PROJECT,
-      onResolvedChange
+      onResolvedChange,
+      onFetchError
     );
     // Capture on every render via an effect — direct assignment
     // during render is blocked by the react-hooks/immutability rule.
@@ -68,8 +73,26 @@ function mountProbe(
     return <Box />;
   }
 
-  const { unmount } = render(<Probe />);
-  return { outRef, unmount };
+  const { unmount, rerender } = render(<Probe prId={prId} />);
+  return {
+    outRef,
+    unmount,
+    setPrId: (next) => rerender(<Probe prId={next} />),
+  };
+}
+
+// A promise whose settlement the test controls, so a fetch can be held
+// in flight across an unmount or a PR switch.
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  // Nothing awaits a rejection until the hook does; keep node quiet.
+  promise.catch(() => undefined);
+  return { promise, resolve, reject };
 }
 
 // Flush microtasks + macrotasks so pending fetches resolve and React
@@ -238,6 +261,63 @@ describe('useRemoteComments', () => {
       'forbidden'
     );
     expect(onResolvedChange).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('does not report a fetch error once the hook has unmounted', async () => {
+    const pending = deferred<PullRequestComments>();
+    const provider = {
+      id: 'github',
+      fetchCommentThreads: vi.fn().mockReturnValue(pending.promise),
+    } as unknown as VcsProvider;
+    const onFetchError = vi.fn();
+
+    const { unmount } = mountProbe(42, provider, undefined, onFetchError);
+    await flush();
+    expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(1);
+
+    // The user leaves the diff view while the request is still in flight,
+    // and only then does it fail. The status bar belongs to a screen that
+    // is gone — it must not be flashed.
+    unmount();
+    pending.reject(new Error('network boom'));
+    await flush();
+
+    expect(onFetchError).not.toHaveBeenCalled();
+  });
+
+  it('drops a late response for a PR the user has already moved off', async () => {
+    const slowPr1 = deferred<PullRequestComments>();
+    const fetchMock = vi.fn((_auth, _project, prId: number) =>
+      prId === 1
+        ? slowPr1.promise
+        : Promise.resolve({
+            threads: [makeThread({ id: 'pr2-thread' })],
+            generalComments: [],
+          })
+    );
+    const provider = {
+      id: 'github',
+      fetchCommentThreads: fetchMock,
+    } as unknown as VcsProvider;
+
+    const { outRef, unmount, setPrId } = mountProbe(1, provider);
+    await flush();
+
+    setPrId(2);
+    await waitForState(outRef, (v) => v.threads[0]?.id === 'pr2-thread');
+
+    // PR 1's request finally lands. PR 2 is on screen now, so its threads
+    // must survive.
+    slowPr1.resolve({
+      threads: [makeThread({ id: 'pr1-thread' })],
+      generalComments: [],
+    });
+    // Poll for the wrong commit so it has every chance to land before the
+    // assertion denies it — a single flush would pass by simply being early.
+    await waitForState(outRef, (v) => v.threads[0]?.id === 'pr1-thread');
+
+    expect(outRef.current?.threads.map((t) => t.id)).toEqual(['pr2-thread']);
     unmount();
   });
 

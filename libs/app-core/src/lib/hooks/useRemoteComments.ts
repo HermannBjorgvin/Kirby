@@ -23,7 +23,6 @@ export function useRemoteComments(
   const [comments, setComments] = useState<PullRequestComments>(EMPTY_COMMENTS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
   const activePrIdRef = useRef<number | null>(null);
   const cacheRef = useRef<Map<number, PullRequestComments>>(new Map());
   // Stabilize onFetchError across renders so it doesn't cycle
@@ -55,18 +54,18 @@ export function useRemoteComments(
         // correct even if the user has moved on. Only commit to visible
         // state if this response still matches the active PR.
         cacheRef.current.set(prId, result);
-        if (mountedRef.current && activePrIdRef.current === prId) {
+        if (activePrIdRef.current === prId) {
           setComments(result);
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         logError(`fetchCommentThreads [${provider.id}]`, err as Error);
-        if (mountedRef.current && activePrIdRef.current === prId) {
+        if (activePrIdRef.current === prId) {
           setError(msg);
           onFetchErrorRef.current?.(msg);
         }
       } finally {
-        if (mountedRef.current && activePrIdRef.current === prId) {
+        if (activePrIdRef.current === prId) {
           setLoading(false);
         }
       }
@@ -74,19 +73,19 @@ export function useRemoteComments(
     [prId, provider, auth, project]
   );
 
-  // Track mount lifetime separately from prId changes so an in-flight
-  // fetch for a stale PR can't overwrite the newly-selected PR's state.
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // Fetch when PR changes
+  // Fetch when PR changes. `activePrIdRef` is the single liveness token an
+  // in-flight fetch checks before it commits: while mounted it holds the
+  // selected PR (so a response for a PR the user has moved off is dropped),
+  // and clearing it on teardown means a response arriving after this hook is
+  // gone is dropped too — it can never flash a fetch error at the user for a
+  // view that no longer exists. A dep change runs the cleanup and the body in
+  // the same synchronous commit, so nothing in flight can observe the gap.
   useEffect(() => {
     activePrIdRef.current = prId;
     fetchComments();
+    return () => {
+      activePrIdRef.current = null;
+    };
   }, [fetchComments, prId]);
 
   const refresh = useCallback(() => {

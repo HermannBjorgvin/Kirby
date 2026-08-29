@@ -1,382 +1,41 @@
-import { spawn } from 'node:child_process';
 import type { KeyPress } from '@kirby/app-core';
-import {
-  getSpawnedAt,
-  hasSession,
-  isSessionAlive,
-  killSession,
-  getItemKey,
-  getPrFromItem,
-  orderRunningTabs,
-} from '@kirby/app-core';
-import {
-  canRemoveBranch,
-  createWorktree,
-  listAllBranches,
-  listWorktrees,
-  branchToSessionName,
-  worktreeSessionName,
-  rebaseOntoMaster,
-} from '@kirby/worktree-manager';
 import type { SidebarInputCtx } from './input-types.js';
-import { startAiSession } from './branch-picker-input.js';
-import { resolveEditorTarget } from './editor-target.js';
+import {
+  SIDEBAR_ACTIONS,
+  switchTab,
+  type SidebarAction,
+} from './sidebar-actions.js';
 
+/**
+ * Active-session tab switching (digits 1..9, 0 = tab 10). The ten
+ * action IDs differ only by the tab they select, so they join the same
+ * table as everything else rather than being pattern-matched out of
+ * the action ID at dispatch time.
+ */
+const TAB_ACTIONS: Record<string, SidebarAction> = Object.fromEntries(
+  Array.from({ length: 10 }, (_, i) => [
+    `sidebar.switch-tab-${i + 1}`,
+    (ctx: SidebarInputCtx) => switchTab(ctx, i + 1),
+  ])
+);
+
+const ACTION_TABLE: Record<string, SidebarAction> = {
+  ...SIDEBAR_ACTIONS,
+  ...TAB_ACTIONS,
+};
+
+/**
+ * Sidebar keyboard entry point: resolve the keypress to an action ID
+ * and run that action. Every guard on the current selection lives
+ * inside the action itself (see ./sidebar-actions.ts), so a keypress
+ * the selection can't service resolves and then does nothing.
+ */
 export function handleSidebarInput(
   input: string,
   key: KeyPress,
   ctx: SidebarInputCtx
 ): void {
-  const { sidebar, pane } = ctx;
-  const selectedItem = sidebar.selectedItem;
-
   const action = ctx.keybinds.resolve(input, key, 'sidebar');
-
-  // Toggle hint visibility
-  if (action === 'sidebar.toggle-hints') {
-    ctx.toggleHints();
-    return;
-  }
-
-  // Tab focus toggle
-  if (action === 'sidebar.focus-terminal') {
-    if (ctx.nav.focus === 'sidebar' && sidebar.sessionNameForTerminal) {
-      ctx.asyncOps.run('start-session', async () => {
-        if (!selectedItem) return;
-
-        if (hasSession(sidebar.sessionNameForTerminal!)) {
-          pane.setPaneMode('terminal');
-          pane.setReconnectKey((k) => k + 1);
-          ctx.nav.setFocus('terminal');
-          return;
-        }
-
-        // Session item → auto-start PTY
-        if (selectedItem.kind === 'session') {
-          const worktrees = await listWorktrees();
-          const wt = worktrees.find(
-            (w) => worktreeSessionName(w) === selectedItem.session.name
-          );
-          if (!wt) return;
-          startAiSession(
-            selectedItem.session.name,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            wt.path,
-            ctx.config.config
-          );
-          await ctx.sessions.refreshSessions();
-          pane.setReconnectKey((k) => k + 1);
-          pane.setPaneMode('terminal');
-          ctx.nav.setFocus('terminal');
-          return;
-        }
-
-        // Review/orphan PR → show confirm dialog
-        if (selectedItem.pr) {
-          pane.setPaneMode('confirm');
-          pane.setReviewConfirm({
-            pr: selectedItem.pr,
-            selectedOption: 0,
-          });
-        }
-      });
-    } else if (ctx.nav.focus === 'terminal') {
-      ctx.nav.setFocus('sidebar');
-    }
-    return;
-  }
-
-  // Active-session tab switch (digits 1..9, 0 = tab 10)
-  // Selects the Nth running session in spawn-time order so the digit
-  // matches what's shown in the SessionTabBar and the sidebar prefix.
-  // Then jumps focus straight into the terminal — mirrors the
-  // focus-terminal happy path above (setPaneMode + setReconnectKey +
-  // setFocus).
-  const tabMatch = action?.match(/^sidebar\.switch-tab-(\d+)$/);
-  if (tabMatch) {
-    const n = Number(tabMatch[1]);
-    const target = orderRunningTabs(ctx.sidebar.items, getSpawnedAt)[n - 1];
-    if (target) {
-      ctx.sidebar.selectByKey(getItemKey(target));
-      // `session.running` is a snapshot from the last refreshSessions()
-      // and can be stale if the PTY vanished since. Only hand focus to
-      // the terminal when the registry still has an entry — otherwise
-      // we'd focus an empty pane. Selection still moves, so Enter from
-      // the sidebar restarts the agent.
-      if (hasSession(target.session.name)) {
-        ctx.pane.setPaneMode('terminal');
-        ctx.pane.setReconnectKey((k) => k + 1);
-        ctx.nav.setFocus('terminal');
-      }
-    }
-    return;
-  }
-
-  // Quit
-  if (action === 'sidebar.quit') {
-    ctx.exit();
-    return;
-  }
-
-  // Create/checkout branch
-  if (action === 'sidebar.checkout-branch') {
-    ctx.asyncOps.run('fetch-branches', async () => {
-      const allBranches = await listAllBranches();
-      ctx.branchPicker.setBranches(allBranches);
-      ctx.branchPicker.setCreating(true);
-      ctx.branchPicker.setBranchFilter('');
-      ctx.branchPicker.setBranchIndex(0);
-    });
-    return;
-  }
-
-  // Delete branch
-  if (
-    action === 'sidebar.delete-branch' &&
-    selectedItem &&
-    (selectedItem.kind === 'session' ||
-      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
-  ) {
-    const sessionName =
-      selectedItem.kind === 'session'
-        ? selectedItem.session.name
-        : branchToSessionName(selectedItem.pr.sourceBranch);
-    ctx.asyncOps.run('check-delete', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
-      const branch = wt?.branch;
-      if (branch) {
-        const check = await canRemoveBranch(branch);
-        if (!check.safe) {
-          if (
-            check.reason === 'not pushed to upstream' ||
-            check.reason === 'uncommitted changes'
-          ) {
-            ctx.deleteConfirm.setConfirmDelete({
-              branch,
-              sessionName,
-              reason: check.reason,
-              mode: 'type-branch',
-            });
-            ctx.deleteConfirm.setConfirmInput('');
-          } else {
-            ctx.sessions.flashStatus(`Cannot delete: ${check.reason}`);
-          }
-          return;
-        }
-        // Branch is git-clean, but if the agent's PTY is still alive
-        // it carries in-memory state (plans, prompts, tool history)
-        // that would be lost. Surface a lightweight Y/N prompt so the
-        // user can't blow away an active session by accident. A session
-        // whose agent already exited has no live process/state to lose,
-        // so it deletes without the prompt.
-        if (isSessionAlive(sessionName)) {
-          ctx.deleteConfirm.setConfirmDelete({
-            branch,
-            sessionName,
-            reason: 'session is active — agent process will be killed',
-            mode: 'yes-no',
-          });
-          ctx.deleteConfirm.setConfirmInput('');
-          return;
-        }
-        await ctx.sessions.performDelete(sessionName, branch);
-      } else {
-        killSession(sessionName);
-        ctx.pane.setReconnectKey((k) => k + 1);
-        await ctx.sessions.refreshSessions();
-      }
-    });
-    return;
-  }
-
-  // Kill agent
-  if (
-    action === 'sidebar.kill-agent' &&
-    selectedItem &&
-    (selectedItem.kind === 'session' ||
-      (selectedItem.kind === 'review-pr' && selectedItem.running != null))
-  ) {
-    const sessionName =
-      selectedItem.kind === 'session'
-        ? selectedItem.session.name
-        : branchToSessionName(selectedItem.pr.sourceBranch);
-    ctx.asyncOps.run('delete', async () => {
-      killSession(sessionName);
-      await ctx.sessions.refreshSessions();
-    });
-    ctx.pane.setReconnectKey((k) => k + 1);
-    return;
-  }
-
-  // Settings
-  if (action === 'sidebar.open-settings') {
-    ctx.settings.setSettingsOpen(true);
-    ctx.settings.setSettingsFieldIndex(0);
-    return;
-  }
-
-  // Refresh PR data — loading state shown by the top-right spinner.
-  if (action === 'sidebar.refresh-pr') {
-    ctx.asyncOps.run('refresh-pr', async () => {
-      await ctx.sessions.refreshPr();
-    });
-    return;
-  }
-
-  // Rebase onto master
-  if (action === 'sidebar.rebase' && selectedItem?.kind === 'session') {
-    const sessionName = selectedItem.session.name;
-    ctx.asyncOps.run('rebase', async () => {
-      const worktrees = await listWorktrees();
-      const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
-      if (!wt) {
-        ctx.sessions.flashStatus('No worktree found for selected session');
-        return;
-      }
-      // No "Updating from origin…" flash — the 'rebase' spinner
-      // (label: "Rebasing") already communicates that we're working.
-      const rebaseMessages = {
-        success: 'Rebased onto origin successfully',
-        conflict: 'Conflicts detected — rebase aborted',
-        error: 'Failed to fetch from origin',
-      } as const;
-      ctx.sessions.flashStatus(rebaseMessages[await rebaseOntoMaster(wt.path)]);
-    });
-    return;
-  }
-
-  // Open in editor — also works on PR rows; the worktree is checked
-  // out on demand so Shift+E doesn't require pressing 'c' first.
-  if (action === 'sidebar.open-editor' && selectedItem) {
-    const item = selectedItem;
-    ctx.asyncOps.run('open-editor', async () => {
-      const wtPath = await resolveEditorTarget(item, {
-        listWorktrees,
-        createWorktree,
-      });
-      if (!wtPath) {
-        ctx.sessions.flashStatus('No worktree found for selected session');
-        return;
-      }
-      if (item.kind !== 'session') {
-        await ctx.sessions.refreshSessions();
-      }
-      const editor =
-        ctx.config.config.editor || process.env.VISUAL || process.env.EDITOR;
-      if (!editor) {
-        ctx.sessions.flashStatus('No editor configured — set one in settings');
-        return;
-      }
-      spawn(editor, [wtPath], { detached: true, stdio: 'ignore' }).unref();
-      ctx.sessions.flashStatus(`Opened in ${editor}`);
-    });
-    return;
-  }
-
-  // Sync with origin — loading state shown by the top-right spinner.
-  if (action === 'sidebar.sync-origin') {
-    ctx.asyncOps.run('sync', async () => {
-      await ctx.sessions.triggerSync();
-    });
-    return;
-  }
-
-  // View diff
-  if (action === 'sidebar.view-diff' && selectedItem) {
-    const pr = getPrFromItem(selectedItem);
-    if (pr) {
-      pane.setPaneMode('diff');
-      pane.setDiffFileIndex(0);
-    }
-    return;
-  }
-
-  // View PR comments
-  if (action === 'sidebar.view-comments' && selectedItem) {
-    const pr = getPrFromItem(selectedItem);
-    if (pr) {
-      pane.setPaneMode('comments');
-      pane.setGeneralCommentsIndex(0);
-      pane.setGeneralCommentsScrollOffset(0);
-    }
-    return;
-  }
-
-  // Navigate
-  if (action === 'sidebar.navigate-down') {
-    sidebar.moveSelection(1);
-    return;
-  }
-  if (action === 'sidebar.navigate-up') {
-    sidebar.moveSelection(-1);
-    return;
-  }
-  if (action === 'sidebar.jump-next-active') {
-    sidebar.moveSelectionToActive(1);
-    return;
-  }
-  if (action === 'sidebar.jump-prev-active') {
-    sidebar.moveSelectionToActive(-1);
-    return;
-  }
-
-  // Enter
-  if (action === 'sidebar.start-session' && selectedItem) {
-    // Session with running PTY → focus terminal
-    if (
-      selectedItem.kind === 'session' &&
-      sidebar.sessionNameForTerminal &&
-      hasSession(sidebar.sessionNameForTerminal)
-    ) {
-      pane.setPaneMode('terminal');
-      pane.setReconnectKey((k) => k + 1);
-      ctx.nav.setFocus('terminal');
-      return;
-    }
-
-    // Session with no PTY, no PR → auto-start session
-    if (selectedItem.kind === 'session' && !selectedItem.pr) {
-      ctx.asyncOps.run('start-session', async () => {
-        const worktrees = await listWorktrees();
-        const wt = worktrees.find(
-          (w) => worktreeSessionName(w) === selectedItem.session.name
-        );
-        if (!wt) return;
-        startAiSession(
-          selectedItem.session.name,
-          ctx.terminal.paneCols,
-          ctx.terminal.paneRows,
-          wt.path,
-          ctx.config.config
-        );
-        await ctx.sessions.refreshSessions();
-        pane.setReconnectKey((k) => k + 1);
-        pane.setPaneMode('terminal');
-        ctx.nav.setFocus('terminal');
-      });
-      return;
-    }
-
-    // Item with PR → show confirm dialog
-    const pr = getPrFromItem(selectedItem);
-    if (pr) {
-      if (
-        sidebar.sessionNameForTerminal &&
-        hasSession(sidebar.sessionNameForTerminal)
-      ) {
-        pane.setPaneMode('terminal');
-        pane.setReconnectKey((k) => k + 1);
-        ctx.nav.setFocus('terminal');
-      } else {
-        pane.setPaneMode('confirm');
-        pane.setReviewConfirm({
-          pr,
-          selectedOption: 0,
-        });
-      }
-      return;
-    }
-  }
+  if (!action) return;
+  ACTION_TABLE[action]?.(ctx);
 }
