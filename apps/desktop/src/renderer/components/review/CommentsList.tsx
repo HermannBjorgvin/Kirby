@@ -32,10 +32,13 @@ export function CommentsList({
   items,
   activeId,
   onJump,
+  onContextMenu,
 }: {
   items: CommentListItem[];
   activeId: string | null;
   onJump: (item: CommentListItem) => void;
+  /** Right-click a row: queue it for the agent (see PrWorkspace). */
+  onContextMenu?: (item: CommentListItem) => void;
 }) {
   const [open, setOpen] = useState(true);
   if (items.length === 0) return null;
@@ -66,6 +69,11 @@ export function CommentsList({
             <button
               key={item.id}
               onClick={() => onJump(item)}
+              onContextMenu={(e) => {
+                if (!onContextMenu) return;
+                e.preventDefault();
+                onContextMenu(item);
+              }}
               className={cn(
                 'flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent',
                 activeId === item.id && 'bg-sidebar-active',

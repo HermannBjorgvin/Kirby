@@ -1,6 +1,8 @@
+import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import { createWorktree, openPalette, sidebarRow, tab } from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
+import type { FakeGitHub } from './setup/fake-gh.js';
 
 /**
  * Screenshot comparisons, kept to the surfaces where they earn their
@@ -132,5 +134,132 @@ test.describe('Visual (light theme) @visual', () => {
     // The palette that only the light theme uses is easy to half-apply;
     // one image covers every token at once.
     await expect(page).toHaveScreenshot('workspace-empty-light.png', shot);
+  });
+});
+
+/**
+ * The plan ("add to cart") checkout pane.
+ *
+ * This is the first screenshot of anything behind a pull request: the
+ * fake `gh` (setup/fake-gh.ts) makes one exist without a token, so the
+ * review workspace is finally reachable from an offline test. The shot
+ * is scoped to the pane rather than the window because the comment
+ * cards around it carry relative timestamps ("3d ago"), which would
+ * change the image every day.
+ */
+const PLAN_BRANCH = 'undo-support';
+const PLAN_GITHUB: FakeGitHub = {
+  username: 'kirby-tester',
+  prs: [
+    {
+      number: 42,
+      title: 'Add undo support',
+      headRefName: PLAN_BRANCH,
+      rollup: 'SUCCESS',
+      threads: [
+        {
+          id: 'T1',
+          path: 'undo.c',
+          line: 1,
+          comments: [
+            {
+              author: 'alice',
+              body: 'The undo stack is never bounded — this grows forever.',
+            },
+            { author: 'bob', body: 'Agreed, a ring buffer would do.' },
+          ],
+        },
+        {
+          id: 'T2',
+          path: 'undo.c',
+          line: 2,
+          comments: [
+            { author: 'bob', body: 'Rename this to something less generic.' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/** Queue both comments, annotate one, and open the checkout pane. */
+async function buildPlan(page: Page) {
+  await sidebarRow(page, /Add undo support|#42/)
+    .first()
+    .click();
+  const first = page
+    .locator('[data-thread]')
+    .filter({ hasText: 'never bounded' });
+  await expect(first).toBeVisible({ timeout: 30_000 });
+
+  await first.hover();
+  await first
+    .getByRole('button', { name: 'Add to plan with a note', exact: true })
+    .click();
+  await page
+    .getByLabel('Your note to the agent')
+    .fill('Cap it at 100 entries.');
+  await page.getByRole('button', { name: 'Save note' }).click();
+
+  const second = page
+    .locator('[data-thread]')
+    .filter({ hasText: 'less generic' });
+  await second.hover();
+  await second
+    .getByRole('button', { name: 'Add to plan', exact: true })
+    .click();
+
+  await page.getByRole('button', { name: /^Plan\b/ }).click();
+  return page.getByRole('region', { name: 'Plan' });
+}
+
+test.describe('Visual (plan) @visual', () => {
+  test.use({
+    repo: {
+      name: 'kirby-visual',
+      worktrees: [
+        {
+          branch: PLAN_BRANCH,
+          files: { 'undo.c': 'void undo(void) {}\nint depth;\n' },
+        },
+      ],
+    },
+    fakeGitHub: PLAN_GITHUB,
+  });
+
+  test('plan checkout pane', async ({ desktop }) => {
+    const pane = await buildPlan(desktop.page);
+    await expect(pane).toHaveScreenshot('plan-pane.png', shot);
+  });
+
+  test('plan checkout pane with the prompt preview open', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const pane = await buildPlan(page);
+    await page.getByRole('button', { name: /Prompt preview/ }).click();
+    await expect(page.locator('pre')).toBeVisible();
+    await expect(pane).toHaveScreenshot('plan-pane-preview.png', shot);
+  });
+});
+
+test.describe('Visual (plan, light theme) @visual', () => {
+  test.use({
+    repo: {
+      name: 'kirby-visual',
+      worktrees: [
+        {
+          branch: PLAN_BRANCH,
+          files: { 'undo.c': 'void undo(void) {}\nint depth;\n' },
+        },
+      ],
+    },
+    fakeGitHub: PLAN_GITHUB,
+    desktopPrefs: { theme: 'light', nativeFrame: false },
+  });
+
+  test('plan checkout pane in light theme', async ({ desktop }) => {
+    const pane = await buildPlan(desktop.page);
+    await expect(pane).toHaveScreenshot('plan-pane-light.png', shot);
   });
 });

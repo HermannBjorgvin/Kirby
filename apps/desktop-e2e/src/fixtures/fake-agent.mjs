@@ -21,6 +21,10 @@
 //                        agent that finished a piece of work and is now
 //                        waiting at its prompt
 //   --exit-after-ms=<n>  self-exit after N ms (default never)
+//   --print-seed         print the seed prompt the launcher handed it
+//                        (KIRBY_SEED_PROMPT), one marked line per line, so
+//                        a test can prove what the agent was actually
+//                        started with rather than what the UI claimed.
 //   --echo               echo each completed line of stdin back, so a test
 //                        can prove input travelled renderer → IPC → PTY →
 //                        agent → back. Line-buffered on purpose: a PTY in
@@ -45,6 +49,12 @@ const exitAfterMs = args['exit-after-ms']
   : null;
 
 process.stdout.write(banner + '\r\n');
+
+if (args['print-seed']) {
+  for (const line of (process.env.KIRBY_SEED_PROMPT ?? '').split('\n')) {
+    process.stdout.write(`seed:${line}\r\n`);
+  }
+}
 
 const timers = new Set();
 const shutdown = () => {

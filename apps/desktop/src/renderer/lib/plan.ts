@@ -70,6 +70,16 @@ export function usePlan(prId: number): PlanApi {
 }
 
 /**
+ * How many comments are queued for a pull request — for callers that
+ * want the number and nothing else (the tab strip). Separate from
+ * `usePlan` so a tab does not rebuild the whole bound API per render.
+ */
+export function usePlanCount(prId: number | undefined): number {
+  const { snapshot } = usePlanStore();
+  return prId == null ? 0 : snapshot.get(prId)?.length ?? 0;
+}
+
+/**
  * One comment's plan controls: whether it is queued, and the note
  * composer that opens beside it.
  *

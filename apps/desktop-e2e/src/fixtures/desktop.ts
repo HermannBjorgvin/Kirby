@@ -17,6 +17,11 @@ import {
   createTestRepo,
   type TestRepoOptions,
 } from '../setup/git-repo.js';
+import {
+  fakeGhProjectConfig,
+  installFakeGh,
+  type FakeGitHub,
+} from '../setup/fake-gh.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -39,11 +44,14 @@ export function fakeAgent(
     echo?: boolean;
     /** Stop streaming after this long, but stay alive. */
     streamMs?: number;
+    /** Print the seed prompt the launcher handed it, `seed:`-prefixed. */
+    printSeed?: boolean;
   } = {}
 ): string {
   const flags = [`--banner=kirby-fake-agent-ready`];
   if (opts.stream) flags.push('--stream');
   if (opts.echo) flags.push('--echo');
+  if (opts.printSeed) flags.push('--print-seed');
   if (opts.streamMs != null) flags.push(`--stream-ms=${opts.streamMs}`);
   if (opts.intervalMs != null) flags.push(`--interval-ms=${opts.intervalMs}`);
   if (opts.exitAfterMs != null)
@@ -82,6 +90,13 @@ export interface DesktopOptions {
    */
   drafts?: Record<number, unknown[]>;
   /**
+   * Serve the app a pull request (and its review threads) from a fake
+   * `gh` on PATH, with the matching project config written for it.
+   * Lets the whole review workspace be driven offline; ignored when
+   * `githubToken` is set, which is the real thing.
+   */
+  fakeGitHub?: FakeGitHub;
+  /**
    * Hand the app a GitHub token. Its HOME is isolated, so the `gh` CLI
    * it authenticates through cannot see the developer's stored
    * credentials; without this it behaves as a repo with no provider.
@@ -100,6 +115,76 @@ export interface DesktopApp {
   main: ElectronApplication['evaluate'];
 }
 
+/**
+ * Write the isolated `$HOME` a test runs against: global config, the
+ * per-project config (cwd-hashed, as the config store keys it), any
+ * agent-authored drafts, desktop prefs, and — when a scenario is given
+ * — the fake `gh`. Returns the environment additions the app needs.
+ *
+ * Split out of the fixture body because it is the part that grows: one
+ * more thing to seed is one more branch, and the fixture itself is
+ * about launching and tearing down the app.
+ */
+function seedHome(
+  homeDir: string,
+  repoPath: string,
+  opts: {
+    kirbyConfig?: Record<string, unknown>;
+    projectConfig?: Record<string, unknown>;
+    desktopPrefs?: Record<string, unknown>;
+    drafts?: Record<number, unknown[]>;
+    fakeGitHub?: FakeGitHub;
+  }
+): Record<string, string> {
+  const kirby = join(homeDir, '.kirby');
+  mkdirSync(kirby, { recursive: true });
+  writeFileSync(
+    join(kirby, 'config.json'),
+    JSON.stringify({ aiCommand: fakeAgent(), ...opts.kirbyConfig }, null, 2),
+    'utf8'
+  );
+
+  const projectConfig =
+    opts.projectConfig ??
+    (opts.fakeGitHub ? fakeGhProjectConfig(opts.fakeGitHub) : undefined);
+  if (projectConfig) {
+    // Per-project config lives under a hash of the repo path — see
+    // projectKey() in @kirby/vcs-core's config store.
+    const key = createHash('sha256')
+      .update(repoPath)
+      .digest('hex')
+      .slice(0, 16);
+    const dir = join(kirby, 'projects', key);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'config.json'),
+      JSON.stringify(projectConfig, null, 2),
+      'utf8'
+    );
+  }
+
+  for (const [prId, comments] of Object.entries(opts.drafts ?? {})) {
+    // Same layout the review agent writes to: ~/.kirby/reviews/pr-<id>.
+    const dir = join(kirby, 'reviews', `pr-${prId}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'comments.json'),
+      JSON.stringify({ prId: Number(prId), comments }, null, 2),
+      'utf8'
+    );
+  }
+
+  if (opts.desktopPrefs) {
+    writeFileSync(
+      join(kirby, 'desktop-prefs.json'),
+      JSON.stringify(opts.desktopPrefs, null, 2),
+      'utf8'
+    );
+  }
+
+  return opts.fakeGitHub ? installFakeGh(homeDir, opts.fakeGitHub) : {};
+}
+
 export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   kirbyConfig: [undefined, { option: true }],
   projectConfig: [undefined, { option: true }],
@@ -109,6 +194,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   repoPathOverride: [undefined, { option: true }],
   githubToken: [undefined, { option: true }],
   drafts: [undefined, { option: true }],
+  fakeGitHub: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -120,6 +206,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       repoPathOverride,
       githubToken,
       drafts,
+      fakeGitHub,
     },
     use,
     testInfo
@@ -127,44 +214,13 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     const ownsRepo = !repoPathOverride;
     const repoPath = repoPathOverride ?? createTestRepo(repo ?? {});
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-home-'));
-    mkdirSync(join(homeDir, '.kirby'), { recursive: true });
-    writeFileSync(
-      join(homeDir, '.kirby', 'config.json'),
-      JSON.stringify({ aiCommand: fakeAgent(), ...kirbyConfig }, null, 2),
-      'utf8'
-    );
-    if (projectConfig) {
-      // Per-project config lives under a hash of the repo path — see
-      // projectKey() in @kirby/vcs-core's config store.
-      const key = createHash('sha256')
-        .update(repoPath)
-        .digest('hex')
-        .slice(0, 16);
-      const dir = join(homeDir, '.kirby', 'projects', key);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, 'config.json'),
-        JSON.stringify(projectConfig, null, 2),
-        'utf8'
-      );
-    }
-    for (const [prId, comments] of Object.entries(drafts ?? {})) {
-      // Same layout the review agent writes to: ~/.kirby/reviews/pr-<id>.
-      const dir = join(homeDir, '.kirby', 'reviews', `pr-${prId}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, 'comments.json'),
-        JSON.stringify({ prId: Number(prId), comments }, null, 2),
-        'utf8'
-      );
-    }
-    if (desktopPrefs) {
-      writeFileSync(
-        join(homeDir, '.kirby', 'desktop-prefs.json'),
-        JSON.stringify(desktopPrefs, null, 2),
-        'utf8'
-      );
-    }
+    const ghEnv = seedHome(homeDir, repoPath, {
+      kirbyConfig,
+      projectConfig,
+      desktopPrefs,
+      drafts,
+      fakeGitHub,
+    });
 
     // On a Wayland session Electron talks to the compositor through
     // WAYLAND_DISPLAY and ignores DISPLAY altogether — so xvfb hands it
@@ -204,6 +260,8 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
         // developer's default socket.
         TMUX_TMPDIR: homeDir,
         ...(githubToken ? { GH_TOKEN: githubToken } : {}),
+        // Last, so the fake `gh` wins the PATH lookup.
+        ...ghEnv,
       },
       timeout: 60_000,
     });

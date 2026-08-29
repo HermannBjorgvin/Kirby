@@ -80,6 +80,19 @@ deleted-directory states), a `~/.kirby` of its own, a scriptable fake agent for
 `aiCommand`, and **fails any test whose renderer throws** — an ErrorBoundary
 otherwise turns a crash into a blank pane that assertions pass straight over.
 
+**A fake `gh` makes pull requests exist offline.** The GitHub provider
+reaches GitHub only by running the `gh` CLI, so `setup/fake-gh.ts` puts
+an executable named `gh` at the front of the app's PATH and answers from
+a JSON scenario (`fakeGitHub` fixture option: PRs, review threads,
+general comments, check rollup). Point a PR's `headRefName` at a branch
+the test repo really has and the diff is a real one computed by git.
+Before this, everything behind a pull request — the review workspace,
+threads, drafts, the plan — was reachable only from the `@integration`
+suite, which needs a token and so does not run on most pull requests. It
+changes no production code: the seam is PATH. Note `git-repo.ts` seeds a
+worktree at `.claude/worktrees/<branch>` verbatim while the app resolves
+its own sanitized directory name, so seeded branches must be slash-free.
+
 **It runs headless, always.** `run-e2e.mjs` wraps the run in xvfb on Linux even
 when `DISPLAY` is set, because otherwise the app steals focus and anything you
 do meanwhile changes what the tests see. `KIRBY_E2E_HEADED=1` to watch it. On
@@ -340,6 +353,9 @@ apps/desktop/                    — Electron GUI shell over @kirby/app-core (ki
     lib/tabs-model.ts            — Pure editor tab reducer: preview/pinned tabs, `sync-items` reconciliation (tested)
     lib/tabs.tsx                 — TabsProvider/useTabs over that reducer
     lib/diff-model.ts            — Pure diff viewer model: fold unchanged regions, split-view pairing, word diff (tested)
+    lib/plan-model.ts            — Pure plan ("add to cart") model: rows, numbering, checkout affordances (tested)
+    lib/plan.ts                  — usePlan/usePlanControls over @kirby/core's shared plan store
+    lib/use-plan-checkout.ts     — Compose the prompt and send it to the PR's agent
     screens/                     — RepoOpen (repo picker) and Workspace (shell + shortcuts)
   scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
   scripts/qa-shots.mjs           — Headless visual QA: drives the built app under xvfb and writes PNGs
@@ -357,6 +373,7 @@ apps/cli-e2e/                    — E2E tests (@playwright/test)
 libs/core/                       — Shell-agnostic core. No React, Ink or Electron (lint-enforced)
   src/lib/session/               — Session launch + plan checkout flows
   src/lib/plan/                  — Plan store (external store) + prompt composition
+  src/plan.ts                    — Browser-safe entry (`@kirby/core/plan`) for the renderer
   src/lib/utils/                 — Pure helpers (sidebar-items, session-sort, diff-fetcher, virtual-viewport…)
   src/lib/settings/              — Settings field model (fields, presets, resolveValue)
   src/lib/sync/                  — Remote sync passes (sweepMergedBranches, conflict counts)
@@ -405,6 +422,30 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. **A tmux server keeps the env it was started with** and spawns every session command with it, so the backend pins `-e HOME/-e PATH` + the caller's seed additions per session (tmux ≥ 3.2) — without this, a stale server on the default socket (e.g. left by a test run with a temp HOME) silently kills every agent at launch, and seeded prompts never reach the command at all. E2e runs set `TMUX_TMPDIR` to their temp HOME so test servers can't squat on the user's default socket. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
 - **Desktop uses native OS elements where they exist.** Application menu (`apps/desktop/src/main/menu.ts` → `Menu.setApplicationMenu`, commands reach the renderer via `onMenuCommand`), context menus (`window.kirby.showContextMenu` → `Menu.popup`), native dialogs/about box, optional native window frame (`desktop-prefs.json` → `nativeFrame`). Web-rendered menus are only for things the OS can't express (rich dialogs, command palette). VS Code is inspiration for the shell, not a template.
 - **Desktop review flow mirrors the TUI.** Launching an agent on any PR item opens the same menu (session / review / review with instructions); `launchReviewAgent` creates the worktree if needed and seeds the agent with `buildReviewLaunchRequest` from app-core (shared with the TUI's confirm menu, so prompt + `kirby util add-comment` guidance are identical). Agent drafts live in `~/.kirby/reviews/pr-<id>/comments.json`; the desktop polls them (`useDraftComments`), renders `DraftCard`s at their anchor in the diff, and posts through `@kirby/review-comments` `postReviewComments` (same poster as the TUI). A PR tab is a review workspace (`components/review/PrWorkspace.tsx`): a persistent, collapsible left rail (Agent · Files · Comments) beside one content pane that swaps between the diff and the agent terminal. The rail owns Launch/Stop; selecting a file or comment shows the diff (`DiffPane` — meta strip + the Unified/Split/Wrap/Hide-resolved/post-drafts/comment-nav toolbar lives here, not in the tab header, so it's gone in terminal view); selecting Agent shows the terminal (kept mounted so scrollback survives). Launching an agent auto-selects the terminal once. When the agent has written draft comments, the rail shows a **Review ready** entry (severity breakdown) that opens `ReviewStepper` in the content pane — a guided walkthrough of the drafts in severity order, each with a code snippet (`SnippetView`) and Edit/Discard/Skip/Post (keyboard e/d/↵, arrows to move); posting advances to the next. `lib/diff-model.ts` has `orderDraftsForReview`/`severityCounts`/`snippetAround` (tested). Terminal fit: `SessionTerminal` measures its pane and calls `WTerm.resize` on ready/visible/resize (autoResize alone latched a stale size until a window resize). Editor tabs are keyed by PR id (renderer `itemKey`), stable as a PR moves between sidebar kinds (launching an agent turns an orphan/review PR into a session row) so the open tab never orphans. The sidebar list and the tab strip are two stores that can disagree, and every tab bug so far has come from reconciling them in pieces — so there is exactly one reconciliation point: `Workspace` feeds the item list to `sync-items`, and `lib/tabs-model.ts` re-keys stale tabs, opens a tab per newly running agent (history in `autoOpened`, so a closed tab stays closed) and pins previews with a live agent, in one pure step. Add nothing to that seam from an effect. `apps/desktop/src/host/services/sidebar.ts` attaches the alive session name to PR items; comment markdown renders images host-fetched with provider auth and its paragraphs render as `<div>` (block images/skeletons can't nest in `<p>`); `ErrorBoundary` wraps each tab so one bad view can't blank the window.
+- **The plan is a cart, and both shells share it.** A pull request tab
+  collects review comments — reviewer threads, general comments and the
+  agent's own drafts — into a queue and hands the whole thing to one
+  agent as a single prompt. The store, the comment snapshots and the
+  composer are `@kirby/core`'s, the same ones the TUI drives; the
+  renderer reaches them through `@kirby/core/plan`, a subpath that is
+  browser-safe by construction (nothing under it touches `node:`), with
+  its `useSyncExternalStore` binding at `@kirby/app-core/plan`. A plan
+  item is a **value snapshot** taken at add-time, so resolving, editing
+  or posting the underlying comment never changes what was queued.
+  Ordering is the queue's, never the document's: `composePlanPrompt`
+  numbers items in the same order `planRows` lists them, and
+  `plan-model.spec.ts` asserts the two against each other rather than
+  each on its own — disagreement means the user annotates "item 3" and
+  the agent is told to fix a different comment. The prompt is composed
+  in the renderer because the pane previews the exact text before
+  sending; composing it again host-side is how a preview and a delivery
+  drift apart. Checkout reuses core's three-state orchestration
+  (inject into a live agent / respawn / create the worktree and spawn)
+  and the desktop adds only its session bookkeeping. Adopting a spawned
+  session carries the chunk `seq` forward across a respawn — a mounted
+  terminal ignores chunks at or below the sequence its replay ended at,
+  so numbering a restarted session from 1 again left the new agent
+  looking dead in the very pane the restart came from.
 - **Desktop diffs are whole-file.** `fetchDiffText` uses `-U99999` so threads on untouched lines can be placed; the desktop viewer folds unchanged regions client-side (`lib/diff-model.ts`, ±3 context, expandable gaps, thread anchors pinned) rather than asking git for hunks.
 - **A PR is diffed against commits; a bare worktree against its working tree.** `fetchDiffText` compares two commits, which is what review threads anchor to — a PR tab must never start showing uncommitted scratch work. A worktree with no PR has nothing to anchor, so `PrWorkspace` switches to `fetchWorktreeDiffText` (`libs/core/src/lib/utils/worktree-diff.ts`): merge-base diff run **inside the worktree**, so the index and working tree count, plus hand-built patches for untracked files. Untracked files are assembled rather than obtained via `git add -N`, because writing to the index of a worktree an agent is using changes what its own `git status` and `git commit` see. It polls at 2s **only while the agent is running** — a recursive `fs.watch` over a checkout wants an inotify handle per directory and `node_modules` alone exhausts the Linux default.
 - **The PR row's status circle carries two axes, not one.** `prStatusIndicator` (`renderer/lib/sidebar-model.ts`) decides three channels: **colour** is the worst thing standing in the way (red = CI failed or rejected, yellow = CI running or waiting for author, green = all approved, muted = anything else), **glyph** is whichever axis is more severe so the circle depicts what is actually holding the request up, and **filled** means nothing is outstanding at all. Colour is deliberately asymmetric — CI can escalate a row but never vouch for it, so a passing build on an unapproved request stays muted and green means people signed off. Approvals win a glyph tie, which is what stops a green tick appearing inside a red circle on a rejected request. The 4×4 grid is asserted whole in `sidebar-model.spec.ts`: every bug here has been a cell nobody thought to check.

@@ -19,26 +19,21 @@ import {
   useWorktreeDiff,
 } from '../../lib/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
+import { useCommentNavigator } from '../../lib/use-comment-navigator.js';
 import { usePlanCheckout } from '../../lib/use-plan-checkout.js';
 import {
-  buildCommentRows,
   buildFileEntries,
   diffIsPending,
   groupDraftsByFile,
   groupThreadsByFile,
-  navIndexOf,
   resolveMode,
-  stepComment,
   unpostedDrafts,
-  visibleComments,
   type Mode,
 } from '../../lib/review-model.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
 import { ContentPane } from './ContentPane.js';
-import { type CommentListItem } from './CommentsList.js';
-import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { type FileEntry } from './FileTree.js';
 import { BranchHeader, PrHeader } from './PrHeader.js';
 import { ReviewRail } from './ReviewRail.js';
@@ -102,14 +97,10 @@ export function PrWorkspace({
   const draftsQuery = useDraftComments(repo.cwd, prId);
   const postAll = usePostDrafts(repo.cwd);
   const options = useDiffOptions();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const diffJumpRef = useRef<DiffJumpHandle | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [focusThreadId, setFocusThreadId] = useState<string | null>(null);
 
   // Jump to the terminal the moment an agent starts running.
   const [prevRunning, setPrevRunning] = useState(running);
@@ -163,68 +154,39 @@ export function PrWorkspace({
     [files, threadsByFile, draftsByFile]
   );
 
-  const jumpToFile = useCallback((path: string) => {
-    setSelectedFile(path);
-    setMode('diff');
-    requestAnimationFrame(() => diffJumpRef.current?.jumpToFile(path));
-  }, []);
-
-  // Unified, document-ordered comment list: general (Conversation)
-  // first, then per file [threads + drafts] by line. Powers both the
-  // sidebar Comments list and the diff toolbar's prev/next nav, so both
-  // move between remote comments AND agent drafts.
-  const allCommentItems = useMemo(
-    () => buildCommentRows(files, general, inlineThreads, drafts),
-    [files, general, inlineThreads, drafts]
-  );
-
-  // One filtered list for everything that walks comments: the rail's
-  // Comments list, and the toolbar's prev/next. Hiding resolved threads
-  // in the diff while still listing them in the rail — and letting nav
-  // jump to one that is not rendered — was the inconsistency here.
-  const commentItems = visibleComments(allCommentItems, options.hideResolved);
-  const navIndex = navIndexOf(commentItems, focusThreadId);
-
-  // Scroll to any comment or draft by id; falls back to the file. Goes
-  // through the virtual list's imperative handle — the target row may
-  // not be materialized as DOM yet.
-  const jumpToId = useCallback((id: string, file: string | null) => {
-    setFocusThreadId(id);
-    setMode('diff');
-    if (file) setSelectedFile(file);
-    requestAnimationFrame(() => {
-      const jump = diffJumpRef.current;
-      if (jump?.jumpToId(id)) return;
-      if (file && jump?.jumpToFile(file)) return;
-      scrollRef.current?.scrollTo({ top: 0 });
-    });
-  }, []);
-  const jumpToItem = useCallback(
-    (item: CommentListItem) => {
-      const row = commentItems.find((r) => r.id === item.id);
-      jumpToId(item.id, row?.file ?? null);
-    },
-    [commentItems, jumpToId]
-  );
-  const step = (delta: number) => {
-    const target = stepComment(commentItems, navIndex, delta);
-    if (!target) return;
-    jumpToId(target.id, target.file ?? null);
-  };
+  const showDiff = useCallback(() => setMode('diff'), []);
+  const nav = useCommentNavigator({
+    files,
+    general,
+    inlineThreads,
+    drafts,
+    hideResolved: options.hideResolved,
+    onShowDiff: showDiff,
+  });
 
   // ── The plan ───────────────────────────────────────────────────
   const showPlanItemInDiff = useCallback(
-    (item: PlanItem) => jumpToId(item.id, item.file),
-    [jumpToId]
+    (item: PlanItem) => nav.jumpToId(item.id, item.file),
+    [nav]
   );
   const backToAgent = useCallback(() => setMode('agent'), []);
+  const openPlanPane = useCallback(() => setMode('plan'), []);
+  // Both comment sources the rail can offer, as one list to resolve an
+  // id against.
+  const allThreads = useMemo(
+    () => [...inlineThreads, ...general],
+    [inlineThreads, general]
+  );
   const plan = usePlanCheckout({
     cwd: repo.cwd,
     pr,
     running,
     paneRef: rootRef,
+    threads: allThreads,
+    drafts,
     onSent: backToAgent,
     onShowInDiff: showPlanItemInDiff,
+    onOpenPlan: openPlanPane,
   });
 
   // Which pane is actually showing. Computed last because it asks
@@ -308,14 +270,17 @@ export function PrWorkspace({
                   planCount={plan.count}
                   planNoted={plan.noted}
                   planActive={effMode === 'plan'}
-                  onPlan={() => setMode('plan')}
+                  onPlan={openPlanPane}
                   entries={entries}
                   diffLoading={diffPending}
-                  selectedFile={effMode === 'diff' ? selectedFile : null}
-                  onSelectFile={jumpToFile}
-                  commentItems={commentItems}
-                  activeCommentId={effMode === 'diff' ? focusThreadId : null}
-                  onJumpComment={jumpToItem}
+                  selectedFile={effMode === 'diff' ? nav.selectedFile : null}
+                  onSelectFile={nav.jumpToFile}
+                  commentItems={nav.items}
+                  activeCommentId={effMode === 'diff' ? nav.focusId : null}
+                  onJumpComment={nav.jumpToItem}
+                  onCommentContextMenu={(row) =>
+                    plan.onCommentContextMenu(row.id)
+                  }
                 />
               </Panel>
               <PanelSeparator className="relative w-px bg-border transition-colors after:absolute after:inset-y-0 after:-left-1 after:w-2 hover:bg-primary data-[resize-handle-state=drag]:bg-primary" />
@@ -343,15 +308,15 @@ export function PrWorkspace({
               commentsLoading={comments.isLoading}
               diffPending={diffPending}
               diffError={diff.error}
-              focusThreadId={focusThreadId}
-              scrollRef={scrollRef}
-              jumpRef={diffJumpRef}
-              navCount={commentItems.length}
-              navIndex={navIndex}
-              onPrev={() => step(-1)}
-              onNext={() => step(1)}
-              onExitReview={() => setMode('diff')}
-              onOpenInDiff={(file) => jumpToFile(file)}
+              focusThreadId={nav.focusId}
+              scrollRef={nav.scrollRef}
+              jumpRef={nav.jumpRef}
+              navCount={nav.items.length}
+              navIndex={nav.navIndex}
+              onPrev={() => nav.step(-1)}
+              onNext={() => nav.step(1)}
+              onExitReview={showDiff}
+              onOpenInDiff={nav.jumpToFile}
               plan={plan.wiring}
             />
           </Panel>

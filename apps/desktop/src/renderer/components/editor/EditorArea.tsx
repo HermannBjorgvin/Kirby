@@ -10,6 +10,7 @@ import type {
   SessionActivitySnapshot,
   SidebarItem,
 } from '../../../host/contract.js';
+import { usePlanCount } from '../../lib/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useSessionActivity } from '../../lib/queries.js';
 import {
@@ -160,6 +161,30 @@ export function EditorArea({
   );
 }
 
+/** The tab's kind icon, with the agent's state hung off its corner. */
+function TabIcon({
+  Icon,
+  running,
+  snapshot,
+}: {
+  Icon: typeof SettingsIcon;
+  running: boolean;
+  snapshot: SessionActivitySnapshot | undefined;
+}) {
+  return (
+    <span className="relative flex shrink-0">
+      <Icon className="size-4" />
+      {snapshot?.active ? (
+        <span className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full bg-tab-active p-0.5">
+          <span className="agent-spinner size-2.5 rounded-full" />
+        </span>
+      ) : running ? (
+        <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
+      ) : null}
+    </span>
+  );
+}
+
 function TabButton({
   tab,
   item,
@@ -181,6 +206,9 @@ function TabButton({
       ? itemTitle(item)
       : tab.itemKey.replace(/^[a-z]+:/, '');
   const running = item ? itemRunning(item) : false;
+  // A plan is built inside a tab and then navigated away from, so the
+  // count has to be visible from wherever the user ends up.
+  const planCount = usePlanCount(item?.pr?.id);
   const Icon =
     tab.kind === 'settings'
       ? SettingsIcon
@@ -252,19 +280,20 @@ function TabButton({
       )}
     >
       {active && <span className="absolute inset-x-0 top-0 h-px bg-primary" />}
-      <span className="relative flex shrink-0">
-        <Icon className="size-4" />
-        {snapshot?.active ? (
-          <span className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full bg-tab-active p-0.5">
-            <span className="agent-spinner size-2.5 rounded-full" />
-          </span>
-        ) : running ? (
-          <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
-        ) : null}
-      </span>
+      <TabIcon Icon={Icon} running={running} snapshot={snapshot} />
       <span className={cn('min-w-0 flex-1 truncate', tab.preview && 'italic')}>
         {label}
       </span>
+      {planCount > 0 && (
+        <span
+          aria-label={`${planCount} comment${
+            planCount === 1 ? '' : 's'
+          } in the plan`}
+          className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium tabular-nums text-primary"
+        >
+          {planCount}
+        </span>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation();

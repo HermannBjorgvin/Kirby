@@ -2,7 +2,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardListIcon,
-  CornerUpRightIcon,
+  FileDiffIcon,
   Loader2Icon,
   NotebookPenIcon,
   RotateCcwIcon,
@@ -40,6 +40,7 @@ export function PlanPane({
   onShowInDiff,
   onClear,
   onSend,
+  openNoteFor,
 }: {
   items: PlanItem[];
   branch: string;
@@ -50,15 +51,31 @@ export function PlanPane({
   onShowInDiff: (item: PlanItem) => void;
   onClear: () => void;
   onSend: (mode: 'inject' | 'new-session') => void;
+  /** A request to open one row's note composer, from somewhere that
+   *  cannot show one itself (the rail's context menu). A fresh object
+   *  each time, so asking twice for the same row still opens it. */
+  openNoteFor?: { key: string } | null;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(
+    openNoteFor?.key ?? null
+  );
+  // Follow each request once: a composer the user has since closed must
+  // stay closed, so only a *new* request re-opens one.
+  const [prevRequest, setPrevRequest] = useState(openNoteFor);
+  if (openNoteFor !== prevRequest) {
+    setPrevRequest(openNoteFor);
+    if (openNoteFor) setEditing(openNoteFor.key);
+  }
   const [previewOpen, setPreviewOpen] = useState(false);
   const rows = planRows(items);
   const { count, noted } = planSummary(items);
   const checkout = checkoutModel({ count, agentRunning, sending });
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <section
+      aria-label="Plan"
+      className="flex h-full min-h-0 flex-col bg-background"
+    >
       <header className="flex shrink-0 items-center gap-2.5 border-b border-border px-4 py-2.5">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <ClipboardListIcon className="size-4" />
@@ -76,13 +93,15 @@ export function PlanPane({
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        <ol className="divide-y divide-border">
-          {rows.map((row) => {
-            const item = items[row.index - 1]!;
+        <ol aria-label="Queued comments" className="divide-y divide-border">
+          {rows.map((row, i) => {
+            // `planRows` maps one row per item in order, so the index
+            // is the item — the row carries only what is displayed.
+            const item = items[i]!;
             return (
               <li key={row.key} className="group/row">
                 <div className="flex items-start gap-3 px-4 py-2.5 transition-colors hover:bg-accent/40">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-xs font-medium tabular-nums text-foreground/70">
                     {row.index}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -111,15 +130,19 @@ export function PlanPane({
                       {row.body}
                     </p>
                     {row.note !== undefined && editing !== row.key && (
-                      <p className="mt-1.5 flex items-start gap-1.5 rounded border border-primary/25 bg-primary/5 px-2 py-1 text-sm">
-                        <NotebookPenIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                      <p className="mt-1.5 flex w-fit max-w-full items-start gap-1.5 rounded-r border-l-2 border-primary/50 bg-primary/[0.06] py-0.5 pr-2 pl-2 text-sm">
+                        <NotebookPenIcon className="mt-0.5 size-3.5 shrink-0 text-primary/70" />
                         <span className="min-w-0 whitespace-pre-wrap">
                           {row.note}
                         </span>
                       </p>
                     )}
                   </div>
-                  <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
+                  {/* Always visible, unlike the controls on a diff
+                      card: curating the queue is the whole purpose of
+                      this screen, and hiding the remove button behind a
+                      hover makes the list look uneditable. */}
+                  <span className="flex shrink-0 items-center gap-0.5 text-muted-foreground opacity-70 transition-opacity group-hover/row:opacity-100">
                     <Tip label="Show in diff">
                       <Button
                         variant="ghost"
@@ -127,7 +150,7 @@ export function PlanPane({
                         aria-label={`Show ${row.location} in diff`}
                         onClick={() => onShowInDiff(item)}
                       >
-                        <CornerUpRightIcon />
+                        <FileDiffIcon />
                       </Button>
                     </Tip>
                     <Tip label={row.note ? 'Edit note' : 'Add a note'}>
@@ -171,13 +194,13 @@ export function PlanPane({
             );
           })}
         </ol>
-
-        <PromptPreview
-          open={previewOpen}
-          onToggle={() => setPreviewOpen((o) => !o)}
-          prompt={composePlanPrompt(items)}
-        />
       </ScrollArea>
+
+      <PromptPreview
+        open={previewOpen}
+        onToggle={() => setPreviewOpen((o) => !o)}
+        prompt={composePlanPrompt(items)}
+      />
 
       <footer className="shrink-0 border-t border-border bg-muted/20 px-4 py-2.5">
         {agentRunning && (
@@ -216,7 +239,7 @@ export function PlanPane({
           </Button>
         </div>
       </footer>
-    </div>
+    </section>
   );
 }
 
@@ -235,7 +258,7 @@ function PromptPreview({
   prompt: string;
 }) {
   return (
-    <section className="border-t border-border">
+    <section className="shrink-0 border-t border-border">
       <button
         type="button"
         onClick={onToggle}

@@ -90,6 +90,7 @@ export function ContentPane({
     onShowInDiff: (item: PlanItem) => void;
     onClear: () => void;
     onSend: (mode: 'inject' | 'new-session') => void;
+    openNoteFor: { key: string } | null;
   };
 }) {
   return (
@@ -137,6 +138,7 @@ export function ContentPane({
             onShowInDiff={plan.onShowInDiff}
             onClear={plan.onClear}
             onSend={plan.onSend}
+            openNoteFor={plan.openNoteFor}
           />
         </div>
       )}

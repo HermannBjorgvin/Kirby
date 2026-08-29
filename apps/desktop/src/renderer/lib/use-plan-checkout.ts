@@ -1,8 +1,18 @@
-import { useCallback, type RefObject } from 'react';
+import { useCallback, useState, type RefObject } from 'react';
 import { toast } from 'sonner';
-import { composePlanPrompt, type PlanItem } from '@kirby/core/plan';
+import {
+  composePlanPrompt,
+  planItemKey,
+  snapshotLocal,
+  snapshotRemote,
+  type PlanItem,
+} from '@kirby/core/plan';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { usePlan } from './plan.js';
+import type {
+  RemoteCommentThread,
+  ReviewComment,
+} from '../../host/contract.js';
+import { usePlan, type PlanApi } from './plan.js';
 import { planSummary } from './plan-model.js';
 import { useCheckoutPlan } from './queries.js';
 import { estimateTerminalGrid } from './terminal-grid.js';
@@ -16,6 +26,11 @@ import { errorMessage } from './utils.js';
  * already the busiest thing in the renderer, and none of this is about
  * layout.
  */
+/** A request to open one row's note composer. Identity is the signal. */
+export interface NoteRequest {
+  key: string;
+}
+
 export interface PlanPaneWiring {
   items: PlanItem[];
   agentRunning: boolean;
@@ -25,6 +40,8 @@ export interface PlanPaneWiring {
   onShowInDiff: (item: PlanItem) => void;
   onClear: () => void;
   onSend: (mode: 'inject' | 'new-session') => void;
+  /** Row whose note composer should open (a rail request). */
+  openNoteFor: NoteRequest | null;
 }
 
 export function usePlanCheckout({
@@ -32,8 +49,11 @@ export function usePlanCheckout({
   pr,
   running,
   paneRef,
+  threads,
+  drafts,
   onSent,
   onShowInDiff,
+  onOpenPlan,
 }: {
   cwd: string;
   /** Absent on a bare worktree tab, which has no plan. */
@@ -41,13 +61,69 @@ export function usePlanCheckout({
   running: boolean;
   /** Measured to size the PTY when the send starts an agent. */
   paneRef: RefObject<HTMLDivElement | null>;
+  /** Every remote thread on the PR, inline and general — what a
+   *  comment id from the rail has to be resolved against. */
+  threads: readonly RemoteCommentThread[];
+  drafts: readonly ReviewComment[];
   /** Called once the plan has reached the agent. */
   onSent: () => void;
   onShowInDiff: (item: PlanItem) => void;
-}): { count: number; noted: number; wiring?: PlanPaneWiring } {
+  /** Show the plan pane — the rail has nowhere to compose a note. */
+  onOpenPlan: () => void;
+}): {
+  count: number;
+  noted: number;
+  /** The bound queue, for callers that add and remove directly. */
+  api: PlanApi;
+  /** Right-click on a rail comment row. */
+  onCommentContextMenu: (id: string) => void;
+  wiring?: PlanPaneWiring;
+} {
   const plan = usePlan(pr?.id ?? 0);
   const checkout = useCheckoutPlan(cwd);
   const { count, noted } = planSummary(plan.items);
+  // A fresh object per request, not just the row's key: asking for a
+  // note on the same row twice has to reopen the composer, and an
+  // unchanged key would look like nothing happened.
+  const [noteRequest, setNoteRequest] = useState<NoteRequest | null>(null);
+
+  /**
+   * Queue a comment straight from the rail's list, without having to
+   * find its card in the diff first. "with a note" has nowhere to
+   * compose in the rail, so it opens the plan pane on that row.
+   */
+  const onCommentContextMenu = useCallback(
+    (id: string) => {
+      const thread = threads.find((t) => t.id === id);
+      const draft = thread ? undefined : drafts.find((d) => d.id === id);
+      const item = thread
+        ? snapshotRemote(thread)
+        : draft
+        ? snapshotLocal(draft)
+        : null;
+      if (!item) return;
+      const queued = plan.has(item.kind, item.id);
+      void window.kirby
+        .showContextMenu([
+          { id: 'toggle', label: queued ? 'Remove from plan' : 'Add to plan' },
+          {
+            id: 'note',
+            label: queued ? 'Edit note…' : 'Add to plan with a note…',
+          },
+        ])
+        .then((chosen) => {
+          if (chosen === 'toggle') {
+            if (queued) plan.removeWithUndo(item);
+            else plan.add(item);
+          } else if (chosen === 'note') {
+            plan.add(item);
+            setNoteRequest({ key: planItemKey(item.kind, item.id) });
+            onOpenPlan();
+          }
+        });
+    },
+    [threads, drafts, plan, onOpenPlan]
+  );
 
   const send = useCallback(
     (mode: 'inject' | 'new-session') => {
@@ -82,10 +158,12 @@ export function usePlanCheckout({
     [pr, plan, checkout, paneRef, onSent]
   );
 
-  if (!pr) return { count: 0, noted: 0 };
+  if (!pr) return { count: 0, noted: 0, api: plan, onCommentContextMenu };
   return {
     count,
     noted,
+    api: plan,
+    onCommentContextMenu,
     wiring: {
       items: plan.items,
       agentRunning: running,
@@ -95,6 +173,7 @@ export function usePlanCheckout({
       onShowInDiff,
       onClear: plan.clear,
       onSend: send,
+      openNoteFor: noteRequest,
     },
   };
 }

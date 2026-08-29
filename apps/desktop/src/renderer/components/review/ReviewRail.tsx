@@ -47,6 +47,7 @@ export function ReviewRail({
   commentItems,
   activeCommentId,
   onJumpComment,
+  onCommentContextMenu,
 }: {
   hasPr: boolean;
   overviewActive: boolean;
@@ -76,6 +77,7 @@ export function ReviewRail({
   commentItems: CommentListItem[];
   activeCommentId: string | null;
   onJumpComment: (item: CommentListItem) => void;
+  onCommentContextMenu: (item: CommentListItem) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar/60">
@@ -245,6 +247,7 @@ export function ReviewRail({
           items={commentItems}
           activeId={activeCommentId}
           onJump={onJumpComment}
+          onContextMenu={onCommentContextMenu}
         />
       </ScrollArea>
     </div>
