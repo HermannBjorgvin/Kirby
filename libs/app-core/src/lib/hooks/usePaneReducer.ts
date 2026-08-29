@@ -95,128 +95,76 @@ function resolve<T>(updater: Updater<T>, prev: T): T {
     : updater;
 }
 
-export type PaneAction =
-  | { type: 'SET_PANE_MODE'; mode: PaneMode }
-  | { type: 'SET_RECONNECT_KEY'; updater: Updater<number> }
-  | { type: 'SET_DIFF_FILE_INDEX'; updater: Updater<number> }
-  | { type: 'SET_DIFF_VIEW_FILE'; file: string | null }
-  | { type: 'SET_DIFF_SCROLL_OFFSET'; updater: Updater<number> }
-  | { type: 'SET_DIFF_LIST_SCROLL_ROW'; updater: Updater<number> }
-  | { type: 'SET_SHOW_SKIPPED'; updater: Updater<boolean> }
-  | { type: 'SET_SELECTED_COMMENT_ID'; id: string | null }
-  | { type: 'SET_PENDING_DELETE_COMMENT_ID'; id: string | null }
-  | { type: 'SET_EDITING_COMMENT_ID'; id: string | null }
-  | { type: 'SET_EDIT_BUFFER'; updater: Updater<string> }
-  | { type: 'SET_REPLYING_TO_THREAD_ID'; id: string | null }
-  | { type: 'SET_REPLY_BUFFER'; updater: Updater<string> }
-  | { type: 'SET_PENDING_SCROLL_THREAD_ID'; id: string | null }
-  | { type: 'SET_GENERAL_COMMENTS_INDEX'; updater: Updater<number> }
-  | { type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET'; updater: Updater<number> }
-  | {
-      type: 'SET_REVIEW_CONFIRM';
-      value: { pr: PullRequestInfo; selectedOption: number } | null;
-    }
-  | { type: 'SET_REVIEW_INSTRUCTION'; updater: Updater<string> }
-  | { type: 'SET_PRIOR_PANE_MODE'; mode: PaneMode }
-  | { type: 'SET_PLAN_CHECKOUT_INDEX'; updater: Updater<number> }
-  | { type: 'SET_ANNOTATING_PLAN_KEY'; key: string | null }
-  | { type: 'SET_ANNOTATION_BUFFER'; updater: Updater<string> }
-  | {
-      type: 'SET_PLAN_CHECKOUT_TARGET';
-      value: 'inject' | 'new-session' | null;
-    };
+/**
+ * Every action sets exactly one field of PaneState, and the only thing that
+ * varies between them is which of two payload shapes it carries: the new
+ * value outright, or an updater applied to that field's previous value.
+ *
+ * So the action type *is* a field name, and these two tables are the whole
+ * reducer. The action union below is derived from them rather than restated
+ * beside them — which is what keeps a new pane field from having to be
+ * spelled out in five places that can drift apart.
+ */
+const VALUE_FIELDS = {
+  SET_PANE_MODE: 'paneMode',
+  SET_DIFF_VIEW_FILE: 'diffViewFile',
+  SET_SELECTED_COMMENT_ID: 'selectedCommentId',
+  SET_PENDING_DELETE_COMMENT_ID: 'pendingDeleteCommentId',
+  SET_EDITING_COMMENT_ID: 'editingCommentId',
+  SET_REPLYING_TO_THREAD_ID: 'replyingToThreadId',
+  SET_PENDING_SCROLL_THREAD_ID: 'pendingScrollThreadId',
+  SET_REVIEW_CONFIRM: 'reviewConfirm',
+  SET_PRIOR_PANE_MODE: 'priorPaneMode',
+  SET_ANNOTATING_PLAN_KEY: 'annotatingPlanKey',
+  SET_PLAN_CHECKOUT_TARGET: 'planCheckoutTarget',
+} as const satisfies Record<string, keyof PaneState>;
+
+const UPDATER_FIELDS = {
+  SET_RECONNECT_KEY: 'reconnectKey',
+  SET_DIFF_FILE_INDEX: 'diffFileIndex',
+  SET_DIFF_SCROLL_OFFSET: 'diffScrollOffset',
+  SET_DIFF_LIST_SCROLL_ROW: 'diffListScrollRow',
+  SET_SHOW_SKIPPED: 'showSkipped',
+  SET_EDIT_BUFFER: 'editBuffer',
+  SET_REPLY_BUFFER: 'replyBuffer',
+  SET_GENERAL_COMMENTS_INDEX: 'generalCommentsIndex',
+  SET_GENERAL_COMMENTS_SCROLL_OFFSET: 'generalCommentsScrollOffset',
+  SET_REVIEW_INSTRUCTION: 'reviewInstruction',
+  SET_PLAN_CHECKOUT_INDEX: 'planCheckoutIndex',
+  SET_ANNOTATION_BUFFER: 'annotationBuffer',
+} as const satisfies Record<string, keyof PaneState>;
+
+type ValueAction = {
+  [K in keyof typeof VALUE_FIELDS]: {
+    type: K;
+    value: PaneState[(typeof VALUE_FIELDS)[K]];
+  };
+}[keyof typeof VALUE_FIELDS];
+
+type UpdaterAction = {
+  [K in keyof typeof UPDATER_FIELDS]: {
+    type: K;
+    updater: Updater<PaneState[(typeof UPDATER_FIELDS)[K]]>;
+  };
+}[keyof typeof UPDATER_FIELDS];
+
+export type PaneAction = ValueAction | UpdaterAction;
 
 export function paneReducer(state: PaneState, action: PaneAction): PaneState {
-  switch (action.type) {
-    case 'SET_PANE_MODE':
-      return { ...state, paneMode: action.mode };
-    case 'SET_RECONNECT_KEY':
-      return {
-        ...state,
-        reconnectKey: resolve(action.updater, state.reconnectKey),
-      };
-    case 'SET_DIFF_FILE_INDEX':
-      return {
-        ...state,
-        diffFileIndex: resolve(action.updater, state.diffFileIndex),
-      };
-    case 'SET_DIFF_VIEW_FILE':
-      return { ...state, diffViewFile: action.file };
-    case 'SET_DIFF_SCROLL_OFFSET':
-      return {
-        ...state,
-        diffScrollOffset: resolve(action.updater, state.diffScrollOffset),
-      };
-    case 'SET_DIFF_LIST_SCROLL_ROW':
-      return {
-        ...state,
-        diffListScrollRow: resolve(action.updater, state.diffListScrollRow),
-      };
-    case 'SET_SHOW_SKIPPED':
-      return {
-        ...state,
-        showSkipped: resolve(action.updater, state.showSkipped),
-      };
-    case 'SET_SELECTED_COMMENT_ID':
-      return { ...state, selectedCommentId: action.id };
-    case 'SET_PENDING_DELETE_COMMENT_ID':
-      return { ...state, pendingDeleteCommentId: action.id };
-    case 'SET_EDITING_COMMENT_ID':
-      return { ...state, editingCommentId: action.id };
-    case 'SET_EDIT_BUFFER':
-      return {
-        ...state,
-        editBuffer: resolve(action.updater, state.editBuffer),
-      };
-    case 'SET_REPLYING_TO_THREAD_ID':
-      return { ...state, replyingToThreadId: action.id };
-    case 'SET_REPLY_BUFFER':
-      return {
-        ...state,
-        replyBuffer: resolve(action.updater, state.replyBuffer),
-      };
-    case 'SET_PENDING_SCROLL_THREAD_ID':
-      return { ...state, pendingScrollThreadId: action.id };
-    case 'SET_GENERAL_COMMENTS_INDEX':
-      return {
-        ...state,
-        generalCommentsIndex: resolve(
-          action.updater,
-          state.generalCommentsIndex
-        ),
-      };
-    case 'SET_GENERAL_COMMENTS_SCROLL_OFFSET':
-      return {
-        ...state,
-        generalCommentsScrollOffset: resolve(
-          action.updater,
-          state.generalCommentsScrollOffset
-        ),
-      };
-    case 'SET_REVIEW_CONFIRM':
-      return { ...state, reviewConfirm: action.value };
-    case 'SET_REVIEW_INSTRUCTION':
-      return {
-        ...state,
-        reviewInstruction: resolve(action.updater, state.reviewInstruction),
-      };
-    case 'SET_PRIOR_PANE_MODE':
-      return { ...state, priorPaneMode: action.mode };
-    case 'SET_PLAN_CHECKOUT_INDEX':
-      return {
-        ...state,
-        planCheckoutIndex: resolve(action.updater, state.planCheckoutIndex),
-      };
-    case 'SET_ANNOTATING_PLAN_KEY':
-      return { ...state, annotatingPlanKey: action.key };
-    case 'SET_ANNOTATION_BUFFER':
-      return {
-        ...state,
-        annotationBuffer: resolve(action.updater, state.annotationBuffer),
-      };
-    case 'SET_PLAN_CHECKOUT_TARGET':
-      return { ...state, planCheckoutTarget: action.value };
+  if ('updater' in action) {
+    const field = UPDATER_FIELDS[action.type];
+    // The union is generated from the table above, so the updater always
+    // matches the field it is paired with. TypeScript cannot follow that
+    // correlation across a union, so `resolve` is instantiated at `unknown`
+    // — every updater is assignable to `Updater<unknown>`.
+    return {
+      ...state,
+      [field]: resolve<unknown>(action.updater, state[field]),
+    };
   }
+
+  const field = VALUE_FIELDS[action.type];
+  return { ...state, [field]: action.value };
 }
 
 // ── Actions wrapper (preserves same setter API for input handlers) ──
@@ -296,32 +244,33 @@ export function usePaneReducer(
 
   const actions = useMemo<PaneActions>(
     () => ({
-      setPaneMode: (mode) => dispatch({ type: 'SET_PANE_MODE', mode }),
+      setPaneMode: (value) => dispatch({ type: 'SET_PANE_MODE', value }),
       setReconnectKey: (updater) =>
         dispatch({ type: 'SET_RECONNECT_KEY', updater }),
       setDiffFileIndex: (updater) =>
         dispatch({ type: 'SET_DIFF_FILE_INDEX', updater }),
-      setDiffViewFile: (file) => dispatch({ type: 'SET_DIFF_VIEW_FILE', file }),
+      setDiffViewFile: (value) =>
+        dispatch({ type: 'SET_DIFF_VIEW_FILE', value }),
       setDiffScrollOffset: (updater) =>
         dispatch({ type: 'SET_DIFF_SCROLL_OFFSET', updater }),
       setDiffListScrollRow: (updater) =>
         dispatch({ type: 'SET_DIFF_LIST_SCROLL_ROW', updater }),
       setShowSkipped: (updater) =>
         dispatch({ type: 'SET_SHOW_SKIPPED', updater }),
-      setSelectedCommentId: (id) =>
-        dispatch({ type: 'SET_SELECTED_COMMENT_ID', id }),
-      setPendingDeleteCommentId: (id) =>
-        dispatch({ type: 'SET_PENDING_DELETE_COMMENT_ID', id }),
-      setEditingCommentId: (id) =>
-        dispatch({ type: 'SET_EDITING_COMMENT_ID', id }),
+      setSelectedCommentId: (value) =>
+        dispatch({ type: 'SET_SELECTED_COMMENT_ID', value }),
+      setPendingDeleteCommentId: (value) =>
+        dispatch({ type: 'SET_PENDING_DELETE_COMMENT_ID', value }),
+      setEditingCommentId: (value) =>
+        dispatch({ type: 'SET_EDITING_COMMENT_ID', value }),
       setEditBuffer: (updater) =>
         dispatch({ type: 'SET_EDIT_BUFFER', updater }),
-      setReplyingToThreadId: (id) =>
-        dispatch({ type: 'SET_REPLYING_TO_THREAD_ID', id }),
+      setReplyingToThreadId: (value) =>
+        dispatch({ type: 'SET_REPLYING_TO_THREAD_ID', value }),
       setReplyBuffer: (updater) =>
         dispatch({ type: 'SET_REPLY_BUFFER', updater }),
-      setPendingScrollThreadId: (id) =>
-        dispatch({ type: 'SET_PENDING_SCROLL_THREAD_ID', id }),
+      setPendingScrollThreadId: (value) =>
+        dispatch({ type: 'SET_PENDING_SCROLL_THREAD_ID', value }),
       setGeneralCommentsIndex: (updater) =>
         dispatch({ type: 'SET_GENERAL_COMMENTS_INDEX', updater }),
       setGeneralCommentsScrollOffset: (updater) =>
@@ -330,12 +279,12 @@ export function usePaneReducer(
         dispatch({ type: 'SET_REVIEW_CONFIRM', value }),
       setReviewInstruction: (updater) =>
         dispatch({ type: 'SET_REVIEW_INSTRUCTION', updater }),
-      setPriorPaneMode: (mode) =>
-        dispatch({ type: 'SET_PRIOR_PANE_MODE', mode }),
+      setPriorPaneMode: (value) =>
+        dispatch({ type: 'SET_PRIOR_PANE_MODE', value }),
       setPlanCheckoutIndex: (updater) =>
         dispatch({ type: 'SET_PLAN_CHECKOUT_INDEX', updater }),
-      setAnnotatingPlanKey: (key) =>
-        dispatch({ type: 'SET_ANNOTATING_PLAN_KEY', key }),
+      setAnnotatingPlanKey: (value) =>
+        dispatch({ type: 'SET_ANNOTATING_PLAN_KEY', value }),
       setAnnotationBuffer: (updater) =>
         dispatch({ type: 'SET_ANNOTATION_BUFFER', updater }),
       setPlanCheckoutTarget: (value) =>

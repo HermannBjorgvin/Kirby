@@ -58,40 +58,48 @@ export function __resetTargetFetchTtlForTest(): void {
   targetFetchedAt.clear();
 }
 
-export async function fetchAllFiles(
+function fetchBranch(branch: string): Promise<unknown> {
+  return execFile('git', ['fetch', 'origin', branch], {
+    timeout: 30_000,
+    env: { ...process.env, ...GIT_NO_PROMPT_ENV },
+  });
+}
+
+/**
+ * Bring both sides' `origin/` refs up to date, skipping the network wherever
+ * freshness can already be established.
+ *
+ * The two sides get different evidence. The source has a head SHA from the
+ * PR, so a matching local ref proves it is current. The target has none, so
+ * it falls back to a TTL — the first open per target per process always
+ * fetches, later ones inside the window do not.
+ *
+ * A failed fetch is deliberately not fatal: the branch may already exist
+ * locally, and it is `resolveRef` that actually has to succeed. The target's
+ * timestamp is only recorded on success, so a failed fetch is retried rather
+ * than papered over for the length of the TTL.
+ */
+async function ensureBranchesFetched(
   sourceBranch: string,
   targetBranch: string,
   expectedSourceSha: string | undefined
-): Promise<{ files: DiffFile[]; sourceRef: string; targetRef: string }> {
-  // Source: skip the network round-trip when local `origin/<source>`
-  // already matches the PR's reported head SHA. Falls through to
-  // `git fetch` when the SHA is unknown, the local ref is missing,
-  // or the local ref is behind.
+): Promise<void> {
   const localSourceSha = await localRefSha(`origin/${sourceBranch}`);
   const sourceFresh =
     !!expectedSourceSha && localSourceSha === expectedSourceSha;
 
-  // Target: no head SHA available, so use a TTL. First fetch per
-  // target per process always runs; later opens within the window
-  // skip it.
   const lastTargetFetch = targetFetchedAt.get(targetBranch) ?? 0;
   const targetFresh = Date.now() - lastTargetFetch < TARGET_FETCH_TTL_MS;
 
   await Promise.all([
     sourceFresh
       ? Promise.resolve()
-      : execFile('git', ['fetch', 'origin', sourceBranch], {
-          timeout: 30_000,
-          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
-        }).catch(() => {
+      : fetchBranch(sourceBranch).catch(() => {
           /* branch may already exist locally */
         }),
     targetFresh
       ? Promise.resolve()
-      : execFile('git', ['fetch', 'origin', targetBranch], {
-          timeout: 30_000,
-          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
-        })
+      : fetchBranch(targetBranch)
           .then(() => {
             targetFetchedAt.set(targetBranch, Date.now());
           })
@@ -99,87 +107,125 @@ export async function fetchAllFiles(
             /* branch may already exist locally */
           }),
   ]);
+}
 
-  const [sourceRef, targetRef] = await Promise.all([
-    resolveRef(sourceBranch),
-    resolveRef(targetBranch),
-  ]);
+interface NumstatEntry {
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
 
-  // Get additions/deletions per file (binary files show - - for stats)
-  const { stdout: numstatOut } = await execFile(
-    'git',
-    ['diff', '--numstat', `${targetRef}...${sourceRef}`],
-    { maxBuffer: 10 * 1024 * 1024 }
-  );
-
-  // Get status letter per file
-  const { stdout: nameStatusOut } = await execFile(
-    'git',
-    ['diff', '--name-status', `${targetRef}...${sourceRef}`],
-    { maxBuffer: 10 * 1024 * 1024 }
-  );
-
-  // Parse --numstat: "<added>\t<deleted>\t<file>" or "-\t-\t<file>" for binary
-  const numstatMap = new Map<
-    string,
-    { additions: number; deletions: number; binary: boolean }
-  >();
-  for (const line of numstatOut.trim().split('\n')) {
+/**
+ * Parse `git diff --numstat`: "<added>\t<deleted>\t<file>", or "-\t-\t<file>"
+ * for a binary file, which has no line counts to report.
+ */
+function parseNumstat(stdout: string): Map<string, NumstatEntry> {
+  const entries = new Map<string, NumstatEntry>();
+  for (const line of stdout.trim().split('\n')) {
     if (!line) continue;
     const parts = line.split('\t');
-    const isBinary = parts[0] === '-' && parts[1] === '-';
-    // For renames: "old => new" or "{old => new}" path
+    const binary = parts[0] === '-' && parts[1] === '-';
+    // A path may itself contain tabs, so it is everything past the counts.
     const filename = parts.slice(2).join('\t');
-    numstatMap.set(filename, {
-      additions: isBinary ? 0 : Number(parts[0]),
-      deletions: isBinary ? 0 : Number(parts[1]),
-      binary: isBinary,
+    entries.set(filename, {
+      additions: binary ? 0 : Number(parts[0]),
+      deletions: binary ? 0 : Number(parts[1]),
+      binary,
     });
   }
+  return entries;
+}
 
-  // Parse --name-status: "<status>\t<file>" or "<status>\t<old>\t<new>" for renames
+/**
+ * numstat keys a rename by git's combined "old => new" path while
+ * name-status reports the two sides separately, so an exact lookup misses
+ * and we fall back to the first entry that mentions either side.
+ */
+function lookupStats(
+  entries: Map<string, NumstatEntry>,
+  filename: string,
+  previousFilename: string | undefined
+): NumstatEntry | undefined {
+  const exact = entries.get(filename);
+  if (exact) return exact;
+
+  for (const [key, val] of entries) {
+    if (
+      key.includes(filename) ||
+      (previousFilename && key.includes(previousFilename))
+    ) {
+      return val;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Where a `--name-status` line's path fields are. A rename or copy carries
+ * both the old and new path; every other status carries one.
+ */
+function splitPaths(parts: string[]): {
+  filename: string;
+  previousFilename: string | undefined;
+} {
+  const statusLetter = parts[0];
+  if (statusLetter.startsWith('R') || statusLetter.startsWith('C')) {
+    return { filename: parts[2], previousFilename: parts[1] };
+  }
+  return { filename: parts[1], previousFilename: undefined };
+}
+
+/** Join `git diff --name-status` output against the per-file numstat. */
+function toDiffFiles(
+  stdout: string,
+  entries: Map<string, NumstatEntry>
+): DiffFile[] {
   const files: DiffFile[] = [];
-  for (const line of nameStatusOut.trim().split('\n')) {
+  for (const line of stdout.trim().split('\n')) {
     if (!line) continue;
     const parts = line.split('\t');
-    const statusLetter = parts[0];
-    const status = mapNameStatus(statusLetter);
-
-    let filename: string;
-    let previousFilename: string | undefined;
-
-    if (statusLetter.startsWith('R') || statusLetter.startsWith('C')) {
-      // Rename/copy: status\told\tnew
-      previousFilename = parts[1];
-      filename = parts[2];
-    } else {
-      filename = parts[1];
-    }
-
-    // Look up numstat by filename (for renames, numstat uses "old => new" format)
-    // Try exact match first, then search for a line containing the filename
-    let stats = numstatMap.get(filename);
-    if (!stats) {
-      for (const [key, val] of numstatMap) {
-        if (
-          key.includes(filename) ||
-          (previousFilename && key.includes(previousFilename))
-        ) {
-          stats = val;
-          break;
-        }
-      }
-    }
+    const { filename, previousFilename } = splitPaths(parts);
+    const stats = lookupStats(entries, filename, previousFilename);
 
     files.push({
       filename,
-      status,
+      status: mapNameStatus(parts[0]),
       additions: stats?.additions ?? 0,
       deletions: stats?.deletions ?? 0,
       binary: stats?.binary ?? false,
       previousFilename,
     });
   }
+  return files;
+}
+
+export async function fetchAllFiles(
+  sourceBranch: string,
+  targetBranch: string,
+  expectedSourceSha: string | undefined
+): Promise<{ files: DiffFile[]; sourceRef: string; targetRef: string }> {
+  await ensureBranchesFetched(sourceBranch, targetBranch, expectedSourceSha);
+
+  const [sourceRef, targetRef] = await Promise.all([
+    resolveRef(sourceBranch),
+    resolveRef(targetBranch),
+  ]);
+
+  // Two views of the same diff: numstat carries the line counts, name-status
+  // the status letter and the rename pairing. Neither has both.
+  const range = `${targetRef}...${sourceRef}`;
+  const { stdout: numstatOut } = await execFile(
+    'git',
+    ['diff', '--numstat', range],
+    { maxBuffer: 10 * 1024 * 1024 }
+  );
+  const { stdout: nameStatusOut } = await execFile(
+    'git',
+    ['diff', '--name-status', range],
+    { maxBuffer: 10 * 1024 * 1024 }
+  );
+
+  const files = toDiffFiles(nameStatusOut, parseNumstat(numstatOut));
 
   return { files, sourceRef, targetRef };
 }

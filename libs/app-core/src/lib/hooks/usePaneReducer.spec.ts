@@ -18,7 +18,7 @@ describe('paneReducer', () => {
   it('SET_PANE_MODE replaces paneMode and preserves other fields', () => {
     const next = paneReducer(initialState, {
       type: 'SET_PANE_MODE',
-      mode: 'diff',
+      value: 'diff',
     });
     expect(next.paneMode).toBe('diff');
     expect(next.reconnectKey).toBe(initialState.reconnectKey);
@@ -28,14 +28,14 @@ describe('paneReducer', () => {
   it('SET_DIFF_VIEW_FILE replaces diffViewFile and preserves other fields', () => {
     const next = paneReducer(initialState, {
       type: 'SET_DIFF_VIEW_FILE',
-      file: 'src/foo.ts',
+      value: 'src/foo.ts',
     });
     expect(next.diffViewFile).toBe('src/foo.ts');
     expect(next.diffFileIndex).toBe(initialState.diffFileIndex);
 
     const cleared = paneReducer(next, {
       type: 'SET_DIFF_VIEW_FILE',
-      file: null,
+      value: null,
     });
     expect(cleared.diffViewFile).toBeNull();
   });
@@ -43,13 +43,13 @@ describe('paneReducer', () => {
   it('SET_SELECTED_COMMENT_ID replaces selectedCommentId', () => {
     const next = paneReducer(initialState, {
       type: 'SET_SELECTED_COMMENT_ID',
-      id: 'c1',
+      value: 'c1',
     });
     expect(next.selectedCommentId).toBe('c1');
 
     const cleared = paneReducer(next, {
       type: 'SET_SELECTED_COMMENT_ID',
-      id: null,
+      value: null,
     });
     expect(cleared.selectedCommentId).toBeNull();
   });
@@ -57,7 +57,7 @@ describe('paneReducer', () => {
   it('SET_PENDING_DELETE_COMMENT_ID replaces pendingDeleteCommentId', () => {
     const next = paneReducer(initialState, {
       type: 'SET_PENDING_DELETE_COMMENT_ID',
-      id: 'c2',
+      value: 'c2',
     });
     expect(next.pendingDeleteCommentId).toBe('c2');
   });
@@ -65,7 +65,7 @@ describe('paneReducer', () => {
   it('SET_EDITING_COMMENT_ID replaces editingCommentId', () => {
     const next = paneReducer(initialState, {
       type: 'SET_EDITING_COMMENT_ID',
-      id: 'c3',
+      value: 'c3',
     });
     expect(next.editingCommentId).toBe('c3');
   });
@@ -200,10 +200,10 @@ describe('paneReducer', () => {
 
   it('preserves unrelated fields across a sequence of dispatches', () => {
     let s = initialState;
-    s = paneReducer(s, { type: 'SET_PANE_MODE', mode: 'pr-detail' });
+    s = paneReducer(s, { type: 'SET_PANE_MODE', value: 'pr-detail' });
     s = paneReducer(s, { type: 'SET_EDIT_BUFFER', updater: 'draft' });
     s = paneReducer(s, { type: 'SET_DIFF_FILE_INDEX', updater: 2 });
-    s = paneReducer(s, { type: 'SET_SELECTED_COMMENT_ID', id: 'x' });
+    s = paneReducer(s, { type: 'SET_SELECTED_COMMENT_ID', value: 'x' });
 
     expect(s.paneMode).toBe('pr-detail');
     expect(s.editBuffer).toBe('draft');

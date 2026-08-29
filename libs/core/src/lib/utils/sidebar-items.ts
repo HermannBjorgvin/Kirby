@@ -1,17 +1,66 @@
 import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
-import type { AgentSession, SidebarItem } from '../types.js';
+import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
 import { branchToSessionName } from '@kirby/worktree-manager';
+
+/** The branches every review section covers, in one set. */
+function collectReviewBranches(reviews: CategorizedReviews): Set<string> {
+  return new Set(
+    [
+      ...reviews.needsReview,
+      ...reviews.waitingForAuthor,
+      ...reviews.approvedByYou,
+    ].map((pr) => pr.sourceBranch)
+  );
+}
+
+/** The three session sections, in the order they are emitted. */
+interface SessionBuckets {
+  noPr: SidebarItem[];
+  draftPr: SidebarItem[];
+  activePr: SidebarItem[];
+}
+
+/**
+ * Split the worktree sessions across the sections they belong to.
+ *
+ * A session whose branch is under review is dropped here rather than
+ * emitted: it appears in its review section instead, carrying the running
+ * LED, and listing it twice would give the same worktree two rows.
+ */
+function bucketSessions(
+  sortedSessions: AgentSession[],
+  reviewBranches: Set<string>,
+  sessionBranchMap: Map<string, string>,
+  sessionPrMap: Map<string, PullRequestInfo>,
+  mergedBranches: Set<string>,
+  conflictCounts: Map<string, number>
+): SessionBuckets {
+  const buckets: SessionBuckets = { noPr: [], draftPr: [], activePr: [] };
+
+  for (const session of sortedSessions) {
+    const branch = sessionBranchMap.get(session.name);
+    if (branch && reviewBranches.has(branch)) continue;
+
+    const pr = sessionPrMap.get(session.name);
+    const item: SidebarItem = {
+      kind: 'session',
+      session,
+      pr,
+      branch,
+      isMerged: branch ? mergedBranches.has(branch) : false,
+      conflictCount: branch ? conflictCounts.get(branch) : undefined,
+    };
+
+    if (!pr) buckets.noPr.push(item);
+    else if (pr.isDraft) buckets.draftPr.push(item);
+    else buckets.activePr.push(item);
+  }
+
+  return buckets;
+}
 
 /**
  * Build a flat, ordered list of sidebar items from all data sources.
- *
- * Section order:
- * 1. Worktrees — sessions with no PR
- * 2. Draft Pull Requests — sessions with a draft PR, then draft orphan PRs
- * 3. Pull Requests — sessions with an active PR, then active orphan PRs
- * 4. Needs review (others' PRs you need to review)
- * 5. Waiting for author
- * 6. Approved by you
  *
  * Section headers are NOT in the array — rendering determines them by
  * detecting kind/category transitions.
@@ -25,109 +74,64 @@ export function buildSidebarItems(
   mergedBranches: Set<string>,
   conflictCounts: Map<string, number>
 ): SidebarItem[] {
-  const items: SidebarItem[] = [];
+  const sessions = bucketSessions(
+    sortedSessions,
+    collectReviewBranches(categorizedReviews),
+    sessionBranchMap,
+    sessionPrMap,
+    mergedBranches,
+    conflictCounts
+  );
 
-  // Collect review PR branches so we can exclude their sessions from the
-  // sessions list (they appear in their review section with a running LED).
-  const reviewBranches = new Set<string>();
-  for (const pr of [
-    ...categorizedReviews.needsReview,
-    ...categorizedReviews.waitingForAuthor,
-    ...categorizedReviews.approvedByYou,
-  ]) {
-    reviewBranches.add(pr.sourceBranch);
-  }
-
-  // Build a quick lookup: session name → AgentSession for review-pr running status
   const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
-  const prSessionEarly = (pr: PullRequestInfo): AgentSession | undefined =>
-    sessionByName.get(branchToSessionName(pr.sourceBranch));
 
-  // Bucket sessions by PR status so each section can be emitted in order.
-  const noPrSessions: SidebarItem[] = [];
-  const draftPrSessions: SidebarItem[] = [];
-  const activePrSessions: SidebarItem[] = [];
-
-  for (const session of sortedSessions) {
-    const branch = sessionBranchMap.get(session.name);
-    if (branch && reviewBranches.has(branch)) continue;
-    const pr = sessionPrMap.get(session.name);
-    const isMerged = branch ? mergedBranches.has(branch) : false;
-    const conflictCount = branch ? conflictCounts.get(branch) : undefined;
-    const item: SidebarItem = {
-      kind: 'session',
-      session,
-      pr,
-      branch,
-      isMerged,
-      conflictCount,
-    };
-    if (!pr) noPrSessions.push(item);
-    else if (pr.isDraft) draftPrSessions.push(item);
-    else activePrSessions.push(item);
-  }
-
-  // 1. Worktrees (sessions with no PR)
-  items.push(...noPrSessions);
-
-  // 2. Draft Pull Requests — session-backed first, then orphans
-  items.push(...draftPrSessions);
-  for (const pr of orphanPrs.filter((p) => p.isDraft === true)) {
-    const session = prSessionEarly(pr);
-    items.push({
-      kind: 'orphan-pr',
-      pr,
-      running: session?.running,
-      sessionName: session?.name,
-    });
-  }
-
-  // 3. Pull Requests — session-backed first, then orphans
-  items.push(...activePrSessions);
-  for (const pr of orphanPrs.filter((p) => p.isDraft !== true)) {
-    const session = prSessionEarly(pr);
-    items.push({
-      kind: 'orphan-pr',
-      pr,
-      running: session?.running,
-      sessionName: session?.name,
-    });
-  }
-
-  // Helper: the alive worktree session backing a PR's branch, if any.
+  /** The alive worktree session backing a PR's branch, if any. */
   const prSession = (pr: PullRequestInfo): AgentSession | undefined =>
     sessionByName.get(branchToSessionName(pr.sourceBranch));
-  const reviewRunning = (pr: PullRequestInfo): boolean | undefined =>
-    prSession(pr)?.running;
 
-  // 4-6. Review PRs by category
-  for (const pr of categorizedReviews.needsReview) {
-    items.push({
-      kind: 'review-pr',
+  const orphanItem = (pr: PullRequestInfo): SidebarItem => {
+    const session = prSession(pr);
+    return {
+      kind: 'orphan-pr',
       pr,
-      category: 'needs-review',
-      running: reviewRunning(pr),
-      sessionName: prSession(pr)?.name,
-    });
-  }
-  for (const pr of categorizedReviews.waitingForAuthor) {
-    items.push({
-      kind: 'review-pr',
-      pr,
-      category: 'waiting',
-      running: reviewRunning(pr),
-      sessionName: prSession(pr)?.name,
-    });
-  }
-  for (const pr of categorizedReviews.approvedByYou) {
-    items.push({
-      kind: 'review-pr',
-      pr,
-      category: 'approved',
-      running: reviewRunning(pr),
-      sessionName: prSession(pr)?.name,
-    });
-  }
+      running: session?.running,
+      sessionName: session?.name,
+    };
+  };
 
-  return items;
+  const reviewItem =
+    (category: ReviewCategory) =>
+    (pr: PullRequestInfo): SidebarItem => {
+      const session = prSession(pr);
+      return {
+        kind: 'review-pr',
+        pr,
+        category,
+        running: session?.running,
+        sessionName: session?.name,
+      };
+    };
+
+  // The section order the sidebar reads top to bottom. Within the two PR
+  // sections, a request that has a worktree checked out sorts above one
+  // that does not.
+  return [
+    // 1. Worktrees — sessions with no PR
+    ...sessions.noPr,
+
+    // 2. Draft pull requests
+    ...sessions.draftPr,
+    ...orphanPrs.filter((p) => p.isDraft === true).map(orphanItem),
+
+    // 3. Pull requests
+    ...sessions.activePr,
+    ...orphanPrs.filter((p) => p.isDraft !== true).map(orphanItem),
+
+    // 4. Needs review (others' PRs you need to review)
+    ...categorizedReviews.needsReview.map(reviewItem('needs-review')),
+    // 5. Waiting for author
+    ...categorizedReviews.waitingForAuthor.map(reviewItem('waiting')),
+    // 6. Approved by you
+    ...categorizedReviews.approvedByYou.map(reviewItem('approved')),
+  ];
 }

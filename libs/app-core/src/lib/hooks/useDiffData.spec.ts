@@ -240,3 +240,125 @@ describe('fetchAllFiles freshness', () => {
     expect(countFetches(calls, 'main')).toBe(1);
   });
 });
+
+// The two git outputs describe the same diff differently — numstat has the
+// line counts, name-status the status letter and the rename pairing — and
+// joining them is where the fiddly cases live.
+describe('fetchAllFiles parsing', () => {
+  beforeEach(() => {
+    __resetTargetFetchTtlForTest();
+    execFileMock.mockReset();
+    vi.useRealTimers();
+  });
+
+  function parseWith(numstat: string, nameStatus: string) {
+    recorder([
+      (c: CallShape) => {
+        if (c.args[0] === 'rev-parse') return sourceSha + '\n';
+        if (c.args[0] === 'fetch') return '';
+        if (c.args[0] === 'diff' && c.args[1] === '--numstat') return numstat;
+        if (c.args[0] === 'diff' && c.args[1] === '--name-status') {
+          return nameStatus;
+        }
+        return;
+      },
+    ]);
+    return fetchAllFiles('feature', 'main', undefined);
+  }
+
+  it('takes a rename from the third path field and finds its combined numstat key', async () => {
+    // numstat keys the rename by "old => new" while name-status splits the
+    // two apart, so the exact lookup misses and the fallback scan has to
+    // find it. Pins both halves of the join.
+    const { files } = await parseWith(
+      '3\t1\told.ts => new.ts\n',
+      'R096\told.ts\tnew.ts\n'
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      filename: 'new.ts',
+      previousFilename: 'old.ts',
+      status: 'renamed',
+      additions: 3,
+      deletions: 1,
+    });
+  });
+
+  it('reads a copy the same way as a rename', async () => {
+    const { files } = await parseWith(
+      '2\t0\ta.ts => b.ts\n',
+      'C075\ta.ts\tb.ts\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'b.ts',
+      previousFilename: 'a.ts',
+      status: 'copied',
+      additions: 2,
+      deletions: 0,
+    });
+  });
+
+  it('loses the counts when git compacts a rename into brace form', async () => {
+    // Known limitation, pinned so a fix is a deliberate change rather than
+    // an accident: when the two paths share a prefix git writes
+    // "src/{old => new}.ts", which contains neither full path, so the
+    // containment fallback finds nothing and the counts default to zero.
+    const { files } = await parseWith(
+      '3\t1\tsrc/{old => new}.ts\n',
+      'R096\tsrc/old.ts\tsrc/new.ts\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'src/new.ts',
+      previousFilename: 'src/old.ts',
+      status: 'renamed',
+      additions: 0,
+      deletions: 0,
+    });
+  });
+
+  it('reports a binary file as zero changes rather than NaN', async () => {
+    // numstat writes "-" for both counts on a binary file, and Number('-')
+    // is NaN — which would reach the UI as a blank count.
+    const { files } = await parseWith(
+      '-\t-\tassets/logo.png\n',
+      'M\tassets/logo.png\n'
+    );
+
+    expect(files[0]).toMatchObject({
+      filename: 'assets/logo.png',
+      binary: true,
+      additions: 0,
+      deletions: 0,
+    });
+  });
+
+  it('defaults counts to zero when numstat has no entry for the file', async () => {
+    const { files } = await parseWith('', 'A\tsrc/only.ts\n');
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      filename: 'src/only.ts',
+      status: 'added',
+      additions: 0,
+      deletions: 0,
+      binary: false,
+    });
+  });
+
+  it('maps each name-status letter to its status', async () => {
+    const { files } = await parseWith(
+      '1\t0\ta.ts\n0\t1\tb.ts\n1\t1\tc.ts\n1\t1\td.ts\n',
+      'A\ta.ts\nD\tb.ts\nT\tc.ts\nM\td.ts\n'
+    );
+
+    expect(files.map((f) => f.status)).toEqual([
+      'added',
+      'removed',
+      'changed',
+      'modified',
+    ]);
+  });
+});

@@ -1,39 +1,63 @@
 import type { KeyDescriptor, ActionDef, InputContext } from './registry.js';
 
+type ModifierKey = 'ctrl' | 'shift' | 'meta';
+type FlagKey = keyof NonNullable<KeyDescriptor['flags']>;
+
+/**
+ * Both tables are ordered, and the order is the rendering order — a chord
+ * always reads the same way regardless of which order its descriptor happens
+ * to list the flags in.
+ */
+const MODIFIER_LABELS: readonly (readonly [ModifierKey, string])[] = [
+  ['ctrl', 'Ctrl'],
+  ['shift', 'Shift'],
+  ['meta', 'Alt'],
+];
+
+const FLAG_LABELS: readonly (readonly [FlagKey, string])[] = [
+  ['upArrow', '↑'],
+  ['downArrow', '↓'],
+  ['leftArrow', '←'],
+  ['rightArrow', '→'],
+  ['return', 'Enter'],
+  ['escape', 'Esc'],
+  ['tab', 'Tab'],
+  ['backspace', 'Bksp'],
+  ['delete', 'Del'],
+  ['pageDown', 'PgDn'],
+  ['pageUp', 'PgUp'],
+  ['home', 'Home'],
+  ['end', 'End'],
+];
+
+/**
+ * How a character key reads, and whether saying so implies Shift.
+ *
+ * A capital letter is the one case where the character alone understates the
+ * chord: 'A' is really Shift+a, so it contributes a modifier as well as a key.
+ */
+function describeInput(input: string): { shift: boolean; label: string } {
+  if (input === ' ') return { shift: false, label: 'Space' };
+  if (input.length === 1 && /[A-Z]/.test(input))
+    return { shift: true, label: input.toLowerCase() };
+  return { shift: false, label: input };
+}
+
 /** Convert a single KeyDescriptor to a human-readable string */
 export function keyDescriptorToString(desc: KeyDescriptor): string {
-  const modifiers: string[] = [];
-  const keys: string[] = [];
+  const modifiers = MODIFIER_LABELS.filter(([flag]) => desc[flag]).map(
+    ([, label]) => label
+  );
 
-  // Modifiers first (consistent order: Ctrl, Shift, Alt)
-  if (desc.ctrl) modifiers.push('Ctrl');
-  if (desc.shift) modifiers.push('Shift');
-  if (desc.meta) modifiers.push('Alt');
+  const flags = desc.flags;
+  const keys = flags
+    ? FLAG_LABELS.filter(([flag]) => flags[flag]).map(([, label]) => label)
+    : [];
 
-  // Special key flags
-  if (desc.flags) {
-    if (desc.flags.upArrow) keys.push('↑');
-    if (desc.flags.downArrow) keys.push('↓');
-    if (desc.flags.leftArrow) keys.push('←');
-    if (desc.flags.rightArrow) keys.push('→');
-    if (desc.flags.return) keys.push('Enter');
-    if (desc.flags.escape) keys.push('Esc');
-    if (desc.flags.tab) keys.push('Tab');
-    if (desc.flags.backspace) keys.push('Bksp');
-    if (desc.flags.delete) keys.push('Del');
-    if (desc.flags.pageDown) keys.push('PgDn');
-    if (desc.flags.pageUp) keys.push('PgUp');
-    if (desc.flags.home) keys.push('Home');
-    if (desc.flags.end) keys.push('End');
-  }
-
-  // Character input — show uppercase as Shift+lowercase for clarity
   if (desc.input !== undefined) {
-    if (desc.input === ' ') keys.push('Space');
-    else if (desc.input.length === 1 && /[A-Z]/.test(desc.input)) {
-      if (!modifiers.includes('Shift')) modifiers.push('Shift');
-      keys.push(desc.input.toLowerCase());
-    } else keys.push(desc.input);
+    const { shift, label } = describeInput(desc.input);
+    if (shift && !modifiers.includes('Shift')) modifiers.push('Shift');
+    keys.push(label);
   }
 
   if (keys.length === 0 && modifiers.length === 0) return '?';
