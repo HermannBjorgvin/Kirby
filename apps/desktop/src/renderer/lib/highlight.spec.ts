@@ -2,9 +2,12 @@ import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiffLine } from '@kirby/diff';
 import {
+  cellHighlight,
   codeTokensQuery,
   fileAnalysisQuery,
+  lineHighlight,
   wantedFilesKey,
+  type FileAnalysis,
 } from './highlight.js';
 import { snippetAround } from './diff-model.js';
 import type * as ContentKey from './content-key.js';
@@ -322,5 +325,71 @@ describe('the virtualized whole-file path', () => {
     const key = fileAnalysisQuery('a.ts', wholeFile('a'), 'dark').queryKey;
 
     expect(JSON.stringify(key).length).toBeLessThan(120);
+  });
+});
+
+/**
+ * The diff rows ask for a line's highlight far more often than the
+ * highlighter can answer: a file with no analysis yet, a language shiki
+ * could not tokenize (`tokens: null`), a context line with no word
+ * ranges, and — in split view — the blank half of an unpaired change.
+ * Every one of those has to come back as "nothing", not as a throw and
+ * not as some other line's tokens.
+ */
+describe('lineHighlight / cellHighlight', () => {
+  const analysis: FileAnalysis = {
+    tokens: [
+      [{ content: 'zero', color: '#000' }],
+      [{ content: 'one', color: '#111' }],
+    ] as unknown as FileAnalysis['tokens'],
+    wordRanges: new Map([[1, [{ start: 0, end: 3 }]]]),
+  };
+
+  it('reads the tokens and ranges of the line it was asked for', () => {
+    expect(lineHighlight(analysis, 1)).toEqual({
+      tokens: analysis.tokens![1],
+      ranges: [{ start: 0, end: 3 }],
+    });
+  });
+
+  it('has tokens but no ranges for a line outside a change pair', () => {
+    expect(lineHighlight(analysis, 0)).toEqual({
+      tokens: analysis.tokens![0],
+      ranges: undefined,
+    });
+  });
+
+  it('has nothing for a line past the end of the analysis', () => {
+    expect(lineHighlight(analysis, 99)).toEqual({
+      tokens: undefined,
+      ranges: undefined,
+    });
+  });
+
+  it('has nothing for a file whose analysis has not arrived', () => {
+    expect(lineHighlight(undefined, 0)).toEqual({
+      tokens: undefined,
+      ranges: undefined,
+    });
+  });
+
+  it('has nothing for a file shiki could not tokenize', () => {
+    const untokenized: FileAnalysis = { tokens: null, wordRanges: new Map() };
+    expect(lineHighlight(untokenized, 0).tokens).toBeUndefined();
+  });
+
+  it('follows a split cell to its own index, not the row it sits on', () => {
+    const cell = { index: 1, line: line('one') };
+    expect(cellHighlight(analysis, cell)).toEqual(lineHighlight(analysis, 1));
+    expect(cellHighlight(analysis, cell).ranges).toEqual([
+      { start: 0, end: 3 },
+    ]);
+  });
+
+  it('has nothing for the blank side of an unpaired change', () => {
+    expect(cellHighlight(analysis, null)).toEqual({
+      tokens: undefined,
+      ranges: undefined,
+    });
   });
 });
