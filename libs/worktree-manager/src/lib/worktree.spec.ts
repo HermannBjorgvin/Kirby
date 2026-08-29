@@ -1,27 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve as pathResolve } from 'node:path';
 import {
-  assertShellSafeRef,
   createWorktree,
   removeWorktree,
-  deleteBranch,
   canRemoveBranch,
+  rebaseOntoMaster,
+} from './worktree.js';
+import { assertShellSafeRef, branchToSessionName } from './refs.js';
+import {
+  parseWorktrees,
+  listWorktrees,
+  worktreeSessionName,
+} from './worktree-list.js';
+import {
+  resetWorktreeResolver,
+  setWorktreeResolver,
+  createTemplateResolver,
+} from './worktree-resolver.js';
+import {
+  deleteBranch,
   listBranches,
   fetchRemote,
   listAllBranches,
-  parseWorktrees,
-  listWorktrees,
   fastForwardMainBranch,
   countConflicts,
-  rebaseOntoMaster,
   getMainBranch,
   resetMainBranchCache,
-  resetWorktreeResolver,
-  branchToSessionName,
-  worktreeSessionName,
-  setWorktreeResolver,
-  createTemplateResolver,
-} from './worktree.js';
+} from './branches.js';
 import { existsSync, readFileSync } from 'node:fs';
 
 vi.mock('./exec.js', () => ({
