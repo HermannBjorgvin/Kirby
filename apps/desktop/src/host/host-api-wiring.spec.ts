@@ -194,8 +194,10 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
 
 describe('host API wiring', () => {
   it.each(WIRING)('%s reaches %s', async (method, args, expected) => {
-    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-    await (api[method] as any)(...args);
+    // The table is heterogeneous by construction — each row has its own
+    // signature — so the call is made through the widest function type
+    // rather than through `any`, which would also erase the await.
+    await (api[method] as (...a: unknown[]) => unknown)(...args);
     expect(calls.map((c) => c.fn)).toEqual([expected]);
     expect(calls[0].args).toEqual(args);
   });

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- mock plumbing */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the underlying child_process.execFile call. Both `useDiffData`
@@ -10,13 +9,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // loads its whole barrel, and worktree-manager promisifies `exec` at
 // module scope — a mock that supplies only `execFile` makes the import
 // throw before any test runs.
+/** What promisified execFile hands back: (err, { stdout, stderr }). */
+type ExecFileCallback = (
+  err: Error | null,
+  result: { stdout: string; stderr: string } | null
+) => void;
+
 const execFileMock = vi.fn();
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  execFile: (cmd: string, args: string[], opts: unknown, cb: any) => {
+  execFile: (
+    cmd: string,
+    args: string[],
+    opts: unknown,
+    cb: ExecFileCallback
+  ) => {
     // promisified execFile passes (cmd, args, opts?, cb) — opts may
     // be a function if omitted.
-    const callback = typeof opts === 'function' ? opts : cb;
+    const callback: ExecFileCallback =
+      typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
     Promise.resolve(execFileMock(cmd, args)).then(
       (stdout: string) => callback(null, { stdout, stderr: '' }),
       (err: Error) => callback(err, null)

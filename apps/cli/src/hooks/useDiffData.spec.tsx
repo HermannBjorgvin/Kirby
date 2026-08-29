@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- mock plumbing */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useEffect } from 'react';
 import { Box } from 'ink';
@@ -9,14 +8,26 @@ import { useDiffData, __resetTargetFetchTtlForTest } from '@kirby/app-core';
 // Same shape as libs/app-core's useDiffData.spec.ts: the hook and
 // diff-fetcher both reach for node:child_process, so one mock covers
 // the whole git surface the hook touches.
+/** What promisified execFile hands back: (err, { stdout, stderr }). */
+type ExecFileCallback = (
+  err: Error | null,
+  result: { stdout: string; stderr: string } | null
+) => void;
+
 const execFileMock = vi.fn();
 vi.mock('node:child_process', async (importOriginal) => ({
   // The @kirby/app-core barrel drags in worktree-manager, which
   // promisifies `exec` at import time — keep the rest of the module
   // real and swap only `execFile`.
   ...(await importOriginal<typeof ChildProcess>()),
-  execFile: (cmd: string, args: string[], opts: unknown, cb: any) => {
-    const callback = typeof opts === 'function' ? opts : cb;
+  execFile: (
+    cmd: string,
+    args: string[],
+    opts: unknown,
+    cb: ExecFileCallback
+  ) => {
+    const callback: ExecFileCallback =
+      typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
     Promise.resolve(execFileMock(cmd, args)).then(
       (stdout: string) => callback(null, { stdout, stderr: '' }),
       (err: Error) => callback(err, null)

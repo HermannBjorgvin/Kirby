@@ -118,8 +118,11 @@ export interface IpcRegistrar {
   handle(channel: string, fn: (...args: unknown[]) => unknown): void;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type HostMethod = (...args: any[]) => unknown;
+// `never[]` rather than `any[]`: parameters are contravariant, so every
+// concrete host method is assignable to this while the type still says
+// nothing may be passed blindly. `any[]` would have made the cast below
+// silently accept a mismatched signature.
+type HostMethod = (...args: never[]) => unknown;
 
 // Injected by main.ts (Electron's native dialog / shell). Defaults are
 // no-ops so tests and non-Electron contexts never touch those modules.
