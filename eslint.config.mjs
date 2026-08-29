@@ -76,19 +76,25 @@ export default tseslint.config(
     // past 20 branches one plausible-looking edit at a time, and that
     // is the growth nobody reviews as growth.
     //
-    // `complexity` starts at 20 (21 functions over) rather than the
-    // conventional 10 (90 over), so the list stays short enough to act
-    // on. Tighten to 15, then 12, as it clears. The current worst are
-    // the TUI's three `*-input.ts` keyboard handlers — 89, 52 and 49,
-    // and genuinely `if`-chains rather than `switch` dispatch, which is
-    // the refactor the number is pointing at.
+    // `complexity` is a ratchet, tightened only after the offenders it
+    // would flag have actually been cleared. It opened at 20 with 21
+    // functions over, when the worst were the TUI's three `*-input.ts`
+    // keyboard handlers at 89, 52 and 49 — if-chains over resolved
+    // action ids, which is a lookup table written as control flow. All
+    // three are dispatch tables now and score 10, 3 and 4, so the ceiling
+    // comes down a notch to 18.
+    //
+    // The next notch is 15, which today would flag 35 functions. That is
+    // too many to act on at once, so it waits until the desktop review
+    // components come down — PrWorkspace, tabs, ThreadCard and
+    // VirtualDiffList are four of the six functions still over 25.
     files: ['apps/**/*.{ts,tsx}', 'libs/**/*.{ts,tsx}'],
     rules: {
       'max-lines': [
         'warn',
         { max: 300, skipBlankLines: true, skipComments: true },
       ],
-      complexity: ['warn', { max: 20 }],
+      complexity: ['warn', { max: 18 }],
       'max-depth': ['error', 4],
     },
   },
