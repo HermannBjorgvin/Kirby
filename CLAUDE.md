@@ -424,6 +424,21 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **Input forwarding works:** Raw stdin → PTY write round-trip is responsive enough for interactive use. Mouse tracking and scrollback navigation are supported.
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
 - **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. worktree-manager importing terminal).
+- **A fresh git worktree needs more than the root `node_modules`.** Git
+  worktrees carry no untracked files, so a new one has no dependencies
+  at all, and until it does, `nx` resolves the _other_ checkout's libs
+  and you are testing code you did not change. `npm install` works but
+  is slow; `cp -al <other-worktree>/node_modules ./node_modules` is the
+  fast path — a **hardlink** copy, never a symlink, because the
+  `@kirby/*` entries are relative symlinks that only resolve correctly
+  when copied. That alone is still not enough: npm keeps
+  version-conflicting deps in _per-workspace_ `node_modules` outside the
+  root (today `libs/review-comments/node_modules`, which holds
+  `wrap-ansi@9` against the root's untyped `wrap-ansi@7`, and
+  `apps/desktop/node_modules`). Miss those and `tsc` reports one
+  `TS7016` that cascades into a dozen `TS6305`s, which reads as a broken
+  library rather than a missing dependency. Verify the worktree with a
+  typecheck before changing anything in it.
 - **`TSX_TSCONFIG_PATH`:** The serve target sets this env var so tsx picks up `jsx: "react-jsx"` from `tsconfig.app.json`. Without it, tsx defaults to classic JSX transform and requires `import React`.
 - **Ink disables its interactive TTY renderer when CI env vars are set.** `CI=true` / `CONTINUOUS_INTEGRATION` / `GITHUB_ACTIONS` all trigger it. If you spawn Kirby from a process that inherits those (e.g. Playwright's `webServer` on GitHub Actions or locally via `CI=1 npx …`), Kirby paints **nothing** — every `getByText` times out. Always strip those three vars in the env passed to the spawned PTY (see `cli-wterm-host/src/main.ts:spawnKirby`). Cost us three CI rounds chasing a phantom WS lifecycle bug before the actual cause was found.
 - **Browsers under automation can close a WS with code 1001 ("Going Away") within ~100ms of opening it.** Don't couple PTY lifetime to WS lifetime in the host — the wterm host keeps the PTY alive across WS disconnects and buffers recent output (ring buffer, ~2MB) so a reconnecting client replays the terminal state. Client has a 200ms auto-reconnect on close.
