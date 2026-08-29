@@ -14,10 +14,12 @@ export function useConflictCounts(branches: string[], lastSynced: number) {
     if (!lastSynced || branches.length === 0) return;
 
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading state must sync with the async fetch lifecycle
-    setLoading(true);
 
     (async () => {
+      // Inside the async body: a synchronous setState in an effect
+      // re-renders before the effect has done anything, and the work
+      // this flags is about to start on the next line.
+      setLoading(true);
       const results = await computeConflictCounts(branches);
       if (cancelled) return;
       setCounts(results);

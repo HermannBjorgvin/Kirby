@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useEffectEvent } from 'react';
 import {
   removeWorktree,
   deleteBranch,
@@ -50,8 +50,13 @@ export function useSessionManager(
     [refreshSessions]
   );
 
-  // Load sessions and branches on mount
-  useEffect(() => {
+  // Startup, once. An effect event rather than an effect with a lint
+  // exception: everything below reads the latest providers, config and
+  // setters, but none of their identities should re-run a sequence that
+  // reads config off disk, shells out to git and subscribes to PTY
+  // exits. Declaring them as dependencies would restart all of that on
+  // an unrelated parent render.
+  const startSessionManager = useEffectEvent(() => {
     let cancelled = false;
 
     const config = readConfig();
@@ -59,7 +64,7 @@ export function useSessionManager(
       setWorktreeResolver(createTemplateResolver(config.worktreePath));
     }
 
-    (async () => {
+    void (async () => {
       if (cancelled) return;
       await refreshSessions();
       const allBranches = await listAllBranches();
@@ -88,8 +93,9 @@ export function useSessionManager(
       cancelled = true;
       unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  });
+
+  useEffect(() => startSessionManager(), []);
 
   return {
     sessions,

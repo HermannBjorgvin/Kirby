@@ -24,6 +24,12 @@ export function useDiffFileListViewModel({
 }) {
   const { config } = useConfig();
   const plan = usePlan();
+  // The snapshot IS the plan: getSnapshot returns the whole
+  // PR-keyed map and list() is a lookup in it. Reading it directly
+  // means the memo below derives from the value it depends on, rather
+  // than calling into module state with the snapshot as a separate
+  // change signal that nothing in the body reads.
+  const planSnapshot = plan.snapshot;
   const treeMode = config.diffFileListTree === true;
 
   const prId = selectedPr?.id;
@@ -33,13 +39,12 @@ export function useDiffFileListViewModel({
   const inPlanKeys = useMemo(() => {
     const m = new Map<string, boolean>();
     if (prId != null) {
-      for (const i of plan.list(prId)) {
+      for (const i of planSnapshot.get(prId) ?? []) {
         m.set(planItemKey(i.kind, i.id), !!i.annotation);
       }
     }
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- plan.snapshot drives freshness
-  }, [prId, plan.snapshot]);
+  }, [prId, planSnapshot]);
 
   // In tree mode, sort files alphabetically by path so siblings group
   // under the same dir. Hoisted here so the ordering is shared with

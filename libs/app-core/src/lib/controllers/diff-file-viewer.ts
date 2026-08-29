@@ -39,6 +39,12 @@ export function useDiffFileViewerViewModel({
   diffBundle: DiffBundle;
 }) {
   const plan = usePlan();
+  // The snapshot IS the plan: getSnapshot returns the whole
+  // PR-keyed map and list() is a lookup in it. Reading it directly
+  // means the memo below derives from the value it depends on, rather
+  // than calling into module state with the snapshot as a separate
+  // change signal that nothing in the body reads.
+  const planSnapshot = plan.snapshot;
 
   // Set of `${kind}:${id}` keys for comments already in this PR's plan.
   // Recomputed on any plan change (plan.snapshot identity) and threaded
@@ -47,13 +53,12 @@ export function useDiffFileViewerViewModel({
   const inPlanKeys = useMemo(() => {
     const m = new Map<string, boolean>();
     if (prId != null) {
-      for (const i of plan.list(prId)) {
+      for (const i of planSnapshot.get(prId) ?? []) {
         m.set(planItemKey(i.kind, i.id), !!i.annotation);
       }
     }
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- plan.snapshot drives freshness
-  }, [prId, plan.snapshot]);
+  }, [prId, planSnapshot]);
 
   // Trigger a per-file diff fetch on file open. Cached internally
   // by useDiffData, so navigating back and forth is free.

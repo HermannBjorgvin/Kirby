@@ -39,7 +39,15 @@ export function useReviewComments(prId: number | null): ReviewComment[] {
   // Derive comments from prId + revision (re-reads on file change or prId change)
   return useMemo(
     () => (prId !== null ? readComments(prId) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision triggers re-read
+    // `revision` reads as unnecessary because the body never looks at
+    // it, and that is precisely its job: the watcher above bumps it
+    // when the drafts file changes on disk, and re-reading the file is
+    // the point. Drop it and the comments freeze at whatever was on
+    // disk when the PR was opened. Unlike the plan store there is no
+    // snapshot to derive from — the source is the filesystem — and
+    // useSyncExternalStore needs a referentially stable snapshot, which
+    // readComments cannot give without a cache layer it does not have.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
     [prId, revision]
   );
 }
