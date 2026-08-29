@@ -1,4 +1,4 @@
-# 😸 Kirby
+# 😸 Kirby (working title, name of my cat)
 
 A desktop app and a terminal UI for running AI coding agents across git worktrees, with pull request status and code review built in.
 
@@ -16,12 +16,12 @@ Two front ends over the same core. Install both:
 
 ```sh
 npm install -g @hermannbjorgvin/kirby-desktop   # desktop app
-npm install -g @hermannbjorgvin/kirby                # terminal UI, and the `kirby` cli utils
+npm install -g @hermannbjorgvin/kirby           # terminal UI, and the `kirby` cli utils
 ```
 
 Then run `kirby-desktop` or `kirby` from any project directory.
 
-The CLI is not only the terminal UI — it is also how agents write review comments. Both front ends hand the agent the same instruction to run `kirby util add-comment`, so **agent-drafted reviews need `kirby` on your `PATH` even if you only ever open the desktop app.** Everything else in the desktop works without it.
+Review agents record their comments by running `kirby util add-comment`, so agent-drafted reviews need `kirby` on your `PATH` even if you only open the desktop app. Everything else works without it.
 
 ## Features
 
@@ -29,8 +29,8 @@ The CLI is not only the terminal UI — it is also how agents write review comme
 
 ![Creating a branch from the command palette, which opens a worktree and a tab, then launching an agent in it](docs/media/worktrees.gif)
 
-- **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session. Spin them up, switch between them, and tear them down without stashing or disturbing your main checkout. Built for monorepos where several features are in progress at the same time.
-- **PR status next to every worktree** - the sidebar shows each branch's pull request state inline: open, draft, or merged, CI result, review status, and conflict count against the base. One circle carries both axes — colour is whatever is holding the request up, and it only fills in when CI has passed _and_ everyone has approved — so a failing build reads red at a glance and a ready-to-merge branch reads green. Most worktree tools stop at the branch name; Kirby tells you where the branch actually stands.
+- **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session, so several features can be in flight without stashing or disturbing your main checkout.
+- **PR status next to every worktree** - open, draft or merged, CI result, review status and conflict count, inline in the sidebar. One circle carries both axes: red when a build failed or someone rejected, green and filled only when CI passed _and_ everyone approved.
 - **GitHub and Azure DevOps** - both supported today, though not equally well exercised — see [Version control providers](#version-control-providers).
 - **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and rebases onto the base with one key.
 
@@ -40,17 +40,15 @@ The CLI is not only the terminal UI — it is also how agents write review comme
 
 Point an agent at a pull request and have it review the diff. It leaves inline draft comments anchored to the lines they're about, and you walk through them in severity order — edit, discard, skip, or post. You stay the author of record; the agent just does the first pass.
 
-The agent writes those comments by running `kirby util add-comment`, so this is the feature that needs the CLI installed alongside the desktop app.
-
 ### Plan comments into a cart
 
 ![Queueing two review comments into a plan, annotating one with a note, previewing the composed prompt, and sending it to an agent](docs/media/plan.gif)
 
-The other direction: on a PR you're resolving, add the review comments you want to address to a plan, like you're shopping on eBay. Annotate any of them with a note on how you want it handled, check out when you're happy, and the whole thing goes to an agent as one task — you can read the exact prompt before it's sent.
+The other direction: on a PR you're resolving, add the comments you want to address to a plan, like a shopping cart. Annotate any with a note on how you want it handled, then check out — the whole thing goes to an agent as one task, and you can read the exact prompt first.
 
 ### Review in place
 
-Browse a PR's files and diffs, read comment threads, reply, and resolve or reopen threads without leaving Kirby. The desktop renders whole-file diffs with folding, split and unified views, and word-level highlighting; comment images are fetched with your provider credentials.
+Browse files and diffs, read threads, reply, resolve and reopen without leaving Kirby. The desktop adds whole-file diffs with folding, split and unified views, and word-level highlighting.
 
 ### Customizable and agent agnostic
 
@@ -64,11 +62,11 @@ Browse a PR's files and diffs, read comment threads, reply, and resolve or reope
 
 ## The terminal UI
 
-The desktop app is where most of the work goes now, but Kirby runs just as well as a TUI — same core, same config, same worktrees, and it will happily share them with the desktop. If you live in a terminal or work over SSH, `kirby` is the whole thing without a window.
+Most of the work goes into the desktop app now, but `kirby` is the whole thing without a window — same core, same config, same worktrees, shared with the desktop.
 
-![The Kirby TUI: walking the sidebar past worktrees and pull requests with their CI and review state, opening a pull request's diff with the reviewers' threads inline, queueing a comment with a note, and sending the plan to an agent that starts working in the branch's worktree](docs/media/tui.gif)
+![The Kirby TUI: the sidebar with CI and review state, a pull request diff with reviewers' threads inline, queueing a comment with a note, and sending the plan to an agent](docs/media/tui.gif)
 
-That whole loop is the TUI: the sidebar with CI and approval state per pull request, the diff with comment threads inline, `a`/`A` to queue a comment for the agent with a note on how to handle it, and `enter` at checkout to hand it over — the agent then runs in that branch's worktree, in the pane on the right. The split, word-level and folded diffs are desktop-only.
+Sidebar status, diffs with threads inline, `a`/`A` to queue a comment with a note, `enter` to send the plan to an agent. Split, word-level and folded diffs are desktop-only.
 
 ## Prerequisites
 
@@ -82,17 +80,13 @@ That whole loop is the TUI: the sidebar with CI and approval state per pull requ
 
 ## Version control providers
 
-| Provider                          | Status        | Authentication                                                                                            | How it's tested                                                                                                                                                                        |
-| --------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **GitHub**                        | Supported     | the [`gh` CLI](https://cli.github.com), already authenticated — Kirby stores no credential of its own     | Unit tests, an offline end-to-end suite that serves whole pull requests from a stand-in `gh`, and an integration suite that reads permanent fixture pull requests on a real repository |
-| **Azure DevOps**                  | Supported     | a Personal Access Token with repo and pull-request access, stored in `~/.kirby/` and never sent to the UI | Unit tests, including recorded real API responses for the fiddly parts. **No live integration tests** — nothing in CI talks to a real Azure DevOps instance                            |
-| **GitLab**                        | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
-| **Bitbucket**                     | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
-| Gitea, self-hosted, anything else | Not supported | —                                                                                                         | —                                                                                                                                                                                      |
+| Provider                              | Auth                   | Tested                                       |
+| ------------------------------------- | ---------------------- | -------------------------------------------- |
+| GitHub                                | authenticated `gh` CLI | unit, offline e2e, live integration          |
+| Azure DevOps                          | personal access token  | unit + recorded API responses; no live tests |
+| GitLab, Bitbucket, Gitea, self-hosted | not supported          | —                                            |
 
-The two supported providers are not exercised to the same depth, which is worth knowing before you rely on one. GitHub is tested against the real thing on every pull request. Azure DevOps is covered by unit tests and daily use, but a regression in it will not be caught by CI talking to a live server — so bug reports from Azure DevOps users are especially useful.
-
-Providers sit behind one interface (`libs/vcs/core`, with `libs/vcs/github` and `libs/vcs/azure-devops` implementing it), so GitLab, Bitbucket or anything else can be added without touching the rest of Kirby. Pull requests welcome.
+An Azure DevOps regression won't be caught by CI, so bug reports help. Providers sit behind one interface (`libs/vcs/`) — more can be added, PRs welcome.
 
 ## Configuration
 
