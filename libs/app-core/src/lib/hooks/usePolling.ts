@@ -49,7 +49,7 @@ export function usePolling<T>(
       };
     }
     void refresh();
-    const timer = setInterval(refresh, intervalMs);
+    const timer = setInterval(() => void refresh(), intervalMs);
     return () => {
       mountedRef.current = false;
       clearInterval(timer);

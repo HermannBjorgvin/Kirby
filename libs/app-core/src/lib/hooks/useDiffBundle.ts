@@ -25,12 +25,17 @@ export function useDiffBundle(
     (msg: string) => flashStatus(`Failed to load comments: ${msg}`),
     [flashStatus]
   );
+  // A resolve/unresolve should refresh the pull request, but the
+  // callback is declared void-returning and nothing awaits it: a failed
+  // refresh leaves the row stale until the next poll, which is why the
+  // rejection is discarded rather than surfaced.
+  const onResolvedChange = useCallback(() => void refreshPr(), [refreshPr]);
   const remote = useRemoteComments(
     prNumber,
     provider,
     config.vendorAuth,
     config.vendorProject,
-    refreshPr,
+    onResolvedChange,
     onFetchError
   );
   return { ...diff, comments, remote };
