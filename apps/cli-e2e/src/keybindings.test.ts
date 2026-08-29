@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures/kirby.js';
 import { createSession } from './setup/sessions.js';
+import { settleFor } from './setup/waits.js';
 
 // ── Default Preset (Normie) ────────────────────────────────────────
 
@@ -148,7 +149,11 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
     // Navigate down to Quit binding
     await kirby.term.type('j');
     await kirby.term.type('j');
-    await kirby.term.page.waitForTimeout(300);
+    await settleFor(
+      kirby.term.page,
+      300,
+      'the sidebar selection to move before the next key'
+    );
 
     // Enter rebind mode
     await kirby.term.press('Enter');
@@ -166,7 +171,11 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
     // Navigate to Quit action (3rd binding: Down, Up, Quit)
     await kirby.term.type('j');
     await kirby.term.type('j');
-    await kirby.term.page.waitForTimeout(300);
+    await settleFor(
+      kirby.term.page,
+      300,
+      'the sidebar selection to move before the next key'
+    );
 
     // Enter rebind mode
     await kirby.term.press('Enter');
@@ -174,7 +183,6 @@ test.describe('Keybindings — Per-Binding Rebind', () => {
 
     // Press 'z' to rebind quit to z
     await kirby.term.type('z');
-    await kirby.term.page.waitForTimeout(500);
 
     // Exit rebind mode, 'z' now shown as the new key
     await expect(kirby.term.getByText('z').first()).toBeVisible();

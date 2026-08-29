@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 test.use({
   kirbyConfig: {
@@ -50,7 +51,11 @@ test.describe('Delete active session', () => {
         timeout: 5_000,
       });
       // Let React re-render so useInput closure captures the updated filter.
-      await kirby.term.page.waitForTimeout(2_000);
+      await settleFor(
+        kirby.term.page,
+        2_000,
+        "Ink's useInput captured the old filter until the next render"
+      );
       await kirby.term.press('Enter');
       await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
         timeout: 5_000,

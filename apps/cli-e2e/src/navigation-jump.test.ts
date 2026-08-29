@@ -13,6 +13,7 @@ import {
   pushBranch,
 } from './setup/github.js';
 import { sidebarLocator } from './setup/sidebar.js';
+import { settleFor } from './setup/waits.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
@@ -113,7 +114,11 @@ test.describe('@integration Navigation Jump', () => {
 
       // 3. Navigate down once to select session B (index 1 within Worktrees)
       await kirby.term.write('j');
-      await kirby.term.page.waitForTimeout(500);
+      await settleFor(
+        kirby.term.page,
+        500,
+        'the sidebar selection to move before the next key'
+      );
 
       // 4. Session B is selected
       await expect(
@@ -141,7 +146,11 @@ test.describe('@integration Navigation Jump', () => {
       }
 
       // Let React settle after the reorder.
-      await kirby.term.page.waitForTimeout(1_000);
+      await settleFor(
+        kirby.term.page,
+        1_000,
+        'the reorder to land, so the next assertion sees after it, not before'
+      );
 
       // 7. Selection is still on session B
       await expect(

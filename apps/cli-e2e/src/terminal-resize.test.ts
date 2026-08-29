@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 // The useTerminalDimensions hook debounces resize events by 500ms.
 // Wait longer than that before asserting post-resize layout.
@@ -10,7 +11,11 @@ test.describe('Terminal Resize', () => {
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
 
     await kirby.term.resize(140, 40);
-    await kirby.term.page.waitForTimeout(DEBOUNCE_SETTLE_MS);
+    await settleFor(
+      kirby.term.page,
+      DEBOUNCE_SETTLE_MS,
+      'longer than the resize debounce, or the layout has not changed yet'
+    );
 
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
@@ -22,7 +27,11 @@ test.describe('Terminal Resize', () => {
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
 
     await kirby.term.resize(70, 20);
-    await kirby.term.page.waitForTimeout(DEBOUNCE_SETTLE_MS);
+    await settleFor(
+      kirby.term.page,
+      DEBOUNCE_SETTLE_MS,
+      'longer than the resize debounce, or the layout has not changed yet'
+    );
 
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
@@ -40,7 +49,11 @@ test.describe('Terminal Resize', () => {
     await kirby.term.resize(80, 22);
     await kirby.term.resize(120, 35);
     await kirby.term.resize(100, 30);
-    await kirby.term.page.waitForTimeout(DEBOUNCE_SETTLE_MS);
+    await settleFor(
+      kirby.term.page,
+      DEBOUNCE_SETTLE_MS,
+      'longer than the resize debounce, or the layout has not changed yet'
+    );
 
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();

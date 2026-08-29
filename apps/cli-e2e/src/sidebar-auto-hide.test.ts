@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 test.use({
   kirbyConfig: {
@@ -24,7 +25,11 @@ test.describe('Sidebar auto-hide', () => {
       timeout: 5_000,
     });
     // Let React re-render so useInput closure captures the updated filter.
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      "Ink's useInput captured the old filter until the next render"
+    );
     await kirby.term.press('Enter');
 
     // 3. Session is visible in the sidebar
