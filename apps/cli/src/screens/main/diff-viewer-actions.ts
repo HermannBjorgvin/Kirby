@@ -176,7 +176,7 @@ function actionPostComment(a: DiffViewerActionCtx): void {
 
   // Loading state shown by the top-right spinner; no "Posting
   // comment…" flash. Result/failure toasts fire on completion.
-  ctx.asyncOps.run('post-comment', async () => {
+  void ctx.asyncOps.run('post-comment', async () => {
     try {
       await postReviewComments([comment], postCtx);
       ctx.sessions.flashStatus('Comment posted');

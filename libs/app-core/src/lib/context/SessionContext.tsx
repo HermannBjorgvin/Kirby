@@ -1,4 +1,10 @@
-import { createContext, useContext, useMemo, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useCallback,
+  useEffect,
+} from 'react';
 import type { ReactNode } from 'react';
 import type {
   PullRequestInfo,
@@ -10,6 +16,7 @@ import {
   categorizeReviews as categorizePrReviews,
   buildSessionLookups,
 } from '@kirby/core';
+import { setOperationErrorHandler } from '../hooks/useAsyncOperation.js';
 import { useSessionManager } from '../hooks/useSessionManager.js';
 import { usePrData } from '../hooks/usePrData.js';
 import { useRemoteSync } from '../hooks/useRemoteSync.js';
@@ -60,6 +67,10 @@ const SessionActionsContext = createContext<SessionActionsContextValue | null>(
   null
 );
 
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const { config, provider, providers, reloadFromDisk } = useConfig();
   const { setBranches } = useBranchPickerActions();
@@ -70,10 +81,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const { prMap, error: prError, refresh: refreshPr } = usePrData();
   const { lastSynced, triggerSync } = useRemoteSync();
 
+  // An async op has no caller to report to — every `run` is fired and
+  // forgotten — so a failure lands on the toast rail. Without this a
+  // git call that rejects (no upstream, locked index, unreachable
+  // remote) was an unhandled rejection, which ends the process.
+  useEffect(
+    () =>
+      setOperationErrorHandler((name, error) =>
+        flash(`${name} failed: ${describeError(error)}`, 'error')
+      ),
+    [flash]
+  );
+
+  // The sweep runs unattended, so the toast has to wait for the delete
+  // to actually land — announcing it up front reported success for a
+  // branch that is still on disk.
   const onMergedDelete = useCallback(
     (sessionName: string, branch: string) => {
-      sessionMgr.performDelete(sessionName, branch);
-      flash(`Auto-deleted merged branch: ${branch}`, 'success');
+      void sessionMgr
+        .performDelete(sessionName, branch)
+        .then(() => flash(`Auto-deleted merged branch: ${branch}`, 'success'))
+        .catch((err: unknown) =>
+          flash(
+            `Auto-delete of ${branch} failed: ${describeError(err)}`,
+            'warning'
+          )
+        );
     },
     [sessionMgr, flash]
   );

@@ -133,7 +133,7 @@ function YesNoModal({ branch, reason }: { branch: string; reason: string }) {
     // runs after setConfirmDelete(null) clears it.
     const sessionName = deleteConfirmState.confirmDelete?.sessionName;
     if (sessionName) {
-      asyncOps.run('delete', async () => {
+      void asyncOps.run('delete', async () => {
         await sessions.performDelete(sessionName, branch);
         sessions.flashStatus(`Deleted ${branch}`);
       });

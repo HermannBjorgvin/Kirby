@@ -129,7 +129,7 @@ const focusTerminalPane: SidebarAction = (ctx) => {
   }
   if (ctx.nav.focus !== 'sidebar' || !sidebar.sessionNameForTerminal) return;
 
-  ctx.asyncOps.run('start-session', async () => {
+  void ctx.asyncOps.run('start-session', async () => {
     if (!selectedItem) return;
 
     if (hasSession(sidebar.sessionNameForTerminal!)) {
@@ -169,7 +169,7 @@ const startSession: SidebarAction = (ctx) => {
 
   // Session with no PTY, no PR → auto-start session
   if (selectedItem.kind === 'session' && !selectedItem.pr) {
-    ctx.asyncOps.run('start-session', () =>
+    void ctx.asyncOps.run('start-session', () =>
       launchSessionForRow(ctx, selectedItem.session.name)
     );
     return;
@@ -189,7 +189,7 @@ const startSession: SidebarAction = (ctx) => {
 // ── Branches and sessions ────────────────────────────────────────
 
 const checkoutBranch: SidebarAction = (ctx) => {
-  ctx.asyncOps.run('fetch-branches', async () => {
+  void ctx.asyncOps.run('fetch-branches', async () => {
     const allBranches = await listAllBranches();
     ctx.branchPicker.setBranches(allBranches);
     ctx.branchPicker.setCreating(true);
@@ -248,7 +248,7 @@ const deleteBranch: SidebarAction = (ctx) => {
   const sessionName = sessionNameForRow(ctx.sidebar.selectedItem);
   if (!sessionName) return;
 
-  ctx.asyncOps.run('check-delete', async () => {
+  void ctx.asyncOps.run('check-delete', async () => {
     const worktrees = await listWorktrees();
     const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
     const branch = wt?.branch;
@@ -266,7 +266,7 @@ const killAgent: SidebarAction = (ctx) => {
   const sessionName = sessionNameForRow(ctx.sidebar.selectedItem);
   if (!sessionName) return;
 
-  ctx.asyncOps.run('delete', async () => {
+  void ctx.asyncOps.run('delete', async () => {
     killSession(sessionName);
     await ctx.sessions.refreshSessions();
   });
@@ -277,13 +277,13 @@ const killAgent: SidebarAction = (ctx) => {
 
 /** Loading state for both of these is shown by the top-right spinner. */
 const refreshPr: SidebarAction = (ctx) => {
-  ctx.asyncOps.run('refresh-pr', async () => {
+  void ctx.asyncOps.run('refresh-pr', async () => {
     await ctx.sessions.refreshPr();
   });
 };
 
 const syncOrigin: SidebarAction = (ctx) => {
-  ctx.asyncOps.run('sync', async () => {
+  void ctx.asyncOps.run('sync', async () => {
     await ctx.sessions.triggerSync();
   });
 };
@@ -293,7 +293,7 @@ const rebase: SidebarAction = (ctx) => {
   if (selectedItem?.kind !== 'session') return;
 
   const sessionName = selectedItem.session.name;
-  ctx.asyncOps.run('rebase', async () => {
+  void ctx.asyncOps.run('rebase', async () => {
     const worktrees = await listWorktrees();
     const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
     if (!wt) {
@@ -321,7 +321,7 @@ const openEditor: SidebarAction = (ctx) => {
   const item = ctx.sidebar.selectedItem;
   if (!item) return;
 
-  ctx.asyncOps.run('open-editor', async () => {
+  void ctx.asyncOps.run('open-editor', async () => {
     const wtPath = await resolveEditorTarget(item, {
       listWorktrees,
       createWorktree,

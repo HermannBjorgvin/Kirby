@@ -60,7 +60,7 @@ export function useDiffFileViewerViewModel({
   const { loadFileDiff } = diffBundle;
   useEffect(() => {
     if (pane.diffViewFile) {
-      loadFileDiff(pane.diffViewFile);
+      void loadFileDiff(pane.diffViewFile);
     }
   }, [pane.diffViewFile, loadFileDiff]);
 

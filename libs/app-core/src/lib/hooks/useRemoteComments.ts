@@ -82,14 +82,14 @@ export function useRemoteComments(
   // the same synchronous commit, so nothing in flight can observe the gap.
   useEffect(() => {
     activePrIdRef.current = prId;
-    fetchComments();
+    void fetchComments();
     return () => {
       activePrIdRef.current = null;
     };
   }, [fetchComments, prId]);
 
   const refresh = useCallback(() => {
-    fetchComments(true);
+    void fetchComments(true);
   }, [fetchComments]);
 
   const replyToThread = useCallback(

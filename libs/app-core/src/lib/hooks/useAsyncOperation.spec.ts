@@ -4,6 +4,7 @@ import {
   isRunning,
   beginOp,
   settlePendingRuns,
+  setOperationErrorHandler,
   __resetAsyncOperationsForTest,
 } from './useAsyncOperation.js';
 
@@ -128,14 +129,43 @@ describe('useAsyncOperation (module store)', () => {
     expect(isRunning('rebase')).toBe(false);
   });
 
-  it('finally runs even when fn throws', async () => {
-    await expect(
-      run('sync', async () => {
-        throw new Error('boom');
-      })
-    ).rejects.toThrow('boom');
+  // Nothing awaits `run`, so it must not reject: an unhandled rejection
+  // ends the process, which is how a failing git call used to take
+  // Kirby down. The failure has to reach the error handler instead, and
+  // the op still has to leave the in-flight set.
+  it('reports a throwing fn instead of rejecting, and still clears the op', async () => {
+    const seen: { name: string; message: string }[] = [];
+    const restore = setOperationErrorHandler((name, error) => {
+      seen.push({
+        name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
 
+    try {
+      await expect(
+        run('sync', async () => {
+          throw new Error('boom');
+        })
+      ).resolves.toBeUndefined();
+    } finally {
+      restore();
+    }
+
+    expect(seen).toEqual([{ name: 'sync', message: 'boom' }]);
     expect(isRunning('sync')).toBe(false);
+  });
+
+  it('restores the previous handler', async () => {
+    const outer: unknown[] = [];
+    const restoreOuter = setOperationErrorHandler((_n, e) => outer.push(e));
+    const restoreInner = setOperationErrorHandler(() => undefined);
+    restoreInner();
+
+    await run('sync', () => Promise.reject(new Error('after restore')));
+
+    expect(outer).toHaveLength(1);
+    restoreOuter();
   });
 });
 

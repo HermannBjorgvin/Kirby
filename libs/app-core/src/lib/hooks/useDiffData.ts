@@ -322,7 +322,7 @@ export function useDiffData(
   // one thing here that genuinely needs an effect.
   useEffect(() => {
     if (prNumber) {
-      loadFiles();
+      void loadFiles();
     }
   }, [prNumber, loadFiles]);
 

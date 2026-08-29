@@ -49,10 +49,40 @@ function notify(): void {
 }
 
 /**
+ * Where a failed operation is reported.
+ *
+ * `run` is called for its side effects and no caller awaits it, so a
+ * rejection had nowhere to go: Node treats an unhandled rejection as
+ * fatal, which turned a git call failing — no upstream, a locked index,
+ * an unreachable remote — into Kirby exiting. Failures come here
+ * instead and the shell decides how to show them.
+ */
+export type OperationErrorHandler = (
+  name: OperationName,
+  error: unknown
+) => void;
+
+let reportError: OperationErrorHandler = () => undefined;
+
+/** Install the handler. Returns a function restoring the previous one. */
+export function setOperationErrorHandler(
+  handler: OperationErrorHandler
+): () => void {
+  const previous = reportError;
+  reportError = handler;
+  return () => {
+    reportError = previous;
+  };
+}
+
+/**
  * Serialized async operation runner. If an operation with `name` is
  * already in flight, the call returns immediately without starting a
  * second one. The cleanup runs in a `finally` so thrown errors still
  * remove the op from the in-flight set.
+ *
+ * Never rejects: a failing `fn` is reported through the error handler,
+ * because every call site discards the returned promise.
  */
 export async function run(
   name: OperationName,
@@ -65,6 +95,8 @@ export async function run(
   const task = (async () => {
     try {
       await fn();
+    } catch (err: unknown) {
+      reportError(name, err);
     } finally {
       inFlight = new Set(inFlight);
       inFlight.delete(name);

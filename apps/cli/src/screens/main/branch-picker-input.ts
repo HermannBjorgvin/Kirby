@@ -43,7 +43,7 @@ export function handleBranchPickerInput(
   }
 
   if (action === 'branch-picker.fetch') {
-    ctx.asyncOps.run('fetch-branches', async () => {
+    void ctx.asyncOps.run('fetch-branches', async () => {
       // No "Fetching remotes…" flash — the 'fetch-branches' spinner
       // (label: "Fetching branches") already shows we're working.
       await fetchRemote();
@@ -76,7 +76,7 @@ export function handleBranchPickerInput(
         ? filtered[ctx.branchPicker.branchIndex]!
         : ctx.branchPicker.branchFilter.trim();
     if (branch) {
-      ctx.asyncOps.run('create-worktree', async () => {
+      void ctx.asyncOps.run('create-worktree', async () => {
         const worktreePath = await createWorktree(branch);
         if (worktreePath) {
           const sessionName = branchToSessionName(branch);

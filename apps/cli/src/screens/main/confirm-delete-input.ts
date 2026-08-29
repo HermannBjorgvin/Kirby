@@ -21,7 +21,7 @@ export function handleConfirmDeleteInput(
       // async runs after setConfirmDelete(null), and we need these for
       // the success toast too.
       const { sessionName, branch } = ctx.deleteConfirm.confirmDelete!;
-      ctx.asyncOps.run('delete', async () => {
+      void ctx.asyncOps.run('delete', async () => {
         await ctx.sessions.performDelete(sessionName, branch);
         ctx.sessions.flashStatus(`Deleted ${branch}`);
       });

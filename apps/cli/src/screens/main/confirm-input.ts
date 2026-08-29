@@ -65,7 +65,7 @@ export function handleConfirmInput(
   // Try nav actions first, then fall through to text input
   if (opt === 2) {
     if (key.return) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(
             ctx,
@@ -114,7 +114,7 @@ export function handleConfirmInput(
   if (action === 'confirm.select') {
     // Option 0: Start session (plain AI session)
     if (opt === 0) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           const pr = ctx.selectedItem
             ? getPrFromItem(ctx.selectedItem)
@@ -144,7 +144,7 @@ export function handleConfirmInput(
     }
     // Option 1: Start review
     else if (opt === 1) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(ctx);
         }

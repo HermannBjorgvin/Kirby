@@ -164,7 +164,7 @@ function runCheckout(
   }
   const prompt = composePlanPrompt(items);
 
-  ctx.asyncOps.run('start-session', async () => {
+  void ctx.asyncOps.run('start-session', async () => {
     const result = await checkoutPlan({
       pr: selectedPr,
       prompt,

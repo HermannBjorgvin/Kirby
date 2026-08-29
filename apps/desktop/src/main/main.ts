@@ -312,26 +312,33 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
-    nativeTheme.themeSource = prefs.theme;
-    installAppMenu();
-    // Cache tmux availability for the settings guard, same as the
-    // TUI's startup probe. Fire-and-forget: the guard treats a
-    // missing probe result as "unknown" and allows the switch.
-    void probeTmuxAvailability().catch(() => undefined);
-    const opened = openStartupRepo();
-    console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
+  // A throw in here leaves the app running with no window and no
+  // sign of why, so startup failures are logged rather than dropped.
+  app
+    .whenReady()
+    .then(() => {
+      nativeTheme.themeSource = prefs.theme;
+      installAppMenu();
+      // Cache tmux availability for the settings guard, same as the
+      // TUI's startup probe. Fire-and-forget: the guard treats a
+      // missing probe result as "unknown" and allows the switch.
+      void probeTmuxAvailability().catch(() => undefined);
+      const opened = openStartupRepo();
+      console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 
-    void createMainWindow();
+      void createMainWindow();
 
-    app.on('activate', () => {
-      // macOS: re-create the window when the dock icon is clicked and
-      // no windows are open.
-      if (BrowserWindow.getAllWindows().length === 0) {
-        void createMainWindow();
-      }
+      app.on('activate', () => {
+        // macOS: re-create the window when the dock icon is clicked and
+        // no windows are open.
+        if (BrowserWindow.getAllWindows().length === 0) {
+          void createMainWindow();
+        }
+      });
+    })
+    .catch((err: unknown) => {
+      console.error('[desktop] startup failed', err);
     });
-  });
 }
 
 app.on('window-all-closed', () => {
