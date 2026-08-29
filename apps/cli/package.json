@@ -150,6 +150,7 @@
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
     "@kirby/app-core": "*",
+    "@kirby/core": "*",
     "@kirby/logger": "*",
     "@kirby/terminal": "*",
     "@kirby/terminal-pty": "*",

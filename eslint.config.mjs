@@ -96,10 +96,13 @@ export default tseslint.config(
     // three are dispatch tables now and score 10, 3 and 4, so the ceiling
     // comes down a notch to 18.
     //
-    // The next notch is 15, which today would flag 35 functions. That is
-    // too many to act on at once, so it waits until the desktop review
-    // components come down — PrWorkspace, tabs, ThreadCard and
-    // VirtualDiffList are four of the six functions still over 25.
+    // 14 functions are over it now, none of them in the desktop review
+    // components — those came down when PrWorkspace's decisions moved
+    // into lib/review-model.ts. What is left is spread across both
+    // shells and three libs, with the worst four between 25 and 27:
+    // handleSettingsInput, buildFlatDiff, the tabs reducer and
+    // handlePlanCheckoutInput. Measure before the next notch rather
+    // than guessing at it.
     files: ['apps/**/*.{ts,tsx}', 'libs/**/*.{ts,tsx}'],
     rules: {
       'max-lines': [
@@ -117,7 +120,7 @@ export default tseslint.config(
     // easier to read, so they get a ceiling instead of an exemption.
     files: [
       'libs/vcs/*/src/lib/provider.ts',
-      'libs/app-core/src/lib/keybindings/registry.ts',
+      'libs/core/src/lib/keybindings/registry.ts',
     ],
     rules: {
       'max-lines': [
@@ -206,6 +209,15 @@ export default tseslint.config(
               message:
                 '@kirby/core must not depend on a shell or on the React ' +
                 'layer. Invert the dependency: the shell calls core.',
+            },
+            // Restated from the workspace block, not inherited: flat
+            // config replaces a rule's options rather than merging
+            // them, so declaring no-restricted-imports here drops
+            // whatever the outer block set. Anything added there has
+            // to be added here too.
+            {
+              group: ['**/index'],
+              message: 'No barrel imports — import from the concrete file.',
             },
           ],
         },

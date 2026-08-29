@@ -308,7 +308,7 @@ red build because nothing signals it.
 
 Everything except `max-depth` and the Ink and vitest rules is a
 **warning**. The app predates the budgets; the point is a downward
-ratchet, not a wall. Current standing: **0 errors, 107 warnings.**
+ratchet, not a wall. Current standing: **0 errors, 100 warnings.**
 
 **`apps/cli` specs are type-checked** via `apps/cli/tsconfig.spec.json`
 — it did not exist, so 26 spec files and `src/test-utils/**` were

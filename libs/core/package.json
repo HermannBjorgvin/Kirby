@@ -20,5 +20,14 @@
       "scope:core"
     ]
   },
-  "dependencies": {}
+  "dependencies": {
+    "@kirby/diff": "*",
+    "@kirby/logger": "*",
+    "@kirby/review-comments": "*",
+    "@kirby/terminal": "*",
+    "@kirby/terminal-pty": "*",
+    "@kirby/terminal-tmux": "*",
+    "@kirby/vcs-core": "*",
+    "@kirby/worktree-manager": "*"
+  }
 }

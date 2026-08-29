@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "react": "^19.2.4",
-    "@kirby/core": "0.0.1"
+    "@kirby/core": "*"
   },
   "devDependencies": {
     "@types/react": "^19.2.14"

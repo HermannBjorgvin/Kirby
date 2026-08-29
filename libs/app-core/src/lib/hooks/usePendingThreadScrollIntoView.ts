@@ -49,7 +49,7 @@ export interface UsePendingThreadScrollIntoViewOptions {
  * actually scrolls, which is also what makes this fire once.
  *
  * The scroll math is `revealThreadEndOffset` (pure, unit-tested in
- * `libs/app-core/src/lib/utils/diff-scroll.spec.ts`); this hook owns
+ * `libs/core/src/lib/utils/diff-scroll.spec.ts`); this hook owns
  * only the timing.
  */
 export function usePendingThreadScrollIntoView({
