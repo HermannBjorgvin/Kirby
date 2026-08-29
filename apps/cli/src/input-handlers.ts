@@ -102,109 +102,149 @@ export interface SettingsHandlerCtx {
   keybinds: KeybindContextValue;
 }
 
+/** Everything a settings action needs, computed once per keypress. */
+interface SettingsActionCtx {
+  ctx: SettingsHandlerCtx;
+  fields: SettingsField[];
+  /** The row the cursor is on. */
+  field: SettingsField;
+}
+
+type SettingsAction = (a: SettingsActionCtx) => void;
+
+/** Index of the preset holding the field's current value, or -1 when
+ *  the stored value is not one of them. An unset field reads as the
+ *  first preset, which is what makes cycling start somewhere sensible
+ *  on a fresh config. */
+function currentPresetIndex(
+  ctx: SettingsHandlerCtx,
+  field: SettingsField,
+  presets: { value: string | null }[]
+): number {
+  const currentValue = resolveValue(ctx.config.config, field) || undefined;
+  const effectiveValue = currentValue || presets[0]!.value;
+  return presets.findIndex((p) => p.value === effectiveValue);
+}
+
+function closeSettings({ ctx }: SettingsActionCtx): void {
+  ctx.settings.setSettingsOpen(false);
+}
+
+function navigateDown({ ctx, fields }: SettingsActionCtx): void {
+  ctx.settings.setSettingsFieldIndex((i) => Math.min(i + 1, fields.length - 1));
+}
+
+function navigateUp({ ctx }: SettingsActionCtx): void {
+  ctx.settings.setSettingsFieldIndex((i) => Math.max(i - 1, 0));
+}
+
+/** Step the field one preset in `step`'s direction, wrapping.
+ *
+ *  Presets whose value is `null` are the "inherit / unset" row: cycling
+ *  is for picking a concrete value, so they are filtered out and the
+ *  empty state stays reachable only by editing. */
+function cyclePreset({ ctx, field }: SettingsActionCtx, step: 1 | -1): void {
+  if (!field.presets) return;
+  const presets = field.presets.filter((p) => p.value !== null);
+  let idx = currentPresetIndex(ctx, field, presets);
+  if (idx === -1) idx = 0;
+  const preset = presets[(idx + step + presets.length) % presets.length]!;
+  // The keybind preset lives in the keybind context, not the config
+  // file, so it takes its own write path.
+  if (field.key === 'keybindPreset' && preset.value) {
+    ctx.keybinds.setPreset(preset.value);
+    return;
+  }
+  writeFieldChange(field, preset.value ?? undefined, ctx);
+}
+
+/** Enter on a field. What that means depends on the field: open a
+ *  sub-screen, advance a closed set of choices, or start typing. */
+function editToggle({ ctx, field }: SettingsActionCtx): void {
+  if (field.action === 'open-controls') {
+    ctx.settings.setControlsOpen(true);
+    ctx.settings.setControlsSelectedIndex(0);
+    return;
+  }
+  // A field whose presets are all concrete has nothing to type into,
+  // so Enter advances the choice instead of opening the editor.
+  if (field.presets && field.presets.every((p) => p.value !== null)) {
+    const presets = field.presets;
+    const idx = (currentPresetIndex(ctx, field, presets) + 1) % presets.length;
+    writeFieldChange(field, presets[idx]!.value ?? undefined, ctx);
+    return;
+  }
+  ctx.settings.setEditingField(field.key);
+  ctx.settings.setEditBuffer(resolveValue(ctx.config.config, field));
+}
+
+function autoDetect({ ctx }: SettingsActionCtx): void {
+  const { updated, detected } = autoDetectProjectConfig(
+    process.cwd(),
+    ctx.config.providers
+  );
+  if (!updated) {
+    ctx.sessions.flashStatus('Nothing new to detect (all fields already set)');
+    return;
+  }
+  ctx.config.reloadFromDisk();
+  ctx.sessions.flashStatus(
+    `Auto-detected: ${Object.keys(detected).join(', ')}`
+  );
+}
+
+const SETTINGS_ACTIONS: Record<string, SettingsAction> = {
+  'settings.close': closeSettings,
+  'settings.navigate-down': navigateDown,
+  'settings.navigate-up': navigateUp,
+  'settings.cycle-left': (a) => cyclePreset(a, -1),
+  'settings.cycle-right': (a) => cyclePreset(a, 1),
+  'settings.edit-toggle': editToggle,
+  'settings.auto-detect': autoDetect,
+};
+
+/** Text entry for a free-form field — Esc discards, Enter commits.
+ *  This sits *above* action dispatch: while the editor is open the
+ *  keypress is text, never a bound action. */
+function handleFieldEditMode(
+  input: string,
+  key: KeyPress,
+  ctx: SettingsHandlerCtx,
+  field: SettingsField
+): void {
+  if (key.escape) {
+    ctx.settings.setEditingField(null);
+    ctx.settings.setEditBuffer('');
+    return;
+  }
+  if (key.return) {
+    ctx.config.updateField(field, ctx.settings.editBuffer || undefined);
+    ctx.settings.setEditingField(null);
+    ctx.settings.setEditBuffer('');
+    return;
+  }
+  handleTextInput(input, key, ctx.settings.setEditBuffer);
+}
+
+/** Settings panel entry point: resolve the keypress to an action ID
+ *  and run it. Every action reads the same cursor row, so it is
+ *  resolved once here rather than in each action. */
 export function handleSettingsInput(
   input: string,
   key: KeyPress,
   ctx: SettingsHandlerCtx
 ): void {
   const fields = buildSettingsFields(ctx.config.provider);
+  const field = fields[ctx.settings.settingsFieldIndex]!;
 
   if (ctx.settings.editingField) {
-    if (key.escape) {
-      ctx.settings.setEditingField(null);
-      ctx.settings.setEditBuffer('');
-      return;
-    }
-    if (key.return) {
-      const field = fields[ctx.settings.settingsFieldIndex]!;
-      const value = ctx.settings.editBuffer || undefined;
-      ctx.config.updateField(field, value);
-      ctx.settings.setEditingField(null);
-      ctx.settings.setEditBuffer('');
-      return;
-    }
-    handleTextInput(input, key, ctx.settings.setEditBuffer);
+    handleFieldEditMode(input, key, ctx, field);
     return;
   }
 
   const action = ctx.keybinds.resolve(input, key, 'settings');
-
-  if (action === 'settings.close') {
-    ctx.settings.setSettingsOpen(false);
-    return;
-  }
-  if (action === 'settings.navigate-down') {
-    ctx.settings.setSettingsFieldIndex((i) =>
-      Math.min(i + 1, fields.length - 1)
-    );
-    return;
-  }
-  if (action === 'settings.navigate-up') {
-    ctx.settings.setSettingsFieldIndex((i) => Math.max(i - 1, 0));
-    return;
-  }
-  if (action === 'settings.cycle-left' || action === 'settings.cycle-right') {
-    const field = fields[ctx.settings.settingsFieldIndex]!;
-    if (field.presets) {
-      const namedPresets = field.presets.filter((p) => p.value !== null);
-      const currentValue = resolveValue(ctx.config.config, field) || undefined;
-      const effectiveValue = currentValue || namedPresets[0]!.value;
-      let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
-      if (idx === -1) idx = 0;
-      if (action === 'settings.cycle-right') {
-        idx = (idx + 1) % namedPresets.length;
-      } else {
-        idx = (idx - 1 + namedPresets.length) % namedPresets.length;
-      }
-      const preset = namedPresets[idx]!;
-      // Use unified write path for keybind preset
-      if (field.key === 'keybindPreset' && preset.value) {
-        ctx.keybinds.setPreset(preset.value);
-      } else {
-        writeFieldChange(field, preset.value ?? undefined, ctx);
-      }
-    }
-    return;
-  }
-  if (action === 'settings.edit-toggle') {
-    const field = fields[ctx.settings.settingsFieldIndex]!;
-
-    // Special action fields — open sub-screens
-    if (field.action === 'open-controls') {
-      ctx.settings.setControlsOpen(true);
-      ctx.settings.setControlsSelectedIndex(0);
-      return;
-    }
-
-    if (field.presets && field.presets.every((p) => p.value !== null)) {
-      const namedPresets = field.presets;
-      const currentValue = resolveValue(ctx.config.config, field) || undefined;
-      const effectiveValue = currentValue || namedPresets[0]!.value;
-      let idx = namedPresets.findIndex((p) => p.value === effectiveValue);
-      idx = (idx + 1) % namedPresets.length;
-      writeFieldChange(field, namedPresets[idx]!.value ?? undefined, ctx);
-      return;
-    }
-    ctx.settings.setEditingField(field.key);
-    ctx.settings.setEditBuffer(resolveValue(ctx.config.config, field));
-    return;
-  }
-  if (action === 'settings.auto-detect') {
-    const { updated, detected } = autoDetectProjectConfig(
-      process.cwd(),
-      ctx.config.providers
-    );
-    if (updated) {
-      ctx.config.reloadFromDisk();
-      const fields = Object.keys(detected).join(', ');
-      ctx.sessions.flashStatus(`Auto-detected: ${fields}`);
-    } else {
-      ctx.sessions.flashStatus(
-        'Nothing new to detect (all fields already set)'
-      );
-    }
-    return;
-  }
+  if (!action) return;
+  SETTINGS_ACTIONS[action]?.({ ctx, fields, field });
 }
 
 // ── Controls sub-screen input handler ─────────────────────────────
