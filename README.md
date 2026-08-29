@@ -66,8 +66,6 @@ The desktop app is where most of the work goes now, but Kirby runs just as well 
 
 That whole loop is the TUI: the sidebar with CI and approval state per pull request, the diff with comment threads inline, `a`/`A` to queue a comment for the agent with a note on how to handle it, and `enter` at checkout to hand it over — the agent then runs in that branch's worktree, in the pane on the right. The split, word-level and folded diffs are desktop-only.
 
-<img alt="Kirby's terminal UI, with the branch sidebar on the left and an agent session on the right" src="https://github.com/user-attachments/assets/db4b13b2-3b8d-4783-8c58-353cff0243a2" />
-
 ## Prerequisites
 
 - git
