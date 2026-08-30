@@ -9,9 +9,9 @@ import {
 import { useEffect, useState } from 'react';
 import type { SidebarItem, SyncState } from '../../host/contract.js';
 import { useRepo } from '../lib/repo-context.js';
-import { useSyncState, useVersion } from '../lib/queries.js';
-import { useRefreshRemote } from '../lib/mutations.js';
-import { itemRunning } from '../lib/sidebar-model.js';
+import { useSyncState, useVersion } from '../lib/data/queries.js';
+import { useRefreshRemote } from '../lib/data/mutations.js';
+import { itemRunning } from '../lib/sidebar/sidebar-model.js';
 import { basename, cn, relativeTime } from '../lib/utils.js';
 import { Tip } from './ui/tooltip.js';
 

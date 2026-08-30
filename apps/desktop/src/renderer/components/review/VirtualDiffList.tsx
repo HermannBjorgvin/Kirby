@@ -12,19 +12,19 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
-import { expandIndices } from '../../lib/diff-model.js';
-import { useDiffOptions } from '../../lib/diff-options.js';
+import { expandIndices } from '../../lib/diff/diff-model.js';
+import { useDiffOptions } from '../../lib/diff/diff-options.js';
 import {
   buildFlatDiff,
   estimateRowHeight,
   type FileDisplayState,
   type FlatRow,
-} from '../../lib/diff-virtual.js';
+} from '../../lib/diff/diff-virtual.js';
 import {
   cellHighlight,
   lineHighlight,
   useFileAnalyses,
-} from '../../lib/highlight.js';
+} from '../../lib/diff/highlight.js';
 import { useTheme } from '../../lib/theme.js';
 import { CommentBlock, OrphanBlock } from './CommentBlock.js';
 import { ConversationPanel } from './ConversationPanel.js';

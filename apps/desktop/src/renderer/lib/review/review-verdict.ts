@@ -1,5 +1,5 @@
 import type { ReviewDecision } from '@kirby/vcs-core/types';
-import type { ReviewVerdict } from '../../host/contract.js';
+import type { ReviewVerdict } from '../../../host/contract.js';
 
 /**
  * What the viewer's reviewer entry becomes for a cast verdict.

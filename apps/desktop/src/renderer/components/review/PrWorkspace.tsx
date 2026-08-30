@@ -9,18 +9,18 @@ import { toast } from 'sonner';
 import { type DiffLine } from '@kirby/diff';
 import type { PlanItem } from '@kirby/core/plan';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { useDiffOptions } from '../../lib/diff-options.js';
+import { useDiffOptions } from '../../lib/diff/diff-options.js';
 import {
   useDiff,
   useDraftComments,
   useParsedDiff,
   useThreads,
   useWorktreeDiff,
-} from '../../lib/queries.js';
-import { usePostDrafts } from '../../lib/mutations.js';
+} from '../../lib/data/queries.js';
+import { usePostDrafts } from '../../lib/data/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useCommentNavigator } from '../../lib/use-comment-navigator.js';
-import { usePlanCheckout } from '../../lib/use-plan-checkout.js';
+import { useCommentNavigator } from '../../lib/review/use-comment-navigator.js';
+import { usePlanCheckout } from '../../lib/plan/use-plan-checkout.js';
 import {
   buildFileEntries,
   diffIsPending,
@@ -29,7 +29,7 @@ import {
   resolveMode,
   unpostedDrafts,
   type Mode,
-} from '../../lib/review-model.js';
+} from '../../lib/review/review-model.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';

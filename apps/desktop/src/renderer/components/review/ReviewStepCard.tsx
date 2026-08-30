@@ -18,7 +18,7 @@ import {
   SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_DOT,
-} from '../../lib/severity.js';
+} from '../../lib/review/severity.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';

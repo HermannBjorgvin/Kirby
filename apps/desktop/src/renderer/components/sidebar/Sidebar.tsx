@@ -7,13 +7,13 @@ import {
 import { useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useRefreshRemote } from '../../lib/mutations.js';
+import { useRefreshRemote } from '../../lib/data/mutations.js';
 import {
   groupSections,
   itemKey,
   type SectionKey,
-} from '../../lib/sidebar-model.js';
-import { useTabs } from '../../lib/tabs.js';
+} from '../../lib/sidebar/sidebar-model.js';
+import { useTabs } from '../../lib/tabs/tabs.js';
 import { basename, cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {

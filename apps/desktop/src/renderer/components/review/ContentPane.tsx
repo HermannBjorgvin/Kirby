@@ -6,7 +6,7 @@ import type {
   ReviewComment,
 } from '../../../host/contract.js';
 import type { PlanItem } from '@kirby/core/plan';
-import { type Mode } from '../../lib/review-model.js';
+import { type Mode } from '../../lib/review/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { DiffPane } from './DiffPane.js';

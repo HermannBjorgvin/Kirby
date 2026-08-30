@@ -11,12 +11,12 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../host/contract.js';
+} from '../../../host/contract.js';
 import { usePlan, type PlanApi } from './plan.js';
 import { planSummary } from './plan-model.js';
-import { useCheckoutPlan } from './mutations.js';
-import { estimateTerminalGrid } from './terminal-grid.js';
-import { errorMessage } from './utils.js';
+import { useCheckoutPlan } from '../data/mutations.js';
+import { estimateTerminalGrid } from '../terminal-grid.js';
+import { errorMessage } from '../utils.js';
 
 /**
  * Everything the review workspace needs in order to show a plan and

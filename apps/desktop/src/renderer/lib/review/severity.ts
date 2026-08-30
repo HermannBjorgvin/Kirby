@@ -1,4 +1,4 @@
-import type { CommentSeverity } from '../../host/contract.js';
+import type { CommentSeverity } from '../../../host/contract.js';
 
 /** Severity values, most→least important (also the edit-select order). */
 export const SEVERITIES: CommentSeverity[] = [

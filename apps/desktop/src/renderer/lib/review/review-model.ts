@@ -2,9 +2,9 @@ import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../host/contract.js';
-import type { CommentListItem } from '../components/review/CommentsList.js';
-import type { FileEntry } from '../components/review/FileTree.js';
+} from '../../../host/contract.js';
+import type { CommentListItem } from '../../components/review/CommentsList.js';
+import type { FileEntry } from '../../components/review/FileTree.js';
 
 /**
  * The decisions the PR review workspace makes about *what to show*,

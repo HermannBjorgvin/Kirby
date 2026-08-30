@@ -7,12 +7,12 @@ import {
   orderDraftsForReview,
   severityCounts,
   snippetAround,
-} from '../../lib/diff-model.js';
+} from '../../lib/diff/diff-model.js';
 import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/mutations.js';
+} from '../../lib/data/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';

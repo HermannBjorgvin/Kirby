@@ -6,8 +6,8 @@ import {
 } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { keys } from './query-keys.js';
-import { verdictDecision } from './review-verdict.js';
-import { errorMessage } from './utils.js';
+import { verdictDecision } from '../review/review-verdict.js';
+import { errorMessage } from '../utils.js';
 import type {
   PlanCheckoutRequest,
   PostDraftsRequest,
@@ -19,7 +19,7 @@ import type {
   ReviewVerdict,
   SessionLaunchRequest,
   SidebarItem,
-} from '../../host/contract.js';
+} from '../../../host/contract.js';
 
 /**
  * The renderer's writes: every host call that changes something, with

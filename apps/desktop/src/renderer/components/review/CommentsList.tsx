@@ -9,7 +9,7 @@ import { useState } from 'react';
 import type { CommentSeverity } from '../../../host/contract.js';
 import { cn } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
-import { SEVERITY_DOT } from '../../lib/severity.js';
+import { SEVERITY_DOT } from '../../lib/review/severity.js';
 
 export interface CommentListItem {
   id: string;

@@ -11,7 +11,7 @@ import {
   snippetAround,
 } from './diff-model.js';
 import { wordDiff } from './word-diff.js';
-import type { ReviewComment } from '../../host/contract.js';
+import type { ReviewComment } from '../../../host/contract.js';
 
 function ctx(n: number, startOld = 1, startNew = 1): DiffLine[] {
   return Array.from({ length: n }, (_, i) => ({

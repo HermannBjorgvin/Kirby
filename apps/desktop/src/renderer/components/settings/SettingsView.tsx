@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRepo } from '../../lib/repo-context.js';
-import { useSettingsView } from '../../lib/queries.js';
+import { useSettingsView } from '../../lib/data/queries.js';
 import {
   visibleSettingsGroups,
   type GroupKey,

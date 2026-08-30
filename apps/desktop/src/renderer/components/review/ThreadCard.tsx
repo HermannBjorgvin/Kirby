@@ -12,14 +12,14 @@ import type {
   RemoteCommentThread,
 } from '../../../host/contract.js';
 import { snapshotRemote } from '@kirby/core/plan';
-import { usePlan, usePlanControls } from '../../lib/plan.js';
+import { usePlan, usePlanControls } from '../../lib/plan/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useReply, useSetResolved } from '../../lib/mutations.js';
+import { useReply, useSetResolved } from '../../lib/data/mutations.js';
 import {
   firstNonEmptyLine,
   threadExpanded,
   threadLocation,
-} from '../../lib/thread-model.js';
+} from '../../lib/diff/thread-model.js';
 import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
 import { Avatar } from '../ui/avatar.js';
 import { Badge } from '../ui/badge.js';

@@ -18,7 +18,7 @@ import {
   itemKey,
   itemRunning,
   itemSessionName,
-} from '../lib/sidebar-model.js';
+} from '../lib/sidebar/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
 import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
@@ -26,12 +26,12 @@ import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { useQueryClient } from '@tanstack/react-query';
-import { keys } from '../lib/query-keys.js';
-import { useSidebarModel } from '../lib/queries.js';
-import { useRefreshRemote, useRemovingBranches } from '../lib/mutations.js';
+import { keys } from '../lib/data/query-keys.js';
+import { useSidebarModel } from '../lib/data/queries.js';
+import { useRefreshRemote, useRemovingBranches } from '../lib/data/mutations.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
-import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs.js';
-import { useCloseTabs } from '../lib/use-close-tabs.js';
+import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs/tabs.js';
+import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
 

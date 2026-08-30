@@ -5,7 +5,7 @@ import {
   isBlockingDecision,
   type PullRequestInfo,
 } from '@kirby/vcs-core/types';
-import type { SidebarItem } from '../../host/contract.js';
+import type { SidebarItem } from '../../../host/contract.js';
 import { itemKey } from './sidebar-model.js';
 
 /**

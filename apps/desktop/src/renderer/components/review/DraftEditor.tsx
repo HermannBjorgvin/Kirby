@@ -1,6 +1,6 @@
 import { CheckIcon } from 'lucide-react';
 import type { CommentSeverity } from '../../../host/contract.js';
-import { SEVERITIES } from '../../lib/severity.js';
+import { SEVERITIES } from '../../lib/review/severity.js';
 import { Button } from '../ui/button.js';
 import {
   Select,

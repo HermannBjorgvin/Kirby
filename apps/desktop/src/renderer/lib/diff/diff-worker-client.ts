@@ -3,7 +3,7 @@ import type {
   SlimToken,
   WorkerRequest,
   WorkerResponse,
-} from '../workers/diff-worker.js';
+} from '../../workers/diff-worker.js';
 import type { CharRange } from './word-diff.js';
 
 export type { SlimToken };
@@ -22,7 +22,7 @@ const pending = new Map<
 
 function getWorker(): Worker {
   if (!worker) {
-    worker = new Worker(new URL('../workers/diff-worker.ts', import.meta.url), {
+    worker = new Worker(new URL('../../workers/diff-worker.ts', import.meta.url), {
       type: 'module',
     });
     worker.onmessage = (e: MessageEvent<WorkerResponse>) => {

@@ -3,9 +3,9 @@ import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../host/contract.js';
-import type { CommentListItem } from '../components/review/CommentsList.js';
-import type { DiffJumpHandle } from '../components/review/VirtualDiffList.js';
+} from '../../../host/contract.js';
+import type { CommentListItem } from '../../components/review/CommentsList.js';
+import type { DiffJumpHandle } from '../../components/review/VirtualDiffList.js';
 import {
   buildCommentRows,
   navIndexOf,

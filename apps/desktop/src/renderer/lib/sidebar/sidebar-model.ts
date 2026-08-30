@@ -1,5 +1,5 @@
 import type { ReviewDecision } from '@kirby/vcs-core/types';
-import type { SidebarItem } from '../../host/contract.js';
+import type { SidebarItem } from '../../../host/contract.js';
 
 export type SectionKey =
   | 'worktrees'

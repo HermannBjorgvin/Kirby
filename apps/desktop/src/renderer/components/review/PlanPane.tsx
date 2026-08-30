@@ -11,8 +11,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { composePlanPrompt, type PlanItem } from '@kirby/core/plan';
-import { checkoutModel, planRows, planSummary } from '../../lib/plan-model.js';
-import { SEVERITY_BADGE } from '../../lib/severity.js';
+import { checkoutModel, planRows, planSummary } from '../../lib/plan/plan-model.js';
+import { SEVERITY_BADGE } from '../../lib/review/severity.js';
 import { cn } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';

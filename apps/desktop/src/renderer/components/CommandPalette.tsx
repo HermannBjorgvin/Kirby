@@ -12,11 +12,11 @@ import {
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../host/contract.js';
-import { useAllBranches } from '../lib/queries.js';
-import { useCreateWorktree, useRefreshRemote } from '../lib/mutations.js';
+import { useAllBranches } from '../lib/data/queries.js';
+import { useCreateWorktree, useRefreshRemote } from '../lib/data/mutations.js';
 import { useRepo } from '../lib/repo-context.js';
-import { itemBranch, itemKey, itemTitle } from '../lib/sidebar-model.js';
-import { useTabs } from '../lib/tabs.js';
+import { itemBranch, itemKey, itemTitle } from '../lib/sidebar/sidebar-model.js';
+import { useTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
 import {

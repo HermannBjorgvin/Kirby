@@ -11,13 +11,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
 import { snapshotLocal } from '@kirby/core/plan';
-import { usePlan, usePlanControls } from '../../lib/plan.js';
+import { usePlan, usePlanControls } from '../../lib/plan/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/mutations.js';
+} from '../../lib/data/mutations.js';
 import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
@@ -33,7 +33,7 @@ import {
   SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_RAIL,
-} from '../../lib/severity.js';
+} from '../../lib/review/severity.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
 import { PlanAttachment, PlanControls } from './PlanControls.js';
 

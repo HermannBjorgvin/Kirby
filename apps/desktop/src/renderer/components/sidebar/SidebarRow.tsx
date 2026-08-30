@@ -7,7 +7,7 @@ import {
   useKillSession,
   useOpenInEditor,
   useLaunchAgent,
-} from '../../lib/mutations.js';
+} from '../../lib/data/mutations.js';
 import {
   itemBranch,
   itemHasWorktree,
@@ -15,11 +15,11 @@ import {
   itemRunning,
   itemSessionName,
   itemTitle,
-} from '../../lib/sidebar-model.js';
+} from '../../lib/sidebar/sidebar-model.js';
 import {
   isSidebarRowCommand,
   sidebarRowMenuItems,
-} from '../../lib/sidebar-row-menu.js';
+} from '../../lib/sidebar/sidebar-row-menu.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { PrMeta } from './PrMeta.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';

@@ -10,8 +10,8 @@ import type { SidebarItem } from '../../host/contract.js';
 import {
   buildAttentionModel,
   type AttentionCategory,
-} from '../lib/attention.js';
-import { useTabs } from '../lib/tabs.js';
+} from '../lib/sidebar/attention.js';
+import { useTabs } from '../lib/tabs/tabs.js';
 import { cn } from '../lib/utils.js';
 import { Button } from './ui/button.js';
 import {

@@ -3,7 +3,7 @@ import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../host/contract.js';
+} from '../../../host/contract.js';
 import { buildFlatDiff } from './diff-virtual.js';
 
 function ctx(oldLine: number, newLine: number): DiffLine {

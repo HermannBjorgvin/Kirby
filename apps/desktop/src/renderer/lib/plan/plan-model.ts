@@ -1,5 +1,5 @@
 import { planItemKey, type PlanItem } from '@kirby/core/plan';
-import type { CommentSeverity } from '../../host/contract.js';
+import type { CommentSeverity } from '../../../host/contract.js';
 
 /**
  * The decisions the plan ("add to cart") UI makes, separated from the

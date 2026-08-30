@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem } from '../../host/contract.js';
+import type { SidebarItem } from '../../../host/contract.js';
 import { buildAttentionModel } from './attention.js';
 
 function pr(p: Partial<PullRequestInfo>): PullRequestInfo {

@@ -1,4 +1,4 @@
-import type { RemoteCommentThread } from '../../host/contract.js';
+import type { RemoteCommentThread } from '../../../host/contract.js';
 
 /**
  * The decisions a review thread card makes about itself, apart from the

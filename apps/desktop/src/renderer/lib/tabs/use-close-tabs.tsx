@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { SidebarItem } from '../../host/contract.js';
-import { Button } from '../components/ui/button.js';
+import type { SidebarItem } from '../../../host/contract.js';
+import { Button } from '../../components/ui/button.js';
 import {
   Dialog,
   DialogContent,
@@ -9,13 +9,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../components/ui/dialog.js';
-import { useSessionActivity } from './queries.js';
-import { useKillSession } from './mutations.js';
-import { useRepo } from './repo-context.js';
-import { itemBranch, itemKey, itemSessionName } from './sidebar-model.js';
+} from '../../components/ui/dialog.js';
+import { useSessionActivity } from '../data/queries.js';
+import { useKillSession } from '../data/mutations.js';
+import { useRepo } from '../repo-context.js';
+import { itemBranch, itemKey, itemSessionName } from '../sidebar/sidebar-model.js';
 import { useTabs, type Tab } from './tabs.js';
-import { errorMessage } from './utils.js';
+import { errorMessage } from '../utils.js';
 
 interface PendingClose {
   /** Branches whose agents are actively working right now. */

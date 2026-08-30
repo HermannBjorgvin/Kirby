@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { RepoInfo } from '../../host/contract.js';
 import { isMacPlatform, useDesktopPrefs } from '../lib/desktop-prefs.js';
-import { useRecentRepos } from '../lib/queries.js';
+import { useRecentRepos } from '../lib/data/queries.js';
 import { useTheme, type ThemePreference } from '../lib/theme.js';
 import { basename, MOD } from '../lib/utils.js';
 import { Button } from './ui/button.js';

@@ -6,7 +6,7 @@ import { KirbyMark } from '../components/KirbyMark.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
-import { useRecentRepos } from '../lib/queries.js';
+import { useRecentRepos } from '../lib/data/queries.js';
 import { basename, errorMessage, relativeTime } from '../lib/utils.js';
 
 /** Repo gate / switcher: open a folder, paste a path, or pick a recent. */

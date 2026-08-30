@@ -3,20 +3,20 @@ import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useAllBranches, useSessions } from '../../lib/queries.js';
+import { useAllBranches, useSessions } from '../../lib/data/queries.js';
 import {
   useCreateWorktree,
   useKillSession,
   useLaunchAgent,
   useLaunchReview,
-} from '../../lib/mutations.js';
+} from '../../lib/data/mutations.js';
 import {
   itemBranch,
   itemHasWorktree,
   itemRunning,
   itemSessionName,
   liveSessionName,
-} from '../../lib/sidebar-model.js';
+} from '../../lib/sidebar/sidebar-model.js';
 import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { errorMessage } from '../../lib/utils.js';
 import { PrWorkspace } from '../review/PrWorkspace.js';

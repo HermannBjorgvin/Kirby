@@ -1,5 +1,5 @@
 import type { DiffLine } from '@kirby/diff';
-import type { CommentSeverity, ReviewComment } from '../../host/contract.js';
+import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
 
 /**
  * Pure helpers behind the diff viewer. The host hands us whole-file

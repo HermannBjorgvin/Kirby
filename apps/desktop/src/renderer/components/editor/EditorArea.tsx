@@ -10,18 +10,18 @@ import type {
   SessionActivitySnapshot,
   SidebarItem,
 } from '../../../host/contract.js';
-import { usePlanCount } from '../../lib/plan.js';
+import { usePlanCount } from '../../lib/plan/plan.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useSessionActivity } from '../../lib/queries.js';
+import { useSessionActivity } from '../../lib/data/queries.js';
 import {
   itemBranch,
   itemKey,
   itemRunning,
   itemSessionName,
   itemTitle,
-} from '../../lib/sidebar-model.js';
-import { useTabs, type Tab } from '../../lib/tabs.js';
-import { useCloseTabs } from '../../lib/use-close-tabs.js';
+} from '../../lib/sidebar/sidebar-model.js';
+import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
+import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
 import { SettingsView } from '../settings/SettingsView.js';

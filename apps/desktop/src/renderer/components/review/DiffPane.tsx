@@ -19,7 +19,7 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
-import { setDiffOptions, useDiffOptions } from '../../lib/diff-options.js';
+import { setDiffOptions, useDiffOptions } from '../../lib/diff/diff-options.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';

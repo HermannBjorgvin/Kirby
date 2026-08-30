@@ -6,7 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
-import { contentKey } from './content-key.js';
+import { contentKey } from '../content-key.js';
 import type { SplitCell } from './diff-model.js';
 import type { CharRange } from './word-diff.js';
 import {
@@ -15,8 +15,8 @@ import {
   type FileAnalysis,
   type LineTokens,
 } from './diff-worker-client.js';
-import { keys } from './query-keys.js';
-import type { ResolvedTheme } from './theme.js';
+import { keys } from '../data/query-keys.js';
+import type { ResolvedTheme } from '../theme.js';
 
 export type { LineTokens };
 

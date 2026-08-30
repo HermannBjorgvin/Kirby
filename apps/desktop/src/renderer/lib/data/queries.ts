@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
-import { contentKey } from './content-key.js';
-import { loadDesktopPrefs } from './desktop-prefs.js';
-import { parseDiffInWorker } from './diff-worker-client.js';
+import { contentKey } from '../content-key.js';
+import { loadDesktopPrefs } from '../desktop-prefs.js';
+import { parseDiffInWorker } from '../diff/diff-worker-client.js';
 import { keys } from './query-keys.js';
-import { errorMessage } from './utils.js';
-import type { RepoInfo } from '../../host/contract.js';
+import { errorMessage } from '../utils.js';
+import type { RepoInfo } from '../../../host/contract.js';
 
 /**
  * The renderer's reads: every host query the app makes, so refetch

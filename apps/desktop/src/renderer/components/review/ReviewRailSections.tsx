@@ -8,8 +8,8 @@ import {
   SquareIcon,
 } from 'lucide-react';
 import type { ReviewComment } from '../../../host/contract.js';
-import { severityCounts } from '../../lib/diff-model.js';
-import { formatSeverityBreakdown } from '../../lib/severity.js';
+import { severityCounts } from '../../lib/diff/diff-model.js';
+import { formatSeverityBreakdown } from '../../lib/review/severity.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';

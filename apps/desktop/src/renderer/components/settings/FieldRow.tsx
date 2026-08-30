@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { SECRET_PLACEHOLDER } from '../../../host/contract.js';
 import type { SettingsFieldView } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useUpdateSetting } from '../../lib/mutations.js';
+import { useUpdateSetting } from '../../lib/data/mutations.js';
 import { persistedValue, type PendingSave } from '../../lib/settings-save.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';

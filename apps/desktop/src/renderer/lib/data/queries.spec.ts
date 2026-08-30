@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { KirbyHostApi, RepoInfo } from '../../host/contract.js';
+import type { KirbyHostApi, RepoInfo } from '../../../host/contract.js';
 import { keys, resetRepoScopedCache } from './query-keys.js';
 import { loadBranchRemovalSafety, loadRepoGate } from './queries.js';
 

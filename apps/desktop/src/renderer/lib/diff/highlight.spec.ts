@@ -10,7 +10,7 @@ import {
   type FileAnalysis,
 } from './highlight.js';
 import { snippetAround } from './diff-model.js';
-import type * as ContentKey from './content-key.js';
+import type * as ContentKey from '../content-key.js';
 
 const { analyze, tokenize, hash } = vi.hoisted(() => ({
   analyze: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock('./diff-worker-client.js', () => ({
 // The real hash, counted. Hashing a whole file is ~4 ms at 20 000
 // lines, so *how often* it runs is as much a part of the contract as
 // what it returns — hence a spy over the real thing rather than a stub.
-vi.mock('./content-key.js', async (importOriginal) => {
+vi.mock('../content-key.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ContentKey>();
   hash.mockImplementation(actual.contentKey);
   return { contentKey: hash };

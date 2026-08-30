@@ -17,7 +17,7 @@ import {
   type StatusGlyph,
   type StatusTone,
   unresolvedCommentsLabel,
-} from '../../lib/sidebar-model.js';
+} from '../../lib/sidebar/sidebar-model.js';
 import { cn } from '../../lib/utils.js';
 import { Tip } from '../ui/tooltip.js';
 
