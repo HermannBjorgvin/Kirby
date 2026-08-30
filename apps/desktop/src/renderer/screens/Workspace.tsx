@@ -21,6 +21,7 @@ import {
 } from '../lib/sidebar/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
+import { prefetchPanes } from '../components/editor/lazy-panes.js';
 import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
 import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
@@ -141,6 +142,9 @@ function WorkspaceInner({
   // an empty repo settles the query too, so this is not gated on rows.
   useEffect(() => {
     markOnce(BOOT_MARKS.shell);
+    // The panes are code-split; pull them in while the app is idle so
+    // opening the first tab does not wait on a chunk.
+    prefetchPanes();
   }, []);
   const sidebarSettled = model.data !== undefined;
   useEffect(() => {

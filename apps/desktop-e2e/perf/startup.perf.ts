@@ -6,6 +6,7 @@ import {
   collect,
   mainMetrics,
   saveSamples,
+  waitForBoot,
   type Samples,
 } from './setup/metrics.js';
 
@@ -37,14 +38,7 @@ test('startup', async () => {
       const app = await launchApp({ repoPath: repo.path });
       try {
         await app.page.waitForLoadState('domcontentloaded');
-        // Wait for the milestone itself rather than for a selector, so
-        // the poll interval lands outside the number being reported.
-        await app.page.waitForFunction(
-          () =>
-            performance.getEntriesByName('kirby:sidebar', 'mark').length > 0,
-          undefined,
-          { timeout: 30_000 }
-        );
+        await waitForBoot(app.page, 30_000);
         const [boot, main] = await Promise.all([
           bootMetrics(app.page),
           mainMetrics(app.app),

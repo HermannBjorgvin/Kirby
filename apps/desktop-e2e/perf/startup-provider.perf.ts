@@ -7,6 +7,7 @@ import {
   collect,
   mainMetrics,
   saveSamples,
+  waitForBoot,
   type Samples,
 } from './setup/metrics.js';
 
@@ -55,12 +56,7 @@ test('startup with a provider', async () => {
       });
       try {
         await app.page.waitForLoadState('domcontentloaded');
-        await app.page.waitForFunction(
-          () =>
-            performance.getEntriesByName('kirby:sidebar', 'mark').length > 0,
-          undefined,
-          { timeout: 60_000 }
-        );
+        await waitForBoot(app.page, 60_000);
         const [boot, main] = await Promise.all([
           bootMetrics(app.page),
           mainMetrics(app.app),

@@ -4,7 +4,7 @@ import {
   SettingsIcon,
   XIcon,
 } from 'lucide-react';
-import { useDeferredValue, useMemo } from 'react';
+import { Suspense, useDeferredValue, useMemo } from 'react';
 import type {
   ContextMenuItem,
   SessionActivitySnapshot,
@@ -24,8 +24,8 @@ import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
 import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
-import { SettingsView } from '../settings/SettingsView.js';
 import { EmptyState } from './EmptyState.js';
+import { PaneLoading, SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
 
 /**
@@ -140,17 +140,21 @@ export function EditorArea({
               )}
             >
               <ErrorBoundary resetKey={tab.id}>
-                {tab.kind === 'settings' ? (
-                  <SettingsView />
-                ) : (
-                  <ItemView
-                    item={itemFor(tab)}
-                    items={items}
-                    itemKey={tab.itemKey}
-                    active={active}
-                    onPin={() => tabs.pin(tab.id)}
-                  />
-                )}
+                {/* Both pane bodies are code-split (see lazy-panes),
+                    so the boundary lives here rather than in each. */}
+                <Suspense fallback={<PaneLoading />}>
+                  {tab.kind === 'settings' ? (
+                    <SettingsView />
+                  ) : (
+                    <ItemView
+                      item={itemFor(tab)}
+                      items={items}
+                      itemKey={tab.itemKey}
+                      active={active}
+                      onPin={() => tabs.pin(tab.id)}
+                    />
+                  )}
+                </Suspense>
               </ErrorBoundary>
             </div>
           );

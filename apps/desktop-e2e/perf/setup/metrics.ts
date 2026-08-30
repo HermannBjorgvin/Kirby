@@ -94,6 +94,27 @@ export async function bootMetrics(page: Page): Promise<Record<string, number>> {
 }
 
 /**
+ * Wait until the window has finished booting *and* painted.
+ *
+ * Both halves are needed. The boot marks are recorded in effects, which
+ * React runs after commit but before the browser paints — so waiting on
+ * `kirby:sidebar` alone can win the race against first-contentful-paint
+ * and read a timeline that has no paint entry in it yet. Waiting on the
+ * paint alone would be worse: it happens long before the sidebar has
+ * anything in it.
+ */
+export async function waitForBoot(page: Page, timeout: number): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      performance.getEntriesByName('kirby:sidebar', 'mark').length > 0 &&
+      performance.getEntriesByName('first-contentful-paint', 'paint').length >
+        0,
+    undefined,
+    { timeout }
+  );
+}
+
+/**
  * Main-process boot milestones, timed from process start.
  *
  * This is the half the renderer cannot see: everything before there is
@@ -208,6 +229,48 @@ export async function workerPhases(
       analyzeTotalMs: total(analyze),
     };
   });
+}
+
+/**
+ * What the app costs while nobody is touching it.
+ *
+ * A window sitting open still polls the host for sessions, agent
+ * activity, draft comments and the sidebar model, and each of those is
+ * an IPC call that runs git or reads config on the other side and a
+ * React render on this one. Left uncounted it is invisible; on a laptop
+ * it is the fan.
+ *
+ * `idleCpuPct` is the number that matters, and it is Electron's own:
+ * summed `percentCPUUsage` across every process in the app since the
+ * previous call — hence the discarded first reading. It is the only one
+ * that sees the git subprocesses and config reads happening on the
+ * other side of the IPC.
+ *
+ * The renderer figures beside it are long tasks only, so they normally
+ * read zero: a poll handler that blocks the main thread for over 50 ms
+ * is a finding, not a baseline.
+ */
+export async function idleCost(
+  page: Page,
+  app: ElectronApplication,
+  windowMs: number
+): Promise<Record<string, number>> {
+  await app.evaluate(({ app: a }) => a.getAppMetrics());
+  const { metrics } = await duringInteraction(page, () =>
+    page.evaluate(
+      (ms: number) => new Promise((r) => setTimeout(r, ms)),
+      windowMs
+    )
+  );
+  const cpu = await app.evaluate(({ app: a }) =>
+    a.getAppMetrics().reduce((sum, m) => sum + (m.cpu?.percentCPUUsage ?? 0), 0)
+  );
+  return {
+    idleCpuPct: cpu,
+    idleTaskMs: metrics.taskMs,
+    idleTaskCount: metrics.taskCount,
+    idleLongestTaskMs: metrics.longestTaskMs,
+  };
 }
 
 /** Renderer heap, as the OS-visible cost of holding a diff open. */
