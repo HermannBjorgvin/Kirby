@@ -1,6 +1,6 @@
 import { CheckIcon, CornerDownRightIcon, RotateCcwIcon } from 'lucide-react';
-import { Button } from '../ui/button.js';
-import { Textarea } from '../ui/textarea.js';
+import { Button } from '../../ui/button.js';
+import { Textarea } from '../../ui/textarea.js';
 
 /** The card's reply box and resolve button. */
 export function ThreadFooter({

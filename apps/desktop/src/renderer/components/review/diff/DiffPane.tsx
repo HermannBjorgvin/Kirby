@@ -18,12 +18,12 @@ import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../../host/contract.js';
-import { setDiffOptions, useDiffOptions } from '../../lib/diff/diff-options.js';
-import { cn } from '../../lib/utils.js';
-import { Button } from '../ui/button.js';
-import { Skeleton } from '../ui/skeleton.js';
-import { Tip } from '../ui/tooltip.js';
+} from '../../../../host/contract.js';
+import { setDiffOptions, useDiffOptions } from '../../../lib/diff/diff-options.js';
+import { cn } from '../../../lib/utils.js';
+import { Button } from '../../ui/button.js';
+import { Skeleton } from '../../ui/skeleton.js';
+import { Tip } from '../../ui/tooltip.js';
 import { VirtualDiffList, type DiffJumpHandle } from './VirtualDiffList.js';
 
 /**

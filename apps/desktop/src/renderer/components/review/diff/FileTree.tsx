@@ -7,9 +7,9 @@ import {
   MessageSquareIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { cn } from '../../lib/utils.js';
-import { ScrollArea } from '../ui/scroll-area.js';
-import { Skeleton } from '../ui/skeleton.js';
+import { cn } from '../../../lib/utils.js';
+import { ScrollArea } from '../../ui/scroll-area.js';
+import { Skeleton } from '../../ui/skeleton.js';
 
 export interface FileEntry {
   path: string;

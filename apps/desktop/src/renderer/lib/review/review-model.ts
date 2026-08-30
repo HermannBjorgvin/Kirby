@@ -3,8 +3,8 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
-import type { CommentListItem } from '../../components/review/CommentsList.js';
-import type { FileEntry } from '../../components/review/FileTree.js';
+import type { CommentListItem } from '../../components/review/comments/CommentsList.js';
+import type { FileEntry } from '../../components/review/diff/FileTree.js';
 
 /**
  * The decisions the PR review workspace makes about *what to show*,

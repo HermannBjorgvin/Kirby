@@ -9,7 +9,7 @@ import {
   sidebarRowHeights,
   sidebarScrollWindow,
   type RenderRow,
-} from './sidebar-layout.js';
+} from '../models/sidebar-layout.js';
 import { PrItemRow, SectionHeader, SessionItemRow } from './SidebarRows.js';
 import { SidebarLayout } from './SidebarLayout.js';
 

@@ -4,8 +4,8 @@ import {
   MessagesSquareIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { RemoteCommentThread } from '../../../host/contract.js';
-import { Skeleton } from '../ui/skeleton.js';
+import type { RemoteCommentThread } from '../../../../host/contract.js';
+import { Skeleton } from '../../ui/skeleton.js';
 import { ThreadCard } from './ThreadCard.js';
 
 /** General (non-inline) PR comments, collapsible above the diff. */

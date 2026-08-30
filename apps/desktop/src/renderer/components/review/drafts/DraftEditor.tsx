@@ -1,15 +1,15 @@
 import { CheckIcon } from 'lucide-react';
-import type { CommentSeverity } from '../../../host/contract.js';
-import { SEVERITIES } from '../../lib/review/severity.js';
-import { Button } from '../ui/button.js';
+import type { CommentSeverity } from '../../../../host/contract.js';
+import { SEVERITIES } from '../../../lib/review/severity.js';
+import { Button } from '../../ui/button.js';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select.js';
-import { Textarea } from '../ui/textarea.js';
+} from '../../ui/select.js';
+import { Textarea } from '../../ui/textarea.js';
 
 /**
  * Editing form for one draft comment: its body and its severity, with

@@ -10,21 +10,21 @@ import { toast } from 'sonner';
 import type {
   RemoteCommentReply,
   RemoteCommentThread,
-} from '../../../host/contract.js';
+} from '../../../../host/contract.js';
 import { snapshotRemote } from '@kirby/core/plan';
-import { usePlan, usePlanControls } from '../../lib/plan/plan.js';
-import { useRepo } from '../../lib/repo-context.js';
-import { useReply, useSetResolved } from '../../lib/data/mutations.js';
+import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
+import { useRepo } from '../../../lib/repo-context.js';
+import { useReply, useSetResolved } from '../../../lib/data/mutations.js';
 import {
   firstNonEmptyLine,
   threadExpanded,
   threadLocation,
-} from '../../lib/diff/thread-model.js';
-import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
-import { Avatar } from '../ui/avatar.js';
-import { Badge } from '../ui/badge.js';
+} from '../../../lib/diff/thread-model.js';
+import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
+import { Avatar } from '../../ui/avatar.js';
+import { Badge } from '../../ui/badge.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
-import { PlanAttachment, PlanControls } from './PlanControls.js';
+import { PlanAttachment, PlanControls } from '../PlanControls.js';
 import { ThreadFooter } from './ThreadFooter.js';
 
 /**

@@ -11,23 +11,23 @@ import type { DiffLine } from '@kirby/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../../host/contract.js';
-import { expandIndices } from '../../lib/diff/diff-model.js';
-import { useDiffOptions } from '../../lib/diff/diff-options.js';
+} from '../../../../host/contract.js';
+import { expandIndices } from '../../../lib/diff/diff-model.js';
+import { useDiffOptions } from '../../../lib/diff/diff-options.js';
 import {
   buildFlatDiff,
   estimateRowHeight,
   type FileDisplayState,
   type FlatRow,
-} from '../../lib/diff/diff-virtual.js';
+} from '../../../lib/diff/diff-virtual.js';
 import {
   cellHighlight,
   lineHighlight,
   useFileAnalyses,
-} from '../../lib/diff/highlight.js';
-import { useTheme } from '../../lib/theme.js';
-import { CommentBlock, OrphanBlock } from './CommentBlock.js';
-import { ConversationPanel } from './ConversationPanel.js';
+} from '../../../lib/diff/highlight.js';
+import { useTheme } from '../../../lib/theme.js';
+import { CommentBlock, OrphanBlock } from '../comments/CommentBlock.js';
+import { ConversationPanel } from '../comments/ConversationPanel.js';
 import { DiffFileHeader } from './DiffFileHeader.js';
 import { FoldRow, HunkRow, SplitCell, UnifiedRow } from './diff-rows.js';
 

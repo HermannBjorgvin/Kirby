@@ -18,7 +18,7 @@ import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Skeleton } from '../ui/skeleton.js';
 import { Tip } from '../ui/tooltip.js';
-import { CommentMarkdown } from './CommentMarkdown.js';
+import { CommentMarkdown } from './comments/CommentMarkdown.js';
 
 /**
  * The PR overview: title, meta, full description, and the review

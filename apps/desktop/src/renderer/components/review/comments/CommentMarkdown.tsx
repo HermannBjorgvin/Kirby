@@ -5,13 +5,13 @@ import remarkGfm from 'remark-gfm';
 import {
   useHighlightedCodeBlock,
   type LineTokens,
-} from '../../lib/diff/highlight.js';
-import { useCommentImage } from '../../lib/data/queries.js';
-import { useTheme } from '../../lib/theme.js';
-import { cn } from '../../lib/utils.js';
-import { Button } from '../ui/button.js';
-import { Dialog, DialogContent, DialogTitle } from '../ui/dialog.js';
-import { Skeleton } from '../ui/skeleton.js';
+} from '../../../lib/diff/highlight.js';
+import { useCommentImage } from '../../../lib/data/queries.js';
+import { useTheme } from '../../../lib/theme.js';
+import { cn } from '../../../lib/utils.js';
+import { Button } from '../../ui/button.js';
+import { Dialog, DialogContent, DialogTitle } from '../../ui/dialog.js';
+import { Skeleton } from '../../ui/skeleton.js';
 
 /**
  * Markdown body for PR comments.

@@ -9,11 +9,11 @@ import type { PlanItem } from '@kirby/core/plan';
 import { type Mode } from '../../lib/review/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
-import { DiffPane } from './DiffPane.js';
-import { type DiffJumpHandle } from './VirtualDiffList.js';
+import { DiffPane } from './diff/DiffPane.js';
+import { type DiffJumpHandle } from './diff/VirtualDiffList.js';
 import { OverviewPane } from './OverviewPane.js';
 import { PlanPane } from './PlanPane.js';
-import { ReviewStepper } from './ReviewStepper.js';
+import { ReviewStepper } from './drafts/ReviewStepper.js';
 
 /**
  * One layer of the stack. Hidden rather than unmounted, so a pane's

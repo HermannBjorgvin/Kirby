@@ -12,19 +12,19 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
-import { cn } from '../../lib/utils.js';
+import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
+import { cn } from '../../../lib/utils.js';
 import {
   SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_DOT,
-} from '../../lib/review/severity.js';
-import { Badge } from '../ui/badge.js';
-import { Button } from '../ui/button.js';
-import { Tip } from '../ui/tooltip.js';
-import { CommentMarkdown } from './CommentMarkdown.js';
+} from '../../../lib/review/severity.js';
+import { Badge } from '../../ui/badge.js';
+import { Button } from '../../ui/button.js';
+import { Tip } from '../../ui/tooltip.js';
+import { CommentMarkdown } from '../comments/CommentMarkdown.js';
 import { DraftEditor } from './DraftEditor.js';
-import { SnippetView } from './SnippetView.js';
+import { SnippetView } from '../diff/SnippetView.js';
 import { useStepperShortcuts } from './use-stepper-shortcuts.js';
 
 /**

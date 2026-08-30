@@ -4,8 +4,8 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
-import type { CommentListItem } from '../../components/review/CommentsList.js';
-import type { DiffJumpHandle } from '../../components/review/VirtualDiffList.js';
+import type { CommentListItem } from '../../components/review/comments/CommentsList.js';
+import type { DiffJumpHandle } from '../../components/review/diff/VirtualDiffList.js';
 import {
   buildCommentRows,
   navIndexOf,

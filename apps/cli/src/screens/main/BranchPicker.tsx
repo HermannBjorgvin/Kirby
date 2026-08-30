@@ -11,7 +11,7 @@ import {
   useSidebar,
 } from '@kirby/app-core';
 import { computeScrollWindow } from '@kirby/core';
-import { handleBranchPickerInput } from '../main/branch-picker-input.js';
+import { handleBranchPickerInput } from './branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({
   filter,

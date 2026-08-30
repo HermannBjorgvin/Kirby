@@ -2,20 +2,20 @@ import { CheckIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { DiffLine } from '@kirby/diff';
-import type { ReviewComment } from '../../../host/contract.js';
+import type { ReviewComment } from '../../../../host/contract.js';
 import {
   orderDraftsForReview,
   severityCounts,
   snippetAround,
-} from '../../lib/diff/diff-model.js';
+} from '../../../lib/diff/diff-model.js';
 import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/data/mutations.js';
-import { useRepo } from '../../lib/repo-context.js';
-import { errorMessage } from '../../lib/utils.js';
-import { Button } from '../ui/button.js';
+} from '../../../lib/data/mutations.js';
+import { useRepo } from '../../../lib/repo-context.js';
+import { errorMessage } from '../../../lib/utils.js';
+import { Button } from '../../ui/button.js';
 import { StepCard } from './ReviewStepCard.js';
 
 /**

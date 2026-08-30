@@ -34,7 +34,7 @@ import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Tip } from '../ui/tooltip.js';
 import { ContentPane } from './ContentPane.js';
-import { type FileEntry } from './FileTree.js';
+import { type FileEntry } from './diff/FileTree.js';
 import { BranchHeader, PrHeader } from './PrHeader.js';
 import { ReviewRail } from './ReviewRail.js';
 

@@ -1,9 +1,9 @@
 import type {
   RemoteCommentThread,
   ReviewComment,
-} from '../../../host/contract.js';
-import { cn } from '../../lib/utils.js';
-import { DraftCard } from './DraftCard.js';
+} from '../../../../host/contract.js';
+import { cn } from '../../../lib/utils.js';
+import { DraftCard } from '../drafts/DraftCard.js';
 import { ThreadCard } from './ThreadCard.js';
 
 /**

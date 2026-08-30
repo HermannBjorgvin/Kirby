@@ -488,6 +488,7 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/main.tsx                   — Entry point, root component
   src/input-handlers.ts          — Settings/controls input handlers (keybind-driven state transitions)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
+  src/models/                    — Pure view-models behind those components (sidebar-layout, comment-card-model, pr-badge-model)
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
@@ -499,7 +500,11 @@ apps/desktop/                    — Electron GUI shell over @kirby/app-core (ki
   src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
     styles.css                   — Design tokens (VS Code-style light/dark palette, type scale) — components use tokens only
     components/ui/               — shadcn-style primitives (radix-ui + cva + lucide): button, dialog, command, select…
-    components/                  — TitleBar, StatusBar, CommandPalette, sidebar/, editor/ (tabs), review/, settings/, terminal/
+    components/                  — TitleBar, StatusBar, CommandPalette, sidebar/, editor/ (tabs), settings/, terminal/
+    components/review/           — the review workspace shell: PrWorkspace, PrHeader, ReviewRail(+Sections), ContentPane, OverviewPane, PlanPane/PlanControls
+    components/review/comments/  — reviewer threads: ThreadCard, CommentsList, CommentMarkdown, ConversationPanel…
+    components/review/diff/      — the viewer: DiffPane, VirtualDiffList, diff-rows, FileTree, SnippetView…
+    components/review/drafts/    — the agent's drafts + walkthrough: DraftCard, DraftEditor, ReviewStepper…
     lib/                         — grouped by subsystem, not one flat folder (see below)
     lib/data/                    — queries.ts (TanStack Query over window.kirby), mutations.ts, query-keys.ts
     lib/diff/                    — diff-model.ts (fold, split pairing), diff-virtual.ts, word-diff.ts, highlight.ts, thread-model.ts

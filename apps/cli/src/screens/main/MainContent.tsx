@@ -1,5 +1,5 @@
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { BranchPicker } from '../sessions/BranchPicker.js';
+import { BranchPicker } from './BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
 import { ControlsPanel } from '../../components/ControlsPanel.js';
 import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';

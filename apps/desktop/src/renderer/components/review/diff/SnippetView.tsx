@@ -1,9 +1,9 @@
 import { useMemo, type ReactNode } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import { lineKey } from '../../lib/diff/diff-model.js';
-import { useFileAnalysis, type LineTokens } from '../../lib/diff/highlight.js';
-import { useTheme } from '../../lib/theme.js';
-import { cn } from '../../lib/utils.js';
+import { lineKey } from '../../../lib/diff/diff-model.js';
+import { useFileAnalysis, type LineTokens } from '../../../lib/diff/highlight.js';
+import { useTheme } from '../../../lib/theme.js';
+import { cn } from '../../../lib/utils.js';
 import { LineContent, ROW_BG, SignCell } from './diff-rows.js';
 
 function SnippetRow({

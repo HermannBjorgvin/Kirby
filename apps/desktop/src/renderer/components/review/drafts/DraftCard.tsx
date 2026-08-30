@@ -9,33 +9,33 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
+import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
 import { snapshotLocal } from '@kirby/core/plan';
-import { usePlan, usePlanControls } from '../../lib/plan/plan.js';
-import { useRepo } from '../../lib/repo-context.js';
+import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
+import { useRepo } from '../../../lib/repo-context.js';
 import {
   useDeleteDraft,
   usePostDrafts,
   useUpdateDraft,
-} from '../../lib/data/mutations.js';
-import { cn, errorMessage, relativeTime } from '../../lib/utils.js';
-import { Badge } from '../ui/badge.js';
-import { Button } from '../ui/button.js';
+} from '../../../lib/data/mutations.js';
+import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
+import { Badge } from '../../ui/badge.js';
+import { Button } from '../../ui/button.js';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select.js';
-import { Textarea } from '../ui/textarea.js';
+} from '../../ui/select.js';
+import { Textarea } from '../../ui/textarea.js';
 import {
   SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_RAIL,
-} from '../../lib/review/severity.js';
-import { CommentMarkdown } from './CommentMarkdown.js';
-import { PlanAttachment, PlanControls } from './PlanControls.js';
+} from '../../../lib/review/severity.js';
+import { CommentMarkdown } from '../comments/CommentMarkdown.js';
+import { PlanAttachment, PlanControls } from '../PlanControls.js';
 
 /**
  * The footer of a draft that is not being edited. Every button is

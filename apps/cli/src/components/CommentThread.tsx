@@ -15,7 +15,7 @@ import {
   replyHeaderSpans,
   threadHeaderSpans,
   type HeaderSpan,
-} from './comment-card-model.js';
+} from '../models/comment-card-model.js';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //

@@ -4,8 +4,8 @@ import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
-import { CommentsList, type CommentListItem } from './CommentsList.js';
-import { FileTree, type FileEntry } from './FileTree.js';
+import { CommentsList, type CommentListItem } from './comments/CommentsList.js';
+import { FileTree, type FileEntry } from './diff/FileTree.js';
 import {
   AgentSection,
   PlanSection,

@@ -4,9 +4,9 @@ import {
   ChevronRightIcon,
   EyeOffIcon,
 } from 'lucide-react';
-import type { CollapseReason } from '../../lib/diff/diff-model.js';
-import { cn } from '../../lib/utils.js';
-import { Tip } from '../ui/tooltip.js';
+import type { CollapseReason } from '../../../lib/diff/diff-model.js';
+import { cn } from '../../../lib/utils.js';
+import { Tip } from '../../ui/tooltip.js';
 
 const COLLAPSE_LABEL: Record<Exclude<CollapseReason, null>, string> = {
   large: 'large diff',
