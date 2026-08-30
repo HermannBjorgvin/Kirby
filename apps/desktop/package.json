@@ -158,7 +158,8 @@
         "options": {
           "commands": [
             "chmod +x apps/desktop/dist/launcher.mjs",
-            "npm publish --tag beta apps/desktop/dist"
+            "npm publish --tag beta apps/desktop/dist",
+            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby-desktop"
           ],
           "parallel": false
         }

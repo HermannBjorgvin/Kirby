@@ -372,7 +372,7 @@ reorders). Six files are affected and are **listed by name in
 `eslint.config.mjs`** with the rule turned off, because the code is
 right as written — `finally` is how you release a loading flag — and a
 list is more honest than a refactor. The rule stays on everywhere else,
-so a *new* file entering that state gets reported instead of joining
+so a _new_ file entering that state gets reported instead of joining
 the list quietly. `react-doctor` is not compiler-powered and is the way
 to check what those six actually contain.
 
@@ -766,7 +766,9 @@ desktop already bundles.
    npx nx run desktop:publish
    ```
 
-   `cli:publish` runs `build` → `prepare-publish.mjs` → `npm publish --tag beta apps/cli/dist`; `desktop:publish` runs `build` → `prepare-install.mjs` → `npm publish --tag beta apps/desktop/dist`. The `--tag beta` flag keeps releases off the default `latest` dist-tag so users must explicitly opt in with `@beta`.
+   `cli:publish` runs `build` → `prepare-publish.mjs` → `npm publish --tag beta apps/cli/dist` → `dist-tag-latest.mjs`; `desktop:publish` runs `build` → `prepare-install.mjs` → `npm publish --tag beta apps/desktop/dist` → `dist-tag-latest.mjs`.
+
+   **Each release carries both `beta` and `latest`.** A single publish can set only one tag, so the publish sets `beta` — the install path both READMEs document, live the moment the version exists — and `scripts/dist-tag-latest.mjs` moves `latest` onto the same version immediately after. Without that second call npm leaves `latest` behind, and a prerelease version is never resolved by a plain `npm install -g <pkg>`, so anyone omitting `@beta` would silently get an older release. The script takes the version from `assertVersionsMatch()` rather than an argument, so it cannot tag a version that was never published.
 
 ### Desktop packaging notes
 

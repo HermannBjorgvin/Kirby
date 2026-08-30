@@ -131,7 +131,8 @@
         "options": {
           "commands": [
             "node apps/cli/scripts/prepare-publish.mjs",
-            "npm publish --tag beta apps/cli/dist"
+            "npm publish --tag beta apps/cli/dist",
+            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby"
           ],
           "parallel": false
         }
