@@ -287,16 +287,46 @@ extend it. Beyond `typescript-eslint` strict + `react-hooks` v7
 (recommended, at **error** — that is the React team's compiler-powered
 analysis, and it passes clean), it enforces four groups.
 
+**Write file globs unanchored, or a whole project silently opts out.**
+`apps/cli-e2e`, `apps/desktop-e2e` and `apps/cli-wterm-host` build
+their configs by spreading the root one, and ESLint **re-bases a
+relative glob onto the config that spreads it** — so a block scoped
+`files: ['apps/**/*.ts']` becomes `apps/cli-e2e/apps/**/*.ts` there and
+matches nothing. Every size budget and the entire type-aware block
+therefore did not apply to ~8k lines of Playwright suite, including
+`no-floating-promises`, in the code most made of promises. The globs
+are `**/*.{ts,tsx}` and `**/src/**/*.{ts,tsx}` now, which survive the
+re-basing. Blocks meant for one project (the Ink rules, the renderer
+import rules) stay anchored on purpose — there, matching nothing
+elsewhere is the point. Check a new block with
+`cd apps/desktop-e2e && npx eslint --print-config <file>` rather than
+by reading the glob.
+
+**Warnings fail the build — check exit codes, not output.** The
+inferred lint target is `eslint .`, which exits 0 with warnings
+present, so for a long time every budget above was advisory and a
+`nx run-many -t lint` exit code proved nothing. `nx.json`
+`targetDefaults.lint` now overrides the command to
+`eslint . --max-warnings 0` (the inferred per-project `cwd` survives
+the override, which is what makes it correct), and `lint-staged` runs
+`eslint --fix --max-warnings 0`. Verified by mutation: a
+complexity-21 function added to a `desktop-e2e` file — a spot that
+previously escaped both the glob and the exit code — fails the target
+with exit 1.
+
 **Size and shape budgets — warnings, and a ratchet.** `max-lines` 300
-(blank lines and comments excluded), `complexity` 20, `max-depth` 4 at
+(blank lines and comments excluded), `complexity` 18, `max-depth` 4 at
 error. These are set where they bound what gets _added_ rather than
 where they would be comfortable: a file grows past 300 lines and a
-function past 20 branches one plausible edit at a time, and nobody
-reviews that as growth. **Both lists are now empty** — no file exceeds
-300 and no function exceeds 20 — so the next tightening is real:
-`complexity` to 15 then 12, and `max-lines` below 300. At `complexity`
-10 it reports 90 functions, which is a list nobody acts on. Two files
-carry a 900-line ceiling instead
+function past 18 branches one plausible edit at a time, and nobody
+reviews that as growth. **Both lists are empty**, so the next notch is
+a real decision rather than a cleanup. Measured, so pick from the
+numbers instead of guessing: of 1187 functions, 919 score under 5, and
+the count over a candidate ceiling is 9 at 16, **16 at 15**, 22 at 14,
+45 at 12 and 77 at 10 — the last being a list nobody acts on. Of 341
+files, 3 exceed 300 (all three the deliberately exempted ones), 18
+exceed 250 and 41 exceed 200. Two files carry a 900-line ceiling
+instead
 (`libs/vcs/*/provider.ts`, `keybindings/registry.ts`): they are a REST
 surface and an action catalog, and splitting either spreads one lookup
 table across files. Specs are exempt from `max-lines` only.
@@ -309,6 +339,34 @@ deliberate fire-and-forget expressible — `void doThing()` puts the
 intent on the page. Also `no-misused-promises`, `await-thenable`, and
 `switch-exhaustiveness-check` (a `default` counts), which catches the
 "added a union member, missed one of its switches" half-landing.
+Joined later, each measured at or near zero first so they only bound
+what gets added: `no-unsafe-call` and `no-unsafe-argument` (the last
+step of an `any` escaping a `JSON.parse` and being invoked),
+`consistent-type-exports`, `prefer-promise-reject-errors`,
+`return-await` (`in-try-catch`: returning a promise from inside `try`
+escapes the `catch` written to handle it) and `no-deprecated`.
+
+**React Compiler blind spots — `react-hooks/todo` is on for a reason.**
+react-hooks v7 is React Compiler analysis wearing a lint plugin, and
+when the compiler cannot lower a function it **abandons it**: every
+other rule in the plugin goes quiet for that file, reporting nothing no
+matter what the code does. `recommended` leaves the one rule that says
+so (`todo`) off, which is how two render-phase ref writes sat unflagged
+under `react-hooks/refs` set to `error` — copy either line into a fresh
+file and it errors instantly. `try/finally` is the common trigger (also
+a conditional inside `try/catch`, and some member-expression
+reorders). Six files are affected and are **listed by name in
+`eslint.config.mjs`** with the rule turned off, because the code is
+right as written — `finally` is how you release a loading flag — and a
+list is more honest than a refactor. The rule stays on everywhere else,
+so a *new* file entering that state gets reported instead of joining
+the list quietly. `react-doctor` is not compiler-powered and is the way
+to check what those six actually contain.
+
+Note the same shape of gap in `react/no-array-index-key`: it only sees
+an index arriving as a `.map()` parameter, so a hand-rolled loop
+counter used as a key reads as an ordinary variable and passes. A clean
+run means "no obvious ones".
 
 **Ink rules** (`tools/eslint-plugin-ink.mjs`, TUI only). Ink enforces
 its layout contract at _runtime_ by throwing, so a bad component
@@ -319,13 +377,25 @@ and `commands/**`, which legitimately own exiting. The rules resolve
 components through their import, so a renamed `Text` still counts and a
 non-Ink `Box` does not.
 
-These are local because the obvious dependency does not work:
-`eslint-plugin-react-doctor` ships 22 `ink-*` rules that, enabled at
-error, report nothing against a file violating three of them outright
-— under both its ESLint bridge and native oxlint. The rest of that
-plugin is also a poor fit here: 61% of what `recommended` reports on
-this codebase comes from two rules premised on React Compiler, which
-we do not run.
+These are local because the obvious dependency still does not cover
+them. `eslint-plugin-react-doctor` ships 22 `ink-*` rules; at **0.9.12
+two of them work** (`ink-no-raw-text`, `ink-no-layout-inside-text`),
+which is a change from when this was last measured and they reported
+nothing at all. Against one file violating three rules, scoped so both
+plugins' globs apply, ours reports 3 and react-doctor 2 — it misses
+`ink-no-bare-process-exit` — and our messages name the runtime failure
+rather than the rule. Keep the local plugin; re-measure rather than
+assuming either direction.
+
+The rest of that plugin remains a poor fit: of 593 reports from
+`recommended` (581 rules) across this codebase, **65% is two rules
+premised on React Compiler**, which we do not run — 206
+`react-compiler-no-manual-memoization` and 179
+`jsx-no-new-function-as-prop` — and 83% once `jsx-max-depth` and
+`only-export-components` are added. The residue is worth reading
+periodically, though: it is not compiler-powered, so it sees into the
+blind spots below, and it found the two live render-phase ref writes
+plus a derived-`useState` there.
 
 **Test hygiene.** `@vitest/eslint-plugin` on `*.spec.*`;
 `eslint-plugin-playwright` covers the e2e suites from their own
@@ -333,8 +403,10 @@ configs. `vitest/no-focused-tests` is the one that matters — a stray
 `.only` leaves CI green while running one test, which is worse than a
 red build because nothing signals it.
 
-Everything except `max-depth` and the Ink and vitest rules is a
-**warning**. The app predated the budgets, so the point was a downward
+Everything except `max-depth`, `no-param-reassign` and the Ink and
+vitest rules is a **warning** — which, now that the target passes
+`--max-warnings 0`, is a distinction in reporting rather than in
+consequence. The app predated the budgets, so the point was a downward
 ratchet rather than a wall — and the ratchet has arrived. Current
 standing, across all 17 projects (`nx run-many -t lint --all`): **0
 errors, 0 warnings**. Measure with `--all`: the three e2e suites lint
