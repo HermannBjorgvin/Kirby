@@ -1,11 +1,18 @@
 import { Box, Text } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { useSessionData } from '../context/SessionContext.js';
-import { useRunningTabs } from '../hooks/useRunningTabs.js';
+import {
+  useSessionData,
+  runningTabsFromItems,
+  useSidebar,
+} from '@kirby/app-core';
+import {
+  getItemKey,
+  getSpawnedAt,
+  tabDigit,
+  type RunningSessionItem,
+} from '@kirby/core';
+import { useMemo } from 'react';
 import { theme } from '../theme.js';
-import { getItemKey } from '../types.js';
-import { useSidebar } from '../context/SidebarContext.js';
-import { tabDigit, type RunningSessionItem } from '../utils/running-tabs.js';
 
 const MAX_LABEL_CHARS = 16;
 
@@ -29,9 +36,14 @@ function tabLabel(
 }
 
 export function SessionTabBar() {
-  const { tabs, numbers } = useRunningTabs();
   const { items, selectedIndex } = useSidebar();
   const { sessionPrMap } = useSessionData();
+  // Same computation as app-core's useRunningTabs, but fed explicitly
+  // so the component only depends on barrel exports (test-mockable).
+  const { tabs, numbers } = useMemo(
+    () => runningTabsFromItems(items, getSpawnedAt),
+    [items]
+  );
 
   // `numbers` is already capped at MAX_TABS by tabNumberMap(), so its
   // size is the cap — deriving from it keeps the two in sync instead of

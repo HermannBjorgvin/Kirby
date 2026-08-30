@@ -1,11 +1,13 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem, AgentSession } from '../types.js';
-import type { SidebarContextValue } from '../context/SidebarContext.js';
-import type { SessionDataContextValue } from '../context/SessionContext.js';
+import type { SidebarItem, AgentSession } from '@kirby/core';
+import type { SidebarContextValue } from '@kirby/app-core';
+import type { SessionDataContextValue } from '@kirby/app-core';
+// vi.mock calls are hoisted above imports, so a static import is
+// still fully mocked.
+import { SessionTabBar } from './SessionTabBar.js';
 
 // Stub the hooks/registries the component reads. Each test installs
 // its own values before rendering — this avoids spinning up the full
@@ -18,20 +20,19 @@ let sessionValue: Partial<SessionDataContextValue> = {};
 // is a no-op, so order matches `items` declaration).
 let spawnedAtMap = new Map<string, number>();
 
-vi.mock('../context/SidebarContext.js', () => ({
+vi.mock('@kirby/app-core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useSidebar: () => sidebarValue,
-}));
-
-vi.mock('../context/SessionContext.js', () => ({
   useSessionData: () => sessionValue,
 }));
 
-vi.mock('../pty-registry.js', () => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => spawnedAtMap.get(name),
 }));
 
-// Imported AFTER vi.mock — required so the mocks are wired in.
-const { SessionTabBar } = await import('./SessionTabBar.js');
+// vi.mock calls are hoisted above imports, so a static import is
+// still fully mocked.
 
 // ── Fixtures ─────────────────────────────────────────────────────
 

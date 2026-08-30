@@ -50,7 +50,7 @@ async function createSessionViaBranchPicker(
   // Branch picker closes first (setCreating(false) is sync); worktree
   // creation is async. Wait for the picker to close before asserting
   // the session row.
-  await expect(term.getByText('Branch Picker').first()).not.toBeVisible();
+  await expect(term.getByText('Branch Picker').first()).toBeHidden();
 
   // Wait for the session row in any icon state (selected or not, running or not).
   await expect(sidebarLocator(term.page, waitForTitle).any()).toBeVisible({
@@ -121,6 +121,6 @@ test.describe('@integration Session Sort Selection', () => {
     // 6. Confirm selection is NOT on the wrong session (color-support).
     await expect(
       sidebarLocator(kirby.term.page, 'Add color support').selected()
-    ).not.toBeVisible();
+    ).toBeHidden();
   });
 });

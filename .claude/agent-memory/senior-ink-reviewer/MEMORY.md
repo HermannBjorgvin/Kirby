@@ -33,6 +33,19 @@
 - Components use `memo()` appropriately: TerminalView, BranchPicker, ReviewPane, TabBar
 - overflow="hidden" + wrap="truncate" on TerminalView for content clipping
 
+## Layout arithmetic lives in several places — check before adding a copy
+
+- `@kirby/core` `utils/diff-scroll.ts` owns `diffViewportHeight(paneRows)` =
+  `max(1, paneRows - 3)` and says in its docblock that keeping the constant in
+  one place is the point. Three hand-rolled copies exist anyway
+  (`screens/main/diff-viewer-input.ts`, `screens/main/DiffFileViewerContainer.tsx`,
+  `screens/reviews/diff-viewer-viewport.ts`). Any new viewport code should call
+  the core helper.
+- Two unrelated `sidebar-model.ts` + `.spec.ts` pairs now exist:
+  `apps/cli/src/components/` (TUI row heights + scroll window) and
+  `apps/desktop/src/renderer/lib/` (PR status indicator, pending removals).
+  Always path-qualify when referring to either.
+
 ## Recurring Issues
 
 - Shell injection risk in git functions using string interpolation
@@ -47,4 +60,9 @@
 - 2026-02-26: Reviewed xterm-headless removal, self-managed worktrees feature
 - 2026-03-07: Full codebase review of apps/cli/src/ -- see detailed findings in review output
 - 2026-03-17: Session sort bug fix review -- sorted index extracted to `utils/session-sort.ts`, stale closure concern flagged
+- 2026-08-29: Reviewed the 8-commit max-lines split. CLI half is behaviour-preserving
+  (verified `OrphanPrRow`+`ReviewPrRow` -> `PrItemRow` lossless; scroll/viewport
+  arithmetic character-faithful). Gaps: `sidebarAvailableLines` untested,
+  `PlanAnnotateInput` duplicated in `DiffListCommentItem`, a 4th copy of
+  `paneRows - 3`. See [reviewing_technique.md](reviewing_technique.md).
 - 2026-04-13: Modal + Toast system review -- Toast has setTimeout leak + cap-evict timer leak; flagged Ink 6.8 inset props are dead code (not implemented in runtime). See [ink_6_8_inset_props.md](ink_6_8_inset_props.md).

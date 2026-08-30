@@ -1,0 +1,38 @@
+{
+  "name": "@kirby/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./plan": {
+      "types": "./src/plan.ts",
+      "import": "./src/plan.ts",
+      "default": "./src/plan.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "nx": {
+    "name": "@kirby/core",
+    "tags": [
+      "type:lib",
+      "scope:core"
+    ]
+  },
+  "dependencies": {
+    "@kirby/diff": "*",
+    "@kirby/logger": "*",
+    "@kirby/review-comments": "*",
+    "@kirby/terminal": "*",
+    "@kirby/terminal-pty": "*",
+    "@kirby/terminal-tmux": "*",
+    "@kirby/vcs-core": "*",
+    "@kirby/worktree-manager": "*"
+  }
+}

@@ -1,9 +1,31 @@
 export type ReviewDecision =
   | 'approved'
   | 'changes-requested'
+  | 'waiting-for-author'
+  | 'rejected'
   | 'no-response'
   | 'declined';
+
+/** The blocking (non-approving, non-neutral) decisions. `rejected` is
+ *  the hard no (ADO vote −10); `waiting-for-author` (ADO −5) and
+ *  GitHub's `changes-requested` are the softer "not yet" — UIs color
+ *  the soft ones as warnings and only `rejected` as destructive. */
+export function isBlockingDecision(d: ReviewDecision): boolean {
+  return (
+    d === 'changes-requested' || d === 'waiting-for-author' || d === 'rejected'
+  );
+}
 export type BuildStatusState = 'succeeded' | 'failed' | 'pending' | 'none';
+
+/** The current user's review verdict on a PR, in ADO's vocabulary
+ *  (votes 10 / 5 / −5 / −10). GitHub has a smaller one: both approve
+ *  variants submit an approving review, and both wait-for-author and
+ *  reject submit a changes-requested review. */
+export type ReviewVerdict =
+  | 'approve'
+  | 'approve-with-suggestions'
+  | 'wait-for-author'
+  | 'reject';
 
 export interface PullRequestReviewer {
   displayName: string;
@@ -106,6 +128,22 @@ export interface VcsProvider {
     thread: RemoteCommentThread,
     resolved: boolean
   ): Promise<void>;
+
+  /** Full PR description/body. A separate fetch because list payloads
+   *  truncate (ADO caps at ~400 chars) or omit it. */
+  fetchPullRequestDescription?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number
+  ): Promise<string>;
+
+  /** Cast the current user's review verdict on a PR. */
+  submitReviewVerdict?(
+    auth: Record<string, string>,
+    project: Record<string, string>,
+    prId: number,
+    verdict: ReviewVerdict
+  ): Promise<void>;
 }
 
 // ── Remote comment threads (fetched from VCS providers) ───────────
@@ -202,4 +240,15 @@ export interface AppConfig {
    *  tmux session that survives Kirby restarts. Cannot be changed
    *  while sessions are active. */
   terminalBackend?: 'pty' | 'tmux';
+  /** Recently opened repositories, newest first. Shared naming so any
+   *  Kirby shell (TUI, desktop) reads and writes the same list. */
+  recentRepos?: RecentRepo[];
+}
+
+/** One entry of {@link AppConfig.recentRepos}. */
+export interface RecentRepo {
+  /** Absolute path to the repository working directory. */
+  cwd: string;
+  /** ms-since-epoch of the most recent open. */
+  lastOpenedAt: number;
 }

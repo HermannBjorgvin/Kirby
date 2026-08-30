@@ -1,0 +1,283 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Design tokens ──────────────────────────────────────────────────
+ * VS Code-flavoured neutral palette with a single blue accent. Every
+ * component reads these tokens (never raw palette classes) so light
+ * and dark stay consistent and the whole app retunes from one place.
+ */
+:root {
+  --radius: 0.375rem;
+
+  --background: #ffffff;
+  --foreground: #1f1f1f;
+  --card: #ffffff;
+  --card-foreground: #1f1f1f;
+  --popover: #ffffff;
+  --popover-foreground: #1f1f1f;
+  --primary: #005fb8;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #1f1f1f;
+  --muted: #f3f3f3;
+  --muted-foreground: #616161;
+  --accent: #ececec;
+  --accent-foreground: #1f1f1f;
+  --destructive: #cf222e;
+  --destructive-foreground: #ffffff;
+  --border: #e5e5e5;
+  --input: #cecece;
+  --ring: #005fb8;
+
+  --sidebar: #f8f8f8;
+  --sidebar-foreground: #3b3b3b;
+  --sidebar-border: #e5e5e5;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-accent-foreground: #1f1f1f;
+  --sidebar-active: #e4e6f1;
+
+  --titlebar: #f8f8f8;
+  --statusbar: #f8f8f8;
+  --statusbar-foreground: #3b3b3b;
+  --tab: #f8f8f8;
+  --tab-active: #ffffff;
+
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --info: #0969da;
+
+  --diff-add-bg: #e6ffec;
+  --diff-add-gutter: #ccffd8;
+  --diff-del-bg: #ffebe9;
+  --diff-del-gutter: #ffd7d5;
+  --diff-hunk-bg: #ddf4ff;
+  --diff-hunk-fg: #0969da;
+
+  --term-bg-app: #ffffff;
+}
+
+.dark {
+  --background: #1f1f1f;
+  --foreground: #cccccc;
+  --card: #1f1f1f;
+  --card-foreground: #cccccc;
+  --popover: #222222;
+  --popover-foreground: #cccccc;
+  --primary: #0078d4;
+  --primary-foreground: #ffffff;
+  --secondary: #2b2b2b;
+  --secondary-foreground: #cccccc;
+  --muted: #2b2b2b;
+  --muted-foreground: #9d9d9d;
+  --accent: #2a2d2e;
+  --accent-foreground: #ffffff;
+  --destructive: #f85149;
+  --destructive-foreground: #ffffff;
+  --border: #2b2b2b;
+  --input: #3c3c3c;
+  --ring: #0078d4;
+
+  --sidebar: #181818;
+  --sidebar-foreground: #cccccc;
+  --sidebar-border: #2b2b2b;
+  --sidebar-accent: #2a2d2e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-active: #37373d;
+
+  --titlebar: #181818;
+  --statusbar: #181818;
+  --statusbar-foreground: #cccccc;
+  --tab: #181818;
+  --tab-active: #1f1f1f;
+
+  --success: #3fb950;
+  --warning: #d29922;
+  --info: #58a6ff;
+
+  --diff-add-bg: rgba(46, 160, 67, 0.15);
+  --diff-add-gutter: rgba(46, 160, 67, 0.3);
+  --diff-del-bg: rgba(248, 81, 73, 0.15);
+  --diff-del-gutter: rgba(248, 81, 73, 0.3);
+  --diff-hunk-bg: rgba(56, 139, 253, 0.15);
+  --diff-hunk-fg: #79c0ff;
+
+  --term-bg-app: #1f1f1f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
+
+  --color-titlebar: var(--titlebar);
+  --color-statusbar: var(--statusbar);
+  --color-statusbar-foreground: var(--statusbar-foreground);
+  --color-tab: var(--tab);
+  --color-tab-active: var(--tab-active);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --color-diff-add: var(--diff-add-bg);
+  --color-diff-add-gutter: var(--diff-add-gutter);
+  --color-diff-del: var(--diff-del-bg);
+  --color-diff-del-gutter: var(--diff-del-gutter);
+  --color-diff-hunk: var(--diff-hunk-bg);
+  --color-diff-hunk-fg: var(--diff-hunk-fg);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  /* Compact desktop type scale: 11 / 12 / 13 / 15 / 18 / 22 */
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.75rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.8125rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 0.9375rem;
+  --text-lg--line-height: 1.375rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.5rem;
+  --text-2xl: 1.375rem;
+  --text-2xl--line-height: 1.75rem;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell,
+    'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Fira Code', 'Cascadia Code',
+    'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-base antialiased;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  /* Slim, theme-aware scrollbars everywhere (VS Code style). */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--foreground) 18%, transparent);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--foreground) 30%, transparent);
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Electron custom title bar: the bar drags the window, controls don't. */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Agent-activity spinner: a spinning rainbow ring shown on tabs
+     whose agent is actively producing output (the TUI's sidebar
+     RainbowSpinner, translated to pixels). */
+  @keyframes agent-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .agent-spinner {
+    background: conic-gradient(
+      from 0deg,
+      #f87171,
+      #fbbf24,
+      #34d399,
+      #60a5fa,
+      #c084fc,
+      #f87171
+    );
+    mask: radial-gradient(farthest-side, transparent 52%, #000 60%);
+    -webkit-mask: radial-gradient(farthest-side, transparent 52%, #000 60%);
+    animation: agent-spin 0.9s linear infinite;
+  }
+
+  /* Subtle attention pulse for a tab whose agent just finished a work
+     streak and hasn't been looked at yet (the TUI's title flash):
+     blinks toward — but not all the way to — the active-tab shade. */
+  @keyframes tab-attention {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: color-mix(in srgb, var(--tab-active) 85%, var(--tab));
+    }
+  }
+  /* steps(1, end): hold each keyframe value and jump — a binary blink
+     like the TUI's title flash, no easing. */
+  .tab-attention {
+    animation: tab-attention 1.4s steps(1, end) infinite;
+  }
+}
+
+/* ── Terminal (wterm) ──────────────────────────────────────────────
+ * Flatten the library's "widget" look (radius, shadow, padding) so the
+ * terminal fills its pane edge-to-edge and follows the app theme.
+ */
+.wterm {
+  --term-bg: var(--term-bg-app);
+  --term-font-family: var(--font-mono);
+  --term-font-size: 13px;
+  --term-row-height: 18px;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 8px 12px;
+  height: 100%;
+  width: 100%;
+}
+.wterm.theme-light {
+  --term-bg: var(--term-bg-app);
+}

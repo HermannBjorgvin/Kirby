@@ -1,12 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { PullRequestComments } from '@kirby/vcs-core';
+import {
+  deriveBuildStatus,
+  deriveBuildRunStatus,
+  combineBuildStatus,
+  fetchPrBuildStatus,
+} from './build-status.js';
 import {
   parseReviewer,
   parsePullRequest,
   countActiveThreads,
-  deriveBuildStatus,
   fetchActivePullRequests,
   fetchActiveCommentCount,
-  fetchPrBuildStatus,
   parseAdoRemoteUrl,
   azureDevOpsProvider,
   fetchAuthenticatedUserEmail,
@@ -61,12 +67,12 @@ describe('parseReviewer', () => {
     expect(parseReviewer({ vote: 5 }).decision).toBe('approved');
   });
 
-  it('maps vote -5 to changes-requested', () => {
-    expect(parseReviewer({ vote: -5 }).decision).toBe('changes-requested');
+  it('maps vote -5 to waiting-for-author', () => {
+    expect(parseReviewer({ vote: -5 }).decision).toBe('waiting-for-author');
   });
 
-  it('maps vote -10 to changes-requested', () => {
-    expect(parseReviewer({ vote: -10 }).decision).toBe('changes-requested');
+  it('maps vote -10 to rejected', () => {
+    expect(parseReviewer({ vote: -10 }).decision).toBe('rejected');
   });
 
   it('maps vote 0 to no-response', () => {
@@ -253,6 +259,385 @@ describe('deriveBuildStatus', () => {
     expect(
       deriveBuildStatus([{ state: 'notApplicable' }, { state: 'succeeded' }])
     ).toBe('succeeded');
+  });
+
+  /**
+   * Azure appends to a pull request's status list instead of replacing
+   * entries, so the history of a check is all present at once. Counting
+   * every entry made a single failure permanent: a pull request that
+   * failed and was then fixed reported `failed` until it was merged, and
+   * refreshing could never clear it because the response really did
+   * still contain the failure.
+   *
+   * These are all about which entry speaks for a check. The cases above
+   * stay valid — statuses with no context are distinct checks, and each
+   * still gets its own vote.
+   */
+  const ci = { genre: 'continuous-integration', name: 'build' };
+  const cd = { genre: 'continuous-integration', name: 'deploy' };
+
+  it('lets a re-run supersede the failure it replaced', () => {
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('does not let an old success mask a current failure', () => {
+    // The same ordering hazard in the other direction: newest wins,
+    // whichever way the check went.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('failed');
+  });
+
+  it('is not fooled by the newest entry arriving first in the list', () => {
+    // Azure does not promise an order, so position must not decide it.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('keeps one vote per check, so a second check still counts', () => {
+    // Deduping must not collapse genuinely different checks: the fixed
+    // build should not hide the deploy that is still failing.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'failed',
+          context: ci,
+          id: 1,
+          creationDate: '2026-01-01T10:00:00Z',
+        },
+        {
+          state: 'succeeded',
+          context: ci,
+          id: 3,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: cd,
+          id: 2,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+      ])
+    ).toBe('failed');
+  });
+
+  it('prefers the later iteration even when the stale run reported last', () => {
+    // A new push re-runs the check, and the previous iteration's verdict
+    // is about code that is no longer there. A slow pipeline can post
+    // that stale verdict after the new one, giving it the higher id —
+    // so the iteration has to outrank both the id and the clock, or
+    // finishing an old run turns a good pull request red.
+    expect(
+      deriveBuildStatus([
+        {
+          state: 'succeeded',
+          context: ci,
+          iterationId: 2,
+          id: 5,
+          creationDate: '2026-01-01T11:00:00Z',
+        },
+        {
+          state: 'failed',
+          context: ci,
+          iterationId: 1,
+          id: 9,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('orders by date when there are no ids to compare', () => {
+    expect(
+      deriveBuildStatus([
+        { state: 'failed', context: ci, creationDate: '2026-01-01T11:00:00Z' },
+        {
+          state: 'succeeded',
+          context: ci,
+          creationDate: '2026-01-01T12:00:00Z',
+        },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('falls back to the id when two entries share a timestamp', () => {
+    // A fast pipeline can post twice inside the same second.
+    const at = '2026-01-01T10:00:00Z';
+    expect(
+      deriveBuildStatus([
+        { state: 'failed', context: ci, id: 1, creationDate: at },
+        { state: 'succeeded', context: ci, id: 2, creationDate: at },
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('groups on the whole context, not just the name', () => {
+    // Same name under a different genre is a different check.
+    expect(
+      deriveBuildStatus([
+        { state: 'succeeded', context: { genre: 'a', name: 'check' }, id: 2 },
+        { state: 'failed', context: { genre: 'b', name: 'check' }, id: 1 },
+      ])
+    ).toBe('failed');
+  });
+
+  it('lets notApplicable retract the same check’s earlier verdict', () => {
+    // Taken from a real pull request: a coverage check failed on the
+    // first iteration and then reported "not applicable" on the second.
+    // Its last word is that it does not apply, so it should leave no
+    // mark at all rather than the failure standing.
+    expect(
+      deriveBuildStatus([
+        { state: 'failed', context: ci, id: 3, iterationId: 1 },
+        { state: 'notApplicable', context: ci, id: 5, iterationId: 2 },
+      ])
+    ).toBe('none');
+  });
+
+  it('does not let notApplicable silence a different check', () => {
+    // Retraction is scoped to the check that issued it.
+    expect(
+      deriveBuildStatus([
+        { state: 'notApplicable', context: ci, id: 2 },
+        { state: 'failed', context: cd, id: 1 },
+      ])
+    ).toBe('failed');
+  });
+
+  it('treats a missing state as queued, not as no result', () => {
+    // Azure omits `state` when it is `notSet` (zero in its enum); those
+    // entries are the ones describing a check that has been queued.
+    expect(deriveBuildStatus([{ state: undefined, context: ci, id: 1 }])).toBe(
+      'pending'
+    );
+  });
+
+  /**
+   * A real response, recorded from a pull request that showed red in
+   * Kirby while Azure showed nothing wrong, then anonymised. It is one
+   * coverage check reporting five times across two iterations: queued
+   * twice, failed on iteration 1, pending on iteration 2, and finally
+   * not applicable — so the failure it is remembered by belongs to code
+   * that has since been replaced, and the check has since withdrawn.
+   *
+   * Kept as a file rather than hand-written objects because the details
+   * that broke us are the ones nobody thinks to invent: `state` missing
+   * altogether on the queued entries, two iterations interleaved, and a
+   * retraction arriving one second after a pending.
+   */
+  it('reads a recorded Azure response the way Azure does', () => {
+    // Read rather than imported: keeping it out of the module graph
+    // means the recording stays a data file, with no bearing on how the
+    // project compiles.
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-failed-then-not-applicable.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+
+    expect(deriveBuildStatus(recorded.value)).toBe('none');
+  });
+
+  it('follows one check through four iterations to its withdrawal', () => {
+    // A second recording, from a pull request whose coverage check ran
+    // on every push: failed twice on iterations it has since moved past,
+    // went pending on the current one, then withdrew a second later.
+    // Ten entries, one context, and the only thing that speaks for the
+    // check is its last word.
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-four-iterations-withdrawn.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+
+    expect(recorded.value).toHaveLength(10);
+    expect(deriveBuildStatus(recorded.value)).toBe('none');
+  });
+
+  it('still counts context-less entries separately', () => {
+    // Nothing to group on, so the pre-existing behaviour holds.
+    expect(
+      deriveBuildStatus([{ state: 'succeeded' }, { state: 'failed' }])
+    ).toBe('failed');
+  });
+});
+
+/**
+ * Pipeline runs, the other half of a pull request's CI.
+ *
+ * Azure builds a pull request against `refs/pull/{id}/merge`, and this
+ * repository reports CI that way while posting only a coverage check to
+ * the status list — a check that withdraws when the build fails, since
+ * a failed build produces nothing to measure. Reading the statuses
+ * alone therefore reported "no CI result" for a pull request that was
+ * plainly red.
+ */
+describe('deriveBuildRunStatus', () => {
+  const run = (over: Record<string, unknown> = {}) => ({
+    id: 1,
+    status: 'completed',
+    result: 'succeeded',
+    definition: { id: 442, name: 'nx' },
+    ...over,
+  });
+
+  it('reads a completed run by its result', () => {
+    expect(deriveBuildRunStatus([run()])).toBe('succeeded');
+    expect(deriveBuildRunStatus([run({ result: 'failed' })])).toBe('failed');
+  });
+
+  it('treats a run that has not finished as in progress', () => {
+    expect(deriveBuildRunStatus([run({ status: 'inProgress' })])).toBe(
+      'pending'
+    );
+    expect(
+      deriveBuildRunStatus([run({ status: 'notStarted', result: undefined })])
+    ).toBe('pending');
+  });
+
+  it('does not call a partial success green', () => {
+    // Something in the pipeline broke; there is no warning state to put
+    // it in, and green would hide it.
+    expect(deriveBuildRunStatus([run({ result: 'partiallySucceeded' })])).toBe(
+      'failed'
+    );
+  });
+
+  it('draws no conclusion from a cancelled run', () => {
+    expect(deriveBuildRunStatus([run({ result: 'canceled' })])).toBe('none');
+  });
+
+  it('lets a re-run supersede the failure it replaced', () => {
+    // Same hazard as the status list: a definition that ran twice must
+    // be spoken for by its newest run only.
+    expect(
+      deriveBuildRunStatus([
+        run({ id: 10, result: 'failed' }),
+        run({ id: 20, result: 'succeeded' }),
+      ])
+    ).toBe('succeeded');
+  });
+
+  it('keeps one verdict per definition', () => {
+    // A green pipeline must not hide a different one that is red.
+    expect(
+      deriveBuildRunStatus([
+        run({ id: 20, result: 'succeeded', definition: { id: 1, name: 'a' } }),
+        run({ id: 10, result: 'failed', definition: { id: 2, name: 'b' } }),
+      ])
+    ).toBe('failed');
+  });
+
+  it('returns none when nothing ran', () => {
+    expect(deriveBuildRunStatus([])).toBe('none');
+  });
+
+  it('reads a recorded failing build', () => {
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/pr-builds-failed.json', import.meta.url),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildRunStatus>[0] };
+    expect(deriveBuildRunStatus(recorded.value)).toBe('failed');
+  });
+});
+
+describe('combineBuildStatus', () => {
+  it('lets a failure on either route win', () => {
+    expect(combineBuildStatus('failed', 'succeeded')).toBe('failed');
+    expect(combineBuildStatus('succeeded', 'failed')).toBe('failed');
+    expect(combineBuildStatus('none', 'failed')).toBe('failed');
+  });
+
+  it('reports work in progress ahead of a success', () => {
+    expect(combineBuildStatus('succeeded', 'pending')).toBe('pending');
+  });
+
+  it('reports a success over silence', () => {
+    expect(combineBuildStatus('none', 'succeeded')).toBe('succeeded');
+  });
+
+  it('stays silent only when both routes are', () => {
+    expect(combineBuildStatus('none', 'none')).toBe('none');
+  });
+
+  it('surfaces the failing build behind a withdrawn coverage check', () => {
+    // The recorded pair from the pull request that reported no CI while
+    // failing: the statuses withdrew seconds after the build went red.
+    const statuses = JSON.parse(
+      readFileSync(
+        new URL(
+          './__fixtures__/pr-statuses-withdrawn-after-build-failure.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildStatus>[0] };
+    const builds = JSON.parse(
+      readFileSync(
+        new URL('./__fixtures__/pr-builds-failed.json', import.meta.url),
+        'utf8'
+      )
+    ) as { value: Parameters<typeof deriveBuildRunStatus>[0] };
+
+    expect(deriveBuildStatus(statuses.value)).toBe('none');
+    expect(
+      combineBuildStatus(
+        deriveBuildStatus(statuses.value),
+        deriveBuildRunStatus(builds.value)
+      )
+    ).toBe('failed');
   });
 });
 
@@ -635,7 +1020,9 @@ describe('azureDevOpsProvider', () => {
           ],
         })
       );
-      // PR 42: threads then statuses
+      // Each pull request costs three calls, issued in this order:
+      // threads, statuses, then pipeline runs.
+      // PR 42
       mockFetch.mockResolvedValueOnce(
         jsonResponse({
           value: [
@@ -647,11 +1034,13 @@ describe('azureDevOpsProvider', () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ value: [{ state: 'succeeded' }] })
       );
-      // PR 43: threads then statuses
+      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
+      // PR 43
       mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ value: [{ state: 'failed' }] })
       );
+      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
 
       const result = await azureDevOpsProvider.fetchPullRequests(
         { pat: 'test-pat' },
@@ -691,6 +1080,73 @@ describe('azureDevOpsProvider', () => {
         url: 'https://dev.azure.com/myorg/myproject/_git/myrepo/pullrequest/43',
       });
     });
+  });
+
+  // Placed after the ordered test above: this one warms the
+  // provider's module-level identity cache, which would otherwise
+  // let that test skip two fetches and misalign its queue.
+  it('reports a failing pipeline even when the status list is clean', async () => {
+    // The reported bug: a pull request showed no CI result while its
+    // build was red. The coverage check that posts statuses withdraws
+    // when the build fails, so the status list alone says nothing.
+    //
+    // Answers by URL rather than in call order: the provider caches
+    // identity lookups between tests, so how many calls precede these
+    // is not something a test should depend on.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('connectionData'))
+        return Promise.resolve(
+          jsonResponse({
+            authenticatedUser: {
+              properties: { Account: { $value: 'me@example.com' } },
+            },
+          })
+        );
+      if (url.includes('/pullrequests?'))
+        return Promise.resolve(
+          jsonResponse({
+            value: [
+              {
+                pullRequestId: 77013,
+                sourceRefName: 'refs/heads/feat-a',
+                isDraft: false,
+                reviewers: [],
+              },
+            ],
+          })
+        );
+      if (url.includes('/statuses'))
+        return Promise.resolve(
+          jsonResponse({ value: [{ state: 'notApplicable' }] })
+        );
+      if (url.includes('/build/builds'))
+        return Promise.resolve(
+          jsonResponse({
+            value: [
+              {
+                id: 556771,
+                status: 'completed',
+                result: 'failed',
+                definition: { id: 442, name: 'nx' },
+              },
+            ],
+          })
+        );
+      return Promise.resolve(jsonResponse({ value: [] }));
+    });
+
+    const result = await azureDevOpsProvider.fetchPullRequests(
+      { pat: 'test-pat' },
+      testProject
+    );
+    expect(result['feat-a']?.buildStatus).toBe('failed');
+
+    // and it asked the merge ref, not the source branch, which is
+    // where Azure actually builds a pull request
+    const urls = mockFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes('refs%2Fpull%2F77013%2Fmerge'))).toBe(
+      true
+    );
   });
 
   // ── Mention rewriting ─────────────────────────────────────────
@@ -961,5 +1417,288 @@ describe('azureDevOpsProvider', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.threads[0].comments[0].body).toBe('@Alice hi');
     });
+  });
+});
+
+// ── Thread anchoring ────────────────────────────────────────────────
+//
+// `fetchCommentThreads` is the only route to the thread transform, so
+// these drive the provider with a single canned /threads response and
+// assert where each thread lands. The payloads are the shapes ADO
+// actually emits: live line refs, refs that have gone null with only
+// `trackingCriteria` left, and a file-anchored thread carrying no line
+// refs at all.
+
+describe('fetchCommentThreads thread anchoring', () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    _clearMentionCacheForTests();
+  });
+
+  const comment = {
+    id: 7,
+    commentType: 'text',
+    content: 'take a look',
+    author: { displayName: 'Alice' },
+    publishedDate: '2026-04-24T00:00:00Z',
+  };
+
+  async function transform(threads: unknown[]): Promise<PullRequestComments> {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ value: threads }));
+    return azureDevOpsProvider.fetchCommentThreads!(
+      { pat: 't' },
+      testProject,
+      1
+    );
+  }
+
+  it('anchors a right-side thread to its current line refs', async () => {
+    const { threads } = await transform([
+      {
+        id: 1,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 10 },
+          rightFileEnd: { line: 12 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads).toHaveLength(1);
+    expect(threads[0]).toMatchObject({
+      id: '1',
+      file: 'src/foo.ts',
+      lineStart: 10,
+      lineEnd: 12,
+      side: 'RIGHT',
+      isOutdated: false,
+      isResolved: false,
+      canResolve: true,
+    });
+  });
+
+  it('anchors to the left side when only the left refs are present', async () => {
+    const { threads } = await transform([
+      {
+        id: 2,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          leftFileStart: { line: 4 },
+          leftFileEnd: { line: 5 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 4,
+      lineEnd: 5,
+      side: 'LEFT',
+      isOutdated: false,
+    });
+  });
+
+  it('prefers the right side when both sides carry refs', async () => {
+    const { threads } = await transform([
+      {
+        id: 3,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          leftFileStart: { line: 4 },
+          leftFileEnd: { line: 4 },
+          rightFileStart: { line: 9 },
+          rightFileEnd: { line: 9 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 9,
+      lineEnd: 9,
+      side: 'RIGHT',
+      isOutdated: false,
+    });
+  });
+
+  it('falls back to trackingCriteria and marks the thread outdated', async () => {
+    const { threads } = await transform([
+      {
+        id: 4,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origRightFileStart: { line: 30 },
+            origRightFileEnd: { line: 31 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 30,
+      lineEnd: 31,
+      side: 'RIGHT',
+      isOutdated: true,
+    });
+  });
+
+  it('falls back to the original left refs on a deleted line', async () => {
+    const { threads } = await transform([
+      {
+        id: 5,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origLeftFileStart: { line: 8 },
+            origLeftFileEnd: { line: 8 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 8,
+      lineEnd: 8,
+      side: 'LEFT',
+      isOutdated: true,
+    });
+  });
+
+  it('keeps a live line ref in preference to the tracked original', async () => {
+    const { threads } = await transform([
+      {
+        id: 6,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 42 },
+          rightFileEnd: { line: 42 },
+        },
+        pullRequestThreadContext: {
+          trackingCriteria: {
+            origRightFileStart: { line: 30 },
+            origRightFileEnd: { line: 30 },
+          },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      lineStart: 42,
+      lineEnd: 42,
+      isOutdated: false,
+    });
+  });
+
+  it('pins a file-anchored thread with no line refs to line 1, outdated', async () => {
+    const { threads } = await transform([
+      {
+        id: 7,
+        status: 'active',
+        threadContext: { filePath: '/src/foo.ts' },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0]).toMatchObject({
+      file: 'src/foo.ts',
+      lineStart: 1,
+      lineEnd: 1,
+      side: 'RIGHT',
+      isOutdated: true,
+    });
+  });
+
+  it('routes a thread with no file to the general comments', async () => {
+    const { threads, generalComments } = await transform([
+      { id: 8, status: 'active', comments: [comment] },
+    ]);
+    expect(threads).toHaveLength(0);
+    expect(generalComments).toHaveLength(1);
+    expect(generalComments[0]).toMatchObject({
+      file: null,
+      lineStart: null,
+      lineEnd: null,
+      side: 'RIGHT',
+      isOutdated: false,
+    });
+  });
+
+  it('drops a thread whose comments are all system comments', async () => {
+    const { threads, generalComments } = await transform([
+      {
+        id: 9,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [{ id: 1, commentType: 'system', content: 'voted 10' }],
+      },
+    ]);
+    expect(threads).toHaveLength(0);
+    expect(generalComments).toHaveLength(0);
+  });
+
+  it('keeps the human comments of a mixed thread and maps their fields', async () => {
+    const { threads } = await transform([
+      {
+        id: 10,
+        status: 'active',
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [
+          { id: 1, commentType: 'system', content: 'updated the PR' },
+          {
+            id: 2,
+            commentType: 'text',
+            content: 'please rename',
+            author: { uniqueName: 'bob@example.com' },
+            publishedDate: '2026-04-24T09:00:00Z',
+          },
+          { id: 3, commentType: 'text', content: 'no author here' },
+        ],
+      },
+    ]);
+    expect(threads[0].comments).toEqual([
+      {
+        id: '2',
+        author: 'bob@example.com',
+        body: 'please rename',
+        createdAt: '2026-04-24T09:00:00Z',
+      },
+      { id: '3', author: 'unknown', body: 'no author here', createdAt: '' },
+    ]);
+  });
+
+  it.each([
+    ['fixed', true],
+    ['wontFix', true],
+    ['closed', true],
+    ['byDesign', true],
+    ['active', false],
+    ['pending', false],
+    [undefined, false],
+  ])('maps thread status %s to isResolved %s', async (status, expected) => {
+    const { threads } = await transform([
+      {
+        id: 11,
+        status,
+        threadContext: {
+          filePath: '/src/foo.ts',
+          rightFileStart: { line: 1 },
+          rightFileEnd: { line: 1 },
+        },
+        comments: [comment],
+      },
+    ]);
+    expect(threads[0].isResolved).toBe(expected);
   });
 });

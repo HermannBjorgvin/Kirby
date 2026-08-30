@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 // Vim preset for the keybindings this test uses (s settings, c branch
 // picker, K kill, x delete). `aiCommand: 'bash'` is an unrecognized
@@ -26,8 +27,8 @@ test.describe('Terminal Input', () => {
     // Close settings. Can't assert on 'Settings' visibility because
     // getByText is case-insensitive and matches both the panel title and
     // the sidebar keybind hint ("s settings"). Check for the AI Tool
-    // label (panel-only).
-    await kirby.term.page.waitForTimeout(1_000);
+    // label (panel-only) — asserted open above, so Escape has something
+    // to close.
     await kirby.term.press('Escape');
     await expect(kirby.term.getByText('AI Tool').first()).not.toBeVisible({
       timeout: 5_000,
@@ -43,7 +44,11 @@ test.describe('Terminal Input', () => {
     });
 
     // Let React re-render so useInput closure captures the updated filter.
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      "Ink's useInput captured the old filter until the next render"
+    );
     await kirby.term.press('Enter');
 
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
@@ -60,14 +65,22 @@ test.describe('Terminal Input', () => {
     ).toBeVisible({ timeout: 10_000 });
 
     // Give bash a moment to initialize.
-    await kirby.term.page.waitForTimeout(1_000);
+    await settleFor(
+      kirby.term.page,
+      1_000,
+      'bash to reach its first prompt, which prints nothing to wait on'
+    );
 
     // ── 5. Type a command and verify output ──────────────────────
     // Use tr to lowercase the output so command and output are distinct:
     //   command line: echo KIRBY_RAW_TEST | tr A-Z a-z
     //   output line:  kirby_raw_test
     await kirby.term.type('echo KIRBY_RAW_TEST | tr A-Z a-z');
-    await kirby.term.page.waitForTimeout(500);
+    // Wait for the PTY to echo the line rather than for an interval:
+    // Enter landing mid-line would run a truncated command.
+    await expect(kirby.term.getByText('KIRBY_RAW_TEST').first()).toBeVisible({
+      timeout: 10_000,
+    });
     await kirby.term.press('Enter');
 
     // 1) Typed command visible (input was forwarded to bash)
@@ -94,7 +107,11 @@ test.describe('Terminal Input', () => {
 
     // ── 7. Kill the agent session ────────────────────────────────
     await kirby.term.type('K');
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      'the kill to finish before the branch delete asks about it'
+    );
 
     // ── 8. Delete the branch ─────────────────────────────────────
     await kirby.term.type('x');
@@ -103,7 +120,11 @@ test.describe('Terminal Input', () => {
     });
 
     await kirby.term.type(branchName);
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      'the typed branch name to reach the confirm field before Enter'
+    );
     await kirby.term.press('Enter');
 
     // Session disappears.

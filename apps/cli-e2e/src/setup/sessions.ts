@@ -1,4 +1,5 @@
 import { expect, type KirbyTerm } from '../fixtures/kirby.js';
+import { settleFor } from './waits.js';
 
 /**
  * Create a session via the branch picker. After this returns, the
@@ -27,7 +28,11 @@ export async function createSession(
     timeout: 5_000,
   });
   // Let React re-render so useInput closure captures the updated filter.
-  await term.page.waitForTimeout(2_000);
+  await settleFor(
+    term.page,
+    2_000,
+    "Ink's useInput captured the old filter until the next render"
+  );
   await term.press('Enter');
   await expect(term.getByText('Branch Picker')).not.toBeVisible({
     timeout: 5_000,

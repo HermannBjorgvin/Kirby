@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/vitest",
+    "types": ["vitest/globals", "vitest/importMeta", "vite/client", "node"],
+    "forceConsistentCasingInFileNames": true
+  },
+  // Deliberately no `references` to tsconfig.app.json, and the app's own
+  // sources are included instead.
+  //
+  // Referencing the app project makes this one resolve every import
+  // through the .d.ts files that project emits, which means a build
+  // ordering problem shows up here as TS6305 ("output file has not been
+  // built from source file") for every spec in the project. That is a
+  // race on CI rather than a code error, and it depends on how the
+  // scheduler happens to interleave `tsc --build` runs — it passed
+  // locally from a clean tree while failing consistently in CI.
+  //
+  // Type-checking the sources directly costs one extra pass over a
+  // small app and removes the failure mode entirely: there is no
+  // emitted artifact between the specs and the code they test.
+  "include": [
+    "vitest.config.mts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ]
+}

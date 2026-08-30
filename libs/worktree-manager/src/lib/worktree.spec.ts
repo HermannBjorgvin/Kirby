@@ -3,24 +3,30 @@ import { resolve as pathResolve } from 'node:path';
 import {
   createWorktree,
   removeWorktree,
-  deleteBranch,
   canRemoveBranch,
+  rebaseOntoMaster,
+} from './worktree.js';
+import { assertShellSafeRef, branchToSessionName } from './refs.js';
+import {
+  parseWorktrees,
+  listWorktrees,
+  worktreeSessionName,
+} from './worktree-list.js';
+import {
+  resetWorktreeResolver,
+  setWorktreeResolver,
+  createTemplateResolver,
+} from './worktree-resolver.js';
+import {
+  deleteBranch,
   listBranches,
   fetchRemote,
   listAllBranches,
-  parseWorktrees,
-  listWorktrees,
   fastForwardMainBranch,
   countConflicts,
-  rebaseOntoMaster,
   getMainBranch,
   resetMainBranchCache,
-  resetWorktreeResolver,
-  branchToSessionName,
-  worktreeSessionName,
-  setWorktreeResolver,
-  createTemplateResolver,
-} from './worktree.js';
+} from './branches.js';
 import { existsSync, readFileSync } from 'node:fs';
 
 vi.mock('./exec.js', () => ({
@@ -58,13 +64,15 @@ function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
   const cwd = process.cwd();
   const blocks = entries.map(({ branch, dir }) =>
     [
-      `worktree ${cwd}/${dir ?? `.claude/worktrees/${branchToSessionName(branch)}`}`,
+      `worktree ${cwd}/${
+        dir ?? `.claude/worktrees/${branchToSessionName(branch)}`
+      }`,
       'HEAD abc123',
       `branch refs/heads/${branch}`,
       '',
-    ].join('\n')
+    ].join('\0')
   );
-  return resolve(blocks.join('\n'));
+  return resolve(blocks.join('\0'));
 }
 
 beforeEach(() => {
@@ -175,9 +183,7 @@ describe('removeWorktree', () => {
         // Only the real on-disk path can be removed; the branch-derived
         // path does not exist and git errors out.
         if (command.includes(realDir)) return Promise.resolve(resolve());
-        return Promise.reject(
-          new Error("fatal: '...' is not a working tree")
-        );
+        return Promise.reject(new Error("fatal: '...' is not a working tree"));
       }
       return Promise.resolve(resolve());
     });
@@ -216,15 +222,13 @@ describe('removeWorktree', () => {
               'HEAD bbb222',
               'detached',
               '',
-            ].join('\n')
+            ].join('\0')
           )
         );
       }
       if (command.startsWith('git worktree remove')) {
         if (command.includes(realDir)) return Promise.resolve(resolve());
-        return Promise.reject(
-          new Error("fatal: '...' is not a working tree")
-        );
+        return Promise.reject(new Error("fatal: '...' is not a working tree"));
       }
       return Promise.resolve(resolve());
     });
@@ -396,7 +400,7 @@ describe('canRemoveBranch', () => {
     const wtPath = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
     const gitdir = `${process.cwd()}/.git/worktrees/investigate-ci-performance`;
     mockExec.mockResolvedValueOnce(
-      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\n'))
+      resolve([`worktree ${wtPath}`, 'HEAD bbb222', 'detached', ''].join('\0'))
     );
     mockReadFileSync.mockImplementation(((p: string) => {
       if (p === `${wtPath}/.git`) return `gitdir: ${gitdir}\n`;
@@ -468,7 +472,7 @@ describe('parseWorktrees', () => {
       'HEAD 789abc',
       'branch refs/heads/fix/bug',
       '',
-    ].join('\n');
+    ].join('\0');
 
     const result = parseWorktrees(output);
     expect(result).toHaveLength(3);
@@ -502,7 +506,7 @@ describe('parseWorktrees', () => {
       'HEAD f6d61737bd',
       'detached',
       '',
-    ].join('\n');
+    ].join('\0');
 
     const result = parseWorktrees(output);
     expect(result).toHaveLength(2);
@@ -515,7 +519,7 @@ describe('parseWorktrees', () => {
 
   it('should handle bare worktrees', () => {
     const output = ['worktree /home/user/repo', 'HEAD abc123', 'bare', ''].join(
-      '\n'
+      '\0'
     );
 
     const result = parseWorktrees(output);
@@ -545,7 +549,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -566,7 +570,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -615,7 +619,7 @@ describe('listWorktrees', () => {
           'HEAD 111222',
           'branch refs/heads/other',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -640,7 +644,7 @@ describe('listWorktrees', () => {
           'HEAD 789abc',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
 
@@ -662,7 +666,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'detached',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
     mockReadFileSync.mockImplementation(((p: string) => {
@@ -688,7 +692,7 @@ describe('listWorktrees', () => {
   it('should recover branch from rebase-apply when rebase-merge missing', async () => {
     const wtPath = `${cwd}/.claude/worktrees/feature-am`;
     mockExec.mockResolvedValueOnce(
-      resolve([`worktree ${wtPath}`, 'HEAD def456', 'detached', ''].join('\n'))
+      resolve([`worktree ${wtPath}`, 'HEAD def456', 'detached', ''].join('\0'))
     );
     mockReadFileSync.mockImplementation(((p: string) => {
       if (p === `${wtPath}/.git`) {
@@ -723,7 +727,7 @@ describe('listWorktrees', () => {
           'HEAD def456',
           'branch refs/heads/feature/auth',
           '',
-        ].join('\n')
+        ].join('\0')
       )
     );
     mockReadFileSync.mockImplementation(((p: string) => {
@@ -1107,5 +1111,52 @@ describe('WorktreeResolver', () => {
       expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
       expect(resolver.owns(`${base}-old/stale`)).toBe(false);
     });
+  });
+});
+
+describe('shell-safety guard for refs', () => {
+  it('accepts ordinary branch names', () => {
+    for (const ok of [
+      'main',
+      'feature/add-thing',
+      'release-1.2.3',
+      'user.name/fix_bug',
+      'ünicode-brañch',
+    ]) {
+      expect(() => assertShellSafeRef(ok)).not.toThrow();
+    }
+  });
+
+  // git check-ref-format permits all of these, but the shell acts on
+  // them once a ref is interpolated into a command string.
+  it('rejects refs carrying shell metacharacters', () => {
+    for (const bad of [
+      'evil`id`',
+      'evil$(id)',
+      'evil$HOME',
+      'evil"; id; "',
+      "evil'x",
+      'a&&b',
+      'a|b',
+      'a;b',
+      'a>b',
+      'a\nb',
+    ]) {
+      expect(() => assertShellSafeRef(bad)).toThrow(/unsafe branch name/);
+    }
+  });
+
+  it('names what it rejected', () => {
+    expect(() => assertShellSafeRef('/tmp/x`id`', 'worktree path')).toThrow(
+      /unsafe worktree path name/
+    );
+  });
+
+  it('is enforced by the operations that shell out', async () => {
+    await expect(createWorktree('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(deleteBranch('evil`id`', true)).rejects.toThrow(/unsafe/);
+    await expect(countConflicts('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(canRemoveBranch('evil`id`')).rejects.toThrow(/unsafe/);
+    await expect(removeWorktree('evil`id`')).rejects.toThrow(/unsafe/);
   });
 });

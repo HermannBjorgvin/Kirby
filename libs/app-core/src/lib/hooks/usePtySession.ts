@@ -1,0 +1,120 @@
+import { useEffect, useRef, useCallback, useState } from 'react';
+import type { MouseTrackingMode } from '@kirby/terminal';
+import { getSession } from '@kirby/core';
+import type { PtyEntry } from '@kirby/core';
+import { noteInput, noteResize } from '@kirby/core';
+
+export function usePtySession(
+  sessionName: string | null,
+  paneCols: number,
+  paneRows: number,
+  setPaneContent: (content: string) => void,
+  reconnectKey: number
+) {
+  const entryRef = useRef<PtyEntry | null>(null);
+  const renderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest-callback ref, written after commit rather than during
+  // render: the render-phase write is what makes a ref unsafe under
+  // concurrent rendering, and the only reader is a 16ms timer that
+  // cannot run before this effect has.
+  const setPaneContentRef = useRef(setPaneContent);
+  useEffect(() => {
+    setPaneContentRef.current = setPaneContent;
+  });
+  const [mouseMode, setMouseMode] = useState<MouseTrackingMode>('none');
+  const scrollOffsetRef = useRef(0);
+
+  const scheduleRender = useCallback(() => {
+    if (renderTimer.current) return;
+    renderTimer.current = setTimeout(() => {
+      renderTimer.current = null;
+      const entry = entryRef.current;
+      if (entry) {
+        const rendered = entry.emu.render(scrollOffsetRef.current);
+        if (entry.exited) {
+          setPaneContentRef.current(
+            rendered + `\n\n(process exited with code ${entry.exitCode ?? '?'})`
+          );
+        } else {
+          setPaneContentRef.current(rendered);
+        }
+        // Mirror child's mouse tracking mode
+        const mode = entry.emu.mouseTrackingMode;
+        setMouseMode((prev) => (prev !== mode ? mode : prev));
+      }
+    }, 16); // ~60fps
+  }, []);
+
+  useEffect(() => {
+    if (!sessionName) return;
+
+    const entry = getSession(sessionName);
+    if (!entry) {
+      setPaneContentRef.current('(press Tab to start session)');
+      return;
+    }
+
+    entryRef.current = entry;
+
+    // Subscribe to render events
+    const onRender = () => scheduleRender();
+    entry.emu.onRender(onRender);
+
+    // Initial render
+    scheduleRender();
+
+    return () => {
+      entry.emu.offRender(onRender);
+      if (renderTimer.current) {
+        clearTimeout(renderTimer.current);
+        renderTimer.current = null;
+      }
+      entryRef.current = null;
+    };
+  }, [sessionName, reconnectKey, scheduleRender]);
+
+  // Handle resize
+  useEffect(() => {
+    const entry = entryRef.current;
+    if (entry && !entry.exited) {
+      if (sessionName) noteResize(sessionName);
+      entry.pty.resize(paneCols, paneRows);
+      entry.emu.resize(paneCols, paneRows);
+      scheduleRender();
+    }
+  }, [paneCols, paneRows, scheduleRender, sessionName]);
+
+  const write = useCallback(
+    (data: string) => {
+      const entry = entryRef.current;
+      if (!entry || entry.exited || !sessionName) return;
+      // Reset scroll position on user input
+      scrollOffsetRef.current = 0;
+      noteInput(sessionName);
+      entry.pty.write(data);
+    },
+    [sessionName]
+  );
+
+  const scrollUp = useCallback(() => {
+    const entry = entryRef.current;
+    if (!entry) return;
+    const max = entry.emu.maxScrollback;
+    const next = Math.min(scrollOffsetRef.current + 3, max);
+    scrollOffsetRef.current = next;
+    scheduleRender();
+  }, [scheduleRender]);
+
+  const scrollDown = useCallback(() => {
+    const next = Math.max(scrollOffsetRef.current - 3, 0);
+    scrollOffsetRef.current = next;
+    scheduleRender();
+  }, [scheduleRender]);
+
+  return {
+    write,
+    mouseMode,
+    scrollUp,
+    scrollDown,
+  };
+}

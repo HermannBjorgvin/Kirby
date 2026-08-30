@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress, SidebarItem } from '@kirby/core';
 import type { SidebarInputCtx } from './input-types.js';
-import type { SidebarItem } from '../../types.js';
 
 // Mock the PTY registry — handleSidebarInput's tab-switch path now
 // orders running tabs by spawn time and gates the focus jump on the
@@ -9,18 +8,19 @@ import type { SidebarItem } from '../../types.js';
 // stand-in registry: a name present in it is a live PTY entry.
 // Individual tests set it to control order (and staleness).
 let spawnedAtMap = new Map<string, number>();
-vi.mock('../../pty-registry.js', () => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => spawnedAtMap.get(name),
   hasSession: (name: string) => spawnedAtMap.has(name),
   isSessionAlive: (name: string) => spawnedAtMap.has(name),
   killSession: vi.fn(),
 }));
 
-const { handleSidebarInput } = await import('./sidebar-input.js');
+import { handleSidebarInput } from './sidebar-input.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-function makeKey(): Key {
+function makeKey(): KeyPress {
   return {
     upArrow: false,
     downArrow: false,

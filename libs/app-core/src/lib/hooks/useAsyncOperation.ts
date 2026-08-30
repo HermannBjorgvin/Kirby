@@ -1,0 +1,176 @@
+import { useSyncExternalStore } from 'react';
+
+export type OperationName =
+  | 'sync'
+  | 'rebase'
+  | 'fetch-branches'
+  | 'create-worktree'
+  | 'delete'
+  | 'check-delete'
+  | 'start-session'
+  | 'open-editor'
+  | 'refresh-pr'
+  | 'post-comment'
+  | 'load-pr-files';
+
+// ── Module-local store ───────────────────────────────────────────
+//
+// Replaces the old useState<Set> + useRef<Set> double-store pattern.
+// The ref held the authoritative value; the state triggered renders
+// but lagged the ref by a tick. Now the mutable set IS the authority;
+// consumers read it through useSyncExternalStore.
+//
+// Copy-on-write on every mutation so the snapshot reference changes
+// exactly when the contents change — React detects this via identity
+// and re-renders subscribers.
+
+let inFlight = new Set<OperationName>();
+const listeners = new Set<() => void>();
+
+// Live promises for every `run()` op currently executing. Quit awaits
+// these so a force-exit doesn't abort a mid-flight git mutation
+// (worktree create/delete, rebase) and leave junk on disk. Read ops via
+// beginOp (diff loads) aren't tracked — aborting them loses nothing.
+const pendingRuns = new Set<Promise<void>>();
+
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function getSnapshot(): ReadonlySet<OperationName> {
+  return inFlight;
+}
+
+function notify(): void {
+  for (const cb of listeners) cb();
+}
+
+/**
+ * Where a failed operation is reported.
+ *
+ * `run` is called for its side effects and no caller awaits it, so a
+ * rejection had nowhere to go: Node treats an unhandled rejection as
+ * fatal, which turned a git call failing — no upstream, a locked index,
+ * an unreachable remote — into Kirby exiting. Failures come here
+ * instead and the shell decides how to show them.
+ */
+export type OperationErrorHandler = (
+  name: OperationName,
+  error: unknown
+) => void;
+
+let reportError: OperationErrorHandler = () => undefined;
+
+/** Install the handler. Returns a function restoring the previous one. */
+export function setOperationErrorHandler(
+  handler: OperationErrorHandler
+): () => void {
+  const previous = reportError;
+  reportError = handler;
+  return () => {
+    reportError = previous;
+  };
+}
+
+/**
+ * Serialized async operation runner. If an operation with `name` is
+ * already in flight, the call returns immediately without starting a
+ * second one. The cleanup runs in a `finally` so thrown errors still
+ * remove the op from the in-flight set.
+ *
+ * Never rejects: a failing `fn` is reported through the error handler,
+ * because every call site discards the returned promise.
+ */
+export async function run(
+  name: OperationName,
+  fn: () => Promise<void>
+): Promise<void> {
+  if (inFlight.has(name)) return;
+  inFlight = new Set(inFlight);
+  inFlight.add(name);
+  notify();
+  const task = (async () => {
+    try {
+      await fn();
+    } catch (err: unknown) {
+      reportError(name, err);
+    } finally {
+      inFlight = new Set(inFlight);
+      inFlight.delete(name);
+      notify();
+    }
+  })();
+  pendingRuns.add(task);
+  try {
+    await task;
+  } finally {
+    pendingRuns.delete(task);
+  }
+}
+
+/**
+ * Resolves once every `run()` op in flight at call time has settled
+ * (fulfilled or rejected). Ops started afterwards are not awaited. Quit
+ * uses this — bounded by its own grace timeout — so a git mutation can
+ * finish before the process force-exits.
+ */
+export async function settlePendingRuns(): Promise<void> {
+  await Promise.allSettled([...pendingRuns]);
+}
+
+/** Stable function — always reads the latest module-local set. */
+export function isRunning(name: OperationName): boolean {
+  return inFlight.has(name);
+}
+
+// Ref-counted variant of `run` for ops that can legitimately overlap
+// (e.g. loading diffs for different PRs). The op stays in `inFlight`
+// while at least one caller is active. Returned function is the "end"
+// callback — call it exactly once, ideally in a `finally`.
+const refCounts = new Map<OperationName, number>();
+
+export function beginOp(name: OperationName): () => void {
+  const cur = refCounts.get(name) ?? 0;
+  refCounts.set(name, cur + 1);
+  if (cur === 0) {
+    inFlight = new Set(inFlight);
+    inFlight.add(name);
+    notify();
+  }
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    const c = refCounts.get(name) ?? 0;
+    if (c <= 1) {
+      refCounts.delete(name);
+      inFlight = new Set(inFlight);
+      inFlight.delete(name);
+      notify();
+    } else {
+      refCounts.set(name, c - 1);
+    }
+  };
+}
+
+/** Test-only: drop all in-flight operations and notify subscribers. */
+export function __resetAsyncOperationsForTest(): void {
+  inFlight = new Set();
+  refCounts.clear();
+  pendingRuns.clear();
+  notify();
+}
+
+// ── Hook ─────────────────────────────────────────────────────────
+
+export function useAsyncOperation() {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  // Cast to `Set` for the public shape — consumers already treat it
+  // as read-only in practice, but the existing type signature promises
+  // `Set<OperationName>`. The snapshot is copy-on-write so writing to
+  // it would be a bug anyway.
+  return { run, isRunning, inFlight: snapshot as Set<OperationName> };
+}

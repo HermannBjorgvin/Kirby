@@ -3,27 +3,28 @@ import { useInput, Box } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
 import { Pane } from '../../components/Pane.js';
 import { SessionTabBar } from '../../components/SessionTabBar.js';
-import { useRunningTabs } from '../../hooks/useRunningTabs.js';
-import { useNavState, useNavActions } from '../../context/NavContext.js';
-import { useAsyncOps } from '../../context/AsyncOpsContext.js';
-import { useInactiveAlertWatcher } from '../../hooks/useInactiveAlertWatcher.js';
-import { dequeueOldest } from '../../inactive-alerts.js';
 import {
+  useRunningTabs,
+  useNavState,
+  useNavActions,
+  useAsyncOps,
+  useInactiveAlertWatcher,
   useBranchPickerState,
   useBranchPickerActions,
   useDeleteConfirmState,
   useDeleteConfirmActions,
   useSettingsState,
   useSettingsActions,
-} from '../../context/ModalContext.js';
-import { useLayout, LAYOUT } from '../../context/LayoutContext.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import { useKeybinds } from '../../context/KeybindContext.js';
-import { useSidebar } from '../../context/SidebarContext.js';
+  useLayout,
+  LAYOUT,
+  useSessionActions,
+  useConfig,
+  useKeybinds,
+  useSidebar,
+  usePaneReducer,
+} from '@kirby/app-core';
+import { dequeueOldest, getItemKey } from '@kirby/core';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
-import { usePaneReducer } from '../../hooks/usePaneReducer.js';
-import { getItemKey } from '../../types.js';
 import { handleConfirmInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';
 import { getMainFocused, getSidebarFocused, getPaneTitle } from './focus.js';

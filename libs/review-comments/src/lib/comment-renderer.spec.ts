@@ -4,14 +4,18 @@ import type { RemoteCommentThread } from '@kirby/vcs-core';
 import type { ReviewComment } from './types.js';
 import {
   type AnnotatedLine,
-  computeInsertionMap,
-  computeRemoteInsertionMap,
   getCommentPositions,
   interleaveComments,
+} from './comment-renderer.js';
+import {
+  computeInsertionMap,
+  computeRemoteInsertionMap,
+} from './comment-placement.js';
+import {
   buildRowMap,
   estimateCardRows,
   REPLY_INPUT_ROWS,
-} from './comment-renderer.js';
+} from './comment-rows.js';
 
 // Milestone 2 of the UX-parity plan: threads render as Ink cards. The
 // annotated-line stream now carries thread/comment objects directly

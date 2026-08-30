@@ -11,9 +11,10 @@ describe('PTY → TerminalEmulator integration', () => {
     const emu = new TerminalEmulator(80, 24);
 
     await new Promise<void>((resolve) => {
-      pty.onData(async (data) => {
-        await emu.write(data);
-      });
+      // xterm queues writes in arrival order, so not awaiting here
+      // preserves the sequence; the flush is what the delay below waits
+      // for.
+      pty.onData((data) => void emu.write(data));
       pty.onExit(() => {
         // Small delay to let final writes flush
         setTimeout(resolve, 50);
@@ -31,9 +32,7 @@ describe('PTY → TerminalEmulator integration', () => {
     const pty = new PtySession('cat', [], { cols: 80, rows: 24 });
     const emu = new TerminalEmulator(80, 24);
 
-    pty.onData(async (data) => {
-      await emu.write(data);
-    });
+    pty.onData((data) => void emu.write(data));
 
     // Wait for cat to start
     await new Promise((r) => setTimeout(r, 100));

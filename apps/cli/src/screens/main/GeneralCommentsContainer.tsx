@@ -1,10 +1,12 @@
 import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
-import { useSessionActions } from '../../context/SessionContext.js';
+import type {
+  TerminalLayout,
+  PaneModeValue,
+  DiffBundle,
+} from '@kirby/app-core';
+import { useSessionActions } from '@kirby/app-core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { DiffBundle } from '../../hooks/useDiffBundle.js';
 
 interface GeneralCommentsContainerProps {
   pane: PaneModeValue;
@@ -25,7 +27,47 @@ export function GeneralCommentsContainer({
 }: GeneralCommentsContainerProps) {
   const generalComments = diffBundle.remote.generalComments;
   const viewportHeight = Math.max(1, terminal.paneRows - 2);
+  const count = generalComments.length;
   const { flashStatus } = useSessionActions();
+
+  /** Move the cursor and keep it inside the viewport. */
+  const moveSelection = (delta: 1 | -1) => {
+    pane.setGeneralCommentsIndex((i) => {
+      const next = Math.min(Math.max(i + delta, 0), count - 1);
+      pane.setGeneralCommentsScrollOffset((off) => {
+        if (next < off) return next;
+        if (next >= off + viewportHeight) return next - viewportHeight + 1;
+        return off;
+      });
+      return next;
+    });
+  };
+
+  const startReply = () => {
+    const target = generalComments[pane.generalCommentsIndex];
+    if (!target) return;
+    pane.setReplyingToThreadId(target.id);
+    pane.setReplyBuffer('');
+  };
+
+  const toggleResolved = () => {
+    const target = generalComments[pane.generalCommentsIndex];
+    if (!target) return;
+    const newResolved = !target.isResolved;
+    flashStatus(newResolved ? 'Resolving thread...' : 'Reopening thread...');
+    diffBundle.remote
+      .toggleResolved(target.id, newResolved)
+      .then((success) => {
+        if (success) {
+          flashStatus(newResolved ? 'Thread resolved' : 'Thread reopened');
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        flashStatus(`Failed: ${msg}`);
+      });
+  };
+
   useInput(
     (input, key) => {
       // Reply mode bypass (Esc/Enter/text) — see apps/cli/src/utils/reply-mode.ts
@@ -43,55 +85,13 @@ export function GeneralCommentsContainer({
         pane.setPaneMode('pr-detail');
         return;
       }
-      const count = generalComments.length;
-      if ((input === 'j' || key.downArrow) && count > 0) {
-        pane.setGeneralCommentsIndex((i) => {
-          const next = Math.min(i + 1, count - 1);
-          pane.setGeneralCommentsScrollOffset((off) =>
-            next >= off + viewportHeight ? next - viewportHeight + 1 : off
-          );
-          return next;
-        });
-        return;
-      }
-      if ((input === 'k' || key.upArrow) && count > 0) {
-        pane.setGeneralCommentsIndex((i) => {
-          const next = Math.max(i - 1, 0);
-          pane.setGeneralCommentsScrollOffset((off) =>
-            next < off ? next : off
-          );
-          return next;
-        });
-        return;
-      }
-      if (input === 'r' && count > 0) {
-        const target = generalComments[pane.generalCommentsIndex];
-        if (target) {
-          pane.setReplyingToThreadId(target.id);
-          pane.setReplyBuffer('');
-        }
-        return;
-      }
-      if (input === 'v' && count > 0) {
-        const target = generalComments[pane.generalCommentsIndex];
-        if (!target) return;
-        const newResolved = !target.isResolved;
-        flashStatus(
-          newResolved ? 'Resolving thread...' : 'Reopening thread...'
-        );
-        diffBundle.remote
-          .toggleResolved(target.id, newResolved)
-          .then((success) => {
-            if (success) {
-              flashStatus(newResolved ? 'Thread resolved' : 'Thread reopened');
-            }
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            flashStatus(`Failed: ${msg}`);
-          });
-        return;
-      }
+      // Everything below acts on the selected thread, so an empty list
+      // has nothing for them to do.
+      if (count === 0) return;
+      if (input === 'j' || key.downArrow) moveSelection(1);
+      else if (input === 'k' || key.upArrow) moveSelection(-1);
+      else if (input === 'r') startReply();
+      else if (input === 'v') toggleResolved();
     },
     { isActive: !terminalFocused }
   );

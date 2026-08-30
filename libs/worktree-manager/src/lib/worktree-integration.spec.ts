@@ -9,20 +9,24 @@ import { mkdtempSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  listBranches,
   createWorktree,
   removeWorktree,
   canRemoveBranch,
-  listAllBranches,
-  listWorktrees,
-  fastForwardMainBranch,
-  countConflicts,
   rebaseOntoMaster,
-  resetMainBranchCache,
+} from './worktree.js';
+import { listWorktrees } from './worktree-list.js';
+import {
   resetWorktreeResolver,
   setWorktreeResolver,
   createTemplateResolver,
-} from './worktree.js';
+} from './worktree-resolver.js';
+import {
+  listBranches,
+  listAllBranches,
+  fastForwardMainBranch,
+  countConflicts,
+  resetMainBranchCache,
+} from './branches.js';
 
 // Collect temp dirs for cleanup
 const tempDirs: string[] = [];

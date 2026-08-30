@@ -1,18 +1,20 @@
 import { useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { partitionFiles } from '@kirby/diff';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { usePlan } from '../../context/PlanContext.js';
-import { planItemKey } from '../../plan/plan-types.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import type { DiffBundle } from '../../hooks/useDiffBundle.js';
+import type {
+  TerminalLayout,
+  PaneModeValue,
+  DiffBundle,
+} from '@kirby/app-core';
+import {
+  useKeybindResolve,
+  useSessionActions,
+  usePlan,
+  useDiffFileListViewModel,
+} from '@kirby/app-core';
 import { handleDiffFileListInput } from './main-input.js';
 
 interface DiffFileListContainerProps {
@@ -37,59 +39,26 @@ export function DiffFileListContainer({
   const keybinds = useKeybindResolve();
   const sessions = useSessionActions();
   const plan = usePlan();
-  const { config } = useConfig();
-  const treeMode = config.diffFileListTree === true;
 
-  const prId = selectedPr?.id;
-  const inPlanKeys = useMemo(() => {
-    const m = new Map<string, boolean>();
-    if (prId != null) {
-      for (const i of plan.list(prId)) {
-        m.set(planItemKey(i.kind, i.id), !!i.annotation);
-      }
-    }
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- plan.snapshot drives freshness
-  }, [prId, plan.snapshot]);
-
-  // In tree mode, sort files alphabetically by path so siblings group
-  // under the same dir. Hoisted here so the ordering is shared with
-  // the input handler — selection index must point at the same file
-  // the renderer highlights.
-  const orderedFiles = useMemo(
-    () =>
-      treeMode
-        ? [...diffBundle.files].sort((a, b) =>
-            a.filename.localeCompare(b.filename)
-          )
-        : diffBundle.files,
-    [diffBundle.files, treeMode]
-  );
-
-  const { normal: diffNormalFiles, skipped: diffSkippedFiles } = useMemo(
-    () => partitionFiles(orderedFiles),
-    [orderedFiles]
-  );
-  const fileCount = pane.showSkipped
-    ? diffNormalFiles.length + diffSkippedFiles.length
-    : diffNormalFiles.length;
-
-  // j/k walks files first, then extends into the comment cards. The
-  // unified list renders every thread as a card (buildDiffListItems
-  // caps nothing), so selection extends over all of them.
-  const generalThreads = diffBundle.remote.generalComments;
-  const diffDisplayCount = fileCount + generalThreads.length;
+  // Shell-agnostic derivations live in the app-core controller; this
+  // wrapper only adds TUI layout geometry and Ink input wiring.
+  const vm = useDiffFileListViewModel({ pane, selectedPr, diffBundle });
+  const {
+    treeMode,
+    inPlanKeys,
+    prId,
+    orderedFiles,
+    skippedFiles: diffSkippedFiles,
+    fileCount,
+    generalThreads,
+    diffDisplayCount,
+    displayFiles,
+    selectedCommentIndex,
+  } = vm;
 
   // Unified-list viewport geometry — the same computation DiffFileList
   // runs for rendering, so the input handler scrolls exactly what is
   // drawn.
-  const displayFiles = useMemo(
-    () =>
-      pane.showSkipped
-        ? [...diffNormalFiles, ...diffSkippedFiles]
-        : diffNormalFiles,
-    [diffNormalFiles, diffSkippedFiles, pane.showSkipped]
-  );
   const layout = useMemo(
     () =>
       computeDiffListLayout({
@@ -138,15 +107,6 @@ export function DiffFileListContainer({
     setDiffListScrollRow: pane.setDiffListScrollRow,
     setPendingScrollThreadId: pane.setPendingScrollThreadId,
   });
-
-  // Selection breakdown: indices [0, fileCount) select a file; indices
-  // [fileCount, diffDisplayCount) select a footer comment (offset by
-  // -fileCount). selectedCommentIndex is undefined when a file is
-  // highlighted so the list component knows to leave cards unselected.
-  const selectedCommentIndex =
-    pane.diffFileIndex >= fileCount
-      ? pane.diffFileIndex - fileCount
-      : undefined;
 
   useInput(
     (input, key) => {

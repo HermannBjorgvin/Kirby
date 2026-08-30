@@ -166,9 +166,7 @@ test.describe('@integration Comments Fixture', () => {
       pr38.selected().first(),
       20
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     await kirby.term.press('d');
 
@@ -325,7 +323,7 @@ test.describe('@integration Comments Fixture', () => {
     // Guard: treat a failure flash as a hard test failure instead of
     // silently swallowing it in the subsequent marker check.
     const failureLocator = kirby.term.getByText(/Reply failed/).first();
-    await expect(failureLocator).not.toBeVisible();
+    await expect(failureLocator).toBeHidden();
 
     // The reply body must render inline in the thread — search for
     // the unique-part substring (not the full marker) so the check
@@ -351,9 +349,7 @@ test.describe('@integration Comments Fixture', () => {
       pr38.selected().first(),
       20
     );
-    if (!landed) {
-      throw new Error('Could not land sidebar selection on PR #38');
-    }
+    expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     // Open the general-comments pane (vim preset binds this to plain C).
     await kirby.term.press('C');

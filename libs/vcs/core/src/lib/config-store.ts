@@ -9,6 +9,7 @@ import type {
   KeyDescriptorConfig,
   VcsProvider,
 } from './types.js';
+import { detectProvider } from './registry.js';
 
 const WM_DIR = join(homedir(), '.kirby');
 const GLOBAL_CONFIG_PATH = join(WM_DIR, 'config.json');
@@ -166,6 +167,88 @@ export function isVcsConfigured(
 }
 
 /**
+ * Copy fields the config does not already have, recording each one as
+ * newly detected. What the user (or an earlier detection) already set
+ * wins — auto-detection fills blanks, it does not overwrite.
+ */
+function fillBlankFields(
+  target: Record<string, string>,
+  extra: Record<string, string>,
+  detected: Record<string, string>
+): void {
+  for (const [key, value] of Object.entries(extra)) {
+    if (target[key]) continue;
+    target[key] = value;
+    detected[key] = value;
+  }
+}
+
+/**
+ * `git ...` for a single value, or null if git has nothing to say.
+ * Every caller here is filling in a blank as a convenience, so a
+ * missing remote or an unconfigured identity is an ordinary answer
+ * rather than a failure.
+ */
+function gitValue(args: string): string | null {
+  try {
+    const out = execSync(`git ${args}`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Vendor and project fields, read off the `origin` remote. */
+function detectVendorFromRemote(
+  cfg: RawProjectConfig,
+  providers: VcsProvider[],
+  detected: Record<string, string>
+): void {
+  if (cfg.vendor && cfg.vendorProject) return;
+  const remoteUrl = gitValue('remote get-url origin');
+  if (!remoteUrl) return;
+  const match = detectProvider(remoteUrl, providers);
+  if (!match) return;
+  cfg.vendor = match.provider.id;
+  cfg.vendorProject = match.projectConfig;
+  detected.vendor = match.provider.id;
+  Object.assign(detected, match.projectConfig);
+}
+
+/** Provider-specific extras, e.g. the GitHub username. */
+function detectProviderFields(
+  cfg: RawProjectConfig,
+  providers: VcsProvider[],
+  detected: Record<string, string>
+): void {
+  const provider = providers.find((p) => p.id === cfg.vendor);
+  if (!provider?.autoDetectFields) return;
+  try {
+    const extra = provider.autoDetectFields();
+    if (!extra) return;
+    cfg.vendorProject ??= {};
+    fillBlankFields(cfg.vendorProject, extra, detected);
+  } catch {
+    // autoDetectFields may fail — not critical
+  }
+}
+
+/** Commit email, from git's own config. */
+function detectEmail(
+  cfg: RawProjectConfig,
+  detected: Record<string, string>
+): void {
+  if (cfg.email) return;
+  const email = gitValue('config user.email');
+  if (!email) return;
+  cfg.email = email;
+  detected.email = email;
+}
+
+/**
  * Auto-detect project config from the git repo.
  * Tries each provider's parseRemoteUrl to fill vendor + vendorProject.
  * Fills email from `git config user.email`.
@@ -181,64 +264,9 @@ export function autoDetectProjectConfig(
   const cfg = readProjectConfig(cwd);
   const detected: Record<string, string> = {};
 
-  // Auto-detect vendor + project fields from git remote
-  if (!cfg.vendor || !cfg.vendorProject) {
-    try {
-      const remoteUrl = execSync('git remote get-url origin', {
-        encoding: 'utf8',
-        stdio: 'pipe',
-      }).trim();
-      for (const provider of providers) {
-        const parsed = provider.parseRemoteUrl(remoteUrl);
-        if (parsed) {
-          cfg.vendor = provider.id;
-          cfg.vendorProject = parsed;
-          detected.vendor = provider.id;
-          for (const [k, v] of Object.entries(parsed)) {
-            detected[k] = v;
-          }
-          break;
-        }
-      }
-    } catch {
-      // git remote may fail — not critical
-    }
-  }
-
-  // Auto-detect provider-specific fields (e.g., GitHub username)
-  const matchedProvider = providers.find((p) => p.id === cfg.vendor);
-  if (matchedProvider?.autoDetectFields) {
-    try {
-      const extra = matchedProvider.autoDetectFields();
-      if (extra) {
-        cfg.vendorProject ??= {};
-        for (const [k, v] of Object.entries(extra)) {
-          if (!cfg.vendorProject[k]) {
-            cfg.vendorProject[k] = v;
-            detected[k] = v;
-          }
-        }
-      }
-    } catch {
-      // autoDetectFields may fail — not critical
-    }
-  }
-
-  // Auto-detect email from git config
-  if (!cfg.email) {
-    try {
-      const email = execSync('git config user.email', {
-        encoding: 'utf8',
-        stdio: 'pipe',
-      }).trim();
-      if (email) {
-        cfg.email = email;
-        detected.email = email;
-      }
-    } catch {
-      // git config may fail — not critical
-    }
-  }
+  detectVendorFromRemote(cfg, providers, detected);
+  detectProviderFields(cfg, providers, detected);
+  detectEmail(cfg, detected);
 
   const updated = Object.keys(detected).length > 0;
   if (updated) {

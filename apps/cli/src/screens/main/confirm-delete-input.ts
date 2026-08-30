@@ -1,10 +1,9 @@
-import type { Key } from 'ink';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import { handleTextInput, type KeyPress } from '@kirby/core';
 import type { DeleteConfirmHandlerCtx } from './input-types.js';
 
 export function handleConfirmDeleteInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: DeleteConfirmHandlerCtx
 ): void {
   const action = ctx.keybinds.resolve(input, key, 'confirm-delete');
@@ -22,7 +21,7 @@ export function handleConfirmDeleteInput(
       // async runs after setConfirmDelete(null), and we need these for
       // the success toast too.
       const { sessionName, branch } = ctx.deleteConfirm.confirmDelete!;
-      ctx.asyncOps.run('delete', async () => {
+      void ctx.asyncOps.run('delete', async () => {
         await ctx.sessions.performDelete(sessionName, branch);
         ctx.sessions.flashStatus(`Deleted ${branch}`);
       });

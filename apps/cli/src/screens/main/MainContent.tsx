@@ -1,5 +1,5 @@
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { BranchPicker } from '../sessions/BranchPicker.js';
+import { BranchPicker } from './BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
 import { ControlsPanel } from '../../components/ControlsPanel.js';
 import { ReviewConfirmPane } from '../reviews/ReviewConfirmPane.js';
@@ -9,13 +9,12 @@ import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import { GeneralCommentsContainer } from './GeneralCommentsContainer.js';
 import { PlanCheckoutContainer } from './PlanCheckoutContainer.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
-import { useDiffBundle } from '../../hooks/useDiffBundle.js';
+import type { TerminalLayout, PaneModeValue } from '@kirby/app-core';
 import {
+  useDiffBundle,
   useSettingsState,
   useBranchPickerState,
-} from '../../context/ModalContext.js';
+} from '@kirby/app-core';
 
 interface MainContentProps {
   pane: PaneModeValue;
@@ -51,6 +50,22 @@ type ScreenType =
 //   6. PR detail mode       → ReviewDetailPane
 //   7. Diff list            → DiffPane
 //   8. Diff file viewer     → DiffPane
+/**
+ * What `useDiffBundle` needs, with a missing pull request flattened to
+ * the empty values that leave it idle. The hook is called
+ * unconditionally — the file cache and the comments-dir watch have to
+ * survive the list→viewer switch — so there is always something to
+ * pass it.
+ */
+function diffBundleArgs(pr: PullRequestInfo | undefined) {
+  return {
+    prId: pr?.id ?? null,
+    sourceBranch: pr?.sourceBranch ?? '',
+    targetBranch: pr?.targetBranch ?? '',
+    headSha: pr?.headSha,
+  };
+}
+
 export function MainContent({
   pane,
   terminal,
@@ -65,11 +80,12 @@ export function MainContent({
   // One diff-data instance shared by the list + viewer containers.
   // Mounted unconditionally so the in-memory file/diff cache and the
   // fs.watch on the comments dir survive the list→viewer switch.
+  const args = diffBundleArgs(selectedPr);
   const diffBundle = useDiffBundle(
-    selectedPr?.id ?? null,
-    selectedPr?.sourceBranch ?? '',
-    selectedPr?.targetBranch ?? '',
-    selectedPr?.headSha
+    args.prId,
+    args.sourceBranch,
+    args.targetBranch,
+    args.headSha
   );
 
   const screenType: ScreenType = (() => {

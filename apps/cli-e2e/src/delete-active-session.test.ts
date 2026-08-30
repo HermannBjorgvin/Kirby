@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 test.use({
   kirbyConfig: {
@@ -50,7 +51,11 @@ test.describe('Delete active session', () => {
         timeout: 5_000,
       });
       // Let React re-render so useInput closure captures the updated filter.
-      await kirby.term.page.waitForTimeout(2_000);
+      await settleFor(
+        kirby.term.page,
+        2_000,
+        "Ink's useInput captured the old filter until the next render"
+      );
       await kirby.term.press('Enter');
       await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
         timeout: 5_000,
@@ -75,10 +80,20 @@ test.describe('Delete active session', () => {
       // The actual assertion: pressing delete must open the Y/N confirm
       // modal because the PTY is still running, even though the branch
       // itself is git-clean and pushed.
-      await kirby.term.type('x');
-      await expect(kirby.term.getByText('Confirm Delete').first()).toBeVisible({
-        timeout: 10_000,
-      });
+      //
+      // The press is retried because returning from the terminal to the
+      // sidebar is not instantaneous and the hint row above is on
+      // screen either way, so it is no signal that focus has landed —
+      // a keystroke sent into that gap goes to the PTY and is simply
+      // lost, with nothing left to wait for. Observed as an occasional
+      // CI failure that does not reproduce on a developer machine.
+      // Repeating is harmless: the modal itself only answers y/n/Esc.
+      await expect(async () => {
+        await kirby.term.type('x');
+        await expect(
+          kirby.term.getByText('Confirm Delete').first()
+        ).toBeVisible({ timeout: 3_000 });
+      }).toPass({ timeout: 20_000 });
       await expect(
         kirby.term.getByText(/session is active/i).first()
       ).toBeVisible();

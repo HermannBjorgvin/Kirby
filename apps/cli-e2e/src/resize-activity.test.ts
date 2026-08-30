@@ -1,5 +1,6 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
 import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import { settleFor } from './setup/waits.js';
 
 // Use a silent fake-agent so there is no real agent activity — the only
 // PTY output should come from the resize redraw.
@@ -52,11 +53,15 @@ test.describe('Resize does not trigger activity', () => {
 
     // 5. Wait longer than ACTIVITY_IDLE_MS (2s) + poll interval (250ms)
     //    to give the watcher time to detect a false active→idle edge.
-    await kirby.term.page.waitForTimeout(3_000);
+    await settleFor(
+      kirby.term.page,
+      3_000,
+      'longer than the activity idle window, to prove no toast fires'
+    );
 
     // 6. The toast "resized is idle" should NOT appear — the resize
     //    output was suppressed and never counted as activity.
-    await expect(kirby.term.getByText('resized is idle')).not.toBeVisible();
+    await expect(kirby.term.getByText('resized is idle')).toBeHidden();
 
     // 7. Ctrl+Space from 'other' should NOT jump to 'resized' (queue
     //    should be empty) — it should just focus the sidebar.

@@ -1,114 +1,12 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
-import type { AnnotatedLine } from '@kirby/review-comments';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import {
-  CommentThreadCard,
-  LocalCommentCard,
-  CARD_MAX_WIDTH,
-  CARD_INDENT,
-} from '../../components/CommentThread.js';
-import type { RowMap } from '@kirby/review-comments';
-import { planItemKey } from '../../plan/plan-types.js';
-import { DiffRow } from './DiffRow.js';
-import { languageFromFilename } from '../../utils/language.js';
-
-// Note composer shown while annotating a plan item (Shift+A). Rendered
-// *in place of* the comment card so it occupies the same slot — the card
-// is briefly obscured, which keeps the layout stable and works on small
-// terminals. Mirrors the card's indent + width so it lines up 1:1.
-function PlanAnnotateInput({
-  buffer,
-  width,
-}: {
-  buffer: string;
-  width: number;
-}) {
-  const box = (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="green"
-      marginBottom={1}
-      paddingX={1}
-      width={width}
-    >
-      <Text wrap="truncate-end">
-        <Text bold color="green">
-          EDITING NOTE
-        </Text>
-        <Text dimColor>{' [enter] save · [esc] cancel'}</Text>
-      </Text>
-      <Text wrap="wrap">
-        {buffer}
-        <Text color="green">▍</Text>
-      </Text>
-    </Box>
-  );
-  return (
-    <Box>
-      <Box width={CARD_INDENT} flexShrink={0} />
-      {box}
-    </Box>
-  );
-}
-
-// Separate component to isolate context subscription from memo'd parent
-function DiffViewerHints({
-  hasComments,
-  hasSections,
-}: {
-  hasComments: boolean;
-  hasSections: boolean;
-}) {
-  const kb = useKeybindResolve();
-  const scrollKeys = kb.getHintKeys('diff-viewer.scroll-down');
-  const halfPageKeys = kb.getHintKeys('diff-viewer.half-page-down');
-  const topKeys = kb.getHintKeys('diff-viewer.go-top');
-  const bottomKeys = kb.getHintKeys('diff-viewer.go-bottom');
-  const nextFileKeys = kb.getHintKeys('diff-viewer.next-file');
-  const prevFileKeys = kb.getHintKeys('diff-viewer.prev-file');
-  const nextCommentKeys = kb.getHintKeys('diff-viewer.next-comment');
-  const prevCommentKeys = kb.getHintKeys('diff-viewer.prev-comment');
-  const nextSectionKeys = kb.getHintKeys('diff-viewer.next-section');
-  const prevSectionKeys = kb.getHintKeys('diff-viewer.prev-section');
-  const backKeys = kb.getHintKeys('diff-viewer.back');
-
-  return (
-    <Box marginTop={1}>
-      <Text dimColor>
-        <Text color="cyan">{scrollKeys}</Text> scroll ·{' '}
-        <Text color="cyan">{halfPageKeys}</Text> half-page ·{' '}
-        <Text color="cyan">
-          {topKeys}/{bottomKeys}
-        </Text>{' '}
-        top/bottom ·{' '}
-        <Text color="cyan">
-          {nextFileKeys}/{prevFileKeys}
-        </Text>{' '}
-        next/prev file ·{' '}
-        {hasComments && (
-          <>
-            <Text color="cyan">
-              {nextCommentKeys}/{prevCommentKeys}
-            </Text>{' '}
-            comments ·{' '}
-          </>
-        )}
-        {hasSections && (
-          <>
-            <Text color="cyan">
-              {nextSectionKeys}/{prevSectionKeys}
-            </Text>{' '}
-            sections ·{' '}
-          </>
-        )}
-        <Text color="cyan">{backKeys}</Text> back
-      </Text>
-    </Box>
-  );
-}
+import type { AnnotatedLine, RowMap } from '@kirby/review-comments';
+import { languageFromFilename } from '@kirby/core';
+import { CARD_MAX_WIDTH, CARD_INDENT } from '../../components/CommentThread.js';
+import { diffViewerViewport } from './diff-viewer-viewport.js';
+import { DiffViewerEntry, type DiffEntryState } from './DiffViewerEntry.js';
+import { DiffViewerHints } from './DiffViewerHints.js';
 
 export const DiffViewer = memo(function DiffViewer({
   filename,
@@ -151,47 +49,26 @@ export const DiffViewer = memo(function DiffViewer({
   annotatingPlanKey?: string | null;
   annotationBuffer?: string;
 }) {
-  // Chrome: header + divider + hints = 3 lines
-  const viewportHeight = Math.max(1, paneRows - 3);
   const cardWidth = Math.max(
     20,
     Math.min(CARD_MAX_WIDTH, paneCols - CARD_INDENT - 2)
   );
 
-  // Row-based slice: pick every entry whose [rowStart, rowStart+rowSpan]
-  // overlaps the viewport's [scrollOffset, scrollOffset+viewportHeight]
-  // range. The first overlapping entry may have its top clipped — we
-  // render it inside a Box with marginTop={-topClip} so the visible
-  // portion aligns with scrollOffset. The probe in commit history
-  // (apps/cli/src/_probe/ink-clip.tsx) confirmed Ink/Yoga handles this
-  // cleanly with `flexShrink={0}` on each child + `overflow="hidden"`
-  // on the parent.
-  const viewportTop = scrollOffset;
-  const viewportBottom = scrollOffset + viewportHeight;
-  const visibleEntries: {
-    entry: AnnotatedLine;
-    sourceIndex: number;
-    topClip: number;
-  }[] = [];
-  for (let i = 0; i < annotatedLines.length; i++) {
-    const pos = rowMap.positions[i];
-    if (!pos) continue;
-    const top = pos.rowStart;
-    const bottom = pos.rowStart + pos.rowSpan;
-    if (bottom <= viewportTop) continue;
-    if (top >= viewportBottom) break;
-    visibleEntries.push({
-      entry: annotatedLines[i]!,
-      sourceIndex: i,
-      topClip: Math.max(0, viewportTop - top),
-    });
-  }
-
-  const totalRows = rowMap.totalRows;
-  const atTop = scrollOffset === 0;
-  const atBottom = scrollOffset + viewportHeight >= totalRows;
-  const rowsAbove = scrollOffset;
-  const rowsBelow = Math.max(0, totalRows - (scrollOffset + viewportHeight));
+  const {
+    viewportHeight,
+    bodyHeight,
+    visible,
+    atTop,
+    atBottom,
+    rowsAbove,
+    rowsBelow,
+    totalRows,
+  } = diffViewerViewport({
+    rowMap,
+    entryCount: annotatedLines.length,
+    scrollOffset,
+    paneRows,
+  });
 
   const hasComments = annotatedLines.some(
     (l) => l.type === 'thread-remote' || l.type === 'thread-local'
@@ -199,85 +76,17 @@ export const DiffViewer = memo(function DiffViewer({
 
   const language = languageFromFilename(filename);
 
-  // Reserve one viewport row for each scroll indicator we'll render
-  // (↑ / ↓), so the body region stays bounded by `viewportHeight` even
-  // when the indicators occupy a row. Without this the indicators
-  // would push entries past the bottom edge.
-  const indicatorRows = (atTop ? 0 : 1) + (atBottom ? 0 : 1);
-  const bodyHeight = Math.max(1, viewportHeight - indicatorRows);
-
-  function renderEntry(line: AnnotatedLine, key: string | number) {
-    if (line.type === 'diff') {
-      return (
-        <DiffRow
-          key={key}
-          line={line.line}
-          highlighted={line.highlighted}
-          language={language}
-          paneCols={paneCols}
-        />
-      );
-    }
-    if (line.type === 'separator') {
-      return (
-        <Text key={key} wrap="truncate">
-          {line.rendered}
-        </Text>
-      );
-    }
-    if (line.type === 'thread-remote') {
-      const pKey = planItemKey('remote', line.thread.id);
-      // While annotating this item, the composer takes the card's slot.
-      if (annotatingPlanKey === pKey) {
-        return (
-          <PlanAnnotateInput
-            key={`ann:r:${line.thread.id}`}
-            buffer={annotationBuffer ?? ''}
-            width={cardWidth}
-          />
-        );
-      }
-      return (
-        <CommentThreadCard
-          key={`r:${line.thread.id}`}
-          thread={line.thread}
-          selected={selectedCommentId === line.thread.id}
-          replyingToThreadId={replyingToThreadId}
-          replyBuffer={replyBuffer}
-          maxWidth={cardWidth}
-          indent={CARD_INDENT}
-          inPlan={inPlanKeys?.has(pKey) ?? false}
-          planHint
-        />
-      );
-    }
-    const pKey = planItemKey('local', line.comment.id);
-    if (annotatingPlanKey === pKey) {
-      return (
-        <PlanAnnotateInput
-          key={`ann:l:${line.comment.id}`}
-          buffer={annotationBuffer ?? ''}
-          width={cardWidth}
-        />
-      );
-    }
-    return (
-      <LocalCommentCard
-        key={`l:${line.comment.id}`}
-        comment={line.comment}
-        selected={selectedCommentId === line.comment.id}
-        pendingDelete={pendingDeleteCommentId === line.comment.id}
-        editing={editingCommentId === line.comment.id}
-        editBuffer={
-          editingCommentId === line.comment.id ? editBuffer : undefined
-        }
-        maxWidth={cardWidth}
-        indent={CARD_INDENT}
-        inPlan={inPlanKeys?.has(pKey) ?? false}
-        planHint
-      />
-    );
-  }
+  const entryState: DiffEntryState = {
+    selectedCommentId,
+    pendingDeleteCommentId,
+    editingCommentId,
+    editBuffer,
+    replyingToThreadId,
+    replyBuffer,
+    inPlanKeys,
+    annotatingPlanKey,
+    annotationBuffer,
+  };
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} overflow="hidden">
@@ -305,7 +114,7 @@ export const DiffViewer = memo(function DiffViewer({
         <Text dimColor>(no diff for this file)</Text>
       )}
 
-      {visibleEntries.length > 0 && (
+      {visible.length > 0 && (
         <>
           {!atTop && <Text dimColor>↑ {rowsAbove} rows above</Text>}
           <Box
@@ -314,22 +123,33 @@ export const DiffViewer = memo(function DiffViewer({
             overflow="hidden"
             flexShrink={0}
           >
-            {visibleEntries.map(({ entry, sourceIndex, topClip }, i) => {
-              const key = `${sourceIndex}`;
-              const node = renderEntry(entry, key);
+            {visible.map(({ sourceIndex, topClip }, i) => {
+              const node = (
+                <DiffViewerEntry
+                  line={annotatedLines[sourceIndex]!}
+                  language={language}
+                  paneCols={paneCols}
+                  cardWidth={cardWidth}
+                  state={entryState}
+                />
+              );
               // First entry may be partly above the viewport — shift
               // it up by `topClip` rows. flexShrink={0} prevents Yoga
               // from squeezing the entry to fit (which previously
               // caused the bottom-border-overlay corruption).
               if (i === 0 && topClip > 0) {
                 return (
-                  <Box key={`clip:${key}`} flexShrink={0} marginTop={-topClip}>
+                  <Box
+                    key={`clip:${sourceIndex}`}
+                    flexShrink={0}
+                    marginTop={-topClip}
+                  >
                     {node}
                   </Box>
                 );
               }
               return (
-                <Box key={`wrap:${key}`} flexShrink={0}>
+                <Box key={`wrap:${sourceIndex}`} flexShrink={0}>
                   {node}
                 </Box>
               );

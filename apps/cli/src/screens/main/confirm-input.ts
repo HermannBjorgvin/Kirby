@@ -1,9 +1,12 @@
-import type { Key } from 'ink';
+import {
+  handleTextInput,
+  type KeyPress,
+  hasSession,
+  launchSession,
+  getPrFromItem,
+  buildReviewLaunchRequest,
+} from '@kirby/core';
 import { createWorktree } from '@kirby/worktree-manager';
-import { hasSession } from '../../pty-registry.js';
-import { launchSession } from '../../session/launch-session.js';
-import { getPrFromItem } from '../../types.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
 import type { ConfirmHandlerCtx } from './input-types.js';
 import { startAiSession } from './branch-picker-input.js';
 
@@ -15,30 +18,7 @@ async function startReviewSession(
   const pr = getPrFromItem(ctx.selectedItem);
   if (!pr) return;
 
-  // Reusable how-to guidance (installed as a system prompt for agents
-  // that support it, e.g. Claude; folded into the prompt otherwise).
-  const guidance =
-    `To add review comments, use this command:\n` +
-    `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
-    `Rules:\n` +
-    `- File paths are relative to the repo root\n` +
-    `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
-    `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
-    `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
-    `- Comments appear live in the reviewer's diff viewer`;
-
-  // The per-PR task prompt.
-  let task =
-    `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +
-    `merging ${pr.sourceBranch} → ${pr.targetBranch} ` +
-    `by ${pr.createdByDisplayName || 'unknown'}.\n\n` +
-    `Review all changed files thoroughly. Add comments for any issues found.`;
-
-  if (additionalInstruction) {
-    task +=
-      ` ADDITIONAL USER INSTRUCTION (overrides previous where applicable): ` +
-      additionalInstruction;
-  }
+  const request = buildReviewLaunchRequest(pr, additionalInstruction);
 
   const worktreePath = await createWorktree(pr.sourceBranch);
   if (!worktreePath) {
@@ -58,11 +38,7 @@ async function startReviewSession(
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
-    request: {
-      intent: 'continue-or-seed',
-      prompt: task,
-      systemGuidance: guidance,
-    },
+    request,
   });
 }
 
@@ -70,7 +46,7 @@ const CONFIRM_OPTIONS = 4;
 
 export function handleConfirmInput(
   input: string,
-  key: Key,
+  key: KeyPress,
   ctx: ConfirmHandlerCtx
 ): void {
   const confirm = ctx.pane.reviewConfirm!;
@@ -89,7 +65,7 @@ export function handleConfirmInput(
   // Try nav actions first, then fall through to text input
   if (opt === 2) {
     if (key.return) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(
             ctx,
@@ -138,7 +114,7 @@ export function handleConfirmInput(
   if (action === 'confirm.select') {
     // Option 0: Start session (plain AI session)
     if (opt === 0) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           const pr = ctx.selectedItem
             ? getPrFromItem(ctx.selectedItem)
@@ -168,7 +144,7 @@ export function handleConfirmInput(
     }
     // Option 1: Start review
     else if (opt === 1) {
-      ctx.asyncOps.run('start-session', async () => {
+      void ctx.asyncOps.run('start-session', async () => {
         if (!hasSession(ctx.sessionNameForTerminal!)) {
           await startReviewSession(ctx);
         }

@@ -35,7 +35,7 @@
     }
   },
   "dependencies": {
-    "@wterm/dom": "0.1.9",
+    "@wterm/dom": "0.3.4",
     "node-pty": "^1.1.0",
     "ws": "^8.18.0"
   },

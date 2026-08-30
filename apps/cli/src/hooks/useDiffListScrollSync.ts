@@ -7,7 +7,7 @@ import {
   scrollIntoView,
   totalRows,
   type ItemBounds,
-} from '../utils/virtual-viewport.js';
+} from '@kirby/core';
 import {
   itemKey,
   type DiffListLayout,

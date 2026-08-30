@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/core';
 import {
   handleReplyModeInput,
   type ReplyModePane,
   type ReplyModeDeps,
 } from './reply-mode.js';
 
-function makeKey(overrides: Partial<Key> = {}): Key {
+function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {
   return {
     upArrow: false,
     downArrow: false,
@@ -44,10 +44,10 @@ function makePane(initial: Partial<ReplyModePane> = {}): ReplyModePane {
     get replyBuffer() {
       return state.replyBuffer;
     },
-    setReplyingToThreadId: (id) => {
+    setReplyingToThreadId: (id: string | null) => {
       state.replyingToThreadId = id;
     },
-    setReplyBuffer: (upd) => {
+    setReplyBuffer: (upd: string | ((prev: string) => string)) => {
       state.replyBuffer =
         typeof upd === 'function' ? upd(state.replyBuffer) : upd;
     },

@@ -30,15 +30,26 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      # desktop-e2e drives the real Electron app, which has no headless
+      # mode of its own and needs an X server on the runner.
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - uses: nrwl/nx-set-shas@v4
 
-      - run: npx nx affected -t lint test build typecheck e2e
+      # `e2e:visual` runs the screenshot suite inside a pinned container
+      # (see apps/desktop-e2e/run-visual.mjs). Baselines are generated in
+      # that same image, so the runner's own fonts never enter into it
+      # and the comparison can hold at zero tolerance.
+      - run: npx nx affected -t lint test build typecheck e2e e2e:visual
 
       - name: Upload Playwright test output on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-test-output
-          path: apps/cli-e2e/test-output
+          path: |
+            apps/cli-e2e/test-output
+            apps/desktop-e2e/test-output
           if-no-files-found: ignore
           retention-days: 7

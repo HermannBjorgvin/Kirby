@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
-import type { SidebarItem } from '../../types.js';
+import type { SidebarItem } from '@kirby/core';
 import { resolveEditorTarget } from './editor-target.js';
 
 function makePr(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {

@@ -1,29 +1,27 @@
-import type { DiffFile, ReviewComment, SidebarItem } from '../../types.js';
+import type {
+  SessionActionsContextValue,
+  ConfigContextValue,
+  SidebarContextValue,
+  KeybindContextValue,
+  KeybindResolveValue,
+  BranchPickerValue as BranchPickerModalValue,
+  DeleteConfirmValue as DeleteConfirmModalValue,
+  PaneModeValue,
+  PlanValue,
+} from '@kirby/app-core';
+import type { DiffFile, ReviewComment, SidebarItem } from '@kirby/core';
 import type {
   PullRequestInfo,
   RemoteCommentThread,
   RemoteCommentReply,
 } from '@kirby/vcs-core';
-import type { SessionActionsContextValue } from '../../context/SessionContext.js';
-import type { ConfigContextValue } from '../../context/ConfigContext.js';
-import type { SidebarContextValue } from '../../context/SidebarContext.js';
-import type {
-  KeybindContextValue,
-  KeybindResolveValue,
-} from '../../context/KeybindContext.js';
-import type {
-  BranchPickerValue as BranchPickerModalValue,
-  DeleteConfirmValue as DeleteConfirmModalValue,
-} from '../../context/ModalContext.js';
 import type {
   NavValue,
   AsyncOpsValue,
   SettingsValue,
   TerminalLayout,
 } from '../../input-handlers.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
 import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
-import type { PlanValue } from '../../context/PlanContext.js';
 
 // ── Context slice types ──────────────────────────────────────────
 

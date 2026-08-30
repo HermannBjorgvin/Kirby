@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Text, Box, useInput } from 'ink';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
-import { useConfig } from '../../context/ConfigContext.js';
-import { resolveValue } from '../SettingsPanel.js';
-import type { SettingsField } from '../SettingsPanel.js';
-import { handleTextInput } from '../../utils/handle-text-input.js';
+import { useConfig } from '@kirby/app-core';
+import type { KeyPress } from '@kirby/core';
+import { handleTextInput } from '@kirby/core';
+import { resolveValue, type SettingsField } from '@kirby/core';
 
 interface FieldsStepProps {
   provider: VcsProvider;
@@ -35,24 +35,29 @@ export function FieldsStep({
   const fieldValue = (field: SettingsField): string =>
     resolveValue(config, field);
 
+  /** While the editor is open a keypress is text, never a command. */
+  const handleEditKey = (input: string, key: KeyPress) => {
+    if (!key.return) {
+      handleTextInput(input, key, setEditBuffer);
+      return;
+    }
+    const field = fields[fieldIndex]!;
+    const value = editBuffer.trim() || undefined;
+    if (value) updateField(field, value);
+    setEditing(false);
+    setEditBuffer('');
+  };
+
   useInput(
     (input, key) => {
-      if (key.escape && !editing) return onSkip();
-      if (key.escape && editing) {
+      if (key.escape) {
+        if (!editing) return onSkip();
         setEditing(false);
         setEditBuffer('');
         return;
       }
       if (editing) {
-        if (key.return) {
-          const field = fields[fieldIndex]!;
-          const value = editBuffer.trim() || undefined;
-          if (value) updateField(field, value);
-          setEditing(false);
-          setEditBuffer('');
-          return;
-        }
-        handleTextInput(input, key, setEditBuffer);
+        handleEditKey(input, key);
         return;
       }
       if (input === 'j' || key.downArrow) {

@@ -1,9 +1,8 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import { PlanIndicatorContent } from './PlanIndicator.js';
-import type { RemotePlanItem } from '../plan/plan-types.js';
+import type { RemotePlanItem } from '@kirby/core';
 
 function remote(id: string, annotation?: string): RemotePlanItem {
   return {
@@ -21,8 +20,9 @@ function remote(id: string, annotation?: string): RemotePlanItem {
 describe('PlanIndicatorContent', () => {
   it('shows the count and item lines', () => {
     const out = stripAnsi(
-      render(<PlanIndicatorContent items={[remote('a'), remote('b')]} />)
-        .lastFrame() ?? ''
+      render(
+        <PlanIndicatorContent items={[remote('a'), remote('b')]} />
+      ).lastFrame() ?? ''
     );
     expect(out).toContain('Plan (2)');
     expect(out).toContain('a.ts');

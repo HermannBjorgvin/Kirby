@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { checkGhAuth } from '@kirby/vcs-github';
-import { useConfig } from '../../context/ConfigContext.js';
-import type { SettingsField } from '../SettingsPanel.js';
+import { useConfig } from '@kirby/app-core';
+import type { SettingsField } from '@kirby/core';
 
 /**
  * For GitHub providers, attempt to read the user's username from the
@@ -21,21 +21,29 @@ export function useGithubAutodetect(provider: VcsProvider | null): {
   useEffect(() => {
     if (provider?.id !== 'github') return;
     let cancelled = false;
-    checkGhAuth().then((result) => {
-      if (cancelled) return;
-      setGhChecked(true);
-      if (result.authenticated && result.username) {
-        setGhUsername(result.username);
-        if (!config.vendorProject.username) {
-          const field: SettingsField = {
-            label: 'GitHub Username',
-            key: 'username',
-            configBag: 'vendorProject',
-          };
-          updateField(field, result.username);
+    void checkGhAuth()
+      .then((result) => {
+        if (cancelled) return;
+        setGhChecked(true);
+        if (result.authenticated && result.username) {
+          setGhUsername(result.username);
+          if (!config.vendorProject.username) {
+            const field: SettingsField = {
+              label: 'GitHub Username',
+              key: 'username',
+              configBag: 'vendorProject',
+            };
+            updateField(field, result.username);
+          }
         }
-      }
-    });
+      })
+      .catch(() => {
+        // `gh` missing or erroring reads the same as "not signed in":
+        // the step still has to stop waiting, or onboarding hangs on a
+        // spinner. Before this the rejection was unhandled, which ended
+        // the process on a machine with no gh installed.
+        if (!cancelled) setGhChecked(true);
+      });
     return () => {
       cancelled = true;
     };

@@ -1,0 +1,129 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "_links": {
+        "self": {
+          "href": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/Builds/556771"
+        },
+        "web": {
+          "href": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_build/results?buildId=556771"
+        },
+        "sourceVersionDisplayUri": {
+          "href": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/builds/556771/sources"
+        },
+        "timeline": {
+          "href": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/builds/556771/Timeline"
+        },
+        "badge": {
+          "href": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/status/442"
+        }
+      },
+      "properties": {},
+      "tags": [],
+      "validationResults": [],
+      "plans": [
+        {
+          "planId": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "triggerInfo": {
+        "pr.number": "77013",
+        "pr.isFork": "False",
+        "pr.triggerRepository": "00000000-0000-0000-0000-000000000001",
+        "pr.triggerRepository.Type": "TfsGit"
+      },
+      "id": 556771,
+      "buildNumber": "20260828.41",
+      "status": "completed",
+      "result": "failed",
+      "queueTime": "2026-08-28T18:09:53.6361732Z",
+      "startTime": "2026-08-28T18:10:03.7121483Z",
+      "finishTime": "2026-08-28T18:38:10.7228497Z",
+      "url": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/Builds/556771",
+      "definition": {
+        "drafts": [],
+        "id": 442,
+        "name": "example-nx",
+        "url": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/Definitions/442?revision=2",
+        "uri": "vstfs:///Build/Definition/442",
+        "path": "\\Example Folder\\example-repo",
+        "type": "build",
+        "queueStatus": "enabled",
+        "revision": 2,
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "name": "ExampleProject",
+          "url": "https://dev.azure.com/example-org/_apis/projects/00000000-0000-0000-0000-000000000001",
+          "state": "wellFormed",
+          "revision": 3722374,
+          "visibility": "private",
+          "lastUpdateTime": "2026-07-29T07:52:20.643Z"
+        }
+      },
+      "buildNumberRevision": 41,
+      "project": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "ExampleProject",
+        "url": "https://dev.azure.com/example-org/_apis/projects/00000000-0000-0000-0000-000000000001",
+        "state": "wellFormed",
+        "revision": 3722374,
+        "visibility": "private",
+        "lastUpdateTime": "2026-07-29T07:52:20.643Z"
+      },
+      "uri": "vstfs:///Build/Build/556771",
+      "sourceBranch": "refs/pull/77013/merge",
+      "sourceVersion": "1a76300c4bb84c0957d3dd60333999cb33a4f25d",
+      "queue": {
+        "id": 142,
+        "name": "Azure Pipelines",
+        "pool": {
+          "id": 14,
+          "name": "Azure Pipelines",
+          "isHosted": true
+        }
+      },
+      "priority": "normal",
+      "reason": "pullRequest",
+      "requestedFor": {
+        "displayName": "Build Service",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "build-service@example.test",
+        "descriptor": "aad.00000000000000000000000000000001"
+      },
+      "requestedBy": {
+        "displayName": "Build Service",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "build-service@example.test",
+        "descriptor": "aad.00000000000000000000000000000001"
+      },
+      "lastChangedDate": "2026-08-28T18:38:11.2Z",
+      "lastChangedBy": {
+        "displayName": "Build Service",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "uniqueName": "build-service@example.test",
+        "descriptor": "aad.00000000000000000000000000000001"
+      },
+      "parameters": "{\"system.pullRequest.pullRequestId\":\"77013\",\"system.pullRequest.sourceBranch\":\"refs/heads/feature/example-branch\",\"system.pullRequest.targetBranch\":\"refs/heads/master\",\"system.pullRequest.targetBranchName\":\"master\",\"system.pullRequest.sourceCommitId\":\"a4057c4288f514778f6f9c50a8469fce83c0516d\",\"system.pullRequest.sourceRepositoryUri\":\"https://example-org@dev.azure.com/example-org/ExampleProject/_git/example-repo\",\"system.pullRequest.pullRequestIteration\":\"16\"}",
+      "orchestrationPlan": {
+        "planId": "00000000-0000-0000-0000-000000000001"
+      },
+      "logs": {
+        "id": 0,
+        "type": "Container",
+        "url": "https://dev.azure.com/example-org/00000000-0000-0000-0000-000000000001/_apis/build/builds/556771/logs"
+      },
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "type": "TfsGit",
+        "name": "example-repo",
+        "url": "https://dev.azure.com/example-org/ExampleProject/_git/example-repo",
+        "clean": null,
+        "checkoutSubmodules": false
+      },
+      "retainedByRelease": false,
+      "triggeredByBuild": null,
+      "appendCommitMessageToRunName": true
+    }
+  ]
+}

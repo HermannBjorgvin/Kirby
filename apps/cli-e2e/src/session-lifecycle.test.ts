@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { settleFor } from './setup/waits.js';
 
 test.use({
   kirbyConfig: {
@@ -30,7 +31,11 @@ test.describe('Session Lifecycle – clean delete', () => {
     });
 
     // Let React re-render so useInput closure captures the updated filter.
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      "Ink's useInput captured the old filter until the next render"
+    );
     await kirby.term.press('Enter');
 
     // 3. Branch picker closes, session appears in sidebar
@@ -60,7 +65,11 @@ test.describe('Session Lifecycle – clean delete', () => {
 
     // 6. Type the branch name to confirm deletion
     await kirby.term.type(branchName);
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      'the typed branch name to reach the confirm field before Enter'
+    );
     await kirby.term.press('Enter');
 
     // 7. Session disappears
@@ -103,7 +112,11 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     await expect(kirby.term.getByText(/\(new branch\)/).first()).toBeVisible({
       timeout: 5_000,
     });
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      "Ink's useInput captured the old filter until the next render"
+    );
     await kirby.term.press('Enter');
 
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
@@ -131,7 +144,11 @@ test.describe('Session Lifecycle – dirty worktree', () => {
 
     // 5. Confirm deletion by typing the branch name
     await kirby.term.type(branchName);
-    await kirby.term.page.waitForTimeout(2_000);
+    await settleFor(
+      kirby.term.page,
+      2_000,
+      'the typed branch name to reach the confirm field before Enter'
+    );
     await kirby.term.press('Enter');
 
     // 6. Session disappears

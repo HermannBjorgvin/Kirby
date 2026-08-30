@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
@@ -91,9 +90,9 @@ describe('DiffRow — content boundary', () => {
     ];
     const tree = (
       <>
-        {lines.map((l, i) => (
+        {lines.map((l) => (
           <DiffRow
-            key={i}
+            key={l.oldLine}
             line={l}
             highlighted={false}
             language="typescript"

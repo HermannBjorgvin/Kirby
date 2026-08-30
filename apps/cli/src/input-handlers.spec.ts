@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Key } from 'ink';
+import type { KeyPress } from '@kirby/core';
 import type { AppConfig } from '@kirby/vcs-core';
 import type { TmuxStatus } from '@kirby/terminal-tmux';
 
@@ -8,24 +8,30 @@ import type { TmuxStatus } from '@kirby/terminal-tmux';
 // useful shape anyway: it proves the guard is actually wired into BOTH
 // write paths (cycle-left/right and edit-toggle), which a direct unit
 // test of the predicate would miss.
-const { hasAnySessionMock, getTmuxAvailabilityMock } = vi.hoisted(() => ({
-  hasAnySessionMock: vi.fn<[], boolean>(),
-  getTmuxAvailabilityMock: vi.fn<[], TmuxStatus | null>(),
-}));
+const { hasAnySessionMock, getTmuxAvailabilityMock, applyBackendMock } =
+  vi.hoisted(() => ({
+    hasAnySessionMock: vi.fn<() => boolean>(),
+    getTmuxAvailabilityMock: vi.fn<() => TmuxStatus | null>(),
+    applyBackendMock: vi.fn<(config: AppConfig) => void>(),
+  }));
 
-vi.mock('./pty-registry.js', () => ({
+// `updateConfigField` is deliberately left real: the assertions below
+// check the config handed to applySessionBackend actually carries the
+// newly selected backend, which a stubbed updater would hide.
+vi.mock('@kirby/core', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   hasAnySession: () => hasAnySessionMock(),
-}));
-vi.mock('./session-backend.js', () => ({
   getTmuxAvailability: () => getTmuxAvailabilityMock(),
+  applySessionBackend: (config: AppConfig) => applyBackendMock(config),
 }));
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from './components/SettingsPanel.js';
+import { buildSettingsFields } from '@kirby/core';
 
-const BACKEND_FIELD_INDEX = buildSettingsFields(null).findIndex(
-  (f) => f.key === 'terminalBackend'
-);
+const fieldIndexOf = (key: string) =>
+  buildSettingsFields(null).findIndex((f) => f.key === key);
+
+const BACKEND_FIELD_INDEX = fieldIndexOf('terminalBackend');
 
 type Ctx = Parameters<typeof handleSettingsInput>[2];
 
@@ -70,7 +76,7 @@ function harness(
   return { ctx, updateField, flashStatus, setPreset };
 }
 
-const NO_KEY = {} as Key;
+const NO_KEY = {} as KeyPress;
 
 // Both paths that can write a preset-backed field. If a future refactor
 // adds a third, it needs its own guard call — and this table is where
@@ -84,6 +90,7 @@ const WRITE_ACTIONS = [
 beforeEach(() => {
   hasAnySessionMock.mockReset();
   getTmuxAvailabilityMock.mockReset();
+  applyBackendMock.mockReset();
   hasAnySessionMock.mockReturnValue(false);
   getTmuxAvailabilityMock.mockReturnValue({ available: true, version: '3.4' });
 });
@@ -101,6 +108,20 @@ describe('settings guard — terminalBackend', () => {
       expect(h.flashStatus).not.toHaveBeenCalled();
     });
 
+    // The registry's factory has to follow the setting on the same
+    // keystroke that wrote it — and it has to be rebuilt from the NEW
+    // selection, not the config still in state.
+    it('rebuilds the backend factory from the newly written value', () => {
+      const h = harness(action, { terminalBackend: 'pty' });
+
+      handleSettingsInput('', NO_KEY, h.ctx);
+
+      expect(applyBackendMock).toHaveBeenCalledTimes(1);
+      expect(applyBackendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ terminalBackend: 'tmux' })
+      );
+    });
+
     // Switching mid-session would strand the live sessions on a stale
     // factory — they'd keep running on the old backend while every new
     // spawn used the new one.
@@ -114,6 +135,9 @@ describe('settings guard — terminalBackend', () => {
       expect(h.flashStatus).toHaveBeenCalledWith(
         expect.stringMatching(/close all sessions/i)
       );
+      // The whole point of the gate: the live session must keep the
+      // factory it was spawned with.
+      expect(applyBackendMock).not.toHaveBeenCalled();
     });
 
     // Surfacing the install hint here beats letting the spawn fail with
@@ -133,6 +157,7 @@ describe('settings guard — terminalBackend', () => {
       expect(h.flashStatus).toHaveBeenCalledWith(
         expect.stringContaining('brew install tmux')
       );
+      expect(applyBackendMock).not.toHaveBeenCalled();
     });
 
     // The probe not having resolved yet must not be read as "missing".
@@ -161,6 +186,9 @@ describe('settings guard — terminalBackend', () => {
 
       expect(h.updateField).toHaveBeenCalledTimes(1);
       expect(h.flashStatus).not.toHaveBeenCalled();
+      expect(applyBackendMock).toHaveBeenCalledWith(
+        expect.objectContaining({ terminalBackend: 'pty' })
+      );
     });
   });
 
@@ -183,5 +211,19 @@ describe('settings guard — terminalBackend', () => {
       h.updateField.mock.calls.length + h.setPreset.mock.calls.length
     ).toBe(1);
     expect(h.flashStatus).not.toHaveBeenCalled();
+  });
+
+  // Rebuilding the factory is scoped to the backend setting. Any other
+  // settings write leaving the registry alone is what makes it safe to
+  // do this on the write path at all.
+  it('does not rebuild the backend factory when another field is written', () => {
+    const otherIndex = fieldIndexOf('diffFileListTree');
+    expect(otherIndex).toBeGreaterThanOrEqual(0);
+
+    const h = harness('settings.cycle-right', {}, otherIndex);
+    handleSettingsInput('', NO_KEY, h.ctx);
+
+    expect(h.updateField).toHaveBeenCalledTimes(1);
+    expect(applyBackendMock).not.toHaveBeenCalled();
   });
 });

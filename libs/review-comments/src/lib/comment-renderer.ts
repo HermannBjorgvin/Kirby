@@ -1,8 +1,11 @@
-import wrapAnsi from 'wrap-ansi';
 import type { DiffLine } from '@kirby/diff';
 import type { ReviewComment } from './types.js';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { log } from '@kirby/logger';
+import type { InsertionMap } from './comment-placement.js';
+import {
+  computeInsertionMap,
+  computeRemoteInsertionMap,
+} from './comment-placement.js';
 
 // Dim ANSI — only used for the separator rows below (`── comments on
 // lines not in diff ──` etc.). Diff rows themselves no longer carry
@@ -67,169 +70,107 @@ function buildHighlightSet(
   return highlighted;
 }
 
-// ── Insertion maps ────────────────────────────────────────────────
-
-export interface RemoteInsertionMap {
-  insertions: Map<number, RemoteCommentThread[]>;
-  outOfDiff: RemoteCommentThread[];
-}
-
-export function computeRemoteInsertionMap(
-  diffLines: DiffLine[],
-  threads: RemoteCommentThread[]
-): RemoteInsertionMap {
-  const newLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.newLine != null) newLineToIndex.set(dl.newLine, i);
-  }
-
-  const oldLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.oldLine != null) oldLineToIndex.set(dl.oldLine, i);
-  }
-
-  const insertions = new Map<number, RemoteCommentThread[]>();
-  const outOfDiff: RemoteCommentThread[] = [];
-
-  for (const thread of threads) {
-    if (thread.lineEnd == null) {
-      outOfDiff.push(thread);
-      log(
-        'warn',
-        'placement.remoteThread',
-        `thread ${thread.id} has null lineEnd → out-of-diff (transformer didn't resolve a line)`,
-        {
-          file: thread.file,
-          side: thread.side,
-          lineStart: thread.lineStart,
-          lineEnd: thread.lineEnd,
-          isOutdated: thread.isOutdated,
-        }
-      );
-      continue;
-    }
-    const lineMap = thread.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
-    let insertAfter: number | undefined;
-
-    for (const targetLine of [
-      thread.lineEnd,
-      thread.lineStart ?? thread.lineEnd,
-    ]) {
-      if (lineMap.has(targetLine)) {
-        insertAfter = lineMap.get(targetLine);
-        break;
-      }
-    }
-
-    if (insertAfter === undefined) {
-      let closest = -1;
-      for (const [lineNum, idx] of lineMap) {
-        if (lineNum <= thread.lineEnd && idx > closest) {
-          closest = idx;
-        }
-      }
-      if (closest >= 0) insertAfter = closest;
-    }
-
-    if (insertAfter !== undefined) {
-      const existing = insertions.get(insertAfter) ?? [];
-      existing.push(thread);
-      insertions.set(insertAfter, existing);
-      log(
-        'info',
-        'placement.remoteThread',
-        `thread ${thread.id} placed inline after diff index ${insertAfter}`,
-        {
-          file: thread.file,
-          side: thread.side,
-          lineStart: thread.lineStart,
-          lineEnd: thread.lineEnd,
-          isOutdated: thread.isOutdated,
-        }
-      );
-    } else {
-      outOfDiff.push(thread);
-      log(
-        'warn',
-        'placement.remoteThread',
-        `thread ${thread.id} pushed to out-of-diff (no matching diff line)`,
-        {
-          file: thread.file,
-          side: thread.side,
-          lineStart: thread.lineStart,
-          lineEnd: thread.lineEnd,
-          isOutdated: thread.isOutdated,
-          diffLineCount: diffLines.length,
-        }
-      );
-    }
-  }
-
-  return { insertions, outOfDiff };
-}
-
-export interface InsertionMap {
-  insertions: Map<number, ReviewComment[]>;
-  outOfDiff: ReviewComment[];
-  newLineToIndex: Map<number, number>;
-  oldLineToIndex: Map<number, number>;
-}
-
-export function computeInsertionMap(
-  diffLines: DiffLine[],
-  comments: ReviewComment[]
-): InsertionMap {
-  const newLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.newLine != null) newLineToIndex.set(dl.newLine, i);
-  }
-
-  const oldLineToIndex = new Map<number, number>();
-  for (let i = 0; i < diffLines.length; i++) {
-    const dl = diffLines[i];
-    if (dl.oldLine != null) oldLineToIndex.set(dl.oldLine, i);
-  }
-
-  const insertions = new Map<number, ReviewComment[]>();
-  const outOfDiff: ReviewComment[] = [];
-
-  for (const comment of comments) {
-    const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
-    let insertAfter: number | undefined;
-
-    for (const targetLine of [comment.lineEnd, comment.lineStart]) {
-      if (lineMap.has(targetLine)) {
-        insertAfter = lineMap.get(targetLine);
-        break;
-      }
-    }
-
-    if (insertAfter === undefined) {
-      let closest = -1;
-      for (const [lineNum, idx] of lineMap) {
-        if (lineNum <= comment.lineEnd && idx > closest) {
-          closest = idx;
-        }
-      }
-      if (closest >= 0) insertAfter = closest;
-    }
-
-    if (insertAfter !== undefined) {
-      const existing = insertions.get(insertAfter) ?? [];
-      existing.push(comment);
-      insertions.set(insertAfter, existing);
-    } else {
-      outOfDiff.push(comment);
-    }
-  }
-
-  return { insertions, outOfDiff, newLineToIndex, oldLineToIndex };
-}
-
 // ── Interleave ─────────────────────────────────────────────────────
+
+/**
+ * Accumulates the annotated-line stream.
+ *
+ * It owns the two things every section has to agree on: the comment index,
+ * which runs continuously across section boundaries because comment
+ * navigation steps through it, and where each trailing section begins.
+ */
+function createLineBuilder() {
+  const lines: AnnotatedLine[] = [];
+  const sectionAnchors: number[] = [0];
+  let commentIndex = 0;
+
+  return {
+    lines,
+    sectionAnchors,
+
+    diff(line: DiffLine, highlighted: boolean): void {
+      lines.push({ type: 'diff', line, highlighted });
+    },
+
+    localThread(comment: ReviewComment): void {
+      lines.push({
+        type: 'thread-local',
+        comment,
+        commentIndex: commentIndex++,
+      });
+    },
+
+    remoteThread(thread: RemoteCommentThread): void {
+      lines.push({
+        type: 'thread-remote',
+        thread,
+        commentIndex: commentIndex++,
+      });
+    },
+
+    label(rendered: string): void {
+      lines.push({ type: 'separator', rendered });
+    },
+
+    /** Open a trailing section: anchor it, then write its heading. */
+    beginSection(title: string): void {
+      sectionAnchors.push(lines.length);
+      lines.push({
+        type: 'separator',
+        rendered: `\n${DIM}── ${title} ──${RESET}`,
+      });
+    },
+  };
+}
+
+type LineBuilder = ReturnType<typeof createLineBuilder>;
+
+/** `line 12:`, or `line 12-15:` for a range — where an off-diff comment sits. */
+function lineLabel(start: number, end: number): string {
+  return `${DIM}  line ${start}${start === end ? '' : `-${end}`}:${RESET}`;
+}
+
+function appendOutOfDiffLocals(
+  builder: LineBuilder,
+  comments: ReviewComment[]
+): void {
+  if (comments.length === 0) return;
+
+  builder.beginSection('comments on lines not in diff');
+  for (const comment of comments) {
+    builder.label(lineLabel(comment.lineStart, comment.lineEnd));
+    builder.localThread(comment);
+  }
+}
+
+function appendOutOfDiffRemotes(
+  builder: LineBuilder,
+  threads: RemoteCommentThread[]
+): void {
+  if (threads.length === 0) return;
+
+  builder.beginSection('remote comments on lines not in diff');
+  for (const thread of threads) {
+    // A thread with no line at all — a general comment the transformer
+    // could not place — gets no location line above it.
+    if (thread.lineEnd != null) {
+      builder.label(
+        lineLabel(thread.lineStart ?? thread.lineEnd, thread.lineEnd)
+      );
+    }
+    builder.remoteThread(thread);
+  }
+}
+
+function appendGeneralComments(
+  builder: LineBuilder,
+  threads: RemoteCommentThread[]
+): void {
+  if (threads.length === 0) return;
+
+  builder.beginSection('general PR comments');
+  for (const thread of threads) builder.remoteThread(thread);
+}
 
 export function interleaveComments(
   diffLines: DiffLine[],
@@ -247,126 +188,47 @@ export function interleaveComments(
   // 'posted' but the entry stays in .kirby-comments.json as an audit
   // trail. The same comment is also served back by fetchCommentThreads
   // as a RemoteCommentThread, so rendering both would duplicate the box.
-  comments = comments.filter((c) => c.status !== 'posted');
-  const hasRemoteThreads = (remoteThreads ?? []).length > 0;
-  const hasGeneralComments = (generalComments ?? []).length > 0;
+  const drafts = comments.filter((c) => c.status !== 'posted');
 
-  const insertionMap = computeInsertionMap(diffLines, comments);
+  const insertionMap = computeInsertionMap(diffLines, drafts);
   const { insertions: localInsertions, outOfDiff: localOutOfDiff } =
     insertionMap;
 
-  const remoteMap = hasRemoteThreads
-    ? computeRemoteInsertionMap(diffLines, remoteThreads!)
-    : {
-        insertions: new Map<number, RemoteCommentThread[]>(),
-        outOfDiff: [] as RemoteCommentThread[],
-      };
+  // Skipped entirely when there are no threads: the map builds a line index
+  // over the whole diff, which is wasted work on the common case.
+  const remoteMap =
+    remoteThreads && remoteThreads.length > 0
+      ? computeRemoteInsertionMap(diffLines, remoteThreads)
+      : {
+          insertions: new Map<number, RemoteCommentThread[]>(),
+          outOfDiff: [] as RemoteCommentThread[],
+        };
 
-  const highlightSet = buildHighlightSet(
-    diffLines,
-    comments,
-    selectedCommentId
-  );
+  const highlightSet = buildHighlightSet(diffLines, drafts, selectedCommentId);
 
-  const result: AnnotatedLine[] = [];
-  const sectionAnchors: number[] = [0];
-  let commentIndex = 0;
+  const builder = createLineBuilder();
 
+  // The diff body, with each line's threads hanging beneath it.
   for (let i = 0; i < diffLines.length; i++) {
-    result.push({
-      type: 'diff',
-      line: diffLines[i],
-      highlighted: highlightSet.has(i),
-    });
-
-    const commentsHere = localInsertions.get(i);
-    if (commentsHere) {
-      for (const comment of commentsHere) {
-        result.push({
-          type: 'thread-local',
-          comment,
-          commentIndex: commentIndex++,
-        });
-      }
+    builder.diff(diffLines[i], highlightSet.has(i));
+    for (const comment of localInsertions.get(i) ?? []) {
+      builder.localThread(comment);
     }
-
-    const threadsHere = remoteMap.insertions.get(i);
-    if (threadsHere) {
-      for (const thread of threadsHere) {
-        result.push({
-          type: 'thread-remote',
-          thread,
-          commentIndex: commentIndex++,
-        });
-      }
+    for (const thread of remoteMap.insertions.get(i) ?? []) {
+      builder.remoteThread(thread);
     }
   }
 
-  // Out-of-diff local comments
-  if (localOutOfDiff.length > 0) {
-    sectionAnchors.push(result.length);
-    result.push({
-      type: 'separator',
-      rendered: `\n${DIM}── comments on lines not in diff ──${RESET}`,
-    });
-    for (const comment of localOutOfDiff) {
-      result.push({
-        type: 'separator',
-        rendered: `${DIM}  line ${comment.lineStart}${
-          comment.lineStart !== comment.lineEnd ? `-${comment.lineEnd}` : ''
-        }:${RESET}`,
-      });
-      result.push({
-        type: 'thread-local',
-        comment,
-        commentIndex: commentIndex++,
-      });
-    }
-  }
+  // Then the sections for everything that had nowhere to hang.
+  appendOutOfDiffLocals(builder, localOutOfDiff);
+  appendOutOfDiffRemotes(builder, remoteMap.outOfDiff);
+  appendGeneralComments(builder, generalComments ?? []);
 
-  // Out-of-diff remote threads
-  if (remoteMap.outOfDiff.length > 0) {
-    sectionAnchors.push(result.length);
-    result.push({
-      type: 'separator',
-      rendered: `\n${DIM}── remote comments on lines not in diff ──${RESET}`,
-    });
-    for (const thread of remoteMap.outOfDiff) {
-      if (thread.lineEnd != null) {
-        result.push({
-          type: 'separator',
-          rendered: `${DIM}  line ${thread.lineStart ?? thread.lineEnd}${
-            thread.lineStart != null && thread.lineStart !== thread.lineEnd
-              ? `-${thread.lineEnd}`
-              : ''
-          }:${RESET}`,
-        });
-      }
-      result.push({
-        type: 'thread-remote',
-        thread,
-        commentIndex: commentIndex++,
-      });
-    }
-  }
-
-  // PR-level general comments (file === null)
-  if (hasGeneralComments) {
-    sectionAnchors.push(result.length);
-    result.push({
-      type: 'separator',
-      rendered: `\n${DIM}── general PR comments ──${RESET}`,
-    });
-    for (const thread of generalComments!) {
-      result.push({
-        type: 'thread-remote',
-        thread,
-        commentIndex: commentIndex++,
-      });
-    }
-  }
-
-  return { lines: result, insertionMap, sectionAnchors };
+  return {
+    lines: builder.lines,
+    insertionMap,
+    sectionAnchors: builder.sectionAnchors,
+  };
 }
 
 // ── Position lookup ───────────────────────────────────────────────
@@ -437,240 +299,4 @@ export function getCommentPositions(
   }
 
   return positions;
-}
-
-// ── Row estimation + row map ───────────────────────────────────────
-//
-// These were previously in `apps/cli/src/components/CommentThread.tsx`
-// alongside the rendering components. They've moved here because:
-// 1. They're pure functions over the renderer's data types and need
-//    no React context.
-// 2. The new `buildRowMap` belongs here (it operates on AnnotatedLine
-//    streams that this module produces) and needs them.
-// 3. Keeping them next to the data shape they describe lets all
-//    consumers — the diff viewer's row-based scroll model, the file
-//    list footer's `planCommentFooter`, and any future surface —
-//    share one source of truth.
-
-/**
- * Rows a body string occupies after wrap. With a `contentWidth` this
- * is EXACT, not an estimate: it runs the same `wrap-ansi` call Ink's
- * `<Text wrap="wrap">` uses (ink/build/wrap-text.js), so word
- * boundaries, hard-broken long tokens, and wide glyphs all count the
- * way they paint. Character-count math (`ceil(len/width)`) is not
- * good enough here — it undercounts multi-line bodies whose
- * individual lines wrap, and every scroll consumer (viewport clamp,
- * j/k stepping, scroll-into-view) keys off these numbers, so a
- * one-row miss per card accumulates into unreachable rows.
- *
- * Without a width the number falls back to a 4-line cap (matches the
- * file-list footer's pre-2026 behaviour) — render paths should always
- * pass the real width.
- */
-export function estimateBodyRows(body: string, contentWidth?: number): number {
-  const naturalLines = Math.max(1, body.split('\n').length);
-  if (contentWidth && contentWidth > 0) {
-    const wrapped = wrapAnsi(body, contentWidth, { trim: false, hard: true });
-    return Math.max(1, wrapped.split('\n').length);
-  }
-  return Math.min(4, naturalLines);
-}
-
-/**
- * Estimate the row height of a `<CommentThreadCard>` so callers can
- * reserve space without measuring the rendered output. Always counts
- * the full thread (root + every reply) — the card no longer collapses
- * replies when not selected.
- *
- * Numbers mirror the card's structure: top border + author row +
- * wrapped body + bottom border + marginBottom = `4 + bodyRows`.
- * Replies render in one container with a single marginTop gap, then
- * header + body each; the reply column is indented 2 cells, so reply
- * bodies wrap 2 cols narrower than the root.
- */
-export function estimateCardRows(
-  thread: RemoteCommentThread,
-  contentWidth?: number
-): number {
-  const root = thread.comments[0];
-  if (!root) return 0;
-  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
-  const replies = thread.comments.slice(1);
-  const replyWidth =
-    contentWidth && contentWidth > 0
-      ? Math.max(1, contentWidth - 2)
-      : undefined;
-  const replyRows =
-    replies.length === 0
-      ? 0
-      : 1 +
-        replies.reduce(
-          (sum, c) => sum + 1 + estimateBodyRows(c.body, replyWidth),
-          0
-        );
-  return rootRows + replyRows;
-}
-
-/**
- * Mirror of `estimateCardRows` for local drafts. Selected/editing
- * cards show the full body; collapsed cards cap at 4 lines (matching
- * the runtime `MAX_COLLAPSED` in `<LocalCommentCard>`).
- */
-export function estimateLocalCardRows(
-  comment: ReviewComment,
-  contentWidth?: number,
-  selected = false
-): number {
-  const lines = comment.body.split('\n');
-  const MAX_COLLAPSED = 4;
-  const shown = selected ? lines : lines.slice(0, MAX_COLLAPSED);
-  const truncatedNote = !selected && lines.length > MAX_COLLAPSED ? 1 : 0;
-  // Collapsed cards render each natural line as its own wrapping
-  // <Text> (empty lines become a single space), so count per line.
-  const bodyRows =
-    Math.max(
-      1,
-      shown.reduce(
-        (sum, l) => sum + estimateBodyRows(l || ' ', contentWidth),
-        0
-      )
-    ) + truncatedNote;
-  // border-top + header + body + border-bottom + marginBottom
-  return 2 + 1 + bodyRows + 1;
-}
-
-/**
- * Extra rows reserved when a thread card has its reply input open.
- * The input box renders as a bordered Box (~3 rows) plus the
- * marginTop gap between body and input = 4 rows. Used by `buildRowMap`
- * so the row map's totals stay correct while the user composes.
- */
-export const REPLY_INPUT_ROWS = 4;
-
-/**
- * Buffer-aware version of `REPLY_INPUT_ROWS`: rows the open reply
- * input occupies for a given buffer — the marginTop gap + bordered box
- * (2 rows) + the wrapped buffer. `contentWidth` is the CARD interior
- * width; the input's own text is 6 cols narrower (marginLeft 2 +
- * border 2 + paddingX 2), and the trailing cursor glyph takes a cell.
- */
-export function estimateReplyInputRows(
-  buffer: string,
-  contentWidth?: number
-): number {
-  const inputWidth =
-    contentWidth && contentWidth > 0
-      ? Math.max(1, contentWidth - 6)
-      : undefined;
-  return 1 + 2 + estimateBodyRows(`${buffer}▍`, inputWidth);
-}
-
-/**
- * Extra rows reserved when a local-draft card is in `editing` state.
- * Editing replaces the body Text with an input that may run a row or
- * two longer than the static body, so we reserve a couple of slack
- * rows on top of the selected-body estimate. Conservative.
- */
-export const EDIT_INPUT_SLACK_ROWS = 2;
-
-export interface RowMapEntry {
-  /** First physical row of this entry, measured from the top of the file diff. */
-  rowStart: number;
-  /** How many physical rows this entry consumes when rendered. */
-  rowSpan: number;
-}
-
-export interface RowMap {
-  /** 1:1 with the annotated-line stream it was built from. */
-  positions: RowMapEntry[];
-  /** Sum of every `rowSpan` — the row-unit equivalent of `annotatedLines.length`. */
-  totalRows: number;
-  /** Section anchors translated from slot indices to physical row offsets. */
-  sectionAnchorRows: number[];
-}
-
-export interface BuildRowMapInputs {
-  annotatedLines: AnnotatedLine[];
-  /** Slot indices of section starts, as returned by `interleaveComments`. */
-  sectionAnchors: number[];
-  /** Card content width (after borders + paddingX). Pass the rendered width. */
-  contentWidth: number;
-  /** Active reply-mode thread id — its row span gets `REPLY_INPUT_ROWS` extra. */
-  replyingToThreadId?: string | null;
-  /** Active local-edit comment id — its row span gets `EDIT_INPUT_SLACK_ROWS` extra. */
-  editingCommentId?: string | null;
-  /**
-   * Currently selected comment id. Only affects `<LocalCommentCard>`'s
-   * body-collapse decision (selected drafts show the full body, others
-   * cap at 4 lines). Remote thread cards always render fully expanded.
-   */
-  selectedCommentId?: string | null;
-}
-
-/**
- * Single source of truth for physical row positions across the diff
- * viewer's annotated-line stream. The diff viewer's scroll model
- * advances one ROW at a time but cards are atomic React components —
- * this map lets the slicer know which entries intersect the viewport
- * and where to clip the first one's top so partial cards render
- * cleanly via `marginTop={-topClip}`.
- *
- * Pure function: deterministic given inputs, no I/O. Cheap enough to
- * recompute via `useMemo` on each render. Re-runs when reply / edit
- * state changes (those bump card heights) or when the terminal
- * resizes (contentWidth changes).
- */
-export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
-  const {
-    annotatedLines,
-    sectionAnchors,
-    contentWidth,
-    replyingToThreadId,
-    editingCommentId,
-    selectedCommentId,
-  } = inputs;
-
-  const positions: RowMapEntry[] = new Array(annotatedLines.length);
-  let cursor = 0;
-  for (let i = 0; i < annotatedLines.length; i++) {
-    const entry = annotatedLines[i]!;
-    let span = 1;
-    if (entry.type === 'thread-remote') {
-      span = estimateCardRows(entry.thread, contentWidth);
-      if (entry.thread.id === replyingToThreadId) {
-        span += REPLY_INPUT_ROWS;
-      }
-    } else if (entry.type === 'thread-local') {
-      span = estimateLocalCardRows(
-        entry.comment,
-        contentWidth,
-        selectedCommentId === entry.comment.id
-      );
-      if (entry.comment.id === editingCommentId) {
-        span += EDIT_INPUT_SLACK_ROWS;
-      }
-    }
-    positions[i] = { rowStart: cursor, rowSpan: span };
-    cursor += span;
-  }
-  const totalRows = cursor;
-
-  // sectionAnchors are slot indices into annotatedLines. Translate
-  // each to its physical row by looking up the corresponding entry's
-  // rowStart. An anchor that points past the end of the stream maps
-  // to totalRows (i.e. "the bottom"); an empty stream collapses to
-  // [0].
-  const sectionAnchorRows: number[] = [];
-  for (const anchor of sectionAnchors) {
-    if (anchor <= 0) {
-      sectionAnchorRows.push(0);
-    } else if (anchor >= positions.length) {
-      sectionAnchorRows.push(totalRows);
-    } else {
-      sectionAnchorRows.push(positions[anchor]!.rowStart);
-    }
-  }
-  if (sectionAnchorRows.length === 0) sectionAnchorRows.push(0);
-
-  return { positions, totalRows, sectionAnchorRows };
 }

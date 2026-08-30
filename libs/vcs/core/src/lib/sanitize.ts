@@ -9,7 +9,7 @@
 // because we don't need its terminator nuances — every sequence
 // becomes the empty string regardless.
 const ANSI_REGEX =
-  // eslint-disable-next-line no-control-regex
+  // eslint-disable-next-line no-control-regex -- every ANSI sequence starts with ESC; matching it is the point
   /[][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
 /**

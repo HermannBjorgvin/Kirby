@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
-import { truncate } from '../../utils/truncate.js';
-import { planItemKey, type PlanItem } from '../../plan/plan-types.js';
+import { truncate, planItemKey, type PlanItem } from '@kirby/core';
 
 // Presentational checkout pane: a checklist of plan items with an
 // include/exclude toggle, inline note editing, and a send action. When
@@ -45,8 +44,7 @@ export const PlanCheckoutPane = memo(function PlanCheckoutPane({
         {items.map((item, idx) => {
           const selected = idx === selectedIndex;
           const key = planItemKey(item.kind, item.id);
-          const tag =
-            item.kind === 'local' ? `[${item.severity}] ` : '';
+          const tag = item.kind === 'local' ? `[${item.severity}] ` : '';
           return (
             <Box key={key} flexDirection="column">
               <Text wrap="truncate-end">
@@ -54,7 +52,11 @@ export const PlanCheckoutPane = memo(function PlanCheckoutPane({
                 <Text color={selected ? 'cyan' : undefined} bold={selected}>
                   {locationLabel(item)}
                 </Text>
-                <Text dimColor>{'  '}{tag}{truncate(item.body, bodyWidth)}</Text>
+                <Text dimColor>
+                  {'  '}
+                  {tag}
+                  {truncate(item.body, bodyWidth)}
+                </Text>
               </Text>
               {item.annotation && annotatingPlanKey !== key && (
                 <Text wrap="truncate-end">
@@ -88,7 +90,9 @@ export const PlanCheckoutPane = memo(function PlanCheckoutPane({
             <Text color={target === 'new-session' ? 'cyan' : undefined}>
               {target === 'new-session' ? '› ' : '  '}Restart with plan
             </Text>
-            <Text dimColor>{'  ·  [↑/↓] choose · [enter] send · [esc] back'}</Text>
+            <Text dimColor>
+              {'  ·  [↑/↓] choose · [enter] send · [esc] back'}
+            </Text>
           </Text>
         ) : (
           <Text dimColor>

@@ -10,6 +10,8 @@ on:
       - 'libs/**'
       - 'apps/cli-e2e/**'
       - 'apps/cli-wterm-host/**'
+      - 'apps/desktop/**'
+      - 'apps/desktop-e2e/**'
       - '.github/workflows/integration.yml'
   workflow_dispatch:
 
@@ -43,6 +45,10 @@ jobs:
       - name: Authenticate gh CLI
         run: echo "${{ secrets.INTEGRATION_TEST_PAT }}" | gh auth login --with-token
 
+      # desktop-e2e drives the real Electron app, which needs a display.
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Build CLI
         run: npx nx build cli
 
@@ -59,6 +65,12 @@ jobs:
           KIRBY_LOG: /tmp/kirby-integ-debug.log
           KIRBY_LOG_LEVEL: debug
 
+      - name: Run desktop e2e tests (including integration)
+        run: npx nx e2e:integration desktop-e2e
+        env:
+          GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
+          TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-runner/kirby-integration-test-repository' }}
+
       - name: Upload debug logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -73,6 +85,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-test-output-integration
-          path: apps/cli-e2e/test-output
+          path: |
+            apps/cli-e2e/test-output
+            apps/desktop-e2e/test-output
           if-no-files-found: ignore
           retention-days: 7

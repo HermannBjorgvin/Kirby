@@ -2,15 +2,17 @@ import { useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import { PlanCheckoutPane } from '../reviews/PlanCheckoutPane.js';
-import { useKeybindResolve } from '../../context/KeybindContext.js';
-import { useSessionActions } from '../../context/SessionContext.js';
-import { useSidebar } from '../../context/SidebarContext.js';
-import { useNavState, useNavActions } from '../../context/NavContext.js';
-import { useAsyncOps } from '../../context/AsyncOpsContext.js';
-import { usePlan } from '../../context/PlanContext.js';
-import { useConfig } from '../../context/ConfigContext.js';
-import type { TerminalLayout } from '../../context/LayoutContext.js';
-import type { PaneModeValue } from '../../hooks/usePaneReducer.js';
+import type { TerminalLayout, PaneModeValue } from '@kirby/app-core';
+import {
+  useKeybindResolve,
+  useSessionActions,
+  useSidebar,
+  useNavState,
+  useNavActions,
+  useAsyncOps,
+  usePlan,
+  useConfig,
+} from '@kirby/app-core';
 import { handlePlanCheckoutInput } from './main-input.js';
 
 interface PlanCheckoutContainerProps {

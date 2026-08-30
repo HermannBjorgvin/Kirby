@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { Box, Text } from 'ink';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import {
@@ -7,7 +7,15 @@ import {
   estimateReplyInputRows,
   type ReviewComment,
 } from '@kirby/review-comments';
-import { planItemKey } from '../plan/plan-types.js';
+import { planItemKey } from '@kirby/core';
+import {
+  cardBorderColor,
+  collapseBody,
+  localHeaderSpans,
+  replyHeaderSpans,
+  threadHeaderSpans,
+  type HeaderSpan,
+} from '../models/comment-card-model.js';
 
 // Shared Ink-based renderings for remote threads AND local drafts.
 //
@@ -18,16 +26,59 @@ import { planItemKey } from '../plan/plan-types.js';
 //     remote threads, <LocalCommentCard> for local drafts.
 //
 // Single component per kind everywhere — no more ANSI/Ink split.
+//
+// Which spans a header carries, what each is coloured, and how much of
+// a draft body is shown all live in ./comment-card-model.ts; the
+// components below only draw what it decides.
 
-export function relativeTime(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+/**
+ * One logical header line.
+ *
+ * Collapsed into a single <Text> with nested colour spans so Ink's
+ * text-measure pipeline keeps every span on one row and truncates on
+ * overflow. Sibling <Text> nodes in a row Box would each get a
+ * flex-shrunk column allocation and wrap individually, producing a
+ * 2-row mangled header ("kirby-test-run | er", " · 2h | ago",
+ * "[r]eply | [v]reopen").
+ */
+function HeaderLine({ spans }: { spans: HeaderSpan[] }) {
+  return (
+    <Text wrap="truncate-end">
+      {spans.map((span) => (
+        <Text
+          key={span.key}
+          bold={span.bold}
+          color={span.color}
+          dimColor={span.dim}
+        >
+          {span.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+/**
+ * Indent the card so it lines up with the diff gutter when requested.
+ * Rendered as a sibling <Box> that consumes `indent` columns; keeps the
+ * card's own padding/border math simple.
+ */
+function CardShell({
+  indent,
+  children,
+}: {
+  indent: number | undefined;
+  children: ReactNode;
+}) {
+  if (indent && indent > 0) {
+    return (
+      <Box>
+        <Box width={indent} flexShrink={0} />
+        {children}
+      </Box>
+    );
+  }
+  return children;
 }
 
 // ── Full-size card ───────────────────────────────────────────────────
@@ -62,11 +113,6 @@ interface CommentThreadCardProps {
   planHint?: boolean;
 }
 
-/** Hint text for the a/A plan actions; adapts to plan membership. */
-function planHintText(inPlan: boolean): string {
-  return inPlan ? ' [a] remove [A] annotate' : ' [a/A]dd to draft plan';
-}
-
 // Constants that mirror the previous ANSI renderer's visual language —
 // kept so card width + indent line up with diff row content.
 export const CARD_MAX_WIDTH = 80;
@@ -87,110 +133,62 @@ export const CommentThreadCard = memo(function CommentThreadCard({
 
   const isReplying = replyingToThreadId === thread.id;
 
-  const card = (
-    <Box
-      flexDirection="column"
-      // Always frame the card — a gray border when unselected keeps the
-      // shape consistent across the Shift+C pane (where one card is
-      // always selected) and the file-list footer (where none is). The
-      // selected variant swaps in cyan for visual emphasis; in-plan
-      // cards tint green (matches the corner PlanIndicator) so plan
-      // membership stays visible without a badge.
-      borderStyle="round"
-      borderColor={selected ? 'cyan' : inPlan ? 'green' : 'gray'}
-      marginBottom={1}
-      paddingX={1}
-      {...(maxWidth !== undefined ? { width: maxWidth } : {})}
-    >
-      {/*
-        Header is one logical line — collapse into a single <Text> with
-        nested color spans so Ink's text-measure pipeline keeps every
-        span on one row and truncates on overflow. Sibling <Text> nodes
-        in a row Box would each get a flex-shrunk column allocation and
-        wrap individually, producing a 2-row mangled header
-        ("kirby-test-run | er", " · 2h | ago", "[r]eply | [v]reopen").
-      */}
-      <Text wrap="truncate-end">
-        <Text bold color={selected ? 'cyan' : 'blue'}>
-          {rootComment.author}
-        </Text>
-        <Text dimColor>{` · ${relativeTime(rootComment.createdAt)}`}</Text>
-        {thread.isResolved && <Text color="green">{' ✓ resolved'}</Text>}
-        {thread.isOutdated && <Text dimColor>{' (outdated)'}</Text>}
-        {selected && !isReplying && (
-          <Text dimColor>
-            {'  [r]eply'}
-            {thread.canResolve
-              ? ` [v]${thread.isResolved ? 'reopen' : 'resolve'}`
-              : ''}
-            {planHint ? planHintText(inPlan) : ''}
-          </Text>
+  return (
+    <CardShell indent={indent}>
+      <Box
+        flexDirection="column"
+        // Always frame the card — a gray border when unselected keeps
+        // the shape consistent across the Shift+C pane (where one card
+        // is always selected) and the file-list footer (where none
+        // is). See cardBorderColor for how selection and plan
+        // membership compete for the tint.
+        borderStyle="round"
+        borderColor={cardBorderColor({
+          selected,
+          inPlan,
+          selectedColor: 'cyan',
+        })}
+        marginBottom={1}
+        paddingX={1}
+        {...(maxWidth !== undefined ? { width: maxWidth } : {})}
+      >
+        <HeaderLine
+          spans={threadHeaderSpans(thread, {
+            selected,
+            replying: isReplying,
+            planHint,
+            inPlan,
+          })}
+        />
+        <Text wrap="wrap">{rootComment.body}</Text>
+        {thread.comments.length > 1 && (
+          <Box flexDirection="column" marginTop={1}>
+            {thread.comments.slice(1).map((reply) => (
+              <Box key={reply.id} flexDirection="column" marginLeft={2}>
+                <HeaderLine spans={replyHeaderSpans(reply)} />
+                <Text wrap="wrap">{reply.body}</Text>
+              </Box>
+            ))}
+          </Box>
         )}
         {isReplying && (
-          <>
-            <Text color="cyan">{'  REPLY'}</Text>
-            <Text dimColor>{' [enter] send · [esc] cancel'}</Text>
-          </>
+          <Box
+            flexDirection="column"
+            marginTop={1}
+            marginLeft={2}
+            borderStyle="round"
+            borderColor="cyan"
+            paddingX={1}
+          >
+            <Text>{replyBuffer ?? ''}▍</Text>
+          </Box>
         )}
-      </Text>
-      <Text wrap="wrap">{rootComment.body}</Text>
-      {thread.comments.length > 1 && (
-        <Box flexDirection="column" marginTop={1}>
-          {thread.comments.slice(1).map((reply) => (
-            <Box key={reply.id} flexDirection="column" marginLeft={2}>
-              <Text wrap="truncate-end">
-                <Text bold color="blue">
-                  {reply.author}
-                </Text>
-                <Text dimColor>{` · ${relativeTime(reply.createdAt)}`}</Text>
-              </Text>
-              <Text wrap="wrap">{reply.body}</Text>
-            </Box>
-          ))}
-        </Box>
-      )}
-      {isReplying && (
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          marginLeft={2}
-          borderStyle="round"
-          borderColor="cyan"
-          paddingX={1}
-        >
-          <Text>{replyBuffer ?? ''}▍</Text>
-        </Box>
-      )}
-    </Box>
-  );
-
-  // Indent the card so it lines up with the diff gutter when requested.
-  // Rendered as a sibling <Box> that consumes `indent` columns; keeps
-  // the card's own padding/border math simple.
-  if (indent && indent > 0) {
-    return (
-      <Box>
-        <Box width={indent} flexShrink={0} />
-        {card}
       </Box>
-    );
-  }
-  return card;
+    </CardShell>
+  );
 });
 
 // ── Local comment card (draft / unposted) ───────────────────────────
-
-const SEVERITY_COLOR: Record<string, string> = {
-  critical: 'red',
-  major: 'yellow',
-  minor: 'cyan',
-  nit: 'gray',
-};
-
-const STATUS_MARK: Record<string, { char: string; color: string }> = {
-  posting: { char: '⏳', color: 'yellow' },
-  posted: { char: '✓', color: 'green' },
-};
 
 interface LocalCommentCardProps {
   comment: ReviewComment;
@@ -222,78 +220,51 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   inPlan = false,
   planHint = false,
 }: LocalCommentCardProps) {
-  const severityColor = SEVERITY_COLOR[comment.severity] ?? 'gray';
-  const statusMark = STATUS_MARK[comment.status];
-  const bodyLines = comment.body.split('\n');
-  const MAX_COLLAPSED = 4;
-  const shownLines =
-    selected || editing ? bodyLines : bodyLines.slice(0, MAX_COLLAPSED);
-  const truncated = !selected && !editing && bodyLines.length > MAX_COLLAPSED;
+  const body = collapseBody(comment.body, selected || editing);
 
-  const card = (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={selected ? 'yellow' : inPlan ? 'green' : 'gray'}
-      marginBottom={1}
-      paddingX={1}
-      {...(maxWidth !== undefined ? { width: maxWidth } : {})}
-    >
-      {/* See note in <CommentThreadCard> — single <Text> keeps the
-          header on one row and truncates on overflow rather than
-          flex-shrinking each span into a wrapping column. */}
-      <Text wrap="truncate-end">
-        <Text bold color={severityColor}>
-          [{comment.severity}]
-        </Text>
-        {statusMark && (
-          <Text color={statusMark.color}>{` ${statusMark.char}`}</Text>
-        )}
-        {pendingDelete && <Text color="red">{'  Delete? [y]es [n]o'}</Text>}
-        {selected && !editing && !pendingDelete && (
-          <Text dimColor>
-            {'  [e]dit [x]delete [p]ost'}
-            {planHint ? planHintText(inPlan) : ''}
+  return (
+    <CardShell indent={indent}>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={cardBorderColor({
+          selected,
+          inPlan,
+          selectedColor: 'yellow',
+        })}
+        marginBottom={1}
+        paddingX={1}
+        {...(maxWidth !== undefined ? { width: maxWidth } : {})}
+      >
+        <HeaderLine
+          spans={localHeaderSpans(comment, {
+            selected,
+            pendingDelete,
+            editing,
+            planHint,
+            inPlan,
+          })}
+        />
+        {editing ? (
+          <Text>
+            {editBuffer ?? ''}
+            <Text color="cyan">▍</Text>
           </Text>
-        )}
-        {editing && (
+        ) : (
           <>
-            <Text color="cyan">{'  EDITING'}</Text>
-            <Text dimColor>{' [esc] save · [ctrl+c] cancel'}</Text>
+            {/* One Text, not one per line: the lines are a positional
+                split of a single string, so there is no identity to key
+                them by, and Ink wraps an embedded newline the same way
+                it wraps a sibling row. */}
+            <Text wrap="wrap">{body.lines.join('\n')}</Text>
+            {body.hiddenCount > 0 && (
+              <Text dimColor>… {body.hiddenCount} more lines</Text>
+            )}
           </>
         )}
-      </Text>
-      {editing ? (
-        <Text>
-          {editBuffer ?? ''}
-          <Text color="cyan">▍</Text>
-        </Text>
-      ) : (
-        <>
-          {shownLines.map((line, i) => (
-            <Text key={i} wrap="wrap">
-              {line || ' '}
-            </Text>
-          ))}
-          {truncated && (
-            <Text dimColor>
-              … {bodyLines.length - MAX_COLLAPSED} more lines
-            </Text>
-          )}
-        </>
-      )}
-    </Box>
-  );
-
-  if (indent && indent > 0) {
-    return (
-      <Box>
-        <Box width={indent} flexShrink={0} />
-        {card}
       </Box>
-    );
-  }
-  return card;
+    </CardShell>
+  );
 });
 
 /**

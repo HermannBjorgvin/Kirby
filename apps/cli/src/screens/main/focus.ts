@@ -9,9 +9,9 @@
 //      the sidebar when nav.focus === 'terminal'. Our helpers must agree
 //      that the sidebar is NOT focused in those cases.
 
-import type { Focus, PaneMode } from '../../types.js';
+import type { Focus, PaneMode } from '@kirby/core';
+import { resolveAgent } from '@kirby/core';
 import type { AgentId, AppConfig } from '@kirby/vcs-core';
-import { resolveAgent } from '../../agents/registry.js';
 
 export interface FocusState {
   navFocus: Focus;
@@ -83,15 +83,29 @@ export interface PaneTitleState {
  *   🤖 Claude                        (no session selected)
  *   …with ` · ctrl+space to exit` appended when terminalFocused.
  */
-export function getPaneTitle(s: PaneTitleState): string {
+/** Modes that name themselves; anything absent falls through to the agent. */
+const PANE_MODE_TITLES: Partial<Record<PaneMode, string>> = {
+  'pr-detail': 'Pull Request',
+  diff: 'Files Changed',
+  'diff-file': 'Files Changed',
+  'plan-checkout': 'Plan Checkout',
+};
+
+/**
+ * A screen covering the pane, in the order they cover one another —
+ * controls sit on top of settings, which sit on top of the rest.
+ */
+function overlayTitle(s: PaneTitleState): string | undefined {
   if (s.controlsOpen) return 'Controls';
   if (s.settingsOpen) return 'Settings';
   if (s.branchPickerCreating) return 'New Session';
   if (s.reviewConfirmActive) return 'Confirm Review';
-  if (s.paneMode === 'pr-detail') return 'Pull Request';
-  if (s.paneMode === 'diff' || s.paneMode === 'diff-file')
-    return 'Files Changed';
-  if (s.paneMode === 'plan-checkout') return 'Plan Checkout';
+  return undefined;
+}
+
+export function getPaneTitle(s: PaneTitleState): string {
+  const named = overlayTitle(s) ?? PANE_MODE_TITLES[s.paneMode];
+  if (named) return named;
 
   // Resolve the display name through the agent registry so it honors an
   // explicit agentId or a legacy aiCommand. The hidden test runner (and

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Box } from 'ink';
-import { useLayout } from '../context/LayoutContext.js';
+import { useLayout } from '@kirby/app-core';
 
 interface ModalProps {
   /** Inner content. Will be centered inside the terminal. */

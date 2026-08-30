@@ -1,0 +1,360 @@
+import { join } from 'node:path';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  shell,
+} from 'electron';
+import {
+  registerHostHandlers,
+  setExternalOpener,
+  setFolderPicker,
+  setShellGlue,
+} from '../host/register-handlers.js';
+import { killAll, probeTmuxAvailability } from '@kirby/core';
+import {
+  MENU_EVENTS,
+  SYNC_EVENTS,
+  type ContextMenuItem,
+  type DesktopPrefs,
+  type MenuCommand,
+} from '../host/contract.js';
+import {
+  openStartupRepo,
+  setRepoOpenedListener,
+} from '../host/services/repo.js';
+import {
+  setSyncNotifier,
+  startRemoteSyncLoop,
+  stopRemoteSyncLoop,
+} from '../host/services/remote-sync.js';
+import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
+import {
+  restorePersistedSessions,
+  setSessionBroadcaster,
+} from '../host/services/sessions.js';
+import { buildMenuTemplate } from './menu.js';
+import {
+  isAllowedNavigation,
+  loadTarget,
+  rendererWebPreferences,
+  windowChrome,
+} from './window.js';
+
+const DIST = join(import.meta.dirname, '..');
+const DEV_SERVER_URL = process.env.KIRBY_VITE_URL;
+const APP_VERSION = process.env.KIRBY_DESKTOP_VERSION ?? 'dev';
+const IS_DEV = Boolean(DEV_SERVER_URL) || APP_VERSION === 'dev';
+
+let prefs: DesktopPrefs = loadDesktopPrefs();
+
+// ── Native application menu ──────────────────────────────────────
+
+function sendMenuCommand(command: MenuCommand, arg?: string): void {
+  const win =
+    BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  win?.webContents.send(MENU_EVENTS.command, { command, arg });
+}
+
+function installAppMenu(): void {
+  const template = buildMenuTemplate(
+    {
+      platform: process.platform,
+      isDev: IS_DEV,
+      theme: prefs.theme,
+      appVersion: APP_VERSION,
+    },
+    sendMenuCommand
+  );
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function showAbout(): Promise<void> {
+  return dialog
+    .showMessageBox({
+      type: 'info',
+      title: 'About Kirby Desktop',
+      message: 'Kirby Desktop',
+      detail: [
+        `Version ${APP_VERSION}`,
+        `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
+        '',
+        'Worktrees, agents and reviews for one repository.',
+      ].join('\n'),
+      buttons: ['OK'],
+    })
+    .then(() => undefined);
+}
+
+function popupContextMenu(items: ContextMenuItem[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    let chosen: string | null = null;
+    const menu = Menu.buildFromTemplate(
+      items.map((item) =>
+        'type' in item
+          ? { type: 'separator' as const }
+          : {
+              label: item.label,
+              enabled: item.enabled ?? true,
+              click: () => {
+                chosen = item.id;
+              },
+            }
+      )
+    );
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    menu.popup({
+      window: win,
+      // `click` fires before `callback` when an item is chosen.
+      callback: () => resolve(chosen),
+    });
+  });
+}
+
+// Native chrome (overlay window controls, context menus, dialogs)
+// follows the resolved theme. Both OS scheme changes and in-app
+// Light/Dark picks land here: setting `themeSource` fires 'updated'.
+nativeTheme.on('updated', () => {
+  if (prefs.nativeFrame) return;
+  const next = windowChrome(nativeTheme.shouldUseDarkColors);
+  if (next.titleBarOverlay && typeof next.titleBarOverlay === 'object') {
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        win.setTitleBarOverlay(next.titleBarOverlay);
+      } catch {
+        // not supported on this platform
+      }
+    }
+  }
+});
+
+// ── Window ───────────────────────────────────────────────────────
+
+function createMainWindow(): BrowserWindow {
+  const dark = nativeTheme.shouldUseDarkColors;
+  const chrome = prefs.nativeFrame
+    ? { backgroundColor: windowChrome(dark).backgroundColor }
+    : windowChrome(dark);
+
+  const win = new BrowserWindow({
+    width: 1360,
+    height: 860,
+    minWidth: 900,
+    minHeight: 600,
+    title: 'Kirby',
+    show: false,
+    autoHideMenuBar: false,
+    ...chrome,
+    webPreferences: rendererWebPreferences(
+      join(DIST, 'preload', 'preload.cjs')
+    ),
+  });
+
+  const target = loadTarget(
+    DEV_SERVER_URL,
+    join(DIST, 'renderer', 'index.html')
+  );
+  if (target.kind === 'dev-server') {
+    void win.loadURL(target.url);
+  } else {
+    void win.loadFile(target.path);
+  }
+
+  win.once('ready-to-show', () => win.show());
+  win.webContents.on('did-finish-load', () => {
+    console.log('[desktop] renderer loaded');
+    void runQaSteps(win);
+  });
+
+  // Links in PR comments etc. open in the system browser, never in-app.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // …and the window itself never leaves the app. A navigation would
+  // keep the preload bridge attached, so remote content could drive the
+  // host directly; off-site URLs go to the browser instead.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isAllowedNavigation(url, DEV_SERVER_URL)) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+  });
+
+  return win;
+}
+
+// ── Headless QA hook ─────────────────────────────────────────────
+// KIRBY_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
+// runs each step's JS in the page, waits, captures a PNG, then quits.
+// Dev/CI only — lets us screenshot the real app under xvfb.
+
+interface QaStep {
+  js?: string;
+  waitMs?: number;
+  shot?: string;
+}
+
+async function runQaSteps(win: BrowserWindow): Promise<void> {
+  const raw = process.env.KIRBY_QA_STEPS;
+  if (!raw) return;
+  let steps: QaStep[] = [];
+  try {
+    steps = JSON.parse(raw) as QaStep[];
+  } catch (err) {
+    console.error('[desktop] bad KIRBY_QA_STEPS:', err);
+    app.quit();
+    return;
+  }
+  const { writeFile } = await import('node:fs/promises');
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // Hidden/occluded windows may never paint, which makes capturePage
+  // hang — force the window visible and un-throttled for the run.
+  win.show();
+  win.focus();
+  win.webContents.setBackgroundThrottling(false);
+  console.log(`[desktop] qa: ${steps.length} steps`);
+  await sleep(1500);
+  let i = 0;
+  for (const step of steps) {
+    i += 1;
+    try {
+      if (step.js) {
+        const r: unknown = await win.webContents.executeJavaScript(
+          step.js,
+          true
+        );
+        console.log(`[desktop] qa step ${i} js →`, r);
+      }
+      await sleep(step.waitMs ?? 600);
+      if (step.shot) {
+        const img = await win.webContents.capturePage();
+        await writeFile(step.shot, img.toPNG());
+        console.log(`[desktop] qa step ${i} shot → ${step.shot}`);
+      }
+    } catch (err) {
+      console.error(`[desktop] qa step ${i} failed:`, err);
+    }
+  }
+  app.quit();
+}
+
+// ── Host contract (main-process side) ────────────────────────────
+
+registerHostHandlers(ipcMain);
+
+// Native folder picker — Electron glue lives here so the handler
+// registry stays testable without Electron.
+setFolderPicker(async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Open repository',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+setExternalOpener(async (url) => {
+  if (!/^https?:/i.test(url)) throw new Error(`Refusing to open ${url}`);
+  await shell.openExternal(url);
+});
+
+setShellGlue({
+  contextMenu: popupContextMenu,
+  appMenuPopup: async () => {
+    const menu = Menu.getApplicationMenu();
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    menu?.popup({ window: win });
+  },
+  aboutBox: showAbout,
+  prefsChanged: (next) => {
+    prefs = next;
+    nativeTheme.themeSource = next.theme; // recolors overlay + native menus
+    installAppMenu(); // theme radio state lives in the menu
+  },
+});
+
+setSessionBroadcaster((channel, payload) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(channel, payload);
+  }
+});
+
+// Remote sync loop: (re)started whenever a repo is opened; its
+// user-facing events (auto-deleted merged branch, …) toast in the
+// renderer. Persisted tmux sessions from a previous run reattach so
+// their agents show as running immediately.
+setRepoOpenedListener((cwd) => {
+  startRemoteSyncLoop(cwd);
+  void restorePersistedSessions();
+});
+setSyncNotifier((notice) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(SYNC_EVENTS.notice, notice);
+  }
+});
+
+// ── App lifecycle ────────────────────────────────────────────────
+
+// One instance at a time: a second launch focuses the existing
+// window instead of opening a competing (possibly stale-cached) one.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+
+  // A throw in here leaves the app running with no window and no
+  // sign of why, so startup failures are logged rather than dropped.
+  app
+    .whenReady()
+    .then(() => {
+      nativeTheme.themeSource = prefs.theme;
+      installAppMenu();
+      // Cache tmux availability for the settings guard, same as the
+      // TUI's startup probe. Fire-and-forget: the guard treats a
+      // missing probe result as "unknown" and allows the switch.
+      void probeTmuxAvailability().catch(() => undefined);
+      const opened = openStartupRepo();
+      console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
+
+      void createMainWindow();
+
+      app.on('activate', () => {
+        // macOS: re-create the window when the dock icon is clicked and
+        // no windows are open.
+        if (BrowserWindow.getAllWindows().length === 0) {
+          void createMainWindow();
+        }
+      });
+    })
+    .catch((err: unknown) => {
+      console.error('[desktop] startup failed', err);
+    });
+}
+
+app.on('window-all-closed', () => {
+  // Unlike macOS, quitting when all windows close is expected on
+  // Linux and Windows.
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Agent PTYs must never outlive the app (same guarantee as the TUI).
+app.on('will-quit', () => {
+  stopRemoteSyncLoop();
+  try {
+    killAll();
+  } catch {
+    // nothing was running
+  }
+});
