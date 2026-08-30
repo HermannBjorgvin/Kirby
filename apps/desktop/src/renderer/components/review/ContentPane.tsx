@@ -1,6 +1,6 @@
 import type { DiffLine } from '@kirby/diff';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { Ref, RefObject } from 'react';
+import type { ReactNode, Ref, RefObject } from 'react';
 import type {
   RemoteCommentThread,
   ReviewComment,
@@ -14,6 +14,25 @@ import { type DiffJumpHandle } from './VirtualDiffList.js';
 import { OverviewPane } from './OverviewPane.js';
 import { PlanPane } from './PlanPane.js';
 import { ReviewStepper } from './ReviewStepper.js';
+
+/**
+ * One layer of the stack. Hidden rather than unmounted, so a pane's
+ * scroll position — and a terminal's scrollback — survives a trip to
+ * another mode and back.
+ */
+function StackedPane({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn('absolute inset-0', !visible && 'invisible')}>
+      {children}
+    </div>
+  );
+}
 
 /**
  * The single content pane, with every mode's view stacked in it. The
@@ -93,29 +112,26 @@ export function ContentPane({
     openNoteFor: { key: string } | null;
   };
 }) {
+  const headSha = pr?.headSha;
+  const generalThreads = hideResolved
+    ? general.filter((t) => !t.isResolved)
+    : general;
   return (
     <div className="relative h-full min-h-0">
       {sessionName && (
-        <div
-          className={cn('absolute inset-0', effMode !== 'agent' && 'invisible')}
-        >
+        <StackedPane visible={effMode === 'agent'}>
           <SessionTerminal
             name={sessionName}
             active={active && effMode === 'agent'}
           />
-        </div>
+        </StackedPane>
       )}
       {hasDrafts && (
-        <div
-          className={cn(
-            'absolute inset-0',
-            effMode !== 'review' && 'invisible'
-          )}
-        >
+        <StackedPane visible={effMode === 'review'}>
           {effMode === 'review' && (
             <ReviewStepper
               prId={prId}
-              headSha={pr?.headSha}
+              headSha={headSha}
               drafts={drafts}
               filesByName={filesByName}
               fileOrder={fileOrder}
@@ -124,7 +140,7 @@ export function ContentPane({
               onOpenInDiff={onOpenInDiff}
             />
           )}
-        </div>
+        </StackedPane>
       )}
       {plan && effMode === 'plan' && (
         <div className="absolute inset-0">
@@ -147,20 +163,16 @@ export function ContentPane({
           <OverviewPane pr={pr} />
         </div>
       )}
-      <div
-        className={cn('absolute inset-0', effMode !== 'diff' && 'invisible')}
-      >
+      <StackedPane visible={effMode === 'diff'}>
         <DiffPane
           prId={prId}
-          headSha={pr?.headSha}
+          headSha={headSha}
           sourceBranch={branch}
           targetBranch={baseBranch}
           files={files}
           threadsByFile={threadsByFile}
           draftsByFile={draftsByFile}
-          generalThreads={
-            hideResolved ? general.filter((t) => !t.isResolved) : general
-          }
+          generalThreads={generalThreads}
           commentsLoading={commentsLoading}
           diffLoading={diffPending}
           diffError={diffError ? String(diffError.message) : null}
@@ -172,7 +184,7 @@ export function ContentPane({
           onPrev={onPrev}
           onNext={onNext}
         />
-      </div>
+      </StackedPane>
     </div>
   );
 }

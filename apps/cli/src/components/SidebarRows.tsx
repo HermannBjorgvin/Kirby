@@ -29,6 +29,66 @@ function FlashingTitle({
   );
 }
 
+/**
+ * The row's one truncating line: quick-switch digit, status icon, the
+ * session's name, and whatever the branch is doing. It all sits in a
+ * single `<Text wrap="truncate">` so Ink truncates the line as a whole
+ * rather than each piece separately.
+ */
+function SessionTitleLine({
+  tabNumber,
+  icon,
+  iconColor,
+  title,
+  selected,
+  flashing,
+  merged,
+  rebasing,
+}: {
+  tabNumber: number | undefined;
+  icon: string;
+  iconColor: string;
+  title: string;
+  selected: boolean;
+  flashing: boolean;
+  merged: boolean;
+  rebasing: boolean;
+}) {
+  return (
+    <Text wrap="truncate">
+      {tabNumber != null ? (
+        <Text color="cyan" bold>
+          {tabDigit(tabNumber)}{' '}
+        </Text>
+      ) : null}
+      <Text color={iconColor}>{icon} </Text>
+      {flashing ? (
+        <FlashingTitle bold={selected}>{title}</FlashingTitle>
+      ) : (
+        <Text bold={selected}>{title}</Text>
+      )}
+      {merged ? (
+        <Text dimColor color="green">
+          {' '}
+          merged
+        </Text>
+      ) : null}
+      {rebasing ? <Text color="yellow"> rebasing</Text> : null}
+    </Text>
+  );
+}
+
+/** The count of conflicts against the main branch, when there are any. */
+function ConflictLine({ count }: { count: number | undefined }) {
+  if (count == null || count === 0) return null;
+  return (
+    <Text dimColor color="yellow">
+      {'  '}
+      {count} conflict{count !== 1 ? 's' : ''}
+    </Text>
+  );
+}
+
 export const SessionItemRow = memo(function SessionItemRow({
   session,
   selected,
@@ -82,39 +142,22 @@ export const SessionItemRow = memo(function SessionItemRow({
     <Box flexDirection="column">
       <Box>
         <Box flexGrow={1} flexShrink={1} minWidth={0}>
-          <Text wrap="truncate">
-            {tabNumber != null ? (
-              <Text color="cyan" bold>
-                {tabDigit(tabNumber)}{' '}
-              </Text>
-            ) : null}
-            <Text color={iconColor}>{icon} </Text>
-            {showFlash ? (
-              <FlashingTitle bold={selected}>{title}</FlashingTitle>
-            ) : (
-              <Text bold={selected}>{title}</Text>
-            )}
-            {isMerged ? (
-              <Text dimColor color="green">
-                {' '}
-                merged
-              </Text>
-            ) : null}
-            {session.state === 'rebasing' ? (
-              <Text color="yellow"> rebasing</Text>
-            ) : null}
-          </Text>
+          <SessionTitleLine
+            tabNumber={tabNumber}
+            icon={icon}
+            iconColor={iconColor}
+            title={title}
+            selected={selected}
+            flashing={showFlash}
+            merged={isMerged}
+            rebasing={session.state === 'rebasing'}
+          />
         </Box>
         <Box flexShrink={0} marginLeft={1} width={1}>
           {showSpinner ? <RainbowSpinner /> : <Text> </Text>}
         </Box>
       </Box>
-      {conflictCount != null && conflictCount > 0 ? (
-        <Text dimColor color="yellow">
-          {'  '}
-          {conflictCount} conflict{conflictCount !== 1 ? 's' : ''}
-        </Text>
-      ) : null}
+      <ConflictLine count={conflictCount} />
       {vcsConfigured ? <PrBadge pr={pr} sidebarWidth={sidebarWidth} /> : null}
     </Box>
   );

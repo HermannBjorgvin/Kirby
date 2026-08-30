@@ -30,6 +30,29 @@ import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
  *     and the agent terminal. Launch/Stop live in the rail.
  *   • A bare worktree → its agent terminal, or a launch call-to-action.
  */
+/**
+ * A branch can hold two sidebar rows — the pull request, and the
+ * worktree that actually owns the agent session. The tab may have been
+ * opened from either, so both are folded together here and the pane
+ * reads the live session regardless of which row it came from.
+ */
+function resolveItemState(
+  item: SidebarItem,
+  sessionRow: SidebarItem | undefined,
+  aliveSessions: readonly { name: string }[]
+) {
+  const rowSessionName =
+    itemSessionName(item) ??
+    (sessionRow ? itemSessionName(sessionRow) : undefined);
+  return {
+    sessionName: liveSessionName(rowSessionName, aliveSessions),
+    running:
+      itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false),
+    hasWorktree: Boolean(rowSessionName) || itemHasWorktree(item),
+    pr: item.pr ?? sessionRow?.pr,
+  };
+}
+
 export function ItemView({
   item,
   items,
@@ -88,14 +111,11 @@ export function ItemView({
     );
   }
 
-  const rowSessionName =
-    itemSessionName(item) ??
-    (sessionRow ? itemSessionName(sessionRow) : undefined);
-  const sessionName = liveSessionName(rowSessionName, sessions.data ?? []);
-  const running =
-    itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false);
-  const hasWorktree = Boolean(rowSessionName) || itemHasWorktree(item);
-  const pr = item.pr ?? sessionRow?.pr;
+  const { sessionName, running, hasWorktree, pr } = resolveItemState(
+    item,
+    sessionRow,
+    sessions.data ?? []
+  );
 
   // Half-width: a PR launch lands in the split review workspace where
   // the terminal shares the pane with the diff.

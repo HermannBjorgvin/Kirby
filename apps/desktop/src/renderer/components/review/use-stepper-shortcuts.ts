@@ -27,32 +27,30 @@ export function useStepperShortcuts(
   const { onNext, onPrev, onEdit, onPost, onDiscard, onExit } = handlers;
   useEffect(() => {
     if (!enabled) return;
+    // Built inside the effect so the table closes over the same
+    // callbacks the dependency list names — a `handlers` object read
+    // directly would be a new reference every render and re-bind the
+    // listener each time.
+    const actions: Record<string, () => void> = {
+      ArrowDown: onNext,
+      ArrowRight: onNext,
+      j: onNext,
+      ArrowUp: onPrev,
+      ArrowLeft: onPrev,
+      k: onPrev,
+      e: onEdit,
+      p: onPost,
+      Enter: onPost,
+      d: onDiscard,
+      Escape: onExit,
+    };
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'j') {
-        e.preventDefault();
-        onNext();
-      } else if (
-        e.key === 'ArrowUp' ||
-        e.key === 'ArrowLeft' ||
-        e.key === 'k'
-      ) {
-        e.preventDefault();
-        onPrev();
-      } else if (e.key === 'e') {
-        e.preventDefault();
-        onEdit();
-      } else if (e.key === 'p' || e.key === 'Enter') {
-        e.preventDefault();
-        onPost();
-      } else if (e.key === 'd') {
-        e.preventDefault();
-        onDiscard();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onExit();
-      }
+      const run = actions[e.key];
+      if (!run) return;
+      e.preventDefault();
+      run();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

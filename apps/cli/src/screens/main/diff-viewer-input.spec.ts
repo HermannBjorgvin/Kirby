@@ -224,27 +224,37 @@ function makeCtx(
       sectionAnchorRows: opts.sectionAnchorRows ?? [0],
     },
     sectionAnchorRows: opts.sectionAnchorRows ?? [0],
-    commentCtx: {
-      comments: opts.comments ?? [],
-      prId: opts.prId ?? PR_ID,
-      positions: opts.positions ?? new Map(),
-      selectedReviewPr: {
-        id: opts.prId ?? PR_ID,
-        headSha: opts.headSha,
-      } as never,
-    },
-    remoteCtx: {
-      threads: opts.threads ?? [],
-      replyToThread: vi.fn(),
-      toggleResolved: opts.toggleResolved ?? vi.fn().mockResolvedValue(true),
-      refresh: opts.refresh ?? vi.fn(),
-    },
+    commentCtx: makeCommentCtx(opts),
+    remoteCtx: makeRemoteCtx(opts),
     config: { config: opts.config ?? {} } as never,
     sessions: { flashStatus: vi.fn() } as unknown as SessionActionsContextValue,
     asyncOps: { run: opts.asyncOpsRun ?? vi.fn() } as never,
     keybinds,
     plan,
   } as unknown as DiffViewerHandlerCtx;
+}
+
+/** Draft-comment half of the handler context. */
+function makeCommentCtx(opts: CtxOpts) {
+  return {
+    comments: opts.comments ?? [],
+    prId: opts.prId ?? PR_ID,
+    positions: opts.positions ?? new Map(),
+    selectedReviewPr: {
+      id: opts.prId ?? PR_ID,
+      headSha: opts.headSha,
+    } as never,
+  };
+}
+
+/** Reviewer-thread half of the handler context. */
+function makeRemoteCtx(opts: CtxOpts) {
+  return {
+    threads: opts.threads ?? [],
+    replyToThread: vi.fn(),
+    toggleResolved: opts.toggleResolved ?? vi.fn().mockResolvedValue(true),
+    refresh: opts.refresh ?? vi.fn(),
+  };
 }
 
 beforeEach(() => {

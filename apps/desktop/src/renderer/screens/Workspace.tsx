@@ -6,6 +6,7 @@ import {
 } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import type {
+  MenuCommand,
   MenuCommandEvent,
   RepoInfo,
   SidebarItem,
@@ -151,49 +152,34 @@ function WorkspaceInner({
 
   // Native application menu → renderer actions.
   useEffect(() => {
-    const off = window.kirby.onMenuCommand(
-      ({ command, arg }: MenuCommandEvent) => {
-        switch (command) {
-          case 'open-repo':
-            onPickRepoFolder();
-            break;
-          case 'switch-repo':
-            onSwitchRepo();
-            break;
-          case 'new-worktree':
-          case 'command-palette':
-            setPaletteOpen(true);
-            break;
-          case 'open-settings':
-            tabs.openSettings();
-            break;
-          case 'close-tab':
-            closer.closeActive();
-            break;
-          case 'toggle-sidebar':
-            toggleSidebar();
-            break;
-          case 'refresh-remote':
-            refresh.mutate(undefined, {
-              onError: (e) => toast.error(errorMessage(e)),
-            });
-            break;
-          case 'set-theme':
-            if (arg === 'system' || arg === 'light' || arg === 'dark') {
-              setThemePreference(arg as ThemePreference);
-            }
-            break;
-          case 'open-url':
-            if (arg) void window.kirby.openExternal(arg);
-            break;
-          case 'show-shortcuts':
-            setShortcutsOpen(true);
-            break;
-          case 'about':
-            void window.kirby.showAbout();
-            break;
+    // A full Record rather than a switch: adding a MenuCommand is then
+    // a type error here until it has a handler, which is the same
+    // guarantee the exhaustive switch gave, minus the branching.
+    const handlers: Record<MenuCommand, (arg?: string) => void> = {
+      'open-repo': onPickRepoFolder,
+      'switch-repo': onSwitchRepo,
+      'new-worktree': () => setPaletteOpen(true),
+      'command-palette': () => setPaletteOpen(true),
+      'open-settings': () => tabs.openSettings(),
+      'close-tab': () => closer.closeActive(),
+      'toggle-sidebar': toggleSidebar,
+      'refresh-remote': () =>
+        refresh.mutate(undefined, {
+          onError: (e) => toast.error(errorMessage(e)),
+        }),
+      'set-theme': (arg) => {
+        if (arg === 'system' || arg === 'light' || arg === 'dark') {
+          setThemePreference(arg as ThemePreference);
         }
-      }
+      },
+      'open-url': (arg) => {
+        if (arg) void window.kirby.openExternal(arg);
+      },
+      'show-shortcuts': () => setShortcutsOpen(true),
+      about: () => void window.kirby.showAbout(),
+    };
+    const off = window.kirby.onMenuCommand(
+      ({ command, arg }: MenuCommandEvent) => handlers[command](arg)
     );
     return off;
   }, [tabs, closer, refresh, onPickRepoFolder, onSwitchRepo]);

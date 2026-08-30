@@ -53,6 +53,32 @@ const NO_FILES: [string, DiffLine[]][] = [];
  * What to show is decided in `lib/review-model.ts`; this component
  * wires that to the queries, the refs and the markup.
  */
+/**
+ * The terminal takes over the pane whenever an agent starts, and
+ * whenever the user comes back to a tab that already has one running —
+ * the agent is what they returned for, not the diff.
+ *
+ * Written as state adjusted during render (React's own pattern for
+ * "derive from a prop change") rather than an effect, so the pane never
+ * paints the diff for one frame before switching.
+ */
+function useAgentFocus(
+  running: boolean,
+  active: boolean,
+  onFocusAgent: () => void
+): void {
+  const [prevRunning, setPrevRunning] = useState(running);
+  if (running !== prevRunning) {
+    setPrevRunning(running);
+    if (running) onFocusAgent();
+  }
+  const [prevActive, setPrevActive] = useState(active);
+  if (active !== prevActive) {
+    setPrevActive(active);
+    if (active && running) onFocusAgent();
+  }
+}
+
 export function PrWorkspace({
   pr,
   branch,
@@ -102,19 +128,7 @@ export function PrWorkspace({
   const [mode, setMode] = useState<Mode>(running ? 'agent' : 'diff');
   const [railHidden, setRailHidden] = useState(false);
 
-  // Jump to the terminal the moment an agent starts running.
-  const [prevRunning, setPrevRunning] = useState(running);
-  if (running !== prevRunning) {
-    setPrevRunning(running);
-    if (running) setMode('agent');
-  }
-  // Coming (back) to a tab with a running agent shows the agent, not
-  // the diff — the agent is what the user is working in.
-  const [prevActive, setPrevActive] = useState(active);
-  if (active !== prevActive) {
-    setPrevActive(active);
-    if (active && running) setMode('agent');
-  }
+  useAgentFocus(running, active, () => setMode('agent'));
   // Whole-file diffs can be megabytes; the parse runs in the diff
   // worker so opening a tab never blocks the UI thread on it. The query
   // is keyed on the patch content, so what it hands back always belongs

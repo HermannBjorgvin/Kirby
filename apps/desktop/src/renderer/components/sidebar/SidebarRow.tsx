@@ -25,6 +25,45 @@ import { PrMeta } from './PrMeta.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';
 import { ItemIcon } from './SidebarRowIcon.js';
 
+/**
+ * What the branch is doing, beside its name. All three can be true at
+ * once — a merged branch can still be mid-rebase with conflicts — so
+ * they render as separate badges rather than one status.
+ */
+function RowBadges({
+  merged,
+  rebasing,
+  conflictCount,
+}: {
+  merged: boolean;
+  rebasing: boolean;
+  conflictCount: number;
+}) {
+  const conflicts = `${conflictCount} conflict${conflictCount === 1 ? '' : 's'}`;
+  return (
+    <>
+      {merged && (
+        <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] font-medium text-success">
+          merged
+        </span>
+      )}
+      {rebasing && (
+        <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning">
+          rebasing
+        </span>
+      )}
+      {conflictCount > 0 && (
+        <span
+          className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning"
+          title={`${conflicts} against the main branch`}
+        >
+          {conflicts}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function SidebarRow({
   item,
   active,
@@ -139,26 +178,11 @@ export function SidebarRow({
             <span className={cn('truncate', running && 'font-medium')}>
               {title}
             </span>
-            {merged && (
-              <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] font-medium text-success">
-                merged
-              </span>
-            )}
-            {rebasing && (
-              <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning">
-                rebasing
-              </span>
-            )}
-            {conflictCount > 0 && (
-              <span
-                className="shrink-0 rounded bg-warning/15 px-1 text-[10px] font-medium text-warning"
-                title={`${conflictCount} conflict${
-                  conflictCount === 1 ? '' : 's'
-                } against the main branch`}
-              >
-                {conflictCount} conflict{conflictCount === 1 ? '' : 's'}
-              </span>
-            )}
+            <RowBadges
+              merged={merged}
+              rebasing={rebasing}
+              conflictCount={conflictCount}
+            />
           </div>
           {pr && (
             <div

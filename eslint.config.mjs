@@ -127,7 +127,7 @@ export default tseslint.config(
         'warn',
         { max: 300, skipBlankLines: true, skipComments: true },
       ],
-      complexity: ['warn', { max: 18 }],
+      complexity: ['warn', { max: 13 }],
       'max-depth': ['error', 4],
     },
   },

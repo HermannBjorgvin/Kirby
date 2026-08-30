@@ -38,6 +38,113 @@ import { CommentMarkdown } from './CommentMarkdown.js';
 import { PlanAttachment, PlanControls } from './PlanControls.js';
 
 /**
+ * The footer of a draft that is not being edited. Every button is
+ * disabled while a post is in flight — the draft is server-bound at
+ * that point and editing or discarding it would race the request.
+ */
+function DraftActions({
+  posting,
+  deleting,
+  onEdit,
+  onDelete,
+  onPost,
+}: {
+  posting: boolean;
+  deleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onPost: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 border-t border-border bg-muted/20 px-3 py-1.5">
+      <span className="text-xs text-muted-foreground">
+        Not posted yet — only you can see this.
+      </span>
+      <div className="flex-1" />
+      <Button variant="ghost" size="sm" onClick={onEdit} disabled={posting}>
+        <PencilIcon /> Edit
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onDelete}
+        disabled={posting || deleting}
+      >
+        <Trash2Icon /> Discard
+      </Button>
+      <Button size="sm" onClick={onPost} disabled={posting}>
+        {posting ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
+        {posting ? 'Posting…' : 'Post'}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The card in edit mode: body, severity, and the two ways out.
+ * Cmd/Ctrl+Enter saves and Escape cancels, matching the reply editor.
+ */
+function DraftEditor({
+  body,
+  severity,
+  saving,
+  onBody,
+  onSeverity,
+  onSave,
+  onCancel,
+}: {
+  body: string;
+  severity: CommentSeverity;
+  saving: boolean;
+  onBody: (v: string) => void;
+  onSeverity: (v: CommentSeverity) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="space-y-2 px-3 py-2">
+      <Textarea
+        autoFocus
+        value={body}
+        onChange={(e) => onBody(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            onSave();
+          }
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="min-h-24 bg-background"
+      />
+      <div className="flex items-center gap-2">
+        <Select
+          value={severity}
+          onValueChange={(v) => onSeverity(v as CommentSeverity)}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SEVERITIES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex-1" />
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          <XIcon /> Cancel
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={saving || !body.trim()}>
+          <CheckIcon /> Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * A draft review comment written by the agent (`kirby util
  * add-comment`). Edit the text/severity, post it as a real review
  * comment, or discard it.
@@ -140,49 +247,15 @@ export function DraftCard({
       </div>
 
       {editing ? (
-        <div className="space-y-2 px-3 py-2">
-          <Textarea
-            autoFocus
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                save();
-              }
-              if (e.key === 'Escape') setEditing(false);
-            }}
-            className="min-h-24 bg-background"
-          />
-          <div className="flex items-center gap-2">
-            <Select
-              value={severity}
-              onValueChange={(v) => setSeverity(v as CommentSeverity)}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SEVERITIES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-              <XIcon /> Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={save}
-              disabled={update.isPending || !body.trim()}
-            >
-              <CheckIcon /> Save
-            </Button>
-          </div>
-        </div>
+        <DraftEditor
+          body={body}
+          severity={severity}
+          saving={update.isPending}
+          onBody={setBody}
+          onSeverity={setSeverity}
+          onSave={save}
+          onCancel={() => setEditing(false)}
+        />
       ) : (
         <div className="px-3 py-2">
           <CommentMarkdown markdown={draft.body} />
@@ -200,36 +273,17 @@ export function DraftCard({
       )}
 
       {!editing && (
-        <div className="flex items-center gap-1.5 border-t border-border bg-muted/20 px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">
-            Not posted yet — only you can see this.
-          </span>
-          <div className="flex-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setBody(draft.body);
-              setSeverity(draft.severity);
-              setEditing(true);
-            }}
-            disabled={posting}
-          >
-            <PencilIcon /> Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={doDelete}
-            disabled={posting || remove.isPending}
-          >
-            <Trash2Icon /> Discard
-          </Button>
-          <Button size="sm" onClick={doPost} disabled={posting}>
-            {posting ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
-            {posting ? 'Posting…' : 'Post'}
-          </Button>
-        </div>
+        <DraftActions
+          posting={posting}
+          deleting={remove.isPending}
+          onEdit={() => {
+            setBody(draft.body);
+            setSeverity(draft.severity);
+            setEditing(true);
+          }}
+          onDelete={doDelete}
+          onPost={doPost}
+        />
       )}
     </div>
   );

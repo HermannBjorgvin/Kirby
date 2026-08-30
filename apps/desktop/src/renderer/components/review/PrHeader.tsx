@@ -41,9 +41,68 @@ export function OpenInEditorButton({ branch }: { branch: string }) {
   );
 }
 
+/** CI verdict, or nothing at all when no build has reported. */
+function CiBadge({ ci }: { ci: PullRequestInfo['buildStatus'] }) {
+  if (!ci || ci === 'none') return null;
+  const variant =
+    ci === 'succeeded'
+      ? 'success'
+      : ci === 'failed'
+      ? 'destructive'
+      : 'warning';
+  return (
+    <Badge variant={variant}>
+      {ci === 'succeeded' && <CheckCircle2Icon />}
+      {ci === 'failed' && <XCircleIcon />}
+      {ci === 'pending' && <CircleDotIcon />}
+      CI {ci}
+    </Badge>
+  );
+}
+
+/** Colour of the dot on a reviewer's avatar, by their verdict. */
+function decisionDotClass(decision: string): string {
+  if (decision === 'approved') return 'bg-success';
+  if (decision === 'rejected') return 'bg-destructive';
+  if (decision === 'changes-requested' || decision === 'waiting-for-author') {
+    return 'bg-warning';
+  }
+  if (decision === 'no-response') return 'bg-muted-foreground/50';
+  if (decision === 'declined') return 'bg-muted-foreground';
+  return '';
+}
+
+/** Reviewer avatars, each dotted with where that reviewer landed. */
+function ReviewerDots({
+  reviewers,
+}: {
+  reviewers: NonNullable<PullRequestInfo['reviewers']>;
+}) {
+  if (reviewers.length === 0) return null;
+  return (
+    <span className="flex items-center gap-1.5">
+      {reviewers.slice(0, 6).map((r) => (
+        <Tip
+          key={r.identifier}
+          label={`${r.displayName}: ${r.decision.replaceAll('-', ' ')}`}
+        >
+          <span className="relative">
+            <Avatar name={r.displayName} size="xs" />
+            <span
+              className={cn(
+                'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
+                decisionDotClass(r.decision)
+              )}
+            />
+          </span>
+        </Tip>
+      ))}
+    </span>
+  );
+}
+
 export function PrHeader({ pr }: { pr: PullRequestInfo }) {
   const reviewers = pr.reviewers ?? [];
-  const ci = pr.buildStatus;
   return (
     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border px-3">
       <GitPullRequestIcon className="size-4 shrink-0 text-info" />
@@ -79,48 +138,8 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
           </span>
         </Tip>
         {pr.isDraft && <Badge variant="outline">Draft</Badge>}
-        {ci && ci !== 'none' && (
-          <Badge
-            variant={
-              ci === 'succeeded'
-                ? 'success'
-                : ci === 'failed'
-                ? 'destructive'
-                : 'warning'
-            }
-          >
-            {ci === 'succeeded' && <CheckCircle2Icon />}
-            {ci === 'failed' && <XCircleIcon />}
-            {ci === 'pending' && <CircleDotIcon />}
-            CI {ci}
-          </Badge>
-        )}
-        {reviewers.length > 0 && (
-          <span className="flex items-center gap-1.5">
-            {reviewers.slice(0, 6).map((r) => (
-              <Tip
-                key={r.identifier}
-                label={`${r.displayName}: ${r.decision.replaceAll('-', ' ')}`}
-              >
-                <span className="relative">
-                  <Avatar name={r.displayName} size="xs" />
-                  <span
-                    className={cn(
-                      'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-background',
-                      r.decision === 'approved' && 'bg-success',
-                      r.decision === 'rejected' && 'bg-destructive',
-                      (r.decision === 'changes-requested' ||
-                        r.decision === 'waiting-for-author') &&
-                        'bg-warning',
-                      r.decision === 'no-response' && 'bg-muted-foreground/50',
-                      r.decision === 'declined' && 'bg-muted-foreground'
-                    )}
-                  />
-                </span>
-              </Tip>
-            ))}
-          </span>
-        )}
+        <CiBadge ci={pr.buildStatus} />
+        <ReviewerDots reviewers={reviewers} />
         {(pr.activeCommentCount ?? 0) > 0 && (
           <Tip label={unresolvedCommentsLabel(pr.activeCommentCount ?? 0)}>
             <span className="flex items-center gap-1 text-muted-foreground">

@@ -315,18 +315,23 @@ previously escaped both the glob and the exit code — fails the target
 with exit 1.
 
 **Size and shape budgets — warnings, and a ratchet.** `max-lines` 300
-(blank lines and comments excluded), `complexity` 18, `max-depth` 4 at
+(blank lines and comments excluded), `complexity` 13, `max-depth` 4 at
 error. These are set where they bound what gets _added_ rather than
 where they would be comfortable: a file grows past 300 lines and a
-function past 18 branches one plausible edit at a time, and nobody
-reviews that as growth. **Both lists are empty**, so the next notch is
-a real decision rather than a cleanup. Measured, so pick from the
-numbers instead of guessing: of 1187 functions, 919 score under 5, and
-the count over a candidate ceiling is 9 at 16, **16 at 15**, 22 at 14,
-45 at 12 and 77 at 10 — the last being a list nobody acts on. Of 341
-files, 3 exceed 300 (all three the deliberately exempted ones), 18
-exceed 250 and 41 exceed 200. Two files carry a 900-line ceiling
-instead
+function past 13 branches one plausible edit at a time, and nobody
+reviews that as growth.
+
+**Every list is empty, and 13 was reached by refactoring rather than
+by exempting.** All 31 functions that stood between 18 and 13 came
+down, and none of them needed a carve-out — the metric turned out to
+be a good detector here, because in every case it was pointing at a
+function doing two jobs, a lookup table written as an if-chain, or a
+component holding a section that wanted to be its own component. The
+next notch is a real decision rather than a cleanup, and the numbers
+are measured: of 1658 functions the count over a candidate ceiling is
+16 at 12, 31 at 11, 62 at 10 and 112 at 8. Of 341 files, 3 exceed 300
+(all three the deliberately exempted ones), 18 exceed 250 and 41
+exceed 200. Two files carry a 900-line ceiling instead
 (`libs/vcs/*/provider.ts`, `keybindings/registry.ts`): they are a REST
 surface and an action catalog, and splitting either spreads one lookup
 table across files. Specs are exempt from `max-lines` only.

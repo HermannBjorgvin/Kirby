@@ -185,6 +185,53 @@ function TabIcon({
   );
 }
 
+/** What a tab shows for itself: its label and the icon beside it. */
+function tabPresentation(tab: Tab, item: SidebarItem | undefined) {
+  if (tab.kind === 'settings') {
+    return { label: 'Settings', Icon: SettingsIcon };
+  }
+  return {
+    label: item ? itemTitle(item) : tab.itemKey.replace(/^[a-z]+:/, ''),
+    Icon: item?.pr ? GitPullRequestIcon : GitBranchIcon,
+  };
+}
+
+/** How many comments this tab's PR has queued in the plan. */
+function PlanCountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} comment${count === 1 ? '' : 's'} in the plan`}
+      className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium tabular-nums text-primary"
+    >
+      {count}
+    </span>
+  );
+}
+
+/** Always rendered; revealed on hover, or while the tab is active. */
+function TabCloseButton({
+  active,
+  onClose,
+}: {
+  active: boolean;
+  onClose: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close tab"
+      className={cn(
+        'flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100',
+        active && 'opacity-100'
+      )}
+    >
+      <XIcon className="size-3.5" />
+    </button>
+  );
+}
+
 function TabButton({
   tab,
   item,
@@ -199,22 +246,11 @@ function TabButton({
   snapshot: SessionActivitySnapshot | undefined;
 }) {
   const tabs = useTabs();
-  const label =
-    tab.kind === 'settings'
-      ? 'Settings'
-      : item
-      ? itemTitle(item)
-      : tab.itemKey.replace(/^[a-z]+:/, '');
+  const { label, Icon } = tabPresentation(tab, item);
   const running = item ? itemRunning(item) : false;
   // A plan is built inside a tab and then navigated away from, so the
   // count has to be visible from wherever the user ends up.
   const planCount = usePlanCount(item?.pr?.id);
-  const Icon =
-    tab.kind === 'settings'
-      ? SettingsIcon
-      : item?.pr
-      ? GitPullRequestIcon
-      : GitBranchIcon;
 
   const openContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -284,30 +320,14 @@ function TabButton({
       <span className={cn('min-w-0 flex-1 truncate', tab.preview && 'italic')}>
         {label}
       </span>
-      {planCount > 0 && (
-        <span
-          aria-label={`${planCount} comment${
-            planCount === 1 ? '' : 's'
-          } in the plan`}
-          className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium tabular-nums text-primary"
-        >
-          {planCount}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={(e) => {
+      <PlanCountBadge count={planCount} />
+      <TabCloseButton
+        active={active}
+        onClose={(e) => {
           e.stopPropagation();
           closer.close(tab.id);
         }}
-        aria-label="Close tab"
-        className={cn(
-          'flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100',
-          active && 'opacity-100'
-        )}
-      >
-        <XIcon className="size-3.5" />
-      </button>
+      />
     </div>
   );
 }

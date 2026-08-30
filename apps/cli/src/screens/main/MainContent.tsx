@@ -50,6 +50,22 @@ type ScreenType =
 //   6. PR detail mode       → ReviewDetailPane
 //   7. Diff list            → DiffPane
 //   8. Diff file viewer     → DiffPane
+/**
+ * What `useDiffBundle` needs, with a missing pull request flattened to
+ * the empty values that leave it idle. The hook is called
+ * unconditionally — the file cache and the comments-dir watch have to
+ * survive the list→viewer switch — so there is always something to
+ * pass it.
+ */
+function diffBundleArgs(pr: PullRequestInfo | undefined) {
+  return {
+    prId: pr?.id ?? null,
+    sourceBranch: pr?.sourceBranch ?? '',
+    targetBranch: pr?.targetBranch ?? '',
+    headSha: pr?.headSha,
+  };
+}
+
 export function MainContent({
   pane,
   terminal,
@@ -64,11 +80,12 @@ export function MainContent({
   // One diff-data instance shared by the list + viewer containers.
   // Mounted unconditionally so the in-memory file/diff cache and the
   // fs.watch on the comments dir survive the list→viewer switch.
+  const args = diffBundleArgs(selectedPr);
   const diffBundle = useDiffBundle(
-    selectedPr?.id ?? null,
-    selectedPr?.sourceBranch ?? '',
-    selectedPr?.targetBranch ?? '',
-    selectedPr?.headSha
+    args.prId,
+    args.sourceBranch,
+    args.targetBranch,
+    args.headSha
   );
 
   const screenType: ScreenType = (() => {

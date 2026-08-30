@@ -46,6 +46,17 @@ export function PreferencesStep({
   const { updateField } = useConfig();
   const [prefIndex, setPrefIndex] = useState(0);
 
+  /**
+   * Flip the selected preference. Enter on the last row also finishes
+   * the step, so a user can walk the list and leave with one key.
+   */
+  const togglePref = (advanceWhenLast: boolean) => {
+    const pref = PREF_ITEMS[prefIndex]!;
+    const currentValue = resolveValue(config, pref.field) || 'false';
+    updateField(pref.field, currentValue === 'true' ? 'false' : 'true');
+    if (advanceWhenLast && prefIndex === PREF_ITEMS.length - 1) onAdvance();
+  };
+
   useInput(
     (input, key) => {
       if (key.escape) return onSkip();
@@ -58,14 +69,7 @@ export function PreferencesStep({
         return;
       }
       if (key.return || key.leftArrow || key.rightArrow) {
-        const pref = PREF_ITEMS[prefIndex]!;
-        const currentValue = resolveValue(config, pref.field) || 'false';
-        const toggled = currentValue === 'true' ? 'false' : 'true';
-        updateField(pref.field, toggled);
-        if (key.return && prefIndex === PREF_ITEMS.length - 1) {
-          onAdvance();
-          return;
-        }
+        togglePref(key.return);
         return;
       }
       if (key.tab) return onAdvance();

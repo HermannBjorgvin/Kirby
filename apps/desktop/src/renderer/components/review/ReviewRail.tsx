@@ -1,23 +1,16 @@
-import {
-  BookOpenIcon,
-  BotIcon,
-  ClipboardCheckIcon,
-  ClipboardListIcon,
-  Loader2Icon,
-  PanelLeftCloseIcon,
-  PlayIcon,
-  SendIcon,
-  SquareIcon,
-} from 'lucide-react';
+import { BookOpenIcon, PanelLeftCloseIcon } from 'lucide-react';
 import type { ReviewComment } from '../../../host/contract.js';
-import { formatSeverityBreakdown } from '../../lib/severity.js';
-import { severityCounts } from '../../lib/diff-model.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { ScrollArea } from '../ui/scroll-area.js';
 import { Tip } from '../ui/tooltip.js';
 import { CommentsList, type CommentListItem } from './CommentsList.js';
 import { FileTree, type FileEntry } from './FileTree.js';
+import {
+  AgentSection,
+  PlanSection,
+  ReviewReadySection,
+} from './ReviewRailSections.js';
 
 export function ReviewRail({
   hasPr,
@@ -119,124 +112,31 @@ export function ReviewRail({
       {/* Agent — a running row you can select to view the terminal, or
           a launch button (opening the session/review menu) otherwise. */}
       <div className="shrink-0 border-b border-border px-2 pb-2">
-        {running ? (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onSelectAgent}
-              className={cn(
-                'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-base transition-colors',
-                agentActive
-                  ? 'bg-sidebar-active text-foreground'
-                  : 'hover:bg-sidebar-accent'
-              )}
-            >
-              <span className="relative flex size-4 shrink-0 items-center justify-center">
-                <BotIcon className="size-4 text-muted-foreground" />
-                <span className="absolute -right-0.5 -bottom-0.5 flex size-2">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
-                  <span className="relative inline-flex size-2 rounded-full bg-success ring-2 ring-sidebar" />
-                </span>
-              </span>
-              <span className="min-w-0 flex-1 truncate text-left">Agent</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                running
-              </span>
-            </button>
-            <Tip label="Stop agent">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onStop}
-                aria-label="Stop agent"
-              >
-                <SquareIcon />
-              </Button>
-            </Tip>
-          </div>
-        ) : (
-          <Button
-            className="w-full"
-            size="sm"
-            onClick={onLaunch}
-            disabled={busy}
-          >
-            <PlayIcon />{' '}
-            {busy ? 'Working…' : hasSession ? 'Relaunch agent' : 'Launch agent'}
-          </Button>
-        )}
+        <AgentSection
+          running={running}
+          busy={busy}
+          hasSession={hasSession}
+          agentActive={agentActive}
+          onSelectAgent={onSelectAgent}
+          onLaunch={onLaunch}
+          onStop={onStop}
+        />
       </div>
 
-      {/* Review ready — enter the draft walkthrough */}
-      {drafts.length > 0 && (
-        <div className="shrink-0 border-b border-border px-2 py-2">
-          <button
-            type="button"
-            onClick={onReview}
-            className={cn(
-              'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
-              reviewActive
-                ? 'border-primary bg-primary/10'
-                : 'border-border hover:bg-sidebar-accent'
-            )}
-          >
-            <ClipboardCheckIcon className="size-4 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-base font-medium">Review ready</span>
-              <span className="block text-xs text-muted-foreground">
-                {formatSeverityBreakdown(severityCounts(drafts))}
-              </span>
-            </span>
-            <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums">
-              {drafts.length}
-            </span>
-          </button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2 w-full"
-            onClick={onPostAll}
-            disabled={postingAll}
-          >
-            {postingAll ? (
-              <Loader2Icon className="animate-spin" />
-            ) : (
-              <SendIcon />
-            )}
-            Post all {drafts.length} draft{drafts.length === 1 ? '' : 's'}
-          </Button>
-        </div>
-      )}
+      <ReviewReadySection
+        drafts={drafts}
+        reviewActive={reviewActive}
+        onReview={onReview}
+        postingAll={postingAll}
+        onPostAll={onPostAll}
+      />
 
-      {/* Plan — the comments queued for the agent, and the way in to
-          sending them. Hidden at zero, like "Review ready" above it:
-          an empty cart is not a thing to look at. */}
-      {planCount > 0 && (
-        <div className="shrink-0 border-b border-border px-2 py-2">
-          <button
-            type="button"
-            onClick={onPlan}
-            className={cn(
-              'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
-              planActive
-                ? 'border-primary bg-primary/10'
-                : 'border-border hover:bg-sidebar-accent'
-            )}
-          >
-            <ClipboardListIcon className="size-4 shrink-0 text-primary" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-base font-medium">Plan</span>
-              <span className="block text-xs text-muted-foreground">
-                {planCount} comment{planCount === 1 ? '' : 's'}
-                {planNoted > 0 && ` · ${planNoted} with a note`}
-              </span>
-            </span>
-            <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums">
-              {planCount}
-            </span>
-          </button>
-        </div>
-      )}
+      <PlanSection
+        planCount={planCount}
+        planNoted={planNoted}
+        planActive={planActive}
+        onPlan={onPlan}
+      />
 
       {/* Files + Comments */}
       <ScrollArea className="min-h-0 flex-1">
