@@ -10,5 +10,20 @@
         "repo": "nrwl/nx-ai-agents-config"
       }
     }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/tools/lint-hook.mjs\"",
+            "timeout": 60,
+            "statusMessage": "Linting the file just written"
+          }
+        ]
+      }
+    ]
   }
 }

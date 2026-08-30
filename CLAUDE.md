@@ -342,7 +342,17 @@ under their own Playwright configs and are invisible otherwise, which
 is how a smaller number once read as clean.
 
 Zero is now the baseline, so a warning is a regression and there is no
-backlog to hide in. Two of the categories that got it there were not
+backlog to hide in. **A `PostToolUse` hook holds it there**:
+`.claude/settings.json` runs `tools/lint-hook.mjs` after every
+Write/Edit, and a file left with any problem blocks the edit with
+ESLint's own output. It lints from the directory whose config owns the
+file, not from the repo root — `apps/cli-e2e`, `apps/desktop-e2e` and
+`apps/cli-wterm-host` each carry their own flat config, and ESLint 9
+loads config from the working directory, so a root-cwd run reports "No
+issues found" on an e2e file that genuinely violates its own Playwright
+rules. It stays out of the way otherwise: a non-JS path, a file already
+deleted, one outside the repo, or ESLint itself failing to run all pass
+the edit through, because none of those is the edit's fault. Two of the categories that got it there were not
 cosmetic, and are worth knowing before reintroducing the pattern:
 
 - **`no-floating-promises` was a crash.** Nothing awaits
