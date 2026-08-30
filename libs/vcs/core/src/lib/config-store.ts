@@ -227,7 +227,10 @@ function detectProviderFields(
   const provider = providers.find((p) => p.id === cfg.vendor);
   if (!provider?.autoDetectFields) return;
   try {
-    const extra = provider.autoDetectFields();
+    // Hand the provider what is already known so it can decline: the
+    // result is only ever used to fill blanks, so a call that can
+    // return nothing new is a call worth not making.
+    const extra = provider.autoDetectFields(cfg.vendorProject ?? {});
     if (!extra) return;
     cfg.vendorProject ??= {};
     fillBlankFields(cfg.vendorProject, extra, detected);

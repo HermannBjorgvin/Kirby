@@ -46,6 +46,8 @@ interface KirbyBridge {
   killSession(name: string): Promise<void>;
   getSessionBuffer(name: string): Promise<{ data: string; seq: number }>;
   listRecentRepos(): Promise<{ cwd: string; valid: boolean }[]>;
+  /** Used by the perf probes to time the host half of a tab open. */
+  fetchWorktreeDiffText(branch: string, target: string): Promise<string>;
 }
 
 interface Window {

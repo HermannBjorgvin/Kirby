@@ -56,6 +56,10 @@ test-output
 test-results
 playwright-report
 
+# Benchmark samples (apps/desktop-e2e/perf). Numbers from one machine
+# on one day; the harness that produces them is what is shared.
+perf-output
+
 # Playwright MCP browser session output (manual interactive QA)
 .playwright-mcp/
 

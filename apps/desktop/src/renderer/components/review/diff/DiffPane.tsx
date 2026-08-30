@@ -19,7 +19,10 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../../host/contract.js';
-import { setDiffOptions, useDiffOptions } from '../../../lib/diff/diff-options.js';
+import {
+  setDiffOptions,
+  useDiffOptions,
+} from '../../../lib/diff/diff-options.js';
 import { cn } from '../../../lib/utils.js';
 import { Button } from '../../ui/button.js';
 import { Skeleton } from '../../ui/skeleton.js';
@@ -93,7 +96,11 @@ export function DiffPane({
         onPrev={onPrev}
         onNext={onNext}
       />
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        data-diff-scroll
+        className="min-h-0 flex-1 overflow-auto"
+      >
         {loading && (
           <div className="space-y-2 p-4">
             <Skeleton className="h-4 w-1/3" />

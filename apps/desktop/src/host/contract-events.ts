@@ -1,0 +1,85 @@
+/**
+ * The push half of the host contract: what the main process sends the
+ * renderer without being asked, and what rides on each channel.
+ *
+ * Everything else in `contract.ts` is request/response — the renderer
+ * calls, the host answers. These are the other direction, and they are
+ * a different kind of thing to get right: a channel name is a string
+ * shared by three files that never import each other's implementations
+ * (main sends, preload subscribes, renderer handles), so the names and
+ * their payloads are declared once, here, and nowhere else.
+ *
+ * `contract.ts` re-exports all of it, so callers still import from one
+ * place and nothing outside this directory needs to know about the
+ * split.
+ */
+
+// ── Sessions (agent terminals) ───────────────────────────────────
+
+export interface SessionDataEvent {
+  name: string;
+  data: string;
+  /** Monotonic per-session chunk counter; lets a late subscriber drop
+   *  chunks already covered by a `getSessionBuffer` snapshot. */
+  seq: number;
+}
+
+export interface SessionExitEvent {
+  name: string;
+  code: number;
+}
+
+/** Channels the main process pushes events on (ipcRenderer.on). */
+export const SESSION_EVENTS = {
+  data: 'kirby/session/data',
+  exit: 'kirby/session/exit',
+} as const;
+
+// ── Native menus ─────────────────────────────────────────────────
+
+/** Commands the native application menu sends to the renderer. */
+export type MenuCommand =
+  | 'open-repo'
+  | 'switch-repo'
+  | 'new-worktree'
+  | 'open-settings'
+  | 'close-tab'
+  | 'command-palette'
+  | 'toggle-sidebar'
+  | 'refresh-remote'
+  | 'set-theme'
+  | 'open-url'
+  | 'show-shortcuts'
+  | 'about';
+
+export interface MenuCommandEvent {
+  command: MenuCommand;
+  arg?: string;
+}
+
+export const MENU_EVENTS = {
+  command: 'kirby/menu/command',
+} as const;
+
+// ── Remote sync ──────────────────────────────────────────────────
+
+export const SYNC_EVENTS = {
+  notice: 'kirby/sync/notice',
+  /**
+   * Background remote data (the pull request list) has landed and the
+   * sidebar model would now answer differently.
+   *
+   * `getSidebarModel` deliberately never waits for the network, so
+   * without this the first pull requests of a session would appear
+   * whenever the renderer's poll interval next came round — up to four
+   * seconds after the host already had them.
+   */
+  remote: 'kirby/sync/remote',
+} as const;
+
+/** A user-facing event from the host's remote sync loop (auto-deleted
+ *  merged branch, blocked auto-delete, …), toasted by the renderer. */
+export interface SyncNoticeEvent {
+  message: string;
+  kind: 'success' | 'warning';
+}

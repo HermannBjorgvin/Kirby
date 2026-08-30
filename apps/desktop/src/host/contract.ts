@@ -32,6 +32,15 @@ export type {
 };
 export type { SidebarItem } from '@kirby/core';
 
+// The push half of the contract — channel names and their payloads.
+export * from './contract-events.js';
+import type {
+  MenuCommandEvent,
+  SessionDataEvent,
+  SessionExitEvent,
+  SyncNoticeEvent,
+} from './contract-events.js';
+
 export interface KirbyVersionInfo {
   /** kirby-desktop package version */
   app: string;
@@ -67,31 +76,12 @@ export interface SessionSummary {
   spawnedAt: number;
 }
 
-export interface SessionDataEvent {
-  name: string;
-  data: string;
-  /** Monotonic per-session chunk counter; lets a late subscriber drop
-   *  chunks already covered by a `getSessionBuffer` snapshot. */
-  seq: number;
-}
-
 /** Snapshot of a session's recent output (host-side ring buffer). */
 export interface SessionBuffer {
   data: string;
   /** seq of the last chunk included in `data`. */
   seq: number;
 }
-
-export interface SessionExitEvent {
-  name: string;
-  code: number;
-}
-
-/** Channels the main process pushes events on (ipcRenderer.on). */
-export const SESSION_EVENTS = {
-  data: 'kirby/session/data',
-  exit: 'kirby/session/exit',
-} as const;
 
 // ── Settings ─────────────────────────────────────────────────────
 
@@ -159,26 +149,6 @@ export interface DesktopPrefs {
   nativeFrame: boolean;
 }
 
-/** Commands the native application menu sends to the renderer. */
-export type MenuCommand =
-  | 'open-repo'
-  | 'switch-repo'
-  | 'new-worktree'
-  | 'open-settings'
-  | 'close-tab'
-  | 'command-palette'
-  | 'toggle-sidebar'
-  | 'refresh-remote'
-  | 'set-theme'
-  | 'open-url'
-  | 'show-shortcuts'
-  | 'about';
-
-export interface MenuCommandEvent {
-  command: MenuCommand;
-  arg?: string;
-}
-
 /** One entry of a native context menu. */
 export type ContextMenuItem =
   | { type: 'separator' }
@@ -189,21 +159,6 @@ export type ContextMenuItem =
       /** Render as a destructive action where the platform supports it. */
       danger?: boolean;
     };
-
-export const MENU_EVENTS = {
-  command: 'kirby/menu/command',
-} as const;
-
-export const SYNC_EVENTS = {
-  notice: 'kirby/sync/notice',
-} as const;
-
-/** A user-facing event from the host's remote sync loop (auto-deleted
- *  merged branch, blocked auto-delete, …), toasted by the renderer. */
-export interface SyncNoticeEvent {
-  message: string;
-  kind: 'success' | 'warning';
-}
 
 /** Mirror of app-core's ActivitySnapshot, redeclared so the renderer
  *  contract stays free of app-core imports. */
@@ -414,6 +369,9 @@ export interface KirbyHostApi {
   onMenuCommand(cb: (payload: MenuCommandEvent) => void): () => void;
   /** Toast-worthy events from the host's remote sync loop. */
   onSyncNotice(cb: (notice: SyncNoticeEvent) => void): () => void;
+  /** Fires when a background remote fetch has changed the sidebar
+   *  model. Carries no payload — the renderer refetches. */
+  onRemoteUpdated(cb: () => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
   /** Native about box. */

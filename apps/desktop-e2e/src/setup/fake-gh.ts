@@ -50,6 +50,13 @@ export interface FakeGitHub {
   /** The signed-in user. PRs they authored are "yours". */
   username?: string;
   prs: FakePr[];
+  /**
+   * Make every `gh` call take this long, standing in for the round trip
+   * to GitHub. Left off for the e2e suite (which wants speed); the perf
+   * suite sets it, because a provider that answers in a millisecond
+   * hides what the app does with the window while it waits.
+   */
+  latencyMs?: number;
 }
 
 /**
@@ -64,7 +71,7 @@ export interface FakeGitHub {
 export function installFakeGh(
   homeDir: string,
   scenario: FakeGitHub
-): { PATH: string; KIRBY_FAKE_GH: string } {
+): { PATH: string; KIRBY_FAKE_GH: string; KIRBY_FAKE_GH_LATENCY_MS?: string } {
   const binDir = join(homeDir, 'fake-bin');
   mkdirSync(binDir, { recursive: true });
   const gh = join(binDir, 'gh');
@@ -77,6 +84,9 @@ export function installFakeGh(
   return {
     PATH: `${binDir}:${process.env.PATH ?? ''}`,
     KIRBY_FAKE_GH: scenarioPath,
+    ...(scenario.latencyMs
+      ? { KIRBY_FAKE_GH_LATENCY_MS: String(scenario.latencyMs) }
+      : {}),
   };
 }
 

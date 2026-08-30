@@ -276,3 +276,66 @@ describe('sidebar model', () => {
     expect('state' in items[0]).toBe(false);
   });
 });
+
+/**
+ * The sidebar is the left half of the window, and most of what it
+ * shows — worktrees, their agents, their git state — is local and
+ * available in milliseconds. Pull requests are not: they are a network
+ * round trip away, and on a cold start there is no cache to serve them
+ * from. Waiting for the second before painting the first cost roughly
+ * three quarters of a second of empty sidebar on every launch.
+ */
+describe('the model never waits for the provider', () => {
+  it('answers from local git while the provider call is still in flight', async () => {
+    env.worktrees = [{ branch: 'feature' }];
+
+    // No `settle` anywhere: if this ever awaits the fetch again, the
+    // await below never resolves and the test times out.
+    const model = (await sidebar.getSidebarModel()) as unknown[];
+
+    expect(model).toHaveLength(1);
+    expect(env.fetchCount).toBe(1);
+    expect(env.pending).toHaveLength(1);
+  });
+
+  it('serves the pull requests on the next call, once they have landed', async () => {
+    env.worktrees = [{ branch: 'feature' }];
+    await sidebar.getSidebarModel();
+    settle(0, { feature: { id: 7 } });
+    await flush();
+
+    await sidebar.getSidebarModel();
+    // Still one request: the second call read the cache the first
+    // call's fetch filled, rather than starting another.
+    expect(env.fetchCount).toBe(1);
+  });
+
+  it('announces the pull requests when the background fetch commits', async () => {
+    let announced = 0;
+    sidebar.setRemoteUpdatedNotifier(() => announced++);
+
+    await sidebar.getSidebarModel();
+    // Nothing to say yet — the model that just went out is local-only.
+    expect(announced).toBe(0);
+
+    settle(0, { feature: { id: 7 } });
+    await flush();
+    // Without this the first pull requests of a session would appear
+    // whenever the renderer next polled, up to four seconds later.
+    expect(announced).toBe(1);
+  });
+
+  it('stays quiet when the cache was already fresh', async () => {
+    await sidebar.getSidebarModel();
+    settle(0);
+    await flush();
+
+    let announced = 0;
+    sidebar.setRemoteUpdatedNotifier(() => announced++);
+    await sidebar.getSidebarModel();
+    await flush();
+
+    expect(env.fetchCount).toBe(1);
+    expect(announced).toBe(0);
+  });
+});

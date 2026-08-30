@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
+import { BOOT_MARKS, markOnce } from './lib/perf.js';
 import { initTheme } from './lib/theme.js';
 import './styles.css';
 // The terminal stylesheet, taken from @wterm/dom rather than
@@ -12,6 +13,8 @@ import './styles.css';
 // @wterm/dom publishes the identical file under its own "./css" entry,
 // which package resolution finds wherever the package ends up.
 import '@wterm/dom/css';
+
+markOnce(BOOT_MARKS.boot);
 
 // Apply the persisted theme class before the first paint.
 initTheme();

@@ -31,11 +31,13 @@ import {
   startRemoteSyncLoop,
   stopRemoteSyncLoop,
 } from '../host/services/remote-sync.js';
+import { setRemoteUpdatedNotifier } from '../host/services/sidebar.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import {
   restorePersistedSessions,
   setSessionBroadcaster,
 } from '../host/services/sessions.js';
+import { MAIN_MARKS, mark } from './boot-marks.js';
 import { buildMenuTemplate } from './menu.js';
 import {
   isAllowedNavigation,
@@ -43,6 +45,8 @@ import {
   rendererWebPreferences,
   windowChrome,
 } from './window.js';
+
+mark(MAIN_MARKS.module);
 
 const DIST = join(import.meta.dirname, '..');
 const DEV_SERVER_URL = process.env.KIRBY_VITE_URL;
@@ -297,6 +301,15 @@ setSyncNotifier((notice) => {
   }
 });
 
+// The sidebar model answers from local git without waiting for the
+// provider, so the renderer needs telling when the pull requests
+// finally arrive — otherwise they wait out its poll interval.
+setRemoteUpdatedNotifier(() => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(SYNC_EVENTS.remote);
+  }
+});
+
 // ── App lifecycle ────────────────────────────────────────────────
 
 // One instance at a time: a second launch focuses the existing
@@ -317,6 +330,7 @@ if (!app.requestSingleInstanceLock()) {
   app
     .whenReady()
     .then(() => {
+      mark(MAIN_MARKS.ready);
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
       // Cache tmux availability for the settings guard, same as the
@@ -324,9 +338,11 @@ if (!app.requestSingleInstanceLock()) {
       // missing probe result as "unknown" and allows the switch.
       void probeTmuxAvailability().catch(() => undefined);
       const opened = openStartupRepo();
+      mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
 
       void createMainWindow();
+      mark(MAIN_MARKS.window);
 
       app.on('activate', () => {
         // macOS: re-create the window when the dock icon is clicked and

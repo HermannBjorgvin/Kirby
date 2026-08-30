@@ -24,6 +24,21 @@ const scenarioPath = process.env.KIRBY_FAKE_GH;
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 
 /**
+ * Optional stand-in for the round trip to GitHub (KIRBY_FAKE_GH_LATENCY_MS).
+ *
+ * Off by default, so the e2e suite stays as fast as it was. The perf
+ * suite turns it on: a provider that answers instantly hides the thing
+ * worth measuring, which is what the app does with the window while it
+ * waits. Blocking rather than deferring, because `gh` is a subprocess
+ * the app waits on — a real slow call blocks nothing else in *this*
+ * process either.
+ */
+const latency = Number(process.env.KIRBY_FAKE_GH_LATENCY_MS ?? 0);
+if (latency > 0) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, latency);
+}
+
+/**
  * Persist the scenario back to disk.
  *
  * Mutations have to stick, or the app's refetch immediately undoes what

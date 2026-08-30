@@ -69,6 +69,22 @@
           "cwd": "apps/desktop-e2e"
         }
       },
+      "perf": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "dependsOn": [
+          {
+            "projects": [
+              "desktop"
+            ],
+            "target": "build"
+          }
+        ],
+        "options": {
+          "command": "node run-perf.mjs",
+          "cwd": "apps/desktop-e2e"
+        }
+      },
       "e2e:integration": {
         "executor": "nx:run-commands",
         "cache": false,

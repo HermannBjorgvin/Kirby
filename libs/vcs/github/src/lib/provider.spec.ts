@@ -11,8 +11,10 @@ import {
 
 // Mock child_process.execFile
 const mockExecFile = vi.fn();
+const mockExecSync = vi.fn();
 vi.mock('node:child_process', () => ({
   execFile: (...args: unknown[]) => mockExecFile(...args),
+  execSync: (...args: unknown[]) => mockExecSync(...args),
 }));
 
 function ghSuccess(data: unknown) {
@@ -927,5 +929,45 @@ describe('githubProvider', () => {
       );
       expect(mockExecFile).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── Auto-detection ─────────────────────────────────────────────────
+
+describe('autoDetectFields', () => {
+  beforeEach(() => {
+    mockExecSync.mockReset();
+  });
+
+  it('asks GitHub who you are when the username is not known', () => {
+    mockExecSync.mockReturnValueOnce(JSON.stringify({ login: 'octocat' }));
+    expect(
+      githubProvider.autoDetectFields?.({ owner: 'o', repo: 'r' })
+    ).toEqual({ username: 'octocat' });
+    expect(mockExecSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not go to the network when it is', () => {
+    // `username` is the only field this fills, and the caller only ever
+    // uses the result for blanks — so with it already set there is
+    // nothing to learn. It matters because this is a *synchronous*
+    // network call that runs on every repo open, and on the desktop
+    // repo open happens before there is a window: the user waited out
+    // this round trip looking at no application at all.
+    expect(
+      githubProvider.autoDetectFields?.({
+        owner: 'o',
+        repo: 'r',
+        username: 'octocat',
+      })
+    ).toBeNull();
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+
+  it('treats an unauthenticated gh as nothing detected', () => {
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('gh: not logged in');
+    });
+    expect(githubProvider.autoDetectFields?.({})).toBeNull();
   });
 });

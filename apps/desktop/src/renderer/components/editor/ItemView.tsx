@@ -19,7 +19,7 @@ import {
 } from '../../lib/sidebar/sidebar-model.js';
 import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
 import { errorMessage } from '../../lib/utils.js';
-import { PrWorkspace } from '../review/PrWorkspace.js';
+import { PrWorkspace } from './lazy-panes.js';
 import { Button } from '../ui/button.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
 
