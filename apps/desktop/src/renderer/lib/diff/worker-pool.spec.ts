@@ -95,7 +95,7 @@ describe('WorkerPool', () => {
     void pool.run({ id: 2 });
     void pool.run({ id: 3 });
     // A parse: the tab shows nothing until it lands.
-    void pool.run({ id: 99 }, true);
+    void pool.run({ id: 99 }, { priority: true });
 
     workers[0].reply(1);
     expect(workers[0].received).toEqual([1, 99]);
@@ -104,8 +104,8 @@ describe('WorkerPool', () => {
   it('keeps priority jobs in the order they arrived', () => {
     const { pool, workers } = makePool(1);
     void pool.run({ id: 1 });
-    void pool.run({ id: 98 }, true);
-    void pool.run({ id: 99 }, true);
+    void pool.run({ id: 98 }, { priority: true });
+    void pool.run({ id: 99 }, { priority: true });
 
     workers[0].reply(1);
     workers[0].reply(98);
@@ -143,6 +143,45 @@ describe('WorkerPool', () => {
     await expect(b).resolves.toEqual({ id: 2 });
     expect(workers).toHaveLength(3);
     expect(workers[2].received).toEqual([3]);
+  });
+
+  it('drops a queued job when its caller loses interest', async () => {
+    const { pool, workers } = makePool(1);
+    const stale = new AbortController();
+    void pool.run({ id: 1 });
+    const dropped = pool.run({ id: 2 }, { signal: stale.signal });
+    void pool.run({ id: 3 });
+
+    // The file scrolled out of view. Nothing should tokenize it.
+    stale.abort();
+    await expect(dropped).rejects.toThrow(/abort/i);
+    expect(pool.stats().queued).toBe(1);
+
+    workers[0].reply(1);
+    expect(workers[0].received).toEqual([1, 3]);
+  });
+
+  it('leaves a job already running alone', async () => {
+    const { pool, workers } = makePool(1);
+    const started = new AbortController();
+    const running = pool.run({ id: 1 }, { signal: started.signal });
+
+    // Interrupting a busy worker means terminating it and losing its
+    // warmed-up grammars, which costs more than letting it finish.
+    started.abort();
+    expect(workers[0].terminated).toBe(false);
+    workers[0].reply(1);
+    await expect(running).resolves.toEqual({ id: 1 });
+  });
+
+  it('refuses a job whose signal is already aborted', async () => {
+    const { pool, workers } = makePool(1);
+    const gone = new AbortController();
+    gone.abort();
+    await expect(pool.run({ id: 1 }, { signal: gone.signal })).rejects.toThrow(
+      /abort/i
+    );
+    expect(workers).toHaveLength(0);
   });
 
   it('ignores a response for a job it does not have', () => {

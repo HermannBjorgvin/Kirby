@@ -104,7 +104,8 @@ export function fileAnalysisQuery(
 ) {
   return queryOptions({
     queryKey: keys.fileAnalysis(filename, linesKey(lines), theme),
-    queryFn: () => analyzeFileInWorker(filename, lines, theme),
+    queryFn: ({ signal }) =>
+      analyzeFileInWorker(filename, lines, theme, signal),
     staleTime: Infinity,
     retry: false,
     structuralSharing: false,

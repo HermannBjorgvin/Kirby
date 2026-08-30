@@ -26,6 +26,14 @@
  * against a fake worker instead of a real one.
  */
 
+/** The rejection a dropped job gets, matching the DOM's own name so a
+ *  caller can tell "you cancelled this" from "this failed". */
+function abortError(): Error {
+  const err = new Error('aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
 /** The part of `Worker` a pool needs — so a test can supply a fake. */
 export interface WorkerLike<Req, Res> {
   postMessage(msg: Req): void;
@@ -47,6 +55,24 @@ interface Job<Req, Res> {
   msg: Req;
   resolve: (r: Res) => void;
   reject: (e: Error) => void;
+  /** Detach the abort listener once the job is settled. */
+  release?: () => void;
+}
+
+export interface RunOptions {
+  /** Put this job ahead of all ordinary queued work. */
+  priority?: boolean;
+  /**
+   * Drop the job if it is still queued when this aborts.
+   *
+   * Only *queued* work is cancellable: a worker mid-tokenize cannot be
+   * interrupted without terminating it and throwing away its warmed-up
+   * grammars, which would cost more than it saves. That is not a
+   * limitation in practice — after a flick through a diff nearly
+   * everything is queued rather than running, and it is the queue that
+   * holds the files nobody is looking at any more.
+   */
+  signal?: AbortSignal;
 }
 
 interface Slot<Req, Res> {
@@ -65,14 +91,36 @@ export class WorkerPool<Req, Res> {
 
   constructor(private readonly opts: PoolOptions<Req, Res>) {}
 
-  /** Run `msg` on the pool. `priority` puts it ahead of queued work. */
-  run(msg: Req, priority = false): Promise<Res> {
+  /** Run `msg` on the pool. See {@link RunOptions}. */
+  run(msg: Req, opts: RunOptions = {}): Promise<Res> {
     const id = this.opts.idOf(msg);
     return new Promise<Res>((resolve, reject) => {
-      this.jobs.set(id, { msg, resolve, reject });
-      (priority ? this.priority : this.queue).push(id);
+      if (opts.signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+      const job: Job<Req, Res> = { msg, resolve, reject };
+      this.jobs.set(id, job);
+      (opts.priority ? this.priority : this.queue).push(id);
+
+      if (opts.signal) {
+        const onAbort = () => this.dropIfQueued(id);
+        opts.signal.addEventListener('abort', onAbort, { once: true });
+        job.release = () => opts.signal?.removeEventListener('abort', onAbort);
+      }
       this.pump();
     });
+  }
+
+  /**
+   * Forget a job that has not started yet. A job already handed to a
+   * worker is left alone — see {@link RunOptions.signal}.
+   */
+  private dropIfQueued(id: number): void {
+    const at = this.queue.indexOf(id);
+    if (at < 0) return;
+    this.queue.splice(at, 1);
+    this.settle(id, (job) => job.reject(abortError()));
   }
 
   /** How many workers exist, and how much is waiting. */
@@ -141,6 +189,7 @@ export class WorkerPool<Req, Res> {
     const job = this.jobs.get(id);
     if (!job) return;
     this.jobs.delete(id);
+    job.release?.();
     finish(job);
   }
 }

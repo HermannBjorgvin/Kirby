@@ -11,6 +11,16 @@
  * core should not decide the verdict, and a change under ~5% on a
  * developer machine is noise — the column says so rather than inviting
  * you to read it as a win.
+ *
+ * **Record both runs in one sitting.** Some of these numbers are not
+ * comparable across hours, let alone days: `openMs` includes a git
+ * subprocess computing a whole-file diff, and the same build measured
+ * 269 ms with the fixture repo warm in the page cache and 853 ms
+ * without. That is a 3x swing from nothing but the operating system,
+ * and it looked exactly like a regression until the *unchanged* build
+ * was re-measured and showed the same 853 ms. So: build A, measure A,
+ * build B, measure B, back to back — and when a result surprises you,
+ * re-measure the baseline before believing it.
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

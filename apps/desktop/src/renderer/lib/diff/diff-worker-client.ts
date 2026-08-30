@@ -68,14 +68,18 @@ function measure(type: WorkerRequest['type'], startedAt: number): void {
 }
 
 async function request(
-  msg: DistributiveOmit<WorkerRequest, 'id'>
+  msg: DistributiveOmit<WorkerRequest, 'id'>,
+  signal?: AbortSignal
 ): Promise<WorkerResponse> {
   const full = { ...msg, id: nextId++ } as WorkerRequest;
   const startedAt = performance.now();
   try {
-    // A parse jumps the queue: a tab shows nothing at all until one
-    // lands, where a missing highlight only costs colour.
-    return await pool.run(full, full.type === 'parse');
+    return await pool.run(full, {
+      // A parse jumps the queue: a tab shows nothing at all until one
+      // lands, where a missing highlight only costs colour.
+      priority: full.type === 'parse',
+      signal,
+    });
   } finally {
     measure(full.type, startedAt);
   }
@@ -101,12 +105,22 @@ export interface FileAnalysis {
   wordRanges: Map<number, CharRange[]>;
 }
 
+/**
+ * Highlight one file.
+ *
+ * `signal` is the viewer's way of saying it stopped caring: TanStack
+ * Query aborts it when the last observer of the query goes away, which
+ * for the diff means the file scrolled out of view. Flicking through a
+ * long pull request otherwise queues every file passed on the way and
+ * tokenizes all of them, long after the reader has gone somewhere else.
+ */
 export async function analyzeFileInWorker(
   filename: string,
   lines: DiffLine[],
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  signal?: AbortSignal
 ): Promise<FileAnalysis> {
-  const r = await request({ type: 'analyze', filename, lines, theme });
+  const r = await request({ type: 'analyze', filename, lines, theme }, signal);
   if (r.type !== 'analyze') return { tokens: null, wordRanges: new Map() };
   return { tokens: r.tokens, wordRanges: new Map(r.wordRanges) };
 }
