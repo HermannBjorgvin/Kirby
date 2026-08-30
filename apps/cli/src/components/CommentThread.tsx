@@ -78,7 +78,7 @@ function CardShell({
       </Box>
     );
   }
-  return <>{children}</>;
+  return children;
 }
 
 // ── Full-size card ───────────────────────────────────────────────────

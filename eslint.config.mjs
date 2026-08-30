@@ -37,6 +37,17 @@ export default tseslint.config(
       'react/jsx-no-constructed-context-values': 'error',
       'react/self-closing-comp': 'error',
       'react-hooks/exhaustive-deps': 'error',
+      // react-hooks v7 is React Compiler analysis wearing a lint
+      // plugin, and when the compiler cannot lower a function it
+      // abandons it — every other rule in the plugin goes quiet for
+      // that file, with no report. `todo` is the only rule that says
+      // so, and `recommended` leaves it off, which is how two
+      // render-phase ref writes sat under a rule set to `error`.
+      'react-hooks/todo': 'warn',
+      // Reassigning a parameter makes the caller's value and the
+      // callee's diverge halfway down a function; measured at zero
+      // before being turned on.
+      'no-param-reassign': 'error',
       'import/no-cycle': ['error', { maxDepth: 3 }],
       'no-restricted-imports': [
         'error',
@@ -103,7 +114,14 @@ export default tseslint.config(
     // handleSettingsInput, buildFlatDiff, the tabs reducer and
     // handlePlanCheckoutInput. Measure before the next notch rather
     // than guessing at it.
-    files: ['apps/**/*.{ts,tsx}', 'libs/**/*.{ts,tsx}'],
+    // The glob is `**/` and not `apps/**` on purpose. The three e2e
+    // projects build their config by spreading this one, and ESLint
+    // re-bases a relative glob onto the config that spreads it — so
+    // `apps/**` becomes `apps/cli-e2e/apps/**` there and matches
+    // nothing. Every budget below, and the whole type-aware block,
+    // silently did not apply to ~8k lines of Playwright suites. An
+    // unanchored glob survives the re-basing.
+    files: ['**/*.{ts,tsx}'],
     rules: {
       'max-lines': [
         'warn',
@@ -152,7 +170,11 @@ export default tseslint.config(
     // rejection. `ignoreVoid` keeps deliberate fire-and-forget
     // expressible — write `void doThing()` and the intent is on the
     // page instead of in the author's head.
-    files: ['apps/*/src/**/*.{ts,tsx}', 'libs/**/src/**/*.{ts,tsx}'],
+    // Unanchored for the same reason as the budgets above: an
+    // `apps/*/src/**` glob does not survive being spread into
+    // apps/cli-e2e/eslint.config.mjs, and a Playwright suite is the
+    // last place you want floating promises going unchecked.
+    files: ['**/src/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -176,6 +198,51 @@ export default tseslint.config(
         'warn',
         { considerDefaultExhaustiveForUnions: true },
       ],
+      // The five below were measured at zero before being turned on,
+      // so they cost nothing today and only bound what gets added.
+      // `no-unsafe-call` is the one with teeth: it is the last step of
+      // an `any` escaping a JSON.parse or an untyped module and being
+      // invoked, which types alone will not stop.
+      '@typescript-eslint/no-unsafe-call': 'warn',
+      '@typescript-eslint/consistent-type-exports': 'warn',
+      '@typescript-eslint/prefer-promise-reject-errors': 'warn',
+      // `in-try-catch` only requires the await where dropping it
+      // changes behaviour — returning a promise from inside `try`
+      // escapes the `catch` that was written to handle it.
+      '@typescript-eslint/return-await': ['warn', 'in-try-catch'],
+      '@typescript-eslint/no-unsafe-argument': 'warn',
+      // Browser and Node APIs get deprecated under us; this reports it
+      // at the call site instead of in a changelog nobody reads.
+      '@typescript-eslint/no-deprecated': 'warn',
+    },
+  },
+  {
+    // The React Compiler's known blind spots, listed rather than left
+    // silent.
+    //
+    // It cannot lower `try/finally` (nor a conditional inside
+    // `try/catch`, nor some member-expression reorders), and when it
+    // gives up on a function every react-hooks rule gives up with it.
+    // These six files are therefore unanalysed: `refs`,
+    // `set-state-in-render`, `purity` and the rest report nothing
+    // here no matter what the code does. Two render-phase ref writes
+    // in usePolling and useRemoteComments are live examples.
+    //
+    // The code is right as written — `finally` is the correct way to
+    // release a loading flag — so the list is the honest artifact,
+    // not a refactor. `react-hooks/todo` stays on everywhere else, so
+    // a *new* file that lands in this state is reported rather than
+    // joining the list quietly.
+    files: [
+      'apps/desktop/src/renderer/components/settings/FieldRow.tsx',
+      'apps/desktop/src/renderer/components/terminal/SessionTerminal.tsx',
+      'apps/desktop/src/renderer/screens/RepoOpen.tsx',
+      'libs/app-core/src/lib/hooks/useDiffData.ts',
+      'libs/app-core/src/lib/hooks/usePolling.ts',
+      'libs/app-core/src/lib/hooks/useRemoteComments.ts',
+    ],
+    rules: {
+      'react-hooks/todo': 'off',
     },
   },
   {
@@ -251,10 +318,17 @@ export default tseslint.config(
     },
   },
   {
-    // React rules that apply wherever we render.
-    files: ['apps/**/*.tsx', 'libs/**/*.tsx'],
+    // React rules that apply wherever we render. Unanchored glob, as
+    // above.
+    //
+    // `no-array-index-key` only sees an index that arrives as a
+    // `.map()` parameter — a hand-rolled loop counter used as a key
+    // reads as an ordinary variable and slips past it. Treat a clean
+    // run as "no obvious ones", not "none".
+    files: ['**/*.tsx'],
     rules: {
       'react/no-array-index-key': 'warn',
+      'react/jsx-no-useless-fragment': 'warn',
     },
   },
   {

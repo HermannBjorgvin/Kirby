@@ -51,7 +51,12 @@ describe('postAzureDevOps via fetch()', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [url, opts] = mockFetch.mock.calls[0];
+    // Naming the request shape here is what makes the assertions below
+    // type-checked rather than `any.any.any`.
+    const [url, opts] = mockFetch.mock.calls[0] as [
+      string,
+      { method: string; headers: Record<string, string>; body: string },
+    ];
     expect(url).toBe(
       'https://dev.azure.com/myorg/myproj/_apis/git/repositories/myrepo/pullrequests/42/threads?api-version=7.1'
     );

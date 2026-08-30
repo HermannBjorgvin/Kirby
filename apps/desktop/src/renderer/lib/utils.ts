@@ -35,8 +35,11 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// `navigator.platform` is deprecated; `userAgent` reports the same
+// thing and is not. On macOS both carry "Mac", so the test is
+// unchanged in behaviour.
 export const isMac =
-  typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
 
 /** Platform modifier label for shortcut hints. */
 export const MOD = isMac ? '⌘' : 'Ctrl';

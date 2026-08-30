@@ -94,63 +94,73 @@ export function createTestRepo(opts: TestRepoOptions = {}): string {
 
   const base = git(dir, ['rev-parse', 'HEAD']).trim();
 
-  for (const wt of opts.worktrees ?? []) {
-    const path = join(dir, '.claude', 'worktrees', wt.branch);
-    // A conflicted rebase needs the branch to diverge from main, so it
-    // starts at the initial commit rather than at main's tip.
-    git(dir, [
-      'worktree',
-      'add',
-      '-q',
-      path,
-      '-b',
-      wt.branch,
-      ...(wt.conflictedRebase ? [base] : []),
-    ]);
-
-    for (const [name, contents] of Object.entries(wt.files ?? {})) {
-      writeFileSync(join(path, name), contents, 'utf8');
-      git(path, ['add', name]);
-    }
-    if (Object.keys(wt.files ?? {}).length > 0) {
-      git(path, ['commit', '-q', '-m', `seed ${wt.branch}`]);
-    }
-
-    if (wt.conflictedRebase) {
-      // Both sides edit the same line from a common ancestor, so
-      // rebasing the branch onto main stops with a conflict.
-      writeFileSync(join(path, 'CONFLICT.md'), 'branch version\n', 'utf8');
-      git(path, ['add', 'CONFLICT.md']);
-      git(path, ['commit', '-q', '-m', 'branch edit']);
-
-      writeFileSync(join(dir, 'CONFLICT.md'), 'main version\n', 'utf8');
-      git(dir, ['add', 'CONFLICT.md']);
-      git(dir, ['commit', '-q', '-m', 'main edit']);
-
-      try {
-        git(path, ['rebase', 'main']);
-      } catch {
-        // Expected: a rebase that stops on a conflict exits non-zero.
-      }
-      // Assert we actually reached that state — a silently *successful*
-      // rebase would leave the test asserting against a normal worktree
-      // and passing for the wrong reason.
-      const gitDir = git(path, ['rev-parse', '--absolute-git-dir']).trim();
-      const midRebase =
-        existsSync(join(gitDir, 'rebase-merge')) ||
-        existsSync(join(gitDir, 'rebase-apply'));
-      if (!midRebase) {
-        throw new Error(
-          `expected ${wt.branch} to be mid-rebase, but it is not`
-        );
-      }
-    }
-
-    if (wt.switchTo) git(path, ['checkout', '-q', '-b', wt.switchTo]);
-    if (wt.detach) git(path, ['checkout', '-q', '--detach']);
-    if (wt.deleteDirectory) rmSync(path, { recursive: true, force: true });
-  }
+  for (const wt of opts.worktrees ?? []) addWorktree(dir, base, wt);
   return dir;
+}
+
+/**
+ * Seed one worktree from its spec: the checkout, its files, an optional
+ * conflicted rebase, and whatever HEAD state the test wants it left in.
+ */
+function addWorktree(dir: string, base: string, wt: TestRepoWorktree): void {
+  const path = join(dir, '.claude', 'worktrees', wt.branch);
+  // A conflicted rebase needs the branch to diverge from main, so it
+  // starts at the initial commit rather than at main's tip.
+  git(dir, [
+    'worktree',
+    'add',
+    '-q',
+    path,
+    '-b',
+    wt.branch,
+    ...(wt.conflictedRebase ? [base] : []),
+  ]);
+
+  for (const [name, contents] of Object.entries(wt.files ?? {})) {
+    writeFileSync(join(path, name), contents, 'utf8');
+    git(path, ['add', name]);
+  }
+  if (Object.keys(wt.files ?? {}).length > 0) {
+    git(path, ['commit', '-q', '-m', `seed ${wt.branch}`]);
+  }
+
+  if (wt.conflictedRebase) stopMidRebase(dir, path, wt.branch);
+
+  if (wt.switchTo) git(path, ['checkout', '-q', '-b', wt.switchTo]);
+  if (wt.detach) git(path, ['checkout', '-q', '--detach']);
+  if (wt.deleteDirectory) rmSync(path, { recursive: true, force: true });
+}
+
+/**
+ * Drive `branch` into a rebase that stops on a conflict, and prove it
+ * actually stopped there.
+ */
+function stopMidRebase(dir: string, path: string, branch: string): void {
+  // Both sides edit the same line from a common ancestor, so
+  // rebasing the branch onto main stops with a conflict.
+  writeFileSync(join(path, 'CONFLICT.md'), 'branch version\n', 'utf8');
+  git(path, ['add', 'CONFLICT.md']);
+  git(path, ['commit', '-q', '-m', 'branch edit']);
+
+  writeFileSync(join(dir, 'CONFLICT.md'), 'main version\n', 'utf8');
+  git(dir, ['add', 'CONFLICT.md']);
+  git(dir, ['commit', '-q', '-m', 'main edit']);
+
+  try {
+    git(path, ['rebase', 'main']);
+  } catch {
+    // Expected: a rebase that stops on a conflict exits non-zero.
+  }
+  // Assert we actually reached that state — a silently *successful*
+  // rebase would leave the test asserting against a normal worktree
+  // and passing for the wrong reason.
+  const gitDir = git(path, ['rev-parse', '--absolute-git-dir']).trim();
+  const midRebase =
+    existsSync(join(gitDir, 'rebase-merge')) ||
+    existsSync(join(gitDir, 'rebase-apply'));
+  if (!midRebase) {
+    throw new Error(`expected ${branch} to be mid-rebase, but it is not`);
+  }
 }
 
 export function cleanupTestRepo(dir: string): void {

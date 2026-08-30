@@ -31,5 +31,7 @@ export function useDesktopPrefs(): DesktopPrefs {
   return useSyncExternalStore(subscribe, () => prefs);
 }
 
+// See the note on `isMac` in ./utils.ts — `navigator.platform` is
+// deprecated and `userAgent` says the same thing.
 export const isMacPlatform =
-  typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);

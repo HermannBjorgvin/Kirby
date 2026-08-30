@@ -168,7 +168,23 @@ async function serveStatic(
 // host is intended for dev + Playwright (workers=1). Do not expose the port
 // beyond loopback without adding auth — /spawn accepts an arbitrary repoPath
 // and env, which is equivalent to local code execution for any caller.
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
+  // `createServer` expects a void-returning listener. Handing it an
+  // async function gives it a promise it never looks at, so anything
+  // rejecting past the try blocks below — `serveStatic` hitting a bad
+  // path, say — became an unhandled rejection that takes the host down
+  // mid-test instead of a 500. Route the failure to the response.
+  void handleRequest(req, res).catch((err: unknown) => {
+    console.error('[http] handler failed', err);
+    if (!res.headersSent) res.writeHead(500);
+    res.end('internal error');
+  });
+});
+
+async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
   if (req.method === 'POST' && url.pathname === '/spawn') {
@@ -207,7 +223,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   await serveStatic(req, res);
-});
+}
 
 const wss = new WebSocketServer({ noServer: true });
 

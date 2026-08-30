@@ -49,6 +49,11 @@
     },
     "test": {
       "dependsOn": ["^build"]
+    },
+    "lint": {
+      "options": {
+        "command": "eslint . --max-warnings 0"
+      }
     }
   }
 }
