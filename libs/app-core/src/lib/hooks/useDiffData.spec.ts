@@ -68,20 +68,22 @@ const NUMSTAT = '5\t2\tsrc/foo.ts\0' + '10\t0\tsrc/bar.ts\0';
 const NAME_STATUS = 'M\0src/foo.ts\0' + 'A\0src/bar.ts\0';
 
 function gitHandlers(opts: { localOriginSourceSha?: string | null } = {}) {
+  // `rev-parse --verify origin/<ref>`: null means the local
+  // remote-tracking ref does not exist yet, which is what a cold clone
+  // of the source branch looks like.
+  const revParse = (ref: string | undefined) => {
+    if (ref === 'origin/feature') {
+      if (opts.localOriginSourceSha === null) return new Error('not a ref');
+      return (opts.localOriginSourceSha ?? sourceSha) + '\n';
+    }
+    if (ref === 'origin/main') return targetSha + '\n';
+    return new Error(`unexpected rev-parse ref ${String(ref)}`);
+  };
   return [
     (c: CallShape) => {
       if (c.cmd !== 'git') return;
-      // rev-parse --verify origin/<source>
       if (c.args[0] === 'rev-parse' && c.args[1] === '--verify') {
-        const ref = c.args[2];
-        if (ref === 'origin/feature') {
-          if (opts.localOriginSourceSha === null) {
-            return new Error('not a ref');
-          }
-          return (opts.localOriginSourceSha ?? sourceSha) + '\n';
-        }
-        if (ref === 'origin/main') return targetSha + '\n';
-        return new Error(`unexpected rev-parse ref ${ref}`);
+        return revParse(c.args[2]);
       }
       if (c.args[0] === 'fetch') return ''; // fetch returns nothing meaningful
       if (c.args[0] === 'diff' && c.args[1] === '--numstat') return NUMSTAT;
@@ -151,20 +153,21 @@ describe('fetchAllFiles freshness', () => {
     // creating the missing remote-tracking ref.
     let sourceFetched = false;
     const calls: CallShape[] = [];
-    execFileMock.mockImplementation(async (cmd: string, args: string[]) => {
-      calls.push({ cmd, args });
-      if (args[0] === 'rev-parse' && args[2] === 'origin/feature') {
+    const revParse = (ref: string | undefined) => {
+      if (ref === 'origin/feature') {
         if (!sourceFetched) throw new Error('not a ref');
         return sourceSha + '\n';
       }
-      if (args[0] === 'rev-parse' && args[2] === 'origin/main') {
-        return targetSha + '\n';
-      }
-      if (args[0] === 'fetch' && args[2] === 'feature') {
-        sourceFetched = true;
+      if (ref === 'origin/main') return targetSha + '\n';
+      throw new Error(`Unmatched rev-parse: ${String(ref)}`);
+    };
+    execFileMock.mockImplementation(async (cmd: string, args: string[]) => {
+      calls.push({ cmd, args });
+      if (args[0] === 'rev-parse') return revParse(args[2]);
+      if (args[0] === 'fetch') {
+        if (args[2] === 'feature') sourceFetched = true;
         return '';
       }
-      if (args[0] === 'fetch') return '';
       if (args[0] === 'diff' && args[1] === '--numstat') return NUMSTAT;
       if (args[0] === 'diff' && args[1] === '--name-status') return NAME_STATUS;
       throw new Error(`Unmatched: ${cmd} ${args.join(' ')}`);

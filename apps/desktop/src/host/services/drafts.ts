@@ -65,6 +65,27 @@ export function deleteDraftComment(prId: number, id: string): void {
 }
 
 /**
+ * The provider to post through, or the reason we cannot. GitHub needs
+ * a head SHA to anchor a review to, and refuses the whole batch
+ * without one rather than posting some comments against the wrong
+ * commit.
+ */
+function requirePostVendor(
+  vendor: string | undefined,
+  headSha: string | undefined
+): 'github' | 'azure-devops' {
+  if (vendor !== 'github' && vendor !== 'azure-devops') {
+    throw new Error(
+      vendor ? `Unsupported vendor: ${vendor}` : 'No VCS provider configured'
+    );
+  }
+  if (vendor === 'github' && !headSha) {
+    throw new Error('Missing head SHA — refresh pull requests and try again');
+  }
+  return vendor;
+}
+
+/**
  * Post the given drafts (or every draft when `ids` is omitted). Marks
  * them `posting` while in flight, `posted` on success (done by the
  * poster), and back to `draft` on failure so nothing is lost.
@@ -75,15 +96,7 @@ export async function postDraftComments(
   const cwd = requireRepo();
   requirePrId(req.prId);
   const config = readConfig(cwd);
-  const vendor = config.vendor;
-  if (vendor !== 'github' && vendor !== 'azure-devops') {
-    throw new Error(
-      vendor ? `Unsupported vendor: ${vendor}` : 'No VCS provider configured'
-    );
-  }
-  if (vendor === 'github' && !req.headSha) {
-    throw new Error('Missing head SHA — refresh pull requests and try again');
-  }
+  const vendor = requirePostVendor(config.vendor, req.headSha);
   const all = readComments(req.prId);
   const wanted = all.filter(
     (c) => c.status === 'draft' && (!req.ids || req.ids.includes(c.id))

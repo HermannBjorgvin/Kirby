@@ -10,6 +10,43 @@ import { DirRow, FileRow } from './DiffFileRow.js';
 import { DiffFileListHints } from './DiffFileListHints.js';
 import { DiffListCommentItem } from './DiffListCommentItem.js';
 
+/**
+ * The states the list can be in other than "here are your files". The
+ * empty note waits for both flags: mid-load and errored both already
+ * say what is going on, and "(no files)" underneath either reads as a
+ * second, wrong answer.
+ */
+function ListBanners({
+  error,
+  loading,
+  fileCount,
+  visibleCount,
+}: {
+  error: string | null;
+  loading: boolean;
+  fileCount: number;
+  visibleCount: number;
+}) {
+  return (
+    <>
+      {error && <Text color="red">Error: {error}</Text>}
+      {fileCount > 500 && (
+        <Text color="yellow">Large PR: {fileCount} files</Text>
+      )}
+      {!loading && !error && visibleCount === 0 && (
+        <Text dimColor>(no files)</Text>
+      )}
+    </>
+  );
+}
+
+/** Footer for the binary/lock/generated files partitioned out of the list. */
+function SkippedNote({ count, showing }: { count: number; showing: boolean }) {
+  if (count === 0) return null;
+  if (showing) return <Text dimColor>showing all</Text>;
+  return <Text dimColor>{count} skipped (binary/lock/generated)</Text>;
+}
+
 export const DiffFileList = memo(function DiffFileList({
   files,
   selectedIndex,
@@ -118,15 +155,12 @@ export const DiffFileList = memo(function DiffFileList({
       </Text>
       <Text dimColor>{'─'.repeat(Math.min(40, maxWidth))}</Text>
 
-      {error && <Text color="red">Error: {error}</Text>}
-
-      {files.length > 500 && (
-        <Text color="yellow">Large PR: {files.length} files</Text>
-      )}
-
-      {!loading && !error && displayFiles.length === 0 && (
-        <Text dimColor>(no files)</Text>
-      )}
+      <ListBanners
+        error={error}
+        loading={loading}
+        fileCount={files.length}
+        visibleCount={displayFiles.length}
+      />
 
       {items.length > 0 && (
         <VirtualViewport
@@ -179,10 +213,7 @@ export const DiffFileList = memo(function DiffFileList({
         />
       )}
 
-      {skipped.length > 0 && !showSkipped && (
-        <Text dimColor>{skipped.length} skipped (binary/lock/generated)</Text>
-      )}
-      {skipped.length > 0 && showSkipped && <Text dimColor>showing all</Text>}
+      <SkippedNote count={skipped.length} showing={showSkipped} />
 
       <DiffFileListHints
         hasComments={generalThreads.length > 0}

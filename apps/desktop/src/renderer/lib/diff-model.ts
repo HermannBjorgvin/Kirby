@@ -169,6 +169,33 @@ export type SplitRow =
   | { kind: 'fold'; from: number; to: number };
 
 /**
+ * The run of removes-then-adds starting at `start`, and the index just
+ * past it. A remove that arrives *after* an add starts a new block
+ * rather than joining this one, so two adjacent edits stay two pairs.
+ */
+function collectChangeRun(
+  lines: readonly DiffLine[],
+  unified: readonly UnifiedRow[],
+  start: number
+): { removes: SplitCell[]; adds: SplitCell[]; next: number } {
+  const removes: SplitCell[] = [];
+  const adds: SplitCell[] = [];
+  let i = start;
+  while (i < unified.length) {
+    const r = unified[i];
+    if (r.kind !== 'line') break;
+    const l = lines[r.index];
+    if (l.type === 'remove' && adds.length === 0) {
+      removes.push({ index: r.index, line: l });
+    } else if (l.type === 'add') {
+      adds.push({ index: r.index, line: l });
+    } else break;
+    i += 1;
+  }
+  return { removes, adds, next: i };
+}
+
+/**
  * Pair removed/added runs by position (the classic side-by-side
  * alignment); context lines span both sides; folds pass through.
  */
@@ -196,20 +223,8 @@ export function buildSplitRows(
       i += 1;
       continue;
     }
-    // Collect a run of removes followed by a run of adds.
-    const removes: SplitCell[] = [];
-    const adds: SplitCell[] = [];
-    while (i < unified.length) {
-      const r = unified[i];
-      if (r.kind !== 'line') break;
-      const l = lines[r.index];
-      if (l.type === 'remove' && adds.length === 0) {
-        removes.push({ index: r.index, line: l });
-      } else if (l.type === 'add') {
-        adds.push({ index: r.index, line: l });
-      } else break;
-      i += 1;
-    }
+    const { removes, adds, next } = collectChangeRun(lines, unified, i);
+    i = next;
     const len = Math.max(removes.length, adds.length);
     for (let k = 0; k < len; k++) {
       rows.push({

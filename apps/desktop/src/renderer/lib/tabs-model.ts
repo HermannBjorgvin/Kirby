@@ -65,6 +65,19 @@ function pinTab(tabs: Tab[], id: string): Tab[] {
   });
 }
 
+/** Activate a tab, ignoring an id that is no longer on the strip. */
+function activateTab(state: TabsState, id: string): TabsState {
+  return state.tabs.some((t) => t.id === id)
+    ? { ...state, activeId: id }
+    : state;
+}
+
+/** Keep only `id`; whatever survives becomes active. */
+function closeOtherTabs(state: TabsState, id: string): TabsState {
+  const tabs = state.tabs.filter((t) => t.id === id);
+  return { ...state, tabs, activeId: tabs[0]?.id ?? null };
+}
+
 export function reduce(state: TabsState, action: TabsAction): TabsState {
   switch (action.type) {
     case 'open-item':
@@ -74,15 +87,11 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
     case 'pin':
       return { ...state, tabs: pinTab(state.tabs, action.id) };
     case 'activate':
-      return state.tabs.some((t) => t.id === action.id)
-        ? { ...state, activeId: action.id }
-        : state;
+      return activateTab(state, action.id);
     case 'close':
       return closeTab(state, action.id);
-    case 'close-others': {
-      const tabs = state.tabs.filter((t) => t.id === action.id);
-      return { ...state, tabs, activeId: tabs[0]?.id ?? null };
-    }
+    case 'close-others':
+      return closeOtherTabs(state, action.id);
     case 'close-all':
       // `autoOpened` survives on purpose: closing every tab is a manual
       // act, and re-opening the running agents on the next sidebar poll
@@ -231,13 +240,23 @@ function rekey(state: TabsState, entries: ItemEntry[]): TabsState {
     return { ...t, itemKey: nextKey, branch };
   });
   if (!changed) return state;
-  // Re-keying can collide with a tab already open on the new key
-  // (the user opened the PR by hand while the worktree tab was
-  // stranded). Keep the leftmost, let the survivor inherit pinned
-  // state, and follow the active tab to the survivor.
+  return { ...state, ...collapseDuplicateKeys(remapped, state.activeId) };
+}
+
+/**
+ * Re-keying can land two tabs on the same key — the user opened the PR
+ * by hand while the worktree tab was stranded on `branch:x`. Keep the
+ * leftmost, let the survivor inherit pinned state (a pin is a
+ * deliberate act and must not be lost to bookkeeping), and follow the
+ * active tab to the survivor so focus does not fall off the strip.
+ */
+function collapseDuplicateKeys(
+  remapped: readonly Tab[],
+  startingActiveId: string | null
+): { tabs: Tab[]; activeId: string | null } {
   const seen = new Map<string, Tab>();
   const tabs: Tab[] = [];
-  let activeId = state.activeId;
+  let activeId = startingActiveId;
   for (const t of remapped) {
     const key = t.kind === 'item' ? t.itemKey : t.id;
     const survivor = seen.get(key);
@@ -254,7 +273,7 @@ function rekey(state: TabsState, entries: ItemEntry[]): TabsState {
     }
     if (activeId === t.id) activeId = survivor.id;
   }
-  return { ...state, tabs, activeId };
+  return { tabs, activeId };
 }
 
 /**

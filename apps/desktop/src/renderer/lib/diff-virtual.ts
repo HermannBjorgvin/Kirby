@@ -153,17 +153,64 @@ function pushOrphans(
   for (const x of drafts) indexById.set(x.id, index);
 }
 
+export interface FlatDiffOptions {
+  view: 'unified' | 'split';
+  hideResolved: boolean;
+  hasConversation: boolean;
+  generalThreads: readonly RemoteCommentThread[];
+  threadsByFile: ReadonlyMap<string, RemoteCommentThread[]>;
+  draftsByFile: ReadonlyMap<string, ReviewComment[]>;
+  fileState: ReadonlyMap<string, FileDisplayState>;
+}
+
+/**
+ * Everything one file contributes before its rows are laid out: the
+ * header stats, and the comment sets those rows will hang off.
+ *
+ * `openThreads` counts unresolved threads whether or not they are
+ * currently shown — the header says how much is outstanding, and
+ * hiding resolved comments must not change that number.
+ */
+function fileSlice(
+  file: string,
+  lines: DiffLine[],
+  opts: FlatDiffOptions
+): {
+  state: FileDisplayState;
+  stats: FileStats;
+  visibleThreads: RemoteCommentThread[];
+  activeDrafts: ReviewComment[];
+} {
+  const state = opts.fileState.get(file) ?? {};
+  const adds = lines.filter((l) => l.type === 'add').length;
+  const dels = lines.filter((l) => l.type === 'remove').length;
+  const collapseReason = defaultCollapseReason(file, adds + dels);
+  const allThreads = opts.threadsByFile.get(file) ?? [];
+  const visibleThreads = opts.hideResolved
+    ? allThreads.filter((t) => !t.isResolved)
+    : allThreads;
+  const activeDrafts = (opts.draftsByFile.get(file) ?? []).filter(
+    (d) => d.status !== 'posted'
+  );
+  return {
+    state,
+    stats: {
+      adds,
+      dels,
+      openThreads: allThreads.filter((t) => !t.isResolved).length,
+      draftCount: activeDrafts.length,
+      collapseReason,
+      open: state.open ?? collapseReason === null,
+      viewed: state.viewed ?? false,
+    },
+    visibleThreads,
+    activeDrafts,
+  };
+}
+
 export function buildFlatDiff(
   files: readonly [string, DiffLine[]][],
-  opts: {
-    view: 'unified' | 'split';
-    hideResolved: boolean;
-    hasConversation: boolean;
-    generalThreads: readonly RemoteCommentThread[];
-    threadsByFile: ReadonlyMap<string, RemoteCommentThread[]>;
-    draftsByFile: ReadonlyMap<string, ReviewComment[]>;
-    fileState: ReadonlyMap<string, FileDisplayState>;
-  }
+  opts: FlatDiffOptions
 ): FlatDiff {
   const rows: FlatRow[] = [];
   const indexById = new Map<string, number>();
@@ -176,32 +223,13 @@ export function buildFlatDiff(
   }
 
   for (const [file, lines] of files) {
-    const state = opts.fileState.get(file) ?? {};
-    const adds = lines.filter((l) => l.type === 'add').length;
-    const dels = lines.filter((l) => l.type === 'remove').length;
-    const collapseReason = defaultCollapseReason(file, adds + dels);
-    const open = state.open ?? collapseReason === null;
-
-    const allThreads = opts.threadsByFile.get(file) ?? [];
-    const visibleThreads = opts.hideResolved
-      ? allThreads.filter((t) => !t.isResolved)
-      : allThreads;
-    const activeDrafts = (opts.draftsByFile.get(file) ?? []).filter(
-      (d) => d.status !== 'posted'
-    );
+    const slice = fileSlice(file, lines, opts);
+    const { state, visibleThreads, activeDrafts } = slice;
 
     fileIndex.set(file, rows.length);
     rows.push({ key: `h:${file}`, kind: 'file-header', file });
-    stats.set(file, {
-      adds,
-      dels,
-      openThreads: allThreads.filter((t) => !t.isResolved).length,
-      draftCount: activeDrafts.length,
-      collapseReason,
-      open,
-      viewed: state.viewed ?? false,
-    });
-    if (!open) continue;
+    stats.set(file, slice.stats);
+    if (!slice.stats.open) continue;
 
     const present = presentAnchors(lines);
     const t = anchorComments(present, visibleThreads, (x) =>

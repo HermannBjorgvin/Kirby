@@ -46,6 +46,17 @@ export function useRemoteComments(
         }
       }
 
+      // Logged always, shown only if this response still belongs to
+      // the PR on screen — see the note on activePrIdRef below.
+      const reportFailure = (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logError(`fetchCommentThreads [${provider.id}]`, err as Error);
+        if (activePrIdRef.current === prId) {
+          setError(msg);
+          onFetchErrorRef.current?.(msg);
+        }
+      };
+
       setLoading(true);
       setError(null);
       try {
@@ -58,12 +69,7 @@ export function useRemoteComments(
           setComments(result);
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logError(`fetchCommentThreads [${provider.id}]`, err as Error);
-        if (activePrIdRef.current === prId) {
-          setError(msg);
-          onFetchErrorRef.current?.(msg);
-        }
+        reportFailure(err);
       } finally {
         if (activePrIdRef.current === prId) {
           setLoading(false);

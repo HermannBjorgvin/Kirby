@@ -527,20 +527,26 @@ interface ThreadLines {
 }
 
 function resolveThreadLines(thread: AdoThread): ThreadLines {
-  const ctx = thread.threadContext;
-  const orig = thread.pullRequestThreadContext?.trackingCriteria;
-  const leftStart = trackedLine(ctx?.leftFileStart, orig?.origLeftFileStart);
-  const leftEnd = trackedLine(ctx?.leftFileEnd, orig?.origLeftFileEnd);
-  const rightStart = trackedLine(ctx?.rightFileStart, orig?.origRightFileStart);
-  const rightEnd = trackedLine(ctx?.rightFileEnd, orig?.origRightFileEnd);
+  // Both bags are optional and every field inside them is too, so an
+  // empty object stands in for a missing one — that keeps this a table
+  // of four lookups instead of eight optional chains.
+  const ctx: NonNullable<AdoThread['threadContext']> =
+    thread.threadContext ?? {};
+  const orig: NonNullable<
+    NonNullable<AdoThread['pullRequestThreadContext']>['trackingCriteria']
+  > = thread.pullRequestThreadContext?.trackingCriteria ?? {};
+  const leftStart = trackedLine(ctx.leftFileStart, orig.origLeftFileStart);
+  const leftEnd = trackedLine(ctx.leftFileEnd, orig.origLeftFileEnd);
+  const rightStart = trackedLine(ctx.rightFileStart, orig.origRightFileStart);
+  const rightEnd = trackedLine(ctx.rightFileEnd, orig.origRightFileEnd);
   return {
     leftStart,
     leftEnd,
     rightStart,
     rightEnd,
     usedFallback:
-      cameFromTracking(ctx?.leftFileStart, leftStart) ||
-      cameFromTracking(ctx?.rightFileStart, rightStart),
+      cameFromTracking(ctx.leftFileStart, leftStart) ||
+      cameFromTracking(ctx.rightFileStart, rightStart),
   };
 }
 
@@ -750,43 +756,42 @@ async function fetchAdoCommentThreads(
   return { threads, generalComments };
 }
 
+/**
+ * The comment id a reply should hang under. ADO renders threading from
+ * `parentCommentId`, where `0` means "this IS the thread root" — so
+ * replying with `0` posts an extra top-level comment instead of a
+ * reply. That is invisible in Kirby's flat rendering and confusing to
+ * anyone reading the pull request in ADO's web UI.
+ *
+ * Falling back to `0` covers a thread holding nothing but system
+ * comments: the reply still posts, just unnested.
+ */
+async function resolveRootCommentId(
+  config: AdoConfig,
+  prId: number,
+  threadId: string
+): Promise<number> {
+  const threadUrl = `${baseUrl(
+    config
+  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
+  const res = await tracedFetch('replyToAdoThread:resolveRoot', threadUrl, {
+    headers: authHeaders(config.pat),
+  });
+  if (!res.ok) {
+    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
+  }
+  const thread = (await res.json()) as AdoThread;
+  const root = (thread.comments ?? []).find((c) => c.commentType !== 'system');
+  return typeof root?.id === 'number' ? root.id : 0;
+}
+
 async function replyToAdoThread(
   config: AdoConfig,
   prId: number,
   threadId: string,
   body: string
 ): Promise<RemoteCommentReply> {
-  // Resolve the root comment's ID so we can attach the reply to it
-  // properly. ADO uses `parentCommentId` to render threading in the
-  // web UI: `0` means "this IS the root comment of the thread", so
-  // passing `0` for a reply makes it show up as an additional top-
-  // level comment rather than as a reply underneath the original.
-  // That's invisible in Kirby (flat rendering) but visible — and
-  // confusing — to anyone reviewing the PR in ADO's web UI.
-  const threadUrl = `${baseUrl(
-    config
-  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
-  const threadRes = await tracedFetch(
-    'replyToAdoThread:resolveRoot',
-    threadUrl,
-    {
-      headers: authHeaders(config.pat),
-    }
-  );
-  if (!threadRes.ok) {
-    throw new Error(
-      `ADO API error ${threadRes.status}: ${threadRes.statusText}`
-    );
-  }
-  const thread = (await threadRes.json()) as AdoThread;
-  const rootComment = (thread.comments ?? []).find(
-    (c) => c.commentType !== 'system'
-  );
-  // Fallback to 0 if we somehow can't find a non-system root (e.g. a
-  // thread that only contains system comments): posting still works,
-  // just without nesting.
-  const parentCommentId =
-    typeof rootComment?.id === 'number' ? rootComment.id : 0;
+  const parentCommentId = await resolveRootCommentId(config, prId, threadId);
 
   const url = `${baseUrl(
     config
@@ -804,13 +809,7 @@ async function replyToAdoThread(
   if (!res.ok) {
     throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
   }
-  const data = (await res.json()) as AdoThreadComment;
-  return {
-    id: String(data.id ?? ''),
-    author: data.author?.displayName ?? data.author?.uniqueName ?? 'unknown',
-    body: sanitizeBody(data.content ?? ''),
-    createdAt: data.publishedDate ?? '',
-  };
+  return toRemoteReply((await res.json()) as AdoThreadComment);
 }
 
 async function setAdoThreadResolved(

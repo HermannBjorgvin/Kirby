@@ -43,18 +43,6 @@ export function DiffViewerEntry({
   cardWidth: number;
   state: DiffEntryState;
 }) {
-  const {
-    selectedCommentId,
-    pendingDeleteCommentId,
-    editingCommentId,
-    editBuffer,
-    replyingToThreadId,
-    replyBuffer,
-    inPlanKeys,
-    annotatingPlanKey,
-    annotationBuffer,
-  } = state;
-
   if (line.type === 'diff') {
     return (
       <DiffRow
@@ -69,50 +57,88 @@ export function DiffViewerEntry({
     return <Text wrap="truncate">{line.rendered}</Text>;
   }
   if (line.type === 'thread-remote') {
-    const pKey = planItemKey('remote', line.thread.id);
-    // While annotating this item, the composer takes the card's slot.
-    if (annotatingPlanKey === pKey) {
-      return (
-        <PlanAnnotateInput
-          buffer={annotationBuffer ?? ''}
-          width={cardWidth}
-          indent={CARD_INDENT}
-        />
-      );
-    }
     return (
-      <CommentThreadCard
+      <RemoteThreadEntry
         thread={line.thread}
-        selected={selectedCommentId === line.thread.id}
-        replyingToThreadId={replyingToThreadId}
-        replyBuffer={replyBuffer}
-        maxWidth={cardWidth}
-        indent={CARD_INDENT}
-        inPlan={inPlanKeys?.has(pKey) ?? false}
-        planHint
+        cardWidth={cardWidth}
+        state={state}
       />
     );
   }
-  const pKey = planItemKey('local', line.comment.id);
-  if (annotatingPlanKey === pKey) {
+  return (
+    <LocalCommentEntry
+      comment={line.comment}
+      cardWidth={cardWidth}
+      state={state}
+    />
+  );
+}
+
+/** A reviewer's thread, or the note composer standing in its slot. */
+function RemoteThreadEntry({
+  thread,
+  cardWidth,
+  state,
+}: {
+  thread: Extract<AnnotatedLine, { type: 'thread-remote' }>['thread'];
+  cardWidth: number;
+  state: DiffEntryState;
+}) {
+  const pKey = planItemKey('remote', thread.id);
+  if (state.annotatingPlanKey === pKey) {
     return (
       <PlanAnnotateInput
-        buffer={annotationBuffer ?? ''}
+        buffer={state.annotationBuffer ?? ''}
         width={cardWidth}
         indent={CARD_INDENT}
       />
     );
   }
   return (
-    <LocalCommentCard
-      comment={line.comment}
-      selected={selectedCommentId === line.comment.id}
-      pendingDelete={pendingDeleteCommentId === line.comment.id}
-      editing={editingCommentId === line.comment.id}
-      editBuffer={editingCommentId === line.comment.id ? editBuffer : undefined}
+    <CommentThreadCard
+      thread={thread}
+      selected={state.selectedCommentId === thread.id}
+      replyingToThreadId={state.replyingToThreadId}
+      replyBuffer={state.replyBuffer}
       maxWidth={cardWidth}
       indent={CARD_INDENT}
-      inPlan={inPlanKeys?.has(pKey) ?? false}
+      inPlan={state.inPlanKeys?.has(pKey) ?? false}
+      planHint
+    />
+  );
+}
+
+/** The agent's own draft, with the same composer takeover. */
+function LocalCommentEntry({
+  comment,
+  cardWidth,
+  state,
+}: {
+  comment: Extract<AnnotatedLine, { type: 'thread-local' }>['comment'];
+  cardWidth: number;
+  state: DiffEntryState;
+}) {
+  const pKey = planItemKey('local', comment.id);
+  if (state.annotatingPlanKey === pKey) {
+    return (
+      <PlanAnnotateInput
+        buffer={state.annotationBuffer ?? ''}
+        width={cardWidth}
+        indent={CARD_INDENT}
+      />
+    );
+  }
+  const editing = state.editingCommentId === comment.id;
+  return (
+    <LocalCommentCard
+      comment={comment}
+      selected={state.selectedCommentId === comment.id}
+      pendingDelete={state.pendingDeleteCommentId === comment.id}
+      editing={editing}
+      editBuffer={editing ? state.editBuffer : undefined}
+      maxWidth={cardWidth}
+      indent={CARD_INDENT}
+      inPlan={state.inPlanKeys?.has(pKey) ?? false}
       planHint
     />
   );

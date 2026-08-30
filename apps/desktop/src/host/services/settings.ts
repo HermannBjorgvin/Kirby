@@ -103,6 +103,24 @@ export function getSettingsView(): SettingsFieldView[] {
 }
 
 /**
+ * The same guards as the TUI's `canApplyFieldChange`: never swap the
+ * terminal backend out from under live sessions, and refuse tmux when
+ * the binary is missing — surfacing the install hint now rather than a
+ * spawn failure at the next launch.
+ */
+function assertBackendSwitchAllowed(value: string): void {
+  if (hasAnySession()) {
+    throw new Error('Close all sessions before switching terminal backend.');
+  }
+  if (value !== 'tmux') return;
+  const status = getTmuxAvailability();
+  if (status && !status.available) {
+    const hint = status.installHint ? ` — try \`${status.installHint}\`` : '';
+    throw new Error(`tmux not installed${hint}`);
+  }
+}
+
+/**
  * Persist one settings edit. The field is looked up from the host's
  * own catalog by label+key — the client never dictates which config
  * bag a value lands in.
@@ -119,24 +137,7 @@ export function updateSettingsFromView(
   // getting it back means the field wasn't edited — writing it would
   // overwrite the real credential with dots.
   if (field.masked && value === SECRET_PLACEHOLDER) return;
-  // Same guards as the TUI's canApplyFieldChange: never swap the
-  // terminal backend under live sessions, and refuse tmux when the
-  // binary is missing (surfacing the install hint now instead of a
-  // spawn failure later).
-  if (field.key === 'terminalBackend') {
-    if (hasAnySession()) {
-      throw new Error('Close all sessions before switching terminal backend.');
-    }
-    if (value === 'tmux') {
-      const status = getTmuxAvailability();
-      if (status && !status.available) {
-        const hint = status.installHint
-          ? ` — try \`${status.installHint}\``
-          : '';
-        throw new Error(`tmux not installed${hint}`);
-      }
-    }
-  }
+  if (field.key === 'terminalBackend') assertBackendSwitchAllowed(value);
   // The TUI persists a cleared field as undefined (`editBuffer ||
   // undefined`) so project-level values fall back to global instead
   // of shadowing it with '' (or 0 for numeric keys).

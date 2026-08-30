@@ -492,6 +492,43 @@ function transformGeneralComment(
   };
 }
 
+/** Every merged head branch the search matches, across all its pages. */
+async function fetchMergedHeads(searchQuery: string): Promise<Set<string>> {
+  const heads = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const variables: Record<string, string> = { searchQuery };
+    if (cursor) variables.cursor = cursor;
+
+    const result = (await ghGraphQL(
+      SEARCH_MERGED_PRS_QUERY,
+      variables
+    )) as SearchMergedPrsResponse;
+
+    const { nodes, pageInfo } = result.data.search;
+    for (const node of nodes) {
+      if (node.headRefName) heads.add(node.headRefName);
+    }
+    cursor = nextCursor(pageInfo);
+  } while (cursor);
+  return heads;
+}
+
+/**
+ * The cursor to ask for the next page with, or undefined when a
+ * connection is exhausted. GitHub can report `hasNextPage` with a null
+ * cursor, which would loop forever on the same page, so both have to
+ * hold before there is another page to fetch.
+ */
+function nextCursor(pageInfo: {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}): string | undefined {
+  return pageInfo.hasNextPage && pageInfo.endCursor
+    ? pageInfo.endCursor
+    : undefined;
+}
+
 async function fetchCommentThreadsGitHub(
   owner: string,
   repo: string,
@@ -526,14 +563,8 @@ async function fetchCommentThreadsGitHub(
       for (const node of pr.reviewThreads.nodes) {
         threads.push(transformReviewThread(node));
       }
-      if (
-        pr.reviewThreads.pageInfo.hasNextPage &&
-        pr.reviewThreads.pageInfo.endCursor
-      ) {
-        threadCursor = pr.reviewThreads.pageInfo.endCursor;
-      } else {
-        needThreads = false;
-      }
+      threadCursor = nextCursor(pr.reviewThreads.pageInfo);
+      needThreads = threadCursor !== undefined;
     }
 
     // Process general comments
@@ -541,11 +572,8 @@ async function fetchCommentThreadsGitHub(
       for (const node of pr.comments.nodes) {
         generalComments.push(transformGeneralComment(node, pr.id));
       }
-      if (pr.comments.pageInfo.hasNextPage && pr.comments.pageInfo.endCursor) {
-        commentCursor = pr.comments.pageInfo.endCursor;
-      } else {
-        needComments = false;
-      }
+      commentCursor = nextCursor(pr.comments.pageInfo);
+      needComments = commentCursor !== undefined;
     }
   }
 
@@ -731,28 +759,7 @@ export const githubProvider: VcsProvider = {
       .slice(0, 10);
     const searchQuery = `repo:${owner}/${repo} is:pr is:merged author:${username} merged:>${since}`;
 
-    const mergedHeads = new Set<string>();
-    let cursor: string | undefined;
-
-    do {
-      const variables: Record<string, string> = { searchQuery };
-      if (cursor) variables.cursor = cursor;
-
-      const result = (await ghGraphQL(
-        SEARCH_MERGED_PRS_QUERY,
-        variables
-      )) as SearchMergedPrsResponse;
-
-      const { nodes, pageInfo } = result.data.search;
-      for (const node of nodes) {
-        if (node.headRefName) mergedHeads.add(node.headRefName);
-      }
-
-      cursor =
-        pageInfo.hasNextPage && pageInfo.endCursor
-          ? pageInfo.endCursor
-          : undefined;
-    } while (cursor);
+    const mergedHeads = await fetchMergedHeads(searchQuery);
 
     const branchSet = new Set(branches);
     const matched = new Set<string>();
