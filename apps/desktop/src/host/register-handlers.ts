@@ -103,6 +103,7 @@ export function createHostApi(): KirbyHostApi {
     showAppMenu: () => appMenuPopup(),
     onMenuCommand: () => () => undefined,
     onSyncNotice: () => () => undefined,
+    onRemoteUpdated: () => () => undefined,
     getDesktopPrefs: () => Promise.resolve(prefs.loadDesktopPrefs()),
     setDesktopPrefs: (patch) => {
       const next = prefs.saveDesktopPrefs(patch);

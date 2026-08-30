@@ -217,6 +217,7 @@ describe('host API wiring', () => {
       'onSessionExit',
       'onMenuCommand',
       'onSyncNotice',
+      'onRemoteUpdated',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

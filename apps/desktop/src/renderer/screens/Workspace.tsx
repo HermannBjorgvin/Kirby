@@ -28,7 +28,11 @@ import { TitleBar } from '../components/TitleBar.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '../lib/data/query-keys.js';
 import { useSidebarModel } from '../lib/data/queries.js';
-import { useRefreshRemote, useRemovingBranches } from '../lib/data/mutations.js';
+import {
+  useRefreshRemote,
+  useRemovingBranches,
+} from '../lib/data/mutations.js';
+import { BOOT_MARKS, markOnce } from '../lib/perf.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
@@ -132,6 +136,17 @@ function WorkspaceInner({
     tabs.syncItems(entries);
   }, [tabs, entries]);
 
+  // Boot milestones (see lib/perf.ts): the shell is on screen once this
+  // mounts, and the sidebar is real once the host's first model lands —
+  // an empty repo settles the query too, so this is not gated on rows.
+  useEffect(() => {
+    markOnce(BOOT_MARKS.shell);
+  }, []);
+  const sidebarSettled = model.data !== undefined;
+  useEffect(() => {
+    if (sidebarSettled) markOnce(BOOT_MARKS.sidebar);
+  }, [sidebarSettled]);
+
   // The host's remote sync loop toasts its events (auto-deleted merged
   // branch, blocked auto-delete) and the sidebar refetches to match.
   const qc = useQueryClient();
@@ -140,6 +155,18 @@ function WorkspaceInner({
       if (kind === 'success') toast.success(message);
       else toast.warning(message);
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
+    });
+    return off;
+  }, [qc, repo.cwd]);
+
+  // The host serves the sidebar from local git without waiting for the
+  // provider, and says so when the pull requests land. Refetching on
+  // that event is what keeps "fast" from meaning "stale for four
+  // seconds": the rows appear as soon as the host has them.
+  useEffect(() => {
+    const off = window.kirby.onRemoteUpdated(() => {
+      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
+      void qc.invalidateQueries({ queryKey: keys.sync(repo.cwd) });
     });
     return off;
   }, [qc, repo.cwd]);

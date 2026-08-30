@@ -71,8 +71,19 @@ export interface VcsProvider {
   /** Return vendor project config if URL matches, null otherwise */
   parseRemoteUrl(url: string): Record<string, string> | null;
 
-  /** Auto-detect additional user/project fields (e.g., username from CLI auth) */
-  autoDetectFields?(): Record<string, string> | null;
+  /**
+   * Auto-detect additional user/project fields (e.g. username from CLI
+   * auth), given the project config as it stands.
+   *
+   * Only blank fields are ever filled from the result, so a provider
+   * that can see all of its fields are already set should return `null`
+   * without doing the work. That is not a micro-optimisation: the
+   * GitHub implementation asks the network who you are, this runs on
+   * every repo open, and repo open is on the path to the first window.
+   */
+  autoDetectFields?(
+    project: Record<string, string>
+  ): Record<string, string> | null;
 
   /** True when auth + project config have all required fields */
   isConfigured(

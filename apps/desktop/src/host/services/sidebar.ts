@@ -26,6 +26,16 @@ import type { SyncState } from '../contract.js';
  * poll the model frequently without hammering the provider API. The
  * TUI's `prPollInterval` config drives the TTL.
  *
+ * **The model never waits for the network.** A cold start has no
+ * cached pull requests, and awaiting them here meant the sidebar — the
+ * whole left half of the window, including worktrees git could have
+ * listed in milliseconds — stayed empty until GitHub answered. So a
+ * call serves whatever remote data exists (possibly none), starts a
+ * fetch if one is due, and the fetch announces itself when it lands;
+ * the renderer refetches on that event rather than waiting out its
+ * poll interval. Only an explicit refresh, where the user is watching
+ * a spinner they asked for, still awaits.
+ *
  * Merge/conflict decorations (mergedBranches, conflictCounts) come
  * from the host's remote sync loop (services/remote-sync.ts).
  */
@@ -46,6 +56,15 @@ let lastError: string | null = null;
 // fresher data with a fresh timestamp.
 let fetchSeq = 0;
 
+// Installed by main.ts. Fires when a background fetch has changed what
+// getSidebarModel() would answer, so the renderer can refetch then
+// rather than on its next poll tick.
+let remoteUpdated: (() => void) | null = null;
+
+export function setRemoteUpdatedNotifier(fn: (() => void) | null): void {
+  remoteUpdated = fn;
+}
+
 // No minimum: the TUI honors prPollInterval verbatim, so the desktop's
 // cache TTL does too.
 function remoteIntervalMs(interval: number | undefined): number {
@@ -63,22 +82,32 @@ function resolveProvider(cwd: string) {
   return { config, provider, configured };
 }
 
-async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
+/** What the cache can answer right now, without going anywhere. */
+function cachedPrMap(cwd: string): BranchPrMap {
+  return cache && cache.cwd === cwd ? cache.prMap : {};
+}
+
+/** The cache, if it is this repo's and still inside its TTL. */
+function freshCache(cwd: string, ttl: number): RemoteCache | null {
+  if (!cache || cache.cwd !== cwd) return null;
+  return Date.now() - cache.fetchedAt < ttl ? cache : null;
+}
+
+async function fetchRemote(
+  cwd: string,
+  force = false,
+  onCommit?: () => void
+): Promise<BranchPrMap> {
   const { config, provider, configured } = resolveProvider(cwd);
   if (!provider || !configured) {
     cache = { cwd, prMap: {}, fetchedAt: Date.now() };
     lastError = null;
     return {};
   }
-  const ttl = remoteIntervalMs(config.prPollInterval);
-  if (
-    !force &&
-    cache &&
-    cache.cwd === cwd &&
-    Date.now() - cache.fetchedAt < ttl
-  ) {
-    return cache.prMap;
-  }
+  const fresh = force
+    ? null
+    : freshCache(cwd, remoteIntervalMs(config.prPollInterval));
+  if (fresh) return fresh.prMap;
   // Join an in-flight fetch only when it is for this repo and the
   // caller isn't forcing a refresh — a forced refresh (or a repo
   // switch mid-fetch) starts its own request so it can't resolve
@@ -91,6 +120,7 @@ async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
       if (seq === fetchSeq) {
         cache = { cwd, prMap, fetchedAt: Date.now() };
         lastError = null;
+        onCommit?.();
       }
       return prMap;
     })
@@ -109,14 +139,29 @@ async function fetchRemote(cwd: string, force = false): Promise<BranchPrMap> {
   return promise;
 }
 
+/**
+ * Start a remote fetch if one is due, and return without waiting for
+ * it. Announces itself when it commits so the renderer can pick the
+ * new data up immediately.
+ */
+function refreshRemoteInBackground(cwd: string): void {
+  void fetchRemote(cwd, false, () => remoteUpdated?.()).catch(() => {
+    // fetchRemote never rejects — it serves stale data and records
+    // lastError instead — but a rejection here must not become an
+    // unhandled one that takes the main process down.
+  });
+}
+
 export async function getSidebarModel(): Promise<SidebarItem[]> {
   const cwd = requireRepo();
   const { config, provider } = resolveProvider(cwd);
 
-  const [worktrees, prMap] = await Promise.all([
-    listWorktrees(),
-    fetchRemote(cwd),
-  ]);
+  // Local git first and on its own: worktrees are the rows the user is
+  // most likely looking for, and they must not queue behind a provider
+  // call that may be a network round trip away.
+  refreshRemoteInBackground(cwd);
+  const worktrees = await listWorktrees();
+  const prMap = cachedPrMap(cwd);
   const sessions: AgentSession[] = worktrees.map((wt) => {
     const name = worktreeSessionName(wt);
     return {

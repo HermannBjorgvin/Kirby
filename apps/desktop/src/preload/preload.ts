@@ -105,6 +105,11 @@ const api: KirbyHostApi = {
     ipcRenderer.on(SYNC_EVENTS.notice, listener);
     return () => ipcRenderer.removeListener(SYNC_EVENTS.notice, listener);
   },
+  onRemoteUpdated: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on(SYNC_EVENTS.remote, listener);
+    return () => ipcRenderer.removeListener(SYNC_EVENTS.remote, listener);
+  },
   getDesktopPrefs: () => ipcRenderer.invoke(IPC.getDesktopPrefs),
   setDesktopPrefs: (patch) => ipcRenderer.invoke(IPC.setDesktopPrefs, patch),
   showAbout: () => ipcRenderer.invoke(IPC.showAbout),

@@ -679,7 +679,16 @@ export const githubProvider: VcsProvider = {
     return parseGitHubRemoteUrl(url);
   },
 
-  autoDetectFields(): Record<string, string> | null {
+  autoDetectFields(
+    project: Record<string, string> = {}
+  ): Record<string, string> | null {
+    // `username` is the only field this fills, and the answer is only
+    // used for blanks — so once it is known there is nothing here worth
+    // a round trip to GitHub. This runs on every repo open, and repo
+    // open happens before the desktop app has a window, so the call
+    // used to be a synchronous network wait the user spent looking at
+    // no application at all.
+    if (project.username) return null;
     try {
       const out = execSync('gh api /user', {
         encoding: 'utf8',

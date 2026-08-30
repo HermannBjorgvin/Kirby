@@ -50,6 +50,7 @@ const EVENT_METHODS = [
   'onSessionExit',
   'onMenuCommand',
   'onSyncNotice',
+  'onRemoteUpdated',
 ] as const;
 
 describe('preload bridge', () => {

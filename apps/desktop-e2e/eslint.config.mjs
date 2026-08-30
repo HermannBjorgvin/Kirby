@@ -12,6 +12,19 @@ export default [
     rules: {},
   },
   {
+    // The benchmarks in `perf/` drive the app at a fixed human cadence
+    // and measure what the main thread does between the steps, so the
+    // wait *is* the stimulus: an auto-waiting assertion would wait for
+    // the app to go idle, which is the cost being measured, and every
+    // run would report zero. Confined to the one helper that owns it
+    // (`perf/setup/pace.ts`) so the rule still covers the rest of the
+    // directory, and scoped here rather than inline because the
+    // pre-commit hook runs eslint without the Playwright plugin, where
+    // an inline directive naming one of its rules is a hard error.
+    files: ['perf/setup/pace.ts'],
+    rules: { 'playwright/no-wait-for-timeout': 'off' },
+  },
+  {
     // A test gated on a missing capability — no GH_TOKEN, no tmux — is
     // a capability check, not a disabled test: the same suite runs for
     // real in the integration job, and on a machine that has the thing.
