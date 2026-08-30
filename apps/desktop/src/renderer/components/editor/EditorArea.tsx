@@ -4,7 +4,7 @@ import {
   SettingsIcon,
   XIcon,
 } from 'lucide-react';
-import { Suspense, useDeferredValue, useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import type {
   ContextMenuItem,
   SessionActivitySnapshot,
@@ -25,7 +25,7 @@ import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
 import { EmptyState } from './EmptyState.js';
-import { PaneLoading, SettingsView } from './lazy-panes.js';
+import { SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
 
 /**
@@ -141,20 +141,20 @@ export function EditorArea({
             >
               <ErrorBoundary resetKey={tab.id}>
                 {/* Both pane bodies are code-split (see lazy-panes),
-                    so the boundary lives here rather than in each. */}
-                <Suspense fallback={<PaneLoading />}>
-                  {tab.kind === 'settings' ? (
-                    <SettingsView />
-                  ) : (
-                    <ItemView
-                      item={itemFor(tab)}
-                      items={items}
-                      itemKey={tab.itemKey}
-                      active={active}
-                      onPin={() => tabs.pin(tab.id)}
-                    />
-                  )}
-                </Suspense>
+                    but neither suspends — each renders its own
+                    placeholder until its module lands, so there is no
+                    Suspense boundary here to throttle the swap. */}
+                {tab.kind === 'settings' ? (
+                  <SettingsView />
+                ) : (
+                  <ItemView
+                    item={itemFor(tab)}
+                    items={items}
+                    itemKey={tab.itemKey}
+                    active={active}
+                    onPin={() => tabs.pin(tab.id)}
+                  />
+                )}
               </ErrorBoundary>
             </div>
           );

@@ -4,6 +4,7 @@ import type { DiffLine } from '@kirby/diff';
 import { contentKey } from '../content-key.js';
 import { loadDesktopPrefs } from '../desktop-prefs.js';
 import { parseDiffInWorker } from '../diff/diff-worker-client.js';
+import { measured } from '../perf.js';
 import { keys } from './query-keys.js';
 import { errorMessage } from '../utils.js';
 import type { RepoInfo } from '../../../host/contract.js';
@@ -143,7 +144,8 @@ export function useDiff(
 ) {
   return useQuery({
     queryKey: keys.diff(cwd, source, target),
-    queryFn: () => window.kirby.fetchDiffText(source, target),
+    queryFn: () =>
+      measured('fetch', () => window.kirby.fetchDiffText(source, target)),
     enabled: opts.enabled ?? true,
     staleTime: 60_000,
   });
@@ -174,7 +176,10 @@ export function useWorktreeDiff(
 ) {
   return useQuery({
     queryKey: keys.worktreeDiff(cwd, branch, target),
-    queryFn: () => window.kirby.fetchWorktreeDiffText(branch, target),
+    queryFn: () =>
+      measured('fetch', () =>
+        window.kirby.fetchWorktreeDiffText(branch, target)
+      ),
     enabled: opts.enabled,
     refetchInterval: opts.live ? 2_000 : false,
     // Keep the previous patch on screen while the next one is in

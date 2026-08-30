@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { cleanupTestRepo, createTestRepo } from '../src/setup/git-repo.js';
+import { createBigRepo } from './setup/big-repo.js';
 import { fakeAgent } from '../src/fixtures/desktop.js';
 import { sidebarRow } from '../src/setup/app.js';
 import { launchApp, unthrottle } from './setup/launch.js';
@@ -88,4 +89,63 @@ test('idle with an agent', async () => {
 
   expect(samples.streamingCpuPct, 'never recorded').toHaveLength(ITERATIONS);
   saveSamples('idle', samples);
+});
+
+/**
+ * The same, on a worktree the size of a real piece of work.
+ *
+ * A worktree without a pull request shows a *live* diff: the host
+ * re-runs a merge-base diff inside the checkout every two seconds while
+ * its agent is running, so the pane tracks what the agent is doing
+ * rather than what it last committed. On the two-file worktree above
+ * that is free. On forty files it is a git subprocess producing
+ * megabytes of patch, handed across IPC and content-hashed, fifteen
+ * hundred times an hour — and the whole point of leaving the app open
+ * is that the agent is working on something substantial.
+ *
+ * Split from the small case rather than replacing it, because the gap
+ * between the two is the number that says whether this scales.
+ */
+test('idle with an agent on a large change', async () => {
+  test.setTimeout((120_000 + IDLE_MS) * ITERATIONS);
+  const repo = createBigRepo({ files: 40, linesPerFile: 600 });
+  const samples: Samples = {};
+
+  try {
+    for (let i = 0; i < ITERATIONS; i++) {
+      const app = await launchApp({
+        repoPath: repo.path,
+        kirbyConfig: {
+          aiCommand: fakeAgent({ stream: true, intervalMs: 150 }),
+        },
+      });
+      try {
+        await unthrottle(app.app);
+        const page = app.page;
+        await sidebarRow(page, new RegExp(repo.branch))
+          .first()
+          .waitFor({ state: 'visible', timeout: 30_000 });
+        await sidebarRow(page, new RegExp(repo.branch)).first().dblclick();
+        await page
+          .getByText('kirby-fake-agent-ready')
+          .first()
+          .waitFor({ state: 'visible', timeout: 60_000 });
+        await pace(page, 4000);
+
+        const cost = await idleCost(page, app.app, IDLE_MS);
+        collect(samples, {
+          largeCpuPct: cost.idleCpuPct,
+          largeLongestTaskMs: cost.idleLongestTaskMs,
+          largeLongTaskCount: cost.idleTaskCount,
+        });
+      } finally {
+        await app.close();
+      }
+    }
+  } finally {
+    repo.cleanup();
+  }
+
+  expect(samples.largeCpuPct, 'never recorded').toHaveLength(ITERATIONS);
+  saveSamples('idle-large', samples);
 });

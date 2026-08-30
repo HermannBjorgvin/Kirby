@@ -34,3 +34,32 @@ export function markOnce(name: string): void {
     // A host without the User Timing API still runs the app.
   }
 }
+
+/**
+ * Time a host round trip onto the renderer's performance timeline as
+ * `kirby:diff:<name>`, alongside the diff worker's own measures.
+ *
+ * The point is to be able to say which half of a slow tab open is
+ * ours. Measured that way once already: opening a 40-file pull request
+ * took 851 ms, of which the host — a whole-file `git diff` and the IPC
+ * carrying a megabyte of patch back — was 42 ms. Everything else was
+ * the renderer, and without this number it looked like git.
+ */
+export async function measured<T>(
+  name: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await run();
+  } finally {
+    try {
+      performance.measure(`kirby:diff:${name}`, {
+        start,
+        end: performance.now(),
+      });
+    } catch {
+      // Timing must never break the thing being timed.
+    }
+  }
+}
