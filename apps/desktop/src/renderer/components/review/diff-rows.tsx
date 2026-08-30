@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { CharRange, SplitCell } from '../../lib/diff-model.js';
+import type { SplitCell } from '../../lib/diff-model.js';
+import type { CharRange } from '../../lib/word-diff.js';
 import type { LineTokens } from '../../lib/highlight.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';

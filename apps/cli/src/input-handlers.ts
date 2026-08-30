@@ -254,6 +254,61 @@ export interface ControlsHandlerCtx {
   keybinds: KeybindContextValue;
 }
 
+/**
+ * Rebind mode: the next keypress becomes `actionId`'s binding, rather
+ * than being resolved as a command. Esc cancels and Delete/Backspace
+ * restores the preset default; anything else is captured.
+ */
+function captureRebind(
+  input: string,
+  key: KeyPress,
+  ctx: ControlsHandlerCtx,
+  actionId: string
+): void {
+  // Esc → cancel rebind
+  if (key.escape) {
+    ctx.settings.setControlsRebindActionId(null);
+    return;
+  }
+
+  // Delete/Backspace → reset to preset default
+  if (key.delete || key.backspace) {
+    ctx.keybinds.resetBinding(actionId);
+    ctx.settings.setControlsRebindActionId(null);
+    return;
+  }
+
+  // Capture the keypress as a new binding
+  const desc = descriptorFromKeypress(input, key);
+  if (!desc) return;
+
+  // Find the action's context
+  const action = ACTIONS.find((a) => a.id === actionId);
+  if (!action) return;
+
+  // Check for conflicts in the same context
+  const conflictId = findConflict(
+    input,
+    key,
+    action.context,
+    ctx.keybinds.bindings,
+    ACTIONS,
+    actionId
+  );
+
+  if (conflictId) {
+    // Swap: give the conflicting action our old binding
+    const oldBinding = ctx.keybinds.bindings[actionId];
+    if (oldBinding) {
+      ctx.keybinds.updateBinding(conflictId, oldBinding);
+    }
+  }
+
+  // Set the new binding
+  ctx.keybinds.updateBinding(actionId, [desc]);
+  ctx.settings.setControlsRebindActionId(null);
+}
+
 export function handleControlsInput(
   input: string,
   key: KeyPress,
@@ -263,52 +318,9 @@ export function handleControlsInput(
   const bindingRows = getBindingRows(rows);
   const totalBindings = bindingRows.length;
 
-  // ── Rebind mode: capture any keypress ──
-  if (ctx.settings.controlsRebindActionId) {
-    const actionId = ctx.settings.controlsRebindActionId;
-
-    // Esc → cancel rebind
-    if (key.escape) {
-      ctx.settings.setControlsRebindActionId(null);
-      return;
-    }
-
-    // Delete/Backspace → reset to preset default
-    if (key.delete || key.backspace) {
-      ctx.keybinds.resetBinding(actionId);
-      ctx.settings.setControlsRebindActionId(null);
-      return;
-    }
-
-    // Capture the keypress as a new binding
-    const desc = descriptorFromKeypress(input, key);
-    if (!desc) return;
-
-    // Find the action's context
-    const action = ACTIONS.find((a) => a.id === actionId);
-    if (!action) return;
-
-    // Check for conflicts in the same context
-    const conflictId = findConflict(
-      input,
-      key,
-      action.context,
-      ctx.keybinds.bindings,
-      ACTIONS,
-      actionId
-    );
-
-    if (conflictId) {
-      // Swap: give the conflicting action our old binding
-      const oldBinding = ctx.keybinds.bindings[actionId];
-      if (oldBinding) {
-        ctx.keybinds.updateBinding(conflictId, oldBinding);
-      }
-    }
-
-    // Set the new binding
-    ctx.keybinds.updateBinding(actionId, [desc]);
-    ctx.settings.setControlsRebindActionId(null);
+  const rebinding = ctx.settings.controlsRebindActionId;
+  if (rebinding) {
+    captureRebind(input, key, ctx, rebinding);
     return;
   }
 

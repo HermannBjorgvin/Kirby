@@ -62,10 +62,26 @@ export function buildUnifiedRows(
     noFold?: boolean;
   } = {}
 ): UnifiedRow[] {
+  if (opts.noFold) return lines.map((_, index) => ({ kind: 'line', index }));
+  return foldHiddenRuns(markVisibleLines(lines, opts));
+}
+
+/**
+ * First half of the fold: a byte per line, 1 where the reviewer must
+ * see it. A line earns that for one of three reasons — it changed (or
+ * heads a hunk) and so does its context window, it carries a pinned
+ * thread anchor, or the reviewer expanded it by hand.
+ */
+function markVisibleLines(
+  lines: readonly DiffLine[],
+  opts: {
+    context?: number;
+    pinnedAnchors?: ReadonlySet<string>;
+    expanded?: ReadonlySet<number>;
+  }
+): Uint8Array {
   const context = opts.context ?? DEFAULT_CONTEXT;
   const n = lines.length;
-  if (opts.noFold) return lines.map((_, index) => ({ kind: 'line', index }));
-
   const visible = new Uint8Array(n);
   const mark = (i: number) => {
     const lo = Math.max(0, i - context);
@@ -76,18 +92,19 @@ export function buildUnifiedRows(
     const l = lines[i];
     if (l.type === 'add' || l.type === 'remove' || l.type === 'hunk-header')
       mark(i);
-    else if (opts.pinnedAnchors?.size) {
-      for (const a of lineAnchors(l)) {
-        if (opts.pinnedAnchors.has(a)) {
-          mark(i);
-          break;
-        }
-      }
-    }
+    else if (hasPinnedAnchor(l, opts.pinnedAnchors)) mark(i);
     if (opts.expanded?.has(i)) visible[i] = 1;
   }
+  return visible;
+}
 
-  return foldHiddenRuns(visible);
+/** Whether a thread is anchored to this line on either side. */
+function hasPinnedAnchor(
+  line: DiffLine,
+  pinned: ReadonlySet<string> | undefined
+): boolean {
+  if (!pinned?.size) return false;
+  return lineAnchors(line).some((a) => pinned.has(a));
 }
 
 /**
@@ -203,100 +220,6 @@ export function buildSplitRows(
     }
   }
   return rows;
-}
-
-// ── Intra-line (word) diff ───────────────────────────────────────
-
-export interface CharRange {
-  start: number;
-  end: number;
-}
-
-const TOKEN_RE = /\w+|\s+|[^\w\s]/g;
-const MAX_TOKENS = 300;
-
-function tokenize(s: string): string[] {
-  return s.match(TOKEN_RE) ?? [];
-}
-
-/**
- * Character ranges that differ between a removed line and its paired
- * added line, per side. Uses an LCS over word-ish tokens; bails out
- * (returns null) when the lines are too different for highlights to
- * help, or too long to diff cheaply.
- */
-export function wordDiff(
-  oldText: string,
-  newText: string
-): { old: CharRange[]; new: CharRange[] } | null {
-  const a = tokenize(oldText);
-  const b = tokenize(newText);
-  if (a.length === 0 || b.length === 0) return null;
-  if (a.length + b.length > MAX_TOKENS) return null;
-
-  // LCS table
-  const m = a.length;
-  const n = b.length;
-  const dp: Uint16Array[] = [];
-  for (let i = 0; i <= m; i++) dp.push(new Uint16Array(n + 1));
-  for (let i = m - 1; i >= 0; i--) {
-    for (let j = n - 1; j >= 0; j--) {
-      dp[i][j] =
-        a[i] === b[j]
-          ? dp[i + 1][j + 1] + 1
-          : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
-  const oldR: CharRange[] = [];
-  const newR: CharRange[] = [];
-  let i = 0;
-  let j = 0;
-  let oa = 0;
-  let ob = 0;
-  let changedChars = 0;
-  const push = (arr: CharRange[], start: number, end: number) => {
-    const last = arr[arr.length - 1];
-    if (last && last.end === start) last.end = end;
-    else arr.push({ start, end });
-  };
-  while (i < m && j < n) {
-    if (a[i] === b[j]) {
-      oa += a[i].length;
-      ob += b[j].length;
-      i += 1;
-      j += 1;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      push(oldR, oa, oa + a[i].length);
-      changedChars += a[i].length;
-      oa += a[i].length;
-      i += 1;
-    } else {
-      push(newR, ob, ob + b[j].length);
-      changedChars += b[j].length;
-      ob += b[j].length;
-      j += 1;
-    }
-  }
-  while (i < m) {
-    push(oldR, oa, oa + a[i].length);
-    changedChars += a[i].length;
-    oa += a[i].length;
-    i += 1;
-  }
-  while (j < n) {
-    push(newR, ob, ob + b[j].length);
-    changedChars += b[j].length;
-    ob += b[j].length;
-    j += 1;
-  }
-  // Mostly different → highlighting everything is noise.
-  if (changedChars > 0.7 * (oldText.length + newText.length)) return null;
-  return { old: oldR, new: newR };
-}
-
-/** Trim leading/trailing whitespace-only ranges for nicer highlights. */
-export function isWhitespaceRange(text: string, r: CharRange): boolean {
-  return text.slice(r.start, r.end).trim().length === 0;
 }
 
 // ── File classification for default collapse ─────────────────────

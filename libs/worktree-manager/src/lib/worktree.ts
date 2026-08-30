@@ -147,42 +147,57 @@ export async function canRemoveBranch(
   // not exist (which would silently skip the uncommitted-changes guard).
   const dir = wt?.path ?? worktreeDir(branch);
 
-  // Uncommitted changes
+  if (await hasUncommittedChanges(dir, branch)) {
+    return { safe: false, reason: 'uncommitted changes' };
+  }
+
+  // Skip when the VCS provider already confirmed the branch merged.
+  if (!confirmedMerged && (await hasUnpushedCommits(branch))) {
+    return { safe: false, reason: 'not pushed to upstream' };
+  }
+
+  return { safe: true };
+}
+
+/**
+ * Whether the checkout at `dir` has anything uncommitted. A git call
+ * that fails answers "no": the worktree may simply not exist, and this
+ * guard is not the place to report that.
+ */
+async function hasUncommittedChanges(
+  dir: string,
+  branch: string
+): Promise<boolean> {
   try {
     // Deliberately not `-z`: this output is only ever tested for
     // emptiness, so NUL termination would buy nothing. Add it before
     // parsing the entries — the newline form renders a rename as
     // `old -> new` in one field, which is the same trap `--numstat`
     // set with its brace form (see parseNumstat in @kirby/app-core).
-    const { stdout: status } = await exec(
-      `git -C "${dir}" status --porcelain`,
-      { encoding: 'utf8' }
-    );
-    if (status.trim().length > 0) {
-      return { safe: false, reason: 'uncommitted changes' };
-    }
+    const { stdout } = await exec(`git -C "${dir}" status --porcelain`, {
+      encoding: 'utf8',
+    });
+    return stdout.trim().length > 0;
   } catch (e) {
     log('warn', 'canRemoveBranch', `status check failed for ${branch}`, e);
-    // Worktree may not exist — skip this check
+    return false;
   }
+}
 
-  // Not pushed to upstream — skip when the VCS provider already confirmed merge
-  if (!confirmedMerged) {
-    try {
-      const { stdout: unpushed } = await exec(
-        `git log "${branch}" --not --remotes -1`,
-        { encoding: 'utf8' }
-      );
-      if (unpushed.trim().length > 0) {
-        return { safe: false, reason: 'not pushed to upstream' };
-      }
-    } catch (e) {
-      log('warn', 'canRemoveBranch', `unpushed check failed for ${branch}`, e);
-      // Branch may not have remote tracking — skip
-    }
+/**
+ * Whether `branch` holds commits no remote has. As above, a failure
+ * answers "no" — the branch may just have no remote tracking.
+ */
+async function hasUnpushedCommits(branch: string): Promise<boolean> {
+  try {
+    const { stdout } = await exec(`git log "${branch}" --not --remotes -1`, {
+      encoding: 'utf8',
+    });
+    return stdout.trim().length > 0;
+  } catch (e) {
+    log('warn', 'canRemoveBranch', `unpushed check failed for ${branch}`, e);
+    return false;
   }
-
-  return { safe: true };
 }
 
 /**

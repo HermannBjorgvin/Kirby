@@ -54,17 +54,33 @@ function statusContextKey(status: AdoPrStatus, index: number): string {
   return `${genre ?? ''}/${name ?? ''}`;
 }
 
+/**
+ * What a status is ordered by, with its defaults resolved. `at` is
+ * null when the entry carries no parseable date, which is the case
+ * that has to skip the date comparison rather than lose it.
+ */
+function orderKey(status: AdoPrStatus): {
+  iteration: number;
+  at: number | null;
+  id: number;
+} {
+  const parsed = Date.parse(status.creationDate ?? status.updatedDate ?? '');
+  return {
+    iteration: status.iterationId ?? 0,
+    at: Number.isNaN(parsed) ? null : parsed,
+    id: status.id ?? 0,
+  };
+}
+
 /** Later of two statuses for the same check. */
 function isNewer(a: AdoPrStatus, b: AdoPrStatus): boolean {
-  if ((a.iterationId ?? 0) !== (b.iterationId ?? 0)) {
-    return (a.iterationId ?? 0) > (b.iterationId ?? 0);
-  }
-  const at = Date.parse(a.creationDate ?? a.updatedDate ?? '');
-  const bt = Date.parse(b.creationDate ?? b.updatedDate ?? '');
-  if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return at > bt;
+  const x = orderKey(a);
+  const y = orderKey(b);
+  if (x.iteration !== y.iteration) return x.iteration > y.iteration;
+  if (x.at !== null && y.at !== null && x.at !== y.at) return x.at > y.at;
   // Same instant, or undated: fall back to the sequential id. Two
   // statuses posted in the same second is normal for a fast pipeline.
-  return (a.id ?? 0) > (b.id ?? 0);
+  return x.id > y.id;
 }
 
 /**

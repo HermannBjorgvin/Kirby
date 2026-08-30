@@ -48,6 +48,41 @@ function isOwnPr(item: SidebarItem): boolean {
   );
 }
 
+/**
+ * File a PR under one category. A PR already open in a tab is counted
+ * rather than listed — the rail is for what you have not looked at.
+ */
+function addEntry(
+  cat: AttentionCategory,
+  pr: PullRequestInfo,
+  key: string,
+  open: boolean
+): void {
+  if (open) cat.openInTabs += 1;
+  else cat.entries.push({ pr, key });
+}
+
+/**
+ * The three things that can want your attention on a PR of your own.
+ * They are not exclusive: a request can be failing CI, rejected and
+ * carrying open comments all at once, and appears under each.
+ */
+function classifyOwnPr(
+  model: AttentionModel,
+  pr: PullRequestInfo,
+  key: string,
+  open: boolean
+): void {
+  if (pr.buildStatus === 'failed') addEntry(model.ciFailing, pr, key, open);
+  if (pr.reviewers?.some((r) => isBlockingDecision(r.decision))) {
+    addEntry(model.changesRequested, pr, key, open);
+  }
+  if ((pr.activeCommentCount ?? 0) > 0) {
+    addEntry(model.unresolvedComments, pr, key, open);
+    if (!open) model.unresolvedCommentTotal += pr.activeCommentCount ?? 0;
+  }
+}
+
 export function buildAttentionModel(
   items: readonly SidebarItem[],
   openTabKeys: ReadonlySet<string>
@@ -58,16 +93,6 @@ export function buildAttentionModel(
     changesRequested: emptyCategory(),
     unresolvedComments: emptyCategory(),
     unresolvedCommentTotal: 0,
-  };
-
-  const add = (
-    cat: AttentionCategory,
-    pr: PullRequestInfo,
-    key: string,
-    open: boolean
-  ) => {
-    if (open) cat.openInTabs += 1;
-    else cat.entries.push({ pr, key });
   };
 
   const seen = new Set<string>();
@@ -81,18 +106,9 @@ export function buildAttentionModel(
     const open = openTabKeys.has(key);
 
     if (item.kind === 'review-pr' && item.category === 'needs-review') {
-      add(model.needsReview, pr, key, open);
+      addEntry(model.needsReview, pr, key, open);
     }
-    if (isOwnPr(item)) {
-      if (pr.buildStatus === 'failed') add(model.ciFailing, pr, key, open);
-      if (pr.reviewers?.some((r) => isBlockingDecision(r.decision))) {
-        add(model.changesRequested, pr, key, open);
-      }
-      if ((pr.activeCommentCount ?? 0) > 0) {
-        add(model.unresolvedComments, pr, key, open);
-        if (!open) model.unresolvedCommentTotal += pr.activeCommentCount ?? 0;
-      }
-    }
+    if (isOwnPr(item)) classifyOwnPr(model, pr, key, open);
   }
   return model;
 }

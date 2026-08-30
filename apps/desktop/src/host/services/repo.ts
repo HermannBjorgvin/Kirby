@@ -70,6 +70,34 @@ export function activeRepoIs(cwd: string): boolean {
   return activeCwd === cwd;
 }
 
+/**
+ * Say which backend the session registry ended up on. The tmux factory
+ * degrades to PTY silently in two cases, so both are named here — that
+ * way a "why isn't this tmux?" report is diagnosable from the console
+ * alone.
+ */
+function logSessionBackend(config: ReturnType<typeof readConfig>): void {
+  if (config.terminalBackend !== 'tmux') {
+    console.log(
+      `[desktop] session backend: ${config.terminalBackend ?? 'pty'}`
+    );
+    return;
+  }
+  const root = getRepoRoot();
+  const tmux = getTmuxAvailability();
+  const probe =
+    tmux == null
+      ? 'pending'
+      : tmux.available
+      ? 'available'
+      : 'UNAVAILABLE — falling back to pty';
+  console.log(
+    `[desktop] session backend: tmux (repo root: ${
+      root ?? 'UNRESOLVED — falling back to pty'
+    }; tmux probe: ${probe})`
+  );
+}
+
 export function openRepo(cwd: string): RepoInfo {
   if (!isGitRepo(cwd)) {
     throw new Error(`Not a git repository: ${cwd}`);
@@ -105,28 +133,7 @@ export function openRepo(cwd: string): RepoInfo {
     resetWorktreeResolver();
   }
   applySessionBackend(config);
-  if (config.terminalBackend === 'tmux') {
-    // The factory silently degrades to PTY in two cases; make both
-    // visible in the dev log so a "why isn't this tmux?" report is
-    // diagnosable from the console alone.
-    const root = getRepoRoot();
-    const tmux = getTmuxAvailability();
-    console.log(
-      `[desktop] session backend: tmux (repo root: ${
-        root ?? 'UNRESOLVED — falling back to pty'
-      }; tmux probe: ${
-        tmux == null
-          ? 'pending'
-          : tmux.available
-          ? 'available'
-          : 'UNAVAILABLE — falling back to pty'
-      })`
-    );
-  } else {
-    console.log(
-      `[desktop] session backend: ${config.terminalBackend ?? 'pty'}`
-    );
-  }
+  logSessionBackend(config);
   repoOpenedListener?.(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {

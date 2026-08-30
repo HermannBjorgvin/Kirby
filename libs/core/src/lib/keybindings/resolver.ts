@@ -132,48 +132,47 @@ export function findConflict(
  * Build a KeyDescriptor from a raw keypress.
  * This is used to capture a user's keypress during rebind mode.
  */
-export function descriptorFromKeypress(
+/** The non-character keys a binding can be built on. */
+const CAPTURABLE_FLAGS = [
+  'upArrow',
+  'downArrow',
+  'leftArrow',
+  'rightArrow',
+  'return',
+  'escape',
+  'tab',
+  'backspace',
+  'delete',
+  'pageDown',
+  'pageUp',
+  'home',
+  'end',
+] as const;
+
+/** Whichever special-key flags this keypress set, or undefined for none. */
+function flagsFromKeypress(key: KeyPress): KeyDescriptor['flags'] {
+  const flags: Record<string, boolean> = {};
+  for (const flag of CAPTURABLE_FLAGS) {
+    if (key[flag]) flags[flag] = true;
+  }
+  return Object.keys(flags).length > 0 ? flags : undefined;
+}
+
+/**
+ * Ctrl and Meta re-attach the character, because Ctrl+C is a binding on
+ * "c" rather than on a key of its own. Shift is skipped for A–Z: Ink
+ * sets it automatically for an uppercase letter, and the resolver
+ * already handles that through its isUppercaseChar case.
+ */
+function applyModifiers(
+  desc: KeyDescriptor,
   input: string,
   key: KeyPress
-): KeyDescriptor | null {
-  const desc: KeyDescriptor = {};
-
-  // Special keys via flags
-  const flagMap: [keyof KeyPress, string][] = [
-    ['upArrow', 'upArrow'],
-    ['downArrow', 'downArrow'],
-    ['leftArrow', 'leftArrow'],
-    ['rightArrow', 'rightArrow'],
-    ['return', 'return'],
-    ['escape', 'escape'],
-    ['tab', 'tab'],
-    ['backspace', 'backspace'],
-    ['delete', 'delete'],
-    ['pageDown', 'pageDown'],
-    ['pageUp', 'pageUp'],
-    ['home', 'home'],
-    ['end', 'end'],
-  ];
-
-  for (const [keyFlag] of flagMap) {
-    if (key[keyFlag]) {
-      if (!desc.flags) desc.flags = {};
-      (desc.flags as Record<string, boolean>)[keyFlag] = true;
-    }
-  }
-
-  // Character input
-  if (input && !desc.flags) {
-    desc.input = input;
-  }
-
-  // Modifiers
+): void {
   if (key.ctrl) {
     desc.ctrl = true;
     if (input) desc.input = input;
   }
-  // Skip shift for uppercase letters — Ink auto-sets key.shift for A-Z,
-  // and the resolver already handles this via the isUppercaseChar special case.
   const isUppercaseInput = input.length === 1 && /[A-Z]/.test(input);
   if (key.shift && !isUppercaseInput) {
     desc.shift = true;
@@ -182,6 +181,23 @@ export function descriptorFromKeypress(
     desc.meta = true;
     if (input) desc.input = input;
   }
+}
+
+export function descriptorFromKeypress(
+  input: string,
+  key: KeyPress
+): KeyDescriptor | null {
+  const desc: KeyDescriptor = {};
+
+  const flags = flagsFromKeypress(key);
+  if (flags) desc.flags = flags;
+
+  // A character only counts when no special key claimed the press.
+  if (input && !desc.flags) {
+    desc.input = input;
+  }
+
+  applyModifiers(desc, input, key);
 
   // Must have something
   if (desc.input === undefined && !desc.flags) return null;

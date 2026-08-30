@@ -50,6 +50,29 @@ function foldGuidance(
  * no spawning — so it's unit-testable. Degrades safely when the agent
  * lacks a capability (continue → blank/seed, seed → blank).
  */
+/**
+ * The two intents that carry a prompt. Both fold the guidance in the
+ * same way and then walk the same capability ladder down to `blank()`.
+ */
+function buildSeedSpec(
+  agent: AgentDefinition,
+  req: LaunchRequest
+): LaunchSpec {
+  const { prompt, opts } = foldGuidance(
+    agent,
+    req.prompt ?? '',
+    req.systemGuidance
+  );
+  if (req.intent === 'continue-or-seed') {
+    return (
+      agent.continueOrSeed?.(prompt, opts) ??
+      agent.seed?.(prompt, opts) ??
+      agent.blank()
+    );
+  }
+  return agent.seed?.(prompt, opts) ?? agent.blank();
+}
+
 export function buildLaunchSpec(
   agent: AgentDefinition,
   req: LaunchRequest
@@ -60,21 +83,8 @@ export function buildLaunchSpec(
     case 'continue-or-blank':
       return agent.continueOrBlank?.() ?? agent.blank();
     case 'seed':
-    case 'continue-or-seed': {
-      const { prompt, opts } = foldGuidance(
-        agent,
-        req.prompt ?? '',
-        req.systemGuidance
-      );
-      if (req.intent === 'continue-or-seed') {
-        return (
-          agent.continueOrSeed?.(prompt, opts) ??
-          agent.seed?.(prompt, opts) ??
-          agent.blank()
-        );
-      }
-      return agent.seed?.(prompt, opts) ?? agent.blank();
-    }
+    case 'continue-or-seed':
+      return buildSeedSpec(agent, req);
   }
 }
 

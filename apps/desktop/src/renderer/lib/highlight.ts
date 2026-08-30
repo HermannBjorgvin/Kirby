@@ -7,7 +7,8 @@ import {
 } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
 import { contentKey } from './content-key.js';
-import type { CharRange, SplitCell } from './diff-model.js';
+import type { SplitCell } from './diff-model.js';
+import type { CharRange } from './word-diff.js';
 import {
   analyzeFileInWorker,
   tokenizeCodeInWorker,

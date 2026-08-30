@@ -6,10 +6,10 @@ import {
   buildSplitRows,
   buildUnifiedRows,
   expandIndices,
-  wordDiff,
   type SplitRow,
   type UnifiedRow,
 } from './diff-model.js';
+import { wordDiff } from './word-diff.js';
 
 /**
  * Property tests for the diff layout, alongside the worked cases in

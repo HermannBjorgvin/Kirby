@@ -62,6 +62,60 @@ export function diffRebaseWarnings(
   };
 }
 
+/**
+ * The slice of config the sweep reads. Narrow on purpose: callers with
+ * a full AppConfig may pass it, but the sweep must not depend on
+ * unrelated config churn.
+ */
+type SweepConfig = Pick<
+  AppConfig,
+  'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge' | 'terminalBackend'
+>;
+
+/**
+ * Delete the worktrees of merged branches that are safe to delete, and
+ * return the ones a rebase is holding up. Null means the caller
+ * cancelled partway, which is not the same as "nothing was blocked".
+ */
+async function autoDeleteMerged(args: {
+  merged: Set<string>;
+  config: SweepConfig;
+  onAutoDelete: (sessionName: string, branch: string) => void | Promise<void>;
+  isCancelled: () => boolean;
+}): Promise<string[] | null> {
+  const { merged, config, onAutoDelete, isCancelled } = args;
+  const rebasingNow: string[] = [];
+  for (const branch of merged) {
+    // A branch with a live agent session — an in-process PTY, or a
+    // persisted tmux session from a previous run — is never
+    // auto-deleted: the user deliberately left that agent running.
+    // It becomes eligible once the session is stopped.
+    const sessionName = branchToSessionName(branch);
+    if (
+      isSessionAlive(sessionName) ||
+      isTmuxSessionPersisted(config, sessionName)
+    ) {
+      logError(
+        'sweepMergedBranches',
+        `Skipping auto-delete of ${branch}: agent session is running`
+      );
+      continue;
+    }
+    const check = await canRemoveBranch(branch, true);
+    if (isCancelled()) return null;
+    if (check.safe) {
+      await onAutoDelete(branchToSessionName(branch), branch);
+    } else {
+      if (check.reason === 'rebase in progress') rebasingNow.push(branch);
+      logError(
+        'sweepMergedBranches',
+        `Skipping auto-delete of ${branch}: ${check.reason}`
+      );
+    }
+  }
+  return rebasingNow;
+}
+
 export interface MergedSweepResult {
   /** Branches (of those given) whose PRs have been merged. */
   merged: Set<string>;
@@ -78,12 +132,7 @@ export interface MergedSweepResult {
 export async function sweepMergedBranches(opts: {
   provider: VcsProvider | null;
   vcsConfigured: boolean;
-  /** Narrow on purpose: callers with a full AppConfig may pass it, but
-   *  the sweep must not depend on unrelated config churn. */
-  config: Pick<
-    AppConfig,
-    'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge' | 'terminalBackend'
-  >;
+  config: SweepConfig;
   branches: string[];
   /** Branches already warned about an in-progress rebase. */
   warnedRebase: ReadonlySet<string>;
@@ -130,35 +179,13 @@ export async function sweepMergedBranches(opts: {
     return { merged, nextWarned: keepWarned };
   }
 
-  const rebasingNow: string[] = [];
-  for (const branch of merged) {
-    // A branch with a live agent session — an in-process PTY, or a
-    // persisted tmux session from a previous run — is never
-    // auto-deleted: the user deliberately left that agent running.
-    // It becomes eligible once the session is stopped.
-    const sessionName = branchToSessionName(branch);
-    if (
-      isSessionAlive(sessionName) ||
-      isTmuxSessionPersisted(config, sessionName)
-    ) {
-      logError(
-        'sweepMergedBranches',
-        `Skipping auto-delete of ${branch}: agent session is running`
-      );
-      continue;
-    }
-    const check = await canRemoveBranch(branch, true);
-    if (isCancelled()) return { merged, nextWarned: keepWarned };
-    if (check.safe) {
-      await onAutoDelete(branchToSessionName(branch), branch);
-    } else {
-      if (check.reason === 'rebase in progress') rebasingNow.push(branch);
-      logError(
-        'sweepMergedBranches',
-        `Skipping auto-delete of ${branch}: ${check.reason}`
-      );
-    }
-  }
+  const rebasingNow = await autoDeleteMerged({
+    merged,
+    config,
+    onAutoDelete,
+    isCancelled,
+  });
+  if (rebasingNow === null) return { merged, nextWarned: keepWarned };
 
   const { toWarn, nextWarned } = diffRebaseWarnings(rebasingNow, warnedRebase);
   for (const branch of toWarn) onRebaseInProgress(branch);

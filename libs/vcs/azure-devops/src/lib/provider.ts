@@ -374,6 +374,20 @@ interface AdoIdentity {
  * module-level cache in place. Unresolved GUIDs are NOT cached, so a
  * later retry has a chance to pick them up.
  */
+/**
+ * Fold an identities response into the cache. An entry with no id or
+ * no usable display name is skipped rather than cached blank, so a
+ * later fetch can still resolve it.
+ */
+function cacheIdentities(identities: AdoIdentity[]): void {
+  for (const identity of identities) {
+    const id = identity.id?.toLowerCase();
+    const name =
+      identity.providerDisplayName ?? identity.customDisplayName ?? '';
+    if (id && name) mentionCache.set(id, name);
+  }
+}
+
 async function resolveMentionNames(
   config: AdoConfig,
   guids: string[]
@@ -393,12 +407,7 @@ async function resolveMentionNames(
     const res = await fetch(url, { headers: authHeaders(config.pat) });
     if (!res.ok) return;
     const data = (await res.json()) as { value?: AdoIdentity[] };
-    for (const identity of data.value ?? []) {
-      const id = identity.id?.toLowerCase();
-      const name =
-        identity.providerDisplayName ?? identity.customDisplayName ?? '';
-      if (id && name) mentionCache.set(id, name);
-    }
+    cacheIdentities(data.value ?? []);
     if (mentionCacheFetchedAt === 0) mentionCacheFetchedAt = Date.now();
   } catch {
     // Network failure — leave cache as-is. `rewriteMentions` falls back

@@ -113,24 +113,31 @@ async function authHeaderFor(url: URL): Promise<string | undefined> {
   return authHeaderForUrl(url, creds);
 }
 
+/**
+ * Leading bytes that identify a format, as `[offset, byte]` pairs.
+ * WebP is the one that needs more than a prefix: "RIFF" at 0 with
+ * "WE" at 8, since the four bytes between are the file length.
+ */
+const IMAGE_MAGIC: { type: string; signature: [number, number][] }[] = [
+  { type: 'image/png', signature: [[0, 0x89], [1, 0x50]] },
+  { type: 'image/jpeg', signature: [[0, 0xff], [1, 0xd8]] },
+  { type: 'image/gif', signature: [[0, 0x47], [1, 0x49]] },
+  {
+    type: 'image/webp',
+    signature: [[0, 0x52], [1, 0x49], [8, 0x57], [9, 0x45]],
+  },
+  { type: 'image/svg+xml', signature: [[0, 0x3c]] },
+];
+
 export function sniffContentType(
   bytes: Uint8Array,
   header: string | null
 ): string {
   if (header && header.startsWith('image/')) return header.split(';')[0];
-  if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'image/png';
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
-  if (bytes[0] === 0x47 && bytes[1] === 0x49) return 'image/gif';
-  if (
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45
-  ) {
-    return 'image/webp';
-  }
-  if (bytes[0] === 0x3c) return 'image/svg+xml';
-  return 'application/octet-stream';
+  const match = IMAGE_MAGIC.find(({ signature }) =>
+    signature.every(([offset, byte]) => bytes[offset] === byte)
+  );
+  return match?.type ?? 'application/octet-stream';
 }
 
 async function download(url: string): Promise<CommentImagePayload | null> {

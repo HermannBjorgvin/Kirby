@@ -4,7 +4,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from '../workers/diff-worker.js';
-import type { CharRange } from './diff-model.js';
+import type { CharRange } from './word-diff.js';
 
 export type { SlimToken };
 export type LineTokens = SlimToken[];
