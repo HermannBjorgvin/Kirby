@@ -296,6 +296,10 @@ export function VirtualDiffList({
         <div
           key={vi.key}
           data-index={vi.index}
+          // Which primitive this row is, for tests and the benchmarks:
+          // "is the code coloured yet" has to be asked of code rows,
+          // and a class name shared with the sidebar cannot answer it.
+          data-row-kind={rows[vi.index].kind}
           ref={virtualizer.measureElement}
           className="absolute top-0 left-0 w-full"
           style={{ transform: `translateY(${vi.start}px)` }}

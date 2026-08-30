@@ -5,60 +5,80 @@ import type {
   WorkerResponse,
 } from '../../workers/diff-worker.js';
 import type { CharRange } from './word-diff.js';
+import { WorkerPool, type WorkerLike } from './worker-pool.js';
 
 export type { SlimToken };
 export type LineTokens = SlimToken[];
 
 /**
- * Promise API over the diff worker (parse / analyze / code fences).
- * One shared worker; requests are matched to responses by id.
+ * Promise API over the diff workers (parse / analyze / code fences).
+ *
+ * The scheduling — several workers, newest request first, parses ahead
+ * of everything — lives in `worker-pool.ts`, where it can be tested
+ * without a real Worker. This file is the diff-shaped adapter over it:
+ * which message types exist, which of them jump the queue, and the
+ * main-thread fallback for a parse.
  */
-let worker: Worker | null = null;
-let nextId = 1;
-const pending = new Map<
-  number,
-  { resolve: (r: WorkerResponse) => void; reject: (e: Error) => void }
->();
 
-function getWorker(): Worker {
-  if (!worker) {
-    worker = new Worker(new URL('../../workers/diff-worker.ts', import.meta.url), {
+/**
+ * Leave a core for the renderer itself — the UI thread still has to
+ * paint the rows the workers are colouring. Capped low because each
+ * worker is another shiki instance with its own copy of every grammar
+ * it loads, so the fourth mostly buys memory rather than throughput.
+ */
+const MAX_WORKERS = Math.max(
+  1,
+  Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 4) - 1)
+);
+
+const pool = new WorkerPool<WorkerRequest, WorkerResponse>({
+  maxWorkers: MAX_WORKERS,
+  idOf: (msg) => msg.id,
+  spawn: () =>
+    new Worker(new URL('../../workers/diff-worker.ts', import.meta.url), {
       type: 'module',
-    });
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const entry = pending.get(e.data.id);
-      if (!entry) return;
-      pending.delete(e.data.id);
-      if (e.data.type === 'error') entry.reject(new Error(e.data.message));
-      else entry.resolve(e.data);
-    };
-    worker.onerror = () => {
-      // A crashed worker rejects everything in flight; callers show
-      // unhighlighted content, and the next request restarts it.
-      for (const { reject } of pending.values()) {
-        reject(new Error('diff worker crashed'));
-      }
-      pending.clear();
-      worker?.terminate();
-      worker = null;
-    };
-  }
-  return worker;
-}
+    }) as unknown as WorkerLike<WorkerRequest, WorkerResponse>,
+});
+
+let nextId = 1;
 
 /** Omit that distributes over a union (plain Omit collapses variants). */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never;
 
-function request(
+/**
+ * Round-trip timings, on the renderer's own performance timeline.
+ *
+ * The interesting number is not how long the worker computes but how
+ * long the *caller* waits, queueing included — that is the gap between
+ * a diff appearing and it becoming readable, and it is invisible from
+ * inside the worker. Named `kirby:diff:<type>`, so devtools and the
+ * perf harness both read them with no extra wiring.
+ */
+function measure(type: WorkerRequest['type'], startedAt: number): void {
+  try {
+    performance.measure(`kirby:diff:${type}`, {
+      start: startedAt,
+      end: performance.now(),
+    });
+  } catch {
+    // Measuring must never break the thing being measured.
+  }
+}
+
+async function request(
   msg: DistributiveOmit<WorkerRequest, 'id'>
 ): Promise<WorkerResponse> {
-  const id = nextId++;
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    getWorker().postMessage({ ...msg, id });
-  });
+  const full = { ...msg, id: nextId++ } as WorkerRequest;
+  const startedAt = performance.now();
+  try {
+    // A parse jumps the queue: a tab shows nothing at all until one
+    // lands, where a missing highlight only costs colour.
+    return await pool.run(full, full.type === 'parse');
+  } finally {
+    measure(full.type, startedAt);
+  }
 }
 
 export async function parseDiffInWorker(

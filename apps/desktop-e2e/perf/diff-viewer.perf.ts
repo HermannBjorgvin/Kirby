@@ -7,72 +7,75 @@ import {
   duringInteraction,
   heapMb,
   saveSamples,
+  workerPhases,
   type Samples,
 } from './setup/metrics.js';
 
 /**
  * The diff viewer on a pull-request-sized change.
  *
- * Three things a reviewer feels, measured separately because different
+ * What a reviewer feels, measured as separate things because different
  * fixes move different ones:
  *
- *   openMs         click the row → the first diff row exists
- *   highlightMs    → the first shiki-coloured token exists
- *   scroll*        main-thread cost of dragging through the whole diff
+ *   openMs         click the row → the first line of code exists
+ *   highlightMs    → that code is syntax-coloured
+ *   parseMs        the worker round trip that splits the patch
+ *   analyzeMs      the worker round trip that highlights one file
+ *   settleMs       after a fast scroll stops, until the screen is
+ *                  readable — the only metric that can tell the
+ *                  highlighter's *scheduling* apart, since the total
+ *                  work is the same either way
  *
- * `blockingMs` (time spent in the part of each task past 50 ms) is the
- * headline: it is what makes a scroll feel like it is catching, and it
- * is what moving work off the main thread or skipping a re-render is
- * supposed to remove.
+ * Selectors are `data-diff-scroll` and `data-row-kind`, not classes:
+ * `.tabular-nums` and `.overflow-auto` both also match the sidebar,
+ * and an earlier version of this file measured that by accident and
+ * reported a beautifully fast diff viewer it had never looked at.
  */
 
 const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 5);
-const SCROLL_STEPS = 120;
+const SCROLL_STEPS = 60;
+
+const CODE_ROW = '[data-diff-scroll] [data-row-kind="unified"]';
+const COLOURED = `${CODE_ROW} span[style*="color"]`;
 
 /**
- * Read the whole diff, top to bottom, at a brisk but human pace.
+ * Flick through the whole diff in about a second, the way someone
+ * skims a review they have already been through once.
  *
- * The step size is derived from the document rather than fixed: this
- * fixture is ~217 000 px tall, so a plausible-looking constant covered
- * a tenth of it and never touched most of the files — which is exactly
- * where the cost is, since every new file on screen is another
- * tokenization. Covering the whole thing is what makes the number mean
- * "reviewing this pull request", and it is the only reason the metric
- * responds to the highlighter at all.
+ * Driven from inside the page rather than with `mouse.wheel`. Every
+ * Playwright input event is a round trip to the browser, which paced
+ * the scroll at something like four seconds however small the delay —
+ * slow enough that the highlighter kept up no matter how its queue was
+ * ordered, and the metric said nothing. One `scrollTop` step per
+ * animation frame is both faster and closer to what a trackpad flick
+ * actually does.
  */
 async function scrollThrough(page: Page): Promise<void> {
-  const scroller = page.locator('.overflow-auto').last();
-  await scroller.hover();
-  const height = await scroller.evaluate((el) => el.scrollHeight);
-  const step = Math.max(400, Math.ceil(height / SCROLL_STEPS));
-  for (let i = 0; i < SCROLL_STEPS; i++) {
-    await page.mouse.wheel(0, step);
-    await pace(page, 30);
-  }
+  await page.evaluate(async (steps: number) => {
+    const el = document.querySelector('[data-diff-scroll]');
+    if (!el) return;
+    const step = el.scrollHeight / steps;
+    for (let i = 0; i < steps; i++) {
+      el.scrollTop += step;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+  }, SCROLL_STEPS);
+  // One frame for the last scroll to have produced its render.
+  await pace(page, 50);
 }
 
-/**
- * The fraction of on-screen code rows that have been syntax-coloured.
- *
- * This is the number a reviewer actually experiences after a scroll:
- * the rows are there, but are they *readable* yet. It is also the only
- * metric that can tell the highlighter's scheduling apart — total work
- * done is the same either way, and what changes is whether the file
- * under the cursor is first in the queue or twenty-fourth.
- */
+/** The fraction of on-screen code rows that have been coloured. */
 const LIT_FRACTION = `(() => {
-  const panes = document.querySelectorAll('.overflow-auto');
-  const el = panes[panes.length - 1];
+  const el = document.querySelector('[data-diff-scroll]');
   if (!el) return 1;
   const box = el.getBoundingClientRect();
-  const rows = [...el.querySelectorAll('[data-index]')].filter((r) => {
+  const rows = [...el.querySelectorAll('[data-row-kind="unified"]')].filter((r) => {
     const b = r.getBoundingClientRect();
     return b.bottom > box.top && b.top < box.bottom;
   });
-  const code = rows.filter((r) => r.querySelector('.tabular-nums'));
-  if (code.length === 0) return 1;
-  const lit = code.filter((r) => r.querySelector('span[style*="color"]'));
-  return lit.length / code.length;
+  if (rows.length === 0) return 1;
+  const lit = rows.filter((r) => r.querySelector('span[style*="color"]'));
+  return lit.length / rows.length;
 })()`;
 
 async function litFraction(page: Page): Promise<number> {
@@ -94,8 +97,8 @@ async function settleMs(page: Page, timeout: number): Promise<number> {
 }
 
 test('diff viewer', async () => {
-  test.setTimeout(120_000 * ITERATIONS);
-  const repo = createBigRepo();
+  test.setTimeout(180_000 * ITERATIONS);
+  const repo = createBigRepo({ files: 40, linesPerFile: 600 });
   const samples: Samples = {};
 
   try {
@@ -116,24 +119,29 @@ test('diff viewer', async () => {
           const t0 = Date.now();
           await row.click();
           await page
-            .locator('.tabular-nums')
+            .locator(CODE_ROW)
             .first()
             .waitFor({ state: 'visible', timeout: 60_000 });
           const openMs = Date.now() - t0;
           await page
-            .locator('span[style*="color"]')
+            .locator(COLOURED)
             .first()
             .waitFor({ state: 'visible', timeout: 60_000 });
           return { openMs, highlightMs: Date.now() - t0 };
         });
+        const phases = await workerPhases(page);
 
         const scroll = await duringInteraction(page, () => scrollThrough(page));
         const litAtRest = await litFraction(page);
-        const settled = await settleMs(page, 20_000);
+        const settled = await settleMs(page, 30_000);
+        // After the flick: how many files the highlighter was asked
+        // for in total, and how long the slowest answer took.
+        const after = await workerPhases(page);
 
         collect(samples, {
           openMs: open.result.openMs,
           highlightMs: open.result.highlightMs,
+          ...phases,
           openBlockingMs: open.metrics.blockingMs,
           openLongestTaskMs: open.metrics.longestTaskMs,
           scrollBlockingMs: scroll.metrics.blockingMs,
@@ -141,10 +149,13 @@ test('diff viewer', async () => {
           scrollLongestTaskMs: scroll.metrics.longestTaskMs,
           scrollFrameP95Ms: scroll.metrics.frameP95Ms,
           scrollSlowFrames: scroll.metrics.framesOver32ms,
-          // 0–1: how much of the last screenful was already readable
+          // 0–100: how much of the last screenful was already readable
           // the moment scrolling stopped.
           litAtRestPct: litAtRest * 100,
           settleMs: settled,
+          scrollAnalyzeCount: after.analyzeCount,
+          scrollAnalyzeWorstMs: after.analyzeWorstMs,
+          scrollAnalyzeTotalMs: after.analyzeTotalMs,
           heapMb: await heapMb(page),
         });
       } finally {
@@ -155,7 +166,7 @@ test('diff viewer', async () => {
     repo.cleanup();
   }
 
-  for (const key of ['openMs', 'highlightMs', 'scrollBlockingMs'] as const) {
+  for (const key of ['openMs', 'highlightMs', 'settleMs'] as const) {
     expect(samples[key], `${key} was never recorded`).toHaveLength(ITERATIONS);
   }
 

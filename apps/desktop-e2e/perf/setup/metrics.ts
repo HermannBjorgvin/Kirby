@@ -182,6 +182,34 @@ export async function duringInteraction<T>(
   return { result, metrics };
 }
 
+/**
+ * What the diff workers were asked for and how long each answer took,
+ * from `kirby:diff:*` measures the worker client records.
+ *
+ * Reported as the count and the worst case rather than a mean: the
+ * number a reviewer notices is the one file that took a while, not the
+ * average over twenty they never looked at.
+ */
+export async function workerPhases(
+  page: Page
+): Promise<Record<string, number>> {
+  return page.evaluate(() => {
+    const of = (name: string) =>
+      performance.getEntriesByName(`kirby:diff:${name}`, 'measure');
+    const worst = (xs: PerformanceEntry[]) =>
+      xs.reduce((a, e) => Math.max(a, e.duration), 0);
+    const total = (xs: PerformanceEntry[]) =>
+      xs.reduce((a, e) => a + e.duration, 0);
+    const analyze = of('analyze');
+    return {
+      parseMs: worst(of('parse')),
+      analyzeCount: analyze.length,
+      analyzeWorstMs: worst(analyze),
+      analyzeTotalMs: total(analyze),
+    };
+  });
+}
+
 /** Renderer heap, as the OS-visible cost of holding a diff open. */
 export async function heapMb(page: Page): Promise<number> {
   return page.evaluate(() => {
