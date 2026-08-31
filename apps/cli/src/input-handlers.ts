@@ -114,15 +114,20 @@ type SettingsAction = (a: SettingsActionCtx) => void;
 
 /** Index of the preset holding the field's current value, or -1 when
  *  the stored value is not one of them. An unset field reads as the
- *  first preset, which is what makes cycling start somewhere sensible
- *  on a fresh config. */
+ *  default it resolves to — its own `defaultValue` where it has one,
+ *  the first preset otherwise — so the cursor starts on the row the
+ *  panel is displaying and one press moves off it, rather than
+ *  re-selecting what is already in force. */
 function currentPresetIndex(
   ctx: SettingsHandlerCtx,
   field: SettingsField,
   presets: { value: string | null }[]
 ): number {
   const currentValue = resolveValue(ctx.config.config, field) || undefined;
-  const effectiveValue = currentValue || presets[0]!.value;
+  const fallback =
+    presets.find((p) => p.value === field.defaultValue)?.value ??
+    presets[0]!.value;
+  const effectiveValue = currentValue ?? fallback;
   return presets.findIndex((p) => p.value === effectiveValue);
 }
 

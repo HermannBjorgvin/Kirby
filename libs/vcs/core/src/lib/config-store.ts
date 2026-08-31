@@ -70,6 +70,11 @@ interface RawProjectConfig {
   vendor?: string;
   vendorProject?: Record<string, string>;
   editor?: string;
+  /** Per-project override of the global choice. Not offered in the
+   *  Settings UI (both shells write the global key), but honoured on
+   *  read so one repo can be pinned to a backend by hand — a repo whose
+   *  agents must not outlive Kirby, say. */
+  terminalBackend?: 'pty' | 'tmux';
 }
 
 // ── Migration from old flat format ─────────────────────────────────
@@ -153,7 +158,7 @@ export function readConfig(cwd = process.cwd()): AppConfig {
     worktreePath: global.worktreePath,
     keybindPreset: global.keybindPreset,
     keybindOverrides: global.keybindOverrides,
-    terminalBackend: global.terminalBackend,
+    terminalBackend: project.terminalBackend ?? global.terminalBackend,
   };
 }
 

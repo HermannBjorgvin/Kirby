@@ -85,16 +85,48 @@ export function getTmuxAvailability(): TmuxStatus | null {
   return cachedTmuxStatus;
 }
 
+/** The backend a config that says nothing lands on: tmux wherever the
+ *  probe found a usable tmux, PTY otherwise.
+ *
+ *  Deliberately *not* written back to `~/.kirby/config.json`. The
+ *  choice is re-derived every launch, so installing tmux starts
+ *  persisting sessions and removing it stops — and a config file synced
+ *  between machines cannot pin one machine's tmux onto another that
+ *  hasn't got it. A probe that hasn't answered yet reads as "no tmux",
+ *  which is the safe direction: PTY works everywhere. */
+export function defaultTerminalBackend(
+  status: TmuxStatus | null = cachedTmuxStatus
+): 'pty' | 'tmux' {
+  return status?.available ? 'tmux' : 'pty';
+}
+
+/** The backend actually in force: what the user stored, or
+ *  {@link defaultTerminalBackend} when they never said.
+ *
+ *  An explicit value always wins, in both directions — `'pty'` is
+ *  honoured forever on a machine that has tmux, and `'tmux'` behaves
+ *  exactly as it always has (with the availability and repo-root
+ *  degradations in {@link buildSessionBackendFactory} still applying). */
+export function resolveTerminalBackend(
+  config: Pick<AppConfig, 'terminalBackend'>,
+  status: TmuxStatus | null = cachedTmuxStatus
+): 'pty' | 'tmux' {
+  return config.terminalBackend ?? defaultTerminalBackend(status);
+}
+
 /** Application policy: build a SessionBackendFactory configured for
- *  the user's chosen backend. The kirby-`<projectKey>-` prefix is
+ *  the backend {@link resolveTerminalBackend} lands on — the user's
+ *  choice, or tmux-when-detected. The kirby-`<projectKey>-` prefix is
  *  baked in here — neither backend lib knows about it.
  *
- *  Two fallbacks keep a tmux selection from becoming a hard failure:
+ *  Two fallbacks keep tmux from becoming a hard failure:
  *
  *  - Probe says tmux is unavailable → PTY. Without this, a config saved
  *    on a machine that has since lost tmux would explode at first
  *    session-spawn with ENOENT. The Settings UI already shows
- *    "Tmux (not installed)" so the user can re-pick.
+ *    "Tmux (not installed)" so the user can re-pick. (An unset config
+ *    never reaches here asking for tmux, since the default is derived
+ *    from the same probe — this covers the explicit `"tmux"` case.)
  *  - No `repoRoot` → PTY. The tmux session name is namespaced by the
  *    repo's projectKey so sessions from different repos stay distinct
  *    and a restart reattaches to the right one. With no repo to key on
@@ -105,7 +137,7 @@ export function buildSessionBackendFactory(
   config: AppConfig,
   repoRoot: string | null
 ): SessionBackendFactory {
-  if (config.terminalBackend === 'tmux') {
+  if (resolveTerminalBackend(config) === 'tmux') {
     if (!repoRoot) {
       return createPtyBackendFactory();
     }
@@ -123,13 +155,14 @@ export function buildSessionBackendFactory(
  *  and from the settings write path whenever `config.terminalBackend`
  *  changes (which both shells gate to empty-registry).
  *
- *  Resolves `repoRoot` lazily so the default PTY backend doesn't pay a
- *  `git rev-parse` fork on every boot. Callers sit on paths where a
- *  throw would take startup or an input handler down, so the lookup
- *  never throws — outside a working tree it yields `null` and the tmux
- *  selection degrades to PTY. */
+ *  Resolves `repoRoot` only when the resolved backend is tmux, so a PTY
+ *  machine doesn't pay a `git rev-parse` fork on every boot. Callers sit
+ *  on paths where a throw would take startup or an input handler down,
+ *  so the lookup never throws — outside a working tree it yields `null`
+ *  and tmux degrades to PTY. */
 export function applySessionBackend(config: AppConfig): void {
-  const repoRoot = config.terminalBackend === 'tmux' ? getRepoRoot() : null;
+  const repoRoot =
+    resolveTerminalBackend(config) === 'tmux' ? getRepoRoot() : null;
   const factory = buildSessionBackendFactory(config, repoRoot);
   setSessionBackendFactory(factory);
 }
@@ -151,7 +184,7 @@ export function isTmuxSessionPersisted(
   config: Pick<AppConfig, 'terminalBackend'>,
   sessionName: string
 ): boolean {
-  if (config.terminalBackend !== 'tmux') return false;
+  if (resolveTerminalBackend(config) !== 'tmux') return false;
   if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
   const root = getRepoRoot();
   if (!root) return false;
@@ -169,7 +202,7 @@ export function killPersistedTmuxSession(
   config: Pick<AppConfig, 'terminalBackend'>,
   sessionName: string
 ): void {
-  if (config.terminalBackend !== 'tmux') return;
+  if (resolveTerminalBackend(config) !== 'tmux') return;
   const root = getRepoRoot();
   if (!root) return;
   try {

@@ -43,9 +43,18 @@ vi.mock('@kirby/vcs-core', () => ({
 
 import {
   buildSessionBackendFactory,
+  defaultTerminalBackend,
   getRepoRoot,
   probeTmuxAvailability,
+  resolveTerminalBackend,
 } from './session-backend.js';
+
+const TMUX_OK: TmuxStatus = { available: true, version: '3.4' };
+const TMUX_MISSING: TmuxStatus = {
+  available: false,
+  reason: 'tmux binary not found on PATH',
+  installHint: 'brew install tmux',
+};
 
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -71,11 +80,65 @@ beforeEach(async () => {
   isTmuxAvailableMock.mockReset();
 });
 
+// The whole point of the default: a machine with tmux gets session
+// persistence without anyone opting in, and a machine without it — or a
+// user who said "pty" once — is never surprised by a backend switch.
+describe('resolveTerminalBackend', () => {
+  it.each([
+    ['unset + tmux available', undefined, TMUX_OK, 'tmux'],
+    ['unset + tmux unavailable', undefined, TMUX_MISSING, 'pty'],
+    ['unset + probe not finished', undefined, null, 'pty'],
+    ['explicit pty + tmux available', 'pty', TMUX_OK, 'pty'],
+    ['explicit pty + tmux unavailable', 'pty', TMUX_MISSING, 'pty'],
+    ['explicit tmux + tmux available', 'tmux', TMUX_OK, 'tmux'],
+  ] as const)('%s → %s', (_label, stored, status, expected) => {
+    expect(resolveTerminalBackend({ terminalBackend: stored }, status)).toBe(
+      expected
+    );
+  });
+
+  // An explicit "pty" outlives the probe forever: the user chose it, and
+  // installing tmux later must not silently move their sessions.
+  it('never upgrades an explicit "pty" to tmux', () => {
+    expect(resolveTerminalBackend({ terminalBackend: 'pty' }, TMUX_OK)).toBe(
+      'pty'
+    );
+  });
+
+  it('reads the cached probe when no status is passed', async () => {
+    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
+    await probeTmuxAvailability();
+    expect(resolveTerminalBackend({})).toBe('pty');
+    expect(defaultTerminalBackend()).toBe('pty');
+
+    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_OK);
+    await probeTmuxAvailability();
+    expect(resolveTerminalBackend({})).toBe('tmux');
+    expect(defaultTerminalBackend()).toBe('tmux');
+  });
+});
+
 describe('buildSessionBackendFactory', () => {
-  it('returns the PTY factory when terminalBackend is unset', () => {
+  it('returns the tmux factory when terminalBackend is unset and tmux is available', () => {
+    const factory = buildSessionBackendFactory(makeConfig(), '/repo');
+    expect(factory).toBe(SENTINEL_TMUX);
+    expect(ptyFactorySpy).not.toHaveBeenCalled();
+  });
+
+  it('returns the PTY factory when terminalBackend is unset and tmux is missing', async () => {
+    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
+    await probeTmuxAvailability();
     const factory = buildSessionBackendFactory(makeConfig(), '/repo');
     expect(factory).toBe(SENTINEL_PTY);
     expect(ptyFactorySpy).toHaveBeenCalledTimes(1);
+    expect(tmuxFactorySpy).not.toHaveBeenCalled();
+  });
+
+  // No repo root means no stable key to namespace a tmux session by, so
+  // the default degrades exactly like an explicit "tmux" does.
+  it('returns the PTY factory when the default is tmux but there is no repo root', () => {
+    const factory = buildSessionBackendFactory(makeConfig(), null);
+    expect(factory).toBe(SENTINEL_PTY);
     expect(tmuxFactorySpy).not.toHaveBeenCalled();
   });
 

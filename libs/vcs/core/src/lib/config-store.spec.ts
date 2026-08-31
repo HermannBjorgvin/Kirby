@@ -240,12 +240,36 @@ describe('readConfig', () => {
     expect(config.terminalBackend).toBe('tmux');
   });
 
-  it('should have undefined terminalBackend when not set (defaults to pty)', () => {
+  // Undefined is load-bearing: it is what tells the app nobody chose,
+  // which is the only state the tmux-when-detected default applies to.
+  it('should have undefined terminalBackend when neither config sets it', () => {
     mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
     mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
 
     const config = readConfig('/tmp/test');
     expect(config.terminalBackend).toBeUndefined();
+  });
+
+  it('should let the project config override the global terminalBackend', () => {
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ terminalBackend: 'tmux' })
+    );
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ terminalBackend: 'pty' })
+    );
+
+    const config = readConfig('/tmp/test');
+    expect(config.terminalBackend).toBe('pty');
+  });
+
+  it('should take terminalBackend from the project config alone', () => {
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+    mockReadFileSync.mockReturnValueOnce(
+      JSON.stringify({ terminalBackend: 'tmux' })
+    );
+
+    const config = readConfig('/tmp/test');
+    expect(config.terminalBackend).toBe('tmux');
   });
 });
 

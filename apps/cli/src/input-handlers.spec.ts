@@ -8,12 +8,29 @@ import type { TmuxStatus } from '@kirby/terminal-tmux';
 // useful shape anyway: it proves the guard is actually wired into BOTH
 // write paths (cycle-left/right and edit-toggle), which a direct unit
 // test of the predicate would miss.
-const { hasAnySessionMock, getTmuxAvailabilityMock, applyBackendMock } =
-  vi.hoisted(() => ({
-    hasAnySessionMock: vi.fn<() => boolean>(),
-    getTmuxAvailabilityMock: vi.fn<() => TmuxStatus | null>(),
-    applyBackendMock: vi.fn<(config: AppConfig) => void>(),
-  }));
+const {
+  hasAnySessionMock,
+  getTmuxAvailabilityMock,
+  applyBackendMock,
+  isTmuxAvailableMock,
+} = vi.hoisted(() => ({
+  hasAnySessionMock: vi.fn<() => boolean>(),
+  getTmuxAvailabilityMock: vi.fn<() => TmuxStatus | null>(),
+  applyBackendMock: vi.fn<(config: AppConfig) => void>(),
+  isTmuxAvailableMock: vi.fn<() => Promise<TmuxStatus>>(),
+}));
+
+// The field catalog derives the backend default from core's own probe
+// cache, which the barrel mock below cannot reach — `buildSettingsFields`
+// calls it through a module-internal import. Faking the probe at its
+// source is what lets a test say "this machine has tmux".
+vi.mock('@kirby/terminal-tmux', () => ({
+  createTmuxBackendFactory: () => ({}),
+  isTmuxAvailable: () => isTmuxAvailableMock(),
+  sanitizeTmuxSessionName: (n: string) => n,
+  tmuxHasSession: () => false,
+  tmuxKillSession: () => undefined,
+}));
 
 // `updateConfigField` is deliberately left real: the assertions below
 // check the config handed to applySessionBackend actually carries the
@@ -26,7 +43,7 @@ vi.mock('@kirby/core', async (importOriginal) => ({
 }));
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from '@kirby/core';
+import { buildSettingsFields, probeTmuxAvailability } from '@kirby/core';
 
 const fieldIndexOf = (key: string) =>
   buildSettingsFields(null).findIndex((f) => f.key === key);
@@ -91,9 +108,21 @@ beforeEach(() => {
   hasAnySessionMock.mockReset();
   getTmuxAvailabilityMock.mockReset();
   applyBackendMock.mockReset();
+  isTmuxAvailableMock.mockReset();
   hasAnySessionMock.mockReturnValue(false);
   getTmuxAvailabilityMock.mockReturnValue({ available: true, version: '3.4' });
 });
+
+/** Re-run core's probe with a fixed answer, so `buildSettingsFields`
+ *  reports the backend default this machine would resolve to. */
+async function setProbedTmux(available: boolean): Promise<void> {
+  isTmuxAvailableMock.mockResolvedValueOnce(
+    available
+      ? { available: true, version: '3.4' }
+      : { available: false, reason: 'tmux binary not found on PATH' }
+  );
+  await probeTmuxAvailability();
+}
 
 describe('settings guard — terminalBackend', () => {
   it('finds the Terminal Backend field (guards the index the tests rely on)', () => {
@@ -190,6 +219,32 @@ describe('settings guard — terminalBackend', () => {
         expect.objectContaining({ terminalBackend: 'pty' })
       );
     });
+  });
+
+  // With nothing stored, the panel already displays the resolved
+  // default, so the cursor has to start there: stepping off tmux must
+  // land on pty. Starting from the first preset instead would make the
+  // first keypress write the value already in force and look inert.
+  it('steps off the resolved default rather than re-selecting it', async () => {
+    await setProbedTmux(true);
+    const h = harness('settings.cycle-right');
+
+    handleSettingsInput('', NO_KEY, h.ctx);
+
+    expect(applyBackendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalBackend: 'pty' })
+    );
+  });
+
+  it('steps off pty when tmux is not installed', async () => {
+    await setProbedTmux(false);
+    const h = harness('settings.cycle-right');
+
+    handleSettingsInput('', NO_KEY, h.ctx);
+
+    expect(applyBackendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ terminalBackend: 'tmux' })
+    );
   });
 
   // The gate is scoped to terminalBackend only — an active session must
