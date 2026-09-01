@@ -6,6 +6,7 @@ import type {
 } from '@kirby/vcs-core';
 import { fetchDiffText, fetchFileDiffText } from '@kirby/core';
 import { PROVIDERS, requireRepo } from './repo.js';
+import { refreshRemote } from './sidebar.js';
 import type { ReplyRequest, ResolveRequest } from '../contract.js';
 
 interface ActiveProvider {
@@ -149,6 +150,12 @@ export async function submitReviewVerdict(
   const provider = resolveProvider();
   if (!provider) throw new Error('No review provider is configured');
   await provider.submitReviewVerdict(id, verdict);
+  // The reviewer votes a row shows come from the cached pull request
+  // list, which is this process's and outlives the vote by a poll
+  // interval. Nothing the provider caches carries them, so refreshing
+  // here is the only thing that makes the row agree with what the user
+  // just did.
+  await refreshRemote();
 }
 
 // ── Diff (git-side, no provider needed) ──────────────────────────

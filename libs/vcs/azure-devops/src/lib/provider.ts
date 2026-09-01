@@ -20,6 +20,7 @@ import {
   adoSend,
   counted,
   invalidateAdoCache,
+  invalidateAdoKey,
   resetAdoTransport,
   TTL,
 } from './request.js';
@@ -53,13 +54,19 @@ function toAdoConfig(
 
 /** Everything the transport has cached about one pull request. Called
  *  after a write so the change is visible immediately rather than at
- *  the end of the entry's TTL. */
+ *  the end of the entry's TTL.
+ *
+ *  Exact keys, not prefixes: `.../threads/1` is a prefix of
+ *  `.../threads/10`, so replying on pull request 1 would otherwise
+ *  drop the cached threads of 10 through 19 and 100 through 199 too.
+ *  The individual-thread keys carry a further segment, so those are
+ *  the one place a prefix is meant — and it ends at the separator. */
 function invalidatePr(config: AdoConfig, prId: number): void {
   const repo = `${config.org}/${config.project}/${config.repo}`;
-  invalidateAdoCache(`${repo}/threads/${prId}`);
-  invalidateAdoCache(`${repo}/thread/${prId}`);
-  invalidateAdoCache(`${repo}/statuses/${prId}`);
-  invalidateAdoCache(`${repo}/description/${prId}`);
+  invalidateAdoKey(`${repo}/threads/${prId}`);
+  invalidateAdoKey(`${repo}/statuses/${prId}`);
+  invalidateAdoKey(`${repo}/description/${prId}`);
+  invalidateAdoCache(`${repo}/thread/${prId}/`);
 }
 
 function voteToDecision(vote: number, hasDeclined: boolean): ReviewDecision {
@@ -1040,8 +1047,11 @@ export const azureDevOpsProvider: VcsProvider = {
       body: JSON.stringify({ id: userId, vote }),
       bodyForLog: { vote },
     });
-    // The pull request list carries the reviewer votes, so the row
-    // would keep showing the old one until its next poll.
-    invalidateAdoCache(`${config.org}/${config.project}/${config.repo}/`);
+    // Nothing cached here carries a reviewer vote: the list that does
+    // is fetched with a zero TTL, so it is deduped and never stored.
+    // Wiping the repository prefix would therefore drop threads,
+    // statuses and descriptions to fix something they do not hold.
+    // The vote a user might still see is in the shell's own model —
+    // the desktop refreshes it from services/reviews.ts.
   },
 };

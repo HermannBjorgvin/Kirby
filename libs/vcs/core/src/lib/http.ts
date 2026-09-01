@@ -6,6 +6,7 @@ import {
   unexpectedResponseError,
   VcsError,
 } from './errors.js';
+import { sanitizeBody } from './sanitize.js';
 
 /**
  * Turning one HTTP response into either data or a {@link VcsError}.
@@ -46,18 +47,35 @@ const DEFAULT_RETRY_AFTER_MS = 30_000;
  * timestamp in seconds and is what Azure sends when a quota — rather
  * than one request — is what ran out.
  */
+/** A header's value, or null when it is absent or blank.
+ *
+ *  `headers.get` answers `''` for a header that is present with no
+ *  value, and `Number('')` is `0` — so a gateway emitting a bare
+ *  `X-RateLimit-Remaining:` would otherwise read as a spent quota and
+ *  stand the whole client down. */
+function headerValue(
+  headers: Pick<Headers, 'get'>,
+  name: string
+): string | null {
+  const raw = headers.get(name);
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 export function retryAfterMs(
   headers: Pick<Headers, 'get'>,
   now: number = Date.now()
 ): number | null {
-  const raw = headers.get('retry-after');
+  const raw = headerValue(headers, 'retry-after');
   if (raw) {
     const asSeconds = Number(raw);
     if (Number.isFinite(asSeconds)) return Math.max(0, asSeconds * 1000);
     const asDate = Date.parse(raw);
     if (!Number.isNaN(asDate)) return Math.max(0, asDate - now);
   }
-  const reset = Number(headers.get('x-ratelimit-reset'));
+  const resetRaw = headerValue(headers, 'x-ratelimit-reset');
+  const reset = resetRaw === null ? NaN : Number(resetRaw);
   if (Number.isFinite(reset) && reset > 0) {
     return Math.max(0, reset * 1000 - now);
   }
@@ -70,7 +88,7 @@ export function retryAfterMs(
  * is the last chance to back off without having already been refused.
  */
 export function quotaExhausted(headers: Pick<Headers, 'get'>): boolean {
-  const remaining = headers.get('x-ratelimit-remaining');
+  const remaining = headerValue(headers, 'x-ratelimit-remaining');
   if (remaining === null) return false;
   const n = Number(remaining);
   return Number.isFinite(n) && n <= 0;
@@ -82,14 +100,24 @@ function isJsonContentType(contentType: string | null): boolean {
   return essence.endsWith('/json') || essence.endsWith('+json');
 }
 
-/** The API's own error text, if the body is JSON and carries one. */
+/**
+ * The API's own error text, if the body is JSON and carries one.
+ *
+ * This is the one place body-derived text reaches a user-facing
+ * message, and it earns the exception: `TF401019: The Git repository
+ * does not exist` names the mistake, where "returned an error (400)"
+ * sends the reader to the network tab. It is also the one place that
+ * has to be careful — the string lands in an Ink `<Text>` and in the
+ * desktop status bar — so it is stripped of escape sequences and
+ * capped. Nothing else about a body is ever quoted.
+ */
 function apiMessage(body: string): string | null {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed && typeof parsed === 'object' && 'message' in parsed) {
       const message = (parsed as { message?: unknown }).message;
       if (typeof message === 'string' && message.trim()) {
-        return message.trim().slice(0, 200);
+        return sanitizeBody(message.trim()).slice(0, 200);
       }
     }
   } catch {

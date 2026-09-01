@@ -113,6 +113,28 @@ describe('RequestCache', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('honours the shortest TTL among callers sharing a request', async () => {
+    // Two callers can join on one key with different TTLs, and only the
+    // smallest is safe: a caller that asked for "dedupe only" must not
+    // be handed a minute-old answer because somebody else was content
+    // with one.
+    const time = clock();
+    const cache = new RequestCache({ now: time.now });
+    const { load, calls } = deferred<string>();
+
+    const both = Promise.all([
+      cache.get('k', 60_000, load),
+      cache.get('k', 0, load),
+    ]);
+    expect(calls).toHaveLength(1);
+    calls[0]!.resolve('v');
+    await both;
+
+    const later = vi.fn().mockResolvedValue('w');
+    expect(await cache.get('k', 60_000, later)).toBe('w');
+    expect(later).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps keys apart', async () => {
     const cache = new RequestCache();
     const load = vi

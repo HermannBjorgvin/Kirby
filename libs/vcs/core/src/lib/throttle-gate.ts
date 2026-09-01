@@ -83,8 +83,22 @@ export class ThrottleGate {
     return this.pausedForMs();
   }
 
-  /** A request got through: reopen and forget the escalation. */
+  /**
+   * A request got through.
+   *
+   * This only reopens a gate that is already open — which sounds like
+   * a contradiction and is the whole point. A sync cycle fans its
+   * requests out at once, so a refusal and a pile of successes are the
+   * normal result of one burst, and the successes arrive *after* the
+   * refusal has closed the gate. Letting them clear it would cancel
+   * every pause the moment it was set, fan the same burst out again on
+   * the next tick, and hold the escalation at zero forever.
+   *
+   * Once the wait has elapsed the gate is open again on its own, and
+   * the first request through it resets the escalation here.
+   */
   noteSuccess(): void {
+    if (this.isPaused()) return;
     this.consecutive = 0;
     this.openAt = 0;
   }

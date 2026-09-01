@@ -242,6 +242,13 @@ describe('throttling', () => {
       vi.advanceTimersByTime(4_000);
       expect(gate.noteThrottled(null)).toBe(8_000);
 
+      // A success only counts once the wait has actually elapsed —
+      // the successes arriving alongside a refusal are part of the
+      // same burst and must not cancel the pause it just set.
+      gate.noteSuccess();
+      expect(gate.isPaused()).toBe(true);
+
+      vi.advanceTimersByTime(8_000);
       gate.noteSuccess();
       expect(gate.isPaused()).toBe(false);
       expect(gate.noteThrottled(null)).toBe(2_000);
@@ -249,6 +256,29 @@ describe('throttling', () => {
       _adoThrottleGateForTests().reset();
       vi.useRealTimers();
     }
+  });
+
+  it('stays closed when the rest of the burst comes back fine', async () => {
+    // One refusal among many successes is the normal result of a sync
+    // cycle, which fans its requests out at once. If the successes
+    // reopened the gate, the next cycle would fan the identical burst
+    // out again and the backoff would never climb.
+    let calls = 0;
+    mockFetch.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(
+          response('', { status: 429, extraHeaders: { 'retry-after': '60' } })
+        );
+      }
+      return Promise.resolve(response('{"ok":true}'));
+    });
+
+    await failure(get());
+    // The successes that follow are from requests already in flight.
+    await failure(get());
+    expect((await failure(get())).kind).toBe('throttled');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('stands down when a successful response says the quota is spent', async () => {

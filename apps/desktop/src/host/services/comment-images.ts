@@ -119,35 +119,12 @@ async function authHeaderFor(url: URL): Promise<string | undefined> {
  * "WE" at 8, since the four bytes between are the file length.
  */
 const IMAGE_MAGIC: { type: string; signature: [number, number][] }[] = [
-  {
-    type: 'image/png',
-    signature: [
-      [0, 0x89],
-      [1, 0x50],
-    ],
-  },
-  {
-    type: 'image/jpeg',
-    signature: [
-      [0, 0xff],
-      [1, 0xd8],
-    ],
-  },
-  {
-    type: 'image/gif',
-    signature: [
-      [0, 0x47],
-      [1, 0x49],
-    ],
-  },
+  { type: 'image/png', signature: [[0, 0x89], [1, 0x50]] },
+  { type: 'image/jpeg', signature: [[0, 0xff], [1, 0xd8]] },
+  { type: 'image/gif', signature: [[0, 0x47], [1, 0x49]] },
   {
     type: 'image/webp',
-    signature: [
-      [0, 0x52],
-      [1, 0x49],
-      [8, 0x57],
-      [9, 0x45],
-    ],
+    signature: [[0, 0x52], [1, 0x49], [8, 0x57], [9, 0x45]],
   },
   { type: 'image/svg+xml', signature: [[0, 0x3c]] },
 ];

@@ -1,7 +1,7 @@
 import type { BuildStatusState } from '@kirby/vcs-core';
 import type { AdoConfig } from './client.js';
 import { authHeaders, baseUrl } from './client.js';
-import { adoGet, TTL } from './request.js';
+import { adoGet, adoGetPage, TTL } from './request.js';
 
 /**
  * Pipeline runs — one of the two unrelated routes CI reaches an Azure
@@ -96,7 +96,7 @@ export async function fetchPrBuildRuns(
   const branch = encodeURIComponent(prMergeRef(prId));
   const data = await adoGet<{ value?: unknown[] }>(
     'fetchPrBuildRuns',
-    `${config.org}/${config.project}/builds/${prId}`,
+    `${config.org}/${config.project}/${config.repo}/builds/${prId}`,
     TTL.builds,
     buildsUrl(config, `branchName=${branch}&$top=20`),
     authHeaders(config.pat),
@@ -139,11 +139,18 @@ function batchSize(prCount: number): number {
  * listing, indexed by that ref, answers every row.
  *
  * The listing is bounded, and a busy repository can fill it entirely
- * with builds for a handful of pull requests. When that happens —
- * detected by the response coming back at exactly the requested size —
- * anything still unaccounted for falls back to its own query, which is
- * the old behaviour and no worse. When it does not, absence is a real
- * answer: the repository has no recent build for that pull request.
+ * with builds for a handful of pull requests. Truncation is read from
+ * Azure's `x-ms-continuationtoken`, not from the row count: `$top` is
+ * a maximum the service is free to under-deliver, so a short page can
+ * still have more behind it, and guessing from the length would write
+ * "no CI" over a pull request whose build had failed. A full page
+ * counts as truncated too, for a service that ends a page exactly and
+ * omits the token.
+ *
+ * Anything unaccounted for on a truncated page falls back to its own
+ * query — the old behaviour, and no worse. On a complete page absence
+ * is a real answer: the repository has no recent build for that pull
+ * request.
  */
 export async function fetchPrBuildRunsBatch(
   config: AdoConfig,
@@ -156,7 +163,7 @@ export async function fetchPrBuildRunsBatch(
   if (!repositoryId) return fetchEachSeparately(config, prIds, result);
 
   const top = batchSize(prIds.length);
-  const data = await adoGet<{ value?: unknown[] }>(
+  const { data, continuation } = await adoGetPage<{ value?: unknown[] }>(
     'fetchPrBuildRunsBatch',
     `${config.org}/${config.project}/builds-batch/${repositoryId}/${top}`,
     TTL.builds,
@@ -179,12 +186,12 @@ export async function fetchPrBuildRunsBatch(
     else byRef.set(ref, [run]);
   }
 
-  const saturated = runs.length >= top;
+  const truncated = continuation !== null || runs.length >= top;
   const missing: number[] = [];
   for (const prId of prIds) {
     const forPr = byRef.get(prMergeRef(prId));
     if (forPr) result.set(prId, deriveBuildRunStatus(forPr));
-    else if (saturated) missing.push(prId);
+    else if (truncated) missing.push(prId);
     else result.set(prId, 'none');
   }
   return missing.length > 0

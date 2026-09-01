@@ -48,10 +48,12 @@ export interface VcsErrorDetails {
 /**
  * A provider failure whose `message` is already fit to show a user.
  *
- * Nothing derived from a response body goes into the message — an HTML
- * error page is attacker-influenced content in the general case, and a
- * sign-in page is several kilobytes besides. Only the classification,
- * the status and the provider's display name do.
+ * Response bodies stay out of the message, with one deliberate
+ * exception: the API's own `message` field on a JSON error, which is
+ * stripped of escape sequences and capped before it is quoted (see
+ * `apiMessage` in http.ts). Everything else — an HTML error page is
+ * attacker-influenced content in the general case, and a sign-in page
+ * is several kilobytes besides — is described, never repeated.
  */
 export class VcsError extends Error {
   readonly kind: VcsErrorKind;

@@ -84,15 +84,39 @@ describe('ThrottleGate', () => {
     expect(g.pausedForMs()).toBe(59_000);
   });
 
-  it('reopens and forgets the escalation on success', () => {
+  it('is not reopened by a success from a request already in flight', () => {
+    // A sync cycle fans out 2N requests at once. If one comes back 429
+    // and the rest come back 200 — the common interleaving — the
+    // successes must not cancel the pause the refusal just set, or the
+    // next cycle fans the whole burst out again and the escalation
+    // never climbs.
+    const { g } = gate();
+    g.noteThrottled(60_000);
+    g.noteSuccess();
+    expect(g.isPaused()).toBe(true);
+    expect(g.pausedForMs()).toBe(60_000);
+    expect(g.strikes).toBe(1);
+  });
+
+  it('does not let a success cancel a quota stand-down either', () => {
+    const { g } = gate();
+    g.noteQuotaExhausted(30_000);
+    g.noteSuccess();
+    expect(g.pausedForMs()).toBe(30_000);
+  });
+
+  it('forgets the escalation once a request gets through the open gate', () => {
     const { g, time } = gate();
     g.noteThrottled(null);
     time.advance(1_000);
     g.noteThrottled(null);
+    // Wait it out, as the next poll would.
+    time.advance(2_000);
     g.noteSuccess();
 
     expect(g.isPaused()).toBe(false);
     expect(g.strikes).toBe(0);
+    // Back to the first rung, not the third.
     expect(g.noteThrottled(null)).toBe(1_000);
   });
 

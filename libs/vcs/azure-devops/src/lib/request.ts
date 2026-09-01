@@ -162,6 +162,31 @@ export function adoGet<T>(
   );
 }
 
+/**
+ * A GET whose paging state matters as much as its body.
+ *
+ * Azure treats `$top` as a maximum, not a promise, and signals "there
+ * is more" with an `x-ms-continuationtoken` header rather than by
+ * filling the page. Inferring truncation from the row count therefore
+ * reads a short-but-continued page as a complete one — so the token
+ * comes back alongside the data, and is cached with it, since a cached
+ * body's paging state is part of the answer.
+ */
+export function adoGetPage<T>(
+  context: string,
+  key: string,
+  ttlMs: number,
+  url: string,
+  headers: Record<string, string>,
+  what?: string
+): Promise<{ data: T; continuation: string | null }> {
+  return cache.get(key, ttlMs, async () => {
+    const res = await send(context, url, { headers });
+    const continuation = res.headers.get('x-ms-continuationtoken');
+    return { data: await toJson<T>(res, what), continuation };
+  });
+}
+
 /** A write. Never cached, never deduped — two identical replies are
  *  two replies, not one asked for twice. */
 export async function adoSend<T>(
@@ -172,8 +197,16 @@ export async function adoSend<T>(
   return toJson<T>(await send(context, url, init));
 }
 
-/** Drop every cached entry whose key starts with `prefix` — used after
- *  a write, so the next read sees what was just changed. */
+/** Drop one cached entry by its exact key — used after a write, so the
+ *  next read sees what was just changed. */
+export function invalidateAdoKey(key: string): void {
+  cache.delete(key);
+}
+
+/** Drop every cached entry whose key starts with `prefix`. Prefixes
+ *  must end at a separator: `.../threads/1` is a prefix of
+ *  `.../threads/10`, so an unterminated one invalidates ten times what
+ *  it names. */
 export function invalidateAdoCache(prefix: string): void {
   cache.invalidate(prefix);
 }

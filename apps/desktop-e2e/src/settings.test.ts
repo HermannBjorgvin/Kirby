@@ -119,9 +119,11 @@ test.describe('Settings', () => {
         { label: field.label, key: field.key },
         'ado_rotated'
       );
-      // Read in the same round trip the save returned from: the error
-      // is cleared before the new attempt, because it describes a
-      // state that no longer exists.
+      // Read straight after the save. What is asserted below is that
+      // a fetch was *started* — the clearing of the stale error is a
+      // unit-level concern (host/services/sidebar.spec.ts), because
+      // the new attempt may already have failed again by the time this
+      // second round trip lands.
       return window.kirby.getSyncState();
     });
 

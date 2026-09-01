@@ -1,4 +1,4 @@
-import { readConfig } from '@kirby/vcs-core';
+import { readConfig, type AppConfig } from '@kirby/vcs-core';
 import { persistConfigField, updateConfigField } from '@kirby/app-core';
 import {
   applySessionBackend,
@@ -10,7 +10,6 @@ import {
   type SettingsEffect,
   type SettingsField,
 } from '@kirby/core';
-import type { AppConfig } from '@kirby/vcs-core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { onCredentialsChanged } from './sidebar.js';
 import { startRemoteSyncLoop } from './remote-sync.js';
@@ -166,7 +165,11 @@ function runSettingsEffects(
         applySessionBackend(updated);
         break;
       case 'reset-provider-cache':
-        providerFor(updated)?.resetCaches?.();
+        // Every provider, not just the selected one: on a `vendor`
+        // change the stale entries belong to the provider being left,
+        // and switching back within its TTL would serve answers
+        // fetched under the old configuration.
+        for (const provider of PROVIDERS) provider.resetCaches?.();
         break;
       case 'refresh-remote':
         onCredentialsChanged();
@@ -176,10 +179,4 @@ function runSettingsEffects(
         break;
     }
   }
-}
-
-function providerFor(config: AppConfig) {
-  return config.vendor
-    ? PROVIDERS.find((p) => p.id === config.vendor) ?? null
-    : null;
 }

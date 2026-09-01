@@ -27,6 +27,16 @@ interface Entry<T> {
   value: T | null;
   hasValue: boolean;
   storedAt: number;
+  /**
+   * The shortest TTL any caller sharing this request asked for.
+   *
+   * Callers join by key, and nothing stops two of them naming
+   * different TTLs. Keeping the smallest is the only choice that can
+   * never hand someone data staler than they asked for: a caller that
+   * said "dedupe only" is not served a minute-old answer because
+   * somebody else was happy with one.
+   */
+  ttlMs: number;
 }
 
 export interface RequestCacheOptions {
@@ -57,6 +67,7 @@ export class RequestCache {
     const entry = this.entries.get(key) as Entry<T> | undefined;
     if (entry) {
       if (entry.promise) {
+        entry.ttlMs = Math.min(entry.ttlMs, ttlMs);
         countRequest(this.providerId, 'deduped');
         return entry.promise;
       }
@@ -78,13 +89,16 @@ export class RequestCache {
       value: null,
       hasValue: false,
       storedAt: this.now(),
+      ttlMs,
     };
     const promise = load().then(
       (value) => {
         // Only keep what someone can still use: a zero TTL entry has
         // served its purpose the moment its callers have their answer.
+        // `fresh.ttlMs`, not the argument — a joiner may have asked for
+        // less than the caller that started this.
         if (this.entries.get(key) === (fresh as Entry<unknown>)) {
-          if (ttlMs > 0) {
+          if (fresh.ttlMs > 0) {
             fresh.value = value;
             fresh.hasValue = true;
             fresh.storedAt = this.now();
@@ -106,6 +120,11 @@ export class RequestCache {
     fresh.promise = promise;
     this.entries.set(key, fresh as Entry<unknown>);
     return promise;
+  }
+
+  /** Forget one entry by its exact key. */
+  delete(key: string): void {
+    this.entries.delete(key);
   }
 
   /** Forget everything, or everything whose key starts with `prefix`. */

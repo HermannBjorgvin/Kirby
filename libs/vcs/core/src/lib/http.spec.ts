@@ -126,6 +126,22 @@ describe('readJsonResponse', () => {
     expect(err.retryAfterMs).toBe(12_000);
   });
 
+  it('strips escape sequences out of the message it quotes', async () => {
+    // The string lands in an Ink <Text> and in the desktop status bar;
+    // a server that answers with a cursor-control sequence must not be
+    // able to redraw either of them.
+    const err = await failure(
+      readJsonResponse(
+        response(
+          JSON.stringify({ message: 'TF401019:\u001b[2J\u001b[H gone' }),
+          { status: 400 }
+        ),
+        opts
+      )
+    );
+    expect(err.message).toBe('Azure DevOps: TF401019: gone');
+  });
+
   it("keeps the API's own message on an error it carries one for", async () => {
     const err = await failure(
       readJsonResponse(
@@ -181,6 +197,25 @@ describe('retryAfterMs', () => {
 
   it('is null when the response says nothing about waiting', () => {
     expect(retryAfterMs(new Headers())).toBeNull();
+  });
+});
+
+describe('blank rate-limit headers', () => {
+  it('reads a present-but-empty remaining budget as absent, not as spent', () => {
+    // `headers.get` answers '' for a valueless header and Number('')
+    // is 0, so a gateway emitting a bare `X-RateLimit-Remaining:`
+    // would stand the entire client down on every good response.
+    expect(quotaExhausted(new Headers({ 'x-ratelimit-remaining': '' }))).toBe(
+      false
+    );
+  });
+
+  it('ignores a blank Retry-After rather than reading it as zero', () => {
+    expect(retryAfterMs(new Headers({ 'retry-after': '' }))).toBeNull();
+  });
+
+  it('ignores a blank rate-limit reset', () => {
+    expect(retryAfterMs(new Headers({ 'x-ratelimit-reset': '' }))).toBeNull();
   });
 });
 

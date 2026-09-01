@@ -93,8 +93,11 @@ function writeFieldChange(
         applySessionBackend(updated);
         break;
       case 'reset-provider-cache':
-        // Everything cached was fetched as somebody else.
-        ctx.config.provider?.resetCaches?.();
+        // Every provider, not just the selected one. Everything cached
+        // was fetched as somebody else, and on a `vendor` change the
+        // stale entries belong to the provider being left — which
+        // `ctx.config.provider` no longer is by the time this runs.
+        for (const p of ctx.config.providers) p.resetCaches?.();
         break;
       case 'refresh-remote':
         // Without this a corrected token sits behind the poll

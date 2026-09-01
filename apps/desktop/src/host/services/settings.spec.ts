@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   backendApplied: 0,
   syncRestarts: 0,
   cacheResets: 0,
+  otherCacheResets: 0,
   remoteRefreshes: 0,
   effects: [] as SettingsEffect[],
   effectsAskedFor: [] as string[],
@@ -38,6 +39,16 @@ vi.mock('./repo.js', () => ({
         state.cacheResets += 1;
       },
     },
+    // A second provider, and one with nothing to forget: switching
+    // vendors has to clear the one being *left*, and must not assume
+    // every provider implements the hook.
+    {
+      id: 'github',
+      resetCaches: () => {
+        state.otherCacheResets += 1;
+      },
+    },
+    { id: 'nothing-to-forget' },
   ],
 }));
 
@@ -119,6 +130,7 @@ beforeEach(() => {
   state.backendApplied = 0;
   state.syncRestarts = 0;
   state.cacheResets = 0;
+  state.otherCacheResets = 0;
   state.remoteRefreshes = 0;
   state.effects = [];
   state.effectsAskedFor = [];
@@ -261,6 +273,18 @@ describe('updateSettingsFromView', () => {
       state.effects = ['restart-sync-loop'];
       updateSettingsFromView({ label: 'Editor', key: 'editor' }, 'vim');
       expect(state.syncRestarts).toBe(1);
+    });
+
+    it('clears every provider, not just the selected one', () => {
+      // On a `vendor` change the stale entries belong to the provider
+      // being left. Clearing only the incoming one leaves the outgoing
+      // provider's cache intact, and switching back inside its TTL
+      // serves answers fetched under the old configuration.
+      state.effects = ['reset-provider-cache'];
+      state.fields = [field({ label: 'Vendor', key: 'vendor' })];
+      updateSettingsFromView({ label: 'Vendor', key: 'vendor' }, 'github');
+      expect(state.cacheResets).toBe(1);
+      expect(state.otherCacheResets).toBe(1);
     });
 
     it('drops the provider cache and fetches now for a credential change', () => {
