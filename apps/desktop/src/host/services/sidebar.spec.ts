@@ -20,6 +20,7 @@ const env = vi.hoisted(() => ({
     reject: (e: Error) => void;
   }[],
   fetchCount: 0,
+  forgetCount: 0,
   now: 1_000_000,
   /** Last sessionBranchMap handed to buildSidebarItems. */
   lastBranchMap: new Map<string, string>(),
@@ -31,6 +32,9 @@ vi.mock('./repo.js', () => ({
     {
       id: 'github',
       isConfigured: () => env.configured,
+      forgetPullRequestCache: () => {
+        env.forgetCount += 1;
+      },
       fetchPullRequests: () => {
         env.fetchCount += 1;
         return new Promise((resolve, reject) => {
@@ -100,6 +104,7 @@ beforeEach(async () => {
   env.worktrees = [];
   env.pending = [];
   env.fetchCount = 0;
+  env.forgetCount = 0;
   env.now = 1_000_000;
   env.lastBranchMap = new Map();
 
@@ -272,6 +277,34 @@ describe('remote cache', () => {
       await flush();
       settle(0, {});
       sidebar.setRemoteUpdatedNotifier(null);
+    });
+  });
+
+  /**
+   * A provider may hold per-row answers well past one response — Azure
+   * remembers a settled CI verdict for ten minutes — so the difference
+   * between "poll again" and "the user asked" has to reach it.
+   */
+  describe('refreshing', () => {
+    it('tells the provider to forget when the user asks', async () => {
+      const forced = sidebar.refreshRemote();
+      await flush();
+      settle(0);
+      await forced;
+      expect(env.forgetCount).toBe(1);
+    });
+
+    it('does not, for a re-read the app asked for itself', async () => {
+      // Submitting a review verdict changes the reviewer votes, which
+      // come from the list. It changes no CI verdict and no comment
+      // count, so making the provider cold again would spend a cycle's
+      // worth of requests for nothing.
+      const quiet = sidebar.refreshPrList();
+      await flush();
+      settle(0);
+      await quiet;
+      expect(env.forgetCount).toBe(0);
+      expect(env.fetchCount).toBe(1);
     });
   });
 

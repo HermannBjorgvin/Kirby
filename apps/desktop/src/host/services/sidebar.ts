@@ -263,7 +263,30 @@ export function getSyncState(): SyncState {
   };
 }
 
+/**
+ * The user pressed refresh.
+ *
+ * Deeper than a poll on purpose: a provider may hold per-row answers
+ * well beyond one response — Azure remembers a settled CI verdict for
+ * ten minutes — and answering a button from memory is what makes the
+ * button look broken. Pressing it says "I think something has changed".
+ */
 export async function refreshRemote(): Promise<void> {
+  const cwd = requireRepo();
+  const { config, provider } = resolveProvider(cwd);
+  provider?.forgetPullRequestCache?.(config.vendorProject);
+  await fetchRemote(cwd, true);
+}
+
+/**
+ * Re-read the pull request list now, without telling the provider to
+ * forget anything.
+ *
+ * For the places the app itself knows something changed and knows what:
+ * submitting a review verdict changes the reviewer votes, which come
+ * from the list, and nothing a provider caches per row carries them.
+ */
+export async function refreshPrList(): Promise<void> {
   const cwd = requireRepo();
   await fetchRemote(cwd, true);
 }

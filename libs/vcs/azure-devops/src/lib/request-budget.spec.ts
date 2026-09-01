@@ -314,6 +314,30 @@ describe('a cycle over pull requests that have not moved', () => {
     expect(asked.size).toBe(60);
   });
 
+  it('goes and looks again when the user presses refresh', async () => {
+    // Ten minutes is right for a poll and wrong for a button: pressing
+    // refresh is the user saying they think something has changed, and
+    // answering it from memory is what makes the button look broken.
+    await syncCycle();
+    afterMinutes(1);
+    expect(await cycleCost()).toBe(1);
+
+    azureDevOpsProvider.forgetPullRequestCache!(PROJECT);
+    expect(await cycleCost()).toBe(1 + 1 + 2 * PR_COUNT);
+  });
+
+  it('leaves another repository’s rows alone when one is refreshed', async () => {
+    await syncCycle();
+    afterMinutes(1);
+
+    azureDevOpsProvider.forgetPullRequestCache!({
+      ...PROJECT,
+      repo: 'someone-elses-repo',
+    });
+    // A refresh in one checkout must not make the other one cold.
+    expect(await cycleCost()).toBe(1);
+  });
+
   it('remembers nothing about a verdict it could not look up', async () => {
     // A truncated runs listing with nothing for our rows, and the
     // per-row fallback answering nothing either: the cycle does not

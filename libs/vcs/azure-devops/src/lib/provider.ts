@@ -26,7 +26,7 @@ import {
 } from './request.js';
 import { fetchPrBuildStatus } from './build-status.js';
 import { fetchPrBuildRunsBatch } from './builds.js';
-import { forgetPrDetails } from './pr-details.js';
+import { forgetPrDetails, forgetRepoDetails } from './pr-details.js';
 import {
   NOTHING_TO_DO,
   planCycle,
@@ -887,6 +887,10 @@ export const azureDevOpsProvider: VcsProvider = {
 
   resetCaches(): void {
     resetAdoTransport();
+  },
+
+  forgetPullRequestCache(project: Record<string, string>): void {
+    forgetRepoDetails(`${project.org}/${project.project}/${project.repo}`);
   },
 
   isConfigured(

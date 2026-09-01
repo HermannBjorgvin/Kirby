@@ -231,6 +231,20 @@ export function forgetPrDetails(repoKey: string, prId: number): void {
   memos.delete(memoKey(repoKey, prId));
 }
 
+/**
+ * Forget one repository's rows — what an explicit refresh means.
+ *
+ * A settled verdict is remembered for ten minutes, which is right for
+ * a poll and wrong for a button: a user who presses refresh is telling
+ * us they think something has changed, and answering from memory makes
+ * the button look broken.
+ */
+export function forgetRepoDetails(repoKey: string): void {
+  for (const key of [...memos.keys()]) {
+    if (key.startsWith(`${repoKey}#`)) memos.delete(key);
+  }
+}
+
 /** Forget everything. Called when the credentials or project change. */
 export function clearPrDetails(): void {
   memos.clear();

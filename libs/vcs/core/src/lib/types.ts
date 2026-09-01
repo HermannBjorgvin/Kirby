@@ -95,6 +95,18 @@ export interface VcsProvider {
    */
   resetCaches?(): void;
 
+  /**
+   * Forget per-pull-request answers held beyond a single response, so
+   * an explicit refresh actually goes and looks.
+   *
+   * Distinct from `resetCaches`, which throws away everything because
+   * it was fetched as somebody else. This is the narrower thing a
+   * refresh button means: the rows may have moved, ask again. A
+   * provider that reads every row's state with the list — as the
+   * GitHub search query does — has nothing to forget and omits it.
+   */
+  forgetPullRequestCache?(project: Record<string, string>): void;
+
   /** True when auth + project config have all required fields */
   isConfigured(
     auth: Record<string, string>,
