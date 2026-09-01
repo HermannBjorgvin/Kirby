@@ -24,15 +24,16 @@ import {
   resetAdoTransport,
   TTL,
 } from './request.js';
-import { combineBuildStatus, fetchPrBuildStatus } from './build-status.js';
+import { fetchPrBuildStatus } from './build-status.js';
 import { fetchPrBuildRunsBatch } from './builds.js';
+import { forgetPrDetails } from './pr-details.js';
 import {
-  forgetPrDetails,
-  prDetailMemo,
-  rememberPrDetails,
-  reusableComments,
-  reusableStatus,
-} from './pr-details.js';
+  NOTHING_TO_DO,
+  planCycle,
+  resolveRow,
+  rowsReadingStatus,
+  type RowReaders,
+} from './pr-cycle.js';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
@@ -928,55 +929,31 @@ export const azureDevOpsProvider: VcsProvider = {
       // difference between working and being refused.
       const repoKey = `${config.org}/${config.project}/${config.repo}`;
       const now = Date.now();
-      const known = new Map(
-        prs.map((pr) => [
-          pr.id,
-          reusableStatus(prDetailMemo(repoKey, pr.id), pr.headSha, now),
-        ])
-      );
+      const plans = planCycle(repoKey, prs, now);
 
-      // Only the rows whose verdict is not already known. A cycle over
-      // a repository nothing has happened in asks for no runs at all.
-      const unknownIds = prs
-        .filter((pr) => known.get(pr.id) === null)
-        .map((pr) => pr.id);
+      // The runs listing is fetched on behalf of the rows whose verdict
+      // is actually being read. Nobody to ask for, no request.
+      const reading = rowsReadingStatus(prs, plans);
       const runVerdicts =
-        unknownIds.length === 0
+        reading.length === 0
           ? new Map<number, BuildStatusState>()
-          : await fetchPrBuildRunsBatch(config, unknownIds).catch(
+          : await fetchPrBuildRunsBatch(config, reading).catch(
               () => new Map<number, BuildStatusState>()
             );
 
+      const readers: RowReaders = {
+        commentCount: (prId) => fetchActiveCommentCount(config, prId),
+        buildStatus: (prId) => fetchPrBuildStatus(config, prId),
+      };
       const withDetails = await Promise.all(
-        prs.map(async (pr) => {
-          const memo = prDetailMemo(repoKey, pr.id);
-          const knownCount = reusableComments(memo, pr.headSha, now);
-          const knownStatus = known.get(pr.id) ?? null;
-          const [activeCommentCount, statusVerdict] = await Promise.all([
-            knownCount ?? fetchActiveCommentCount(config, pr.id),
-            knownStatus ?? fetchPrBuildStatus(config, pr.id),
-          ]);
-          const buildStatus =
-            knownStatus ??
-            combineBuildStatus(statusVerdict, runVerdicts.get(pr.id) ?? 'none');
-          rememberPrDetails(repoKey, pr.id, {
-            headSha: pr.headSha,
+        prs.map(async (pr) => ({
+          ...pr,
+          ...(await resolveRow(repoKey, pr, readers, {
+            plan: plans.get(pr.id) ?? NOTHING_TO_DO,
+            runVerdicts,
             now,
-            ...(knownCount === null ? { comments: activeCommentCount } : {}),
-            // A row the runs listing could not account for is absent
-            // from the map rather than `none`, and remembering the
-            // verdict without it would show a red pipeline as green
-            // until the memo expired.
-            ...(knownStatus === null && runVerdicts.has(pr.id)
-              ? { status: buildStatus }
-              : {}),
-          });
-          return {
-            ...pr,
-            activeCommentCount,
-            buildStatus,
-          } satisfies PullRequestInfo;
-        })
+          })),
+        }))
       );
 
       const map: BranchPrMap = {};

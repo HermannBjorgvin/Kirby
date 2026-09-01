@@ -15,9 +15,20 @@ import type { BuildStatusState } from '@kirby/vcs-core';
  * The cheap observation is that most of those answers cannot have
  * changed. A pull request's CI verdict is a function of its head
  * commit, so while `lastMergeSourceCommit` is where we left it, a
- * settled verdict is still the verdict. Comment counts are not tied to
- * the commit — anyone can comment at any time — so they get their own,
- * shorter life.
+ * settled verdict is still the verdict.
+ *
+ * Comment counts are not a function of the commit — anyone can comment
+ * at any time, and pushing changes nothing about them — so they cannot
+ * be pinned to one and get a plain age instead.
+ *
+ * Neither half may arrive as a burst. Rows read together expire
+ * together, so a plain TTL turns one quiet cycle into a request per row
+ * on the next one — and a sliding-window rate limit cares about exactly
+ * that shape. Each cycle therefore spends a **budget** on the oldest
+ * rows of each kind, and shows the last answer it had for the rest.
+ * That is what bounds a cycle: a repository with five hundred open pull
+ * requests costs a cycle no more than one with fifty, and takes more
+ * cycles to come round instead.
  *
  * What is remembered is the **combined** verdict — the status list and
  * the pipeline runs reduced to one answer — because that is what the
@@ -42,7 +53,7 @@ export interface PrDetailTtls {
   /** A settled verdict on an unchanged commit. Only a re-run moves it,
    *  which is the staleness this trades for not being throttled. */
   statusMs: number;
-  /** Comment counts move without a push, so this one is shorter. */
+  /** How old a comment count may get before it is due again. */
   commentsMs: number;
 }
 
@@ -50,6 +61,14 @@ export const PR_DETAIL_TTL: PrDetailTtls = {
   statusMs: 10 * 60_000,
   commentsMs: 3 * 60_000,
 };
+
+/**
+ * Rows of each kind one cycle may read. A repository with fewer open
+ * pull requests than this behaves exactly as it did before the budget
+ * existed; a larger one comes round in several cycles rather than
+ * spending a request per row at once.
+ */
+export const REFRESH_BUDGET = 25;
 
 interface Stamped<T> {
   value: T;
@@ -104,15 +123,54 @@ export function reusableStatus(
   return status === 'pending' ? null : status;
 }
 
-/** The remembered comment count, or null when it has to be read again. */
+/**
+ * The remembered comment count, or null when it is due again.
+ *
+ * No head commit here, deliberately: a push does not change what people
+ * have said, so tying the count to the commit would throw away a
+ * perfectly good answer every time an agent committed.
+ */
 export function reusableComments(
   memo: PrDetailMemo | undefined,
-  headSha: string | undefined,
   now: number,
   ttls: PrDetailTtls = PR_DETAIL_TTL
 ): number | null {
-  if (!sameCommit(memo, headSha)) return null;
+  if (memo === undefined) return null;
   return stillGood(memo.comments, now, ttls.commentsMs);
+}
+
+/** The count last read, however old — better on screen than nothing. */
+export function lastKnownComments(
+  memo: PrDetailMemo | undefined
+): number | undefined {
+  return memo?.comments?.value;
+}
+
+/** The verdict last read, however old, and whatever commit it was for. */
+export function lastKnownStatus(
+  memo: PrDetailMemo | undefined
+): BuildStatusState | undefined {
+  return memo?.status?.value;
+}
+
+/**
+ * Which of the pull requests that are due may actually be read this
+ * cycle: the oldest first, up to `budget`. Something never read at all
+ * is the oldest there is.
+ *
+ * Ties break on the pull request id so a cycle is not at the mercy of
+ * map ordering — two rows read in the same millisecond must not be able
+ * to take turns starving each other.
+ */
+export function dueForRefresh(
+  candidates: readonly { prId: number; readAt: number | null }[],
+  budget: number
+): Set<number> {
+  const ordered = [...candidates].sort((a, b) => {
+    if (a.readAt !== b.readAt) return (a.readAt ?? -1) - (b.readAt ?? -1);
+    return a.prId - b.prId;
+  });
+  return new Set(ordered.slice(0, Math.max(0, budget)).map((c) => c.prId));
 }
 
 // ── The store ───────────────────────────────────────────────────────
@@ -151,19 +209,19 @@ export function rememberPrDetails(
 ): void {
   const key = memoKey(repoKey, prId);
   const previous = memos.get(key);
-  const carried =
-    previous && previous.headSha === read.headSha
-      ? previous
-      : { headSha: read.headSha, status: null, comments: null };
+  // The verdict belongs to a commit and dies with it; the comment count
+  // does not, so it survives a push.
+  const carriedStatus =
+    previous && previous.headSha === read.headSha ? previous.status : null;
   memos.set(key, {
     headSha: read.headSha,
     status:
       read.status === undefined
-        ? carried.status
+        ? carriedStatus
         : { value: read.status, at: read.now },
     comments:
       read.comments === undefined
-        ? carried.comments
+        ? (previous?.comments ?? null)
         : { value: read.comments, at: read.now },
   });
 }

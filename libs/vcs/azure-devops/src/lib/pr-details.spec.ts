@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearPrDetails,
+  dueForRefresh,
   forgetPrDetails,
+  lastKnownComments,
   prDetailMemo,
   rememberPrDetails,
   reusableComments,
@@ -77,19 +79,92 @@ describe('reusableStatus', () => {
 
 describe('reusableComments', () => {
   it('answers inside its own, shorter life', () => {
-    expect(reusableComments(remembered('abc'), 'abc', 2_999, TTLS)).toBe(3);
+    expect(reusableComments(remembered('abc'), 2_999, TTLS)).toBe(3);
   });
 
   it('expires before a settled status does', () => {
     const memo = remembered('abc');
-    expect(reusableComments(memo, 'abc', 3_000, TTLS)).toBeNull();
-    // Comments move without a push; a settled verdict does not.
+    expect(reusableComments(memo, 3_000, TTLS)).toBeNull();
+    // Comments come round more often; a settled verdict outlives them.
     expect(reusableStatus(memo, 'abc', 3_000, TTLS)).toBe('succeeded');
+  });
+
+  it('survives a push, which changes nothing about it', () => {
+    // Tying the count to the head commit would throw a perfectly good
+    // answer away every time an agent committed.
+    remembered('abc');
+    rememberPrDetails(REPO, 1, { headSha: 'def', now: 1, status: 'pending' });
+    expect(reusableComments(prDetailMemo(REPO, 1), 2, TTLS)).toBe(3);
   });
 
   it('distinguishes a remembered zero from nothing remembered', () => {
     rememberPrDetails(REPO, 1, { headSha: 'abc', now: 0, comments: 0 });
-    expect(reusableComments(prDetailMemo(REPO, 1), 'abc', 1, TTLS)).toBe(0);
+    expect(reusableComments(prDetailMemo(REPO, 1), 1, TTLS)).toBe(0);
+  });
+});
+
+describe('dueForRefresh', () => {
+  const due = (rows: [number, number | null][], budget: number) =>
+    [
+      ...dueForRefresh(
+        rows.map(([prId, readAt]) => ({ prId, readAt })),
+        budget
+      ),
+    ].sort((a, b) => a - b);
+
+  it('spends the budget on the oldest rows', () => {
+    expect(
+      due(
+        [
+          [1, 500],
+          [2, 100],
+          [3, 300],
+        ],
+        2
+      )
+    ).toEqual([2, 3]);
+  });
+
+  it('puts something never read at the front', () => {
+    expect(
+      due(
+        [
+          [1, 0],
+          [2, null],
+        ],
+        1
+      )
+    ).toEqual([2]);
+  });
+
+  it('breaks ties on the pull request id rather than on map order', () => {
+    // Two rows read in the same millisecond must not be able to take
+    // turns starving each other.
+    expect(
+      due(
+        [
+          [7, 100],
+          [3, 100],
+        ],
+        1
+      )
+    ).toEqual([3]);
+  });
+
+  it('takes everything when the budget is larger than the queue', () => {
+    expect(
+      due(
+        [
+          [1, 1],
+          [2, 2],
+        ],
+        25
+      )
+    ).toEqual([1, 2]);
+  });
+
+  it('spends nothing on a budget of zero', () => {
+    expect(due([[1, 1]], 0)).toEqual([]);
   });
 });
 
@@ -101,17 +176,25 @@ describe('the store', () => {
     // live forever, refreshed by its neighbour.
     rememberPrDetails(REPO, 1, { headSha: 'abc', now: 9_000, comments: 4 });
     const memo = prDetailMemo(REPO, 1);
-    expect(reusableComments(memo, 'abc', 9_001, TTLS)).toBe(4);
+    expect(reusableComments(memo, 9_001, TTLS)).toBe(4);
     expect(reusableStatus(memo, 'abc', 10_001, TTLS)).toBeNull();
   });
 
-  it('drops both halves when the commit changes under it', () => {
+  it('drops the verdict, but not the count, when the commit moves', () => {
     remembered('abc', 0);
-    rememberPrDetails(REPO, 1, { headSha: 'def', now: 1, comments: 9 });
+    rememberPrDetails(REPO, 1, { headSha: 'def', now: 1 });
     const memo = prDetailMemo(REPO, 1);
-    expect(reusableComments(memo, 'def', 2, TTLS)).toBe(9);
+    expect(reusableComments(memo, 2, TTLS)).toBe(3);
     // The old commit's verdict must not survive the push.
     expect(reusableStatus(memo, 'def', 2, TTLS)).toBeNull();
+  });
+
+  it('keeps the last count on hand however old it is', () => {
+    remembered('abc', 0);
+    // Past its life: not reusable, but still the best thing to show
+    // while the budget goes to rows that have waited longer.
+    expect(reusableComments(prDetailMemo(REPO, 1), 99_999, TTLS)).toBeNull();
+    expect(lastKnownComments(prDetailMemo(REPO, 1))).toBe(3);
   });
 
   it('keeps two repositories apart', () => {

@@ -56,12 +56,16 @@ function json(
 
 /** Azure reports the head of the source branch as it last merged it;
  *  that is what tells a cycle whether a pull request has moved. */
-const prs = Array.from({ length: PR_COUNT }, (_, i) => ({
-  pullRequestId: 100 + i,
-  sourceRefName: `refs/heads/feat-${i}`,
-  reviewers: [],
-  lastMergeSourceCommit: { commitId: `sha-${i}` },
-}));
+function makePrs(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    pullRequestId: 100 + i,
+    sourceRefName: `refs/heads/feat-${i}`,
+    reviewers: [],
+    lastMergeSourceCommit: { commitId: `sha-${i}` },
+  }));
+}
+
+let prs = makePrs(PR_COUNT);
 
 /** Statuses served for a pull request, by id. Empty unless a test says
  *  otherwise, which reads as "this repository posts no statuses". */
@@ -121,8 +125,9 @@ function syncCycle() {
 beforeEach(() => {
   mockFetch.mockReset();
   statusesByPr.clear();
-  // The fixture is shared and some tests push commits onto it.
-  prs.forEach((pr, i) => (pr.lastMergeSourceCommit = { commitId: `sha-${i}` }));
+  // The fixture is shared and some tests push commits onto it, or ask
+  // for a bigger repository.
+  prs = makePrs(PR_COUNT);
   resetAdoTransport();
   resetRequestCounters('azure-devops');
   serveEverything();
@@ -204,10 +209,10 @@ describe('a cycle over pull requests that have not moved', () => {
     afterMinutes(1);
     prs[3].lastMergeSourceCommit.commitId = 'sha-3-pushed';
 
-    // The list and the builds batch, plus that row's threads and
-    // statuses. A push means new CI and a new diff; nothing remembered
-    // about it still stands.
-    expect(await cycleCost()).toBe(2 + 2);
+    // The list and the builds batch, plus that row's status list. Its
+    // comment count is not a function of the commit — a push does not
+    // change what people have said — so that half still stands.
+    expect(await cycleCost()).toBe(2 + 1);
   });
 
   it('keeps asking about a pull request whose checks are still running', async () => {
@@ -232,6 +237,81 @@ describe('a cycle over pull requests that have not moved', () => {
     // And a settled verdict outlives them, until a re-run is plausible.
     afterMinutes(7);
     expect(await cycleCost()).toBe(2 + 2 * PR_COUNT);
+  });
+
+  it('bounds a cycle whatever the size of the repository', async () => {
+    // Two hundred open pull requests must not mean two hundred
+    // requests. The comment counts are the half that cannot be skipped
+    // indefinitely, so they come round a budget at a time rather than
+    // all at once — which is the shape a sliding-window rate limit
+    // actually cares about.
+    prs = makePrs(200);
+    // The list, the runs listing, and a budget of each kind. Not four
+    // hundred.
+    const ceiling = 1 + 1 + 25 + 25;
+    expect(await cycleCost()).toBeLessThanOrEqual(3 + ceiling);
+
+    for (let i = 0; i < 4; i++) {
+      afterMinutes(1);
+      expect(await cycleCost()).toBeLessThanOrEqual(ceiling);
+    }
+  });
+
+  it('shows the last count it had for a row it has no budget for', async () => {
+    // Otherwise the badge blinks out on the rows the budget did not
+    // reach this cycle, which looks like the comments went away.
+    prs = makePrs(60);
+    for (let i = 0; i < 3; i++) {
+      await syncCycle();
+      afterMinutes(1);
+    }
+    // Past the counts' life, so every row is due and most of them will
+    // not be read.
+    afterMinutes(4);
+    const map = await syncCycle();
+    const counts = Object.values(map).map((pr) => pr?.activeCommentCount);
+    expect(counts).toHaveLength(60);
+    expect(counts.filter((c) => c === undefined)).toEqual([]);
+  });
+
+  it('shows the last verdict it had for a row it has no budget for', async () => {
+    // Same for the badge colour: a red build must not go grey because
+    // this cycle's budget went to other rows.
+    prs = makePrs(60);
+    for (const pr of prs) {
+      statusesByPr.set(pr.pullRequestId, [
+        { state: 'failed', context: { name: 'build' } },
+      ]);
+    }
+    for (let i = 0; i < 3; i++) {
+      await syncCycle();
+      afterMinutes(1);
+    }
+    // Past the verdicts' life, so every row is due and most of them
+    // will not be read.
+    afterMinutes(11);
+    const map = await syncCycle();
+    const verdicts = Object.values(map).map((pr) => pr?.buildStatus);
+    expect(verdicts).toHaveLength(60);
+    expect(verdicts.filter((v) => v !== 'failed')).toEqual([]);
+  });
+
+  it('comes round to every row rather than starving the tail', async () => {
+    // A budget spent oldest-first has to be fair, or the rows at the
+    // back of the map never get read at all and their badges are wrong
+    // for as long as the app is open.
+    prs = makePrs(60);
+    const asked = new Set<number>();
+    for (let i = 0; i < 3; i++) {
+      mockFetch.mock.calls.length = 0;
+      await syncCycle();
+      for (const call of mockFetch.mock.calls) {
+        const id = /\/pullRequests\/(\d+)\/threads/i.exec(String(call[0]));
+        if (id) asked.add(Number(id[1]));
+      }
+      afterMinutes(1);
+    }
+    expect(asked.size).toBe(60);
   });
 
   it('remembers nothing about a verdict it could not look up', async () => {
@@ -283,10 +363,12 @@ describe('a cycle over pull requests that have not moved', () => {
   it('remembers nothing about a pull request with no known head commit', async () => {
     // Without one there is no way to tell a row that has not moved from
     // one that has, and a wrong guess is a badge nothing will correct.
+    // Only the verdict is pinned to the commit, so it is the verdict
+    // that has to be read again.
     for (const pr of prs) pr.lastMergeSourceCommit = { commitId: '' };
     await syncCycle();
     afterMinutes(1);
-    expect(await cycleCost()).toBe(2 + 2 * PR_COUNT);
+    expect(await cycleCost()).toBe(2 + PR_COUNT);
   });
 
   it('forgets a pull request the user has just written to', async () => {
