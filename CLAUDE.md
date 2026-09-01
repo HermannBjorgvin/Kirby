@@ -711,6 +711,58 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   the recorded fixtures are the safety net — extend them rather than
   assuming the suite has you covered.
 
+- **A sync cycle has a request budget, and Azure is why.** Azure has no
+  batch endpoint for a pull request's status list or its comment
+  threads, so a cycle used to cost **two requests per open pull
+  request** — plus a third per row whenever the pipeline-runs listing
+  came back truncated and every row it could not account for fell back
+  to its own query. A hundred open pull requests was three hundred
+  requests a minute against an organization Azure throttles as a whole,
+  and the client spent its budget re-reading answers it already had and
+  then got refused. Three things hold it down now, and
+  `request-budget.spec.ts` asserts each of them so a change that
+  quietly reinstates a per-row call fails there rather than on
+  someone's account:
+
+  - **What cannot have changed is not re-read.** `pr-details.ts`
+    remembers the combined CI verdict against `lastMergeSourceCommit`:
+    while the commit is where the last cycle left it, a *settled*
+    verdict is still the verdict. A `pending` one is always re-read —
+    CI in flight is the moment the badge is worth watching — and so is
+    anything the cycle could not actually establish, because recording
+    the status list without the runs half shows a red pipeline as
+    green. Comment counts are **not** pinned to the commit: a push does
+    not change what people have said.
+  - **Every cycle is bounded.** Rows read together expire together, so
+    a TTL alone turns one quiet cycle into a request per row on the
+    next — the shape a sliding-window limit refuses. `pr-cycle.ts`
+    spends a budget of 25 reads of each kind on the rows that waited
+    longest (ties on pull request id, so the tail cannot starve) and
+    shows the last known answer for the rest. A repository with 500
+    open pull requests costs a cycle no more than one with 50 and takes
+    more cycles to come round.
+  - **The runs fallback is capped, and absence means two things.** On a
+    *complete* page, a row missing from the listing genuinely has no
+    build and is recorded `none`; on a *truncated* one, a row left
+    unresolved is **omitted from the map**, which the caller must read
+    as "not looked up" and must not remember. A failed lookup is
+    omitted for the same reason — a network error is not evidence that
+    a repository has no CI.
+
+  A quiet cycle over a hundred pull requests now costs one request: the
+  list. GitHub needs none of this — its search query returns the
+  rollup and the comment counts with the list.
+- **The desktop's remote cache holds one entry per repository.** The
+  tab strip spans repositories and following a foreign tab opens its
+  repository, so switching back and forth is normal; with a single slot
+  every switch evicted the other side and refetched it, which on Azure
+  is a cycle's worth of requests each time. `host/services/sidebar.ts`
+  keys the cache, the in-flight map *and* the fetch-sequence guard by
+  cwd, bounded at eight with the least recently fetched evicted. The
+  seq guard being global was its own bug: switching away mid-fetch
+  retired a fetch that was going to answer correctly, so the repo it
+  was for ended up with nothing cached. Credentials still drop every
+  entry — `vendorAuth` is global.
 - **Azure PR statuses are a history, not a current state.** `GET /pullrequests/{id}/statuses` returns every status a check has ever posted, across every iteration — re-running appends rather than replaces. `deriveBuildStatus` therefore groups by `context` and counts only the newest entry per check (highest `iterationId`, then date, then `id`); reducing over the raw list made the first failure permanent, so a fixed pull request showed red until it merged and no refresh could clear it. `notApplicable` competes on recency and retracts its own check's earlier verdict, but casts no vote; a missing `state` means `notSet` (Azure omits the field for enum zero) and reads as queued. A recorded, anonymised response lives in `libs/vcs/azure-devops/src/lib/__fixtures__/` — record new ones by hitting the API with the PAT from `~/.kirby/config.json`, scrubbing org/repo names and the `createdBy` identity, and reading them with `readFileSync` in the spec so they stay data rather than joining the module graph. Note the badge only ever reflects `/statuses`: a repo whose CI runs through **branch-policy build validation** reports under `_apis/policy/evaluations` instead, which Kirby does not read.
 - **The three `@wterm/*` packages move as one, and are pinned exactly.** `@wterm/react` declares `@wterm/dom` as an **exact** peer (`"0.3.4"`, not a range) and `@wterm/dom` pins `@wterm/core` the same way, so a caret on any of them lets npm take a newer one than its sibling peer-requires and the tree stops resolving. To upgrade, set the same exact version in **both** `apps/desktop/package.json` (`@wterm/dom`, `@wterm/react`) and `apps/cli-wterm-host/package.json` (`@wterm/dom`), then `npm install` and check `npm ls @wterm/dom @wterm/react @wterm/core` shows one deduped copy of each. Verify with `nx e2e cli-e2e` (the harness terminal), `nx e2e desktop-e2e` and `nx e2e:visual desktop-e2e` — the last is what catches a stylesheet change, at zero pixel tolerance. Releases have been roughly weekly, so this is worth doing periodically rather than once.
 - **Take the terminal stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.** The react one is a single `@import "../../dom/src/terminal.css"` — a relative path that resolves only while npm keeps the two packages physically adjacent. The moment anything else in the workspace wants the same `@wterm/dom` version, npm hoists it to the root and the renderer build fails to resolve the import. `@wterm/dom` publishes the identical file under its own `./css` entry, which package resolution finds wherever the package lands.
