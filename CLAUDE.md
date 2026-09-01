@@ -631,6 +631,38 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. **A tmux server keeps the env it was started with** and spawns every session command with it, so the backend pins `-e HOME/-e PATH` + the caller's seed additions per session (tmux ≥ 3.2) — without this, a stale server on the default socket (e.g. left by a test run with a temp HOME) silently kills every agent at launch, and seeded prompts never reach the command at all. E2e runs set `TMUX_TMPDIR` to their temp HOME so test servers can't squat on the user's default socket. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
 - **Desktop uses native OS elements where they exist.** Application menu (`apps/desktop/src/main/menu.ts` → `Menu.setApplicationMenu`, commands reach the renderer via `onMenuCommand`), context menus (`window.kirby.showContextMenu` → `Menu.popup`), native dialogs/about box, optional native window frame (`desktop-prefs.json` → `nativeFrame`). Web-rendered menus are only for things the OS can't express (rich dialogs, command palette). VS Code is inspiration for the shell, not a template.
 - **Desktop review flow mirrors the TUI.** Launching an agent on any PR item opens the same menu (session / review / review with instructions); `launchReviewAgent` creates the worktree if needed and seeds the agent with `buildReviewLaunchRequest` from app-core (shared with the TUI's confirm menu, so prompt + `kirby util add-comment` guidance are identical). Agent drafts live in `~/.kirby/reviews/pr-<id>/comments.json`; the desktop polls them (`useDraftComments`), renders `DraftCard`s at their anchor in the diff, and posts through `@kirby/review-comments` `postReviewComments` (same poster as the TUI). A PR tab is a review workspace (`components/review/PrWorkspace.tsx`): a persistent, collapsible left rail (Agent · Files · Comments) beside one content pane that swaps between the diff and the agent terminal. The rail owns Launch/Stop; selecting a file or comment shows the diff (`DiffPane` — meta strip + the Unified/Split/Wrap/Hide-resolved/post-drafts/comment-nav toolbar lives here, not in the tab header, so it's gone in terminal view); selecting Agent shows the terminal (kept mounted so scrollback survives). Launching an agent auto-selects the terminal once. When the agent has written draft comments, the rail shows a **Review ready** entry (severity breakdown) that opens `ReviewStepper` in the content pane — a guided walkthrough of the drafts in severity order, each with a code snippet (`SnippetView`) and Edit/Discard/Skip/Post (keyboard e/d/↵, arrows to move); posting advances to the next. `lib/diff/diff-model.ts` has `orderDraftsForReview`/`severityCounts`/`snippetAround` (tested). Terminal fit: `SessionTerminal` measures its pane and calls `WTerm.resize` on ready/visible/resize (autoResize alone latched a stale size until a window resize). Editor tabs are keyed by PR id (renderer `itemKey`), stable as a PR moves between sidebar kinds (launching an agent turns an orphan/review PR into a session row) so the open tab never orphans. The sidebar list and the tab strip are two stores that can disagree, and every tab bug so far has come from reconciling them in pieces — so there is exactly one reconciliation point: `Workspace` feeds the item list to `sync-items`, and `lib/tabs/tabs-model.ts` re-keys stale tabs, opens a tab per newly running agent (history in `autoOpened`, so a closed tab stays closed) and pins previews with a live agent, in one pure step. Add nothing to that seam from an effect. `apps/desktop/src/host/services/sidebar.ts` attaches the alive session name to PR items; comment markdown renders images host-fetched with provider auth and its paragraphs render as `<div>` (block images/skeletons can't nest in `<p>`); `ErrorBoundary` wraps each tab so one bad view can't blank the window.
+- **The desktop tab strip spans repositories; the host still holds
+  one.** Opening another repository leaves the previous one's tabs on
+  the strip, prefixed with its directory name and set off by a group
+  separator, so an agent running over there stays in sight. A tab
+  therefore carries its `repo` and is identified by the pair — two
+  checkouts share branch names, so `branch:main` alone is not an
+  identity, and neither is a PTY session name (`autoOpened` is
+  repo-qualified for the same reason). `sync-items` reconciles only the
+  tabs of the repo it is handed; a foreign tab must never be re-keyed,
+  pinned or collapsed by a poll about somewhere else, and
+  `tabs.properties.spec.ts` asserts that as an invariant over arbitrary
+  sequences. `TabsProvider` sits above the repo gate in `App.tsx` —
+  `Workspace` is keyed by repo and remounts, so anything below it is
+  destroyed on a switch.
+
+  **The workspace follows the active tab, not the other way round.**
+  The host is single-repo by construction (`requireRepo`, the memoized
+  repo root, `projectKey`-namespaced tmux names, the `ownSession`
+  guard), so a foreign tab's content cannot be rendered while another
+  repo is open: `useRepoFollowsTabs` opens that tab's repository
+  instead, and the sidebar and status bar move with it, so "which repo
+  am I in?" keeps one answer. The mirror direction is
+  `repo-opened`, which brings the newly opened repo's own tab
+  forward (the one it was last left on, per `lastActiveByRepo`) —
+  without it the workspace you asked for opens onto a pane explaining
+  that the active tab belongs to the one you left. The alternative,
+  keying every host service by repo root so several are open at once,
+  was not taken: it reaches into `@kirby/core`'s memoized state and the
+  worktree resolver, and buys nothing the switch does not already do.
+  What it costs is that a foreign tab shows no live agent state —
+  `getSessionActivity` and `listSessions` answer for the open repo only
+  — so the strip says an agent is *there*, not what it is doing.
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the
   agent's own drafts — into a queue and hands the whole thing to one

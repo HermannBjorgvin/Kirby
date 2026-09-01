@@ -4,11 +4,17 @@ import { toast } from 'sonner';
 import type { KirbyHostApi, RepoInfo } from '../host/contract.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
-import { keys, queryClient, resetRepoScopedCache } from './lib/data/query-keys.js';
+import {
+  keys,
+  queryClient,
+  resetRepoScopedCache,
+} from './lib/data/query-keys.js';
 import { useRepoGate } from './lib/data/queries.js';
 import { errorMessage } from './lib/utils.js';
 import { RepoOpen } from './screens/RepoOpen.js';
 import { Workspace } from './screens/Workspace.js';
+import { TabsProvider } from './lib/tabs/tabs.js';
+import { useRepoFollowsTabs } from './lib/tabs/use-repo-follows-tabs.js';
 
 declare global {
   interface Window {
@@ -20,7 +26,12 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Gate />
+        {/* Above the gate on purpose: the tab strip spans repositories,
+            so switching repos must not unmount the tabs of the one being
+            left — their agents keep running and stay in the strip. */}
+        <TabsProvider>
+          <Gate />
+        </TabsProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
@@ -40,15 +51,27 @@ function Gate() {
     [qc]
   );
 
-  const openRepo = useCallback(
-    (cwd: string) => {
-      window.kirby
-        .openRepo(cwd)
-        .then(adoptRepo)
-        .catch((err: unknown) => toast.error(errorMessage(err)));
+  /** Open a repository in place, reporting whether it worked. */
+  const openRepoAsync = useCallback(
+    async (cwd: string): Promise<boolean> => {
+      try {
+        adoptRepo(await window.kirby.openRepo(cwd));
+        return true;
+      } catch (err: unknown) {
+        toast.error(errorMessage(err));
+        return false;
+      }
     },
     [adoptRepo]
   );
+
+  const openRepo = useCallback(
+    (cwd: string) => void openRepoAsync(cwd),
+    [openRepoAsync]
+  );
+
+  // A tab from another repository is shown by opening that repository.
+  useRepoFollowsTabs(repo?.cwd ?? null, openRepoAsync);
 
   const pickRepoFolder = useCallback(() => {
     window.kirby

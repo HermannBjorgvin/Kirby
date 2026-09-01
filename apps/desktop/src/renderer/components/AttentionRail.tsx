@@ -11,7 +11,8 @@ import {
   buildAttentionModel,
   type AttentionCategory,
 } from '../lib/sidebar/attention.js';
-import { useTabs } from '../lib/tabs/tabs.js';
+import { useRepo } from '../lib/repo-context.js';
+import { useRepoTabs } from '../lib/tabs/tabs.js';
 import { cn } from '../lib/utils.js';
 import { Button } from './ui/button.js';
 import {
@@ -37,11 +38,19 @@ export function AttentionRail({
   items: SidebarItem[];
   onReveal: () => void;
 }) {
-  const tabs = useTabs();
+  const tabs = useRepoTabs();
+  const { repo } = useRepo();
+  // This repo's open tabs. Another repository's tab may carry the same
+  // item key — counting it would mark a pull request here as already
+  // open when it is not.
   const openKeys = useMemo(
     () =>
-      new Set(tabs.tabs.flatMap((t) => (t.kind === 'item' ? [t.itemKey] : []))),
-    [tabs.tabs]
+      new Set(
+        tabs.tabs.flatMap((t) =>
+          t.kind === 'item' && t.repo === repo.cwd ? [t.itemKey] : []
+        )
+      ),
+    [tabs.tabs, repo.cwd]
   );
   const model = useMemo(
     () => buildAttentionModel(items, openKeys),

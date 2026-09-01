@@ -15,8 +15,12 @@ import type { SidebarItem } from '../../host/contract.js';
 import { useAllBranches } from '../lib/data/queries.js';
 import { useCreateWorktree, useRefreshRemote } from '../lib/data/mutations.js';
 import { useRepo } from '../lib/repo-context.js';
-import { itemBranch, itemKey, itemTitle } from '../lib/sidebar/sidebar-model.js';
-import { useTabs } from '../lib/tabs/tabs.js';
+import {
+  itemBranch,
+  itemKey,
+  itemTitle,
+} from '../lib/sidebar/sidebar-model.js';
+import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
 import {
@@ -50,7 +54,7 @@ export function CommandPalette({
   onSwitchRepo: () => void;
 }) {
   const { repo } = useRepo();
-  const tabs = useTabs();
+  const tabs = useRepoTabs();
   const { resolved, setPreference } = useTheme();
   const branches = useAllBranches(repo.cwd, open);
   const create = useCreateWorktree(repo.cwd);
@@ -94,11 +98,14 @@ export function CommandPalette({
     // before opening it — `tabs.tabs` inside the callbacks below is the
     // array from this render, which does not include the tab we are
     // about to add.
-    const tabId = `item:${key}`;
+    const tabId = itemTabId(repo.cwd, key);
     const wasOpen =
       existing != null ||
       tabs.tabs.some(
-        (t) => t.kind === 'item' && (t.itemKey === key || t.id === tabId)
+        (t) =>
+          t.kind === 'item' &&
+          t.repo === repo.cwd &&
+          (t.itemKey === key || t.id === tabId)
       );
     tabs.openItem(key);
     create.mutate(branch, {

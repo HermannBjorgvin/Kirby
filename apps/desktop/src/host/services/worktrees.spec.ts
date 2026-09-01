@@ -29,9 +29,16 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('@kirby/core', () => ({
-  killSession: (name: string) => calls.log.push(`kill:${name}`),
+  // Kept, and asserted never to be reached: this is the registry keyed
+  // by the bare branch name, so it answers for whichever repository
+  // launched the agent — including one that is not open.
+  killSession: (name: string) => calls.log.push(`unguarded-kill:${name}`),
   killPersistedTmuxSession: (name: string) =>
     calls.log.push(`kill-tmux:${name}`),
+}));
+
+vi.mock('./sessions.js', () => ({
+  killOwnSession: (name: string) => calls.log.push(`kill:${name}`),
 }));
 
 vi.mock('@kirby/worktree-manager', () => ({

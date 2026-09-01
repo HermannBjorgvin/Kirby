@@ -13,7 +13,7 @@ import {
   itemKey,
   type SectionKey,
 } from '../../lib/sidebar/sidebar-model.js';
-import { useTabs } from '../../lib/tabs/tabs.js';
+import { useRepoTabs } from '../../lib/tabs/tabs.js';
 import { basename, cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -45,16 +45,19 @@ export function Sidebar({
   onCollapse: () => void;
 }) {
   const { repo } = useRepo();
-  const tabs = useTabs();
+  const tabs = useRepoTabs();
   const refresh = useRefreshRemote(repo.cwd);
   const sections = groupSections(items);
   const [collapsed, setCollapsed] = useState<
     Partial<Record<SectionKey, boolean>>
   >({});
 
+  // Only this repository's active tab highlights a row here. Another
+  // repo's tab can be the active one (the strip spans repos), and its
+  // key would light up a same-named row that has nothing to do with it.
   const activeItemKey = (() => {
     const t = tabs.tabs.find((x) => x.id === tabs.activeId);
-    return t?.kind === 'item' ? t.itemKey : null;
+    return t?.kind === 'item' && t.repo === repo.cwd ? t.itemKey : null;
   })();
 
   return (

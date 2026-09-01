@@ -123,6 +123,34 @@ function ownSessionNames(): string[] {
     .map(([name]) => name);
 }
 
+/**
+ * Whether a live session under `name` belongs to the open repository.
+ *
+ * The PTY registry is keyed by the bare branch name, so "is anything
+ * running called `main`?" is the wrong question for anything user
+ * facing — two repos with a `main` share the answer. Callers deciding
+ * what to show, or what to stop, have to ask this instead.
+ */
+export function isOwnSessionAlive(name: string): boolean {
+  return isSessionAlive(name) && ownSession(name) !== undefined;
+}
+
+/**
+ * Stop `name`, unless it belongs to another repository — in which case
+ * this repo has no agent under that name to stop (the guard in
+ * `doLaunchAgent` makes a second one impossible), and killing it would
+ * reach into the other repo's.
+ *
+ * Distinct from `killSession`, which throws: that one answers a user
+ * pointing at a specific agent, where silence would be a lie. This one
+ * is housekeeping inside a larger operation that is legitimate either
+ * way, so it skips rather than aborting it.
+ */
+export function killOwnSession(name: string): void {
+  if (known.has(name) && !ownSession(name)) return;
+  killSessionEntry(name);
+}
+
 /** Thrown when a session name is live but owned by another repository —
  *  acting on it would reach into that repo's agent. */
 function foreignSessionError(name: string): Error {

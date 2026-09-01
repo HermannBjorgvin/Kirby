@@ -13,7 +13,11 @@ import {
 import { useSessionActivity } from '../data/queries.js';
 import { useKillSession } from '../data/mutations.js';
 import { useRepo } from '../repo-context.js';
-import { itemBranch, itemKey, itemSessionName } from '../sidebar/sidebar-model.js';
+import {
+  itemBranch,
+  itemKey,
+  itemSessionName,
+} from '../sidebar/sidebar-model.js';
 import { useTabs, type Tab } from './tabs.js';
 import { errorMessage } from '../utils.js';
 
@@ -54,6 +58,14 @@ export function useCloseTabs(items: SidebarItem[]): {
       const found = new Map<string, string>();
       for (const tab of closing) {
         if (tab.kind !== 'item') continue;
+        // Only this repository's tabs. `items` describes the open repo,
+        // and two repos routinely share a branch name — matching a
+        // foreign tab against them would kill the wrong agent, or ask
+        // the user to confirm stopping one that is not closing. A
+        // foreign tab's agent is simply left running: the host refuses
+        // to touch another repo's session anyway, and its row is still
+        // there when that repo is opened again.
+        if (tab.repo !== repo.cwd) continue;
         // Fall back to the tab's stamped branch when its key doesn't
         // resolve (an item re-keys when a PR appears on its branch).
         // Missing the item here would close the tab without killing or
@@ -71,7 +83,7 @@ export function useCloseTabs(items: SidebarItem[]): {
       }
       return [...found].map(([name, branch]) => ({ name, branch }));
     },
-    [items]
+    [items, repo.cwd]
   );
 
   const killNames = useCallback(
@@ -110,9 +122,9 @@ export function useCloseTabs(items: SidebarItem[]): {
     (id: string) => {
       const tab = tabs.tabs.find((t) => t.id === id);
       if (!tab) return;
-      requestClose([tab], () => tabs.close(id));
+      requestClose([tab], () => tabs.close(id, repo.cwd));
     },
-    [tabs, requestClose]
+    [tabs, requestClose, repo.cwd]
   );
   const closeOthers = useCallback(
     (id: string) => {

@@ -1,16 +1,29 @@
 import { describe, expect, it } from 'vitest';
+import { autoOpenKey, itemTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
+  activeTabRepo,
   reduce,
   type ItemEntry,
   type TabsState,
 } from './tabs-model.js';
 
-const open = (state: TabsState, itemKey: string, preview = false) =>
-  reduce(state, { type: 'open-item', itemKey, preview });
+/** The repository every case below is about unless it says otherwise. */
+const REPO = '/repos/alpha';
+const OTHER = '/repos/beta';
 
-const sync = (state: TabsState, entries: ItemEntry[]) =>
-  reduce(state, { type: 'sync-items', entries });
+/** The id the strip gives `itemKey` in `repo`. */
+const id = (itemKey: string, repo = REPO) => itemTabId(repo, itemKey);
+
+const open = (
+  state: TabsState,
+  itemKey: string,
+  preview = false,
+  repo = REPO
+) => reduce(state, { type: 'open-item', repo, itemKey, preview });
+
+const sync = (state: TabsState, entries: ItemEntry[], repo = REPO) =>
+  reduce(state, { type: 'sync-items', repo, entries });
 
 const empty: TabsState = EMPTY_TABS;
 
@@ -22,8 +35,8 @@ describe('sync-items', () => {
     const tab = s.tabs[0];
     expect(tab.kind === 'item' && tab.itemKey).toBe('pr:42');
     // Original id survives so the mounted pane doesn't remount.
-    expect(tab.id).toBe('item:branch:feat-x');
-    expect(s.activeId).toBe('item:branch:feat-x');
+    expect(tab.id).toBe(id('branch:feat-x'));
+    expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
   it('re-keys back when the PR closes, via the stamped branch', () => {
@@ -47,7 +60,12 @@ describe('sync-items', () => {
 
   it('a pinned duplicate pins the surviving preview tab', () => {
     let s = open(empty, 'branch:feat-x', true); // preview
-    s = reduce(s, { type: 'open-item', itemKey: 'pr:42', preview: false });
+    s = reduce(s, {
+      type: 'open-item',
+      repo: REPO,
+      itemKey: 'pr:42',
+      preview: false,
+    });
     s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x' }]);
     expect(s.tabs).toHaveLength(1);
     const tab = s.tabs[0];
@@ -99,9 +117,9 @@ describe('sync-items opens a tab per running agent', () => {
   it('opens a pinned tab for an agent it has not seen before', () => {
     const s = sync(empty, [live]);
     expect(s.tabs).toHaveLength(1);
-    expect(s.tabs[0].id).toBe('item:branch:feat-x');
+    expect(s.tabs[0].id).toBe(id('branch:feat-x'));
     expect(s.tabs[0].preview).toBe(false);
-    expect(s.activeId).toBe('item:branch:feat-x');
+    expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
   it('leaves an idle worktree alone even though it has a session name', () => {
@@ -113,7 +131,7 @@ describe('sync-items opens a tab per running agent', () => {
 
   it('does not reopen a tab the user closed while the agent runs', () => {
     let s = sync(empty, [live]);
-    s = reduce(s, { type: 'close', id: 'item:branch:feat-x' });
+    s = reduce(s, { type: 'close', id: id('branch:feat-x') });
     expect(s.tabs).toEqual([]);
     // The sidebar keeps reporting the agent on every poll.
     s = sync(s, [live]);
@@ -132,7 +150,7 @@ describe('sync-items opens a tab per running agent', () => {
     let s = open(empty, 'branch:feat-x');
     s = open(s, 'branch:other');
     s = sync(s, [live, { itemKey: 'branch:other', branch: 'other' }]);
-    expect(s.activeId).toBe('item:branch:other');
+    expect(s.activeId).toBe(id('branch:other'));
   });
 
   it('reopens once the agent stops and a new one starts', () => {
@@ -146,18 +164,18 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.tabs).toEqual([]);
     s = sync(s, [{ ...live, sessionName: 'kirby-feat-x-2' }]);
     expect(s.tabs).toHaveLength(1);
-    expect(s.activeId).toBe('item:branch:feat-x');
+    expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
   it('does not steal activation from the tab the user is looking at', () => {
     let s = open(empty, 'branch:other');
     s = sync(s, [{ itemKey: 'branch:other', branch: 'other' }, live]);
     // The agent's tab opened…
-    expect(s.tabs.map((t) => t.id)).toContain('item:branch:feat-x');
-    s = reduce(s, { type: 'activate', id: 'item:branch:other' });
+    expect(s.tabs.map((t) => t.id)).toContain(id('branch:feat-x'));
+    s = reduce(s, { type: 'activate', id: id('branch:other') });
     // …and does not grab focus back on the next poll.
     s = sync(s, [{ itemKey: 'branch:other', branch: 'other' }, live]);
-    expect(s.activeId).toBe('item:branch:other');
+    expect(s.activeId).toBe(id('branch:other'));
   });
 
   it('keeps one tab when the running item is re-keyed by a PR', () => {
@@ -166,7 +184,7 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.tabs).toHaveLength(1);
     expect(s.tabs[0].kind === 'item' && s.tabs[0].itemKey).toBe('pr:42');
     // The id is what keeps the agent's terminal pane mounted.
-    expect(s.tabs[0].id).toBe('item:branch:feat-x');
+    expect(s.tabs[0].id).toBe(id('branch:feat-x'));
   });
 
   it('does not follow a collapsed duplicate when its agent starts', () => {
@@ -188,21 +206,21 @@ describe('sync-items opens a tab per running agent', () => {
     let s = open(empty, 'branch:c');
     s = open(s, 'branch:x');
     s = open(s, 'pr:1');
-    s = reduce(s, { type: 'activate', id: 'item:branch:c' });
-    expect(s.activeId).toBe('item:branch:c');
+    s = reduce(s, { type: 'activate', id: id('branch:c') });
+    expect(s.activeId).toBe(id('branch:c'));
 
     s = sync(s, entries);
 
     // The duplicate collapsed, as it always did…
-    expect(s.tabs.map((t) => t.id)).toEqual(['item:branch:c', 'item:branch:x']);
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:c'), id('branch:x')]);
     // …and the session counts as auto-opened, so a later poll can't
     // retry the move.
-    expect(s.autoOpened).toContain('kirby-x');
+    expect(s.autoOpened).toContain(autoOpenKey(REPO, 'kirby-x'));
     // …but the user is still looking at what they were looking at.
-    expect(s.activeId).toBe('item:branch:c');
+    expect(s.activeId).toBe(id('branch:c'));
 
     s = sync(s, entries);
-    expect(s.activeId).toBe('item:branch:c');
+    expect(s.activeId).toBe(id('branch:c'));
   });
 });
 
@@ -263,7 +281,7 @@ describe('open-item after re-key', () => {
     s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x' }]);
     s = open(s, 'pr:42');
     expect(s.tabs).toHaveLength(1);
-    expect(s.activeId).toBe('item:branch:feat-x');
+    expect(s.activeId).toBe(id('branch:feat-x'));
   });
 
   it('reuses the re-keyed tab when its original key is opened again', () => {
@@ -274,23 +292,26 @@ describe('open-item after re-key', () => {
     let state: TabsState = EMPTY_TABS;
     state = reduce(state, {
       type: 'open-item',
+      repo: REPO,
       itemKey: 'branch:a',
       preview: false,
     });
     state = reduce(state, {
       type: 'sync-items',
+      repo: REPO,
       entries: [{ itemKey: 'pr:1', branch: 'a' }],
     });
     state = reduce(state, {
       type: 'open-item',
+      repo: REPO,
       itemKey: 'branch:a',
       preview: false,
     });
 
     expect(state.tabs).toHaveLength(1);
-    expect(state.tabs[0].id).toBe('item:branch:a');
+    expect(state.tabs[0].id).toBe(id('branch:a'));
     expect(state.tabs[0].kind === 'item' && state.tabs[0].itemKey).toBe('pr:1');
-    expect(state.activeId).toBe('item:branch:a');
+    expect(state.activeId).toBe(id('branch:a'));
   });
 
   describe('reordering by drag', () => {
@@ -299,6 +320,7 @@ describe('open-item after re-key', () => {
       for (const key of ['a', 'b', 'c']) {
         state = reduce(state, {
           type: 'open-item',
+          repo: REPO,
           itemKey: key,
           preview: false,
         });
@@ -311,8 +333,8 @@ describe('open-item after re-key', () => {
     it('drops a tab after its target', () => {
       const state = reduce(three(), {
         type: 'move',
-        id: 'item:a',
-        targetId: 'item:c',
+        id: id('a'),
+        targetId: id('c'),
         side: 'after',
       });
       expect(order(state)).toEqual(['b', 'c', 'a']);
@@ -321,8 +343,8 @@ describe('open-item after re-key', () => {
     it('drops a tab before its target', () => {
       const state = reduce(three(), {
         type: 'move',
-        id: 'item:c',
-        targetId: 'item:a',
+        id: id('c'),
+        targetId: id('a'),
         side: 'before',
       });
       expect(order(state)).toEqual(['c', 'a', 'b']);
@@ -335,8 +357,8 @@ describe('open-item after re-key', () => {
       // lands after its target instead of before it.
       const state = reduce(three(), {
         type: 'move',
-        id: 'item:a',
-        targetId: 'item:c',
+        id: id('a'),
+        targetId: id('c'),
         side: 'before',
       });
       expect(order(state)).toEqual(['b', 'a', 'c']);
@@ -347,8 +369,8 @@ describe('open-item after re-key', () => {
       // which is exactly where an off-by-one would land.
       const state = reduce(three(), {
         type: 'move',
-        id: 'item:b',
-        targetId: 'item:c',
+        id: id('b'),
+        targetId: id('c'),
         side: 'after',
       });
       expect(order(state)).toEqual(['a', 'c', 'b']);
@@ -358,8 +380,8 @@ describe('open-item after re-key', () => {
       const before = three();
       const after = reduce(before, {
         type: 'move',
-        id: 'item:b',
-        targetId: 'item:b',
+        id: id('b'),
+        targetId: id('b'),
         side: 'after',
       });
       expect(after).toBe(before);
@@ -370,8 +392,8 @@ describe('open-item after re-key', () => {
       const before = three();
       const after = reduce(before, {
         type: 'move',
-        id: 'item:a',
-        targetId: 'item:missing',
+        id: id('a'),
+        targetId: id('missing'),
         side: 'after',
       });
       expect(order(after)).toEqual(['a', 'b', 'c']);
@@ -382,11 +404,247 @@ describe('open-item after re-key', () => {
       const after = reduce(before, {
         type: 'move',
         id: before.activeId as string,
-        targetId: 'item:a',
+        targetId: id('a'),
         side: 'before',
       });
       expect(after.activeId).toBe(before.activeId);
       expect(after.tabs.some((t) => t.id === after.activeId)).toBe(true);
     });
+  });
+});
+
+describe('tabs across repositories', () => {
+  const live: ItemEntry = {
+    itemKey: 'branch:main',
+    branch: 'main',
+    sessionName: 'main',
+    running: true,
+  };
+
+  it('keeps two repos on the same branch name as two tabs', () => {
+    // Both repositories have a `main`, so both sidebars produce
+    // `branch:main`. One tab each, or the second repo's click lands on
+    // the first repo's pane.
+    let s = open(empty, 'branch:main');
+    s = open(s, 'branch:main', false, OTHER);
+    expect(s.tabs).toHaveLength(2);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:main'),
+      id('branch:main', OTHER),
+    ]);
+    expect(s.activeId).toBe(id('branch:main', OTHER));
+  });
+
+  it('re-opening a foreign item activates its own tab, not the local one', () => {
+    let s = open(empty, 'branch:main');
+    s = open(s, 'branch:main', false, OTHER);
+    s = open(s, 'branch:main');
+    expect(s.tabs).toHaveLength(2);
+    expect(s.activeId).toBe(id('branch:main'));
+  });
+
+  it('syncing one repo leaves the other repo’s tabs untouched', () => {
+    let s = open(empty, 'branch:main', false, OTHER);
+    s = open(s, 'branch:feat-x');
+    // The other repo has no `feat-x`, and this repo's sidebar says
+    // nothing about `main` over there.
+    const before = s.tabs.find((t) => t.id === id('branch:main', OTHER));
+    s = sync(s, [{ itemKey: 'pr:7', branch: 'feat-x' }]);
+    expect(s.tabs.find((t) => t.id === id('branch:main', OTHER))).toBe(before);
+  });
+
+  it('never follows a foreign tab onto a same-named local branch', () => {
+    // The regression this guards: `branch:main` in the other repo is a
+    // stale key here, and the branch stamp resolves to *this* repo's
+    // pull request. Re-keying it would point the tab at another
+    // repository's PR, and collapse it into the local tab.
+    let s = open(empty, 'branch:main', false, OTHER);
+    s = sync(s, [{ itemKey: 'pr:7', branch: 'main' }]);
+    const foreign = s.tabs.find((t) => t.id === id('branch:main', OTHER));
+    expect(foreign?.kind === 'item' && foreign.itemKey).toBe('branch:main');
+    expect(foreign?.kind === 'item' && foreign.repo).toBe(OTHER);
+  });
+
+  it('auto-opens the same session name once per repository', () => {
+    // The PTY registry keys sessions by bare branch name, so both
+    // repos' agents are called `main`. One tab each.
+    let s = sync(empty, [live]);
+    s = sync(s, [live], OTHER);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:main'),
+      id('branch:main', OTHER),
+    ]);
+    expect(s.autoOpened).toEqual([
+      autoOpenKey(REPO, 'main'),
+      autoOpenKey(OTHER, 'main'),
+    ]);
+  });
+
+  it('does not reopen a closed foreign tab when its repo is opened again', () => {
+    let s = sync(empty, [live], OTHER);
+    s = reduce(s, { type: 'close', id: id('branch:main', OTHER) });
+    s = sync(s, [live], OTHER);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('does not pin the other repo’s preview tab on a live local agent', () => {
+    let s = open(empty, 'branch:main', true, OTHER);
+    s = sync(s, [live]);
+    const foreign = s.tabs.find((t) => t.id === id('branch:main', OTHER));
+    expect(foreign?.preview).toBe(true);
+  });
+
+  it('keeps a preview tab per repository', () => {
+    // Previewing here must not swallow a tab the user can no longer
+    // see — preview replacement is scoped to the repo it happens in.
+    let s = open(empty, 'branch:main', true, OTHER);
+    s = open(s, 'branch:feat-x', true);
+    s = open(s, 'branch:feat-y', true);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:main', OTHER),
+      id('branch:feat-y'),
+    ]);
+  });
+
+  it('closes, closes-others and closes-all across the whole strip', () => {
+    let s = open(empty, 'branch:main', false, OTHER);
+    s = open(s, 'branch:feat-x');
+    s = reduce(s, { type: 'close-others', id: id('branch:main', OTHER) });
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:main', OTHER)]);
+    expect(s.activeId).toBe(id('branch:main', OTHER));
+
+    s = reduce(s, { type: 'close', id: id('branch:main', OTHER) });
+    expect(s.tabs).toEqual([]);
+  });
+});
+
+describe('activeTabRepo', () => {
+  it('names the repository of the active tab', () => {
+    const s = open(open(empty, 'branch:a'), 'branch:b', false, OTHER);
+    expect(activeTabRepo(s)).toBe(OTHER);
+  });
+
+  it('is null for settings, which belongs to no repository', () => {
+    const s = reduce(open(empty, 'branch:a'), { type: 'open-settings' });
+    expect(activeTabRepo(s)).toBeNull();
+  });
+
+  it('is null when the strip is empty', () => {
+    expect(activeTabRepo(empty)).toBeNull();
+  });
+});
+
+describe('repo-opened', () => {
+  const openRepo = (state: TabsState, repo: string) =>
+    reduce(state, { type: 'repo-opened', repo });
+
+  it('steps off the previous repo’s tab and onto one of its own', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = open(s, 'branch:main', false, OTHER);
+    // Back to the first repo: its own tab comes forward.
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:feat-x'));
+  });
+
+  it('leaves nothing active when the repo has no tabs of its own', () => {
+    // The editor shows its empty state; the other repo's tabs stay on
+    // the strip. Leaving the foreign tab active would open the
+    // workspace you asked for onto a pane about the one you left.
+    let s = open(empty, 'branch:main', false, OTHER);
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBeNull();
+    expect(s.tabs).toHaveLength(1);
+  });
+
+  it('returns to the tab the repo was left on, not its rightmost', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = reduce(s, { type: 'activate', id: id('branch:one') });
+    s = open(s, 'branch:main', false, OTHER);
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:one'));
+  });
+
+  it('falls back to the rightmost tab when the remembered one is gone', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = open(s, 'branch:main', false, OTHER);
+    s = reduce(s, { type: 'close', id: id('branch:two') });
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:one'));
+  });
+
+  it('does not displace the settings tab, which is nobody’s', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = reduce(s, { type: 'open-settings' });
+    s = openRepo(s, OTHER);
+    expect(s.activeId).toBe('settings');
+  });
+
+  it('is a no-op when the active tab already belongs to the repo', () => {
+    const s = open(empty, 'branch:feat-x');
+    expect(openRepo(s, REPO)).toBe(s);
+  });
+});
+
+describe('closing a tab keeps focus inside the repo in view', () => {
+  const closeIn = (state: TabsState, tabId: string, repo: string) =>
+    reduce(state, { type: 'close', id: tabId, repo });
+
+  /** alpha's tab sandwiched between two of the other repo's. */
+  const sandwich = () => {
+    let s = open(empty, 'branch:y1', false, OTHER);
+    s = open(s, 'branch:x');
+    s = open(s, 'branch:y2', false, OTHER);
+    return s;
+  };
+
+  it('skips past a foreign neighbour to this repo’s nearest tab', () => {
+    // Focus is what the workspace follows, so handing it to alpha here
+    // would switch the sidebar, status bar and every query because the
+    // user closed a tab — while OTHER still has one open.
+    const s = closeIn(sandwich(), id('branch:y2', OTHER), OTHER);
+    expect(s.activeId).toBe(id('branch:y1', OTHER));
+  });
+
+  it('leaves nothing active when the repo in view has no tab left', () => {
+    let s = open(empty, 'branch:x');
+    s = open(s, 'branch:y', false, OTHER);
+    s = closeIn(s, id('branch:y', OTHER), OTHER);
+    expect(s.activeId).toBeNull();
+    // …and the other repository's tab is still on the strip.
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:x')]);
+  });
+
+  it('still prefers the tab that slid into place when it is not foreign', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = open(s, 'branch:three');
+    s = closeIn(s, id('branch:two'), REPO);
+    expect(s.activeId).toBe(id('branch:three'));
+  });
+
+  it('keeps the settings tab eligible — it belongs to no repository', () => {
+    let s = open(empty, 'branch:y', false, OTHER);
+    s = reduce(s, { type: 'open-settings' });
+    s = open(s, 'branch:x');
+    s = closeIn(s, id('branch:x'), REPO);
+    expect(s.activeId).toBe('settings');
+  });
+
+  it('closes an inactive tab without moving focus at all', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = closeIn(s, id('branch:one'), REPO);
+    expect(s.activeId).toBe(id('branch:two'));
+  });
+
+  it('falls back to the plain neighbour when no repo is named', () => {
+    // The action's `repo` is optional; without it the old rule stands.
+    const s = reduce(sandwich(), {
+      type: 'close',
+      id: id('branch:y2', OTHER),
+    });
+    expect(s.activeId).toBe(id('branch:x'));
   });
 });

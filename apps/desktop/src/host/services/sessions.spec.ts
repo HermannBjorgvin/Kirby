@@ -254,6 +254,58 @@ describe('another repository owns the name', () => {
     expect(getSessionBuffer('shared').data).toBe('repo-a secrets');
   });
 
+  it('reports it as not alive here, so this repo does not show it running', () => {
+    // The sidebar asks this per worktree row. `isSessionAlive` alone is
+    // answered from a registry keyed by the bare branch name, so the
+    // other repo's agent would make this repo's same-named row look
+    // live — and `sync-items` would auto-open a tab onto an agent this
+    // repo cannot reach, kill or relaunch.
+    return launchInAThenSwitch().then(() => {
+      expect(sessions.isOwnSessionAlive('shared')).toBe(false);
+      state.cwd = '/repo-a';
+      expect(sessions.isOwnSessionAlive('shared')).toBe(true);
+    });
+  });
+
+  it('skips it during worktree removal instead of killing it', async () => {
+    await launchInAThenSwitch();
+    // Housekeeping inside a legitimate operation: removing this repo's
+    // `shared` worktree must not reach the other repo's agent, and must
+    // not abort the removal either.
+    expect(() => sessions.killOwnSession('shared')).not.toThrow();
+    expect(state.killed).toEqual([]);
+    state.cwd = '/repo-a';
+    sessions.killOwnSession('shared');
+    expect(state.killed).toEqual(['shared']);
+  });
+
+  it('treats a discovered session as the repo that discovered it', async () => {
+    // Discovery attaches by calling `launchAgent` with the checkout git
+    // reported, so a session it picks up is recorded like any other —
+    // under whichever repo was open at the time. The ownership guards
+    // read that record, so the two have to agree: a worktree found in
+    // this repo counts as ours, and one found over there does not
+    // become ours by sharing a branch name.
+    state.cwd = '/repo-a';
+    await launchAgent(
+      { branch: 'shared', intent: 'continue-or-blank' },
+      '/repo-a/elsewhere/shared'
+    );
+    expect(sessions.isOwnSessionAlive('shared')).toBe(true);
+
+    state.cwd = '/repo-b';
+    expect(sessions.isOwnSessionAlive('shared')).toBe(false);
+    // …and discovery over here is refused rather than adopting it.
+    await expect(
+      launchAgent(
+        { branch: 'shared', intent: 'continue-or-blank' },
+        '/repo-b/elsewhere/shared'
+      )
+    ).rejects.toThrow('already running for another repository');
+    sessions.killOwnSession('shared');
+    expect(state.killed).toEqual([]);
+  });
+
   it('leaves a name this host never launched to the registry', () => {
     // No entry means no ownership claim — killing is a no-op there
     // rather than an error, matching the registry's own behaviour.
