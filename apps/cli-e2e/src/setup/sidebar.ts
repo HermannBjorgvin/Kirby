@@ -14,12 +14,17 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// The title follows its icon directly (only whitespace between them).
+// Anything looser bridges into the main pane, which shares the terminal
+// row: a PR detail pane repeats the PR title to the right of whichever
+// sidebar entry sits on that row, and `[◎].*Add color support` would
+// match that entry too.
 export function selectedItem(title: string): RegExp {
-  return new RegExp(`[${SELECTED}].*${escapeRegExp(title)}`);
+  return new RegExp(`[${SELECTED}]\\s*${escapeRegExp(title)}`);
 }
 
 export function anyItem(title: string): RegExp {
-  return new RegExp(`[${ANY}].*${escapeRegExp(title)}`);
+  return new RegExp(`[${ANY}]\\s*${escapeRegExp(title)}`);
 }
 
 /** A row with a live agent behind it, selected or not. */
@@ -29,9 +34,9 @@ export function runningItem(title: string): RegExp {
 
 // Scope the icon-then-title regex to a single .term-row. Without this,
 // Playwright's getByText(/regex/) matches against any element's combined
-// text, so `.*` bridges across rows — e.g. `/[◉◎].*Add color support/`
+// text, so the pattern bridges across rows — e.g. `/[◉◎]\s*Add color/`
 // would spuriously match when `◉` sits next to a DIFFERENT session that
-// happens to appear before "Add color support" in the grid.
+// happens to appear before "Add color" in the grid.
 export function sidebarLocator(page: Page, title: string) {
   return {
     selected: (): Locator =>
