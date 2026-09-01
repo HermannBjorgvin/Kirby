@@ -1,7 +1,11 @@
-import { readFile, stat } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveRef } from './diff-fetcher.js';
+import { completePatch, placeholderPatch } from './diff-patch.js';
 import { gitLine, runGit } from './git-run.js';
+import { BINARY_NOTE, tooLargeNote, untrackedDiff } from './untracked-diff.js';
+
+export { untrackedFilePatch, BINARY_NOTE } from './untracked-diff.js';
 
 /**
  * What an agent has done to a worktree so far, committed or not.
@@ -11,25 +15,18 @@ import { gitLine, runGit } from './git-run.js';
  * everything it has written since its last commit — usually everything
  * it has written at all — is invisible there. This runs inside the
  * worktree and diffs against the merge base instead, so the index and
- * the working tree are both included.
- *
- * Untracked files are assembled by hand rather than asked of git.
- * `git diff` cannot see them without `git add -N`, and writing to the
- * index of a worktree an agent is actively using is not something a
- * viewer should do — it changes what the agent's own `git status` and
- * `git commit` see. Files git ignores are never among them: the listing
- * is `--exclude-standard`, so a `node_modules` or a build directory
- * cannot arrive here however large it is.
+ * the working tree are both included, with untracked files assembled by
+ * hand (`untracked-diff.ts`).
  *
  * The work is bounded twice over, because whole-file context
  * (`-U99999`) makes a patch as large as the files it touches and one
  * generated file used to be enough to fail the whole tab with
  * "stdout maxBuffer length exceeded":
  *
- *   • Per file — anything binary, or bigger than `maxFileBytes`, is
- *     replaced by a one-line placeholder saying so. The rest of the
- *     diff renders normally, which is the point: one unrepresentable
- *     file must not cost the user the other forty.
+ *   • Per file — anything binary, or big enough that its patch would
+ *     dominate the diff, is replaced by a one-line placeholder saying
+ *     so. The rest of the diff renders normally, which is the point:
+ *     one unrepresentable file must not cost the user the other forty.
  *   • Overall — every git call streams through `runGit` with an
  *     explicit ceiling instead of `execFile`'s fixed buffer, so hitting
  *     it truncates the patch at a file boundary and says so, rather
@@ -37,14 +34,21 @@ import { gitLine, runGit } from './git-run.js';
  */
 
 export interface WorktreeDiffLimits {
-  /** A file larger than this is summarised rather than diffed. */
+  /** A file on disk larger than this is summarised rather than diffed. */
   maxFileBytes: number;
+  /**
+   * Churn past which a file is summarised instead. The size bound above
+   * cannot see a deletion — there is nothing left on disk to measure —
+   * and with `-U99999` a deleted file's patch is the whole file.
+   */
+  maxFileLines: number;
   /** Ceiling on the whole patch. Generous: this is the backstop. */
   maxTotalBytes: number;
 }
 
 export const DEFAULT_WORKTREE_DIFF_LIMITS: WorktreeDiffLimits = {
   maxFileBytes: 2 * 1024 * 1024,
+  maxFileLines: 50_000,
   maxTotalBytes: 128 * 1024 * 1024,
 };
 
@@ -58,33 +62,12 @@ export const DEFAULT_WORKTREE_DIFF_LIMITS: WorktreeDiffLimits = {
  */
 const MAX_EXCLUDE_PATHSPECS = 500;
 
-function megabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+/** Listing bytes, not file bytes: enough for ~half a million paths. */
+const MAX_LISTING_BYTES = 8 * 1024 * 1024;
 
-/**
- * A file the viewer is told about but cannot show, as a patch.
- *
- * It has to *be* a patch: the tree, the file list and the counts are all
- * built from the parsed diff, so a file omitted outright simply is not
- * there, and the user has no way to tell "unchanged" from "too big to
- * render".
- */
-export function placeholderPatch(path: string, note: string): string {
-  return (
-    `diff --git a/${path} b/${path}\n` +
-    `--- a/${path}\n` +
-    `+++ b/${path}\n` +
-    `@@ -0,0 +1,1 @@\n` +
-    `+${note}\n`
-  );
+export function tooManyLinesNote(lines: number): string {
+  return `file too large to diff, ${lines.toLocaleString('en-US')} changed lines`;
 }
-
-export function tooLargeNote(bytes: number): string {
-  return `file too large to diff, ${megabytes(bytes)}`;
-}
-
-export const BINARY_NOTE = 'binary file, not diffed';
 
 async function mergeBase(
   worktreePath: string,
@@ -94,19 +77,25 @@ async function mergeBase(
   return gitLine(['merge-base', targetRef, 'HEAD'], { cwd: worktreePath });
 }
 
-interface ChangedFile {
+export interface ChangedFile {
   path: string;
+  /** Where a rename or copy came from; absent otherwise. */
+  oldPath?: string;
   binary: boolean;
+  adds: number;
+  dels: number;
 }
 
 /**
- * Every path the tracked diff would cover, and whether git considers it
- * binary — asked for separately so the decision about what to render can
- * be made *before* the expensive whole-file diff runs.
+ * Every path the tracked diff would cover, with the churn git counted
+ * and whether it calls the file binary — asked for separately so the
+ * decision about what to render can be made *before* the expensive
+ * whole-file diff runs.
  *
- * `--numstat -z` writes `adds\tdels\tpath\0`, with `-` for both counts on
- * a binary file. A rename writes an empty path in that record and
- * follows it with the old and new paths as two more records.
+ * `--numstat -z` writes `adds\tdels\tpath\0`, with `-` for both counts
+ * on a binary file. A rename or copy writes an empty path in that
+ * record and follows it with the old and new paths as two more
+ * records, old first.
  */
 export function parseNumstat(output: string): ChangedFile[] {
   const fields = output.split('\0');
@@ -115,17 +104,24 @@ export function parseNumstat(output: string): ChangedFile[] {
     const parts = fields[i].split('\t');
     if (parts.length < 3) continue;
     const binary = parts[0] === '-' && parts[1] === '-';
+    const adds = binary ? 0 : Number(parts[0]);
+    const dels = binary ? 0 : Number(parts[1]);
     // A path may itself contain a tab, so everything past the two
     // counts is the path — splitting on the first one truncates it, and
     // the exclude pathspec built from it then names a file that does
     // not exist, so the oversized file is diffed after all.
     const path = parts.slice(2).join('\t');
     if (path === '') {
-      // Rename or copy: the destination is the second following record.
-      files.push({ path: fields[i + 2] ?? '', binary });
+      files.push({
+        path: fields[i + 2] ?? '',
+        oldPath: fields[i + 1] ?? '',
+        binary,
+        adds,
+        dels,
+      });
       i += 2;
     } else {
-      files.push({ path, binary });
+      files.push({ path, binary, adds, dels });
     }
   }
   return files.filter((f) => f.path !== '');
@@ -137,24 +133,50 @@ async function changedFiles(
 ): Promise<ChangedFile[]> {
   const { text } = await runGit(['diff', '--numstat', '-z', base], {
     cwd: worktreePath,
-    maxBytes: 8 * 1024 * 1024,
+    maxBytes: MAX_LISTING_BYTES,
   });
   return parseNumstat(text);
 }
 
-/** Size on disk, or null when the path is gone (a deletion, a race). */
+/** Size of the path itself, following no symlink; null when it is gone. */
 async function sizeOf(path: string): Promise<number | null> {
   try {
-    const s = await stat(path);
-    return s.isFile() ? s.size : null;
+    const info = await lstat(path);
+    // A symlink's own size is the length of its target path, which is
+    // also all git renders for it. Following it would size the link as
+    // whatever it points at, somewhere else entirely.
+    return info.isFile() || info.isSymbolicLink() ? info.size : null;
   } catch {
     return null;
   }
 }
 
 interface Skipped {
+  /** The file the placeholder speaks for. */
   path: string;
+  /** Every path that must leave git's output for that to be true. */
+  exclude: string[];
   note: string;
+}
+
+async function skipReason(
+  worktreePath: string,
+  f: ChangedFile,
+  limits: WorktreeDiffLimits
+): Promise<string | null> {
+  if (f.binary) return BINARY_NOTE;
+  // A pure rename or mode change carries no content at all — git emits
+  // a header and stops. Excluding one would be worse than useless:
+  // pathspecs are applied before rename detection, so the surviving
+  // side comes back unpaired, as a whole-file deletion.
+  if (f.adds === 0 && f.dels === 0) return null;
+  const size = await sizeOf(join(worktreePath, f.path));
+  if (size !== null && size > limits.maxFileBytes) return tooLargeNote(size);
+  // Nothing on disk to measure (a deletion), or a file that shrank to
+  // nothing: the churn git counted is what the patch will cost.
+  const churn = f.adds + f.dels;
+  if (churn > limits.maxFileLines) return tooManyLinesNote(churn);
+  return null;
 }
 
 /** Which changed files cannot be rendered, and what to say about them. */
@@ -165,24 +187,15 @@ async function skippedFiles(
 ): Promise<Skipped[]> {
   const decided = await Promise.all(
     files.map(async (f): Promise<Skipped | null> => {
-      if (f.binary) return { path: f.path, note: BINARY_NOTE };
-      const size = await sizeOf(join(worktreePath, f.path));
-      if (size !== null && size > limits.maxFileBytes) {
-        return { path: f.path, note: tooLargeNote(size) };
-      }
-      return null;
+      const note = await skipReason(worktreePath, f, limits);
+      if (note === null) return null;
+      // Both sides of a rename, or git pairs the surviving one with
+      // nothing and renders it whole.
+      const exclude = f.oldPath ? [f.path, f.oldPath] : [f.path];
+      return { path: f.path, exclude, note };
     })
   );
   return decided.filter((s): s is Skipped => s !== null);
-}
-
-/**
- * Cut a patch back to its last complete file, so a truncated read never
- * hands the parser half a hunk (which it would render as real lines).
- */
-export function trimToFileBoundary(patch: string): string {
-  const cut = patch.lastIndexOf('\ndiff --git ');
-  return cut === -1 ? '' : patch.slice(0, cut + 1);
 }
 
 async function trackedDiff(
@@ -191,91 +204,14 @@ async function trackedDiff(
   excluded: readonly Skipped[],
   limits: WorktreeDiffLimits
 ): Promise<string> {
+  const pathspecs = excluded
+    .flatMap((s) => s.exclude)
+    .map((path) => `:(exclude,literal)${path}`);
   const { text, truncated } = await runGit(
-    [
-      'diff',
-      '-U99999',
-      base,
-      '--',
-      ...excluded.map((s) => `:(exclude,literal)${s.path}`),
-    ],
+    ['diff', '-U99999', base, '--', ...pathspecs],
     { cwd: worktreePath, maxBytes: limits.maxTotalBytes }
   );
-  if (!truncated) return text;
-  return (
-    trimToFileBoundary(text) +
-    placeholderPatch(
-      'kirby/diff-truncated',
-      `the diff exceeded ${megabytes(limits.maxTotalBytes)} and was cut short`
-    )
-  );
-}
-
-async function untrackedPaths(worktreePath: string): Promise<string[]> {
-  const { text } = await runGit(
-    ['ls-files', '--others', '--exclude-standard', '-z'],
-    { cwd: worktreePath, maxBytes: 8 * 1024 * 1024 }
-  );
-  return text.split('\0').filter(Boolean);
-}
-
-/**
- * Render one untracked file as an all-additions patch, in the shape
- * `git diff` would have produced had the file been added.
- */
-export function untrackedFilePatch(path: string, content: string): string {
-  const lines = content.split('\n');
-  // A trailing newline splits into a final empty element that is not a
-  // line of the file; without dropping it every new file gains a
-  // phantom last line.
-  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  const header =
-    `diff --git a/${path} b/${path}\n` +
-    `new file mode 100644\n` +
-    `--- /dev/null\n` +
-    `+++ b/${path}\n`;
-  if (lines.length === 0) return header;
-  const body = lines.map((line) => `+${line}`).join('\n');
-  return `${header}@@ -0,0 +1,${lines.length} @@\n${body}\n`;
-}
-
-/** Binary files have no useful patch, and NUL is the cheap tell. */
-function looksBinary(content: string): boolean {
-  return content.includes('\0');
-}
-
-async function untrackedFile(
-  worktreePath: string,
-  path: string,
-  limits: WorktreeDiffLimits
-): Promise<string> {
-  try {
-    const size = await sizeOf(join(worktreePath, path));
-    if (size === null) return '';
-    // Checked before reading: the point of the bound is not to pull a
-    // hundred-megabyte file into memory to discover it is too big.
-    if (size > limits.maxFileBytes) {
-      return placeholderPatch(path, tooLargeNote(size));
-    }
-    const content = await readFile(join(worktreePath, path), 'utf8');
-    if (looksBinary(content)) return placeholderPatch(path, BINARY_NOTE);
-    return untrackedFilePatch(path, content);
-  } catch {
-    // Deleted between listing and reading, or unreadable: the next
-    // poll will show whatever is true then.
-    return '';
-  }
-}
-
-async function untrackedDiff(
-  worktreePath: string,
-  limits: WorktreeDiffLimits
-): Promise<string> {
-  const paths = await untrackedPaths(worktreePath);
-  const patches = await Promise.all(
-    paths.map((path) => untrackedFile(worktreePath, path, limits))
-  );
-  return patches.join('');
+  return completePatch(text, truncated, limits.maxTotalBytes);
 }
 
 /**
@@ -295,11 +231,11 @@ export async function fetchWorktreeDiffText(
   );
   // Only what is actually kept out of the diff may be represented by a
   // placeholder: past the pathspec cap the file is still in git's own
-  // output, and a placeholder as well would make it appear twice.
+  // output, and a placeholder as well would list it twice.
   const excluded = skipped.slice(0, MAX_EXCLUDE_PATHSPECS);
   const [tracked, untracked] = await Promise.all([
     trackedDiff(worktreePath, base, excluded, limits),
-    untrackedDiff(worktreePath, limits),
+    untrackedDiff(worktreePath, limits.maxFileBytes),
   ]);
   const placeholders = excluded
     .map((s) => placeholderPatch(s.path, s.note))

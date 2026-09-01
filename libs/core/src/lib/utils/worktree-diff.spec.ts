@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseUnifiedDiff } from '@kirby/diff';
-import {
-  parseNumstat,
-  placeholderPatch,
-  trimToFileBoundary,
-  untrackedFilePatch,
-} from './worktree-diff.js';
+import { placeholderPatch, trimToFileBoundary } from './diff-patch.js';
+import { untrackedFilePatch } from './untracked-diff.js';
+import { parseNumstat } from './worktree-diff.js';
 
 /**
  * New files an agent has written but not yet added.
@@ -99,28 +96,30 @@ describe('untrackedFilePatch', () => {
 describe('parseNumstat', () => {
   const rec = (...fields: string[]) => fields.map((f) => `${f}\0`).join('');
 
-  it('reads a text file and its path', () => {
+  it('reads a text file, its churn and its path', () => {
     expect(parseNumstat(rec('3\t1\tsrc/app.ts'))).toEqual([
-      { path: 'src/app.ts', binary: false },
+      { path: 'src/app.ts', binary: false, adds: 3, dels: 1 },
     ]);
   });
 
   it('marks a file binary when git declines to count its lines', () => {
     expect(parseNumstat(rec('-\t-\tlogo.png'))).toEqual([
-      { path: 'logo.png', binary: true },
+      { path: 'logo.png', binary: true, adds: 0, dels: 0 },
     ]);
   });
 
-  it('takes the destination of a rename, not the empty path record', () => {
+  it('keeps both sides of a rename, destination first', () => {
     // With -z a rename writes an empty path, then the old and new paths
     // as two further records. Reading it naively yields a file named ''
-    // and swallows the two paths as if they were records of their own.
-    expect(parseNumstat(rec('1\t1\t', 'old.ts', 'new.ts', '2\t0\tafter.ts'))).toEqual(
-      [
-        { path: 'new.ts', binary: false },
-        { path: 'after.ts', binary: false },
-      ]
-    );
+    // and swallows the two paths as if they were records of their own —
+    // and losing the source is what lets an excluded destination leave
+    // its unpaired source behind as a whole-file deletion.
+    expect(
+      parseNumstat(rec('1\t1\t', 'old.ts', 'new.ts', '2\t0\tafter.ts'))
+    ).toEqual([
+      { path: 'new.ts', oldPath: 'old.ts', binary: false, adds: 1, dels: 1 },
+      { path: 'after.ts', binary: false, adds: 2, dels: 0 },
+    ]);
   });
 
   it('keeps a path that contains a tab whole', () => {
@@ -129,7 +128,7 @@ describe('parseNumstat', () => {
     // path, and the exclude pathspec built from it then names a file
     // that does not exist — so the oversized file is diffed after all.
     expect(parseNumstat(rec('1\t0\tweird\tname.txt'))).toEqual([
-      { path: 'weird\tname.txt', binary: false },
+      { path: 'weird\tname.txt', binary: false, adds: 1, dels: 0 },
     ]);
   });
 

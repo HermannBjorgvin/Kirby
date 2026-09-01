@@ -52,6 +52,21 @@ describe('runGit', () => {
     expect(text.startsWith('yyy')).toBe(true);
   });
 
+  it('does not call output that lands exactly on the ceiling truncated', async () => {
+    // Off by one here is not cosmetic: the caller answers `truncated`
+    // by trimming its last complete file away and appending a note
+    // saying the diff was cut short, for a diff that was whole.
+    const whole = await runGit(['show', 'HEAD:file.txt'], {
+      cwd: repo,
+      maxBytes: 1024 * 1024,
+    });
+    const exact = await runGit(['show', 'HEAD:file.txt'], {
+      cwd: repo,
+      maxBytes: Buffer.byteLength(whole.text),
+    });
+    expect(exact).toEqual({ text: whole.text, truncated: false });
+  });
+
   it('rejects with git’s own complaint when the command really fails', async () => {
     await expect(
       runGit(['rev-parse', '--verify', 'no-such-ref'], {

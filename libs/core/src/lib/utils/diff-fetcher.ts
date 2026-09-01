@@ -1,3 +1,4 @@
+import { completePatch } from './diff-patch.js';
 import { gitLine, runGit } from './git-run.js';
 
 /**
@@ -12,12 +13,16 @@ import { gitLine, runGit } from './git-run.js';
  * read when the buffer is exceeded, which turns a big pull request into
  * "stdout maxBuffer length exceeded" and an empty tab.
  *
- * Unlike the worktree diff this does not drop oversized files. A pull
+ * Unlike the worktree diff this does not drop oversized *files*. A pull
  * request is a document under review and its comments anchor into it;
  * quietly leaving a file out of what a reviewer is reading is worse
- * than a long parse.
+ * than a long parse. It is still bounded overall, because the main
+ * process holds the chunks, their concatenation and the JS string at
+ * once: past the ceiling the patch is cut back to a file boundary and
+ * carries a notice saying so, which is the one thing a reviewer must
+ * not be left to guess at.
  */
-const MAX_DIFF_BYTES = 256 * 1024 * 1024;
+const MAX_DIFF_BYTES = 64 * 1024 * 1024;
 
 export async function resolveRef(branch: string): Promise<string> {
   // Prefer remote tracking ref, fall back to local branch
@@ -56,11 +61,11 @@ export async function fetchDiffText(
     preResolved
   );
 
-  const { text } = await runGit(
+  const { text, truncated } = await runGit(
     ['diff', '-U99999', `${targetRef}...${sourceRef}`],
     { maxBytes: MAX_DIFF_BYTES }
   );
-  return text;
+  return completePatch(text, truncated, MAX_DIFF_BYTES);
 }
 
 // Per-file diff — used by the diff viewer on file open. Scoping to a
@@ -79,9 +84,9 @@ export async function fetchFileDiffText(
     targetBranch,
     preResolved
   );
-  const { text } = await runGit(
+  const { text, truncated } = await runGit(
     ['diff', '-U99999', `${targetRef}...${sourceRef}`, '--', filename],
     { maxBytes: MAX_DIFF_BYTES }
   );
-  return text;
+  return completePatch(text, truncated, MAX_DIFF_BYTES);
 }

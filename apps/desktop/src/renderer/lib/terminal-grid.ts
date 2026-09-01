@@ -71,9 +71,14 @@ export function estimateTerminalGrid(
  * difference between an agent's first frame fitting its pane and
  * wrapping in it. `paneEl` must establish a containing block (the
  * content pane is `relative`), or the probe escapes it.
+ *
+ * A pane with no box yet answers `null`: the minimums above would
+ * otherwise turn an unlaid-out pane into a plausible-looking 20x5 and
+ * spawn an agent in it.
  */
-export function paneTerminalGrid(paneEl: HTMLElement): Grid {
+export function paneTerminalGrid(paneEl: HTMLElement): Grid | null {
   const box = paneEl.getBoundingClientRect();
+  if (box.width < 2 || box.height < 2) return null;
   const probe = document.createElement('div');
   probe.className = 'wterm';
   probe.style.position = 'absolute';

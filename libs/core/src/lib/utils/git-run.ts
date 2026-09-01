@@ -47,7 +47,10 @@ export function runGit(
     child.stdout.on('data', (chunk: Buffer) => {
       if (truncated) return;
       const room = opts.maxBytes - size;
-      if (chunk.byteLength >= room) {
+      // Strictly greater: output that lands exactly on the ceiling is
+      // whole, and calling it truncated makes the caller throw away its
+      // last complete file for nothing.
+      if (chunk.byteLength > room) {
         chunks.push(chunk.subarray(0, Math.max(room, 0)));
         size = opts.maxBytes;
         truncated = true;
@@ -63,6 +66,14 @@ export function runGit(
       errChunks.push(chunk);
       errSize += chunk.byteLength;
     });
+
+    // A pipe error after the SIGKILL above, or an EIO, is an unhandled
+    // `'error'` event — which throws out of the emitter, in the Electron
+    // main process, where nothing catches it. `'close'` still arrives
+    // and settles the promise; these listeners exist so the throw does
+    // not happen first.
+    child.stdout.on('error', () => undefined);
+    child.stderr.on('error', () => undefined);
 
     const finish = (fn: () => void) => {
       if (settled) return;

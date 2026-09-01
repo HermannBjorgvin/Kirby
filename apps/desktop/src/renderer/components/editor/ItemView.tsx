@@ -19,7 +19,10 @@ import {
   launchMenuOpen,
   useLaunchMenuRequested,
 } from '../../lib/sidebar/launch-menu-request.js';
-import { paneTerminalGrid } from '../../lib/terminal-grid.js';
+import {
+  estimateTerminalGrid,
+  paneTerminalGrid,
+} from '../../lib/terminal-grid.js';
 import { PrWorkspace } from './lazy-panes.js';
 import { Button } from '../ui/button.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
@@ -190,11 +193,18 @@ export function ItemView({
   // mounts, but an agent paints its first frame at whatever size it was
   // spawned with, and that frame is the one the user sees.
   const estimateGrid = () => {
-    const el = paneRef.current?.querySelector<HTMLElement>(
-      '[data-terminal-pane]'
-    );
-    if (!el) return {};
-    return paneTerminalGrid(el);
+    const tab = paneRef.current;
+    if (!tab) return {};
+    const pane = tab.querySelector<HTMLElement>('[data-terminal-pane]');
+    const measured = pane ? paneTerminalGrid(pane) : null;
+    if (measured) return measured;
+    // Launching on a branch with no worktree yet: the content pane does
+    // not exist to measure (nor is it laid out), and the rail whose
+    // width it excludes is not on screen either. A deliberately conservative fraction of the tab
+    // is the least bad guess — too narrow costs a reflow, too wide
+    // costs wrapped output — and the terminal corrects it either way
+    // the moment it mounts.
+    return estimateTerminalGrid(tab.getBoundingClientRect(), 0.6);
   };
   const { choose, stop, busy } = useItemLaunch(
     repo.cwd,

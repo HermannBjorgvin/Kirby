@@ -413,6 +413,46 @@ test.describe('Terminal fit', () => {
   });
 
   /**
+   * The first launch on a branch that has no worktree yet.
+   *
+   * There is no content pane to measure at that point — the worktree is
+   * still being checked out — so the launch size is a guess whatever
+   * the estimate does. The terminal has to arrive at the pane's grid
+   * anyway, which is the whole reason it re-fits rather than trusting
+   * the launch.
+   */
+  test.describe('on a branch with no worktree', () => {
+    test.use({
+      repo: { branches: ['undo-support'] },
+      kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) },
+      fakeGitHub: {
+        username: 'kirby-tester',
+        prs: [
+          {
+            number: 7,
+            title: 'Add undo support',
+            headRefName: 'undo-support',
+            rollup: 'SUCCESS',
+          },
+        ],
+      },
+    });
+
+    test('checks the branch out and still fills the pane', async ({
+      desktop,
+    }) => {
+      const { page } = desktop;
+      await sidebarRow(page, /Add undo support|#7/)
+        .first()
+        .click();
+      await launchAgentFromRail(page);
+      await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+      await expectAgentFillsPane(page);
+    });
+  });
+
+  /**
    * The same restart, through tmux.
    *
    * A tmux session outlives the local PTY that shows it, and tmux sizes
