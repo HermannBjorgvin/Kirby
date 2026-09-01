@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SettingsFieldView } from '../../host/contract.js';
-import { CUSTOM, selectedPreset } from './settings-select.js';
+import {
+  CUSTOM,
+  isDefaultedPreset,
+  selectedPreset,
+} from './settings-select.js';
 
 function view(over: Partial<SettingsFieldView> = {}): SettingsFieldView {
   return {
@@ -53,5 +57,40 @@ describe('selectedPreset', () => {
 
   it('reports an empty select with nothing to fall back on', () => {
     expect(selectedPreset(view({ presets: [] }))).toBe('');
+  });
+});
+
+describe('isDefaultedPreset', () => {
+  // The terminal backend: nothing stored, and the host resolved tmux
+  // from the probe. That is the row that has to say so.
+  it('marks the host-supplied default while nothing is stored', () => {
+    const field = view({ defaultValue: 'tmux' });
+    expect(isDefaultedPreset(field, 'tmux')).toBe(true);
+    expect(isDefaultedPreset(field, 'pty')).toBe(false);
+  });
+
+  it('marks nothing once a value is stored', () => {
+    const field = view({ value: 'pty', defaultValue: 'tmux' });
+    expect(isDefaultedPreset(field, 'tmux')).toBe(false);
+    expect(isDefaultedPreset(field, 'pty')).toBe(false);
+  });
+
+  // The first preset is a rendering fallback, not a resolved default.
+  // Marking it would claim an unset Editor means VS Code, when it
+  // actually means the EDITOR/VISUAL fallback.
+  it('marks nothing for a field the host named no default for', () => {
+    const field = view({
+      key: 'editor',
+      presets: [
+        { name: 'VS Code', value: 'code' },
+        { name: 'Custom', value: null },
+      ],
+    });
+    expect(isDefaultedPreset(field, 'code')).toBe(false);
+    expect(isDefaultedPreset(field, null)).toBe(false);
+  });
+
+  it('marks nothing when the default names no preset', () => {
+    expect(isDefaultedPreset(view({ defaultValue: 'ssh' }), 'pty')).toBe(false);
   });
 });

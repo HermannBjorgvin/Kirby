@@ -24,3 +24,20 @@ export function selectedPreset(field: SettingsFieldView): string {
     ''
   );
 }
+
+/**
+ * Whether this preset is the one the row falls back to because nothing
+ * is stored — the only case that earns a "(default)" marker.
+ *
+ * Only a host-supplied `defaultValue` counts. The first preset is a
+ * rendering convention rather than a resolved default, and marking it
+ * would claim things that are not true: an unset Editor does not mean
+ * VS Code, it means the `EDITOR`/`VISUAL` fallback.
+ */
+export function isDefaultedPreset(
+  field: SettingsFieldView,
+  presetValue: string | null
+): boolean {
+  if (field.value !== '' || field.defaultValue === undefined) return false;
+  return presetValue === field.defaultValue;
+}

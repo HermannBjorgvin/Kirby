@@ -6,7 +6,11 @@ import type { SettingsFieldView } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useUpdateSetting } from '../../lib/data/mutations.js';
 import { persistedValue, type PendingSave } from '../../lib/settings-save.js';
-import { CUSTOM, selectedPreset } from '../../lib/settings-select.js';
+import {
+  CUSTOM,
+  isDefaultedPreset,
+  selectedPreset,
+} from '../../lib/settings-select.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Input } from '../ui/input.js';
@@ -123,7 +127,6 @@ function SelectRow({
 }) {
   const presets = field.presets ?? [];
   const hasCustom = presets.some((p) => p.value === null);
-  const unset = field.value === '';
   const current = selectedPreset(field);
   const [custom, setCustom] = useState(current === CUSTOM);
   const [draft, setDraft] = useState(field.value);
@@ -167,10 +170,11 @@ function SelectRow({
                 .filter((p) => p.value !== null)
                 .map((p) => (
                   <SelectItem key={p.name} value={p.value ?? ''}>
-                    {/* Marked only while nothing is stored, so the row
-                        says "this was decided for you" rather than
-                        labelling a choice the user made. */}
-                    {unset && p.value === current
+                    {/* Marked only while nothing is stored *and* the
+                        host named the default, so the row says "this was
+                        decided for you" rather than labelling a choice
+                        the user made — or inventing one nobody made. */}
+                    {isDefaultedPreset(field, p.value)
                       ? `${p.name} (default)`
                       : p.name}
                   </SelectItem>
