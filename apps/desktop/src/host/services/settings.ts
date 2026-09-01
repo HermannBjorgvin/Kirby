@@ -6,9 +6,13 @@ import {
   getTmuxAvailability,
   hasAnySession,
   resolveValue,
+  settingsEffects,
+  type SettingsEffect,
   type SettingsField,
 } from '@kirby/core';
+import type { AppConfig } from '@kirby/vcs-core';
 import { PROVIDERS, requireRepo } from './repo.js';
+import { onCredentialsChanged } from './sidebar.js';
 import { startRemoteSyncLoop } from './remote-sync.js';
 import { SECRET_PLACEHOLDER } from '../contract.js';
 import type { SettingsFieldView, SettingsGroup } from '../contract.js';
@@ -144,12 +148,38 @@ export function updateSettingsFromView(
   const normalized = value === '' ? undefined : value;
   const updated = updateConfigField(config, field, normalized);
   persistConfigField(field, normalized, updated);
-  if (field.key === 'terminalBackend') {
-    applySessionBackend(updated);
+  runSettingsEffects(settingsEffects(field), updated);
+}
+
+/**
+ * Carry out what the write implies. Which effects a field has is
+ * `@kirby/core`'s call (settings/effects.ts) and is shared with the
+ * TUI; only the doing is the host's.
+ */
+function runSettingsEffects(
+  effects: SettingsEffect[],
+  updated: AppConfig
+): void {
+  for (const effect of effects) {
+    switch (effect) {
+      case 'apply-session-backend':
+        applySessionBackend(updated);
+        break;
+      case 'reset-provider-cache':
+        providerFor(updated)?.resetCaches?.();
+        break;
+      case 'refresh-remote':
+        onCredentialsChanged();
+        break;
+      case 'restart-sync-loop':
+        startRemoteSyncLoop(requireRepo());
+        break;
+    }
   }
-  // The sync loop's cadence comes from config; restart it so a new
-  // interval takes effect now instead of after the old timer fires.
-  if (field.key === 'mergePollInterval') {
-    startRemoteSyncLoop(requireRepo());
-  }
+}
+
+function providerFor(config: AppConfig) {
+  return config.vendor
+    ? PROVIDERS.find((p) => p.id === config.vendor) ?? null
+    : null;
 }

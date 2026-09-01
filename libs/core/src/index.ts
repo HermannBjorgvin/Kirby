@@ -27,6 +27,8 @@ export {
   resolveValue,
 } from './lib/settings/fields.js';
 export type { SettingsField } from './lib/settings/fields.js';
+export { settingsEffects, hasSettingsEffect } from './lib/settings/effects.js';
+export type { SettingsEffect } from './lib/settings/effects.js';
 
 // ── Domain types ─────────────────────────────────────────────────
 export * from './lib/types.js';

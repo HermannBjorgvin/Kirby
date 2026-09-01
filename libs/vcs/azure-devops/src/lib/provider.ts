@@ -20,6 +20,7 @@ import {
   adoSend,
   counted,
   invalidateAdoCache,
+  resetAdoTransport,
   TTL,
 } from './request.js';
 import { combineBuildStatus, fetchPrBuildStatus } from './build-status.js';
@@ -864,6 +865,10 @@ export const azureDevOpsProvider: VcsProvider = {
 
   parseRemoteUrl(url: string): Record<string, string> | null {
     return parseAdoRemoteUrl(url);
+  },
+
+  resetCaches(): void {
+    resetAdoTransport();
   },
 
   isConfigured(

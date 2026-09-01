@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsField } from '@kirby/core';
+import type { SettingsEffect, SettingsField } from '@kirby/core';
 import { SECRET_PLACEHOLDER } from '../contract.js';
 
 /**
@@ -22,12 +22,29 @@ const state = vi.hoisted(() => ({
   persisted: [] as { key: string; value: string | undefined }[],
   backendApplied: 0,
   syncRestarts: 0,
+  cacheResets: 0,
+  remoteRefreshes: 0,
+  effects: [] as SettingsEffect[],
+  effectsAskedFor: [] as string[],
   resolved: {} as Record<string, string>,
 }));
 
 vi.mock('./repo.js', () => ({
   requireRepo: () => '/repo',
-  PROVIDERS: [{ id: 'azure-devops' }],
+  PROVIDERS: [
+    {
+      id: 'azure-devops',
+      resetCaches: () => {
+        state.cacheResets += 1;
+      },
+    },
+  ],
+}));
+
+vi.mock('./sidebar.js', () => ({
+  onCredentialsChanged: () => {
+    state.remoteRefreshes += 1;
+  },
 }));
 
 vi.mock('./remote-sync.js', () => ({
@@ -48,6 +65,13 @@ vi.mock('@kirby/core', () => ({
     state.resolved[field.key] ?? '',
   applySessionBackend: () => {
     state.backendApplied += 1;
+  },
+  // Which effects a field has is decided in @kirby/core and asserted
+  // there (settings/effects.spec.ts). What matters here is that the
+  // host asks, and then does what it is told.
+  settingsEffects: (field: SettingsField) => {
+    state.effectsAskedFor.push(field.key);
+    return state.effects;
   },
 }));
 
@@ -94,6 +118,10 @@ beforeEach(() => {
   state.persisted = [];
   state.backendApplied = 0;
   state.syncRestarts = 0;
+  state.cacheResets = 0;
+  state.remoteRefreshes = 0;
+  state.effects = [];
+  state.effectsAskedFor = [];
   state.resolved = {};
 });
 
@@ -201,6 +229,7 @@ describe('updateSettingsFromView', () => {
     });
 
     it('rebinds the session factory after a successful switch', () => {
+      state.effects = ['apply-session-backend'];
       updateSettingsFromView(
         { label: 'Terminal backend', key: 'terminalBackend' },
         'tmux'
@@ -214,14 +243,81 @@ describe('updateSettingsFromView', () => {
     });
   });
 
-  it('restarts the sync loop when its interval changes', () => {
-    state.fields = [field({ label: 'Merge poll', key: 'mergePollInterval' })];
-    updateSettingsFromView(
-      { label: 'Merge poll', key: 'mergePollInterval' },
-      '60'
-    );
-    // Otherwise a new cadence only takes effect after the old timer fires.
-    expect(state.syncRestarts).toBe(1);
+  /**
+   * A replacement access token used to change nothing the user could
+   * see: the sidebar kept the failure the old one caused, and the next
+   * real attempt was a poll interval — up to an hour — away. The host
+   * asks @kirby/core what a write implies and then carries it out; the
+   * shared table is what stops the TUI and the desktop drifting.
+   */
+  describe('effects of a write', () => {
+    it('asks about the field it just wrote', () => {
+      updateSettingsFromView({ label: 'Editor', key: 'editor' }, 'vim');
+      expect(state.effectsAskedFor).toEqual(['editor']);
+    });
+
+    it('restarts the sync loop when told to', () => {
+      // Otherwise a new cadence only takes effect after the old timer fires.
+      state.effects = ['restart-sync-loop'];
+      updateSettingsFromView({ label: 'Editor', key: 'editor' }, 'vim');
+      expect(state.syncRestarts).toBe(1);
+    });
+
+    it('drops the provider cache and fetches now for a credential change', () => {
+      state.effects = [
+        'reset-provider-cache',
+        'refresh-remote',
+        'restart-sync-loop',
+      ];
+      state.fields = [
+        field({
+          label: 'Personal Access Token',
+          key: 'pat',
+          masked: true,
+          configBag: 'vendorAuth',
+        }),
+      ];
+      updateSettingsFromView(
+        { label: 'Personal Access Token', key: 'pat' },
+        'ado_rotated'
+      );
+      expect(state.cacheResets).toBe(1);
+      expect(state.remoteRefreshes).toBe(1);
+      expect(state.syncRestarts).toBe(1);
+    });
+
+    it('runs nothing at all when the untouched placeholder comes back', () => {
+      state.effects = ['reset-provider-cache', 'refresh-remote'];
+      state.fields = [
+        field({
+          label: 'Personal Access Token',
+          key: 'pat',
+          masked: true,
+          configBag: 'vendorAuth',
+        }),
+      ];
+      updateSettingsFromView(
+        { label: 'Personal Access Token', key: 'pat' },
+        SECRET_PLACEHOLDER
+      );
+      // Nothing was written, so there is nothing to invalidate — and a
+      // refetch here would fire on every visit to the settings page.
+      expect(state.effectsAskedFor).toEqual([]);
+      expect(state.cacheResets).toBe(0);
+      expect(state.remoteRefreshes).toBe(0);
+    });
+
+    it('runs nothing after a refused backend switch', () => {
+      state.effects = ['apply-session-backend'];
+      state.hasSession = true;
+      expect(() =>
+        updateSettingsFromView(
+          { label: 'Terminal backend', key: 'terminalBackend' },
+          'tmux'
+        )
+      ).toThrow('Close all sessions');
+      expect(state.backendApplied).toBe(0);
+    });
   });
 });
 

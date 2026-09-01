@@ -37,6 +37,12 @@ interface KirbyBridge {
     ref: { label: string; key: string },
     value: string
   ): Promise<void>;
+  getSyncState(): Promise<{
+    remoteError: string | null;
+    remoteSyncing: boolean;
+    remoteIntervalMs: number;
+    remoteFetches: number;
+  }>;
   openRepo(cwd: string): Promise<{ cwd: string }>;
   getRepo(): Promise<{ cwd: string } | null>;
   launchAgent(req: {
