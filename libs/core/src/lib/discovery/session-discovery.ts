@@ -59,6 +59,36 @@ export const DISCOVERY_INTERVAL_MS = 4_000;
  *  `git worktree add` emits several. */
 const WATCH_DEBOUNCE_MS = 200;
 
+/** How many times an attach may fail before its session is retired.
+ *
+ *  Not one: the failures worth surviving are transient — a
+ *  `git worktree add` losing to an `index.lock`, a momentarily busy
+ *  repository — and giving up on the first would lose the session for
+ *  the life of the process over a hiccup, silently. Not unbounded
+ *  either: a deterministic failure would then be a spawn attempt every
+ *  tick forever. Retries are a scan apart, so this is seconds of
+ *  patience, not milliseconds. */
+const MAX_ADOPT_ATTEMPTS = 3;
+
+/**
+ * Whether a scan is worth telling the shells about.
+ *
+ * Not `delta.changed`, which counts sessions *offered* for attaching:
+ * an offer that lost its race with the user, or with a repo switch
+ * mid-loop, changed nothing that a refetch would show. The shells
+ * answer this by re-reading git and the registry, so a `true` nobody
+ * needed is a fork and a re-render for no reason — every four seconds,
+ * for as long as the process runs.
+ */
+function worthAnnouncing(delta: DiscoveryDelta, adopted: number): boolean {
+  return (
+    adopted > 0 ||
+    delta.appeared.length > 0 ||
+    delta.disappeared.length > 0 ||
+    delta.ended.length > 0
+  );
+}
+
 export interface SessionDiscoveryOptions {
   /** Scan cadence in ms. */
   intervalMs?: number;
@@ -106,9 +136,14 @@ export function startSessionDiscovery(
   const intervalMs = opts.intervalMs ?? DISCOVERY_INTERVAL_MS;
 
   let previous: DiscoveryScan | null = null;
-  /** Names whose attach threw. Cleared when the tmux session behind one
-   *  goes away, so a later session under the same name is tried again. */
-  const failed = new Set<string>();
+  /** Consecutive failed attaches per session name. An entry is dropped
+   *  when the tmux session behind it goes away, so a later session
+   *  under the same name starts with a clean slate. */
+  const failures = new Map<string, number>();
+  /** Names that have failed {@link MAX_ADOPT_ATTEMPTS} times and are no
+   *  longer offered. Handed to `diffScans` rather than filtered after
+   *  it, so a retired name cannot keep reporting the world as changed. */
+  const retired = new Set<string>();
   let stopped = false;
   /** Resolves when the last scheduled scan has finished. Everything is
    *  chained off it, which is what keeps two from overlapping. */
@@ -133,20 +168,43 @@ export function startSessionDiscovery(
     return { worktrees, persisted };
   }
 
-  /** Attach to what the delta offered, one at a time. Sequential
-   *  because each one spawns a PTY, and because the repo can change
-   *  underneath a slow one. */
-  async function adoptAll(delta: DiscoveryDelta): Promise<void> {
+  /** Attach to what the delta offered, one at a time, and report how
+   *  many actually attached. Sequential because each one spawns a PTY,
+   *  and because the repo can change underneath a slow one. */
+  async function adoptAll(delta: DiscoveryDelta): Promise<number> {
+    let adopted = 0;
     for (const worktree of delta.adoptable) {
-      if (stopped || !isCurrent()) return;
-      if (failed.has(worktree.name)) continue;
+      if (stopped || !isCurrent()) return adopted;
+      // Re-checked per iteration, not once in `diffScans`: an earlier
+      // attach in this same loop can take long enough for the user to
+      // launch this session themselves, and handing a live one to
+      // `spawnSession` disposes the PTY and emulator behind the pane
+      // they are looking at.
+      if (isSessionAlive(worktree.name)) continue;
       try {
         await adopt(worktree);
+        failures.delete(worktree.name);
+        adopted += 1;
         log('info', 'discovery', `attached external session ${worktree.name}`);
       } catch (err: unknown) {
-        failed.add(worktree.name);
+        const attempts = (failures.get(worktree.name) ?? 0) + 1;
+        failures.set(worktree.name, attempts);
+        if (attempts >= MAX_ADOPT_ATTEMPTS) retired.add(worktree.name);
         logError('discovery', err);
       }
+    }
+    return adopted;
+  }
+
+  /** A name only carries its failures while the session it failed on is
+   *  still there; once tmux has dropped it, a new one under the same
+   *  name deserves a clean try. Run before the diff, so a returning
+   *  session is offered on the very scan that finds it. */
+  function forgetFailuresFor(next: DiscoveryScan): void {
+    for (const name of [...failures.keys()]) {
+      if (next.persisted.has(name)) continue;
+      failures.delete(name);
+      retired.delete(name);
     }
   }
 
@@ -154,18 +212,16 @@ export function startSessionDiscovery(
     if (stopped || !isCurrent()) return;
     const next = await observe();
     if (stopped || !isCurrent()) return;
-    const delta = diffScans(previous, next, isSessionAlive);
+    forgetFailuresFor(next);
+    const delta = diffScans(previous, next, isSessionAlive, retired);
     previous = next;
-    // A name only stays suppressed while the session it failed on is
-    // still there; once tmux has dropped it, a new one deserves a try.
-    for (const name of failed) {
-      if (!next.persisted.has(name)) failed.delete(name);
-    }
     // Attach first, announce second: the shell answers `changed` by
     // re-reading the registry, and it must see the sessions this scan
     // just adopted rather than the state from before them.
-    await adoptAll(delta);
-    if (delta.changed && !stopped && isCurrent()) onChanged(delta);
+    const adopted = await adoptAll(delta);
+    if (worthAnnouncing(delta, adopted) && !stopped && isCurrent()) {
+      onChanged(delta);
+    }
     ensureWatch();
   }
 

@@ -183,6 +183,8 @@ function WorkspaceInner({
     const off = window.kirby.onDiscoveryChanged(() => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
       void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
+      // A worktree added from outside usually brought a branch with it.
+      void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
     });
     return off;
   }, [qc, repo.cwd]);

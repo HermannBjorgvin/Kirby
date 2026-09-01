@@ -38,7 +38,14 @@ async function attach(worktree: DiscoveredWorktree): Promise<void> {
       `Cannot attach to ${worktree.name}: the worktree has no branch checked out`
     );
   }
-  await launchAgent({ branch: worktree.branch, intent: 'continue-or-blank' });
+  // The scanner already resolved the checkout from git; handing it over
+  // is what lets a worktree in a non-canonical directory be attached to
+  // at all, since `createWorktree` would otherwise re-derive the path
+  // from the branch name and miss it.
+  await launchAgent(
+    { branch: worktree.branch, intent: 'continue-or-blank' },
+    worktree.path
+  );
 }
 
 /**

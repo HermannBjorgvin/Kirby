@@ -57,9 +57,13 @@ const EMPTY_SCAN: DiscoveryScan = { worktrees: [], persisted: new Set() };
  * it reads absolute state, not the diff — which is what makes the first
  * scan reattach to sessions that survived a previous run.
  *
- * `adoptable` reading absolute state also means a failed attach is
- * simply offered again next scan; suppressing a repeatedly failing one
- * is the scanner's job, not this function's.
+ * `adoptable` otherwise reads absolute state rather than the diff, so an
+ * attach that failed is simply offered again next scan. `suppressed`
+ * is how the scanner retires one that has failed too often — and it is
+ * taken here, rather than filtered by the caller afterwards, so that
+ * `changed` cannot claim there is work to do when every offer has been
+ * retired. Announcing on a suppressed name meant a permanently
+ * unattachable session refreshed both shells on every tick, forever.
  *
  * `ended` is a set difference over `persisted` rather than a test
  * against the registry, so it stays empty on the PTY backend instead of
@@ -68,7 +72,8 @@ const EMPTY_SCAN: DiscoveryScan = { worktrees: [], persisted: new Set() };
 export function diffScans(
   previous: DiscoveryScan | null,
   next: DiscoveryScan,
-  isAlive: (name: string) => boolean
+  isAlive: (name: string) => boolean,
+  suppressed: ReadonlySet<string> = new Set()
 ): DiscoveryDelta {
   const base = previous ?? EMPTY_SCAN;
   const before = new Set(base.worktrees.map((wt) => wt.name));
@@ -78,7 +83,10 @@ export function diffScans(
     previous === null ? [] : next.worktrees.filter((wt) => !before.has(wt.name));
   const disappeared = [...before].filter((name) => !now.has(name));
   const adoptable = next.worktrees.filter(
-    (wt) => next.persisted.has(wt.name) && !isAlive(wt.name)
+    (wt) =>
+      next.persisted.has(wt.name) &&
+      !isAlive(wt.name) &&
+      !suppressed.has(wt.name)
   );
   const ended = [...base.persisted].filter((name) => !next.persisted.has(name));
 

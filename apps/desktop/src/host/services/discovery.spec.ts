@@ -23,6 +23,8 @@ const state = vi.hoisted(() => ({
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
   createFails: new Set<string>(),
+  /** Branches createWorktree was asked to resolve. */
+  createWorktreeCalls: [] as string[],
   /** Options the most recent startSessionDiscovery call was given. */
   opts: null as SessionDiscoveryOptions | null,
   stops: 0,
@@ -40,6 +42,7 @@ vi.mock('@kirby/vcs-core', () => ({
 vi.mock('@kirby/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
   createWorktree: (branch: string) => {
+    state.createWorktreeCalls.push(branch);
     if (state.createFails.has(branch)) {
       return Promise.reject(new Error(`git refused ${branch}`));
     }
@@ -106,6 +109,7 @@ beforeEach(async () => {
   state.onData = new Map();
   state.configByCwd = {};
   state.createFails = new Set();
+  state.createWorktreeCalls = [];
   state.opts = null;
   state.stops = 0;
 
@@ -144,11 +148,38 @@ describe('startDiscoveryForRepo', () => {
     expect(state.spawns).toEqual([]);
   });
 
-  it('lets a failed attach reject so it is not retried forever', async () => {
-    state.createFails.add('broken');
+  // `createWorktree` resolves a directory from the branch name, so a
+  // worktree someone put somewhere else is invisible to it — and
+  // `git worktree add` for a branch that is already checked out fails.
+  // The scanner already knows the real path, so it is used as-is.
+  it('attaches in the worktree git reported, not one derived from the branch', async () => {
     discovery.startDiscoveryForRepo('/repo-a');
-    await expect(opts().adopt(worktree('broken'))).rejects.toThrow(
-      'git refused broken'
+    await opts().adopt({
+      name: 'my-branch',
+      branch: 'my/branch',
+      path: '/repo-a/.claude/worktrees/foo',
+    });
+
+    expect(state.spawns).toEqual([
+      { name: 'my-branch', cwd: '/repo-a/.claude/worktrees/foo' },
+    ]);
+    expect(state.createWorktreeCalls).toEqual([]);
+  });
+
+  it('lets a failed attach reject so the scanner can retire it', async () => {
+    // A session alive under this name but owned by another repository:
+    // the registry is keyed by bare branch name, so attaching would
+    // hand this repo's tab the other repo's agent.
+    state.cwd = '/repo-a';
+    await sessions.launchAgent({
+      branch: 'shared',
+      intent: 'continue-or-blank',
+    });
+    state.cwd = '/repo-b';
+    discovery.startDiscoveryForRepo('/repo-b');
+
+    await expect(opts().adopt(worktree('shared'))).rejects.toThrow(
+      'already running for another repository'
     );
   });
 

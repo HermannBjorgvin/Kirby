@@ -139,14 +139,24 @@ function foreignSessionError(name: string): Error {
 // spawn would dispose the first PTY and attach a duplicate data relay.
 const inflightLaunches = new Map<string, Promise<{ name: string }>>();
 
-export function launchAgent(req: SessionLaunchRequest): Promise<{
+/**
+ * `knownWorktreePath` is for callers that have already been told where
+ * the checkout is — discovery hands over the worktree git actually
+ * reported. It is deliberately a parameter rather than a field on
+ * `SessionLaunchRequest`: that type crosses the IPC bridge, and the
+ * renderer has no business naming a directory to spawn an agent in.
+ */
+export function launchAgent(
+  req: SessionLaunchRequest,
+  knownWorktreePath?: string
+): Promise<{
   name: string;
 }> {
   requireRepo();
   const name = branchToSessionName(req.branch);
   const existing = inflightLaunches.get(name);
   if (existing) return existing;
-  const promise = doLaunchAgent(req, name).finally(() =>
+  const promise = doLaunchAgent(req, name, knownWorktreePath).finally(() =>
     inflightLaunches.delete(name)
   );
   inflightLaunches.set(name, promise);
@@ -155,7 +165,8 @@ export function launchAgent(req: SessionLaunchRequest): Promise<{
 
 async function doLaunchAgent(
   req: SessionLaunchRequest,
-  name: string
+  name: string,
+  knownWorktreePath?: string
 ): Promise<{ name: string }> {
   const repoCwd = requireRepo();
   // TUI semantics: a live agent is never silently respawned — every
@@ -174,7 +185,14 @@ async function doLaunchAgent(
   // checked out inside it — resolving via listWorktrees (actual
   // checked-out branches) instead made the desktop reject worktrees
   // the TUI happily launched in.
-  const wtPath = await createWorktree(req.branch);
+  // `createWorktree` resolves the directory from the branch *name*, so
+  // it cannot find a worktree someone put somewhere else —
+  // `git worktree add .claude/worktrees/foo -b my/branch` is exactly
+  // what the operator-at-a-shell case looks like, and resolving it by
+  // name would try to add a second checkout of a branch that is already
+  // out and fail. A caller that was handed the real path skips the
+  // guess.
+  const wtPath = knownWorktreePath ?? (await createWorktree(req.branch));
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
