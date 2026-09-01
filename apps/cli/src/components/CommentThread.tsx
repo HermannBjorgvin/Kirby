@@ -11,6 +11,7 @@ import { planItemKey } from '@kirby/core';
 import {
   cardBorderColor,
   collapseBody,
+  commentBodyView,
   localHeaderSpans,
   replyHeaderSpans,
   threadHeaderSpans,
@@ -55,6 +56,29 @@ function HeaderLine({ spans }: { spans: HeaderSpan[] }) {
         </Text>
       ))}
     </Text>
+  );
+}
+
+/**
+ * A comment body: its Conventional Comments badge row, the prose, and
+ * the agent signature.
+ *
+ * Badge and signature each render as exactly one truncating row, which
+ * is what lets `estimateCardRows` add a flat 1 for each rather than
+ * measuring them — see the note there.
+ */
+function CommentBodyText({ body }: { body: string }) {
+  const view = commentBodyView(body);
+  return (
+    <>
+      {view.badge.length > 0 && <HeaderLine spans={view.badge} />}
+      <Text wrap="wrap">{view.body}</Text>
+      {view.footer && (
+        <Text wrap="truncate-end" dimColor>
+          {view.footer}
+        </Text>
+      )}
+    </>
   );
 }
 
@@ -160,13 +184,13 @@ export const CommentThreadCard = memo(function CommentThreadCard({
             inPlan,
           })}
         />
-        <Text wrap="wrap">{rootComment.body}</Text>
+        <CommentBodyText body={rootComment.body} />
         {thread.comments.length > 1 && (
           <Box flexDirection="column" marginTop={1}>
             {thread.comments.slice(1).map((reply) => (
               <Box key={reply.id} flexDirection="column" marginLeft={2}>
                 <HeaderLine spans={replyHeaderSpans(reply)} />
-                <Text wrap="wrap">{reply.body}</Text>
+                <CommentBodyText body={reply.body} />
               </Box>
             ))}
           </Box>
@@ -209,6 +233,43 @@ interface LocalCommentCardProps {
   planHint?: boolean;
 }
 
+/**
+ * A draft's body: its badge row, its prose (capped unless the card is
+ * selected), and its signature.
+ *
+ * The badge and the signature are properties of the comment, not of
+ * the collapsed view, so they stay on a card whose prose is capped —
+ * which is also how `estimateLocalCardRows` counts them.
+ */
+function LocalCommentBody({
+  body,
+  expanded,
+}: {
+  body: string;
+  expanded: boolean;
+}) {
+  const collapsed = collapseBody(body, expanded);
+  const view = commentBodyView(body);
+  return (
+    <>
+      {view.badge.length > 0 && <HeaderLine spans={view.badge} />}
+      {/* One Text, not one per line: the lines are a positional split
+          of a single string, so there is no identity to key them by,
+          and Ink wraps an embedded newline the same way it wraps a
+          sibling row. */}
+      <Text wrap="wrap">{collapsed.lines.join('\n')}</Text>
+      {collapsed.hiddenCount > 0 && (
+        <Text dimColor>… {collapsed.hiddenCount} more lines</Text>
+      )}
+      {view.footer && (
+        <Text wrap="truncate-end" dimColor>
+          {view.footer}
+        </Text>
+      )}
+    </>
+  );
+}
+
 export const LocalCommentCard = memo(function LocalCommentCard({
   comment,
   selected = false,
@@ -220,8 +281,6 @@ export const LocalCommentCard = memo(function LocalCommentCard({
   inPlan = false,
   planHint = false,
 }: LocalCommentCardProps) {
-  const body = collapseBody(comment.body, selected || editing);
-
   return (
     <CardShell indent={indent}>
       <Box
@@ -251,16 +310,7 @@ export const LocalCommentCard = memo(function LocalCommentCard({
             <Text color="cyan">▍</Text>
           </Text>
         ) : (
-          <>
-            {/* One Text, not one per line: the lines are a positional
-                split of a single string, so there is no identity to key
-                them by, and Ink wraps an embedded newline the same way
-                it wraps a sibling row. */}
-            <Text wrap="wrap">{body.lines.join('\n')}</Text>
-            {body.hiddenCount > 0 && (
-              <Text dimColor>… {body.hiddenCount} more lines</Text>
-            )}
-          </>
+          <LocalCommentBody body={comment.body} expanded={selected} />
         )}
       </Box>
     </CardShell>

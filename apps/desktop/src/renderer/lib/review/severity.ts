@@ -1,3 +1,7 @@
+import {
+  conventionalSeverity,
+  type ConventionalComment,
+} from '@kirby/review-comments/conventional';
 import type { CommentSeverity } from '../../../host/contract.js';
 
 /** Severity values, most→least important (also the edit-select order). */
@@ -42,4 +46,20 @@ export function formatSeverityBreakdown(
   return SEVERITIES.filter((s) => counts[s] > 0)
     .map((s) => `${counts[s]} ${s}`)
     .join(' · ');
+}
+
+/**
+ * A Conventional Comments header, coloured on the same scale as an
+ * agent's severity.
+ *
+ * The two vocabularies describe the same thing — how much this remark
+ * binds — so they have to look the same on screen. A reviewer's
+ * "issue (blocking)" and an agent's `critical` are one claim, and
+ * giving them different colours would invent a distinction the reader
+ * then has to learn.
+ */
+export function conventionalBadge(
+  header: Pick<ConventionalComment, 'label' | 'decorations'>
+): (typeof SEVERITY_BADGE)[CommentSeverity] {
+  return SEVERITY_BADGE[conventionalSeverity(header)];
 }

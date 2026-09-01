@@ -17,6 +17,7 @@ export {
   type PostContext,
 } from './lib/comment-poster.js';
 export {
+  AGENT_ATTRIBUTION,
   AGENT_FOOTER,
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,

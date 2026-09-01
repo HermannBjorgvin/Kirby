@@ -1,5 +1,10 @@
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment } from '@kirby/review-comments';
+import {
+  AGENT_ATTRIBUTION,
+  commentBodyParts,
+  conventionalSeverity,
+  type ReviewComment,
+} from '@kirby/review-comments';
 
 /**
  * The decisions a comment card makes before it draws anything.
@@ -202,6 +207,72 @@ export function localHeaderSpans(
   return spans;
 }
 
+// ── Comment bodies ──────────────────────────────────────────────────
+
+/**
+ * The signature line, as one row of dim text.
+ *
+ * The posted markdown is an italic line with a link in it; a terminal
+ * has neither, so it is rendered from the attribution's parts instead
+ * of by re-parsing what was posted. Both come from one constant, so
+ * they cannot say different things.
+ */
+export const AGENT_FOOTER_LINE =
+  `${AGENT_ATTRIBUTION.prefix}${AGENT_ATTRIBUTION.linkText}` +
+  `${AGENT_ATTRIBUTION.suffix}`;
+
+/** What a card paints for one comment body. */
+export interface CommentBodyView {
+  /** Label + decorations as coloured runs; empty when there is no
+   *  header. Rendered as its own single row above the body. */
+  badge: HeaderSpan[];
+  /** The prose: subject and discussion, header and signature removed. */
+  body: string;
+  /** The signature row, or null. */
+  footer: string | null;
+}
+
+/**
+ * Split one comment body into what the card draws.
+ *
+ * A Conventional Comments header (conventionalcomments.org) is a
+ * classification, so it becomes a coloured badge row and leaves the
+ * prose — with the subject still the comment's first line. Bodies
+ * without a header, which is most of a human's, come back verbatim.
+ *
+ * Every card measures itself by re-deriving what it will paint (see
+ * `estimateCardRows` in @kirby/review-comments), so the estimator and
+ * the component both go through here. A card measured against a
+ * different split from the one it renders puts every row below it in
+ * the wrong place.
+ */
+export function commentBodyView(body: string): CommentBodyView {
+  const parts = commentBodyParts(body);
+  if (!parts.header) {
+    return {
+      badge: [],
+      body: parts.body,
+      footer: parts.footer ? AGENT_FOOTER_LINE : null,
+    };
+  }
+  const color = severityColor(conventionalSeverity(parts.header));
+  const badge: HeaderSpan[] = [
+    { key: 'label', text: parts.header.label, bold: true, color },
+  ];
+  if (parts.header.decorations.length > 0) {
+    badge.push({
+      key: 'decorations',
+      text: ` (${parts.header.decorations.join(', ')})`,
+      dim: true,
+    });
+  }
+  return {
+    badge,
+    body: parts.body,
+    footer: parts.footer ? AGENT_FOOTER_LINE : null,
+  };
+}
+
 // ── Local draft body ────────────────────────────────────────────────
 
 /**
@@ -220,7 +291,7 @@ export interface CollapsedBody {
 }
 
 export function collapseBody(body: string, expanded: boolean): CollapsedBody {
-  const lines = body.split('\n');
+  const lines = commentBodyView(body).body.split('\n');
   if (expanded || lines.length <= MAX_COLLAPSED_BODY_LINES) {
     return { lines, hiddenCount: 0 };
   }

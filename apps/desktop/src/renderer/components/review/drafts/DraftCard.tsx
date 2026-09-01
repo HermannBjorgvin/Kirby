@@ -39,7 +39,7 @@ import {
 } from '../../ui/select.js';
 import { Textarea } from '../../ui/textarea.js';
 import { SEVERITIES, SEVERITY_RAIL } from '../../../lib/review/severity.js';
-import { CommentMarkdown } from '../comments/CommentMarkdown.js';
+import { CommentBody } from '../comments/CommentBody.js';
 import { ComposerNoticeLine } from '../comments/ComposerNotice.js';
 import { useComposerRefresh } from '../comments/use-composer-refresh.js';
 import { PlanAttachment } from '../PlanControls.js';
@@ -262,7 +262,7 @@ export function DraftCard({
         />
       ) : (
         <div className="px-3 py-2">
-          <CommentMarkdown markdown={draft.body} />
+          <CommentBody markdown={draft.body} />
         </div>
       )}
 

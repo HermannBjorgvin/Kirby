@@ -12,7 +12,10 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
+import type {
+  CommentSeverity,
+  ReviewComment,
+} from '../../../../host/contract.js';
 import { cn } from '../../../lib/utils.js';
 import {
   SEVERITIES,
@@ -22,7 +25,7 @@ import {
 import { Badge } from '../../ui/badge.js';
 import { Button } from '../../ui/button.js';
 import { Tip } from '../../ui/tooltip.js';
-import { CommentMarkdown } from '../comments/CommentMarkdown.js';
+import { CommentBody } from '../comments/CommentBody.js';
 import { DraftEditor } from './DraftEditor.js';
 import { SnippetView } from '../diff/SnippetView.js';
 import { useStepperShortcuts } from './use-stepper-shortcuts.js';
@@ -185,7 +188,7 @@ export function StepCard({
               />
             ) : (
               <div className="p-3">
-                <CommentMarkdown markdown={draft.body} />
+                <CommentBody markdown={draft.body} />
               </div>
             )}
             {/* Actions — part of the card, next to the comment. */}

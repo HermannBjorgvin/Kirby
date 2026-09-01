@@ -192,7 +192,25 @@ export const KIRBY_URL = 'https://github.com/HermannBjorgvin/Kirby';
  * the comment behind a disclaimer. The claim still has to be made —
  * so it is made where a signature goes.
  */
-export const AGENT_FOOTER = `_Posted via [Kirby](${KIRBY_URL}) by an agent_`;
+export const AGENT_ATTRIBUTION = {
+  prefix: 'Posted via ',
+  linkText: 'Kirby',
+  url: KIRBY_URL,
+  suffix: ' by an agent',
+} as const;
+
+/**
+ * The wire form: one italic line with one link.
+ *
+ * Derived from {@link AGENT_ATTRIBUTION} rather than written out, so
+ * the shells — which render the pieces as small text and a link rather
+ * than by re-parsing this markdown — cannot drift from what is
+ * actually posted.
+ */
+export const AGENT_FOOTER =
+  `_${AGENT_ATTRIBUTION.prefix}` +
+  `[${AGENT_ATTRIBUTION.linkText}](${AGENT_ATTRIBUTION.url})` +
+  `${AGENT_ATTRIBUTION.suffix}_`;
 
 const FOOTER_RE = new RegExp(
   `(?:\\r?\\n)+(?:-{3,}(?:\\r?\\n)+)?${escapeRegExp(AGENT_FOOTER)}\\s*$`

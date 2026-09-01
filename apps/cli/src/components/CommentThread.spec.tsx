@@ -10,6 +10,7 @@ import {
 import {
   estimateCardRows,
   estimateReplyInputRows,
+  withAgentFooter,
   type ReviewComment,
 } from '@kirby/review-comments';
 import { planItemKey } from '@kirby/core';
@@ -324,6 +325,16 @@ describe('estimateCardRows matches the rendered card exactly', () => {
     'LGTM, ship it.',
     // long unbroken token (hard-wrapped) + stack-trace lines
     'Fails on `useVeryLongHookNameThatDoesNotBreakAnywhereBecauseItIsOneToken` — see the stack trace:\nTypeError: cannot read properties of undefined (reading foo)\n  at DiffViewer.tsx:241',
+    // A Conventional Comment: the header leaves the prose and becomes
+    // a badge row, so the estimator has to count a row the body no
+    // longer contains.
+    'issue (blocking): The undo stack is never bounded.\n\nEvery edit pushes onto it and nothing ever pops, so a long session grows the heap without limit.',
+    // …and the same, signed. Badge row, wrapped prose, signature row.
+    withAgentFooter(
+      'suggestion (non-blocking, if-minor): Extract this into a helper.\n\nThe same four lines appear in both branches, and the second copy has already drifted from the first.'
+    ),
+    // A signature on a body with no header at all.
+    withAgentFooter('LGTM, ship it.'),
   ];
 
   function bodyThread(body: string, replies: string[] = []) {
