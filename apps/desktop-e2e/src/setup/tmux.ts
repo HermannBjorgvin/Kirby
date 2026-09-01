@@ -81,11 +81,17 @@ function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
 /** Session names on the test's tmux server. Empty when no server is
  *  running — tmux exits non-zero for that, which is not an error here. */
 export function listTmuxSessions(tmuxTmpdir: string): string[] {
+  // Resolved *before* the try: `socketEnv` throws to stop a run that
+  // would reach the wrong tmux server, and swallowing that here would
+  // turn it into an empty list — which is exactly what the negative
+  // assertions ("no kirby session exists") expect, so they would pass
+  // while proving nothing, and teardown would silently reap nothing.
+  const env = socketEnv(tmuxTmpdir);
   try {
     return execFileSync('tmux', ['list-sessions', '-F', '#{session_name}'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      env: socketEnv(tmuxTmpdir),
+      env,
     })
       .split('\n')
       .map((line) => line.trim())
@@ -114,11 +120,12 @@ export function kirbySessionExists(
  * removed with the temp home, orphaning the server.
  */
 export function killKirbySessions(tmuxTmpdir: string): void {
+  const env = socketEnv(tmuxTmpdir);
   for (const name of kirbySessions(tmuxTmpdir)) {
     try {
       execFileSync('tmux', ['kill-session', '-t', name], {
         stdio: 'ignore',
-        env: socketEnv(tmuxTmpdir),
+        env,
       });
     } catch {
       /* already gone — best effort */

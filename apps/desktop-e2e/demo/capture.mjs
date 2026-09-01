@@ -138,6 +138,13 @@ async function launchApp(scenario, { theme = 'dark' } = {}) {
   delete parentEnv.WAYLAND_DISPLAY;
   delete parentEnv.EDITOR;
   delete parentEnv.VISUAL;
+  // `$TMUX` names a socket outright and beats the TMUX_TMPDIR set
+  // below, so a capture run from inside a tmux session would put its
+  // demo agents on the developer's own tmux server, beside their real
+  // ones. (The scenario also pins the pty backend, so there should be
+  // no tmux here at all — this is the belt to that's braces.)
+  delete parentEnv.TMUX;
+  delete parentEnv.TMUX_PANE;
   // Theme is a desktop pref, not config — write it before launch.
   const { writeFileSync } = await import('node:fs');
   writeFileSync(
@@ -276,6 +283,8 @@ const TUI_ORIGIN = `http://localhost:${TUI_PORT}`;
 function browserEnv() {
   const env = { ...process.env, DISPLAY };
   delete env.WAYLAND_DISPLAY;
+  delete env.TMUX;
+  delete env.TMUX_PANE;
   return env;
 }
 

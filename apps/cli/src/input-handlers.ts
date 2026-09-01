@@ -21,6 +21,7 @@ import {
   handleTextInput,
   hasAnySession,
   getTmuxAvailability,
+  projectTerminalBackendOverride,
   resolveValue,
 } from '@kirby/core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
@@ -46,6 +47,15 @@ function canApplyFieldChange(
   if (hasAnySession()) {
     ctx.sessions.flashStatus(
       'Close all sessions before switching terminal backend.'
+    );
+    return false;
+  }
+  // The Settings row writes the global key, which a per-project
+  // override would silently win over on the next read — the edit would
+  // appear to save and then revert.
+  if (projectTerminalBackendOverride(process.cwd())) {
+    ctx.sessions.flashStatus(
+      'This project pins terminalBackend in its own config — edit that instead.'
     );
     return false;
   }

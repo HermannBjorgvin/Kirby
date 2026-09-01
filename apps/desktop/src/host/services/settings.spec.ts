@@ -19,6 +19,8 @@ const state = vi.hoisted(() => ({
   fields: [] as SettingsField[],
   hasSession: false,
   tmux: null as { available: boolean; installHint?: string } | null,
+  /** What this project's own config pins the backend to, if anything. */
+  projectBackend: undefined as 'pty' | 'tmux' | undefined,
   persisted: [] as { key: string; value: string | undefined }[],
   backendApplied: 0,
   syncRestarts: 0,
@@ -44,6 +46,7 @@ vi.mock('@kirby/core', () => ({
   buildSettingsFields: () => state.fields,
   hasAnySession: () => state.hasSession,
   getTmuxAvailability: () => state.tmux,
+  projectTerminalBackendOverride: () => state.projectBackend,
   resolveValue: (_config: unknown, field: SettingsField) =>
     state.resolved[field.key] ?? '',
   applySessionBackend: () => {
@@ -91,6 +94,7 @@ beforeEach(() => {
   state.fields = [field(), backendField];
   state.hasSession = false;
   state.tmux = { available: true };
+  state.projectBackend = undefined;
   state.persisted = [];
   state.backendApplied = 0;
   state.syncRestarts = 0;
@@ -302,5 +306,30 @@ describe('getSettingsView', () => {
       'provider',
       'general',
     ]);
+  });
+});
+
+// readConfig gives the per-project value precedence, but this row
+// writes the global key — so an edit here would appear to save and then
+// revert on the next read, while this run used the value the user
+// picked and the next used the project's.
+describe('per-project backend override', () => {
+  beforeEach(() => {
+    state.fields = [backendField];
+    state.projectBackend = 'pty';
+  });
+
+  it('grays the control out and names the reason', () => {
+    expect(getSettingsView()[0].disabled).toMatch(/pins the terminal backend/i);
+  });
+
+  it('refuses the write rather than saving somewhere that loses it', () => {
+    expect(() =>
+      updateSettingsFromView(
+        { label: 'Terminal backend', key: 'terminalBackend' },
+        'tmux'
+      )
+    ).toThrow(/pins terminalBackend/i);
+    expect(state.persisted).toEqual([]);
   });
 });

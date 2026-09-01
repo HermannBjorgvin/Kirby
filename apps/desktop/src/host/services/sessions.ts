@@ -370,9 +370,15 @@ export async function restorePersistedSessions(): Promise<void> {
   // against the new repo carrying the old repo's branch names, and
   // `createWorktree` would happily create each one from the new repo's
   // HEAD — phantom branches, worktrees and agents.
+  // Re-read rather than trusting the snapshot: this loop awaits a
+  // worktree listing and a spawn per branch, and Settings can swap the
+  // backend in that window (the gate there sees an empty registry,
+  // because nothing has reattached yet). Carrying on would spawn raw
+  // PTY agents into worktrees that already have live tmux agents.
+  const stillTmux = () => resolveTerminalBackend(readConfig(cwd)) === 'tmux';
   const stillCurrent = () => activeRepoIs(cwd);
   for (const wt of await listWorktrees()) {
-    if (!stillCurrent()) return;
+    if (!stillCurrent() || !stillTmux()) return;
     if (!wt.branch) continue;
     const name = branchToSessionName(wt.branch);
     if (isSessionAlive(name)) continue;

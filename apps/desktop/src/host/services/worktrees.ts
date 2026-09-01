@@ -65,11 +65,10 @@ export async function removeWorktree(
   killSession(branchToSessionName(branch));
   // A tmux session may be running for this branch even when the
   // registry has never seen it (persisted from a previous run and not
-  // reattached). Kill it by name so the worktree is never deleted out
-  // from under a live agent.
-  const config = readConfig(requireRepo());
-  killPersistedTmuxSession(config, branchToSessionName(branch));
-  if (wt) killPersistedTmuxSession(config, worktreeSessionName(wt));
+  // reattached) and whatever backend is selected now. Kill it by name
+  // so the worktree is never deleted out from under a live agent.
+  killPersistedTmuxSession(branchToSessionName(branch));
+  if (wt) killPersistedTmuxSession(worktreeSessionName(wt));
   const removed = await removeWt(branch, { force });
   if (removed) await deleteBranch(branch, true);
   return removed;

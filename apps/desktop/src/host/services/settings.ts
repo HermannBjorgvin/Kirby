@@ -5,6 +5,7 @@ import {
   buildSettingsFields,
   getTmuxAvailability,
   hasAnySession,
+  projectTerminalBackendOverride,
   resolveValue,
   type SettingsField,
 } from '@kirby/core';
@@ -97,10 +98,21 @@ export function getSettingsView(): SettingsFieldView[] {
     // Same gate updateSettingsFromView enforces — surfacing it here
     // grays the control out instead of erroring after the attempt.
     disabled:
-      field.key === 'terminalBackend' && hasAnySession()
-        ? 'close all sessions to switch the terminal backend'
-        : undefined,
+      field.key === 'terminalBackend' ? backendDisabledReason() : undefined,
   }));
+}
+
+/** Why the terminal backend control is not editable right now, or
+ *  undefined when it is. Surfaced on the field so the control is grayed
+ *  out with a reason rather than erroring after the click. */
+function backendDisabledReason(): string | undefined {
+  if (hasAnySession()) {
+    return 'close all sessions to switch the terminal backend';
+  }
+  if (projectTerminalBackendOverride(requireRepo())) {
+    return 'this project pins the terminal backend in its own config';
+  }
+  return undefined;
 }
 
 /**
@@ -112,6 +124,13 @@ export function getSettingsView(): SettingsFieldView[] {
 function assertBackendSwitchAllowed(value: string): void {
   if (hasAnySession()) {
     throw new Error('Close all sessions before switching terminal backend.');
+  }
+  // Writing the global key while the project config overrides it would
+  // save, then revert on the next read.
+  if (projectTerminalBackendOverride(requireRepo())) {
+    throw new Error(
+      'This project pins terminalBackend in its own config — edit that instead.'
+    );
   }
   if (value !== 'tmux') return;
   const status = getTmuxAvailability();

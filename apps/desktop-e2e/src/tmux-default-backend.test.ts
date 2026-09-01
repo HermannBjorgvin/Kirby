@@ -1,4 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test, expect } from './fixtures/desktop.js';
 import { createWorktree, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
@@ -71,6 +73,31 @@ test.describe('Terminal backend default (tmux detected)', () => {
     await expect(
       page.getByLabel('Terminal Backend', { exact: true })
     ).toHaveText(/Tmux \(default\)/);
+  });
+
+  // The select already displays the default, so re-selecting it is not
+  // a *value* change, and a control that saves only on value-change
+  // drops it — intermittently, which is worse than never. Pinning is
+  // what stops the backend moving under existing sessions when tmux
+  // comes or goes, so it is asserted rather than assumed.
+  test('choosing the displayed default stores it', async ({ desktop }) => {
+    const { app, page, homeDir } = desktop;
+    await openSettings(app, page);
+
+    await page.getByLabel('Terminal Backend', { exact: true }).click();
+    await page.getByRole('option', { name: /Tmux \(default\)/ }).click();
+
+    await expect
+      .poll(
+        () =>
+          (
+            JSON.parse(
+              readFileSync(join(homeDir, '.kirby', 'config.json'), 'utf8')
+            ) as { terminalBackend?: string }
+          ).terminalBackend,
+        { timeout: 10_000 }
+      )
+      .toBe('tmux');
   });
 });
 

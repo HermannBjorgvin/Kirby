@@ -49,9 +49,12 @@ vi.mock('../pty-registry.js', () => ({
   isSessionAlive: (name: string) => env.alive.has(name),
 }));
 
+// Existence, not preference: the sweep must refuse to delete a
+// worktree whose tmux agent is running whatever backend is selected
+// now. Mocking it with a config parameter would let a regression that
+// re-gated it on the preference slip through here.
 vi.mock('../session-backend.js', () => ({
-  isTmuxSessionPersisted: (_config: unknown, name: string) =>
-    env.persisted.has(name),
+  hasLiveTmuxSession: (name: string) => env.persisted.has(name),
 }));
 
 const {
@@ -153,6 +156,17 @@ describe('sweepMergedBranches', () => {
     // Same agent, just not in this process's registry.
     env.persisted = new Set(['feature-a']);
     await sweep();
+    expect(env.deleted).toEqual([]);
+  });
+
+  // The agent is running whether or not tmux is still the preference,
+  // and deleting its worktree is destructive. A user who switched to
+  // PTY after the session was created must not lose it.
+  it('leaves it alone even when the config now selects pty', async () => {
+    env.persisted = new Set(['feature-a']);
+    await sweep({
+      config: { autoDeleteOnMerge: true, terminalBackend: 'pty' } as never,
+    });
     expect(env.deleted).toEqual([]);
   });
 

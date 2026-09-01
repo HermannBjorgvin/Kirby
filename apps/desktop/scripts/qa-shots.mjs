@@ -9,7 +9,8 @@
  * src/main/main.ts.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, existsSync } from 'node:fs';
+import { mkdirSync, existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,11 +83,24 @@ const args = useXvfb
     ]
   : ['--no-sandbox', '--disable-gpu', appDir];
 
+// This runs against the developer's real HOME and a real repo, so the
+// one thing it must not share is their tmux server: with the backend
+// defaulting to tmux, opening the repo reattaches every persisted agent
+// — adopting them into a throwaway screenshot run and reflowing their
+// panes to its window size. `$TMUX` beats TMUX_TMPDIR, so it is removed
+// rather than overridden, and the socket points at an empty scratch dir.
+const qaEnv = {
+  ...process.env,
+  TMUX_TMPDIR: mkdtempSync(join(tmpdir(), 'kirby-qa-tmux-')),
+};
+delete qaEnv.TMUX;
+delete qaEnv.TMUX_PANE;
+
 const res = spawnSync(cmd, args, {
   stdio: 'inherit',
   timeout: 150_000,
   env: {
-    ...process.env,
+    ...qaEnv,
     KIRBY_START_DIR: repo,
     KIRBY_DESKTOP_VERSION: 'qa',
     // A caller may pre-set KIRBY_QA_STEPS to drive a custom scenario.

@@ -19,7 +19,7 @@ import {
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
-import { projectKey } from '@kirby/vcs-core';
+import { projectKey, readProjectConfig } from '@kirby/vcs-core';
 import { setSessionBackendFactory } from './pty-registry.js';
 
 /** Resolve the git toplevel of the repo Kirby is running in, or `null`
@@ -114,6 +114,25 @@ export function resolveTerminalBackend(
   return config.terminalBackend ?? defaultTerminalBackend(status);
 }
 
+/** The backend this project pins by hand, if any.
+ *
+ *  `readConfig` gives the per-project value precedence over the global
+ *  one, but the Settings row writes the *global* key — so with an
+ *  override in place a change would appear to save and then revert on
+ *  the next read, and in the meantime this run would use the value the
+ *  user picked while the next run used the project's. Both shells ask
+ *  this and refuse the edit instead, naming the reason. Never throws:
+ *  an unreadable project config is simply no override. */
+export function projectTerminalBackendOverride(
+  cwd: string
+): 'pty' | 'tmux' | undefined {
+  try {
+    return readProjectConfig(cwd).terminalBackend;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Application policy: build a SessionBackendFactory configured for
  *  the backend {@link resolveTerminalBackend} lands on — the user's
  *  choice, or tmux-when-detected. The kirby-`<projectKey>-` prefix is
@@ -176,15 +195,21 @@ function tmuxNameFor(sessionName: string, repoRoot: string): string {
   );
 }
 
-/** True when a tmux session for this registry name survived a previous
- *  run (dispose-on-quit leaves tmux sessions running by design). Used
- *  to reattach at startup. Never throws; false when tmux/repoRoot is
- *  out of the picture. */
-export function isTmuxSessionPersisted(
-  config: Pick<AppConfig, 'terminalBackend'>,
-  sessionName: string
-): boolean {
-  if (resolveTerminalBackend(config) !== 'tmux') return false;
+/** True when a tmux session for this registry name exists right now,
+ *  *whatever backend is currently selected*.
+ *
+ *  A tmux session outlives the preference that created it: quitting
+ *  only detaches, so one created under the tmux default is still there
+ *  after the user picks PTY, after tmux drops off `PATH`, and after a
+ *  probe that answers differently than it did last run. Asking "should
+ *  we be using tmux?" instead of "is there a tmux session?" is how a
+ *  live agent becomes invisible — and then gets its worktree swept out
+ *  from under it. Callers that need the *preference* want
+ *  {@link isTmuxSessionPersisted}.
+ *
+ *  Never throws; false when tmux or the repo root is out of the
+ *  picture, since without either there is no session to find. */
+export function hasLiveTmuxSession(sessionName: string): boolean {
   if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
   const root = getRepoRoot();
   if (!root) return false;
@@ -195,14 +220,34 @@ export function isTmuxSessionPersisted(
   }
 }
 
-/** Kill the persisted tmux session for a registry name, whether or not
- *  the registry knows about it — an explicit worktree removal must not
- *  leave a live tmux session working in a deleted directory. */
-export function killPersistedTmuxSession(
+/** True when a tmux session for this registry name survived a previous
+ *  run (dispose-on-quit leaves tmux sessions running by design) *and*
+ *  tmux is the backend in force. Used to decide whether to reattach at
+ *  startup, where the preference is the point: reattaching under the
+ *  PTY backend would spawn a second, unrelated agent in the same
+ *  worktree rather than resuming the one that is running.
+ *
+ *  For "does a tmux session exist at all" — safety checks, teardown —
+ *  use {@link hasLiveTmuxSession}. */
+export function isTmuxSessionPersisted(
   config: Pick<AppConfig, 'terminalBackend'>,
   sessionName: string
-): void {
-  if (resolveTerminalBackend(config) !== 'tmux') return;
+): boolean {
+  if (resolveTerminalBackend(config) !== 'tmux') return false;
+  return hasLiveTmuxSession(sessionName);
+}
+
+/** Kill the persisted tmux session for a registry name, whether or not
+ *  the registry knows about it — an explicit worktree removal must not
+ *  leave a live tmux session working in a deleted directory.
+ *
+ *  Deliberately not gated on the selected backend. The session's
+ *  existence is what matters, and gating on the preference is how a
+ *  session created under the tmux default becomes unkillable the moment
+ *  the user picks PTY: removing its worktree would then delete the
+ *  directory and leave the agent running in it forever. Killing a
+ *  session that is not there is already a no-op. */
+export function killPersistedTmuxSession(sessionName: string): void {
   const root = getRepoRoot();
   if (!root) return;
   try {

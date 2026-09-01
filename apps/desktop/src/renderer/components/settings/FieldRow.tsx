@@ -169,7 +169,23 @@ function SelectRow({
               {presets
                 .filter((p) => p.value !== null)
                 .map((p) => (
-                  <SelectItem key={p.name} value={p.value ?? ''}>
+                  <SelectItem
+                    key={p.name}
+                    value={p.value ?? ''}
+                    // The trigger already displays this entry, so
+                    // selecting it is not a *value* change and the
+                    // control's own change event cannot be relied on to
+                    // fire — without this the default could never be
+                    // pinned. A pinned value is the difference between
+                    // a preference and one that flips when tmux comes
+                    // or goes. Saving twice is harmless: the second is
+                    // dropped as unchanged (see `persistedValue`).
+                    onClick={
+                      isDefaultedPreset(field, p.value)
+                        ? () => onSave(p.value ?? '')
+                        : undefined
+                    }
+                  >
                     {/* Marked only while nothing is stored *and* the
                         host named the default, so the row says "this was
                         decided for you" rather than labelling a choice
