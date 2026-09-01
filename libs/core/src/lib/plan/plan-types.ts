@@ -17,7 +17,8 @@ export interface PlanItemBase {
   line: number | null;
   /** Root/comment body at add-time. */
   body: string;
-  /** Optional "Your note:" describing the approach the user wants. */
+  /** Optional note describing the approach the user wants; reaches the
+   *  agent as "Instruction from the reviewer:". */
   annotation?: string;
 }
 

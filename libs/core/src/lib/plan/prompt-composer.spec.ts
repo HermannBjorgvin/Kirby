@@ -31,7 +31,7 @@ describe('composePlanPrompt', () => {
         '### 1. apps/cli/src/DiffViewer.tsx:42  (thread t1)',
         '@alice: This loop re-renders on every keystroke; memoize it.',
         '  ↳ @bob: agreed, useMemo would fix it',
-        'Your note: Wrap in useMemo keyed on annotatedLines.',
+        'Instruction from the reviewer: Wrap in useMemo keyed on annotatedLines.',
         '',
         '### 2. libs/review-comments/src/types.ts:10  [minor]  (draft d1)',
         'severity should be an enum, not a string union.',
@@ -41,7 +41,22 @@ describe('composePlanPrompt', () => {
 
   it('omits the note line when unannotated', () => {
     const out = composePlanPrompt([{ ...remote, annotation: undefined }]);
-    expect(out).not.toContain('Your note:');
+    expect(out).not.toContain('Instruction from the reviewer:');
+  });
+
+  /**
+   * The prompt is addressed to the agent, so an unattributed "Your
+   * note:" claims the note is the agent's own — turning the one line
+   * in the block that is an instruction into something that reads like
+   * the agent's earlier thinking. Every other line here names its
+   * speaker; so must this one.
+   */
+  it('attributes the annotation to the reviewer, not the reader', () => {
+    const out = composePlanPrompt([remote]);
+    expect(out).toContain(
+      'Instruction from the reviewer: Wrap in useMemo keyed on annotatedLines.'
+    );
+    expect(out).not.toContain('Your note');
   });
 
   it('renders no reply lines when there are none', () => {

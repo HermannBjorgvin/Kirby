@@ -13,11 +13,17 @@ import type { PlanItem } from './plan-types.js';
 //   ### 1. apps/cli/src/DiffViewer.tsx:42  (thread PRRT_kwHO)
 //   @alice: This loop re-renders on every keystroke; memoize it.
 //     ↳ @bob: agreed, useMemo would fix it
-//   Your note: Wrap in useMemo keyed on annotatedLines.
+//   Instruction from the reviewer: Wrap in useMemo keyed on annotatedLines.
 //
 // Local items carry a `[severity]` tag; remote items render the root
-// author + threaded replies. The "Your note:" line appears only when
-// the item is annotated.
+// author + threaded replies.
+//
+// The annotation line appears only when the item is annotated, and it
+// names who is speaking. It used to read "Your note:", which in a
+// prompt addressed *to* the agent claims the note is the agent's own —
+// so the one line in the block that is an instruction read as the
+// agent's earlier thinking about the comment above it. Every other
+// line here is attributed (`@alice:`), and this one has to be too.
 //
 // Every item names the identifier the provider knows it by — a review
 // thread id for a remote comment, the draft's own id for a local one —
@@ -63,7 +69,7 @@ function renderItem(item: PlanItem, index: number): string {
   }
 
   if (item.annotation) {
-    lines.push(`Your note: ${item.annotation}`);
+    lines.push(`Instruction from the reviewer: ${item.annotation}`);
   }
 
   return lines.join('\n');
