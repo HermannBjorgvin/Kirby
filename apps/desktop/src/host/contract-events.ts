@@ -77,6 +77,22 @@ export const SYNC_EVENTS = {
   remote: 'kirby/sync/remote',
 } as const;
 
+// ── Discovery ────────────────────────────────────────────────────
+
+export const DISCOVERY_EVENTS = {
+  /**
+   * A worktree or agent session that this process did not create has
+   * appeared or gone away, and the sidebar model would now answer
+   * differently.
+   *
+   * Separate from `SYNC_EVENTS.remote` because the two say different
+   * things: that one means the pull request list arrived from the
+   * provider, this one means the local world changed underneath us.
+   * A renderer may well want to react to only one of them.
+   */
+  changed: 'kirby/sidebar/discovered',
+} as const;
+
 /** A user-facing event from the host's remote sync loop (auto-deleted
  *  merged branch, blocked auto-delete, …), toasted by the renderer. */
 export interface SyncNoticeEvent {

@@ -51,6 +51,7 @@ const EVENT_METHODS = [
   'onMenuCommand',
   'onSyncNotice',
   'onRemoteUpdated',
+  'onDiscoveryChanged',
 ] as const;
 
 describe('preload bridge', () => {

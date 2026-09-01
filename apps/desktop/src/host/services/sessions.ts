@@ -5,7 +5,6 @@ import {
   getSession,
   killSession as killSessionEntry,
   isSessionAlive,
-  isTmuxSessionPersisted,
   resolveTerminalBackend,
   getSpawnedAt,
   noteInput,
@@ -14,12 +13,8 @@ import {
   snapshot as activitySnapshot,
 } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
-import {
-  branchToSessionName,
-  createWorktree,
-  listWorktrees,
-} from '@kirby/worktree-manager';
-import { activeRepoIs, requireRepo } from './repo.js';
+import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import { requireRepo } from './repo.js';
 import type {
   PlanCheckoutRequest,
   PlanCheckoutResult,
@@ -352,42 +347,4 @@ export function killSession(name: string): void {
   // no-ops when it doesn't know it either.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
   killSessionEntry(name);
-}
-
-/**
- * Reattach to tmux sessions that survived a previous run (quit
- * disposes/detaches by design). `new-session -A` attaches without
- * disturbing the running command, so this restores the registry, the
- * activity relay and the sidebar's running state. Called after every
- * repo open.
- */
-export async function restorePersistedSessions(): Promise<void> {
-  const cwd = requireRepo();
-  const config = readConfig(cwd);
-  if (resolveTerminalBackend(config) !== 'tmux') return;
-  // Every iteration awaits, and the user can open another repository in
-  // the meantime. Without this check the rest of the loop would run
-  // against the new repo carrying the old repo's branch names, and
-  // `createWorktree` would happily create each one from the new repo's
-  // HEAD — phantom branches, worktrees and agents.
-  // Re-read rather than trusting the snapshot: this loop awaits a
-  // worktree listing and a spawn per branch, and Settings can swap the
-  // backend in that window (the gate there sees an empty registry,
-  // because nothing has reattached yet). Carrying on would spawn raw
-  // PTY agents into worktrees that already have live tmux agents.
-  const stillTmux = () => resolveTerminalBackend(readConfig(cwd)) === 'tmux';
-  const stillCurrent = () => activeRepoIs(cwd);
-  for (const wt of await listWorktrees()) {
-    if (!stillCurrent() || !stillTmux()) return;
-    if (!wt.branch) continue;
-    const name = branchToSessionName(wt.branch);
-    if (isSessionAlive(name)) continue;
-    if (!isTmuxSessionPersisted(config, name)) continue;
-    try {
-      await launchAgent({ branch: wt.branch, intent: 'continue-or-blank' });
-      console.log(`[desktop] reattached persisted tmux session ${name}`);
-    } catch (err: unknown) {
-      console.warn(`[desktop] failed to reattach ${name}:`, err);
-    }
-  }
 }

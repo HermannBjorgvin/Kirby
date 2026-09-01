@@ -218,6 +218,7 @@ describe('host API wiring', () => {
       'onMenuCommand',
       'onSyncNotice',
       'onRemoteUpdated',
+      'onDiscoveryChanged',
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(

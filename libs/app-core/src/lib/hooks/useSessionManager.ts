@@ -8,10 +8,17 @@ import {
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
-import type { AgentSession } from '@kirby/core';
+import type { AgentSession, DiscoveredWorktree } from '@kirby/core';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
-import { killSession, isSessionAlive, onSessionExit } from '@kirby/core';
+import {
+  killSession,
+  isSessionAlive,
+  launchSession,
+  onSessionExit,
+  startSessionDiscovery,
+} from '@kirby/core';
+import { useLayout } from '../context/LayoutContext.js';
 
 export function useSessionManager(
   providers: VcsProvider[],
@@ -20,6 +27,7 @@ export function useSessionManager(
 ) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [worktreeBranches, setWorktreeBranches] = useState<string[]>([]);
+  const { terminal } = useLayout();
 
   const refreshSessions = useCallback(async () => {
     const worktrees = await listWorktrees();
@@ -50,6 +58,34 @@ export function useSessionManager(
     [refreshSessions]
   );
 
+  // Attach to an agent session that was started outside this process —
+  // another Kirby, a script, someone running `tmux new-session` by
+  // hand. This is the ordinary launch path: on the tmux backend
+  // `new-session -A` attaches to the running agent rather than starting
+  // a second one, and discovery only ever offers a session the registry
+  // holds no live PTY for.
+  //
+  // An effect event, so it reads the pane size at the moment it
+  // attaches. A plain closure would capture whatever the terminal was
+  // when discovery started and size every later agent to that.
+  const adoptExternalSession = useEffectEvent((wt: DiscoveredWorktree) => {
+    launchSession({
+      name: wt.name,
+      cwd: wt.path,
+      cols: terminal.paneCols,
+      rows: terminal.paneRows,
+      config: readConfig(),
+      request: { intent: 'continue-or-blank' },
+    });
+  });
+
+  // Something outside this process changed the worktrees or the live
+  // sessions. Both are read from disk by refreshSessions, so re-reading
+  // is the whole response.
+  const onDiscovered = useEffectEvent(() => {
+    void refreshSessions();
+  });
+
   // Startup, once. An effect event rather than an effect with a lint
   // exception: everything below reads the latest providers, config and
   // setters, but none of their identities should re-run a sequence that
@@ -77,6 +113,13 @@ export function useSessionManager(
       reloadConfig();
     }
 
+    const discovery = startSessionDiscovery({
+      getConfig: () => readConfig(),
+      isCurrent: () => !cancelled,
+      adopt: (wt) => adoptExternalSession(wt),
+      onChanged: () => onDiscovered(),
+    });
+
     // Flip the row's running indicator (green → gray) when an agent PTY
     // exits on its own. An exit changes nothing about the worktree list,
     // so flip the one session's flag in place rather than shelling out
@@ -91,6 +134,7 @@ export function useSessionManager(
 
     return () => {
       cancelled = true;
+      discovery.stop();
       unsubscribe();
     };
   });
