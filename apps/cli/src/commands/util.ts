@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   appendComment,
+  resolveComment,
   type CommentSeverity,
   type ReviewComment,
 } from '@kirby/review-comments';
@@ -48,7 +49,7 @@ function handleAddComment(args: string[]): void {
   if (missing.length > 0) {
     console.error(`Missing required fields: ${missing.join(', ')}`);
     console.error(
-      'Usage: kirby util add-comment --pr=<id> --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body=<text> [--side=LEFT|RIGHT]'
+      'Usage: kirby util add-comment --pr=<id> --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body=<text> [--side=LEFT|RIGHT] [--thread=<id>]'
     );
     process.exit(1);
   }
@@ -85,11 +86,21 @@ function handleAddComment(args: string[]): void {
     file: parsed.file,
     lineStart,
     lineEnd,
-    severity,
+    // A body that opens with its own Conventional Comments header is
+    // stating a severity too, and the two must not be able to
+    // disagree — the louder wins. Settled once, here, so everything
+    // that reads the stored draft (the walkthrough order, the rail
+    // dot, the TUI chip, the posted body) says the same thing.
+    severity: resolveComment(parsed.body, severity).severity,
     body: parsed.body,
     side,
     status: 'draft',
     createdAt: new Date().toISOString(),
+    // Optional: the provider's id for the review thread this draft
+    // answers. Recorded so the reader (and a later agent reading the
+    // plan) can see which conversation the draft is about; posting
+    // still opens a new thread at --file/--lineStart.
+    ...(parsed.thread ? { threadId: parsed.thread } : {}),
   };
 
   appendComment(prId, comment);

@@ -9,7 +9,9 @@ import {
 } from './CommentThread.js';
 import {
   estimateCardRows,
+  estimateLocalCardRows,
   estimateReplyInputRows,
+  withAgentFooter,
   type ReviewComment,
 } from '@kirby/review-comments';
 import { planItemKey } from '@kirby/core';
@@ -69,7 +71,7 @@ describe('CommentThreadCard — header overflow', () => {
         {
           id: 't1-c1',
           author: 'kirby-test-runner',
-          body: 'AI generated: nit signal reads inside an RxJS map',
+          body: 'nitpick (non-blocking): signal reads inside an RxJS map',
           createdAt: new Date(Date.now() - 7_200_000).toISOString(),
         },
       ],
@@ -324,6 +326,16 @@ describe('estimateCardRows matches the rendered card exactly', () => {
     'LGTM, ship it.',
     // long unbroken token (hard-wrapped) + stack-trace lines
     'Fails on `useVeryLongHookNameThatDoesNotBreakAnywhereBecauseItIsOneToken` — see the stack trace:\nTypeError: cannot read properties of undefined (reading foo)\n  at DiffViewer.tsx:241',
+    // A Conventional Comment: the header leaves the prose and becomes
+    // a badge row, so the estimator has to count a row the body no
+    // longer contains.
+    'issue (blocking): The undo stack is never bounded.\n\nEvery edit pushes onto it and nothing ever pops, so a long session grows the heap without limit.',
+    // …and the same, signed. Badge row, wrapped prose, signature row.
+    withAgentFooter(
+      'suggestion (non-blocking, if-minor): Extract this into a helper.\n\nThe same four lines appear in both branches, and the second copy has already drifted from the first.'
+    ),
+    // A signature on a body with no header at all.
+    withAgentFooter('LGTM, ship it.'),
   ];
 
   function bodyThread(body: string, replies: string[] = []) {
@@ -385,5 +397,68 @@ describe('LocalCommentCard — body line breaks', () => {
     expect(first).toBeGreaterThanOrEqual(0);
     expect(third).toBe(first + 2);
     expect(rows[first + 1]).toBe('');
+  });
+});
+
+/**
+ * The same contract as the remote card above, for the draft card.
+ *
+ * This is the estimator the branch changed most — a Conventional
+ * Comments header and an agent signature each become a row of their
+ * own, and `collapseBody` caps the *prose* rather than the raw body —
+ * and it is the one whose drift makes rows in the diff viewer
+ * unreachable. Both the selected and collapsed heights have to be
+ * exact, because the row map uses whichever applies.
+ */
+describe('estimateLocalCardRows matches the rendered card exactly', () => {
+  const CARD_WIDTH = 80;
+  const CONTENT_WIDTH = CARD_WIDTH - 4;
+
+  const LONG =
+    'The undo stack is never bounded, which means a long editing session ' +
+    'grows the heap without limit until the process is killed by the OOM ' +
+    'reaper rather than by anything the user did.';
+
+  const BODIES: [string, string][] = [
+    ['plain one-liner', 'LGTM, ship it.'],
+    ['plain wrapping paragraph', LONG],
+    ['header only', 'nitpick: Rename this.'],
+    ['header + wrapping discussion', `issue (blocking): Unbounded.\n\n${LONG}`],
+    ['header + signature', withAgentFooter('suggestion: Extract a helper.')],
+    ['signature over plain prose', withAgentFooter(LONG)],
+    // The collapse cap applies to the prose, so a header must not eat
+    // one of the four lines it is allowed to show.
+    ['header + more prose than the cap', 'todo: Subject.\n\na\nb\nc\nd\ne'],
+    [
+      'header + signature + more prose than the cap',
+      withAgentFooter('todo: Subject.\n\na\nb\nc\nd\ne'),
+    ],
+    ['multi-paragraph, no header', 'First para.\n\nSecond para.\n\nThird.'],
+  ];
+
+  const cases = BODIES.flatMap(([label, body]) =>
+    [true, false].map(
+      (selected) =>
+        [
+          `${label} (${selected ? 'selected' : 'collapsed'})`,
+          body,
+          selected,
+        ] as [string, string, boolean]
+    )
+  );
+
+  it.each(cases)('%s', (_label, body, selected) => {
+    const comment = makeReview({ body });
+    const { lastFrame } = render(
+      <LocalCommentCard
+        comment={comment}
+        selected={selected}
+        maxWidth={CARD_WIDTH}
+      />
+    );
+    // The frame's trailing blank line is the card's marginBottom row,
+    // so frame lines == rows the stream layout consumes.
+    const real = stripAnsi(lastFrame() ?? '').split('\n').length;
+    expect(estimateLocalCardRows(comment, CONTENT_WIDTH, selected)).toBe(real);
   });
 });

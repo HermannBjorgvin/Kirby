@@ -75,6 +75,10 @@ export async function launchApp(opts: LaunchOptions): Promise<PerfApp> {
   delete parentEnv.WAYLAND_DISPLAY;
   delete parentEnv.EDITOR;
   delete parentEnv.VISUAL;
+  // Set by `nx serve desktop` and inherited by any shell started from
+  // one: the main process would load the renderer from a dev server
+  // instead of the build being measured.
+  delete parentEnv.KIRBY_VITE_URL;
 
   const started = Date.now();
   const app = await electron.launch({
@@ -86,8 +90,9 @@ export async function launchApp(opts: LaunchOptions): Promise<PerfApp> {
       XDG_CONFIG_HOME: join(homeDir, '.config'),
       KIRBY_START_DIR: opts.repoPath,
       KIRBY_DESKTOP_VERSION: 'perf',
-      TMUX_TMPDIR: homeDir,
       ...ghEnv,
+      // Last, and not negotiable — see the note in the e2e fixture.
+      TMUX_TMPDIR: homeDir,
     },
     timeout: 60_000,
   });

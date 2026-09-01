@@ -1,4 +1,5 @@
 import type { DiffLine } from '@kirby/diff';
+import { commentBodyParts } from '@kirby/review-comments/conventional';
 import type {
   RemoteCommentThread,
   ReviewComment,
@@ -152,6 +153,19 @@ export function buildCommentRows(
   return rows;
 }
 
+/**
+ * The one line the rail has to say what a comment is about.
+ *
+ * A Conventional Comments header is drawn as a badge on the card, so
+ * spending the rail's only line repeating "issue (blocking):" says
+ * nothing the reader cannot already see and pushes out the part that
+ * identifies which comment this is. The signature goes for the same
+ * reason: every agent comment ends with the same words.
+ */
+function commentPreview(body: string): string {
+  return commentBodyParts(body).body;
+}
+
 /** A general PR comment: no file, and ahead of every inline row. */
 function generalRow(t: RemoteCommentThread): CommentRow {
   const root = t.comments[0];
@@ -160,7 +174,7 @@ function generalRow(t: RemoteCommentThread): CommentRow {
     kind: 'thread',
     author: root?.author ?? '',
     where: 'Conversation',
-    preview: root?.body ?? '',
+    preview: commentPreview(root?.body ?? ''),
     resolved: t.isResolved,
     file: null,
     line: 0,
@@ -180,7 +194,7 @@ function inlineRow(
     where: `${t.file?.split('/').pop() ?? ''}${
       t.lineStart != null ? `:${t.lineStart}` : ''
     }`,
-    preview: root?.body ?? '',
+    preview: commentPreview(root?.body ?? ''),
     resolved: t.isResolved,
     file: t.file,
     line: t.lineStart ?? 0,
@@ -194,7 +208,7 @@ function draftRow(d: ReviewComment, order: Map<string, number>): CommentRow {
     kind: 'draft',
     author: 'Draft',
     where: `${d.file.split('/').pop()}:${d.lineStart}`,
-    preview: d.body,
+    preview: commentPreview(d.body),
     resolved: false,
     severity: d.severity,
     file: d.file,

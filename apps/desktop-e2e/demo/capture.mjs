@@ -137,6 +137,10 @@ async function launchApp(scenario, { theme = 'dark' } = {}) {
   const parentEnv = { ...process.env };
   delete parentEnv.WAYLAND_DISPLAY;
   delete parentEnv.EDITOR;
+  // This script records the *built* app on a developer's own machine,
+  // where `nx serve desktop` may well be running; inheriting its URL
+  // would record a dev server instead.
+  delete parentEnv.KIRBY_VITE_URL;
   delete parentEnv.VISUAL;
   // `$TMUX` names a socket outright and beats the TMUX_TMPDIR set
   // below, so a capture run from inside a tmux session would put its
@@ -168,8 +172,9 @@ async function launchApp(scenario, { theme = 'dark' } = {}) {
       XDG_CONFIG_HOME: join(scenario.home, '.config'),
       KIRBY_START_DIR: scenario.repo,
       KIRBY_DESKTOP_VERSION: '1.0.0',
-      TMUX_TMPDIR: scenario.home,
       ...scenario.env,
+      // Last, and not negotiable — see the note in the e2e fixture.
+      TMUX_TMPDIR: scenario.home,
     },
     timeout: 60_000,
   });
@@ -322,6 +327,7 @@ async function launchTui(scenario, { cols = 132, rows = 34 } = {}) {
       homeDir: scenario.home,
       cols,
       rows,
+      // TMUX_TMPDIR last: the host pins it too, for the same reason.
       env: { ...scenario.env, TMUX_TMPDIR: scenario.home },
     }),
   });

@@ -1,6 +1,8 @@
 import { CheckIcon, CornerDownRightIcon, RotateCcwIcon } from 'lucide-react';
+import type { ComposerNotice as Notice } from '../../../lib/diff/thread-model.js';
 import { Button } from '../../ui/button.js';
 import { Textarea } from '../../ui/textarea.js';
+import { ComposerNoticeLine } from './ComposerNotice.js';
 
 /** The card's reply box and resolve button. */
 export function ThreadFooter({
@@ -14,6 +16,7 @@ export function ThreadFooter({
   resolving,
   onSend,
   onToggleResolved,
+  notice = null,
 }: {
   canResolve: boolean;
   isResolved: boolean;
@@ -25,11 +28,14 @@ export function ThreadFooter({
   resolving: boolean;
   onSend: (alsoResolve?: boolean) => void;
   onToggleResolved: () => void;
+  /** Freshness line from `useComposerRefresh`, shown above the input. */
+  notice?: Notice | null;
 }) {
   return (
     <div className="flex items-start gap-2 border-t border-border bg-muted/20 px-3 py-2">
       {composing ? (
         <div className="flex flex-1 flex-col gap-2">
+          <ComposerNoticeLine notice={notice} />
           <Textarea
             autoFocus
             value={draft}

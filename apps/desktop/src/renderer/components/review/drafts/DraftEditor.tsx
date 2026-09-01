@@ -1,4 +1,5 @@
 import { CheckIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { CommentSeverity } from '../../../../host/contract.js';
 import { SEVERITIES } from '../../../lib/review/severity.js';
 import { Button } from '../../ui/button.js';
@@ -22,6 +23,7 @@ import { Textarea } from '../../ui/textarea.js';
 export function DraftEditor({
   body,
   severity,
+  notice = null,
   onBodyChange,
   onSeverityChange,
   onSave,
@@ -29,6 +31,8 @@ export function DraftEditor({
 }: {
   body: string;
   severity: CommentSeverity;
+  /** Freshness line from `useComposerRefresh`, shown above the input. */
+  notice?: ReactNode;
   onBodyChange: (body: string) => void;
   onSeverityChange: (severity: CommentSeverity) => void;
   onSave: () => void;
@@ -36,6 +40,7 @@ export function DraftEditor({
 }) {
   return (
     <div className="space-y-2 p-3">
+      {notice}
       <Textarea
         autoFocus
         value={body}

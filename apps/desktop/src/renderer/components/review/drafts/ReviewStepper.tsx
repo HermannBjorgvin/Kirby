@@ -72,6 +72,7 @@ export function ReviewStepper({
     <StepCard
       key={current.id}
       draft={current}
+      prId={prId}
       pos={clamped + 1}
       total={ordered.length}
       counts={severityCounts(ordered)}

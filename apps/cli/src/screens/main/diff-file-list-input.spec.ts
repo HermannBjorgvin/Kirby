@@ -237,6 +237,7 @@ function makeCtx(overrides: {
   remoteCtx?: {
     replyToThread?: ReturnType<typeof vi.fn>;
     toggleResolved?: ReturnType<typeof vi.fn>;
+    refresh?: ReturnType<typeof vi.fn>;
   };
   plan?: Partial<Record<keyof PlanValue, unknown>>;
   prId?: number;
@@ -294,6 +295,7 @@ function makeCtx(overrides: {
         createdAt: new Date().toISOString(),
       }),
       toggleResolved: vi.fn().mockResolvedValue(true),
+      refresh: vi.fn(),
       ...remoteCtx,
     },
     // Empty plan store: none of the list-navigation paths under test
@@ -565,6 +567,39 @@ describe('diff-file-list handler — reply-to-thread', () => {
     });
     handleDiffFileListInput('r', makeKey(), ctx);
     expect(pane.replyingToThreadId).toBeNull();
+  });
+
+  /** Remote threads are cached for the life of the PR view, so the
+   *  reader can be looking at a conversation that has since been
+   *  answered. Opening the composer re-reads it. */
+  it('r re-reads the conversation as the composer opens', () => {
+    const pane = makePane({ diffFileIndex: 1 });
+    const refresh = vi.fn();
+    const flashStatus = vi.fn();
+    const ctx = makeCtx({
+      pane,
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('target')],
+      remoteCtx: { refresh },
+      sessions: { flashStatus },
+    });
+    handleDiffFileListInput('r', makeKey(), ctx);
+    // The composer is usable on this keypress; the fetch runs behind it.
+    expect(pane.replyingToThreadId).toBe('target');
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(flashStatus).toHaveBeenCalledWith('Checking for new comments...');
+  });
+
+  it('does not re-read when there is no thread to reply to', () => {
+    const refresh = vi.fn();
+    const ctx = makeCtx({
+      pane: makePane({ diffFileIndex: 0 }),
+      files: [makeFile('a.ts')],
+      shownGeneralComments: [makeThread('t1')],
+      remoteCtx: { refresh },
+    });
+    handleDiffFileListInput('r', makeKey(), ctx);
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
 

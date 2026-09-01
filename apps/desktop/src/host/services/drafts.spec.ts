@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ReviewCommentsModule from '@kirby/review-comments';
 import type { ReviewComment } from '@kirby/review-comments';
 
 /**
@@ -25,7 +26,12 @@ vi.mock('@kirby/vcs-core', () => ({
   readConfig: () => state.config,
 }));
 
-vi.mock('@kirby/review-comments', () => ({
+vi.mock('@kirby/review-comments', async () => ({
+  // The real one: settling a body's header against its severity is
+  // logic under test here, not a collaborator to stub out.
+  resolveComment: (
+    await vi.importActual<typeof ReviewCommentsModule>('@kirby/review-comments')
+  ).resolveComment,
   readComments: () => state.comments.map((c) => ({ ...c })),
   updateComment: (_prId: number, id: string, patch: Partial<ReviewComment>) => {
     const found = state.comments.find((c) => c.id === id);
@@ -208,5 +214,53 @@ describe('postDraftComments', () => {
   it('does not require a head SHA on Azure DevOps', async () => {
     state.config = { vendor: 'azure-devops', vendorAuth: {} };
     await expect(postDraftComments({ prId: 1 })).resolves.toBe(3);
+  });
+});
+
+describe('editing a draft settles its body against its severity', () => {
+  /** Both write paths — the agent's `add-comment` and a hand edit here
+   *  — have to leave the file in the same shape, or the walkthrough
+   *  order, the rail dot and the TUI chip start disagreeing with the
+   *  badge the body itself carries. */
+  it('raises the severity when the edited body carries a louder header', () => {
+    state.comments = [
+      {
+        id: 'a',
+        status: 'draft',
+        body: 'body a',
+        severity: 'nit',
+      } as ReviewComment,
+    ];
+    updateDraftComment(1, 'a', {
+      body: 'question (blocking): does this drop writes?',
+    });
+    expect(state.comments[0].severity).toBe('critical');
+  });
+
+  it('will not let an accidental label quieten the declared severity', () => {
+    state.comments = [
+      {
+        id: 'a',
+        status: 'draft',
+        body: 'body a',
+        severity: 'critical',
+      } as ReviewComment,
+    ];
+    updateDraftComment(1, 'a', { body: 'Note: this drops writes on crash' });
+    expect(state.comments[0].severity).toBe('critical');
+  });
+
+  /** A severity-only edit (the dropdown) must not be second-guessed. */
+  it('leaves a patch that does not touch the body alone', () => {
+    state.comments = [
+      {
+        id: 'a',
+        status: 'draft',
+        body: 'body a',
+        severity: 'nit',
+      } as ReviewComment,
+    ];
+    updateDraftComment(1, 'a', { severity: 'major' });
+    expect(state.comments[0].severity).toBe('major');
   });
 });

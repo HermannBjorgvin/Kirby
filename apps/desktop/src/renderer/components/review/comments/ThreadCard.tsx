@@ -1,10 +1,4 @@
-import {
-  CheckCircle2Icon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CornerDownRightIcon,
-  MessageSquareIcon,
-} from 'lucide-react';
+import { CornerDownRightIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type {
@@ -16,16 +10,17 @@ import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
 import { useReply, useSetResolved } from '../../../lib/data/mutations.js';
 import {
-  firstNonEmptyLine,
   threadExpanded,
   threadLocation,
 } from '../../../lib/diff/thread-model.js';
 import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
 import { Avatar } from '../../ui/avatar.js';
 import { Badge } from '../../ui/badge.js';
-import { CommentMarkdown } from './CommentMarkdown.js';
-import { PlanAttachment, PlanControls } from '../PlanControls.js';
+import { CommentBody } from './CommentBody.js';
+import { ThreadSummary } from './ThreadSummary.js';
+import { PlanAttachment } from '../PlanControls.js';
 import { ThreadFooter } from './ThreadFooter.js';
+import { useComposerRefresh } from './use-composer-refresh.js';
 
 /**
  * One review thread. The root comment and every reply render as
@@ -57,6 +52,14 @@ export function ThreadCard({
   const resolve = useSetResolved(repo.cwd);
   const [draft, setDraft] = useState('');
   const [composing, setComposing] = useState(false);
+  // Opening the box refetches the thread, so a reply is never written
+  // against a conversation that has already moved on.
+  const refresh = useComposerRefresh(prId, thread.comments.length);
+  const openComposer = (next: boolean) => {
+    setComposing(next);
+    if (next) refresh.begin();
+    else refresh.end();
+  };
   // Expansion: user toggles win until the card is (re)focused, at
   // which point it always opens. Resolved threads start collapsed.
   const [override, setOverride] = useState<boolean | null>(null);
@@ -73,6 +76,18 @@ export function ThreadCard({
       ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [focused]);
 
+  // The notice belongs to a composer the reader can actually see. The
+  // footer lives inside the expanded branch while `composing` and the
+  // baseline live out here, so collapsing a card mid-reply would leave
+  // the baseline armed — and any later refetch of this pull request
+  // would greet the reader, on re-expanding, with news of a check they
+  // never asked for.
+  const composerVisible = expanded && composing;
+  const { end: endRefresh } = refresh;
+  useEffect(() => {
+    if (!composerVisible) endRefresh();
+  }, [composerVisible, endRefresh]);
+
   const root = thread.comments[0];
   if (!root) return null;
   const replies = thread.comments.slice(1);
@@ -85,7 +100,7 @@ export function ThreadCard({
       {
         onSuccess: () => {
           setDraft('');
-          setComposing(false);
+          openComposer(false);
           if (alsoResolve && thread.canResolve && !thread.isResolved) {
             resolve.mutate(
               { prId, thread, resolved: true },
@@ -157,7 +172,8 @@ export function ThreadCard({
             canResolve={thread.canResolve}
             isResolved={thread.isResolved}
             composing={composing}
-            setComposing={setComposing}
+            setComposing={openComposer}
+            notice={refresh.notice}
             draft={draft}
             setDraft={setDraft}
             sending={reply.isPending}
@@ -167,92 +183,6 @@ export function ThreadCard({
           />
         </>
       )}
-    </div>
-  );
-}
-
-/**
- * The card's collapsed-state row: disclosure, author, location, a
- * one-line preview while closed, and the outdated/resolved badges.
- */
-function ThreadSummary({
-  thread,
-  author,
-  preview,
-  location,
-  expanded,
-  onToggle,
-  inPlan,
-  hasNote,
-  onTogglePlan,
-  onNote,
-}: {
-  thread: RemoteCommentThread;
-  author: string;
-  preview: string;
-  /** Already null when the caller does not want it shown. */
-  location: string | null;
-  expanded: boolean;
-  onToggle: () => void;
-  inPlan: boolean;
-  hasNote: boolean;
-  onTogglePlan: () => void;
-  onNote: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-3 py-1.5 text-sm',
-        inPlan
-          ? 'bg-primary/5'
-          : thread.isResolved
-          ? 'bg-success/5'
-          : 'bg-muted/40',
-        expanded && 'border-b border-border'
-      )}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-        aria-expanded={expanded}
-      >
-        {expanded ? (
-          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 font-medium">{author}</span>
-        {location && (
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {location}
-          </span>
-        )}
-        {!expanded && (
-          <span className="min-w-0 truncate text-muted-foreground">
-            — {firstNonEmptyLine(preview)}
-          </span>
-        )}
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {thread.comments.length} comment
-          {thread.comments.length === 1 ? '' : 's'}
-        </span>
-      </button>
-      <span className="flex shrink-0 items-center gap-1">
-        <PlanControls
-          inPlan={inPlan}
-          hasNote={hasNote}
-          onToggle={onTogglePlan}
-          onNote={onNote}
-        />
-        {thread.isOutdated && <Badge variant="outline">Outdated</Badge>}
-        {thread.isResolved && (
-          <Badge variant="success">
-            <CheckCircle2Icon /> Resolved
-          </Badge>
-        )}
-      </span>
     </div>
   );
 }
@@ -290,7 +220,7 @@ function Message({
       <div
         className={cn(reply ? 'pl-[calc(1.25rem+0.875rem+0.5rem)]' : 'pl-7')}
       >
-        <CommentMarkdown markdown={comment.body} />
+        <CommentBody markdown={comment.body} />
       </div>
     </article>
   );

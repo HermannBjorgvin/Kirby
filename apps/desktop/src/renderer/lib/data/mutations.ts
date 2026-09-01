@@ -277,6 +277,32 @@ export function useRefreshRemote(cwd: string) {
   });
 }
 
+/**
+ * Refetch a pull request's comment threads, as an action rather than a
+ * cadence.
+ *
+ * Opening a reply box is the moment being stale actually costs
+ * something: `useThreads` serves a cache up to half a minute old, and
+ * answering a question somebody already answered is how a review
+ * thread turns into two conversations. Invalidating that one query is
+ * enough — the cards read from it, so anything that arrived paints
+ * itself; the caller only has to know when the round trip is done, and
+ * a mutation is what carries that `isPending`.
+ *
+ * `refetchType: 'active'` so the returned promise settles on the
+ * mounted query's refetch, not on the whole cache going stale.
+ */
+export function useRefreshThreads(cwd: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prId: number) =>
+      qc.invalidateQueries({
+        queryKey: keys.threads(cwd, prId),
+        refetchType: 'active',
+      }),
+  });
+}
+
 export function useReply(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({

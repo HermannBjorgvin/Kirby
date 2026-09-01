@@ -12,7 +12,13 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { DiffLine } from '@kirby/diff';
-import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
+import type {
+  CommentSeverity,
+  ReviewComment,
+} from '../../../../host/contract.js';
+import { useThreads } from '../../../lib/data/queries.js';
+import { totalCommentCount } from '../../../lib/diff/thread-model.js';
+import { useRepo } from '../../../lib/repo-context.js';
 import { cn } from '../../../lib/utils.js';
 import {
   SEVERITIES,
@@ -22,7 +28,9 @@ import {
 import { Badge } from '../../ui/badge.js';
 import { Button } from '../../ui/button.js';
 import { Tip } from '../../ui/tooltip.js';
-import { CommentMarkdown } from '../comments/CommentMarkdown.js';
+import { CommentBody } from '../comments/CommentBody.js';
+import { ComposerNoticeLine } from '../comments/ComposerNotice.js';
+import { useComposerRefresh } from '../comments/use-composer-refresh.js';
 import { DraftEditor } from './DraftEditor.js';
 import { SnippetView } from '../diff/SnippetView.js';
 import { useStepperShortcuts } from './use-stepper-shortcuts.js';
@@ -48,8 +56,11 @@ export function StepCard({
   onPost,
   onDiscard,
   onSave,
+  prId,
 }: {
   draft: ReviewComment;
+  /** The pull request the draft belongs to, for the freshness check. */
+  prId: number;
   pos: number;
   total: number;
   counts: Record<CommentSeverity, number>;
@@ -69,11 +80,22 @@ export function StepCard({
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(draft.body);
   const [severity, setSeverity] = useState<CommentSeverity>(draft.severity);
+  // The walkthrough edits the same drafts the diff pane does, so it
+  // gets the same freshness check: whatever landed on the pull request
+  // while the reader was stepping through is worth knowing before they
+  // rewrite a comment about it.
+  const { repo } = useRepo();
+  const threads = useThreads(repo.cwd, prId);
+  const refresh = useComposerRefresh(
+    prId,
+    threads.data ? totalCommentCount(threads.data) : null
+  );
 
   const startEditing = () => {
     setBody(draft.body);
     setSeverity(draft.severity);
     setEditing(true);
+    refresh.begin();
   };
 
   useStepperShortcuts(!editing && active, {
@@ -88,6 +110,7 @@ export function StepCard({
   const save = () => {
     onSave(body.trim(), severity);
     setEditing(false);
+    refresh.end();
   };
 
   return (
@@ -181,11 +204,15 @@ export function StepCard({
                 onBodyChange={setBody}
                 onSeverityChange={setSeverity}
                 onSave={save}
-                onCancel={() => setEditing(false)}
+                notice={<ComposerNoticeLine notice={refresh.notice} />}
+                onCancel={() => {
+                  setEditing(false);
+                  refresh.end();
+                }}
               />
             ) : (
               <div className="p-3">
-                <CommentMarkdown markdown={draft.body} />
+                <CommentBody markdown={draft.body} />
               </div>
             )}
             {/* Actions — part of the card, next to the comment. */}

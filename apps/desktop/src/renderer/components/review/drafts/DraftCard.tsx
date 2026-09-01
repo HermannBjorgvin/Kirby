@@ -1,5 +1,4 @@
 import {
-  BotIcon,
   CheckIcon,
   Loader2Icon,
   PencilIcon,
@@ -7,9 +6,18 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { toast } from 'sonner';
-import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
+import type {
+  CommentSeverity,
+  ReviewComment,
+} from '../../../../host/contract.js';
 import { snapshotLocal } from '@kirby/core/plan';
 import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
@@ -18,8 +26,9 @@ import {
   usePostDrafts,
   useUpdateDraft,
 } from '../../../lib/data/mutations.js';
-import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
-import { Badge } from '../../ui/badge.js';
+import { useThreads } from '../../../lib/data/queries.js';
+import { totalCommentCount } from '../../../lib/diff/thread-model.js';
+import { cn, errorMessage } from '../../../lib/utils.js';
 import { Button } from '../../ui/button.js';
 import {
   Select,
@@ -29,13 +38,12 @@ import {
   SelectValue,
 } from '../../ui/select.js';
 import { Textarea } from '../../ui/textarea.js';
-import {
-  SEVERITIES,
-  SEVERITY_BADGE,
-  SEVERITY_RAIL,
-} from '../../../lib/review/severity.js';
-import { CommentMarkdown } from '../comments/CommentMarkdown.js';
-import { PlanAttachment, PlanControls } from '../PlanControls.js';
+import { SEVERITIES, SEVERITY_RAIL } from '../../../lib/review/severity.js';
+import { CommentBody } from '../comments/CommentBody.js';
+import { ComposerNoticeLine } from '../comments/ComposerNotice.js';
+import { useComposerRefresh } from '../comments/use-composer-refresh.js';
+import { PlanAttachment } from '../PlanControls.js';
+import { DraftHeader } from './DraftHeader.js';
 
 /**
  * The footer of a draft that is not being edited. Every button is
@@ -88,6 +96,7 @@ function DraftEditor({
   body,
   severity,
   saving,
+  notice,
   onBody,
   onSeverity,
   onSave,
@@ -96,6 +105,7 @@ function DraftEditor({
   body: string;
   severity: CommentSeverity;
   saving: boolean;
+  notice: ReactNode;
   onBody: (v: string) => void;
   onSeverity: (v: CommentSeverity) => void;
   onSave: () => void;
@@ -103,6 +113,7 @@ function DraftEditor({
 }) {
   return (
     <div className="space-y-2 px-3 py-2">
+      {notice}
       <Textarea
         autoFocus
         value={body}
@@ -176,6 +187,20 @@ export function DraftCard({
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(draft.body);
   const [severity, setSeverity] = useState<CommentSeverity>(draft.severity);
+  // A draft is not anchored to a thread, so its freshness baseline is
+  // the whole pull request: what the author of a review comment needs
+  // to know is that *something* landed, not that this thread grew.
+  //
+  // Null until the threads query has answered. Drafts are a local file
+  // read on a two-second poll while threads are a `gh` call, so a card
+  // paints well before them — and taking zero for "not loaded yet"
+  // made the first response read as every comment on the pull request
+  // arriving at once.
+  const threads = useThreads(repo.cwd, prId);
+  const refresh = useComposerRefresh(
+    prId,
+    threads.data ? totalCommentCount(threads.data) : null
+  );
   const posting = draft.status === 'posting' || post.isPending;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -187,7 +212,10 @@ export function DraftCard({
     update.mutate(
       { prId, id: draft.id, patch: { body: body.trim(), severity } },
       {
-        onSuccess: () => setEditing(false),
+        onSuccess: () => {
+          setEditing(false);
+          refresh.end();
+        },
         onError: (e) => toast.error(errorMessage(e)),
       }
     );
@@ -221,44 +249,29 @@ export function DraftCard({
         focused && 'ring-2 ring-primary/50'
       )}
     >
-      <div
-        className={cn(
-          'flex items-center gap-2 border-b border-border px-3 py-1.5 text-sm',
-          planControls.inPlan ? 'bg-primary/5' : 'bg-muted/40'
-        )}
-      >
-        <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Draft</span>
-        <Badge variant={SEVERITY_BADGE[draft.severity]}>{draft.severity}</Badge>
-        {showLocation && (
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {location}
-          </span>
-        )}
-        <span className="ml-auto text-xs text-muted-foreground">
-          {relativeTime(draft.createdAt)}
-        </span>
-        <PlanControls
-          inPlan={planControls.inPlan}
-          hasNote={planControls.note !== undefined}
-          onToggle={planControls.toggleInPlan}
-          onNote={planControls.startNote}
-        />
-      </div>
+      <DraftHeader
+        draft={draft}
+        location={showLocation ? location : null}
+        plan={planControls}
+      />
 
       {editing ? (
         <DraftEditor
           body={body}
           severity={severity}
           saving={update.isPending}
+          notice={<ComposerNoticeLine notice={refresh.notice} />}
           onBody={setBody}
           onSeverity={setSeverity}
           onSave={save}
-          onCancel={() => setEditing(false)}
+          onCancel={() => {
+            setEditing(false);
+            refresh.end();
+          }}
         />
       ) : (
         <div className="px-3 py-2">
-          <CommentMarkdown markdown={draft.body} />
+          <CommentBody markdown={draft.body} />
         </div>
       )}
 
@@ -280,6 +293,7 @@ export function DraftCard({
             setBody(draft.body);
             setSeverity(draft.severity);
             setEditing(true);
+            refresh.begin();
           }}
           onDelete={doDelete}
           onPost={doPost}

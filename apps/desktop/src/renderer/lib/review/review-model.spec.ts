@@ -383,6 +383,67 @@ describe('buildCommentRows row contents', () => {
     });
   });
 
+  /**
+   * The rail has one line to say what a comment is about. A
+   * Conventional Comments header is already drawn as a badge on the
+   * card, so repeating "issue (blocking):" here says nothing new and
+   * pushes out the part that identifies which comment this is; the
+   * signature goes for the same reason, since every agent comment ends
+   * with the same words.
+   */
+  it('previews the prose, not the header or the signature', () => {
+    const [row] = buildCommentRows(
+      [],
+      [
+        thread({
+          id: 'g',
+          file: null,
+          comments: [
+            {
+              id: 'c',
+              author: 'grace',
+              body:
+                'issue (blocking): The undo stack is never bounded.\n\n' +
+                'Nothing ever pops.\n\n---\n' +
+                '_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_',
+              createdAt: '2024-01-01T00:00:00Z',
+            },
+          ],
+        } as Partial<RemoteCommentThread>),
+      ],
+      [],
+      []
+    );
+    expect(row.preview).toBe(
+      'The undo stack is never bounded.\n\nNothing ever pops.'
+    );
+  });
+
+  /** Most comments on a pull request are people's, written however
+   *  they like, and must reach the rail exactly as typed. */
+  it('leaves an ordinary comment as its own preview', () => {
+    const [row] = buildCommentRows(
+      [],
+      [
+        thread({
+          id: 'g',
+          file: null,
+          comments: [
+            {
+              id: 'c',
+              author: 'grace',
+              body: 'note this: it looks fine',
+              createdAt: '2024-01-01T00:00:00Z',
+            },
+          ],
+        } as Partial<RemoteCommentThread>),
+      ],
+      [],
+      []
+    );
+    expect(row.preview).toBe('note this: it looks fine');
+  });
+
   it('survives a thread with no comments at all', () => {
     const [row] = buildCommentRows(
       [],

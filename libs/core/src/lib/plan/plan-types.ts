@@ -17,7 +17,8 @@ export interface PlanItemBase {
   line: number | null;
   /** Root/comment body at add-time. */
   body: string;
-  /** Optional "Your note:" describing the approach the user wants. */
+  /** Optional note describing the approach the user wants; reaches the
+   *  agent as "Instruction from the reviewer:". */
   annotation?: string;
 }
 
@@ -36,6 +37,8 @@ export interface LocalPlanItem extends PlanItemBase {
   /** ReviewComment.id */
   id: string;
   severity: CommentSeverity;
+  /** ReviewComment.threadId — the thread this draft answers, if any. */
+  threadId?: string;
 }
 
 export type PlanItem = RemotePlanItem | LocalPlanItem;
@@ -78,6 +81,7 @@ export function snapshotLocal(
     line: comment.lineStart,
     body: comment.body,
     severity: comment.severity,
+    ...(comment.threadId ? { threadId: comment.threadId } : {}),
     ...(annotation ? { annotation } : {}),
   };
 }

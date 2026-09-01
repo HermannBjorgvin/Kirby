@@ -775,7 +775,7 @@ This adds the blocking status without duplicating any inline comments.
 
 ### Things to watch out for
 
-- **Always prefix AI-generated comments** with "AI generated:" so it's clear they don't come directly from the repo owner
+- **Write the body as a Conventional Comment and sign it at the end** — `<label> [decorations]: <subject>`, a blank line, then the discussion, closing with `_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_` after a `---`. Same shape Kirby's own poster emits (`libs/review-comments/src/lib/conventional.ts`), so a reader can still tell at a glance that a machine wrote it — just not before they can tell what it says
 - **Don't use `gh pr review`** for inline comments — it only supports a single body comment, not per-line annotations
 - **Line numbers come from the new file**, not diff positions — count from the `@@` hunk headers to get them right
 - **Heredoc quoting matters** — use `<<'EOF'` (quoted) to prevent shell expansion inside the JSON body

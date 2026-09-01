@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment } from '@kirby/review-comments';
+import { withAgentFooter, type ReviewComment } from '@kirby/review-comments';
 import {
+  AGENT_FOOTER_LINE,
   cardBorderColor,
   collapseBody,
+  commentBodyView,
   localHeaderSpans,
   planHintText,
   relativeTime,
   replyHeaderSpans,
+  severityColor,
   threadHeaderSpans,
   threadHintText,
   type HeaderSpan,
@@ -384,5 +387,87 @@ describe('collapseBody', () => {
       lines: ['a', '', '', ''],
       hiddenCount: 1,
     });
+  });
+});
+
+// ── Conventional Comments ──────────────────────────────────────────
+
+describe('commentBodyView', () => {
+  it('lifts the header out of the prose and colours it', () => {
+    const view = commentBodyView(
+      'issue (blocking): The undo stack is never bounded.\n\nNothing ever pops.'
+    );
+    expect(view.badge.map((s) => s.text)).toEqual(['issue', ' (blocking)']);
+    // Blocking is the loudest thing a comment can say, and reads in the
+    // same colour a critical draft does.
+    expect(view.badge[0].color).toBe(severityColor('critical'));
+    expect(view.body).toBe(
+      'The undo stack is never bounded.\n\nNothing ever pops.'
+    );
+  });
+
+  /** The subject is the comment's first sentence, not part of the
+   *  badge — dropping it would delete a one-line comment entirely. */
+  it('keeps the subject as the body of a header-only comment', () => {
+    expect(commentBodyView('nitpick: Rename this.').body).toBe('Rename this.');
+  });
+
+  it('renders a bare label without an empty decoration run', () => {
+    const view = commentBodyView('praise: Nice catch.');
+    expect(view.badge).toHaveLength(1);
+    expect(view.badge[0].text).toBe('praise');
+  });
+
+  /** Most comments in a thread are people's, written however they
+   *  like. Those must come back exactly as typed. */
+  it('leaves an ordinary comment untouched', () => {
+    expect(commentBodyView('Looks good to me.')).toEqual({
+      badge: [],
+      body: 'Looks good to me.',
+      footer: null,
+    });
+  });
+
+  it('reads a human comment written in the same shape', () => {
+    expect(commentBodyView('question: why the retry here?').body).toBe(
+      'why the retry here?'
+    );
+  });
+
+  /** A terminal has no italics-with-a-link, so the signature is
+   *  rebuilt from the same constant the posted markdown is built
+   *  from rather than by re-parsing it. */
+  it('shows the signature as one plain dim line', () => {
+    const view = commentBodyView(withAgentFooter('issue: Something.'));
+    expect(view.footer).toBe(AGENT_FOOTER_LINE);
+    expect(view.footer).not.toContain('](');
+    expect(view.body).toBe('Something.');
+  });
+
+  it('has no signature on a comment nobody signed', () => {
+    expect(commentBodyView('issue: Something.').footer).toBeNull();
+  });
+});
+
+describe('collapseBody with a conventional header', () => {
+  /** The cap is on the prose. Counting the header line against it
+   *  would hide a line of the comment for a row that is drawn
+   *  separately anyway. */
+  it('counts the cap against the prose, not the header', () => {
+    const body = 'issue: Subject.\n\na\nb\nc\nd';
+    // Prose is "Subject.", blank, a, b, c, d — six lines, capped at 4.
+    expect(collapseBody(body, false).lines).toEqual(['Subject.', '', 'a', 'b']);
+    expect(collapseBody(body, false).hiddenCount).toBe(2);
+  });
+
+  it('shows the whole prose when expanded', () => {
+    expect(collapseBody('issue: Subject.\n\na\nb\nc\nd', true).lines).toEqual([
+      'Subject.',
+      '',
+      'a',
+      'b',
+      'c',
+      'd',
+    ]);
   });
 });

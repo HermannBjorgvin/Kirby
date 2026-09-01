@@ -1,5 +1,10 @@
 import { spawn } from 'node:child_process';
 import type { ReviewComment } from './types.js';
+import {
+  formatConventionalComment,
+  resolveComment,
+  withAgentFooter,
+} from './conventional.js';
 import { updateComment } from './comment-store.js';
 
 function execWithStdin(
@@ -22,6 +27,46 @@ function execWithStdin(
   });
 }
 
+/**
+ * The body a draft is posted with.
+ *
+ * The severity and the body's own header are settled against each
+ * other first (see `resolveComment`), so what a reviewer reads and what
+ * every severity-driven surface in Kirby shows cannot disagree.
+ *
+ * The attribution goes at the end, not the front. A comment's opening
+ * words are the ones a reviewer sees in a notification and in a
+ * collapsed thread, and spending them on provenance buries the finding
+ * behind a disclaimer. The claim is still made — where a signature
+ * goes.
+ */
+export function renderCommentBody(comment: ReviewComment): string {
+  const { header } = resolveComment(comment.body, comment.severity);
+  return withAgentFooter(formatConventionalComment(header));
+}
+
+/**
+ * A draft with nothing in it cannot be posted.
+ *
+ * Without this the header is emitted with no subject — `issue
+ * (blocking):` and nothing else — which is a comment that says
+ * nothing, and which the app's own parser then refuses to read back as
+ * a header, so it renders as literal prose. Checked for the whole batch
+ * before anything is sent, because a mid-batch failure leaves some
+ * comments live and some not.
+ */
+function assertPostable(comments: ReviewComment[]): void {
+  const empty = comments.filter(
+    (c) => resolveComment(c.body, c.severity).header.subject.length === 0
+  );
+  if (empty.length > 0) {
+    throw new Error(
+      `Cannot post ${empty.length === 1 ? 'a comment' : 'comments'} with an ` +
+        `empty body: ${empty.map((c) => c.id).join(', ')}`
+    );
+  }
+}
+
 export interface PostContext {
   vendor: 'github' | 'azure-devops';
   vendorAuth: Record<string, string>;
@@ -35,6 +80,7 @@ export async function postReviewComments(
   ctx: PostContext,
   event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES' = 'COMMENT'
 ): Promise<void> {
+  assertPostable(comments);
   if (ctx.vendor === 'github') {
     await postGitHub(comments, ctx, event);
   } else if (ctx.vendor === 'azure-devops') {
@@ -62,14 +108,14 @@ async function postGitHub(
 
   const reviewBody = {
     commit_id: ctx.headSha,
-    body: 'AI-assisted review comments',
+    body: 'Review comments from an agent.',
     event,
     comments: comments.map((c) => ({
       path: c.file,
       line: c.lineEnd,
       ...(c.lineStart !== c.lineEnd ? { start_line: c.lineStart } : {}),
       side: c.side,
-      body: `AI generated: **[${c.severity}]** ${c.body}`,
+      body: renderCommentBody(c),
     })),
   };
 
@@ -95,7 +141,7 @@ async function postAzureDevOps(
       comments: [
         {
           parentCommentId: 0,
-          content: `AI generated: **[${comment.severity}]** ${comment.body}`,
+          content: renderCommentBody(comment),
           commentType: 1,
         },
       ],

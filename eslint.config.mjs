@@ -425,6 +425,7 @@ export default tseslint.config(
                 '!@kirby/core/plan',
                 '!@kirby/app-core/plan',
                 '!@kirby/vcs-core/types',
+                '!@kirby/review-comments/conventional',
               ],
               allowTypeImports: true,
               message:

@@ -288,13 +288,17 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
         XDG_CONFIG_HOME: join(homeDir, '.config'),
         KIRBY_START_DIR: startWithoutRepo ? '' : repoPath,
         KIRBY_DESKTOP_VERSION: 'e2e',
-        // A tmux server inherits the environment it was started with;
-        // pinning the socket dir keeps a test-spawned server off the
-        // developer's default socket.
-        TMUX_TMPDIR: homeDir,
         ...(githubToken ? { GH_TOKEN: githubToken } : {}),
-        // Last, so the fake `gh` wins the PATH lookup.
+        // The fake `gh` has to win the PATH lookup.
         ...ghEnv,
+        // Last, and not negotiable. A tmux server is identified by its
+        // socket directory, and the default one is the developer's own
+        // — holding their real work and every persisted agent session.
+        // A server started there by the app under test keeps this temp
+        // HOME for its whole life and hands it to every session it
+        // later spawns, so one run poisons real sessions long after it
+        // ends. Nothing below may override this key.
+        TMUX_TMPDIR: homeDir,
       },
       timeout: 60_000,
     });

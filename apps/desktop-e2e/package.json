@@ -9,6 +9,9 @@
       "type:app",
       "scope:desktop-e2e"
     ],
+    "implicitDependencies": [
+      "desktop"
+    ],
     "targets": {
       "e2e": {
         "executor": "nx:run-commands",

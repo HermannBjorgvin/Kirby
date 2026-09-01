@@ -190,7 +190,7 @@ test.describe('Adding comments to the plan', () => {
     await planEntry(page).click();
     await page.getByRole('button', { name: /Prompt preview/ }).click();
     await expect(page.locator('pre')).toContainText(
-      'Your note: Cap it at 100 entries.'
+      'Instruction from the reviewer: Cap it at 100 entries.'
     );
   });
 
@@ -228,6 +228,17 @@ test.describe('Sending the plan', () => {
 
     await addToPlan(page, UNBOUNDED);
     await addToPlan(page, NAMING);
+
+    // Annotate one item, so the delivered prompt carries the line the
+    // preview showed — including who the instruction is from.
+    const target = card(page, UNBOUNDED);
+    await target.hover();
+    await target
+      .getByRole('button', { name: 'Add to plan with a note', exact: true })
+      .click();
+    await page.getByLabel('Your note to the agent').fill('Cap it at 100.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+
     await planEntry(page).click();
     await page.getByRole('button', { name: 'Start agent with plan' }).click();
 
@@ -241,6 +252,19 @@ test.describe('Sending the plan', () => {
       visibleText(page, new RegExp(`seed:.*${UNBOUNDED}`))
     ).toBeVisible();
     await expect(visibleText(page, /seed:### 2\. undo\.c:2/)).toBeVisible();
+
+    // Each item names the id the provider knows the thread by. Without
+    // it "comment 2" is a position in this prompt and nothing the agent
+    // can look up, reply to, or re-read.
+    await expect(visibleText(page, /seed:.*\(thread T1\)/)).toBeVisible();
+    await expect(visibleText(page, /seed:.*\(thread T2\)/)).toBeVisible();
+
+    // The note reaches the agent attributed. Unattributed ("Your
+    // note:") it reads, in a prompt addressed to the agent, as the
+    // agent's own earlier thinking rather than as an instruction.
+    await expect(
+      visibleText(page, /seed:.*Instruction from the reviewer: Cap it at 100\./)
+    ).toBeVisible();
 
     // Sent means sent: the queue is emptied, so the same comments are
     // not silently sent twice.

@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import {
+  CONVENTIONAL_DECORATIONS,
+  CONVENTIONAL_LABELS,
+} from '@kirby/review-comments';
 import { buildReviewLaunchRequest } from './review-prompt.js';
 
 const pr = {
@@ -30,5 +34,39 @@ describe('buildReviewLaunchRequest', () => {
   it('falls back to the branch name when the title is empty', () => {
     const req = buildReviewLaunchRequest({ ...pr, title: '' });
     expect(req.prompt).toContain('Review PR #42 ("feat/x")');
+  });
+
+  /**
+   * The guidance is the agent's only spec for what a comment looks
+   * like — it is a fresh process with no memory of the last review — so
+   * anything the poster and the viewer expect has to be stated here.
+   */
+  describe('the comment-writing guidance', () => {
+    const guidance = () => buildReviewLaunchRequest(pr).systemGuidance ?? '';
+
+    it('names every label and decoration the parser accepts', () => {
+      for (const label of CONVENTIONAL_LABELS) {
+        expect(guidance()).toContain(label);
+      }
+      for (const decoration of CONVENTIONAL_DECORATIONS) {
+        expect(guidance()).toContain(decoration);
+      }
+    });
+
+    it('gives the shape, and where the reasoning goes', () => {
+      expect(guidance()).toContain('<label> [decorations]: <subject>');
+      expect(guidance()).toContain('conventionalcomments.org');
+    });
+
+    /** The attribution is added at post time. An agent that signs its
+     *  own comments produces two signatures on one comment. */
+    it('tells the agent not to sign its own comments', () => {
+      expect(guidance()).toMatch(/[Dd]o not sign the comment/);
+    });
+
+    it('says where thread ids come from', () => {
+      expect(guidance()).toContain('--thread=<id>');
+      expect(guidance()).toContain('(thread <id>)');
+    });
   });
 });

@@ -12,8 +12,37 @@
 
 import wrapAnsi from 'wrap-ansi';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
+import { commentBodyParts } from './conventional.js';
 import type { ReviewComment } from './types.js';
 import type { AnnotatedLine } from './comment-renderer.js';
+
+/**
+ * Rows a comment body occupies once its Conventional Comments header
+ * and its agent signature have been lifted out of the prose.
+ *
+ * Both of those render as a single `wrap="truncate-end"` row each — a
+ * deliberate choice in the components, precisely so they can be
+ * counted rather than measured. The prose is what actually wraps, and
+ * is measured exactly.
+ *
+ * This is the one place the split is applied to the *measurement*; the
+ * components apply it to the paint via `commentBodyView`. They have to
+ * stay in step: a card measured against a different split from the one
+ * it draws puts every row below it in the wrong place.
+ */
+function bodyRowsWithChrome(body: string, contentWidth?: number): number {
+  const parts = commentBodyParts(body);
+  return (
+    (parts.header ? 1 : 0) +
+    // Ink paints `<Text wrap="wrap">{''}</Text>` as no rows at all,
+    // while estimateBodyRows floors at one. That gap used to be
+    // unreachable for a real comment; splitting a header and a
+    // signature out of the body made it reachable — a comment whose
+    // whole content is its signature has empty prose.
+    (parts.body ? estimateBodyRows(parts.body, contentWidth) : 0) +
+    (parts.footer ? 1 : 0)
+  );
+}
 
 /**
  * Rows a body string occupies after wrap. With a `contentWidth` this
@@ -57,7 +86,7 @@ export function estimateCardRows(
 ): number {
   const root = thread.comments[0];
   if (!root) return 0;
-  const rootRows = 4 + estimateBodyRows(root.body, contentWidth);
+  const rootRows = 4 + bodyRowsWithChrome(root.body, contentWidth);
   const replies = thread.comments.slice(1);
   const replyWidth =
     contentWidth && contentWidth > 0
@@ -68,7 +97,7 @@ export function estimateCardRows(
       ? 0
       : 1 +
         replies.reduce(
-          (sum, c) => sum + 1 + estimateBodyRows(c.body, replyWidth),
+          (sum, c) => sum + 1 + bodyRowsWithChrome(c.body, replyWidth),
           0
         );
   return rootRows + replyRows;
@@ -84,20 +113,25 @@ export function estimateLocalCardRows(
   contentWidth?: number,
   selected = false
 ): number {
-  const lines = comment.body.split('\n');
+  const parts = commentBodyParts(comment.body);
+  const lines = parts.body.split('\n');
   const MAX_COLLAPSED = 4;
   const shown = selected ? lines : lines.slice(0, MAX_COLLAPSED);
   const truncatedNote = !selected && lines.length > MAX_COLLAPSED ? 1 : 0;
-  // Collapsed cards render each natural line as its own wrapping
-  // <Text> (empty lines become a single space), so count per line.
+  // The card paints the shown lines as ONE <Text> holding the newlines
+  // (see the note in CommentThread.tsx for why), so measure the joined
+  // string rather than summing per line — and measure nothing at all
+  // when the prose is empty, which Ink paints as no rows while
+  // estimateBodyRows floors at one.
+  const prose = shown.join('\n');
   const bodyRows =
-    Math.max(
-      1,
-      shown.reduce(
-        (sum, l) => sum + estimateBodyRows(l || ' ', contentWidth),
-        0
-      )
-    ) + truncatedNote;
+    (prose ? estimateBodyRows(prose, contentWidth) : 0) +
+    truncatedNote +
+    // The badge and the signature each paint one truncating row, and
+    // survive the collapse: capping the prose does not remove the
+    // card's classification.
+    (parts.header ? 1 : 0) +
+    (parts.footer ? 1 : 0);
   // border-top + header + body + border-bottom + marginBottom
   return 2 + 1 + bodyRows + 1;
 }

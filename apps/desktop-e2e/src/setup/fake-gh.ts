@@ -1,4 +1,10 @@
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -68,6 +74,30 @@ export interface FakeGitHub {
  * out to `gh` for every remote call, so this is the whole seam — no
  * production code knows it is under test.
  */
+/** Where `installFakeGh` writes the scenario the fake answers from. */
+export function fakeGhScenarioPath(homeDir: string): string {
+  return join(homeDir, 'fake-gh.json');
+}
+
+/**
+ * Change what GitHub says, mid-test.
+ *
+ * Every `gh` invocation re-reads the scenario file, so editing it is
+ * how a test makes the world move underneath the app — a reviewer
+ * answering a thread while somebody else has it open, say. The app has
+ * no way to notice on its own: `useThreads` caches, so whatever it
+ * shows next is the result of it deciding to go and look.
+ */
+export function updateFakeGh(
+  homeDir: string,
+  mutate: (scenario: FakeGitHub) => void
+): void {
+  const path = fakeGhScenarioPath(homeDir);
+  const scenario = JSON.parse(readFileSync(path, 'utf8')) as FakeGitHub;
+  mutate(scenario);
+  writeFileSync(path, JSON.stringify(scenario, null, 2), 'utf8');
+}
+
 export function installFakeGh(
   homeDir: string,
   scenario: FakeGitHub
@@ -78,7 +108,7 @@ export function installFakeGh(
   copyFileSync(join(HERE, '..', 'fixtures', 'fake-gh.mjs'), gh);
   chmodSync(gh, 0o755);
 
-  const scenarioPath = join(homeDir, 'fake-gh.json');
+  const scenarioPath = fakeGhScenarioPath(homeDir);
   writeFileSync(scenarioPath, JSON.stringify(scenario, null, 2), 'utf8');
 
   return {

@@ -74,6 +74,10 @@ export interface DiffFileListHandlerCtx {
       body: string
     ) => Promise<RemoteCommentReply>;
     toggleResolved: (threadId: string, resolved: boolean) => Promise<boolean>;
+    /** Force-refetch remote threads. Opening the reply composer calls
+     *  it, so a reply is never written against a conversation that has
+     *  already moved on. */
+    refresh: () => void;
   };
   sessions: SessionActionsContextValue;
   /** Per-PR plan store ("add-to-cart"). */
