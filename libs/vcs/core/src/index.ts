@@ -2,3 +2,8 @@ export * from './lib/types.js';
 export * from './lib/registry.js';
 export * from './lib/config-store.js';
 export * from './lib/sanitize.js';
+export * from './lib/errors.js';
+export * from './lib/http.js';
+export * from './lib/request-cache.js';
+export * from './lib/request-stats.js';
+export * from './lib/throttle-gate.js';

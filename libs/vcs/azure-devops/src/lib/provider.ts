@@ -9,16 +9,21 @@ import type {
   RemoteCommentReply,
   ReviewDecision,
   ReviewVerdict,
+  BuildStatusState,
 } from '@kirby/vcs-core';
 import { sanitizeBody } from '@kirby/vcs-core';
 import { log } from '@kirby/logger';
 import type { AdoConfig } from './client.js';
-import { authHeaders, baseUrl, tracedFetch } from './client.js';
+import { authHeaders, baseUrl } from './client.js';
 import {
-  combineBuildStatus,
-  fetchPrBuildRuns,
-  fetchPrBuildStatus,
-} from './build-status.js';
+  adoGet,
+  adoSend,
+  counted,
+  invalidateAdoCache,
+  TTL,
+} from './request.js';
+import { combineBuildStatus, fetchPrBuildStatus } from './build-status.js';
+import { fetchPrBuildRunsBatch } from './builds.js';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
@@ -43,6 +48,17 @@ function toAdoConfig(
     repo: project.repo ?? '',
     pat: auth.pat ?? '',
   };
+}
+
+/** Everything the transport has cached about one pull request. Called
+ *  after a write so the change is visible immediately rather than at
+ *  the end of the entry's TTL. */
+function invalidatePr(config: AdoConfig, prId: number): void {
+  const repo = `${config.org}/${config.project}/${config.repo}`;
+  invalidateAdoCache(`${repo}/threads/${prId}`);
+  invalidateAdoCache(`${repo}/thread/${prId}`);
+  invalidateAdoCache(`${repo}/statuses/${prId}`);
+  invalidateAdoCache(`${repo}/description/${prId}`);
 }
 
 function voteToDecision(vote: number, hasDeclined: boolean): ReviewDecision {
@@ -111,60 +127,60 @@ export function countActiveThreads(
   }).length;
 }
 
+interface ConnectionData {
+  authenticatedUser?: {
+    id?: string;
+    properties?: { Account?: { $value?: string } };
+  };
+}
+
+/** `/connectiondata` answers both "who am I" questions, so one cached
+ *  read serves the email and the identity GUID alike. */
+function fetchConnectionData(config: AdoConfig): Promise<ConnectionData> {
+  return adoGet<ConnectionData>(
+    'fetchConnectionData',
+    `${config.org}/connectiondata`,
+    TTL.identity,
+    `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`,
+    authHeaders(config.pat),
+    `organization ${config.org}`
+  );
+}
+
 export async function fetchAuthenticatedUserEmail(
   config: AdoConfig
 ): Promise<string> {
-  const url = `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as {
-    authenticatedUser?: {
-      properties?: { Account?: { $value?: string } };
-    };
-  };
+  const data = await fetchConnectionData(config);
   return data.authenticatedUser?.properties?.Account?.$value ?? '';
 }
 
-// The authenticated user's identity GUID — needed to cast a reviewer
-// vote (the reviewers endpoint has no "me" alias). Cached like the
-// email/team identity above; keyed by org because ADO identity ids
-// are org-scoped.
-let userIdCache: { org: string; id: string; fetchedAt: number } | null = null;
-
+/** The authenticated user's identity GUID — needed to cast a reviewer
+ *  vote, since the reviewers endpoint has no "me" alias. */
 export async function fetchAuthenticatedUserId(
   config: AdoConfig
 ): Promise<string> {
-  if (
-    userIdCache &&
-    userIdCache.org === config.org &&
-    Date.now() - userIdCache.fetchedAt < CACHE_TTL_MS
-  ) {
-    return userIdCache.id;
-  }
-  const url = `https://dev.azure.com/${config.org}/_apis/connectiondata?api-version=7.1-preview`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { authenticatedUser?: { id?: string } };
+  const data = await fetchConnectionData(config);
   const id = data.authenticatedUser?.id;
   if (!id) throw new Error('Could not resolve the authenticated ADO user id');
-  userIdCache = { org: config.org, id, fetchedAt: Date.now() };
   return id;
 }
 
 export async function fetchMyTeamIds(config: AdoConfig): Promise<Set<string>> {
-  const url = `https://dev.azure.com/${config.org}/_apis/projects/${config.project}/teams?$mine=true&api-version=7.1`;
   try {
-    const res = await fetch(url, { headers: authHeaders(config.pat) });
-    if (!res.ok) return new Set();
-    const data = (await res.json()) as { value?: { id?: string }[] };
+    const data = await adoGet<{ value?: { id?: string }[] }>(
+      'fetchMyTeamIds',
+      `${config.org}/${config.project}/my-teams`,
+      TTL.identity,
+      `https://dev.azure.com/${config.org}/_apis/projects/${config.project}/teams?$mine=true&api-version=7.1`,
+      authHeaders(config.pat),
+      `teams in ${config.project}`
+    );
     return new Set(
       (data.value ?? []).map((t) => t.id).filter((id): id is string => !!id)
     );
   } catch {
+    // Team membership only enriches reviewer rows; a failure here must
+    // not take the pull request list down with it.
     return new Set();
   }
 }
@@ -203,14 +219,18 @@ export async function fetchActivePullRequests(
   project: Record<string, string>,
   teamContext?: { myTeamIds: Set<string>; userEmail: string }
 ): Promise<Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'>[]> {
-  const url = `${baseUrl(
-    config
-  )}/pullrequests?searchCriteria.status=active&api-version=7.1`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { value?: unknown[] };
+  const data = await adoGet<{ value?: unknown[] }>(
+    'fetchActivePullRequests',
+    `${config.org}/${config.project}/${config.repo}/active-prs`,
+    // Dedupe only: both shells already decide how often to ask, and
+    // caching here would silently override the poll interval they set.
+    0,
+    `${baseUrl(
+      config
+    )}/pullrequests?searchCriteria.status=active&api-version=7.1`,
+    authHeaders(config.pat),
+    `repository ${config.repo}`
+  );
   return ((data.value ?? []) as Record<string, unknown>[]).map((raw) => {
     if (teamContext) {
       const rawWithReviewers = raw as { reviewers?: RawReviewer[] };
@@ -226,22 +246,35 @@ export async function fetchActivePullRequests(
   });
 }
 
+/**
+ * A pull request's threads, exactly once per TTL however many callers
+ * want them.
+ *
+ * The sidebar needs a count and the review workspace needs the threads
+ * themselves, and both were reading the same endpoint independently —
+ * so opening a pull request refetched what the sidebar had just
+ * fetched, on every poll, for every row.
+ */
+function fetchRawThreads(
+  config: AdoConfig,
+  prId: number
+): Promise<{ value?: AdoThread[] }> {
+  return adoGet<{ value?: AdoThread[] }>(
+    'fetchThreads',
+    `${config.org}/${config.project}/${config.repo}/threads/${prId}`,
+    TTL.threads,
+    `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`,
+    authHeaders(config.pat),
+    `pull request ${prId}`
+  );
+}
+
 export async function fetchActiveCommentCount(
   config: AdoConfig,
   prId: number
 ): Promise<number> {
-  const url = `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`;
-  const res = await fetch(url, { headers: authHeaders(config.pat) });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { value?: unknown[] };
-  return countActiveThreads(
-    (data.value ?? []) as {
-      status?: string;
-      comments?: { commentType?: string }[];
-    }[]
-  );
+  const data = await fetchRawThreads(config, prId);
+  return countActiveThreads(data.value ?? []);
 }
 
 /**
@@ -276,38 +309,19 @@ export function parseAdoRemoteUrl(
   return null;
 }
 
-// ── Identity cache (avoids redundant API calls per poll) ────────────
+// ── Identity ────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-let identityCache: {
-  org: string;
-  userEmail: string;
-  myTeamIds: Set<string>;
-  fetchedAt: number;
-} | null = null;
-
+/** Who we are and which teams we are in. Both reads are cached by the
+ *  shared transport at `TTL.identity`, so this is a memory lookup on
+ *  every poll but the first of each half hour. */
 async function getCachedIdentity(
   config: AdoConfig
 ): Promise<{ userEmail: string; myTeamIds: Set<string> }> {
-  if (
-    identityCache &&
-    identityCache.org === config.org &&
-    Date.now() - identityCache.fetchedAt < CACHE_TTL_MS
-  ) {
-    return identityCache;
-  }
   const [userEmail, myTeamIds] = await Promise.all([
     fetchAuthenticatedUserEmail(config).catch(() => ''),
     fetchMyTeamIds(config),
   ]);
-  identityCache = {
-    org: config.org,
-    userEmail,
-    myTeamIds,
-    fetchedAt: Date.now(),
-  };
-  return identityCache;
+  return { userEmail, myTeamIds };
 }
 
 // ── @mention resolution (GUID → display name) ──────────────────────
@@ -400,13 +414,16 @@ async function resolveMentionNames(
   const uncached = guids.filter((g) => !mentionCache.has(g));
   if (uncached.length === 0) return;
 
-  const url = `https://vssps.dev.azure.com/${
-    config.org
-  }/_apis/identities?identityIds=${uncached.join(',')}&api-version=7.1`;
+  const ids = uncached.join(',');
   try {
-    const res = await fetch(url, { headers: authHeaders(config.pat) });
-    if (!res.ok) return;
-    const data = (await res.json()) as { value?: AdoIdentity[] };
+    const data = await adoGet<{ value?: AdoIdentity[] }>(
+      'resolveMentionNames',
+      `${config.org}/identities/${ids}`,
+      TTL.identity,
+      `https://vssps.dev.azure.com/${config.org}/_apis/identities?identityIds=${ids}&api-version=7.1`,
+      authHeaders(config.pat),
+      'those identities'
+    );
     cacheIdentities(data.value ?? []);
     if (mentionCacheFetchedAt === 0) mentionCacheFetchedAt = Date.now();
   } catch {
@@ -679,14 +696,7 @@ async function fetchAdoCommentThreads(
   config: AdoConfig,
   prId: number
 ): Promise<PullRequestComments> {
-  const url = `${baseUrl(config)}/pullrequests/${prId}/threads?api-version=7.1`;
-  const res = await tracedFetch('fetchAdoCommentThreads', url, {
-    headers: authHeaders(config.pat),
-  });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const data = (await res.json()) as { value?: AdoThread[] };
+  const data = await fetchRawThreads(config, prId);
   const rawCount = (data.value ?? []).length;
   log(
     'info',
@@ -771,16 +781,18 @@ async function resolveRootCommentId(
   prId: number,
   threadId: string
 ): Promise<number> {
-  const threadUrl = `${baseUrl(
-    config
-  )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
-  const res = await tracedFetch('replyToAdoThread:resolveRoot', threadUrl, {
-    headers: authHeaders(config.pat),
-  });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-  }
-  const thread = (await res.json()) as AdoThread;
+  const thread = await adoGet<AdoThread>(
+    'replyToAdoThread:resolveRoot',
+    `${config.org}/${config.project}/${config.repo}/thread/${prId}/${threadId}`,
+    // A reply must hang off the thread as it stands now, not as it
+    // stood when something else last read it.
+    0,
+    `${baseUrl(
+      config
+    )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`,
+    authHeaders(config.pat),
+    `thread ${threadId}`
+  );
   const root = (thread.comments ?? []).find((c) => c.commentType !== 'system');
   return typeof root?.id === 'number' ? root.id : 0;
 }
@@ -796,20 +808,24 @@ async function replyToAdoThread(
   const url = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}/comments?api-version=7.1`;
-  const res = await tracedFetch('replyToAdoThread:postComment', url, {
-    method: 'POST',
-    headers: authHeaders(config.pat),
-    body: JSON.stringify({
-      parentCommentId,
-      content: body,
-      commentType: 1,
-    }),
-    bodyForLog: { parentCommentId, contentLength: body.length, commentType: 1 },
-  });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
-  }
-  return toRemoteReply((await res.json()) as AdoThreadComment);
+  const posted = await adoSend<AdoThreadComment>(
+    'replyToAdoThread:postComment',
+    url,
+    {
+      method: 'POST',
+      headers: authHeaders(config.pat),
+      body: JSON.stringify({ parentCommentId, content: body, commentType: 1 }),
+      bodyForLog: {
+        parentCommentId,
+        contentLength: body.length,
+        commentType: 1,
+      },
+    }
+  );
+  // The thread we just changed is cached; leaving it would show the
+  // reply only once the TTL lapsed.
+  invalidatePr(config, prId);
+  return toRemoteReply(posted);
 }
 
 async function setAdoThreadResolved(
@@ -821,7 +837,7 @@ async function setAdoThreadResolved(
   const url = `${baseUrl(
     config
   )}/pullrequests/${prId}/threads/${threadId}?api-version=7.1`;
-  const res = await tracedFetch('setAdoThreadResolved', url, {
+  await adoSend<unknown>('setAdoThreadResolved', url, {
     method: 'PATCH',
     headers: authHeaders(config.pat),
     body: JSON.stringify({
@@ -829,9 +845,7 @@ async function setAdoThreadResolved(
     }),
     bodyForLog: { status: resolved ? 2 : 1, resolved },
   });
-  if (!res.ok) {
-    throw new Error(`ADO API error ${res.status}: ${await res.text()}`);
-  }
+  invalidatePr(config, prId);
 }
 
 // ── VcsProvider implementation ──────────────────────────────────────
@@ -869,38 +883,50 @@ export const azureDevOpsProvider: VcsProvider = {
   ): Promise<BranchPrMap> {
     const config = toAdoConfig(auth, project);
 
-    const { userEmail, myTeamIds } = await getCachedIdentity(config);
-    const teamContext =
-      userEmail && myTeamIds.size > 0 ? { myTeamIds, userEmail } : undefined;
+    return counted('fetchPullRequests', async () => {
+      const { userEmail, myTeamIds } = await getCachedIdentity(config);
+      const teamContext =
+        userEmail && myTeamIds.size > 0 ? { myTeamIds, userEmail } : undefined;
 
-    const prs = await fetchActivePullRequests(config, project, teamContext);
+      const prs = await fetchActivePullRequests(config, project, teamContext);
 
-    const withDetails = await Promise.all(
-      prs.map(async (pr) => {
-        // CI reaches a pull request by two unrelated routes and a repo
-        // usually only uses one: pipelines run against the merge ref,
-        // while other checks post to the status list. Reading only the
-        // statuses showed no CI result for pull requests whose build had
-        // plainly failed. A failure on either route is a failure.
-        const [activeCommentCount, statusVerdict, runVerdict] =
-          await Promise.all([
+      // CI reaches a pull request by two unrelated routes and a repo
+      // usually only uses one: pipelines run against the merge ref,
+      // while other checks post to the status list. Reading only the
+      // statuses showed no CI result for pull requests whose build had
+      // plainly failed. A failure on either route is a failure.
+      //
+      // The runs for every row come back in one request; the status
+      // list has no batch endpoint, so those stay per row and are
+      // cached instead.
+      const runVerdicts = await fetchPrBuildRunsBatch(
+        config,
+        prs.map((pr) => pr.id)
+      ).catch(() => new Map<number, BuildStatusState>());
+
+      const withDetails = await Promise.all(
+        prs.map(async (pr) => {
+          const [activeCommentCount, statusVerdict] = await Promise.all([
             fetchActiveCommentCount(config, pr.id),
             fetchPrBuildStatus(config, pr.id),
-            fetchPrBuildRuns(config, pr.id).catch(() => 'none' as const),
           ]);
-        return {
-          ...pr,
-          activeCommentCount,
-          buildStatus: combineBuildStatus(statusVerdict, runVerdict),
-        } satisfies PullRequestInfo;
-      })
-    );
+          return {
+            ...pr,
+            activeCommentCount,
+            buildStatus: combineBuildStatus(
+              statusVerdict,
+              runVerdicts.get(pr.id) ?? 'none'
+            ),
+          } satisfies PullRequestInfo;
+        })
+      );
 
-    const map: BranchPrMap = {};
-    for (const pr of withDetails) {
-      map[pr.sourceBranch] = pr;
-    }
-    return map;
+      const map: BranchPrMap = {};
+      for (const pr of withDetails) {
+        map[pr.sourceBranch] = pr;
+      }
+      return map;
+    });
   },
 
   getPullRequestUrl(project: Record<string, string>, prId: number): string {
@@ -914,15 +940,19 @@ export const azureDevOpsProvider: VcsProvider = {
   ): Promise<Set<string>> {
     if (branches.length === 0) return new Set();
     const config = toAdoConfig(auth, project);
-    const url = `${baseUrl(
-      config
-    )}/pullrequests?searchCriteria.status=completed&api-version=7.1`;
-    const res = await fetch(url, { headers: authHeaders(config.pat) });
-    if (!res.ok) return new Set();
-
-    const data = (await res.json()) as {
-      value?: { sourceRefName?: string }[];
-    };
+    // A failed lookup answers with no merged branches rather than
+    // throwing: the sweep that consumes this deletes branches, and
+    // "the request failed" must never read as "nothing is merged".
+    const data = await adoGet<{ value?: { sourceRefName?: string }[] }>(
+      'fetchMergedBranches',
+      `${config.org}/${config.project}/${config.repo}/completed-prs`,
+      TTL.mergedPrs,
+      `${baseUrl(
+        config
+      )}/pullrequests?searchCriteria.status=completed&api-version=7.1`,
+      authHeaders(config.pat),
+      `repository ${config.repo}`
+    ).catch(() => ({ value: [] as { sourceRefName?: string }[] }));
     const branchSet = new Set(branches);
     const matched = new Set<string>();
     for (const pr of data.value ?? []) {
@@ -970,12 +1000,14 @@ export const azureDevOpsProvider: VcsProvider = {
     prId: number
   ): Promise<string> {
     const config = toAdoConfig(auth, project);
-    const url = `${baseUrl(config)}/pullrequests/${prId}?api-version=7.1`;
-    const res = await fetch(url, { headers: authHeaders(config.pat) });
-    if (!res.ok) {
-      throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-    }
-    const data = (await res.json()) as { description?: string };
+    const data = await adoGet<{ description?: string }>(
+      'fetchPullRequestDescription',
+      `${config.org}/${config.project}/${config.repo}/description/${prId}`,
+      TTL.description,
+      `${baseUrl(config)}/pullrequests/${prId}?api-version=7.1`,
+      authHeaders(config.pat),
+      `pull request ${prId}`
+    );
     return sanitizeBody(data.description ?? '');
   },
 
@@ -997,13 +1029,14 @@ export const azureDevOpsProvider: VcsProvider = {
     const url = `${baseUrl(
       config
     )}/pullrequests/${prId}/reviewers/${userId}?api-version=7.1`;
-    const res = await fetch(url, {
+    await adoSend<unknown>('submitReviewVerdict', url, {
       method: 'PUT',
       headers: authHeaders(config.pat),
       body: JSON.stringify({ id: userId, vote }),
+      bodyForLog: { vote },
     });
-    if (!res.ok) {
-      throw new Error(`ADO API error ${res.status}: ${res.statusText}`);
-    }
+    // The pull request list carries the reviewer votes, so the row
+    // would keep showing the old one until its next poll.
+    invalidateAdoCache(`${config.org}/${config.project}/${config.repo}/`);
   },
 };

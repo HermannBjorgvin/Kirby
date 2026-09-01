@@ -3,10 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { PullRequestComments } from '@kirby/vcs-core';
 import {
   deriveBuildStatus,
-  deriveBuildRunStatus,
   combineBuildStatus,
   fetchPrBuildStatus,
 } from './build-status.js';
+import { deriveBuildRunStatus } from './builds.js';
+import { resetAdoTransport } from './request.js';
 import {
   parseReviewer,
   parsePullRequest,
@@ -27,14 +28,42 @@ import {
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-function jsonResponse(data: unknown, status = 200): Response {
+// The client reads `headers` and `text()` before it will parse
+// anything, so a stand-in response has to carry both — a fake that
+// only implements `json()` would skip the classification entirely and
+// test nothing that ships.
+function response(
+  body: string,
+  init: {
+    status?: number;
+    contentType?: string;
+    headers?: Record<string, string>;
+  } = {}
+): Response {
+  const status = init.status ?? 200;
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? 'OK' : 'Error',
-    json: () => Promise.resolve(data),
-  } as Response;
+    headers: new Headers({
+      'content-type': init.contentType ?? 'application/json; charset=utf-8',
+      ...init.headers,
+    }),
+    text: () => Promise.resolve(body),
+    json: () => Promise.resolve(JSON.parse(body) as unknown),
+  } as unknown as Response;
 }
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return response(JSON.stringify(data), { status });
+}
+
+// The transport caches and dedupes across calls by design, which
+// would let one test answer another's request. Every test starts from
+// an empty cache and an open throttle gate.
+beforeEach(() => {
+  resetAdoTransport();
+});
 
 const testAdoConfig = {
   org: 'myorg',
@@ -642,7 +671,12 @@ describe('combineBuildStatus', () => {
 });
 
 describe('fetchActivePullRequests', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    // Block body on purpose: an arrow returning the mock hands vitest
+    // a "cleanup hook", which it then calls — invoking fetch with no
+    // arguments at teardown.
+    mockFetch.mockReset();
+  });
 
   it('calls correct URL and returns parsed PRs', async () => {
     mockFetch.mockResolvedValue(
@@ -670,11 +704,11 @@ describe('fetchActivePullRequests', () => {
     expect(result[0]!.sourceBranch).toBe('my-feature');
   });
 
-  it('throws on non-ok response', async () => {
+  it('reports a rejected token as a rejected token', async () => {
     mockFetch.mockResolvedValue(jsonResponse({}, 401));
     await expect(
       fetchActivePullRequests(testAdoConfig, testProject)
-    ).rejects.toThrow('ADO API error 401');
+    ).rejects.toThrow('Azure DevOps rejected the access token');
   });
 
   it('sends Basic auth header', async () => {
@@ -695,7 +729,12 @@ describe('fetchActivePullRequests', () => {
 });
 
 describe('fetchActiveCommentCount', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    // Block body on purpose: an arrow returning the mock hands vitest
+    // a "cleanup hook", which it then calls — invoking fetch with no
+    // arguments at teardown.
+    mockFetch.mockReset();
+  });
 
   it('returns count of active non-system threads', async () => {
     mockFetch.mockResolvedValue(
@@ -717,7 +756,12 @@ describe('fetchActiveCommentCount', () => {
 });
 
 describe('fetchPrBuildStatus', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    // Block body on purpose: an arrow returning the mock hands vitest
+    // a "cleanup hook", which it then calls — invoking fetch with no
+    // arguments at teardown.
+    mockFetch.mockReset();
+  });
 
   it('calls correct URL and returns derived build status', async () => {
     mockFetch.mockResolvedValue(
@@ -733,10 +777,10 @@ describe('fetchPrBuildStatus', () => {
     expect(calledUrl).toContain('/pullrequests/42/statuses');
   });
 
-  it('throws on non-ok response', async () => {
+  it('reports a forbidden response as a rejected token', async () => {
     mockFetch.mockResolvedValue(jsonResponse({}, 403));
     await expect(fetchPrBuildStatus(testAdoConfig, 42)).rejects.toThrow(
-      'ADO API error 403'
+      'Azure DevOps rejected the access token'
     );
   });
 });
@@ -868,7 +912,12 @@ describe('enrichReviewersWithTeamMembership', () => {
 });
 
 describe('fetchAuthenticatedUserEmail', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    // Block body on purpose: an arrow returning the mock hands vitest
+    // a "cleanup hook", which it then calls — invoking fetch with no
+    // arguments at teardown.
+    mockFetch.mockReset();
+  });
 
   it('returns user email on success', async () => {
     mockFetch.mockResolvedValue(
@@ -884,16 +933,21 @@ describe('fetchAuthenticatedUserEmail', () => {
     expect(calledUrl).toContain('/_apis/connectiondata');
   });
 
-  it('throws on non-ok response', async () => {
+  it('reports a rejected token as a rejected token', async () => {
     mockFetch.mockResolvedValue(jsonResponse({}, 401));
     await expect(fetchAuthenticatedUserEmail(testAdoConfig)).rejects.toThrow(
-      'ADO API error 401'
+      'Azure DevOps rejected the access token'
     );
   });
 });
 
 describe('fetchMyTeamIds', () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    // Block body on purpose: an arrow returning the mock hands vitest
+    // a "cleanup hook", which it then calls — invoking fetch with no
+    // arguments at teardown.
+    mockFetch.mockReset();
+  });
 
   it('returns team IDs on success', async () => {
     mockFetch.mockResolvedValue(
@@ -988,59 +1042,64 @@ describe('azureDevOpsProvider', () => {
   });
 
   describe('fetchPullRequests', () => {
-    beforeEach(() => mockFetch.mockReset());
+    beforeEach(() => {
+      // Block body on purpose: an arrow returning the mock hands vitest
+      // a "cleanup hook", which it then calls — invoking fetch with no
+      // arguments at teardown.
+      mockFetch.mockReset();
+    });
 
     it('returns a map of branch to PR info with comment counts', async () => {
-      // connectiondata call (fetchAuthenticatedUserEmail)
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          authenticatedUser: {
-            properties: { Account: { $value: 'me@example.com' } },
-          },
-        })
-      );
-      // teams call (fetchMyTeamIds) — no teams
-      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
-      // list PRs
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          value: [
-            {
-              pullRequestId: 42,
-              sourceRefName: 'refs/heads/feat-a',
-              isDraft: false,
-              reviewers: [{ displayName: 'Alice', vote: 10 }],
-            },
-            {
-              pullRequestId: 43,
-              sourceRefName: 'refs/heads/feat-b',
-              isDraft: true,
-              reviewers: [],
-            },
-          ],
-        })
-      );
-      // Each pull request costs three calls, issued in this order:
-      // threads, statuses, then pipeline runs.
-      // PR 42
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          value: [
-            { status: 'active', comments: [{ commentType: 'text' }] },
-            { status: 'active', comments: [{ commentType: 'text' }] },
-          ],
-        })
-      );
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({ value: [{ state: 'succeeded' }] })
-      );
-      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
-      // PR 43
-      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({ value: [{ state: 'failed' }] })
-      );
-      mockFetch.mockResolvedValueOnce(jsonResponse({ value: [] }));
+      // Answered by URL, not in call order: the provider dedupes and
+      // batches, so which request goes out when is an implementation
+      // detail this test has no business pinning down.
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/_apis/connectiondata'))
+          return Promise.resolve(
+            jsonResponse({
+              authenticatedUser: {
+                properties: { Account: { $value: 'me@example.com' } },
+              },
+            })
+          );
+        if (url.includes('/pullrequests?'))
+          return Promise.resolve(
+            jsonResponse({
+              value: [
+                {
+                  pullRequestId: 42,
+                  sourceRefName: 'refs/heads/feat-a',
+                  isDraft: false,
+                  reviewers: [{ displayName: 'Alice', vote: 10 }],
+                },
+                {
+                  pullRequestId: 43,
+                  sourceRefName: 'refs/heads/feat-b',
+                  isDraft: true,
+                  reviewers: [],
+                },
+              ],
+            })
+          );
+        if (url.includes('/pullrequests/42/threads'))
+          return Promise.resolve(
+            jsonResponse({
+              value: [
+                { status: 'active', comments: [{ commentType: 'text' }] },
+                { status: 'active', comments: [{ commentType: 'text' }] },
+              ],
+            })
+          );
+        if (url.includes('/pullrequests/42/statuses'))
+          return Promise.resolve(
+            jsonResponse({ value: [{ state: 'succeeded' }] })
+          );
+        if (url.includes('/pullrequests/43/statuses'))
+          return Promise.resolve(
+            jsonResponse({ value: [{ state: 'failed' }] })
+          );
+        return Promise.resolve(jsonResponse({ value: [] }));
+      });
 
       const result = await azureDevOpsProvider.fetchPullRequests(
         { pat: 'test-pat' },
@@ -1406,7 +1465,11 @@ describe('azureDevOpsProvider', () => {
       );
       expect(mockFetch).toHaveBeenCalledTimes(2);
 
-      // Second fetch: only threads — alice is cached
+      // Second fetch: only threads — alice is cached. The transport is
+      // reset first so the threads really are re-read; without that
+      // the request cache would answer both calls and the mention
+      // cache would never be exercised.
+      resetAdoTransport();
       mockFetch.mockReset();
       mockFetch.mockResolvedValueOnce(jsonResponse(threadsResponse));
       const result = await azureDevOpsProvider.fetchCommentThreads!(
@@ -1416,6 +1479,34 @@ describe('azureDevOpsProvider', () => {
       );
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(result.threads[0].comments[0].body).toBe('@Alice hi');
+    });
+
+    it("reads a pull request's threads once for both the count and the viewer", async () => {
+      // The sidebar wants a comment count and the review workspace
+      // wants the threads; they are the same endpoint, and asking it
+      // twice per poll per row is what got Kirby throttled.
+      mockFetch.mockResolvedValue(
+        jsonResponse({
+          value: [
+            {
+              id: 1,
+              status: 'active',
+              comments: [{ id: 1, commentType: 'text', content: 'hi' }],
+            },
+          ],
+        })
+      );
+
+      const count = await fetchActiveCommentCount(testAdoConfig, 99);
+      const threads = await azureDevOpsProvider.fetchCommentThreads!(
+        { pat: 'test-pat' },
+        testProject,
+        99
+      );
+
+      expect(count).toBe(1);
+      expect(threads.generalComments).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -13,22 +13,23 @@ import type {
   ReviewVerdict,
   BuildStatusState,
 } from '@kirby/vcs-core';
-import { sanitizeBody } from '@kirby/vcs-core';
+import { isVcsError, sanitizeBody } from '@kirby/vcs-core';
 import { logNetwork } from '@kirby/logger';
+import {
+  assertGraphQlData,
+  classifyGhError,
+  ghOutput,
+  parseGhJson,
+} from './gh-errors.js';
 
 // ── gh CLI transport ──────────────────────────────────────────────
 
 const execFile = promisify(execFileCb);
 
+/** What `gh` printed, for the network log. The user-facing wording is
+ *  `classifyGhError`'s job. */
 function extractErrorMessage(err: unknown): string {
-  if (err == null || typeof err !== 'object') return String(err);
-  const e = err as Record<string, unknown>;
-  const stderr = typeof e.stderr === 'string' ? e.stderr.trim() : '';
-  if (stderr) return stderr;
-  const stdout = typeof e.stdout === 'string' ? e.stdout.trim() : '';
-  if (stdout) return stdout;
-  if (e.message) return String(e.message);
-  return String(err);
+  return ghOutput(err);
 }
 
 /**
@@ -69,7 +70,9 @@ export async function ghGraphQL(
       'github.network',
       `← gh graphql ${querySummary} (${durationMs}ms, ${stdout.length} bytes)`
     );
-    return JSON.parse(stdout);
+    const payload = parseGhJson<unknown>(stdout, querySummary);
+    assertGraphQlData(payload, querySummary);
+    return payload;
   } catch (err: unknown) {
     const durationMs = Date.now() - startedAt;
     logNetwork(
@@ -78,7 +81,9 @@ export async function ghGraphQL(
         err
       )}`
     );
-    throw new Error(`gh graphql error: ${extractErrorMessage(err)}`);
+    // A classification made here is already the answer; only a raw
+    // subprocess failure still needs one.
+    throw isVcsError(err) ? err : classifyGhError(err);
   }
 }
 
@@ -694,7 +699,10 @@ export const githubProvider: VcsProvider = {
         encoding: 'utf8',
         stdio: 'pipe',
       });
-      const { login } = JSON.parse(out);
+      const { login } = parseGhJson<{ login?: string }>(
+        out,
+        'the current user'
+      );
       if (login) return { username: login };
     } catch {
       // gh not installed or not authenticated
@@ -847,13 +855,17 @@ export const githubProvider: VcsProvider = {
   ): Promise<string> {
     const { owner, repo } = project;
     if (!owner || !repo) return '';
-    const { stdout } = await execFile('gh', [
-      'api',
-      `repos/${owner}/${repo}/pulls/${prId}`,
-      '--jq',
-      '.body // ""',
-    ]);
-    return sanitizeBody(stdout.trim());
+    try {
+      const { stdout } = await execFile('gh', [
+        'api',
+        `repos/${owner}/${repo}/pulls/${prId}`,
+        '--jq',
+        '.body // ""',
+      ]);
+      return sanitizeBody(stdout.trim());
+    } catch (err: unknown) {
+      throw classifyGhError(err);
+    }
   },
 
   async submitReviewVerdict(
@@ -883,6 +895,10 @@ export const githubProvider: VcsProvider = {
     ];
     const body = bodies[verdict];
     if (body) args.push('-f', `body=${body}`);
-    await execFile('gh', args);
+    try {
+      await execFile('gh', args);
+    } catch (err: unknown) {
+      throw classifyGhError(err);
+    }
   },
 };
