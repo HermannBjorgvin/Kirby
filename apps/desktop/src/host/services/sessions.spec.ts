@@ -86,6 +86,13 @@ vi.mock('@kirby/core', () => ({
     });
     return Promise.resolve('spawned');
   },
+  buildAgentOptions: (config: { agentId?: string }) => [
+    {
+      name: `${config.agentId ?? 'Custom'} (default)`,
+      agent: { id: config.agentId ?? 'test' },
+    },
+    { name: 'Codex', agent: { id: 'codex' } },
+  ],
   buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
     intent: 'review',
     prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
@@ -188,6 +195,19 @@ describe('launchAgent', () => {
     expect(state.spawns[0].name).toBe('feature-x');
     expect(state.spawns[0].cwd).toBe('/repo-a/.claude/worktrees/feature/x');
     expect(state.spawns[0].config).toEqual({ marker: 'root-config' });
+  });
+
+  it('launches a per-launch agent pick over the stored config', async () => {
+    state.configByCwd['/repo-a'] = { agentId: 'claude', marker: 'root' };
+    await launchAgent({
+      branch: 'feature/x',
+      intent: 'continue-or-blank',
+      agentId: 'codex',
+    });
+    expect(state.spawns[0].config).toEqual({
+      agentId: 'codex',
+      marker: 'root',
+    });
   });
 
   it('collapses overlapping launches of the same branch into one spawn', async () => {
@@ -453,5 +473,23 @@ describe('checkoutPlan', () => {
     ]);
     expect([a, b]).toEqual(['spawned', 'spawned']);
     expect(state.spawns).toHaveLength(1);
+  });
+});
+
+describe('listAgentOptions', () => {
+  it('lists the repo config default first, then the rest of the registry', () => {
+    state.configByCwd['/repo-a'] = { agentId: 'claude' };
+    expect(sessions.listAgentOptions()).toEqual([
+      { id: 'claude', name: 'claude (default)' },
+      { id: 'codex', name: 'Codex' },
+    ]);
+  });
+
+  it('labels a custom command as the hidden test runner', () => {
+    state.configByCwd['/repo-a'] = { aiCommand: 'node fake.mjs' };
+    expect(sessions.listAgentOptions()[0]).toEqual({
+      id: 'test',
+      name: 'Custom (default)',
+    });
   });
 });

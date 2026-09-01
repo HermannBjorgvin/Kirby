@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { startFromSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 // Vim preset for the keybindings this test uses (s settings, c branch
@@ -58,29 +59,30 @@ test.describe('Terminal Input', () => {
       timeout: 10_000,
     });
 
-    // ── 4. Tab to start bash session and focus terminal ──────────
-    await kirby.term.press('Tab');
+    // ── 4. Start the bash session from the menu, focus terminal ──
+    await startFromSessionMenu(kirby.term);
     await expect(
       kirby.term.getByText('ctrl+space to exit').first()
     ).toBeVisible({ timeout: 10_000 });
-
-    // Give bash a moment to initialize.
-    await settleFor(
-      kirby.term.page,
-      1_000,
-      'bash to reach its first prompt, which prints nothing to wait on'
-    );
 
     // ── 5. Type a command and verify output ──────────────────────
     // Use tr to lowercase the output so command and output are distinct:
     //   command line: echo KIRBY_RAW_TEST | tr A-Z a-z
     //   output line:  kirby_raw_test
-    await kirby.term.type('echo KIRBY_RAW_TEST | tr A-Z a-z');
-    // Wait for the PTY to echo the line rather than for an interval:
-    // Enter landing mid-line would run a truncated command.
-    await expect(kirby.term.getByText('KIRBY_RAW_TEST').first()).toBeVisible({
-      timeout: 10_000,
-    });
+    //
+    // bash prints nothing to wait on before its first prompt, and under
+    // the tmux backend keystrokes sent before the client has attached
+    // are lost rather than buffered. So the line is typed until the PTY
+    // echoes it, clearing whatever partial line an earlier attempt left
+    // (Ctrl+U) first — Enter landing on a truncated command would run
+    // the wrong thing.
+    await expect(async () => {
+      await kirby.term.write('\x15');
+      await kirby.term.type('echo KIRBY_RAW_TEST | tr A-Z a-z');
+      await expect(kirby.term.getByText('KIRBY_RAW_TEST').first()).toBeVisible({
+        timeout: 3_000,
+      });
+    }).toPass({ timeout: 30_000, intervals: [500, 1_000] });
     await kirby.term.press('Enter');
 
     // 1) Typed command visible (input was forwarded to bash)

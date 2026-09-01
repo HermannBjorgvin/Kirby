@@ -113,21 +113,46 @@ export function selectionForKey(
 export function translateSelectKey(
   key: string,
   sessionBranchMap: Map<string, string>,
-  sessionPrMap: Map<string, PullRequestInfo>,
   categorizedReviews: CategorizedReviews
 ): string {
   if (!key.startsWith('session:')) return key;
   const sessionName = key.slice('session:'.length);
   const branch = sessionBranchMap.get(sessionName);
-  const pr = sessionPrMap.get(sessionName);
-  if (!branch || !pr) return key;
-  const isReviewBranch =
-    categorizedReviews.needsReview.some((p) => p.sourceBranch === branch) ||
-    categorizedReviews.waitingForAuthor.some(
-      (p) => p.sourceBranch === branch
-    ) ||
-    categorizedReviews.approvedByYou.some((p) => p.sourceBranch === branch);
-  return isReviewBranch ? `review:${pr.id}` : key;
+  if (!branch) return key;
+  // The review PR is looked up by branch, the same test `buildSidebarItems`
+  // folds on — not through the session's own PR data, which resolves
+  // seconds after the worktree exists and would leave a just-created
+  // session's key unmatched until then.
+  const reviewPr = [
+    ...categorizedReviews.needsReview,
+    ...categorizedReviews.waitingForAuthor,
+    ...categorizedReviews.approvedByYou,
+  ].find((p) => p.sourceBranch === branch);
+  return reviewPr ? `review:${reviewPr.id}` : key;
+}
+
+/**
+ * Where the cursor is for this render: the requested key, translated
+ * for this render's maps, anchored against the committed list.
+ * `listChanged` selects reconciliation (follow the row, adopt on a
+ * miss) over plain key resolution — see the provider for why the two
+ * are kept apart. Both are idempotent, so this settles.
+ */
+export function anchorSelection(
+  items: SidebarItem[],
+  selection: SidebarSelection,
+  translatedKey: string | null,
+  listChanged: boolean
+): SidebarSelection {
+  const requested =
+    translatedKey === selection.key
+      ? selection
+      : { key: translatedKey, index: selection.index };
+  if (listChanged) return reconcileSelection(items, requested);
+  if (requested.key !== null) {
+    return selectionForKey(items, requested.key, requested);
+  }
+  return requested;
 }
 
 export interface SidebarContextValue {
@@ -211,13 +236,23 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   //
   // Both helpers are idempotent, so the state write settles on the
   // next pass rather than looping.
-  let current = selection;
-  if (anchoredItems !== items) {
-    current = reconcileSelection(items, selection);
-    setAnchoredItems(items);
-  } else if (current.key !== null) {
-    current = selectionForKey(items, current.key, current);
-  }
+  // The requested key is translated here, against the maps of this
+  // render, for the same reason: `selectByKey('session:x')` right
+  // after a worktree was created for a PR branch runs from a callback
+  // whose maps predate the refresh, so translating there would miss
+  // the `review:<id>` row the branch is folded into. Idempotent, so it
+  // settles with the anchor.
+  const translatedKey =
+    selection.key === null
+      ? null
+      : translateSelectKey(
+          selection.key,
+          sessionCtx.sessionBranchMap,
+          sessionCtx.categorizedReviews
+        );
+  const listChanged = anchoredItems !== items;
+  const current = anchorSelection(items, selection, translatedKey, listChanged);
+  if (listChanged) setAnchoredItems(items);
   if (current.key !== selection.key || current.index !== selection.index) {
     setSelection(current);
   }
@@ -234,27 +269,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     : branchToSessionName(selectedItem.pr.sourceBranch);
 
   // ── Navigation helpers ───────────────────────────────────────────
-  const selectByKey = useCallback(
-    (key: string) => {
-      const translated = translateSelectKey(
-        key,
-        sessionCtx.sessionBranchMap,
-        sessionCtx.sessionPrMap,
-        sessionCtx.categorizedReviews
-      );
-      // Stores the key only — which row owns it is a question about
-      // the committed list, and the render above is the only place
-      // that knows which list that is.
-      setSelection((prev) =>
-        prev.key === translated ? prev : { key: translated, index: prev.index }
-      );
-    },
-    [
-      sessionCtx.sessionBranchMap,
-      sessionCtx.sessionPrMap,
-      sessionCtx.categorizedReviews,
-    ]
-  );
+  const selectByKey = useCallback((key: string) => {
+    // Stores the key only — which row owns it (and how a session key
+    // translates to its review row) is a question about the committed
+    // list, and the render above is the only place that knows which
+    // list that is.
+    setSelection((prev) =>
+      prev.key === key ? prev : { key, index: prev.index }
+    );
+  }, []);
 
   const moveSelection = useCallback(
     (offset: number) => {

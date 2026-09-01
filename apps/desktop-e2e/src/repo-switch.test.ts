@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/desktop.js';
-import { createWorktree } from './setup/app.js';
+import { createWorktree, launchAgentFromRail } from './setup/app.js';
 import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
 
 /**
@@ -36,7 +36,7 @@ test.describe('Switching repository with an agent running', () => {
 
     // Start an agent on `shared-name` in the repo the app opened with.
     await createWorktree(page, BRANCH);
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
@@ -83,7 +83,7 @@ test.describe('Switching repository with an agent running', () => {
     const { page, repoPath } = desktop;
 
     await createWorktree(page, BRANCH);
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });

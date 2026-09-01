@@ -69,7 +69,7 @@ export function sidebarRowMenuItems(
     { type: 'separator' },
   ];
   if (hasWorktree && !running)
-    items.push({ id: 'launch', label: 'Launch agent' });
+    items.push({ id: 'launch', label: 'Launch agent…' });
   if (hasWorktree && running) items.push({ id: 'kill', label: 'Stop agent' });
   if (!hasWorktree)
     items.push({ id: 'checkout', label: 'Check out as worktree' });

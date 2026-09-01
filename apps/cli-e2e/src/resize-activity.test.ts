@@ -19,16 +19,14 @@ test.describe('Resize does not trigger activity', () => {
     kirby,
   }) => {
     // 1. Create two sessions with silent agents (no real output).
-    await createSession(kirby.term, 'resized');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'resized', { start: true });
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
     await kirby.term.write('\x00');
     await waitForSidebarFocused(kirby.term);
 
-    await createSession(kirby.term, 'other');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'other', { start: true });
     await expect(kirby.term.getByText(/Agent.*other/).first()).toBeVisible({
       timeout: 10_000,
     });

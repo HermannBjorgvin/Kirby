@@ -20,6 +20,7 @@ import {
   itemKey,
   itemTitle,
 } from '../lib/sidebar/sidebar-model.js';
+import { requestLaunchMenu } from '../lib/sidebar/launch-menu-request.js';
 import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
@@ -109,7 +110,13 @@ export function CommandPalette({
       );
     tabs.openItem(key);
     create.mutate(branch, {
-      onSuccess: () => toast.success(`Worktree ready: ${branch}`, { id }),
+      onSuccess: () => {
+        toast.success(`Worktree ready: ${branch}`, { id });
+        // Land in the new worktree's session menu — asked for only once
+        // the checkout is done, so the menu's own "check out first"
+        // path cannot race this one on the same branch.
+        requestLaunchMenu(branch);
+      },
       onError: (err) => {
         toast.error(errorMessage(err), { id });
         // Take the optimistic tab back down with the error: its item is

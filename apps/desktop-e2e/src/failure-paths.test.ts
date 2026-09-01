@@ -4,6 +4,7 @@ import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
   agentSpinner,
   createWorktree,
+  launchAgentFromRail,
   openPalette,
   sidebarRow,
   tabs,
@@ -31,7 +32,7 @@ test.describe('An agent that exits immediately', () => {
   }) => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
 
     // The exit notice is written into the terminal itself, so a session
     // that died is distinguishable from one that is merely quiet.
@@ -59,7 +60,7 @@ test.describe('An agent that exits immediately', () => {
   }) => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText(/session exited/i).first()).toBeVisible({
       timeout: 30_000,
     });
@@ -135,7 +136,7 @@ test.describe('An agent command that does not exist', () => {
   }) => {
     const { page } = desktop;
     await createWorktree(page, 'broken-agent');
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
 
     // The shell's complaint reaches the terminal, and the session ends.
     // Asserting on attachment rather than visibility: the text lands in

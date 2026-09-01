@@ -54,10 +54,7 @@ function foldGuidance(
  * The two intents that carry a prompt. Both fold the guidance in the
  * same way and then walk the same capability ladder down to `blank()`.
  */
-function buildSeedSpec(
-  agent: AgentDefinition,
-  req: LaunchRequest
-): LaunchSpec {
+function buildSeedSpec(agent: AgentDefinition, req: LaunchRequest): LaunchSpec {
   const { prompt, opts } = foldGuidance(
     agent,
     req.prompt ?? '',
@@ -95,14 +92,21 @@ export interface LaunchSessionParams {
   rows: number;
   config: AppConfig;
   request: LaunchRequest;
+  /**
+   * Launch this agent instead of the one `config` resolves to. The
+   * session menu's per-launch picker passes it; every other caller
+   * leaves it unset and gets the configured default.
+   */
+  agent?: AgentDefinition;
 }
 
 /**
- * Resolve the configured agent, build its launch spec for the request,
- * and spawn the PTY. Returns the created entry.
+ * Resolve the agent (an explicit override, else the configured one),
+ * build its launch spec for the request, and spawn the PTY. Returns
+ * the created entry.
  */
 export function launchSession(params: LaunchSessionParams): PtyEntry {
-  const agent = resolveAgent(params.config);
+  const agent = params.agent ?? resolveAgent(params.config);
   const spec = buildLaunchSpec(agent, params.request);
   return spawnSession(
     params.name,

@@ -555,13 +555,15 @@ async function demoWorktrees(scenario) {
   await sleep(900);
   await click(page, createRow);
 
-  const launch = page
-    .getByRole('button', { name: /^Launch agent$/i })
-    .filter({ visible: true })
-    .first();
-  await launch.waitFor({ state: 'visible', timeout: 30_000 });
+  // The checkout lands in the worktree's session menu; start the
+  // default agent from there.
+  const start = page
+    .getByRole('dialog')
+    .filter({ hasText: 'What would you like to do?' })
+    .getByRole('button', { name: 'Start session' });
+  await start.waitFor({ state: 'visible', timeout: 30_000 });
   await sleep(1300);
-  await click(page, launch, { dwell: 600 });
+  await click(page, start, { dwell: 600 });
   await page
     .getByText('What should I work on?')
     .filter({ visible: true })

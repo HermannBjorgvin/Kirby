@@ -1,8 +1,13 @@
-import { useMemo, useReducer } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { PaneMode, SidebarItem } from '@kirby/core';
-import { getPrFromItem } from '@kirby/core';
-import { hasSession } from '@kirby/core';
+import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
+import type { PaneMode, SessionMenuState, SidebarItem } from '@kirby/core';
+import {
+  consumeSessionMenuRequest,
+  getPrFromItem,
+  hasSession,
+  openSessionMenuState,
+  peekSessionMenuRequest,
+  subscribeSessionMenuRequest,
+} from '@kirby/core';
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -43,8 +48,8 @@ export interface PaneState {
   generalCommentsIndex: number;
   generalCommentsScrollOffset: number;
 
-  // Review confirm
-  reviewConfirm: { pr: PullRequestInfo; selectedOption: number } | null;
+  // Session menu (start/continue with an agent, or start a review)
+  sessionMenu: SessionMenuState | null;
   reviewInstruction: string;
 
   // Plan checkout ("add-to-cart")
@@ -77,7 +82,7 @@ export const initialState: PaneState = {
   pendingScrollThreadId: null,
   generalCommentsIndex: 0,
   generalCommentsScrollOffset: 0,
-  reviewConfirm: null,
+  sessionMenu: null,
   reviewInstruction: '',
   priorPaneMode: 'terminal',
   planCheckoutIndex: 0,
@@ -113,7 +118,6 @@ const VALUE_FIELDS = {
   SET_EDITING_COMMENT_ID: 'editingCommentId',
   SET_REPLYING_TO_THREAD_ID: 'replyingToThreadId',
   SET_PENDING_SCROLL_THREAD_ID: 'pendingScrollThreadId',
-  SET_REVIEW_CONFIRM: 'reviewConfirm',
   SET_PRIOR_PANE_MODE: 'priorPaneMode',
   SET_ANNOTATING_PLAN_KEY: 'annotatingPlanKey',
   SET_PLAN_CHECKOUT_TARGET: 'planCheckoutTarget',
@@ -130,6 +134,7 @@ const UPDATER_FIELDS = {
   SET_GENERAL_COMMENTS_INDEX: 'generalCommentsIndex',
   SET_GENERAL_COMMENTS_SCROLL_OFFSET: 'generalCommentsScrollOffset',
   SET_REVIEW_INSTRUCTION: 'reviewInstruction',
+  SET_SESSION_MENU: 'sessionMenu',
   SET_PLAN_CHECKOUT_INDEX: 'planCheckoutIndex',
   SET_ANNOTATION_BUFFER: 'annotationBuffer',
 } as const satisfies Record<string, keyof PaneState>;
@@ -186,9 +191,7 @@ export interface PaneActions {
   setPendingScrollThreadId: (id: string | null) => void;
   setGeneralCommentsIndex: (updater: Updater<number>) => void;
   setGeneralCommentsScrollOffset: (updater: Updater<number>) => void;
-  setReviewConfirm: (
-    value: { pr: PullRequestInfo; selectedOption: number } | null
-  ) => void;
+  setSessionMenu: (updater: Updater<SessionMenuState | null>) => void;
   setReviewInstruction: (updater: Updater<string>) => void;
   setPriorPaneMode: (mode: PaneMode) => void;
   setPlanCheckoutIndex: (updater: Updater<number>) => void;
@@ -214,8 +217,8 @@ function defaultPaneMode(
 }
 
 /**
- * Consolidated pane state machine. Replaces the previous four hooks:
- * usePaneMode, useDiffState, useCommentState, useReviewConfirmState.
+ * Consolidated pane state machine: pane mode, diff navigation, comment
+ * editing, the session menu, and plan checkout.
  *
  * The call site (MainTab) mounts this hook inside a component keyed on
  * the selected sidebar item's identity, so on every item change the
@@ -223,11 +226,11 @@ function defaultPaneMode(
  * pane mode via `defaultPaneMode`. There is no render-time auto-reset
  * path anymore.
  *
- * Pane state no longer tracks "has this review-PR been started" — the
- * spawned `claude --continue || claude` handles resume-if-possible at
- * the shell level, which makes a JS-side cache redundant. Returning to
- * a review-PR row whose PTY has exited shows pr-detail; pressing Enter
- * re-enters via claude --continue.
+ * Pane state does not track "has this review-PR been started" — the
+ * launcher's continue-or-seed intent handles resume-if-possible, which
+ * makes a JS-side cache redundant. Returning to a review-PR row whose
+ * PTY has exited shows pr-detail; Enter opens the session menu, whose
+ * review row resumes the conversation.
  */
 export function usePaneReducer(
   selectedItem: SidebarItem | undefined,
@@ -241,6 +244,30 @@ export function usePaneReducer(
       paneMode: defaultPaneMode(arg.selectedItem, arg.sessionNameForTerminal),
     })
   );
+
+  // A session-menu request (the branch picker, whose worktree creation
+  // lands the user in the new session's menu) is honored by the pane
+  // showing that session — whether it was already mounted when the
+  // request was filed, or is the mount a selection move produces. The
+  // initializer above stays pure; consuming here keeps the take-once
+  // semantics out of React's double-invoked init path.
+  const requestedFor = useSyncExternalStore(
+    subscribeSessionMenuRequest,
+    peekSessionMenuRequest
+  );
+  useEffect(() => {
+    if (requestedFor === null || requestedFor !== sessionNameForTerminal) {
+      return;
+    }
+    if (!selectedItem || !consumeSessionMenuRequest(sessionNameForTerminal)) {
+      return;
+    }
+    dispatch({
+      type: 'SET_SESSION_MENU',
+      updater: openSessionMenuState(getPrFromItem(selectedItem)),
+    });
+    dispatch({ type: 'SET_PANE_MODE', value: 'confirm' });
+  }, [requestedFor, sessionNameForTerminal, selectedItem]);
 
   const actions = useMemo<PaneActions>(
     () => ({
@@ -275,8 +302,8 @@ export function usePaneReducer(
         dispatch({ type: 'SET_GENERAL_COMMENTS_INDEX', updater }),
       setGeneralCommentsScrollOffset: (updater) =>
         dispatch({ type: 'SET_GENERAL_COMMENTS_SCROLL_OFFSET', updater }),
-      setReviewConfirm: (value) =>
-        dispatch({ type: 'SET_REVIEW_CONFIRM', value }),
+      setSessionMenu: (updater) =>
+        dispatch({ type: 'SET_SESSION_MENU', updater }),
       setReviewInstruction: (updater) =>
         dispatch({ type: 'SET_REVIEW_INSTRUCTION', updater }),
       setPriorPaneMode: (value) =>

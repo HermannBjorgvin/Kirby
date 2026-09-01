@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { workspaceRoot } from '@nx/devkit';
 
-const baseURL = process.env.BASE_URL ?? 'http://localhost:5174';
+// The port is machine-wide and `reuseExistingServer` attaches to
+// whatever answers on it — a host left running by another worktree's
+// run would quietly put *that* worktree's Kirby under test. PORT moves
+// this run, host and browser alike, onto a port of its own.
+const port = Number(process.env.PORT ?? 5174);
+const baseURL = process.env.BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: './src',
@@ -27,7 +32,8 @@ export default defineConfig({
   webServer: {
     command:
       'npx nx serve cli-wterm-host --output-style=stream-without-prefixes',
-    url: 'http://localhost:5174',
+    url: `http://localhost:${port}`,
+    env: { PORT: String(port) },
     reuseExistingServer: !process.env.CI,
     cwd: workspaceRoot,
     stdout: 'pipe',

@@ -40,11 +40,10 @@ test.describe('Quit with active agent (#56)', () => {
   }) => {
     const host = wtermHost(baseURL);
 
-    await createSession(kirby.term, 'busy-q');
+    await createSession(kirby.term, 'busy-q', { start: true });
 
-    // Tab → spawn the agent. Wait for its banner so we know the PTY is
-    // up and bursting before we try to quit.
-    await kirby.term.press('Tab');
+    // Wait for the agent's banner so we know the PTY is up and bursting
+    // before we try to quit.
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

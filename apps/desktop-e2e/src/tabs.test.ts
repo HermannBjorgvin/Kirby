@@ -1,6 +1,12 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
-import { createWorktree, sidebarRow, tab, tabs } from './setup/app.js';
+import {
+  createWorktree,
+  dismissSessionMenu,
+  sidebarRow,
+  tab,
+  tabs,
+} from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 
 /** Close every open tab with its own X button. */
@@ -41,6 +47,9 @@ test.describe('Editor tabs', () => {
     await closeAllTabs(page);
 
     await sidebarRow(page, /alpha/).dblclick();
+    // Activating an idle row also opens its session menu; while that
+    // modal is up the rest of the app is hidden from role queries.
+    await dismissSessionMenu(page);
     await expect(tab(page, /alpha/)).toBeVisible();
 
     await sidebarRow(page, /beta/).click();

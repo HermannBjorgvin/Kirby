@@ -296,6 +296,16 @@ export const ACTIONS = [
   { id: 'confirm.navigate-up', label: 'Navigate up', context: 'confirm' },
   { id: 'confirm.cancel', label: 'Cancel', context: 'confirm' },
   { id: 'confirm.select', label: 'Select', context: 'confirm' },
+  {
+    id: 'confirm.cycle-agent-left',
+    label: 'Previous agent',
+    context: 'confirm',
+  },
+  {
+    id: 'confirm.cycle-agent-right',
+    label: 'Next agent',
+    context: 'confirm',
+  },
 
   // ── Confirm Delete ──
   {
@@ -583,6 +593,8 @@ export const NORMIE_PRESET: KeybindPreset = {
     'confirm.navigate-up': [{ flags: { upArrow: true } }],
     'confirm.cancel': [{ flags: { escape: true } }],
     'confirm.select': [{ flags: { return: true } }],
+    'confirm.cycle-agent-left': [{ flags: { leftArrow: true } }],
+    'confirm.cycle-agent-right': [{ flags: { rightArrow: true } }],
 
     // Confirm Delete
     'confirm-delete.cancel': [{ flags: { escape: true } }],
@@ -705,6 +717,14 @@ export const VIM_PRESET: KeybindPreset = {
     'confirm.navigate-up': [{ input: 'k' }, { flags: { upArrow: true } }],
     'confirm.cancel': [{ flags: { escape: true } }],
     'confirm.select': [{ flags: { return: true } }],
+    'confirm.cycle-agent-left': [
+      { input: 'h' },
+      { flags: { leftArrow: true } },
+    ],
+    'confirm.cycle-agent-right': [
+      { input: 'l' },
+      { flags: { rightArrow: true } },
+    ],
 
     // Confirm Delete (same as normie)
     'confirm-delete.cancel': [{ flags: { escape: true } }],

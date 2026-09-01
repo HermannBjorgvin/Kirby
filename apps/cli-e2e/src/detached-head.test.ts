@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import { test, expect } from './fixtures/kirby.js';
+import { tabIntoSession } from './setup/sessions.js';
 import { createTestRepo, registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 
@@ -45,10 +46,11 @@ test.describe('Detached-HEAD worktree', () => {
       sidebarLocator(kirby.term.page, WORKTREE_NAME).any()
     ).toBeVisible({ timeout: 15_000 });
 
-    // The only row is auto-selected. Tab starts the PTY and focuses the
-    // terminal. Pre-fix the worktree lookup failed (empty name mismatch)
-    // so no PTY ever spawned.
-    await kirby.term.press('Tab');
+    // The only row is auto-selected. Tab opens the session menu and
+    // Enter starts the PTY and focuses the terminal. Pre-fix the
+    // worktree lookup failed (empty name mismatch) so no PTY ever
+    // spawned.
+    await tabIntoSession(kirby.term);
     await expect(
       kirby.term.getByText('ctrl+space to exit').first()
     ).toBeVisible({ timeout: 10_000 });

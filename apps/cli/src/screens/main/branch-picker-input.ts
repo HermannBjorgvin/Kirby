@@ -1,5 +1,9 @@
-import { handleTextInput, type KeyPress, launchSession } from '@kirby/core';
-import type { AppConfig } from '@kirby/vcs-core';
+import {
+  handleTextInput,
+  type KeyPress,
+  isSessionAlive,
+  requestSessionMenu,
+} from '@kirby/core';
 import {
   createWorktree,
   listAllBranches,
@@ -8,24 +12,58 @@ import {
 } from '@kirby/worktree-manager';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
-export function startAiSession(
-  name: string,
-  cols: number,
-  rows: number,
-  cwd: string,
-  config: AppConfig
-) {
-  // Resume a prior conversation in this worktree if there is one, else
-  // start blank. The configured agent decides whether continue is even
-  // possible (only Claude, currently) — everyone else starts blank.
-  launchSession({
-    name,
-    cwd,
-    cols,
-    rows,
-    config,
-    request: { intent: 'continue-or-blank' },
+/**
+ * Where the user lands once the worktree exists. A session that is
+ * already running has no agent left to choose, so it opens straight
+ * into its terminal — same as Tab on its row. Otherwise the new
+ * session's menu opens, through the request the pane reducer consumes:
+ * the refresh above and the selection move here can each remount the
+ * pane, so menu state set on this pane directly could land on one
+ * that is already gone.
+ */
+function landInSession(ctx: BranchPickerHandlerCtx, sessionName: string): void {
+  ctx.sidebar.selectByKey(`session:${sessionName}`);
+  if (isSessionAlive(sessionName)) {
+    ctx.pane.setPaneMode('terminal');
+    ctx.pane.setReconnectKey((k) => k + 1);
+    ctx.nav.setFocus('terminal');
+    return;
+  }
+  requestSessionMenu(sessionName);
+}
+
+function resetPicker(ctx: BranchPickerHandlerCtx): void {
+  ctx.branchPicker.setCreating(false);
+  ctx.branchPicker.setBranchFilter('');
+  ctx.branchPicker.setBranchIndex(0);
+}
+
+function fetchBranches(ctx: BranchPickerHandlerCtx): void {
+  void ctx.asyncOps.run('fetch-branches', async () => {
+    // No "Fetching remotes…" flash — the 'fetch-branches' spinner
+    // (label: "Fetching branches") already shows we're working.
+    await fetchRemote();
+    const allBranches = await listAllBranches();
+    ctx.branchPicker.setBranches(allBranches);
+    ctx.branchPicker.setBranchIndex(0);
+    ctx.sessions.flashStatus('Fetched remotes');
   });
+}
+
+function selectBranch(ctx: BranchPickerHandlerCtx, filtered: string[]): void {
+  const branch =
+    filtered.length > 0
+      ? filtered[ctx.branchPicker.branchIndex]!
+      : ctx.branchPicker.branchFilter.trim();
+  if (branch) {
+    void ctx.asyncOps.run('create-worktree', async () => {
+      const worktreePath = await createWorktree(branch);
+      if (!worktreePath) return;
+      await ctx.sessions.refreshSessions();
+      landInSession(ctx, branchToSessionName(branch));
+    });
+  }
+  resetPicker(ctx);
 }
 
 export function handleBranchPickerInput(
@@ -36,22 +74,11 @@ export function handleBranchPickerInput(
   const action = ctx.keybinds.resolve(input, key, 'branch-picker');
 
   if (action === 'branch-picker.cancel') {
-    ctx.branchPicker.setCreating(false);
-    ctx.branchPicker.setBranchFilter('');
-    ctx.branchPicker.setBranchIndex(0);
+    resetPicker(ctx);
     return;
   }
-
   if (action === 'branch-picker.fetch') {
-    void ctx.asyncOps.run('fetch-branches', async () => {
-      // No "Fetching remotes…" flash — the 'fetch-branches' spinner
-      // (label: "Fetching branches") already shows we're working.
-      await fetchRemote();
-      const allBranches = await listAllBranches();
-      ctx.branchPicker.setBranches(allBranches);
-      ctx.branchPicker.setBranchIndex(0);
-      ctx.sessions.flashStatus('Fetched remotes');
-    });
+    fetchBranches(ctx);
     return;
   }
 
@@ -69,32 +96,8 @@ export function handleBranchPickerInput(
     );
     return;
   }
-
   if (action === 'branch-picker.select') {
-    const branch =
-      filtered.length > 0
-        ? filtered[ctx.branchPicker.branchIndex]!
-        : ctx.branchPicker.branchFilter.trim();
-    if (branch) {
-      void ctx.asyncOps.run('create-worktree', async () => {
-        const worktreePath = await createWorktree(branch);
-        if (worktreePath) {
-          const sessionName = branchToSessionName(branch);
-          startAiSession(
-            sessionName,
-            ctx.terminal.paneCols,
-            ctx.terminal.paneRows,
-            worktreePath,
-            ctx.config.config
-          );
-          await ctx.sessions.refreshSessions();
-          ctx.sidebar.selectByKey(`session:${sessionName}`);
-        }
-      });
-    }
-    ctx.branchPicker.setCreating(false);
-    ctx.branchPicker.setBranchFilter('');
-    ctx.branchPicker.setBranchIndex(0);
+    selectBranch(ctx, filtered);
     return;
   }
 

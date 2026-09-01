@@ -1,16 +1,18 @@
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { agentSpinner, createWorktree, tab } from './setup/app.js';
+import {
+  agentSpinner,
+  createWorktree,
+  launchAgentFromRail,
+  tab,
+} from './setup/app.js';
 
 const BRANCH = 'agent-work';
 /** Session names are the branch with slashes flattened. */
 const SESSION = BRANCH;
 
 async function launchAgent(page: Page) {
-  // "Launch agent" on a fresh worktree, "Relaunch agent" once a
-  // session has existed — match both spellings rather than pinning
-  // copy this test isn't about.
-  await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+  await launchAgentFromRail(page);
   await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
     timeout: 30_000,
   });

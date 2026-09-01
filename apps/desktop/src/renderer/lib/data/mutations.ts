@@ -35,7 +35,12 @@ function useInvalidator(cwd: string) {
     sync: () => qc.invalidateQueries({ queryKey: keys.sync(cwd) }),
     branches: () => qc.invalidateQueries({ queryKey: keys.branches(cwd) }),
     sessions: () => qc.invalidateQueries({ queryKey: keys.sessions(cwd) }),
-    settings: () => qc.invalidateQueries({ queryKey: keys.settings(cwd) }),
+    settings: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: keys.settings(cwd) }),
+        // The picker's default row follows the configured agent.
+        qc.invalidateQueries({ queryKey: keys.agentOptions(cwd) }),
+      ]),
     threads: (prId: number) =>
       qc.invalidateQueries({ queryKey: keys.threads(cwd, prId) }),
     drafts: (prId: number) =>

@@ -1,4 +1,5 @@
 import {
+  buildAgentOptions,
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
@@ -16,6 +17,7 @@ import { readConfig } from '@kirby/vcs-core';
 import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import type {
+  AgentOptionView,
   PlanCheckoutRequest,
   PlanCheckoutResult,
   ReviewLaunchRequest,
@@ -227,7 +229,10 @@ async function doLaunchAgent(
   // Config comes from the repo root, like the TUI — per-project config
   // is keyed by cwd hash, so reading from the worktree path resolved a
   // different (empty) project bag.
-  const config = readConfig(repoCwd);
+  // A per-launch agent pick from the session menu overrides the
+  // configured one; the resolver still owns the id → agent mapping.
+  const stored = readConfig(repoCwd);
+  const config = req.agentId ? { ...stored, agentId: req.agentId } : stored;
   console.log(
     `[desktop] launching session ${name} in ${wtPath} (backend: ${resolveTerminalBackend(
       config
@@ -247,6 +252,19 @@ async function doLaunchAgent(
   });
   adoptSession(name, req.branch, repoCwd);
   return { name };
+}
+
+/**
+ * The session menu's agent picker: the configured agent first (the
+ * launch you get without touching the picker), then the rest of the
+ * registry. Same list, same order, same labels as the TUI.
+ */
+export function listAgentOptions(): AgentOptionView[] {
+  const config = readConfig(requireRepo());
+  return buildAgentOptions(config).map((o) => ({
+    id: o.agent.id,
+    name: o.name,
+  }));
 }
 
 export function getSessionBuffer(name: string): SessionBuffer {

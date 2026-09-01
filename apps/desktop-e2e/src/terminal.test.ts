@@ -3,6 +3,7 @@ import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
   createWorktree,
   focusTerminal,
+  launchAgentFromRail,
   sidebarRow,
   tab,
   tabs,
@@ -21,11 +22,7 @@ const BANNER = 'kirby-fake-agent-ready';
 
 async function launch(page: Page, branch: string) {
   await createWorktree(page, branch);
-  await page
-    .getByRole('button', { name: /(Re)?launch agent/i })
-    .filter({ visible: true })
-    .first()
-    .click();
+  await launchAgentFromRail(page);
   await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
 }
 

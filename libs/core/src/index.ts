@@ -57,7 +57,10 @@ export {
   subscribe,
 } from './lib/inactive-alerts.js';
 export * from './lib/agents/registry.js';
+export * from './lib/agents/agent-options.js';
 export * from './lib/session/launch-session.js';
+export * from './lib/session/session-menu.js';
+export * from './lib/session/session-menu-request.js';
 export * from './lib/session/review-prompt.js';
 export * from './lib/session/checkout-plan.js';
 export * from './lib/sync/remote-sync.js';

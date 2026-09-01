@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { dismissSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 test.use({
@@ -38,10 +39,12 @@ test.describe('Session Lifecycle – clean delete', () => {
     );
     await kirby.term.press('Enter');
 
-    // 3. Branch picker closes, session appears in sidebar
+    // 3. Branch picker closes, the new session's menu opens; dismiss
+    //    it and the session row is in the sidebar
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
+    await dismissSessionMenu(kirby.term);
     await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -122,6 +125,7 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
+    await dismissSessionMenu(kirby.term);
     await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });

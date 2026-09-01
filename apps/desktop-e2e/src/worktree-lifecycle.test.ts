@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { test, expect } from './fixtures/desktop.js';
 import {
   createWorktree,
+  dismissSessionMenu,
   openPalette,
   paletteInput,
   sidebarRow,
@@ -67,6 +68,9 @@ test.describe('Checking out an existing branch', () => {
       .click();
     await paletteInput(page).waitFor({ state: 'hidden' });
 
+    // The checkout lands in the worktree's session menu, a modal that
+    // hides the sidebar from role queries until it is gone.
+    await dismissSessionMenu(page);
     await sidebarRow(page, /existing-work/).waitFor({
       state: 'visible',
       timeout: 30_000,
