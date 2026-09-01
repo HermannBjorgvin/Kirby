@@ -170,6 +170,72 @@ describe('fetchPrBuildRunsBatch', () => {
     expect(verdicts.get(101)).toBe('none');
   });
 
+  it('caps how many rows one cycle looks up individually', async () => {
+    // The fallback is the expensive path: on a repository busy enough
+    // to fill the listing, most rows miss it, and a cycle meant to cost
+    // one request costs one per row. Uncapped, this is the burst that
+    // gets an organization throttled.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('branchName='))
+        return Promise.resolve(
+          json({
+            value: [{ status: 'completed', result: 'succeeded', id: 1 }],
+          })
+        );
+      if (url.includes('/build/builds'))
+        return Promise.resolve(
+          json(BATCH, { 'x-ms-continuationtoken': 'more' })
+        );
+      if (/\/repositories\/myrepo\?/.test(url))
+        return Promise.resolve(json({ id: 'repo-guid' }));
+      return Promise.resolve(json({ value: [] }));
+    });
+
+    const ids = Array.from({ length: 80 }, (_, i) => 5000 + i);
+    const verdicts = await fetchPrBuildRunsBatch(CONFIG, ids);
+    const separate = buildUrls().filter((u) => u.includes('branchName='));
+    expect(separate).toHaveLength(25);
+
+    // What it did not look up is *absent*, not `none`: the caller shows
+    // no CI for now and asks again, where a recorded `none` would be
+    // remembered as "this pull request has no build".
+    expect(verdicts.size).toBe(25);
+  });
+
+  it('leaves a row out rather than calling a failed lookup "no build"', async () => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('branchName='))
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{}'),
+        } as unknown as Response);
+      if (url.includes('/build/builds'))
+        return Promise.resolve(
+          json(BATCH, { 'x-ms-continuationtoken': 'more' })
+        );
+      if (/\/repositories\/myrepo\?/.test(url))
+        return Promise.resolve(json({ id: 'repo-guid' }));
+      return Promise.resolve(json({ value: [] }));
+    });
+
+    const verdicts = await fetchPrBuildRunsBatch(CONFIG, [999]);
+    // A network error is not an answer about this repository's CI.
+    expect(verdicts.has(999)).toBe(false);
+  });
+
+  it('sizes the page by the repository, not by how many rows it asks about', async () => {
+    // The rows a cycle asks about are the least recently read, and so
+    // the least recently built — the ones least likely to be in the
+    // newest page. Sizing `$top` by that handful shrinks the page to
+    // its floor exactly when it needs to be widest.
+    serve(BATCH);
+    await fetchPrBuildRunsBatch(CONFIG, [101], 200);
+    expect(buildUrls()[0]).toContain('$top=500');
+  });
+
   it('costs nothing when there are no pull requests', async () => {
     serve(BATCH);
     expect((await fetchPrBuildRunsBatch(CONFIG, [])).size).toBe(0);

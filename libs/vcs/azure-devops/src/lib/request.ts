@@ -15,6 +15,7 @@ import {
 } from '@kirby/vcs-core';
 import { log } from '@kirby/logger';
 import { tracedFetch } from './client.js';
+import { clearPrDetails } from './pr-details.js';
 
 /**
  * Every request to Azure DevOps goes through here, and nothing else in
@@ -219,10 +220,15 @@ export function invalidateAdoCache(prefix: string): void {
  * make a corrected token look like it had not worked. Reopening the
  * gate is part of the same idea — a fresh credential deserves an
  * immediate attempt rather than the tail of the previous one's backoff.
+ *
+ * The per-pull-request memo goes with it. It is not held in this cache
+ * — it outlives any single response by design — but it is just as much
+ * an answer fetched as somebody else.
  */
 export function resetAdoTransport(): void {
   cache.invalidate();
   gate.reset();
+  clearPrDetails();
 }
 
 /** Test seam: the gate, so backoff behaviour can be driven directly. */

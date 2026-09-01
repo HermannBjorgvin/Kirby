@@ -45,10 +45,24 @@ export function usePrData(refreshInterval = 60000) {
     }
   }, [polling.error, flash]);
 
+  /**
+   * The user asked, so go and look.
+   *
+   * A provider may hold per-row answers well past one response — Azure
+   * remembers a settled CI verdict for ten minutes so a poll does not
+   * spend a request per row on it — and answering a keypress from
+   * memory is what makes the key look broken. The desktop's refresh
+   * does the same thing through its host (`services/sidebar.ts`).
+   */
+  const refresh = useCallback(() => {
+    provider?.forgetPullRequestCache?.(vendorProject);
+    return polling.refresh();
+  }, [provider, vendorProject, polling]);
+
   return {
     prMap: polling.value ?? {},
     loading: polling.loading,
     error: polling.error?.message ?? null,
-    refresh: polling.refresh,
+    refresh,
   };
 }
