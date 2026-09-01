@@ -61,6 +61,8 @@ export * from './lib/session/launch-session.js';
 export * from './lib/session/review-prompt.js';
 export * from './lib/session/checkout-plan.js';
 export * from './lib/sync/remote-sync.js';
+export * from './lib/discovery/discovery-model.js';
+export * from './lib/discovery/session-discovery.js';
 
 // ── Pure utilities ───────────────────────────────────────────────
 export * from './lib/utils/sidebar-items.js';
