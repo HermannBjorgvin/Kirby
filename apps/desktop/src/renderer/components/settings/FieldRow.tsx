@@ -1,5 +1,5 @@
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { toast } from 'sonner';
 import { SECRET_PLACEHOLDER } from '../../../host/contract.js';
 import type { SettingsFieldView } from '../../../host/contract.js';
@@ -114,6 +114,16 @@ export function FieldRow({
   );
 }
 
+/** Handlers that fire on the ways a select item gets chosen. */
+function pinOnSelect(save: () => void) {
+  return {
+    onPointerUp: save,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') save();
+    },
+  };
+}
+
 function SelectRow({
   field,
   id,
@@ -180,11 +190,14 @@ function SelectRow({
                     // a preference and one that flips when tmux comes
                     // or goes. Saving twice is harmless: the second is
                     // dropped as unchanged (see `persistedValue`).
-                    onClick={
-                      isDefaultedPreset(field, p.value)
-                        ? () => onSave(p.value ?? '')
-                        : undefined
-                    }
+                    //
+                    // Pointer-up and Enter, not click: the control
+                    // selects on pointer-up and closes, and a menu with
+                    // no exit transition is unmounted before any click
+                    // event could reach the item.
+                    {...(isDefaultedPreset(field, p.value)
+                      ? pinOnSelect(() => onSave(p.value ?? ''))
+                      : {})}
                   >
                     {/* Marked only while nothing is stored *and* the
                         host named the default, so the row says "this was
