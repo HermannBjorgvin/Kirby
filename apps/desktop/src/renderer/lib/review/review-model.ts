@@ -5,6 +5,7 @@ import type {
   ReviewComment,
 } from '../../../host/contract.js';
 import type { CommentListItem } from '../../components/review/comments/CommentsList.js';
+import { contentKey } from '../content-key.js';
 import type { FileEntry } from '../../components/review/diff/FileTree.js';
 
 /**
@@ -92,6 +93,26 @@ export function groupThreadsByFile(
   return map;
 }
 
+/**
+ * A file's changed content, as a short key.
+ *
+ * The tree's collapse rule needs to know which files a refresh actually
+ * touched, and churn counts are not enough on their own — swapping one
+ * line for another leaves both of them where they were. Only the added
+ * and removed lines go in: with `-U99999` the rest of `lines` is the
+ * whole file as context, and hashing that on every two-second poll of a
+ * megabyte diff is work for nothing.
+ */
+function fileRevision(lines: readonly DiffLine[]): string {
+  let changed = '';
+  for (const line of lines) {
+    if (line.type === 'add' || line.type === 'remove') {
+      changed += `${line.type}${line.content}\n`;
+    }
+  }
+  return contentKey(changed);
+}
+
 /** File-tree rows: per-file churn, open threads and draft counts. */
 export function buildFileEntries(
   files: readonly [string, DiffLine[]][],
@@ -100,6 +121,7 @@ export function buildFileEntries(
 ): FileEntry[] {
   return files.map(([filename, lines]) => ({
     path: filename,
+    revision: fileRevision(lines),
     additions: lines.filter((l) => l.type === 'add').length,
     deletions: lines.filter((l) => l.type === 'remove').length,
     comments: (threadsByFile.get(filename) ?? []).filter((t) => !t.isResolved)
