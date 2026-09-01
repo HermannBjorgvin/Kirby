@@ -1,5 +1,5 @@
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { createWorktree, tab } from './setup/app.js';
+import { createWorktree, launchAgentFromRail, tab } from './setup/app.js';
 
 /**
  * How you find out an agent finished while you were looking elsewhere.
@@ -27,7 +27,7 @@ test.describe('An agent that finishes while you are elsewhere', () => {
     const { page } = desktop;
 
     await createWorktree(page, 'worker');
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
@@ -63,7 +63,7 @@ test.describe('An agent still working', () => {
     const { page } = desktop;
 
     await createWorktree(page, 'busy');
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });

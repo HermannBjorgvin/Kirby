@@ -115,8 +115,60 @@ export async function createWorktree(
   await ((await createRow.count()) > 0 ? createRow : checkoutRow).click();
 
   await paletteInput(page).waitFor({ state: 'hidden' });
-  await sidebarRow(page, new RegExp(branch)).waitFor({
-    state: 'visible',
-    timeout: 30_000,
-  });
+
+  // A checkout lands in the new worktree's session menu, and a modal
+  // dialog hides the rest of the app from role queries (aria-hidden),
+  // sidebar included — so the menu has to go before the row can be
+  // waited on. Dismissing it here leaves the caller a quiet tab;
+  // `launchAgentFromRail` reopens it when the test wants an agent. A
+  // branch that already had a worktree is a jump, not a checkout, and
+  // opens no menu.
+  const row = sidebarRow(page, new RegExp(branch));
+  const menu = sessionMenu(page);
+  await menu.or(row).first().waitFor({ state: 'visible', timeout: 30_000 });
+  if (await menu.isVisible()) await dismissSessionMenu(page);
+  await row.waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+/** The session menu ("What would you like to do?"), once open. */
+export function sessionMenu(page: Page): Locator {
+  return page
+    .getByRole('dialog')
+    .filter({ hasText: 'What would you like to do?' });
+}
+
+/** The menu's agent picker. */
+export function agentPicker(page: Page): Locator {
+  return sessionMenu(page).getByRole('combobox', { name: 'Agent' });
+}
+
+/** Take the open menu's session row with the agent it shows. */
+export async function startSessionFromMenu(page: Page): Promise<void> {
+  const menu = sessionMenu(page);
+  await menu.waitFor({ state: 'visible', timeout: 15_000 });
+  await menu.getByRole('button', { name: 'Start session' }).click();
+  await menu.waitFor({ state: 'hidden' });
+}
+
+/** Close the open menu without launching anything. */
+export async function dismissSessionMenu(page: Page): Promise<void> {
+  const menu = sessionMenu(page);
+  await menu.waitFor({ state: 'visible', timeout: 15_000 });
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'hidden' });
+}
+
+/**
+ * Launch the tab's agent the way a user does: the rail's Launch button
+ * opens the session menu, and its session row starts the default
+ * agent. Returns once the menu is gone — follow with an assertion on
+ * the agent's output.
+ */
+export async function launchAgentFromRail(page: Page): Promise<void> {
+  await page
+    .getByRole('button', { name: /(Re)?launch agent/i })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await startSessionFromMenu(page);
 }

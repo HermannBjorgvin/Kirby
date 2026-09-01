@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { sidebarRow } from './setup/app.js';
+import { launchAgentFromRail, sidebarRow } from './setup/app.js';
 
 const BRANCH = 'diff-work';
 
@@ -62,7 +62,7 @@ test.describe('Diff viewer', () => {
 
     // The rail only offers an Agent entry once a session exists, and
     // launching one auto-selects the terminal.
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
@@ -154,11 +154,7 @@ test.describe('Live worktree diff', () => {
 
     // Start the agent: the poll only runs while one is working, which is
     // the only time the tree changes underneath the viewer.
-    await page
-      .getByRole('button', { name: /(Re)?launch agent/i })
-      .filter({ visible: true })
-      .first()
-      .click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });

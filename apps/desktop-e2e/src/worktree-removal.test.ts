@@ -2,7 +2,13 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { agentSpinner, createWorktree, sidebarRow, tab } from './setup/app.js';
+import {
+  agentSpinner,
+  createWorktree,
+  launchAgentFromRail,
+  sidebarRow,
+  tab,
+} from './setup/app.js';
 import { armContextMenuChoice, armContextMenuDismiss } from './setup/menu.js';
 
 const BRANCH = 'doomed';
@@ -82,7 +88,7 @@ test.describe('Worktree removal (running agent)', () => {
     const { page, app } = desktop;
     await createWorktree(page, BRANCH);
 
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
