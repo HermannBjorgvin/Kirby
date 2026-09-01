@@ -135,7 +135,10 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
         // was started with — a test-spawned server on the user's
         // default socket would outlive the run and poison every later
         // real session with this temp HOME (it did, once).
-        env: { TMUX_TMPDIR: homeDir, ...kirbyEnv },
+        //
+        // Last, so a test's own env additions cannot override it. The
+        // host pins the same value again for the same reason.
+        env: { ...kirbyEnv, TMUX_TMPDIR: homeDir },
       }),
     });
     if (!spawnRes.ok) {

@@ -70,13 +70,20 @@ function spawnKirby(req: SpawnRequest): void {
     ...process.env,
     HOME: req.homeDir,
     TERM: 'xterm-256color',
+    ...req.env,
     // A tmux server keeps the environment it was started with, and an
-    // unconfigured Kirby now resolves to the tmux backend wherever tmux
-    // is installed — so every spawn needs a socket of its own, not just
+    // unconfigured Kirby resolves to the tmux backend wherever tmux is
+    // installed — so every spawn needs a socket of its own, not just
     // the ones a caller remembered to ask for. Inside the spawn's own
     // HOME, which its owner deletes on teardown.
+    //
+    // Last, and not negotiable: the host also auto-spawns a dev-default
+    // session with no `env` at all, and a caller spreading its own
+    // additions after this key would silently undo it. Without it a
+    // server started here keeps the temp HOME for its whole life and
+    // hands it to every session it later spawns, so one test run
+    // poisons real sessions long after it ends (it did, once).
     TMUX_TMPDIR: req.homeDir,
-    ...req.env,
   };
   delete childEnv.CI;
   delete childEnv.CONTINUOUS_INTEGRATION;
