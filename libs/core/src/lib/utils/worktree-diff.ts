@@ -1,12 +1,7 @@
-import { execFile as execFileCb } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { resolveRef } from './diff-fetcher.js';
-
-const execFile = promisify(execFileCb);
-
-const MAX_BUFFER = 50 * 1024 * 1024;
+import { gitLine, runGit } from './git-run.js';
 
 /**
  * What an agent has done to a worktree so far, committed or not.
@@ -22,41 +17,199 @@ const MAX_BUFFER = 50 * 1024 * 1024;
  * `git diff` cannot see them without `git add -N`, and writing to the
  * index of a worktree an agent is actively using is not something a
  * viewer should do — it changes what the agent's own `git status` and
- * `git commit` see.
+ * `git commit` see. Files git ignores are never among them: the listing
+ * is `--exclude-standard`, so a `node_modules` or a build directory
+ * cannot arrive here however large it is.
+ *
+ * The work is bounded twice over, because whole-file context
+ * (`-U99999`) makes a patch as large as the files it touches and one
+ * generated file used to be enough to fail the whole tab with
+ * "stdout maxBuffer length exceeded":
+ *
+ *   • Per file — anything binary, or bigger than `maxFileBytes`, is
+ *     replaced by a one-line placeholder saying so. The rest of the
+ *     diff renders normally, which is the point: one unrepresentable
+ *     file must not cost the user the other forty.
+ *   • Overall — every git call streams through `runGit` with an
+ *     explicit ceiling instead of `execFile`'s fixed buffer, so hitting
+ *     it truncates the patch at a file boundary and says so, rather
+ *     than throwing away everything that had already arrived.
  */
 
-/** Files whose contents are not worth (or safe to) render as a diff. */
-const MAX_UNTRACKED_BYTES = 512 * 1024;
+export interface WorktreeDiffLimits {
+  /** A file larger than this is summarised rather than diffed. */
+  maxFileBytes: number;
+  /** Ceiling on the whole patch. Generous: this is the backstop. */
+  maxTotalBytes: number;
+}
+
+export const DEFAULT_WORKTREE_DIFF_LIMITS: WorktreeDiffLimits = {
+  maxFileBytes: 2 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+};
+
+/**
+ * How many files may be named as `:(exclude)` pathspecs before we stop
+ * bothering. Every skipped file costs an argv entry, and a diff that
+ * touches thousands of binary assets would otherwise hit ARG_MAX and
+ * fail for a reason that has nothing to do with the user. Past this the
+ * excludes are dropped and the overall ceiling does the bounding.
+ */
+const MAX_EXCLUDE_PATHSPECS = 500;
+
+function megabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * A file the viewer is told about but cannot show, as a patch.
+ *
+ * It has to *be* a patch: the tree, the file list and the counts are all
+ * built from the parsed diff, so a file omitted outright simply is not
+ * there, and the user has no way to tell "unchanged" from "too big to
+ * render".
+ */
+export function placeholderPatch(path: string, note: string): string {
+  return (
+    `diff --git a/${path} b/${path}\n` +
+    `--- a/${path}\n` +
+    `+++ b/${path}\n` +
+    `@@ -0,0 +1,1 @@\n` +
+    `+${note}\n`
+  );
+}
+
+export function tooLargeNote(bytes: number): string {
+  return `file too large to diff, ${megabytes(bytes)}`;
+}
+
+export const BINARY_NOTE = 'binary file, not diffed';
 
 async function mergeBase(
   worktreePath: string,
   targetBranch: string
 ): Promise<string> {
   const targetRef = await resolveRef(targetBranch);
-  const { stdout } = await execFile('git', ['merge-base', targetRef, 'HEAD'], {
+  return gitLine(['merge-base', targetRef, 'HEAD'], { cwd: worktreePath });
+}
+
+interface ChangedFile {
+  path: string;
+  binary: boolean;
+}
+
+/**
+ * Every path the tracked diff would cover, and whether git considers it
+ * binary — asked for separately so the decision about what to render can
+ * be made *before* the expensive whole-file diff runs.
+ *
+ * `--numstat -z` writes `adds\tdels\tpath\0`, with `-` for both counts on
+ * a binary file. A rename writes an empty path in that record and
+ * follows it with the old and new paths as two more records.
+ */
+export function parseNumstat(output: string): ChangedFile[] {
+  const fields = output.split('\0');
+  const files: ChangedFile[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const parts = fields[i].split('\t');
+    if (parts.length < 3) continue;
+    const [adds, dels, path] = parts;
+    const binary = adds === '-' && dels === '-';
+    if (path === '') {
+      // Rename or copy: the destination is the second following record.
+      files.push({ path: fields[i + 2] ?? '', binary });
+      i += 2;
+    } else {
+      files.push({ path, binary });
+    }
+  }
+  return files.filter((f) => f.path !== '');
+}
+
+async function changedFiles(
+  worktreePath: string,
+  base: string
+): Promise<ChangedFile[]> {
+  const { text } = await runGit(['diff', '--numstat', '-z', base], {
     cwd: worktreePath,
+    maxBytes: 8 * 1024 * 1024,
   });
-  return stdout.trim();
+  return parseNumstat(text);
+}
+
+/** Size on disk, or null when the path is gone (a deletion, a race). */
+async function sizeOf(path: string): Promise<number | null> {
+  try {
+    const s = await stat(path);
+    return s.isFile() ? s.size : null;
+  } catch {
+    return null;
+  }
+}
+
+interface Skipped {
+  path: string;
+  note: string;
+}
+
+/** Which changed files cannot be rendered, and what to say about them. */
+async function skippedFiles(
+  worktreePath: string,
+  files: readonly ChangedFile[],
+  limits: WorktreeDiffLimits
+): Promise<Skipped[]> {
+  const decided = await Promise.all(
+    files.map(async (f): Promise<Skipped | null> => {
+      if (f.binary) return { path: f.path, note: BINARY_NOTE };
+      const size = await sizeOf(join(worktreePath, f.path));
+      if (size !== null && size > limits.maxFileBytes) {
+        return { path: f.path, note: tooLargeNote(size) };
+      }
+      return null;
+    })
+  );
+  return decided.filter((s): s is Skipped => s !== null);
+}
+
+/**
+ * Cut a patch back to its last complete file, so a truncated read never
+ * hands the parser half a hunk (which it would render as real lines).
+ */
+export function trimToFileBoundary(patch: string): string {
+  const cut = patch.lastIndexOf('\ndiff --git ');
+  return cut === -1 ? '' : patch.slice(0, cut + 1);
 }
 
 async function trackedDiff(
   worktreePath: string,
-  base: string
+  base: string,
+  skipped: readonly Skipped[],
+  limits: WorktreeDiffLimits
 ): Promise<string> {
-  const { stdout } = await execFile('git', ['diff', '-U99999', base], {
-    cwd: worktreePath,
-    maxBuffer: MAX_BUFFER,
-  });
-  return stdout;
+  const excludes =
+    skipped.length > MAX_EXCLUDE_PATHSPECS
+      ? []
+      : skipped.map((s) => `:(exclude,literal)${s.path}`);
+  const { text, truncated } = await runGit(
+    ['diff', '-U99999', base, '--', ...excludes],
+    { cwd: worktreePath, maxBytes: limits.maxTotalBytes }
+  );
+  if (!truncated) return text;
+  return (
+    trimToFileBoundary(text) +
+    placeholderPatch(
+      'kirby/diff-truncated',
+      `the diff exceeded ${megabytes(limits.maxTotalBytes)} and was cut short`
+    )
+  );
 }
 
 async function untrackedPaths(worktreePath: string): Promise<string[]> {
-  const { stdout } = await execFile(
-    'git',
+  const { text } = await runGit(
     ['ls-files', '--others', '--exclude-standard', '-z'],
-    { cwd: worktreePath, maxBuffer: MAX_BUFFER }
+    { cwd: worktreePath, maxBytes: 8 * 1024 * 1024 }
   );
-  return stdout.split('\0').filter(Boolean);
+  return text.split('\0').filter(Boolean);
 }
 
 /**
@@ -84,22 +237,36 @@ function looksBinary(content: string): boolean {
   return content.includes('\0');
 }
 
-async function untrackedDiff(worktreePath: string): Promise<string> {
+async function untrackedFile(
+  worktreePath: string,
+  path: string,
+  limits: WorktreeDiffLimits
+): Promise<string> {
+  try {
+    const size = await sizeOf(join(worktreePath, path));
+    if (size === null) return '';
+    // Checked before reading: the point of the bound is not to pull a
+    // hundred-megabyte file into memory to discover it is too big.
+    if (size > limits.maxFileBytes) {
+      return placeholderPatch(path, tooLargeNote(size));
+    }
+    const content = await readFile(join(worktreePath, path), 'utf8');
+    if (looksBinary(content)) return placeholderPatch(path, BINARY_NOTE);
+    return untrackedFilePatch(path, content);
+  } catch {
+    // Deleted between listing and reading, or unreadable: the next
+    // poll will show whatever is true then.
+    return '';
+  }
+}
+
+async function untrackedDiff(
+  worktreePath: string,
+  limits: WorktreeDiffLimits
+): Promise<string> {
   const paths = await untrackedPaths(worktreePath);
   const patches = await Promise.all(
-    paths.map(async (path) => {
-      try {
-        const buf = await readFile(join(worktreePath, path));
-        if (buf.byteLength > MAX_UNTRACKED_BYTES) return '';
-        const content = buf.toString('utf8');
-        if (looksBinary(content)) return '';
-        return untrackedFilePatch(path, content);
-      } catch {
-        // Deleted between listing and reading, or unreadable: the next
-        // poll will show whatever is true then.
-        return '';
-      }
-    })
+    paths.map((path) => untrackedFile(worktreePath, path, limits))
   );
   return patches.join('');
 }
@@ -110,12 +277,21 @@ async function untrackedDiff(worktreePath: string): Promise<string> {
  */
 export async function fetchWorktreeDiffText(
   worktreePath: string,
-  targetBranch: string
+  targetBranch: string,
+  limits: WorktreeDiffLimits = DEFAULT_WORKTREE_DIFF_LIMITS
 ): Promise<string> {
   const base = await mergeBase(worktreePath, targetBranch);
+  const skipped = await skippedFiles(
+    worktreePath,
+    await changedFiles(worktreePath, base),
+    limits
+  );
   const [tracked, untracked] = await Promise.all([
-    trackedDiff(worktreePath, base),
-    untrackedDiff(worktreePath),
+    trackedDiff(worktreePath, base, skipped, limits),
+    untrackedDiff(worktreePath, limits),
   ]);
-  return tracked + untracked;
+  const placeholders = skipped
+    .map((s) => placeholderPatch(s.path, s.note))
+    .join('');
+  return tracked + placeholders + untracked;
 }

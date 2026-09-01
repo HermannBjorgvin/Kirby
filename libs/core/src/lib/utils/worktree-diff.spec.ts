@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseUnifiedDiff } from '@kirby/diff';
-import { untrackedFilePatch } from './worktree-diff.js';
+import {
+  parseNumstat,
+  placeholderPatch,
+  trimToFileBoundary,
+  untrackedFilePatch,
+} from './worktree-diff.js';
 
 /**
  * New files an agent has written but not yet added.
@@ -88,5 +93,60 @@ describe('untrackedFilePatch', () => {
     const both =
       untrackedFilePatch('one.ts', 'a\n') + untrackedFilePatch('two.ts', 'b\n');
     expect([...parse(both).keys()]).toEqual(['one.ts', 'two.ts']);
+  });
+});
+
+describe('parseNumstat', () => {
+  const rec = (...fields: string[]) => fields.map((f) => `${f}\0`).join('');
+
+  it('reads a text file and its path', () => {
+    expect(parseNumstat(rec('3\t1\tsrc/app.ts'))).toEqual([
+      { path: 'src/app.ts', binary: false },
+    ]);
+  });
+
+  it('marks a file binary when git declines to count its lines', () => {
+    expect(parseNumstat(rec('-\t-\tlogo.png'))).toEqual([
+      { path: 'logo.png', binary: true },
+    ]);
+  });
+
+  it('takes the destination of a rename, not the empty path record', () => {
+    // With -z a rename writes an empty path, then the old and new paths
+    // as two further records. Reading it naively yields a file named ''
+    // and swallows the two paths as if they were records of their own.
+    expect(parseNumstat(rec('1\t1\t', 'old.ts', 'new.ts', '2\t0\tafter.ts'))).toEqual(
+      [
+        { path: 'new.ts', binary: false },
+        { path: 'after.ts', binary: false },
+      ]
+    );
+  });
+
+  it('is empty for an empty diff', () => {
+    expect(parseNumstat('')).toEqual([]);
+  });
+});
+
+describe('trimToFileBoundary', () => {
+  it('drops a partial last file so the parser never sees half a hunk', () => {
+    const whole = untrackedFilePatch('a.ts', 'one\ntwo\n');
+    const cut = `${whole}diff --git a/b.ts b/b.ts\nnew file mo`;
+    expect(trimToFileBoundary(cut)).toBe(whole);
+  });
+
+  it('returns nothing when not even the first file completed', () => {
+    expect(trimToFileBoundary('diff --git a/a.ts b/a.ts\nnew fi')).toBe('');
+  });
+});
+
+describe('placeholderPatch', () => {
+  it('reads back as a one-line file carrying its explanation', () => {
+    const lines = parse(placeholderPatch('big.bin', 'file too large')).get(
+      'big.bin'
+    )!;
+    expect(lines.filter((l) => l.type === 'add').map((l) => l.content)).toEqual([
+      'file too large',
+    ]);
   });
 });
