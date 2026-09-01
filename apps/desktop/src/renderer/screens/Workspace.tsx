@@ -35,7 +35,7 @@ import {
 } from '../lib/data/mutations.js';
 import { BOOT_MARKS, markOnce } from '../lib/perf.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
-import { TabsProvider, useTabs, type ItemEntry } from '../lib/tabs/tabs.js';
+import { useRepoTabs, type ItemEntry } from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
@@ -59,18 +59,16 @@ export function Workspace({
   onPickRepoFolder: () => void;
 }) {
   const ctx = useMemo(
-    () => ({ repo, switchRepo: onSwitchRepo }),
-    [repo, onSwitchRepo]
+    () => ({ repo, switchRepo: onSwitchRepo, openRepo: onOpenRepo }),
+    [repo, onSwitchRepo, onOpenRepo]
   );
   return (
     <RepoProvider value={ctx}>
-      <TabsProvider>
-        <WorkspaceInner
-          onSwitchRepo={onSwitchRepo}
-          onOpenRepo={onOpenRepo}
-          onPickRepoFolder={onPickRepoFolder}
-        />
-      </TabsProvider>
+      <WorkspaceInner
+        onSwitchRepo={onSwitchRepo}
+        onOpenRepo={onOpenRepo}
+        onPickRepoFolder={onPickRepoFolder}
+      />
     </RepoProvider>
   );
 }
@@ -85,7 +83,7 @@ function WorkspaceInner({
   onPickRepoFolder: () => void;
 }) {
   const { repo } = useRepo();
-  const tabs = useTabs();
+  const tabs = useRepoTabs();
   const model = useSidebarModel(repo.cwd);
   const refresh = useRefreshRemote(repo.cwd);
   // Worktrees being removed drop out of the model right away — every

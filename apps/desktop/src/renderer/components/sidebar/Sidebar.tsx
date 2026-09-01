@@ -13,7 +13,7 @@ import {
   itemKey,
   type SectionKey,
 } from '../../lib/sidebar/sidebar-model.js';
-import { useTabs } from '../../lib/tabs/tabs.js';
+import { useRepoTabs } from '../../lib/tabs/tabs.js';
 import { basename, cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -45,7 +45,7 @@ export function Sidebar({
   onCollapse: () => void;
 }) {
   const { repo } = useRepo();
-  const tabs = useTabs();
+  const tabs = useRepoTabs();
   const refresh = useRefreshRemote(repo.cwd);
   const sections = groupSections(items);
   const [collapsed, setCollapsed] = useState<

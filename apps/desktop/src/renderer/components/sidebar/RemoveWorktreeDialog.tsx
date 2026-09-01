@@ -57,7 +57,7 @@ export function RemoveWorktreeDialog({
     // reconstructed id would miss and leave the tab open on a worktree
     // that no longer exists.
     const tab = tabs.tabs.find(
-      (t) => t.kind === 'item' && t.itemKey === itemKey
+      (t) => t.kind === 'item' && t.repo === repo.cwd && t.itemKey === itemKey
     );
     if (tab) tabs.close(tab.id);
     onClose();

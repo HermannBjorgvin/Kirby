@@ -12,11 +12,37 @@ import {
   type ItemEntry,
   type TabsState,
 } from './tabs-model.js';
+import { useRepo } from '../repo-context.js';
 
-export type { ItemEntry, Tab, TabsAction, TabsState } from './tabs-model.js';
+export type {
+  ItemEntry,
+  ItemTab,
+  Tab,
+  TabsAction,
+  TabsState,
+} from './tabs-model.js';
+export {
+  activeTabRepo,
+  foreignRepoOf,
+  isForeignTab,
+  itemTabId,
+} from './tabs-model.js';
 
+/**
+ * The tab strip's api.
+ *
+ * `openItem` and `syncItems` name the repository they act on, because
+ * the provider sits *above* the repo gate — the strip keeps another
+ * repository's tabs after you switch away, so it cannot assume every
+ * action is about the repo that happens to be open. Components inside
+ * a repo workspace use `useRepoTabs`, which fills the repo in.
+ */
 interface TabsApi extends TabsState {
-  openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
+  openItem: (
+    repo: string,
+    itemKey: string,
+    opts?: { preview?: boolean }
+  ) => void;
   openSettings: () => void;
   pin: (id: string) => void;
   activate: (id: string) => void;
@@ -33,7 +59,7 @@ interface TabsApi extends TabsState {
    * follow re-keyed items, open a tab for each newly running agent,
    * and pin any preview tab that now has a live agent behind it.
    */
-  syncItems: (entries: ItemEntry[]) => void;
+  syncItems: (repo: string, entries: ItemEntry[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -42,8 +68,13 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduce, EMPTY_TABS);
 
   const openItem = useCallback(
-    (itemKey: string, opts?: { preview?: boolean }) =>
-      dispatch({ type: 'open-item', itemKey, preview: opts?.preview ?? false }),
+    (repo: string, itemKey: string, opts?: { preview?: boolean }) =>
+      dispatch({
+        type: 'open-item',
+        repo,
+        itemKey,
+        preview: opts?.preview ?? false,
+      }),
     []
   );
   const openSettings = useCallback(
@@ -83,7 +114,8 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     []
   );
   const syncItems = useCallback(
-    (entries: ItemEntry[]) => dispatch({ type: 'sync-items', entries }),
+    (repo: string, entries: ItemEntry[]) =>
+      dispatch({ type: 'sync-items', repo, entries }),
     []
   );
 
@@ -125,4 +157,26 @@ export function useTabs(): TabsApi {
   const ctx = useContext(TabsContext);
   if (!ctx) throw new Error('useTabs must be used within TabsProvider');
   return ctx;
+}
+
+/** Repo-scoped api for everything rendered inside a repo workspace: the
+ *  same tabs, with `openItem`/`syncItems` bound to the open repo. */
+export function useRepoTabs(): RepoTabsApi {
+  const { repo } = useRepo();
+  const tabs = useTabs();
+  const cwd = repo.cwd;
+  return useMemo(
+    () => ({
+      ...tabs,
+      openItem: (itemKey: string, opts?: { preview?: boolean }) =>
+        tabs.openItem(cwd, itemKey, opts),
+      syncItems: (entries: ItemEntry[]) => tabs.syncItems(cwd, entries),
+    }),
+    [tabs, cwd]
+  );
+}
+
+export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
+  openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
+  syncItems: (entries: ItemEntry[]) => void;
 }

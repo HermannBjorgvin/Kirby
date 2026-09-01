@@ -1,32 +1,22 @@
-import {
-  GitBranchIcon,
-  GitPullRequestIcon,
-  SettingsIcon,
-  XIcon,
-} from 'lucide-react';
 import { useDeferredValue, useMemo } from 'react';
-import type {
-  ContextMenuItem,
-  SessionActivitySnapshot,
-  SidebarItem,
-} from '../../../host/contract.js';
-import { usePlanCount } from '../../lib/plan/plan.js';
+import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useSessionActivity } from '../../lib/data/queries.js';
 import {
   itemBranch,
   itemKey,
-  itemRunning,
   itemSessionName,
-  itemTitle,
 } from '../../lib/sidebar/sidebar-model.js';
-import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
+import { foreignRepoOf, useTabs, type Tab } from '../../lib/tabs/tabs.js';
+import { repoGroupStarts } from '../../lib/tabs/tab-presentation.js';
 import { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
 import { ErrorBoundary } from '../ErrorBoundary.js';
 import { EmptyState } from './EmptyState.js';
 import { SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
+import { ForeignRepoPane } from './ForeignRepoPane.js';
+import { TabButton } from './TabButton.js';
 
 /**
  * Tab strip + stacked panes. Every open tab stays mounted (panes are
@@ -66,7 +56,11 @@ export function EditorArea({
    * ring buffer) twice over a PR's life.
    */
   const itemFor = (tab: Tab): SidebarItem | undefined => {
-    if (tab.kind !== 'item') return undefined;
+    // A tab from another repository resolves to nothing here on
+    // purpose: `items` describes the open repo, and a shared branch
+    // name would otherwise hand that tab this repo's worktree, its
+    // agent and its diff.
+    if (tab.kind !== 'item' || tab.repo !== repo.cwd) return undefined;
     return (
       byKey.get(tab.itemKey) ??
       (tab.branch ? byBranch.get(tab.branch) : undefined)
@@ -92,6 +86,14 @@ export function EditorArea({
   // in the first frame.
   const paneTabs = useDeferredValue(tabs.tabs);
   const paneActiveId = useDeferredValue(tabs.activeId);
+  const groupStarts = useMemo(() => repoGroupStarts(tabs.tabs), [tabs.tabs]);
+
+  // The active tab's repository, when it is not the open one. Its pane
+  // cannot be rendered from here — every query and every host call is
+  // scoped to the open repo — so the notice stands in until the repo
+  // switch that activating it kicked off lands.
+  const activePane = paneTabs.find((t) => t.id === paneActiveId);
+  const foreignCwd = activePane ? foreignRepoOf(activePane, repo.cwd) : null;
 
   // Mount policy: the active tab plus any tab whose branch has a PTY
   // session (its terminal must stay mounted to keep scrollback). Other
@@ -111,7 +113,7 @@ export function EditorArea({
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
       <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-tab [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.tabs.map((tab) => {
+        {tabs.tabs.map((tab, i) => {
           const sessionName = sessionNameFor(tab);
           return (
             <TabButton
@@ -121,6 +123,8 @@ export function EditorArea({
               active={tab.id === tabs.activeId}
               closer={closer}
               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
+              foreignRepo={foreignRepoOf(tab, repo.cwd)}
+              startsGroup={groupStarts[i]}
             />
           );
         })}
@@ -128,6 +132,9 @@ export function EditorArea({
       </div>
       <div className="relative min-h-0 flex-1">
         {paneTabs.map((tab) => {
+          // A foreign tab has no pane here: its data lives in a
+          // repository this window is not pointing at.
+          if (foreignRepoOf(tab, repo.cwd) !== null) return null;
           const active = tab.id === paneActiveId;
           if (!active && !hasSession(tab)) return null;
           return (
@@ -159,179 +166,13 @@ export function EditorArea({
             </div>
           );
         })}
+        {foreignCwd && (
+          <div className="absolute inset-0 flex min-h-0 flex-col">
+            <ForeignRepoPane cwd={foreignCwd} />
+          </div>
+        )}
       </div>
       {confirmDialog}
-    </div>
-  );
-}
-
-/** The tab's kind icon, with the agent's state hung off its corner. */
-function TabIcon({
-  Icon,
-  running,
-  snapshot,
-}: {
-  Icon: typeof SettingsIcon;
-  running: boolean;
-  snapshot: SessionActivitySnapshot | undefined;
-}) {
-  return (
-    <span className="relative flex shrink-0">
-      <Icon className="size-4" />
-      {snapshot?.active ? (
-        <span className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full bg-tab-active p-0.5">
-          <span className="agent-spinner size-2.5 rounded-full" />
-        </span>
-      ) : running ? (
-        <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-success ring-2 ring-tab-active" />
-      ) : null}
-    </span>
-  );
-}
-
-/** What a tab shows for itself: its label and the icon beside it. */
-function tabPresentation(tab: Tab, item: SidebarItem | undefined) {
-  if (tab.kind === 'settings') {
-    return { label: 'Settings', Icon: SettingsIcon };
-  }
-  return {
-    label: item ? itemTitle(item) : tab.itemKey.replace(/^[a-z]+:/, ''),
-    Icon: item?.pr ? GitPullRequestIcon : GitBranchIcon,
-  };
-}
-
-/** How many comments this tab's PR has queued in the plan. */
-function PlanCountBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <span
-      aria-label={`${count} comment${count === 1 ? '' : 's'} in the plan`}
-      className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium tabular-nums text-primary"
-    >
-      {count}
-    </span>
-  );
-}
-
-/** Always rendered; revealed on hover, or while the tab is active. */
-function TabCloseButton({
-  active,
-  onClose,
-}: {
-  active: boolean;
-  onClose: (e: React.MouseEvent) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close tab"
-      className={cn(
-        'flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100',
-        active && 'opacity-100'
-      )}
-    >
-      <XIcon className="size-3.5" />
-    </button>
-  );
-}
-
-function TabButton({
-  tab,
-  item,
-  active,
-  closer,
-  snapshot,
-}: {
-  tab: Tab;
-  item: SidebarItem | undefined;
-  active: boolean;
-  closer: ReturnType<typeof useCloseTabs>;
-  snapshot: SessionActivitySnapshot | undefined;
-}) {
-  const tabs = useTabs();
-  const { label, Icon } = tabPresentation(tab, item);
-  const running = item ? itemRunning(item) : false;
-  // A plan is built inside a tab and then navigated away from, so the
-  // count has to be visible from wherever the user ends up.
-  const planCount = usePlanCount(item?.pr?.id);
-
-  const openContextMenu = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    const items: ContextMenuItem[] = [
-      { id: 'close', label: 'Close' },
-      {
-        id: 'close-others',
-        label: 'Close Others',
-        enabled: tabs.tabs.length > 1,
-      },
-      { id: 'close-all', label: 'Close All' },
-    ];
-    if (tab.preview) {
-      items.push({ type: 'separator' }, { id: 'pin', label: 'Keep Open' });
-    }
-    const chosen = await window.kirby.showContextMenu(items);
-    if (chosen === 'close') closer.close(tab.id);
-    else if (chosen === 'close-others') closer.closeOthers(tab.id);
-    else if (chosen === 'close-all') closer.closeAll();
-    else if (chosen === 'pin') tabs.pin(tab.id);
-  };
-
-  return (
-    <div
-      role="tab"
-      aria-selected={active}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/kirby-tab', tab.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('text/kirby-tab')) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-        }
-      }}
-      onDrop={(e) => {
-        const dragged = e.dataTransfer.getData('text/kirby-tab');
-        if (!dragged || dragged === tab.id) return;
-        e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        const side =
-          e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-        tabs.moveTab(dragged, tab.id, side);
-      }}
-      onMouseDown={(e) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          closer.close(tab.id);
-        }
-      }}
-      onClick={() => tabs.activate(tab.id)}
-      onDoubleClick={() => tabs.pin(tab.id)}
-      onContextMenu={(e) => void openContextMenu(e)}
-      className={cn(
-        'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
-        active
-          ? 'bg-tab-active text-foreground'
-          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-        // The agent finished a work streak and nobody has looked yet.
-        snapshot?.flashing && !active && 'tab-attention'
-      )}
-    >
-      {active && <span className="absolute inset-x-0 top-0 h-px bg-primary" />}
-      <TabIcon Icon={Icon} running={running} snapshot={snapshot} />
-      <span className={cn('min-w-0 flex-1 truncate', tab.preview && 'italic')}>
-        {label}
-      </span>
-      <PlanCountBadge count={planCount} />
-      <TabCloseButton
-        active={active}
-        onClose={(e) => {
-          e.stopPropagation();
-          closer.close(tab.id);
-        }}
-      />
     </div>
   );
 }
