@@ -26,7 +26,11 @@ import {
 } from './request.js';
 import { fetchPrBuildStatus } from './build-status.js';
 import { fetchPrBuildRunsBatch } from './builds.js';
-import { forgetPrDetails, forgetRepoDetails } from './pr-details.js';
+import {
+  forgetPrDetails,
+  forgetRepoDetails,
+  pruneRepoDetails,
+} from './pr-details.js';
 import {
   NOTHING_TO_DO,
   planCycle,
@@ -101,6 +105,19 @@ export function parseReviewer(raw: RawReviewer): PullRequestReviewer {
   };
 }
 
+/**
+ * A pull request as the list gives it, plus the merge identity a CI
+ * verdict belongs to. The identity is stripped before the map leaves
+ * the provider — see `withoutMergeKey`.
+ */
+export type ParsedPullRequest = Omit<
+  PullRequestInfo,
+  'activeCommentCount' | 'buildStatus'
+> & {
+  /** Both sides of the merge Azure builds — see `CycleRow.mergeKey`. */
+  mergeKey: string;
+};
+
 export function parsePullRequest(
   raw: {
     pullRequestId?: number;
@@ -111,9 +128,10 @@ export function parsePullRequest(
     reviewers?: RawReviewer[];
     createdBy?: { uniqueName?: string; displayName?: string };
     lastMergeSourceCommit?: { commitId?: string };
+    lastMergeTargetCommit?: { commitId?: string };
   },
   project: Record<string, string>
-): Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'> {
+): ParsedPullRequest {
   const sourceBranch = (raw.sourceRefName ?? '').replace(/^refs\/heads\//, '');
   const targetBranch = (raw.targetRefName ?? '').replace(/^refs\/heads\//, '');
   const prId = raw.pullRequestId ?? 0;
@@ -128,7 +146,37 @@ export function parsePullRequest(
     createdByDisplayName: raw.createdBy?.displayName ?? '',
     url: `https://dev.azure.com/${project.org}/${project.project}/_git/${project.repo}/pullrequest/${prId}`,
     headSha: raw.lastMergeSourceCommit?.commitId,
+    mergeKey: mergeIdentity(raw),
   };
+}
+
+/**
+ * What a CI verdict is a verdict *about*.
+ *
+ * Azure builds the merge ref, which is a function of both sides — so a
+ * pull request whose own commit never moved is still rebuilt when its
+ * target branch advances, and pinning to the source alone would hold a
+ * green badge over a build that had since been re-queued and failed.
+ * Empty when neither side is known, which the cycle reads as "cannot
+ * tell whether this row has moved" and never reuses.
+ */
+function mergeIdentity(raw: {
+  lastMergeSourceCommit?: { commitId?: string };
+  lastMergeTargetCommit?: { commitId?: string };
+}): string {
+  const source = raw.lastMergeSourceCommit?.commitId ?? '';
+  const target = raw.lastMergeTargetCommit?.commitId ?? '';
+  return [source, target].filter(Boolean).join('..');
+}
+
+/** The merge identity is a sync cycle's business; nothing downstream —
+ *  the sidebar, the renderer, the IPC boundary — has any use for it. */
+function withoutMergeKey<T extends { mergeKey?: string }>(
+  row: T
+): Omit<T, 'mergeKey'> {
+  const copy = { ...row };
+  delete copy.mergeKey;
+  return copy;
 }
 
 export function countActiveThreads(
@@ -237,7 +285,7 @@ export async function fetchActivePullRequests(
   config: AdoConfig,
   project: Record<string, string>,
   teamContext?: { myTeamIds: Set<string>; userEmail: string }
-): Promise<Omit<PullRequestInfo, 'activeCommentCount' | 'buildStatus'>[]> {
+): Promise<ParsedPullRequest[]> {
   const data = await adoGet<{ value?: unknown[] }>(
     'fetchActivePullRequests',
     `${config.org}/${config.project}/${config.repo}/active-prs`,
@@ -941,7 +989,7 @@ export const azureDevOpsProvider: VcsProvider = {
       const runVerdicts =
         reading.length === 0
           ? new Map<number, BuildStatusState>()
-          : await fetchPrBuildRunsBatch(config, reading).catch(
+          : await fetchPrBuildRunsBatch(config, reading, prs.length).catch(
               () => new Map<number, BuildStatusState>()
             );
 
@@ -950,14 +998,23 @@ export const azureDevOpsProvider: VcsProvider = {
         buildStatus: (prId) => fetchPrBuildStatus(config, prId),
       };
       const withDetails = await Promise.all(
-        prs.map(async (pr) => ({
-          ...pr,
-          ...(await resolveRow(repoKey, pr, readers, {
-            plan: plans.get(pr.id) ?? NOTHING_TO_DO,
-            runVerdicts,
-            now,
-          })),
-        }))
+        prs.map(
+          async (pr) =>
+            ({
+              ...withoutMergeKey(pr),
+              ...(await resolveRow(repoKey, pr, readers, {
+                plan: plans.get(pr.id) ?? NOTHING_TO_DO,
+                runVerdicts,
+                now,
+              })),
+            }) satisfies PullRequestInfo
+        )
+      );
+      // A pull request that has closed is not coming back to this list;
+      // keeping its memo would grow the map for the life of the session.
+      pruneRepoDetails(
+        repoKey,
+        prs.map((pr) => pr.id)
       );
 
       const map: BranchPrMap = {};

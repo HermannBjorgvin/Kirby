@@ -308,6 +308,30 @@ describe('remote cache', () => {
     });
   });
 
+  it('waits out the interval after a failure instead of retrying every poll', async () => {
+    // A failed fetch caches nothing, so the renderer's four-second
+    // sidebar poll used to start a fresh cycle every time — a burst
+    // aimed at a service that is already unhappy.
+    const bad = sidebar.getSidebarModel();
+    await flush();
+    env.pending[0].reject(new Error('provider down'));
+    await bad;
+    await flush();
+    expect(env.fetchCount).toBe(1);
+
+    env.now += 4_000;
+    await sidebar.getSidebarModel();
+    await flush();
+    expect(env.fetchCount).toBe(1);
+
+    env.now += 57_000; // past the 60s interval
+    const retry = sidebar.getSidebarModel();
+    await flush();
+    expect(env.fetchCount).toBe(2);
+    settle(1);
+    await retry;
+  });
+
   it('does not call the provider at all when it is not configured', async () => {
     env.configured = false;
     await sidebar.getSidebarModel();
@@ -406,6 +430,22 @@ describe('across repositories', () => {
     await slow;
   });
 
+  it('never evicts the repository the user is looking at', async () => {
+    // Eviction is by fetch time, and the active repo is the only one
+    // being fetched — so it is always the newest. Pinned because the
+    // alternative (evicting it) empties the sidebar the user is
+    // watching.
+    await sync('/repo-active', {});
+    for (let i = 0; i < 8; i++) {
+      env.now += 1_000;
+      await sync(`/repo-other-${i}`, {});
+      env.now += 1_000;
+      await sync('/repo-active', {});
+    }
+    env.cwd = '/repo-active';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
+  });
+
   it('forgets the least recently fetched repo rather than growing forever', async () => {
     for (let i = 0; i < 9; i++) {
       env.now += 1_000;
@@ -417,6 +457,36 @@ describe('across repositories', () => {
     env.cwd = '/repo-1';
     expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
     env.cwd = '/repo-0';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
+  });
+
+  it('keeps a failure to the repo it happened in', async () => {
+    env.cwd = '/repo-a';
+    const bad = sidebar.getSidebarModel();
+    await flush();
+
+    // The user follows a foreign tab while A's fetch is still in the
+    // air, and it fails. Reporting that against B would blame the
+    // wrong checkout — and B's fetch may have gone perfectly.
+    env.cwd = '/repo-b';
+    env.pending[0].reject(new Error('rejected the access token'));
+    await bad;
+    await flush();
+
+    expect(sidebar.getSyncState().remoteError).toBeNull();
+    env.cwd = '/repo-a';
+    expect(sidebar.getSyncState().remoteError).toContain('access token');
+  });
+
+  it('reports the repo the user is looking at as never synced, not stale', async () => {
+    // A repo whose only attempt failed has no sync time to report; the
+    // failure timestamp is not one.
+    env.cwd = '/repo-a';
+    const bad = sidebar.getSidebarModel();
+    await flush();
+    env.pending[0].reject(new Error('nope'));
+    await bad;
+    await flush();
     expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
   });
 

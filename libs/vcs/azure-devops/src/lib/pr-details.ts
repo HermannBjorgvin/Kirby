@@ -75,30 +75,38 @@ interface Stamped<T> {
   at: number;
 }
 
-export interface PrDetailMemo {
-  /** `lastMergeSourceCommit` when these were read. */
-  headSha: string | undefined;
-  status: Stamped<BuildStatusState> | null;
-  comments: Stamped<number> | null;
+/** A verdict, and the merge identity it was a verdict *about*. */
+interface StampedStatus extends Stamped<BuildStatusState> {
+  mergeKey: string | undefined;
 }
 
 /**
- * Whether a memo still speaks for this pull request.
- *
- * An unknown head commit is never reusable: without one there is no way
- * to tell a pull request that has not moved from one that has, and
- * guessing wrong means a stale badge that nothing will correct.
+ * An age so old nothing is fresh at it, used to mark a row due without
+ * throwing away what it last said. `0` would not do: a test clock — or
+ * a machine that has just booted — can be a few milliseconds past it.
  */
-function sameCommit(
-  memo: PrDetailMemo | undefined,
-  headSha: string | undefined
-): memo is PrDetailMemo {
-  // An empty string is what a missing `lastMergeSourceCommit` reduces
-  // to on the way through, and it is not a commit — two rows that both
-  // report nothing are not therefore the same row unchanged.
-  if (memo === undefined || !headSha) return false;
-  return memo.headSha === headSha;
+const LONG_AGO = Number.NEGATIVE_INFINITY;
+
+export interface PrDetailMemo {
+  /**
+   * The verdict, and when it was read. Kept across a push rather than
+   * dropped: `reusableStatus` will not serve it once the merge identity
+   * moves, but a row the budget did not reach still has to show
+   * *something*, and last week's colour beats "no CI".
+   */
+  status: StampedStatus | null;
+  /**
+   * When the status was last *read*, whether or not the read produced
+   * anything worth keeping. Ordering uses this rather than `status.at`:
+   * a read that answered nothing must still send its row to the back of
+   * the queue, or the same rows are picked forever and the rest are
+   * never read at all.
+   */
+  statusReadAt: number | null;
+  comments: Stamped<number> | null;
 }
+
+/** The value, if it was read recently enough to still stand. */
 
 /** The value, if it was read recently enough to still stand. */
 function stillGood<T>(
@@ -110,17 +118,32 @@ function stillGood<T>(
   return stamped.value;
 }
 
-/** The remembered CI verdict, or null when it has to be read again. */
+/**
+ * The remembered CI verdict, or null when it has to be read again.
+ *
+ * An unknown merge identity is never reusable: without one there is no
+ * way to tell a pull request that has not moved from one that has, and
+ * guessing wrong means a badge nothing will correct.
+ */
 export function reusableStatus(
   memo: PrDetailMemo | undefined,
-  headSha: string | undefined,
+  mergeKey: string | undefined,
   now: number,
   ttls: PrDetailTtls = PR_DETAIL_TTL
 ): BuildStatusState | null {
-  if (!sameCommit(memo, headSha)) return null;
+  // An empty key is what a pull request with no merge commit reduces to
+  // on the way through, and it is not an identity — two rows that both
+  // report nothing are not therefore the same row unchanged.
+  if (memo?.status == null || !mergeKey) return null;
+  if (memo.status.mergeKey !== mergeKey) return null;
   const status = stillGood(memo.status, now, ttls.statusMs);
   // A check still running is the one thing worth asking about again.
   return status === 'pending' ? null : status;
+}
+
+/** Whether the last verdict said the checks were still running. */
+export function isPendingVerdict(memo: PrDetailMemo | undefined): boolean {
+  return memo?.status?.value === 'pending';
 }
 
 /**
@@ -163,11 +186,20 @@ export function lastKnownStatus(
  * to take turns starving each other.
  */
 export function dueForRefresh(
-  candidates: readonly { prId: number; readAt: number | null }[],
+  candidates: readonly {
+    prId: number;
+    readAt: number | null;
+    /** Worth reading ahead of anything settled — checks in flight. */
+    urgent?: boolean;
+  }[],
   budget: number
 ): Set<number> {
   const ordered = [...candidates].sort((a, b) => {
-    if (a.readAt !== b.readAt) return (a.readAt ?? -1) - (b.readAt ?? -1);
+    // Urgency first, then age. Within the urgent rows age still decides,
+    // so a hundred running builds still take turns rather than the
+    // lowest ids winning every cycle.
+    if (Boolean(a.urgent) !== Boolean(b.urgent)) return a.urgent ? -1 : 1;
+    if (a.readAt !== b.readAt) return (a.readAt ?? -Infinity) - (b.readAt ?? -Infinity);
     return a.prId - b.prId;
   });
   return new Set(ordered.slice(0, Math.max(0, budget)).map((c) => c.prId));
@@ -201,24 +233,27 @@ export function rememberPrDetails(
   repoKey: string,
   prId: number,
   read: {
-    headSha: string | undefined;
+    /** The merge identity the verdict is about. */
+    mergeKey?: string;
+    /** A verdict worth keeping. Absent when the cycle established none. */
     status?: BuildStatusState;
+    /** The cycle spent a request on the status, whatever came back. */
+    statusRead?: boolean;
     comments?: number;
     now: number;
   }
 ): void {
   const key = memoKey(repoKey, prId);
   const previous = memos.get(key);
-  // The verdict belongs to a commit and dies with it; the comment count
-  // does not, so it survives a push.
-  const carriedStatus =
-    previous && previous.headSha === read.headSha ? previous.status : null;
   memos.set(key, {
-    headSha: read.headSha,
+    // Both halves survive a read that produced nothing, and survive a
+    // push: what makes a verdict unusable is its merge key no longer
+    // matching, which `reusableStatus` checks, not its absence here.
     status:
       read.status === undefined
-        ? carriedStatus
-        : { value: read.status, at: read.now },
+        ? (previous?.status ?? null)
+        : { value: read.status, at: read.now, mergeKey: read.mergeKey },
+    statusReadAt: read.statusRead ? read.now : (previous?.statusReadAt ?? null),
     comments:
       read.comments === undefined
         ? (previous?.comments ?? null)
@@ -240,8 +275,29 @@ export function forgetPrDetails(repoKey: string, prId: number): void {
  * the button look broken.
  */
 export function forgetRepoDetails(repoKey: string): void {
+  for (const [key, memo] of memos) {
+    if (!key.startsWith(`${repoKey}#`)) continue;
+    // Marked due, not deleted. Deleting would blank every badge the
+    // cycle's budget cannot reach — on a repository with two hundred
+    // rows, pressing refresh would grey out a hundred and seventy-five
+    // of them for several minutes, which is worse than what it fixes.
+    memos.set(key, {
+      status: memo.status === null ? null : { ...memo.status, at: LONG_AGO },
+      statusReadAt: null,
+      comments:
+        memo.comments === null ? null : { ...memo.comments, at: LONG_AGO },
+    });
+  }
+}
+
+/**
+ * Drop rows this repository no longer has open, so a long session does
+ * not accumulate an entry for every pull request it has ever seen.
+ */
+export function pruneRepoDetails(repoKey: string, keep: Iterable<number>): void {
+  const live = new Set([...keep].map((prId) => memoKey(repoKey, prId)));
   for (const key of [...memos.keys()]) {
-    if (key.startsWith(`${repoKey}#`)) memos.delete(key);
+    if (key.startsWith(`${repoKey}#`) && !live.has(key)) memos.delete(key);
   }
 }
 

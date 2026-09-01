@@ -62,12 +62,24 @@ const MAX_CACHED_REPOS = 8;
 
 interface RemoteCache {
   prMap: BranchPrMap;
+  /** Last *successful* sync — what the status bar reports. */
   fetchedAt: number;
+  /**
+   * Last failure, if the last attempt failed. Held so a provider that
+   * is down is retried on the poll interval rather than on every call:
+   * without it a failed fetch leaves nothing cached, so the renderer's
+   * four-second sidebar poll starts a fresh cycle every time — the
+   * exact burst this file exists to avoid, aimed at a service that is
+   * already unhappy.
+   */
+  failedAt?: number;
+  /** Why, for the status bar. Per repo: a failure in the checkout the
+   *  user just left must not be reported against the one they opened. */
+  error?: string;
 }
 
 const cache = new Map<string, RemoteCache>();
 const inflight = new Map<string, Promise<BranchPrMap>>();
-let lastError: string | null = null;
 // Monotonic fetch id *per repository*: only the latest fetch for a repo
 // may commit its result, so a slow pre-refresh response can't overwrite
 // a forced refresh's fresher data with a fresh timestamp. Per repo
@@ -111,11 +123,16 @@ function cachedPrMap(cwd: string): BranchPrMap {
   return cache.get(cwd)?.prMap ?? {};
 }
 
-/** The cache for this repo, if it is still inside its TTL. */
+/**
+ * The cache for this repo, if asking again now would be pointless: the
+ * last answer is inside its TTL, or the last *attempt* failed inside it
+ * and the service deserves the interval before being asked again.
+ */
 function freshCache(cwd: string, ttl: number): RemoteCache | null {
   const entry = cache.get(cwd);
   if (!entry) return null;
-  return Date.now() - entry.fetchedAt < ttl ? entry : null;
+  const last = Math.max(entry.fetchedAt, entry.failedAt ?? 0);
+  return Date.now() - last < ttl ? entry : null;
 }
 
 /** Record a repo's pull requests, evicting the stalest if the map is full. */
@@ -143,7 +160,6 @@ async function fetchRemote(
   const { config, provider, configured } = resolveProvider(cwd);
   if (!provider || !configured) {
     remember(cwd, {});
-    lastError = null;
     return {};
   }
   const fresh = force
@@ -163,17 +179,22 @@ async function fetchRemote(
     .then((prMap) => {
       if (seq === fetchSeq.get(cwd)) {
         remember(cwd, prMap);
-        lastError = null;
         onCommit?.();
       }
       return prMap;
     })
     .catch((err: unknown) => {
+      const previous = cache.get(cwd);
       if (seq === fetchSeq.get(cwd)) {
-        lastError = err instanceof Error ? err.message : String(err);
+        cache.set(cwd, {
+          prMap: previous?.prMap ?? {},
+          fetchedAt: previous?.fetchedAt ?? 0,
+          failedAt: Date.now(),
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       // Serve stale data on failure rather than blanking the sidebar.
-      return cache.get(cwd)?.prMap ?? {};
+      return previous?.prMap ?? {};
     })
     .finally(() => {
       if (inflight.get(cwd) === promise) inflight.delete(cwd);
@@ -254,9 +275,9 @@ export function getSyncState(): SyncState {
   return {
     providerId: provider?.id ?? null,
     providerConfigured: configured,
-    lastRemoteSyncAt: cache.get(cwd)?.fetchedAt ?? null,
+    lastRemoteSyncAt: cache.get(cwd)?.fetchedAt || null,
     lastGitSyncAt: getSyncDecorations().lastGitSyncAt,
-    remoteError: lastError,
+    remoteError: cache.get(cwd)?.error ?? null,
     remoteSyncing: inflight.has(cwd),
     remoteIntervalMs: remoteIntervalMs(config.prPollInterval),
     remoteFetches: fetchCount,
@@ -308,7 +329,6 @@ export function onCredentialsChanged(): void {
   // replaced token invalidates what any of them fetched.
   cache.clear();
   inflight.clear();
-  lastError = null;
   // Retire every fetch already in the air, whichever repo it was for.
   for (const [key, seq] of fetchSeq) fetchSeq.set(key, seq + 1);
   void fetchRemote(cwd, true, () => remoteUpdated?.()).catch(() => {
@@ -323,6 +343,5 @@ export function resetRemoteCache(): void {
   cache.clear();
   inflight.clear();
   fetchSeq.clear();
-  lastError = null;
   fetchCount = 0;
 }

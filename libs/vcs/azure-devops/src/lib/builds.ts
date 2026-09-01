@@ -172,7 +172,15 @@ function batchSize(prCount: number): number {
 const MAX_SEPARATE_LOOKUPS = 25;
 export async function fetchPrBuildRunsBatch(
   config: AdoConfig,
-  prIds: number[]
+  prIds: number[],
+  /**
+   * How many pull requests are open, which is what the page has to
+   * cover — not how many this cycle happens to be asking about. Sizing
+   * it by the latter shrinks `$top` to its floor exactly when the rows
+   * being asked about are the least recently built, and so the least
+   * likely to be in the newest page.
+   */
+  openPrCount = prIds.length
 ): Promise<Map<number, BuildStatusState>> {
   const result = new Map<number, BuildStatusState>();
   if (prIds.length === 0) return result;
@@ -180,7 +188,7 @@ export async function fetchPrBuildRunsBatch(
   const repositoryId = await fetchRepositoryId(config).catch(() => null);
   if (!repositoryId) return fetchEachSeparately(config, prIds, result);
 
-  const top = batchSize(prIds.length);
+  const top = batchSize(Math.max(openPrCount, prIds.length));
   const { data, continuation } = await adoGetPage<{ value?: unknown[] }>(
     'fetchPrBuildRunsBatch',
     `${config.org}/${config.project}/builds-batch/${repositoryId}/${top}`,
@@ -195,14 +203,7 @@ export async function fetchPrBuildRunsBatch(
   );
 
   const runs = (data.value ?? []) as AdoBuildRun[];
-  const byRef = new Map<string, AdoBuildRun[]>();
-  for (const run of runs) {
-    const ref = run.sourceBranch;
-    if (!ref) continue;
-    const bucket = byRef.get(ref);
-    if (bucket) bucket.push(run);
-    else byRef.set(ref, [run]);
-  }
+  const byRef = indexByRef(runs);
 
   const truncated = continuation !== null || runs.length >= top;
   const missing: number[] = [];
@@ -215,6 +216,20 @@ export async function fetchPrBuildRunsBatch(
   return missing.length > 0
     ? fetchEachSeparately(config, missing.slice(0, MAX_SEPARATE_LOOKUPS), result)
     : result;
+}
+
+/** The listing is repository-wide; a pull request's runs are the ones
+ *  filed under its merge ref. */
+function indexByRef(runs: readonly AdoBuildRun[]): Map<string, AdoBuildRun[]> {
+  const byRef = new Map<string, AdoBuildRun[]>();
+  for (const run of runs) {
+    const ref = run.sourceBranch;
+    if (!ref) continue;
+    const bucket = byRef.get(ref);
+    if (bucket) bucket.push(run);
+    else byRef.set(ref, [run]);
+  }
+  return byRef;
 }
 
 async function fetchEachSeparately(

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRequestCounters, resetRequestCounters } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from './provider.js';
+import { prDetailMemo } from './pr-details.js';
 import { resetAdoTransport } from './request.js';
 
 /**
@@ -32,6 +33,7 @@ import { resetAdoTransport } from './request.js';
 
 const PR_COUNT = 12;
 const PROJECT = { org: 'myorg', project: 'myproject', repo: 'myrepo' };
+const REPO_KEY = 'myorg/myproject/myrepo';
 const AUTH = { pat: 'test-pat' };
 
 const mockFetch = vi.fn();
@@ -62,6 +64,7 @@ function makePrs(count: number) {
     sourceRefName: `refs/heads/feat-${i}`,
     reviewers: [],
     lastMergeSourceCommit: { commitId: `sha-${i}` },
+    lastMergeTargetCommit: { commitId: 'target-1' },
   }));
 }
 
@@ -296,6 +299,159 @@ describe('a cycle over pull requests that have not moved', () => {
     expect(verdicts.filter((v) => v !== 'failed')).toEqual([]);
   });
 
+  it('keeps reading a row whose target branch moved under it', async () => {
+    // Azure builds the *merge* ref, so a pull request is rebuilt when
+    // main advances even though its own commit never moved. Pinning to
+    // the source commit alone held a green badge over a build that had
+    // since been re-queued and failed.
+    await syncCycle();
+    afterMinutes(1);
+    for (const pr of prs) pr.lastMergeTargetCommit = { commitId: 'target-2' };
+    expect(await cycleCost()).toBe(2 + PR_COUNT);
+  });
+
+  it('still shows a verdict when the build route cannot be read', async () => {
+    // A token without Build (read): the runs listing 403s, so no row is
+    // accounted for. The status list was still fetched and still says
+    // what it says — throwing it away leaves every row reading "no CI"
+    // over a repository whose checks have plainly failed.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/pullrequests?'))
+        return Promise.resolve(json({ value: prs }));
+      if (url.includes('/statuses'))
+        return Promise.resolve(
+          json({ value: [{ state: 'failed', context: { name: 'build' } }] })
+        );
+      if (url.includes('/build/builds') || /\/repositories\/myrepo\?/.test(url))
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{}'),
+        } as unknown as Response);
+      return Promise.resolve(json({ value: [] }));
+    });
+
+    const map = await syncCycle();
+    expect(Object.values(map).map((pr) => pr?.buildStatus)).toEqual(
+      Array.from({ length: PR_COUNT }, () => 'failed')
+    );
+  });
+
+  it('does not read the same rows forever when the build route fails', async () => {
+    // Nothing is remembered in that case, so ordering has to fall back
+    // to when a row was last *read*. Ordering by the answer's age
+    // instead picks the same lowest ids every cycle and never reaches
+    // the rest.
+    prs = makePrs(60);
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/pullrequests?'))
+        return Promise.resolve(json({ value: prs }));
+      if (url.includes('/build/builds') || /\/repositories\/myrepo\?/.test(url))
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{}'),
+        } as unknown as Response);
+      return Promise.resolve(json({ value: [] }));
+    });
+
+    const asked = new Set<number>();
+    for (let i = 0; i < 3; i++) {
+      mockFetch.mock.calls.length = 0;
+      await syncCycle();
+      for (const call of mockFetch.mock.calls) {
+        const id = /\/pullrequests\/(\d+)\/statuses/i.exec(String(call[0]));
+        if (id) asked.add(Number(id[1]));
+      }
+      afterMinutes(1);
+    }
+    expect(asked.size).toBe(60);
+  });
+
+  it('keeps a row’s badge through a push it has no budget for', async () => {
+    // The row is not read this cycle, and its commit has moved, so the
+    // remembered verdict is not reusable — but deleting it would blank
+    // the badge until the row comes round, minutes later.
+    prs = makePrs(60);
+    for (const pr of prs) {
+      statusesByPr.set(pr.pullRequestId, [
+        { state: 'failed', context: { name: 'build' } },
+      ]);
+    }
+    for (let i = 0; i < 3; i++) {
+      await syncCycle();
+      afterMinutes(1);
+    }
+    for (const pr of prs) pr.lastMergeSourceCommit = { commitId: 'pushed' };
+
+    const map = await syncCycle();
+    const verdicts = Object.values(map).map((pr) => pr?.buildStatus);
+    expect(verdicts.filter((v) => v !== 'failed')).toEqual([]);
+  });
+
+  it('refreshes a large repository without blanking what it cannot re-read', async () => {
+    prs = makePrs(60);
+    for (const pr of prs) {
+      statusesByPr.set(pr.pullRequestId, [
+        { state: 'failed', context: { name: 'build' } },
+      ]);
+    }
+    for (let i = 0; i < 3; i++) {
+      await syncCycle();
+      afterMinutes(1);
+    }
+
+    azureDevOpsProvider.forgetPullRequestCache!(PROJECT);
+    const map = await syncCycle();
+    // Only 25 rows can be re-read; the other 35 keep the badge they
+    // had rather than going grey because the user pressed refresh.
+    const verdicts = Object.values(map).map((pr) => pr?.buildStatus);
+    expect(verdicts.filter((v) => v !== 'failed')).toEqual([]);
+    expect(
+      Object.values(map).filter((pr) => pr?.activeCommentCount === undefined)
+    ).toEqual([]);
+  });
+
+  it('keeps watching a row whose checks are running, however recently read', async () => {
+    // By age it sorts last — it was read a moment ago. It is also the
+    // only row whose badge is actually moving, so it has to jump the
+    // queue or a running build is watched no more closely than a
+    // settled one.
+    prs = makePrs(60);
+    const running = prs[59].pullRequestId;
+    statusesByPr.set(running, [{ state: 'pending', context: { name: 'ci' } }]);
+    for (let i = 0; i < 3; i++) {
+      await syncCycle();
+      afterMinutes(1);
+    }
+
+    // Everything is due again, and 60 rows compete for 25 slots.
+    afterMinutes(11);
+    mockFetch.mock.calls.length = 0;
+    await syncCycle();
+    const asked = mockFetch.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes(`/pullrequests/${running}/statuses`));
+    expect(asked).toHaveLength(1);
+  });
+
+  it('forgets a pull request that is no longer open', async () => {
+    // Otherwise a long session accumulates an entry for every pull
+    // request it has ever seen.
+    await syncCycle();
+    const closed = prs[0].pullRequestId;
+    expect(prDetailMemo(REPO_KEY, closed)).toBeDefined();
+
+    prs = prs.slice(1);
+    afterMinutes(1);
+    await syncCycle();
+    expect(prDetailMemo(REPO_KEY, closed)).toBeUndefined();
+  });
+
   it('comes round to every row rather than starving the tail', async () => {
     // A budget spent oldest-first has to be fair, or the rows at the
     // back of the map never get read at all and their badges are wrong
@@ -384,12 +540,15 @@ describe('a cycle over pull requests that have not moved', () => {
     expect(urls.filter((u) => u.includes('/statuses'))).toHaveLength(PR_COUNT);
   });
 
-  it('remembers nothing about a pull request with no known head commit', async () => {
+  it('remembers nothing about a pull request with no merge identity', async () => {
     // Without one there is no way to tell a row that has not moved from
     // one that has, and a wrong guess is a badge nothing will correct.
-    // Only the verdict is pinned to the commit, so it is the verdict
-    // that has to be read again.
-    for (const pr of prs) pr.lastMergeSourceCommit = { commitId: '' };
+    // Only the verdict is pinned to it, so it is the verdict that has
+    // to be read again.
+    for (const pr of prs) {
+      pr.lastMergeSourceCommit = { commitId: '' };
+      pr.lastMergeTargetCommit = { commitId: '' };
+    }
     await syncCycle();
     afterMinutes(1);
     expect(await cycleCost()).toBe(2 + PR_COUNT);

@@ -2,6 +2,7 @@ import type { BuildStatusState, PullRequestInfo } from '@kirby/vcs-core';
 import { combineBuildStatus } from './build-status.js';
 import {
   dueForRefresh,
+  isPendingVerdict,
   lastKnownComments,
   lastKnownStatus,
   prDetailMemo,
@@ -29,7 +30,13 @@ export interface RowReaders {
 /** The pull request fields a cycle needs in order to plan. */
 export interface CycleRow {
   id: number;
-  headSha?: string;
+  /**
+   * What the verdict is a verdict *about*. Azure builds the merge ref,
+   * which is a function of both sides, so the source commit alone would
+   * hold a green badge over a pull request whose build was re-queued —
+   * and failed — because the target branch moved under it.
+   */
+  mergeKey?: string;
 }
 
 /** What a cycle has decided to do about one pull request. */
@@ -68,29 +75,35 @@ export function planCycle(
       return [
         pr.id,
         {
-          knownStatus: reusableStatus(memo, pr.headSha, now),
+          knownStatus: reusableStatus(memo, pr.mergeKey, now),
           knownCount: reusableComments(memo, now),
         },
       ];
     })
   );
-  const due = (
-    isUnknown: (prId: number) => boolean,
-    readAt: (prId: number) => number | null
-  ) =>
-    dueForRefresh(
-      prs
-        .filter((pr) => isUnknown(pr.id))
-        .map((pr) => ({ prId: pr.id, readAt: readAt(pr.id) })),
-      REFRESH_BUDGET
-    );
-  const readStatus = due(
-    (id) => known.get(id)?.knownStatus == null,
-    (id) => prDetailMemo(repoKey, id)?.status?.at ?? null
+  // Ordered by when the row was last *read*, not by how old its answer
+  // is: a read that established nothing must still send its row to the
+  // back, or the same rows are picked forever and the rest never at
+  // all. Checks in flight jump the queue — that is the one moment the
+  // badge is worth watching.
+  const readStatus = dueForRefresh(
+    prs
+      .filter((pr) => known.get(pr.id)?.knownStatus == null)
+      .map((pr) => ({
+        prId: pr.id,
+        readAt: prDetailMemo(repoKey, pr.id)?.statusReadAt ?? null,
+        urgent: isPendingVerdict(prDetailMemo(repoKey, pr.id)),
+      })),
+    REFRESH_BUDGET
   );
-  const readCount = due(
-    (id) => known.get(id)?.knownCount == null,
-    (id) => prDetailMemo(repoKey, id)?.comments?.at ?? null
+  const readCount = dueForRefresh(
+    prs
+      .filter((pr) => known.get(pr.id)?.knownCount == null)
+      .map((pr) => ({
+        prId: pr.id,
+        readAt: prDetailMemo(repoKey, pr.id)?.comments?.at ?? null,
+      })),
+    REFRESH_BUDGET
   );
   return new Map(
     prs.map((pr) => [
@@ -114,22 +127,29 @@ export function rowsReadingStatus(
 }
 
 /**
- * The verdict this cycle actually established, or null when it did not.
+ * What this cycle read, and whether it is worth keeping.
  *
- * A row the runs listing could not account for is absent from that map
- * rather than recorded as `none`; taking the status list as the whole
- * answer would show a red pipeline as green until the memo expired.
+ * The two are not the same, and conflating them was a bug in both
+ * directions. A row the runs listing could not account for is absent
+ * from that map rather than recorded as `none`, so the status list is
+ * not the whole answer and must not be *remembered* — remembering it
+ * would show a red pipeline as green until the memo expired. But it is
+ * still the best thing to *show* this cycle: throwing away a request
+ * that was actually spent leaves a repository whose build route is
+ * unreadable — a token without `Build (read)`, say — displaying "no CI"
+ * on every row forever, when its status list says plainly that the
+ * checks failed.
  */
-function freshVerdict(
+function verdictFrom(
   plan: RowPlan,
   prId: number,
   fromStatusList: BuildStatusState | undefined,
   runVerdicts: ReadonlyMap<number, BuildStatusState>
-): BuildStatusState | null {
-  if (!plan.readStatus) return null;
+): { show: BuildStatusState | null; keep: BuildStatusState | null } {
+  if (!plan.readStatus) return { show: null, keep: null };
   const runs = runVerdicts.get(prId);
-  if (runs === undefined) return null;
-  return combineBuildStatus(fromStatusList ?? 'none', runs);
+  const show = combineBuildStatus(fromStatusList ?? 'none', runs ?? 'none');
+  return { show, keep: runs === undefined ? null : show };
 }
 
 /** The two per-row reads, made only where the plan allows them. */
@@ -166,17 +186,19 @@ export async function resolveRow(
   const { plan, runVerdicts, now } = ctx;
   const memo = prDetailMemo(repoKey, pr.id);
   const [count, fromStatusList] = await readRow(plan, pr.id, read);
-  const fresh = freshVerdict(plan, pr.id, fromStatusList, runVerdicts);
+  const verdict = verdictFrom(plan, pr.id, fromStatusList, runVerdicts);
 
   rememberPrDetails(repoKey, pr.id, {
-    headSha: pr.headSha,
+    mergeKey: pr.mergeKey,
     now,
+    statusRead: plan.readStatus,
     ...(count === undefined ? {} : { comments: count }),
-    ...(fresh === null ? {} : { status: fresh }),
+    ...(verdict.keep === null ? {} : { status: verdict.keep }),
   });
 
   return {
     activeCommentCount: plan.knownCount ?? count ?? lastKnownComments(memo),
-    buildStatus: fresh ?? plan.knownStatus ?? lastKnownStatus(memo) ?? 'none',
+    buildStatus:
+      verdict.show ?? plan.knownStatus ?? lastKnownStatus(memo) ?? 'none',
   };
 }

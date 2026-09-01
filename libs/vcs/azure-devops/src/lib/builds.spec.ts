@@ -226,6 +226,16 @@ describe('fetchPrBuildRunsBatch', () => {
     expect(verdicts.has(999)).toBe(false);
   });
 
+  it('sizes the page by the repository, not by how many rows it asks about', async () => {
+    // The rows a cycle asks about are the least recently read, and so
+    // the least recently built — the ones least likely to be in the
+    // newest page. Sizing `$top` by that handful shrinks the page to
+    // its floor exactly when it needs to be widest.
+    serve(BATCH);
+    await fetchPrBuildRunsBatch(CONFIG, [101], 200);
+    expect(buildUrls()[0]).toContain('$top=500');
+  });
+
   it('costs nothing when there are no pull requests', async () => {
     serve(BATCH);
     expect((await fetchPrBuildRunsBatch(CONFIG, [])).size).toBe(0);

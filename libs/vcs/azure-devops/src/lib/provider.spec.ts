@@ -145,11 +145,17 @@ describe('parsePullRequest', () => {
           uniqueName: 'bob@example.com',
           displayName: 'Bob Builder',
         },
+        lastMergeSourceCommit: { commitId: 'src1' },
+        lastMergeTargetCommit: { commitId: 'tgt1' },
       },
       testProject
     );
     expect(result).toEqual({
       id: 42,
+      headSha: 'src1',
+      // Azure builds the merge ref, so the identity a CI verdict
+      // belongs to is both sides of it.
+      mergeKey: 'src1..tgt1',
       title: 'Add feature X',
       sourceBranch: 'feature/my-branch',
       targetBranch: 'main',
@@ -191,6 +197,10 @@ describe('parsePullRequest', () => {
       createdByIdentifier: '',
       createdByDisplayName: '',
       url: 'https://dev.azure.com/myorg/myproject/_git/myrepo/pullrequest/0',
+      headSha: undefined,
+      // No commits to name: an empty identity, which the cycle reads as
+      // "cannot tell whether this row has moved" and never reuses.
+      mergeKey: '',
     });
   });
 
