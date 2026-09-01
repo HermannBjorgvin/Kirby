@@ -1,4 +1,8 @@
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import {
+  CONVENTIONAL_DECORATIONS,
+  CONVENTIONAL_LABELS,
+} from '@kirby/review-comments';
 import type { LaunchRequest } from './launch-session.js';
 
 /**
@@ -30,7 +34,21 @@ export function buildReviewLaunchRequest(
     `Thread ids come from the review data you are given (a plan prompt names ` +
     `each one as "(thread <id>)"); they are the provider's own ids and are the ` +
     `only way to say which conversation you mean.\n` +
-    `- Comments appear live in the reviewer's diff viewer`;
+    `- Comments appear live in the reviewer's diff viewer\n\n` +
+    `Write each --body as a Conventional Comment (conventionalcomments.org):\n` +
+    `  <label> [decorations]: <subject>\n` +
+    `\n` +
+    `  <discussion>\n\n` +
+    `- Labels: ${CONVENTIONAL_LABELS.join(', ')}\n` +
+    `- Decorations, in parentheses and comma-separated: ` +
+    `${CONVENTIONAL_DECORATIONS.join(', ')}\n` +
+    `- The subject is one line saying the thing; the discussion below the ` +
+    `blank line is where the reasoning, the evidence and any code go\n` +
+    `- Write the header yourself when you have a better one than the ` +
+    `severity implies (e.g. "question (blocking):", "praise:"); a body ` +
+    `without one is given the header its severity maps to\n` +
+    `- Do not sign the comment or say it came from an AI — that is added ` +
+    `when it is posted`;
 
   let prompt =
     `Review PR #${pr.id} ("${pr.title || pr.sourceBranch}") ` +

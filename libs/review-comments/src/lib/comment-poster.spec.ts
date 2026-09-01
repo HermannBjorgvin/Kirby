@@ -9,7 +9,7 @@ import type { ReviewComment } from './types.js';
  * A wrong payload here is not a crash — it is a comment that lands on
  * the wrong line, or a review filed as the wrong kind, on a real pull
  * request other people are reading. Two rules in particular are policy
- * rather than mechanics: every comment says it was AI generated, and a
+ * rather than mechanics: every comment says an agent wrote it, and a
  * comment is only marked posted once the provider has actually taken
  * it.
  */
@@ -129,13 +129,77 @@ describe('posting to GitHub', () => {
     );
   });
 
-  it('says the comment was AI generated, with its severity', async () => {
-    // A stated project rule: a reader must be able to tell at a glance
-    // that this did not come from the repository owner.
+  /**
+   * The posted body is a Conventional Comment
+   * (conventionalcomments.org) signed at the end: the severity becomes
+   * the label and its decoration, so the first line says what kind of
+   * remark this is and whether it blocks; the attribution goes where a
+   * signature goes, rather than spending the comment's opening words —
+   * the ones a reviewer sees in a notification — on a disclaimer.
+   */
+  it('posts the comment as a labelled, signed conventional comment', async () => {
     await postReviewComments([comment()], github);
     const body = env.ghInputs[0].body as { comments: { body: string }[] };
     expect(body.comments[0].body).toBe(
-      'AI generated: **[major]** This leaks a handle.'
+      'issue (non-blocking): This leaks a handle.\n\n---\n' +
+        '_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_'
+    );
+  });
+
+  /** A reader must still be able to tell at a glance that this did not
+   *  come from a person — just not before they can tell what it says. */
+  it('signs every comment, and never in the opening words', async () => {
+    await postReviewComments([comment()], github);
+    const posted = (env.ghInputs[0].body as { comments: { body: string }[] })
+      .comments[0].body;
+    expect(posted).toContain('by an agent_');
+    expect(posted.startsWith('AI generated')).toBe(false);
+  });
+
+  it('maps each severity onto its label and decoration', async () => {
+    await postReviewComments(
+      [
+        comment({ id: 'a', severity: 'critical' }),
+        comment({ id: 'b', severity: 'nit' }),
+      ],
+      github
+    );
+    const body = env.ghInputs[0].body as { comments: { body: string }[] };
+    expect(body.comments[0].body).toContain('issue (blocking):');
+    expect(body.comments[1].body).toContain('nitpick (non-blocking):');
+  });
+
+  /** The agent's own header is more specific than a four-value enum,
+   *  so a draft already written in the shape keeps its wording. */
+  it('keeps a header the agent wrote itself', async () => {
+    await postReviewComments(
+      [
+        comment({
+          severity: 'nit',
+          body: 'question (blocking): why the retry here?\n\nIt looks unbounded.',
+        }),
+      ],
+      github
+    );
+    const body = env.ghInputs[0].body as { comments: { body: string }[] };
+    expect(body.comments[0].body).toContain(
+      'question (blocking): why the retry here?'
+    );
+    expect(body.comments[0].body).toContain('It looks unbounded.');
+    expect(body.comments[0].body).not.toContain('nitpick');
+  });
+
+  /** A multi-line draft has a subject and a discussion; the split has
+   *  to fall at the first line, not swallow the paragraph into the
+   *  header. */
+  it('makes the first line the subject and keeps the rest below it', async () => {
+    await postReviewComments(
+      [comment({ body: 'This leaks a handle.\nThe fd is never closed.' })],
+      github
+    );
+    const body = env.ghInputs[0].body as { comments: { body: string }[] };
+    expect(body.comments[0].body).toContain(
+      'issue (non-blocking): This leaks a handle.\n\nThe fd is never closed.'
     );
   });
 
@@ -197,7 +261,8 @@ describe('posting to Azure DevOps', () => {
     expect(body.threadContext.filePath).toBe('/src/a.ts');
     expect(body.threadContext.rightFileStart.line).toBe(3);
     expect(body.threadContext.rightFileEnd.line).toBe(5);
-    expect(body.comments[0].content).toContain('AI generated:');
+    expect(body.comments[0].content).toContain('issue (non-blocking):');
+    expect(body.comments[0].content).toContain('by an agent_');
   });
 
   it('sends the PAT as basic auth', async () => {

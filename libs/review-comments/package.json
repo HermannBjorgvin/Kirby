@@ -11,6 +11,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./conventional": {
+      "types": "./src/conventional.ts",
+      "import": "./src/conventional.ts",
+      "default": "./src/conventional.ts"
+    },
     "./package.json": "./package.json"
   },
   "nx": {

@@ -55,7 +55,7 @@ describe('postAzureDevOps via fetch()', () => {
     // type-checked rather than `any.any.any`.
     const [url, opts] = mockFetch.mock.calls[0] as [
       string,
-      { method: string; headers: Record<string, string>; body: string },
+      { method: string; headers: Record<string, string>; body: string }
     ];
     expect(url).toBe(
       'https://dev.azure.com/myorg/myproj/_apis/git/repositories/myrepo/pullrequests/42/threads?api-version=7.1'
@@ -65,7 +65,10 @@ describe('postAzureDevOps via fetch()', () => {
     expect(opts.headers['Authorization']).toBe(`Basic ${btoa(':my-pat')}`);
 
     const body = JSON.parse(opts.body);
-    expect(body.comments[0].content).toContain('AI generated:');
+    // A Conventional Comment (conventionalcomments.org), signed at the
+    // end rather than opening with a disclaimer.
+    expect(body.comments[0].content).toContain('issue (non-blocking):');
+    expect(body.comments[0].content).toContain('by an agent_');
     expect(body.threadContext.filePath).toBe('/src/foo.ts');
     expect(body.threadContext.rightFileStart.line).toBe(10);
     expect(body.threadContext.rightFileEnd.line).toBe(12);

@@ -1,5 +1,11 @@
 import { spawn } from 'node:child_process';
 import type { ReviewComment } from './types.js';
+import {
+  commentBodyParts,
+  conventionalForSeverity,
+  formatConventionalComment,
+  withAgentFooter,
+} from './conventional.js';
 import { updateComment } from './comment-store.js';
 
 function execWithStdin(
@@ -20,6 +26,49 @@ function execWithStdin(
     child.stdin.write(input);
     child.stdin.end();
   });
+}
+
+/**
+ * The body a draft is posted with.
+ *
+ * Two things happen here, and both are about how the comment reads to
+ * the person who receives it:
+ *
+ * The severity becomes a Conventional Comments header
+ * (conventionalcomments.org) — `issue (blocking): …` — so the first
+ * line says what kind of remark this is and whether it stops the
+ * merge. An agent that already wrote its draft in that shape keeps its
+ * own header; the severity only supplies one when the draft has none,
+ * because the agent's wording is more specific than a four-value enum.
+ *
+ * The attribution goes at the end, not the front. A comment's opening
+ * words are the ones a reviewer sees in a notification and in a
+ * collapsed thread, and spending them on provenance buries the finding
+ * behind a disclaimer. The claim is still made — where a signature
+ * goes.
+ */
+export function renderCommentBody(comment: ReviewComment): string {
+  const parts = commentBodyParts(comment.body);
+  const header = parts.header ?? {
+    ...conventionalForSeverity(comment.severity),
+    // With no header of its own, the draft's first line becomes the
+    // subject and the rest becomes the discussion under it.
+    subject: firstLine(parts.body),
+    body: afterFirstLine(parts.body),
+  };
+  return withAgentFooter(formatConventionalComment(header));
+}
+
+function firstLine(body: string): string {
+  const trimmed = body.trim();
+  const at = trimmed.indexOf('\n');
+  return at === -1 ? trimmed : trimmed.slice(0, at).trim();
+}
+
+function afterFirstLine(body: string): string {
+  const trimmed = body.trim();
+  const at = trimmed.indexOf('\n');
+  return at === -1 ? '' : trimmed.slice(at + 1).trim();
 }
 
 export interface PostContext {
@@ -62,14 +111,14 @@ async function postGitHub(
 
   const reviewBody = {
     commit_id: ctx.headSha,
-    body: 'AI-assisted review comments',
+    body: 'Review comments from an agent.',
     event,
     comments: comments.map((c) => ({
       path: c.file,
       line: c.lineEnd,
       ...(c.lineStart !== c.lineEnd ? { start_line: c.lineStart } : {}),
       side: c.side,
-      body: `AI generated: **[${c.severity}]** ${c.body}`,
+      body: renderCommentBody(c),
     })),
   };
 
@@ -95,7 +144,7 @@ async function postAzureDevOps(
       comments: [
         {
           parentCommentId: 0,
-          content: `AI generated: **[${comment.severity}]** ${comment.body}`,
+          content: renderCommentBody(comment),
           commentType: 1,
         },
       ],

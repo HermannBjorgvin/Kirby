@@ -69,7 +69,7 @@ describe('CommentThreadCard — header overflow', () => {
         {
           id: 't1-c1',
           author: 'kirby-test-runner',
-          body: 'AI generated: nit signal reads inside an RxJS map',
+          body: 'nitpick (non-blocking): signal reads inside an RxJS map',
           createdAt: new Date(Date.now() - 7_200_000).toISOString(),
         },
       ],

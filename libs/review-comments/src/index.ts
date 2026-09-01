@@ -11,7 +11,27 @@ export {
   updateComment,
   removeComment,
 } from './lib/comment-store.js';
-export { postReviewComments, type PostContext } from './lib/comment-poster.js';
+export {
+  postReviewComments,
+  renderCommentBody,
+  type PostContext,
+} from './lib/comment-poster.js';
+export {
+  AGENT_FOOTER,
+  CONVENTIONAL_DECORATIONS,
+  CONVENTIONAL_LABELS,
+  KIRBY_URL,
+  commentBodyParts,
+  conventionalForSeverity,
+  conventionalSeverity,
+  formatConventionalComment,
+  parseConventionalComment,
+  splitAgentFooter,
+  withAgentFooter,
+  type CommentBodyParts,
+  type ConventionalComment,
+  type ConventionalLabel,
+} from './lib/conventional.js';
 export type {
   AnnotatedLine,
   CommentPositionInfo,
