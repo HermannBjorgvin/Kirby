@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRequestCounters, resetRequestCounters } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from './provider.js';
 import { resetAdoTransport } from './request.js';
@@ -12,7 +12,7 @@ import { resetAdoTransport } from './request.js';
  * exists, and a change that quietly reinstates a per-row call will
  * fail here rather than on someone's account.
  *
- * The shape of a cycle, for `PR_COUNT` open pull requests:
+ * The shape of a *cold* cycle, for `PR_COUNT` open pull requests:
  *
  *   1  the pull request list
  *   1  every pipeline run in the repository, indexed by merge ref
@@ -21,6 +21,11 @@ import { resetAdoTransport } from './request.js';
  *
  * plus, once per half hour: `/connectiondata`, the caller's teams, and
  * the repository's id.
+ *
+ * A *warm* cycle over pull requests that have not moved costs the first
+ * two and nothing else. That is the whole point of `pr-details.ts`: the
+ * per-row half is what a rate limit is made of, and a settled verdict
+ * on an unchanged head commit is still the verdict.
  */
 
 const PR_COUNT = 12;
@@ -47,11 +52,22 @@ function json(
   } as unknown as Response;
 }
 
+/** Azure reports the head of the source branch as it last merged it;
+ *  that is what tells a cycle whether a pull request has moved. */
 const prs = Array.from({ length: PR_COUNT }, (_, i) => ({
   pullRequestId: 100 + i,
   sourceRefName: `refs/heads/feat-${i}`,
   reviewers: [],
+  lastMergeSourceCommit: { commitId: `sha-${i}` },
 }));
+
+/** Statuses served for a pull request, by id. Empty unless a test says
+ *  otherwise, which reads as "this repository posts no statuses". */
+const statusesByPr = new Map<number, unknown[]>();
+
+function prIdFromStatusUrl(url: string): number {
+  return Number(/\/pullrequests\/(\d+)\/statuses/.exec(url)?.[1] ?? 0);
+}
 
 /** A whole Azure organization, answering by URL. */
 function serveEverything(): void {
@@ -84,6 +100,10 @@ function serveEverything(): void {
     // with nothing after the repo name.
     if (/\/repositories\/myrepo\?/.test(url))
       return Promise.resolve(json({ id: 'repo-guid' }));
+    if (url.includes('/statuses'))
+      return Promise.resolve(
+        json({ value: statusesByPr.get(prIdFromStatusUrl(url)) ?? [] })
+      );
     return Promise.resolve(json({ value: [] }));
   });
 }
@@ -98,10 +118,31 @@ function syncCycle() {
 
 beforeEach(() => {
   mockFetch.mockReset();
+  statusesByPr.clear();
+  // The fixture is shared and some tests push commits onto it.
+  prs.forEach((pr, i) => (pr.lastMergeSourceCommit = { commitId: `sha-${i}` }));
   resetAdoTransport();
   resetRequestCounters('azure-devops');
   serveEverything();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Move the clock on, in whole minutes. */
+function afterMinutes(n: number) {
+  vi.setSystemTime(Date.now() + n * 60_000);
+}
+
+/** Requests spent by one more cycle. */
+async function cycleCost(): Promise<number> {
+  resetRequestCounters('azure-devops');
+  await syncCycle();
+  return counts().network;
+}
 
 describe('one sync cycle', () => {
   it('costs 2 per pull request plus a fixed handful', async () => {
@@ -125,16 +166,94 @@ describe('one sync cycle', () => {
     expect(buildCalls[0]).toContain('repositoryId=repo-guid');
   });
 
-  it('drops to 2 per pull request once identity is warm', async () => {
+  it('never re-reads who we are for half an hour', async () => {
     await syncCycle();
-    resetRequestCounters('azure-devops');
+    // Identity, teams and the repository id are three of the fixed
+    // handful, and none of them moves between cycles.
+    afterMinutes(1);
+    const urls = [] as string[];
+    mockFetch.mock.calls.length = 0;
+    await syncCycle();
+    urls.push(...mockFetch.mock.calls.map((c) => String(c[0])));
+    expect(urls.filter((u) => u.includes('/connectiondata'))).toEqual([]);
+    expect(urls.filter((u) => u.includes('/teams?'))).toEqual([]);
+  });
+});
 
-    // Half an hour of cycles never re-reads who we are, which team we
-    // are in, or the repository's id.
-    vi.setSystemTime(Date.now() + 61_000);
+/**
+ * The per-row half, which is the part that scales with the repository
+ * and the part Azure refuses. Every figure here is a request the client
+ * used to spend on an answer it already had.
+ */
+describe('a cycle over pull requests that have not moved', () => {
+  it('costs the list and the builds batch, and nothing per row', async () => {
     await syncCycle();
-    expect(counts().network).toBe(1 + 1 + 2 * PR_COUNT);
-    vi.useRealTimers();
+
+    // Past the transport's own 30s TTLs, so nothing here is the
+    // response cache answering — it is the cycle declining to ask.
+    afterMinutes(1);
+    expect(await cycleCost()).toBe(2);
+  });
+
+  it('pays again only for the pull request whose head commit moved', async () => {
+    await syncCycle();
+    afterMinutes(1);
+    prs[3].lastMergeSourceCommit.commitId = 'sha-3-pushed';
+
+    // The list and the builds batch, plus that row's threads and
+    // statuses. A push means new CI and a new diff; nothing remembered
+    // about it still stands.
+    expect(await cycleCost()).toBe(2 + 2);
+  });
+
+  it('keeps asking about a pull request whose checks are still running', async () => {
+    statusesByPr.set(100, [{ state: 'pending', context: { name: 'build' } }]);
+    await syncCycle();
+    afterMinutes(1);
+
+    // CI in flight is the one moment the badge is worth watching, so
+    // that row's status list is read every cycle — and only that row's.
+    expect(await cycleCost()).toBe(2 + 1);
+  });
+
+  it('refreshes comment counts before it refreshes settled statuses', async () => {
+    await syncCycle();
+
+    // Comments are not tied to the head commit — anyone can comment at
+    // any time — so they come back first, on their own.
+    afterMinutes(4);
+    expect(await cycleCost()).toBe(2 + PR_COUNT);
+
+    // And a settled verdict outlives them, until a re-run is plausible.
+    afterMinutes(7);
+    expect(await cycleCost()).toBe(2 + 2 * PR_COUNT);
+  });
+
+  it('remembers nothing about a pull request with no known head commit', async () => {
+    // Without one there is no way to tell a row that has not moved from
+    // one that has, and a wrong guess is a badge nothing will correct.
+    for (const pr of prs) pr.lastMergeSourceCommit = { commitId: '' };
+    await syncCycle();
+    afterMinutes(1);
+    expect(await cycleCost()).toBe(2 + 2 * PR_COUNT);
+  });
+
+  it('forgets a pull request the user has just written to', async () => {
+    await syncCycle();
+    afterMinutes(1);
+    mockFetch.mockImplementation(() => Promise.resolve(json({})));
+    await azureDevOpsProvider.replyToThread!(
+      AUTH,
+      PROJECT,
+      100,
+      { id: '5' } as never,
+      'a reply'
+    );
+    serveEverything();
+
+    // Its comment count changed a moment ago; serving the remembered
+    // one would leave the sidebar badge behind for minutes.
+    expect(await cycleCost()).toBe(2 + 2);
   });
 });
 

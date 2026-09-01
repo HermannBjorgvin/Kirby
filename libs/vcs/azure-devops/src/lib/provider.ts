@@ -26,6 +26,13 @@ import {
 } from './request.js';
 import { combineBuildStatus, fetchPrBuildStatus } from './build-status.js';
 import { fetchPrBuildRunsBatch } from './builds.js';
+import {
+  forgetPrDetails,
+  prDetailMemo,
+  rememberPrDetails,
+  reusableComments,
+  reusableStatus,
+} from './pr-details.js';
 
 // ── Internal ADO types ─────────────────────────────────────────────
 
@@ -63,6 +70,9 @@ function toAdoConfig(
  *  the one place a prefix is meant — and it ends at the separator. */
 function invalidatePr(config: AdoConfig, prId: number): void {
   const repo = `${config.org}/${config.project}/${config.repo}`;
+  // The memo too, or the sidebar's comment badge would keep the count
+  // from before the write for the rest of its life.
+  forgetPrDetails(repo, prId);
   invalidateAdoKey(`${repo}/threads/${prId}`);
   invalidateAdoKey(`${repo}/statuses/${prId}`);
   invalidateAdoKey(`${repo}/description/${prId}`);
@@ -908,20 +918,36 @@ export const azureDevOpsProvider: VcsProvider = {
       // statuses showed no CI result for pull requests whose build had
       // plainly failed. A failure on either route is a failure.
       //
-      // The runs for every row come back in one request; the status
-      // list has no batch endpoint, so those stay per row and are
-      // cached instead.
+      // The runs for every row come back in one request; neither the
+      // status list nor the comment threads have a batch endpoint, so
+      // those are per row — and a row whose head commit has not moved
+      // since the last cycle is answered from `pr-details.ts` without
+      // asking at all. That memo is the difference between a cycle
+      // costing two requests per open pull request and costing almost
+      // nothing, which on an organization Azure throttles is the
+      // difference between working and being refused.
       const runVerdicts = await fetchPrBuildRunsBatch(
         config,
         prs.map((pr) => pr.id)
       ).catch(() => new Map<number, BuildStatusState>());
 
+      const repoKey = `${config.org}/${config.project}/${config.repo}`;
+      const now = Date.now();
       const withDetails = await Promise.all(
         prs.map(async (pr) => {
+          const memo = prDetailMemo(repoKey, pr.id);
+          const knownCount = reusableComments(memo, pr.headSha, now);
+          const knownStatus = reusableStatus(memo, pr.headSha, now);
           const [activeCommentCount, statusVerdict] = await Promise.all([
-            fetchActiveCommentCount(config, pr.id),
-            fetchPrBuildStatus(config, pr.id),
+            knownCount ?? fetchActiveCommentCount(config, pr.id),
+            knownStatus ?? fetchPrBuildStatus(config, pr.id),
           ]);
+          rememberPrDetails(repoKey, pr.id, {
+            headSha: pr.headSha,
+            now,
+            ...(knownCount === null ? { comments: activeCommentCount } : {}),
+            ...(knownStatus === null ? { status: statusVerdict } : {}),
+          });
           return {
             ...pr,
             activeCommentCount,
