@@ -19,19 +19,28 @@ import type { BuildStatusState } from '@kirby/vcs-core';
  * the commit — anyone can comment at any time — so they get their own,
  * shorter life.
  *
- * Two things are deliberately *not* memoised:
+ * What is remembered is the **combined** verdict — the status list and
+ * the pipeline runs reduced to one answer — because that is what the
+ * row displays and both halves are a function of the same commit.
+ * Knowing it also means the cycle has no one to ask the runs listing
+ * on behalf of, so that request goes too and a quiet cycle costs one
+ * request in total.
  *
- *   • A `pending` status. CI in flight is the one moment the user is
+ * Two things are deliberately *not* remembered:
+ *
+ *   • A `pending` verdict. CI in flight is the one moment the user is
  *     actually watching the badge, and it is also a tiny fraction of
  *     the rows.
- *   • The pipeline runs. Those come back for every pull request in one
- *     request (`fetchPrBuildRunsBatch`), so they are free to refresh
- *     every cycle and are combined with the memoised status verdict
- *     rather than stored beside it.
+ *   • A verdict the cycle could not actually establish. The runs
+ *     listing is capped and can leave a row unaccounted for; recording
+ *     the status list on its own would show a red pipeline as green
+ *     until the memo ran out. An unknown stays unknown and is asked
+ *     about again.
  */
 
 export interface PrDetailTtls {
-  /** A settled verdict on an unchanged commit. Only a re-run moves it. */
+  /** A settled verdict on an unchanged commit. Only a re-run moves it,
+   *  which is the staleness this trades for not being throttled. */
   statusMs: number;
   /** Comment counts move without a push, so this one is shorter. */
   commentsMs: number;

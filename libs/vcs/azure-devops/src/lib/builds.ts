@@ -148,10 +148,28 @@ function batchSize(prCount: number): number {
  * omits the token.
  *
  * Anything unaccounted for on a truncated page falls back to its own
- * query — the old behaviour, and no worse. On a complete page absence
- * is a real answer: the repository has no recent build for that pull
- * request.
+ * query. That fallback is the expensive path — on a repository busy
+ * enough to fill the listing with a handful of active pull requests,
+ * *most* rows miss it, and a cycle that was supposed to cost one
+ * request costs one per row instead. So it is capped, and a row left
+ * unresolved is **left out of the map** rather than recorded as `none`.
+ *
+ * Absence therefore means two different things depending on the page,
+ * and the difference matters to the caller: on a complete page a row
+ * is set to `none`, which is a real answer, and on a truncated one an
+ * absent row means "not looked up", which must not be remembered as
+ * anything. The caller shows it as no CI for now and asks again next
+ * cycle, by which time the rows it did resolve are remembered and the
+ * budget goes to the ones it did not.
  */
+
+/**
+ * How many rows one cycle may look up individually. Enough to make
+ * progress on a cold start without turning a poll into a burst; what is
+ * left over is picked up by the cycles that follow, because everything
+ * resolved on the way is remembered (`pr-details.ts`).
+ */
+const MAX_SEPARATE_LOOKUPS = 25;
 export async function fetchPrBuildRunsBatch(
   config: AdoConfig,
   prIds: number[]
@@ -195,7 +213,7 @@ export async function fetchPrBuildRunsBatch(
     else result.set(prId, 'none');
   }
   return missing.length > 0
-    ? fetchEachSeparately(config, missing, result)
+    ? fetchEachSeparately(config, missing.slice(0, MAX_SEPARATE_LOOKUPS), result)
     : result;
 }
 
@@ -206,7 +224,11 @@ async function fetchEachSeparately(
 ): Promise<Map<number, BuildStatusState>> {
   await Promise.all(
     prIds.map(async (prId) => {
-      into.set(prId, await fetchPrBuildRuns(config, prId).catch(() => 'none'));
+      // A lookup that failed is not an answer. Leaving the row out says
+      // "still unknown", where writing `none` would let the caller
+      // remember a network error as "this repository has no CI".
+      const verdict = await fetchPrBuildRuns(config, prId).catch(() => null);
+      if (verdict !== null) into.set(prId, verdict);
     })
   );
   return into;

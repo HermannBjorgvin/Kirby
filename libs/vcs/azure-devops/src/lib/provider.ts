@@ -926,35 +926,55 @@ export const azureDevOpsProvider: VcsProvider = {
       // costing two requests per open pull request and costing almost
       // nothing, which on an organization Azure throttles is the
       // difference between working and being refused.
-      const runVerdicts = await fetchPrBuildRunsBatch(
-        config,
-        prs.map((pr) => pr.id)
-      ).catch(() => new Map<number, BuildStatusState>());
-
       const repoKey = `${config.org}/${config.project}/${config.repo}`;
       const now = Date.now();
+      const known = new Map(
+        prs.map((pr) => [
+          pr.id,
+          reusableStatus(prDetailMemo(repoKey, pr.id), pr.headSha, now),
+        ])
+      );
+
+      // Only the rows whose verdict is not already known. A cycle over
+      // a repository nothing has happened in asks for no runs at all.
+      const unknownIds = prs
+        .filter((pr) => known.get(pr.id) === null)
+        .map((pr) => pr.id);
+      const runVerdicts =
+        unknownIds.length === 0
+          ? new Map<number, BuildStatusState>()
+          : await fetchPrBuildRunsBatch(config, unknownIds).catch(
+              () => new Map<number, BuildStatusState>()
+            );
+
       const withDetails = await Promise.all(
         prs.map(async (pr) => {
           const memo = prDetailMemo(repoKey, pr.id);
           const knownCount = reusableComments(memo, pr.headSha, now);
-          const knownStatus = reusableStatus(memo, pr.headSha, now);
+          const knownStatus = known.get(pr.id) ?? null;
           const [activeCommentCount, statusVerdict] = await Promise.all([
             knownCount ?? fetchActiveCommentCount(config, pr.id),
             knownStatus ?? fetchPrBuildStatus(config, pr.id),
           ]);
+          const buildStatus =
+            knownStatus ??
+            combineBuildStatus(statusVerdict, runVerdicts.get(pr.id) ?? 'none');
           rememberPrDetails(repoKey, pr.id, {
             headSha: pr.headSha,
             now,
             ...(knownCount === null ? { comments: activeCommentCount } : {}),
-            ...(knownStatus === null ? { status: statusVerdict } : {}),
+            // A row the runs listing could not account for is absent
+            // from the map rather than `none`, and remembering the
+            // verdict without it would show a red pipeline as green
+            // until the memo expired.
+            ...(knownStatus === null && runVerdicts.has(pr.id)
+              ? { status: buildStatus }
+              : {}),
           });
           return {
             ...pr,
             activeCommentCount,
-            buildStatus: combineBuildStatus(
-              statusVerdict,
-              runVerdicts.get(pr.id) ?? 'none'
-            ),
+            buildStatus,
           } satisfies PullRequestInfo;
         })
       );

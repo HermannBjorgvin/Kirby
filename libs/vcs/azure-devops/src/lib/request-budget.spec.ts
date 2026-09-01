@@ -22,10 +22,12 @@ import { resetAdoTransport } from './request.js';
  * plus, once per half hour: `/connectiondata`, the caller's teams, and
  * the repository's id.
  *
- * A *warm* cycle over pull requests that have not moved costs the first
- * two and nothing else. That is the whole point of `pr-details.ts`: the
- * per-row half is what a rate limit is made of, and a settled verdict
- * on an unchanged head commit is still the verdict.
+ * A *warm* cycle over pull requests that have not moved costs the list
+ * and nothing else — not even the pipeline runs, which are only asked
+ * for on behalf of rows whose verdict is not already known. That is
+ * the whole point of `pr-details.ts`: the per-row half is what a rate
+ * limit is made of, and a settled verdict on an unchanged head commit
+ * is still the verdict.
  */
 
 const PR_COUNT = 12;
@@ -186,13 +188,15 @@ describe('one sync cycle', () => {
  * used to spend on an answer it already had.
  */
 describe('a cycle over pull requests that have not moved', () => {
-  it('costs the list and the builds batch, and nothing per row', async () => {
+  it('costs the list, and nothing else at all', async () => {
     await syncCycle();
 
     // Past the transport's own 30s TTLs, so nothing here is the
     // response cache answering — it is the cycle declining to ask.
+    // The builds listing goes too: it is fetched on behalf of rows
+    // whose verdict is unknown, and there are none.
     afterMinutes(1);
-    expect(await cycleCost()).toBe(2);
+    expect(await cycleCost()).toBe(1);
   });
 
   it('pays again only for the pull request whose head commit moved', async () => {
@@ -220,13 +224,60 @@ describe('a cycle over pull requests that have not moved', () => {
     await syncCycle();
 
     // Comments are not tied to the head commit — anyone can comment at
-    // any time — so they come back first, on their own.
+    // any time — so they come back first, on their own. No builds
+    // listing: every verdict is still known.
     afterMinutes(4);
-    expect(await cycleCost()).toBe(2 + PR_COUNT);
+    expect(await cycleCost()).toBe(1 + PR_COUNT);
 
     // And a settled verdict outlives them, until a re-run is plausible.
     afterMinutes(7);
     expect(await cycleCost()).toBe(2 + 2 * PR_COUNT);
+  });
+
+  it('remembers nothing about a verdict it could not look up', async () => {
+    // A truncated runs listing with nothing for our rows, and the
+    // per-row fallback answering nothing either: the cycle does not
+    // know these verdicts, so it must not remember them. Recording the
+    // status list alone would show a red pipeline as green until the
+    // memo ran out.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/_apis/connectiondata'))
+        return Promise.resolve(
+          json({
+            authenticatedUser: {
+              id: 'me',
+              properties: { Account: { $value: 'me@example.com' } },
+            },
+          })
+        );
+      if (url.includes('/teams?')) return Promise.resolve(json({ value: [] }));
+      if (url.includes('/pullrequests?'))
+        return Promise.resolve(json({ value: prs }));
+      if (url.includes('branchName='))
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{}'),
+        } as unknown as Response);
+      if (url.includes('/build/builds'))
+        return Promise.resolve(
+          json({ value: [] }, { 'x-ms-continuationtoken': 'more' })
+        );
+      if (/\/repositories\/myrepo\?/.test(url))
+        return Promise.resolve(json({ id: 'repo-guid' }));
+      return Promise.resolve(json({ value: [] }));
+    });
+
+    await syncCycle();
+    afterMinutes(1);
+    const urls: string[] = [];
+    mockFetch.mock.calls.length = 0;
+    await syncCycle();
+    urls.push(...mockFetch.mock.calls.map((c) => String(c[0])));
+    // It asks again rather than serving a verdict it never had.
+    expect(urls.filter((u) => u.includes('/statuses'))).toHaveLength(PR_COUNT);
   });
 
   it('remembers nothing about a pull request with no known head commit', async () => {
