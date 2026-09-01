@@ -90,6 +90,10 @@ export interface TabsState {
    *  same reason tab ids are — the PTY registry keys sessions by bare
    *  branch name, so two repos' agents share a name. */
   autoOpened: readonly string[];
+  /** The tab each repository was last looked at on, by repo root. Lets
+   *  opening a repository again land where it was left rather than on
+   *  whichever of its tabs happens to be rightmost. */
+  lastActiveByRepo: Readonly<Record<string, string>>;
 }
 
 /** Identity of an auto-opened session, unique across repositories. */
@@ -101,6 +105,7 @@ export const EMPTY_TABS: TabsState = {
   tabs: [],
   activeId: null,
   autoOpened: [],
+  lastActiveByRepo: {},
 };
 
 export type TabsAction =
@@ -112,7 +117,11 @@ export type TabsAction =
   | { type: 'close-others'; id: string }
   | { type: 'close-all' }
   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
-  | { type: 'sync-items'; repo: string; entries: ItemEntry[] };
+  | { type: 'sync-items'; repo: string; entries: ItemEntry[] }
+  /** A repository was opened. Dispatched for every open, tab-driven or
+   *  not; it only does something when the tab in front of the user
+   *  belongs to somewhere else. */
+  | { type: 'repo-opened'; repo: string };
 
 function pinTab(tabs: Tab[], id: string): Tab[] {
   return tabs.map((t): Tab => {
@@ -135,6 +144,51 @@ function closeOtherTabs(state: TabsState, id: string): TabsState {
 }
 
 export function reduce(state: TabsState, action: TabsAction): TabsState {
+  return remember(apply(state, action));
+}
+
+/**
+ * Note which tab the active repository was left on.
+ *
+ * Derived rather than dispatched, so no action can forget to do it —
+ * every path that moves `activeId` passes through here.
+ */
+function remember(state: TabsState): TabsState {
+  const active = state.tabs.find((t) => t.id === state.activeId);
+  if (active?.kind !== 'item') return state;
+  if (state.lastActiveByRepo[active.repo] === active.id) return state;
+  return {
+    ...state,
+    lastActiveByRepo: { ...state.lastActiveByRepo, [active.repo]: active.id },
+  };
+}
+
+/**
+ * Show the repository that was just opened rather than the tab the user
+ * was on before, when that tab belongs to somewhere else.
+ *
+ * Without this, switching repositories leaves the previous repo's tab
+ * active — so the workspace you asked for opens onto a pane explaining
+ * that it belongs to the one you left. A repo with no tabs of its own
+ * goes to no active tab at all, which is the editor's empty state, with
+ * the other repositories' tabs still on the strip.
+ *
+ * The settings tab is nobody's, so it survives a repo change.
+ */
+function focusRepo(state: TabsState, repo: string): TabsState {
+  const active = state.tabs.find((t) => t.id === state.activeId);
+  if (active && !isForeignTab(active, repo)) return state;
+  const remembered = state.tabs.find(
+    (t) => t.id === state.lastActiveByRepo[repo]
+  );
+  const own =
+    remembered ??
+    [...state.tabs].reverse().find((t) => t.kind === 'item' && t.repo === repo);
+  const activeId = own?.id ?? null;
+  return activeId === state.activeId ? state : { ...state, activeId };
+}
+
+function apply(state: TabsState, action: TabsAction): TabsState {
   switch (action.type) {
     case 'open-item':
       return openItem(state, action.repo, action.itemKey, action.preview);
@@ -169,6 +223,8 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
         action.repo,
         action.entries
       );
+    case 'repo-opened':
+      return focusRepo(state, action.repo);
   }
 }
 

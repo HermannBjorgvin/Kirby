@@ -171,6 +171,16 @@ export function EditorArea({
             <ForeignRepoPane cwd={foreignCwd} />
           </div>
         )}
+        {paneActiveId === null && (
+          // Tabs on the strip, but none of them this repository's — it
+          // was just opened and has nothing of its own open yet.
+          <div className="absolute inset-0 flex min-h-0 flex-col">
+            <EmptyState
+              onOpenPalette={onOpenPalette}
+              hasItems={items.length > 0}
+            />
+          </div>
+        )}
       </div>
       {confirmDialog}
     </div>

@@ -26,6 +26,15 @@ export function useRepoFollowsTabs(
   const tabs = useTabs();
   const target = activeTabRepo(tabs);
   const lastActiveId = useRef(tabs.activeId);
+  const repoOpened = tabs.repoOpened;
+
+  // The other direction: the repository in view decides which tab is in
+  // front. Opening one leaves the tab of the repo being left active
+  // otherwise, so the workspace you asked for would open onto a pane
+  // about the one you did not.
+  useEffect(() => {
+    if (repoCwd !== null) repoOpened(repoCwd);
+  }, [repoCwd, repoOpened]);
 
   useEffect(() => {
     const activeId = tabs.activeId;

@@ -534,3 +534,56 @@ describe('activeTabRepo', () => {
     expect(activeTabRepo(empty)).toBeNull();
   });
 });
+
+describe('repo-opened', () => {
+  const openRepo = (state: TabsState, repo: string) =>
+    reduce(state, { type: 'repo-opened', repo });
+
+  it('steps off the previous repo’s tab and onto one of its own', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = open(s, 'branch:main', false, OTHER);
+    // Back to the first repo: its own tab comes forward.
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:feat-x'));
+  });
+
+  it('leaves nothing active when the repo has no tabs of its own', () => {
+    // The editor shows its empty state; the other repo's tabs stay on
+    // the strip. Leaving the foreign tab active would open the
+    // workspace you asked for onto a pane about the one you left.
+    let s = open(empty, 'branch:main', false, OTHER);
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBeNull();
+    expect(s.tabs).toHaveLength(1);
+  });
+
+  it('returns to the tab the repo was left on, not its rightmost', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = reduce(s, { type: 'activate', id: id('branch:one') });
+    s = open(s, 'branch:main', false, OTHER);
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:one'));
+  });
+
+  it('falls back to the rightmost tab when the remembered one is gone', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = open(s, 'branch:main', false, OTHER);
+    s = reduce(s, { type: 'close', id: id('branch:two') });
+    s = openRepo(s, REPO);
+    expect(s.activeId).toBe(id('branch:one'));
+  });
+
+  it('does not displace the settings tab, which is nobody’s', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = reduce(s, { type: 'open-settings' });
+    s = openRepo(s, OTHER);
+    expect(s.activeId).toBe('settings');
+  });
+
+  it('is a no-op when the active tab already belongs to the repo', () => {
+    const s = open(empty, 'branch:feat-x');
+    expect(openRepo(s, REPO)).toBe(s);
+  });
+});

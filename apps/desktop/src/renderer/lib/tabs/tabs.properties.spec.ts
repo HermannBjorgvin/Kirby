@@ -66,6 +66,13 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     id: fc.constantFrom(...IDS),
   }),
   fc.record({ type: fc.constant('close-all' as const) }),
+  // Switching repository. Included because it is the one action that
+  // may leave nothing active, and because everything else has to keep
+  // holding across it.
+  fc.record({
+    type: fc.constant('repo-opened' as const),
+    repo: fc.constantFrom(...REPOS),
+  }),
   // Drag-to-reorder. Included because a reorder that drops or
   // duplicates a tab breaks the same invariants everything else here
   // protects.
@@ -119,6 +126,20 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
 const EMPTY: TabsState = EMPTY_TABS;
 
 const run = (actions: TabsAction[]): TabsState => actions.reduce(reduce, EMPTY);
+
+/**
+ * The repository the workspace is showing after `actions`, or null
+ * before it has been told about one.
+ *
+ * Nothing in the state records it — the strip is told about a switch,
+ * it does not own one — so it is reconstructed from the action whose
+ * whole job is to say so.
+ */
+const repoInView = (actions: TabsAction[]): string | null => {
+  let repo: string | null = null;
+  for (const a of actions) if (a.type === 'repo-opened') repo = a.repo;
+  return repo;
+};
 
 const sequence = fc.array(action, { maxLength: 25 });
 
@@ -179,13 +200,55 @@ describe('tab reducer invariants', () => {
     );
   });
 
-  it('has an active tab whenever it has any tabs', () => {
+  it('goes without an active tab only when the repo in view has none', () => {
     fc.assert(
       fc.property(sequence, (actions) => {
         const { tabs, activeId } = run(actions);
-        expect(activeId === null).toBe(tabs.length === 0);
+        if (activeId !== null) return;
+        // Nothing active is legitimate in exactly one situation: the
+        // repository in view has no tab on the strip, so the editor
+        // shows its empty state while other repos' tabs stay put.
+        // Anywhere else it is a blank editor area with tabs above it.
+        const inView = repoInView(actions);
+        const own = tabs.filter((t) => t.kind === 'item' && t.repo === inView);
+        expect(own).toEqual([]);
       }),
       { numRuns: 500 }
+    );
+  });
+
+  it('activates one of a repository’s own tabs when it comes into view', () => {
+    fc.assert(
+      fc.property(sequence, fc.constantFrom(...REPOS), (actions, repo) => {
+        const state = reduce(run(actions), { type: 'repo-opened', repo });
+        const own = state.tabs.filter(
+          (t) => t.kind === 'item' && t.repo === repo
+        );
+        if (own.length === 0) return;
+        const active = state.tabs.find((t) => t.id === state.activeId);
+        // Either one of this repo's tabs, or the settings tab — which
+        // belongs to nobody and so is never displaced by a switch.
+        expect(
+          active?.kind === 'settings' ||
+            (active?.kind === 'item' && active.repo === repo)
+        ).toBe(true);
+      }),
+      { numRuns: 500 }
+    );
+  });
+
+  it('returns a repository to the tab it was left on', () => {
+    fc.assert(
+      fc.property(sequence, fc.constantFrom(...REPOS), (actions, away) => {
+        const before = run(actions);
+        const active = before.tabs.find((t) => t.id === before.activeId);
+        if (active?.kind !== 'item' || active.repo === away) return;
+        // Leave for the other repository and come back.
+        const there = reduce(before, { type: 'repo-opened', repo: away });
+        const back = reduce(there, { type: 'repo-opened', repo: active.repo });
+        expect(back.activeId).toBe(before.activeId);
+      }),
+      { numRuns: 300 }
     );
   });
 

@@ -60,6 +60,8 @@ interface TabsApi extends TabsState {
    * and pin any preview tab that now has a live agent behind it.
    */
   syncItems: (repo: string, entries: ItemEntry[]) => void;
+  /** Tell the strip a repository is now the one in view. */
+  repoOpened: (repo: string) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -118,6 +120,10 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'sync-items', repo, entries }),
     []
   );
+  const repoOpened = useCallback(
+    (repo: string) => dispatch({ type: 'repo-opened', repo }),
+    []
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -133,6 +139,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       cycle,
       moveTab,
       syncItems,
+      repoOpened,
     }),
     [
       state,
@@ -147,6 +154,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       cycle,
       moveTab,
       syncItems,
+      repoOpened,
     ]
   );
 
