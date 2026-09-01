@@ -21,7 +21,7 @@ test.describe('Activity spinner', () => {
   }) => {
     // 1. Create session A (the busy one). PTY is not yet started.
     await createSession(kirby.term, 'busy', { start: true });
-    // 2. Tab into A → PTY spawns, fake-agent begins its burst.
+    // 2. Started from the session menu → PTY spawns, fake-agent bursts.
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

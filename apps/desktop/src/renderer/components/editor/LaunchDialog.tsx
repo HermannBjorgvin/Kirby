@@ -2,6 +2,7 @@ import { MessageSquareTextIcon, PlayIcon, SearchCodeIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { AgentId, AgentOptionView } from '../../../host/contract.js';
+import { agentIdForLaunch } from '../../lib/agent-pick.js';
 import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -64,18 +65,17 @@ export function LaunchDialog({
   // `aiCommand` included, so only a non-default pick carries an id.
   const [agentIdx, setAgentIdx] = useState(0);
 
+  const trimmed = instruction.trim();
   const go = () => {
     if (mode === 'session') {
-      const picked = agents[agentIdx];
-      const agentId =
-        agentIdx > 0 && picked && picked.id !== 'test' ? picked.id : undefined;
-      onChoose({ kind: 'session', agentId });
-    } else if (mode === 'review') onChoose({ kind: 'review' });
-    else
       onChoose({
-        kind: 'review',
-        instruction: instruction.trim() || undefined,
+        kind: 'session',
+        agentId: agentIdForLaunch(agents, agentIdx),
       });
+    } else if (mode === 'review') onChoose({ kind: 'review' });
+    // Same gate as the footer button: ⌘/Ctrl+Enter on an empty box
+    // would otherwise start a plain review.
+    else if (trimmed) onChoose({ kind: 'review', instruction: trimmed });
   };
 
   return (
@@ -160,10 +160,7 @@ export function LaunchDialog({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={go}
-            disabled={mode === 'instruct' && !instruction.trim()}
-          >
+          <Button onClick={go} disabled={mode === 'instruct' && !trimmed}>
             <PlayIcon />
             {mode === 'session' ? 'Start session' : 'Start review'}
           </Button>

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   __resetLaunchMenuRequestForTests,
   clearLaunchMenuRequest,
+  launchMenuOpen,
   pendingLaunchMenu,
   requestLaunchMenu,
   subscribeLaunchMenu,
@@ -42,5 +43,26 @@ describe('launch menu request', () => {
     subscribeLaunchMenu(cb);
     clearLaunchMenuRequest('alpha');
     expect(cb).not.toHaveBeenCalled();
+  });
+});
+
+describe('launchMenuOpen', () => {
+  it('opens from the tab itself regardless of the item', () => {
+    expect(
+      launchMenuOpen({
+        own: true,
+        requested: false,
+        hasItem: false,
+        running: true,
+      })
+    ).toBe(true);
+  });
+
+  it('honors a request once the item exists and its agent is idle', () => {
+    const base = { own: false, requested: true, hasItem: true, running: false };
+    expect(launchMenuOpen(base)).toBe(true);
+    expect(launchMenuOpen({ ...base, hasItem: false })).toBe(false);
+    expect(launchMenuOpen({ ...base, running: true })).toBe(false);
+    expect(launchMenuOpen({ ...base, requested: false })).toBe(false);
   });
 });

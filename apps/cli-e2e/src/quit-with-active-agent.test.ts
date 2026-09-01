@@ -42,8 +42,8 @@ test.describe('Quit with active agent (#56)', () => {
 
     await createSession(kirby.term, 'busy-q', { start: true });
 
-    // Tab → spawn the agent. Wait for its banner so we know the PTY is
-    // up and bursting before we try to quit.
+    // Wait for the agent's banner so we know the PTY is up and bursting
+    // before we try to quit.
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });

@@ -16,6 +16,7 @@ import {
 } from '../../lib/sidebar/sidebar-model.js';
 import {
   clearLaunchMenuRequest,
+  launchMenuOpen,
   useLaunchMenuRequested,
 } from '../../lib/sidebar/launch-menu-request.js';
 import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
@@ -129,8 +130,16 @@ function useLaunchMenu(branch: string, active: boolean, state?: ItemState) {
   useEffect(() => {
     if (requested && (running || !active)) clearLaunchMenuRequest(branch);
   }, [requested, running, active, branch]);
+  // A tab closed before its item arrived (a checkout still in flight)
+  // must not leave its request behind for a later visit to the branch.
+  useEffect(() => () => clearLaunchMenuRequest(branch), [branch]);
 
-  const open = own || (requested && state !== undefined && !running);
+  const open = launchMenuOpen({
+    own,
+    requested,
+    hasItem: state !== undefined,
+    running,
+  });
   const close = () => {
     setOwn(false);
     clearLaunchMenuRequest(branch);

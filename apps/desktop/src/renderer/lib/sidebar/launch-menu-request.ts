@@ -50,6 +50,20 @@ export function useLaunchMenuRequested(branch: string): boolean {
   return useSyncExternalStore(subscribeLaunchMenu, () => pending === branch);
 }
 
+/**
+ * Whether a tab shows its session menu: opened from the tab itself, or
+ * requested from outside — honored once the item exists and only while
+ * its agent is not running (a live agent has nothing to choose).
+ */
+export function launchMenuOpen(s: {
+  own: boolean;
+  requested: boolean;
+  hasItem: boolean;
+  running: boolean;
+}): boolean {
+  return s.own || (s.requested && s.hasItem && !s.running);
+}
+
 export function __resetLaunchMenuRequestForTests(): void {
   pending = null;
   subscribers.clear();
