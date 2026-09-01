@@ -224,6 +224,57 @@ describe('remote cache', () => {
     expect(sidebar.getSyncState().remoteError).toBeNull();
   });
 
+  /**
+   * Replacing a rejected access token has to look like it worked. The
+   * cache still holds what the old credentials fetched, and the error
+   * on screen describes a state that no longer exists.
+   */
+  describe('after the credentials change', () => {
+    it('clears the error and fetches without waiting for the TTL', async () => {
+      const bad = sidebar.refreshRemote();
+      await flush();
+      env.pending[0].reject(new Error('rejected the access token'));
+      await bad;
+      expect(sidebar.getSyncState().remoteError).toContain('access token');
+
+      sidebar.onCredentialsChanged();
+      // Cleared before the attempt, not after it: leaving the old
+      // message up is what made a correct fix look like it had not
+      // taken.
+      expect(sidebar.getSyncState().remoteError).toBeNull();
+      await flush();
+      expect(env.fetchCount).toBe(2);
+      settle(1, { a: 1 });
+    });
+
+    it('does not serve what the old credentials fetched', async () => {
+      const first = sidebar.refreshRemote();
+      await flush();
+      settle(0, { a: 1 });
+      await first;
+      expect(env.fetchCount).toBe(1);
+
+      sidebar.onCredentialsChanged();
+      await flush();
+      // Inside the TTL, so without dropping the cache this would have
+      // answered from data fetched as somebody else.
+      expect(env.fetchCount).toBe(2);
+      settle(1, { a: 1 });
+    });
+
+    it('tells the renderer straight away', async () => {
+      let announced = 0;
+      sidebar.setRemoteUpdatedNotifier(() => announced++);
+      sidebar.onCredentialsChanged();
+      // The cleared error is itself a change worth painting, before
+      // the fetch it started has landed.
+      expect(announced).toBe(1);
+      await flush();
+      settle(0, {});
+      sidebar.setRemoteUpdatedNotifier(null);
+    });
+  });
+
   it('does not call the provider at all when it is not configured', async () => {
     env.configured = false;
     await sidebar.getSidebarModel();

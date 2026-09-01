@@ -23,6 +23,7 @@ import {
   getTmuxAvailability,
   projectTerminalBackendOverride,
   resolveValue,
+  settingsEffects,
 } from '@kirby/core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
 
@@ -83,7 +84,11 @@ function canApplyFieldChange(
  *
  *  `updateField` routes the new config through React state, so the
  *  value to apply is recomputed here with the same `updateConfigField`
- *  the context uses. */
+ *  the context uses.
+ *
+ *  Which effects a field has is `@kirby/core`'s call and is shared
+ *  with the desktop, so a rule cannot exist in one shell and quietly
+ *  not the other. */
 function writeFieldChange(
   field: SettingsField,
   value: string | undefined,
@@ -91,8 +96,28 @@ function writeFieldChange(
 ): void {
   if (!canApplyFieldChange(field, value, ctx)) return;
   ctx.config.updateField(field, value);
-  if (field.key === 'terminalBackend') {
-    applySessionBackend(updateConfigField(ctx.config.config, field, value));
+  const updated = updateConfigField(ctx.config.config, field, value);
+  for (const effect of settingsEffects(field)) {
+    switch (effect) {
+      case 'apply-session-backend':
+        applySessionBackend(updated);
+        break;
+      case 'reset-provider-cache':
+        // Every provider, not just the selected one. Everything cached
+        // was fetched as somebody else, and on a `vendor` change the
+        // stale entries belong to the provider being left — which
+        // `ctx.config.provider` no longer is by the time this runs.
+        for (const p of ctx.config.providers) p.resetCaches?.();
+        break;
+      case 'refresh-remote':
+        // Without this a corrected token sits behind the poll
+        // interval, showing the failure it just fixed.
+        void ctx.sessions.refreshPr();
+        break;
+      case 'restart-sync-loop':
+        void ctx.sessions.triggerSync();
+        break;
+    }
   }
 }
 
@@ -233,7 +258,10 @@ function handleFieldEditMode(
     return;
   }
   if (key.return) {
-    ctx.config.updateField(field, ctx.settings.editBuffer || undefined);
+    // Through writeFieldChange, not updateField: a pasted access token
+    // arrives on this path, and it is the one that most needs the
+    // cache dropped and a fetch started.
+    writeFieldChange(field, ctx.settings.editBuffer || undefined, ctx);
     ctx.settings.setEditingField(null);
     ctx.settings.setEditBuffer('');
     return;

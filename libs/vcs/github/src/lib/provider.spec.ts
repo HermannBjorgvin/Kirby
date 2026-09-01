@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import { isVcsError, type RemoteCommentThread } from '@kirby/vcs-core';
 import {
   parseGitHubRemoteUrl,
   mapReviewState,
@@ -209,11 +209,108 @@ describe('ghGraphQL', () => {
     expect(result).toEqual({ data: { viewer: { login: 'test' } } });
   });
 
-  it('throws with stderr on failure', async () => {
+  it("keeps the CLI's own words for a failure it cannot classify", async () => {
     ghError('GraphQL error');
     await expect(ghGraphQL('{ viewer { login } }', {})).rejects.toThrow(
-      'gh graphql error: GraphQL error'
+      'gh: GraphQL error'
     );
+  });
+
+  /**
+   * The transport is a subprocess, so every failure arrives as text.
+   * Sorting that text into causes is what turns "gh graphql error:
+   * HTTP 403: API rate limit exceeded for user ID 1 (https://…)" into
+   * something a status bar can say and a shell can act on.
+   */
+  describe('classifying what gh printed', () => {
+    async function failure(): Promise<Error> {
+      try {
+        await ghGraphQL('{ viewer { login } }', {});
+      } catch (err) {
+        return err as Error;
+      }
+      throw new Error('expected a failure');
+    }
+
+    async function kindOf(stderr: string): Promise<string> {
+      ghError(stderr);
+      const err = await failure();
+      return isVcsError(err) ? err.kind : 'not-a-vcs-error';
+    }
+
+    it('reads a missing gh binary as an unavailable transport', async () => {
+      mockExecFile.mockImplementationOnce(
+        (
+          _cmd: string,
+          _args: string[],
+          cb: (err: { code: string; message: string }) => void
+        ) => cb({ code: 'ENOENT', message: 'spawn gh ENOENT' })
+      );
+      const err = await failure();
+      expect(isVcsError(err) && err.kind).toBe('unavailable');
+      expect(err.message).toContain('gh) is not installed');
+    });
+
+    it('reads an expired login as an auth failure', async () => {
+      expect(await kindOf('HTTP 401: Bad credentials')).toBe('auth');
+      expect(
+        await kindOf('To get started with GitHub CLI, run: gh auth login')
+      ).toBe('auth');
+    });
+
+    it('reads a spent rate limit as throttling, not as auth', async () => {
+      // GitHub reports a spent rate limit as HTTP 403. Checking auth
+      // first would tell the user to re-authenticate a token that
+      // works and simply has nothing left this hour.
+      expect(
+        await kindOf('HTTP 403: API rate limit exceeded for user ID 1')
+      ).toBe('throttled');
+      expect(
+        await kindOf('You have exceeded a secondary rate limit. Please wait')
+      ).toBe('throttled');
+    });
+
+    it('reads a missing repository as not-found', async () => {
+      expect(
+        await kindOf('Could not resolve to a Repository with the name')
+      ).toBe('not-found');
+    });
+
+    it('reads a 500 as the server failing', async () => {
+      expect(await kindOf('HTTP 502: Bad gateway')).toBe('server');
+    });
+  });
+
+  it('reports output that is not JSON as an unexpected response', async () => {
+    // A shell wrapper or an update notice on stdout used to surface as
+    // a SyntaxError naming a character position nobody can see.
+    mockExecFile.mockImplementationOnce(
+      (
+        _cmd: string,
+        _args: string[],
+        cb: (err: null, result: { stdout: string }) => void
+      ) => cb(null, { stdout: 'A new release of gh is available!' })
+    );
+    await expect(ghGraphQL('{ viewer { login } }', {})).rejects.toThrow(
+      'Unexpected output from the GitHub CLI'
+    );
+  });
+
+  it('refuses a GraphQL response that carries errors and no data', async () => {
+    ghSuccess({ errors: [{ message: 'Resource not accessible' }] });
+    await expect(ghGraphQL('{ viewer { login } }', {})).rejects.toThrow(
+      'Resource not accessible'
+    );
+  });
+
+  it('passes a partial GraphQL response through untouched', async () => {
+    // GitHub routinely returns one null field with an error beside it,
+    // and every caller already copes with a missing field.
+    ghSuccess({ data: { viewer: null }, errors: [{ message: 'nope' }] });
+    await expect(ghGraphQL('{ viewer { login } }', {})).resolves.toEqual({
+      data: { viewer: null },
+      errors: [{ message: 'nope' }],
+    });
   });
 });
 

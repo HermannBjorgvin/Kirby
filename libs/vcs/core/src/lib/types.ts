@@ -85,6 +85,16 @@ export interface VcsProvider {
     project: Record<string, string>
   ): Record<string, string> | null;
 
+  /**
+   * Forget anything cached under the current credentials.
+   *
+   * Called when the user changes an access token or the project
+   * coordinates: every cached answer was fetched as somebody else, and
+   * serving one back would make a corrected credential look like it
+   * had not worked. Providers with nothing to forget omit it.
+   */
+  resetCaches?(): void;
+
   /** True when auth + project config have all required fields */
   isConfigured(
     auth: Record<string, string>,

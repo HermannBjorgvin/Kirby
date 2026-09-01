@@ -55,6 +55,10 @@ let lastError: string | null = null;
 // so a slow pre-refresh response can't overwrite a forced refresh's
 // fresher data with a fresh timestamp.
 let fetchSeq = 0;
+// Every fetch this process has started. Reported in the sync state so
+// "did the credential change actually trigger one?" is answerable
+// without waiting to see whether it succeeded.
+let fetchCount = 0;
 
 // Installed by main.ts. Fires when a background fetch has changed what
 // getSidebarModel() would answer, so the renderer can refetch then
@@ -114,6 +118,7 @@ async function fetchRemote(
   // against another repo's (or a pre-change) response.
   if (inflight && inflight.cwd === cwd && !force) return inflight.promise;
   const seq = ++fetchSeq;
+  fetchCount += 1;
   const promise = provider
     .fetchPullRequests(config.vendorAuth, config.vendorProject)
     .then((prMap) => {
@@ -216,6 +221,7 @@ export function getSyncState(): SyncState {
     remoteError: lastError,
     remoteSyncing: inflight !== null,
     remoteIntervalMs: remoteIntervalMs(config.prPollInterval),
+    remoteFetches: fetchCount,
   };
 }
 
@@ -224,9 +230,34 @@ export async function refreshRemote(): Promise<void> {
   await fetchRemote(cwd, true);
 }
 
+/**
+ * The credentials changed: drop what the old ones fetched and go and
+ * find out whether the new ones work.
+ *
+ * The error is cleared before the attempt rather than after it,
+ * because it describes a state that no longer exists — leaving
+ * "Azure DevOps rejected the access token" on screen after the token
+ * has been replaced is what made a correct fix look like it had not
+ * taken. If the new credentials are wrong too, the fetch says so
+ * within a round trip.
+ */
+export function onCredentialsChanged(): void {
+  const cwd = requireRepo();
+  cache = null;
+  inflight = null;
+  lastError = null;
+  fetchSeq += 1;
+  void fetchRemote(cwd, true, () => remoteUpdated?.()).catch(() => {
+    // fetchRemote records failures in lastError rather than rejecting;
+    // a rejection here must not take the main process down.
+  });
+  remoteUpdated?.();
+}
+
 /** Test hook: forget cached remote data. */
 export function resetRemoteCache(): void {
   cache = null;
   inflight = null;
   lastError = null;
+  fetchCount = 0;
 }

@@ -140,6 +140,15 @@ export interface SyncState {
   remoteSyncing: boolean;
   /** Remote cache TTL in ms (from config, clamped). */
   remoteIntervalMs: number;
+  /**
+   * Provider fetches this process has started, successful or not.
+   *
+   * Monotonic and diagnostic: it is how "did that actually go and
+   * ask?" gets a yes or no. A test — or a curious user reading the
+   * sync popover — cannot tell a refetch from a cache hit by watching
+   * `lastRemoteSyncAt`, which only moves when a fetch succeeds.
+   */
+  remoteFetches: number;
 }
 
 // ── Desktop shell (native menus, prefs) ──────────────────────────

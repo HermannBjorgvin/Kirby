@@ -1,0 +1,53 @@
+<!--
+  What Azure DevOps actually returns in place of JSON when the personal
+  access token is expired, revoked, or scoped too narrowly for the
+  endpoint being called.
+
+  Recorded from a `GET /_apis/git/repositories/{repo}/pullrequests`
+  answered with `203 Non-Authoritative Information` and
+  `Content-Type: text/html; charset=utf-8`. Organization and project
+  names, the redirect nonce and the tenant id have been replaced with
+  placeholders; the surrounding markup is verbatim, because the markers
+  the client matches on are in it.
+
+  Parsed as JSON this is the message users were shown:
+  `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`.
+-->
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Azure DevOps Services | Sign In</title>
+    <meta name="referrer" content="origin" />
+  </head>
+  <body>
+    <noscript>
+      <p>JavaScript is required. Please enable JavaScript and refresh.</p>
+    </noscript>
+    <form
+      id="fmHF"
+      method="POST"
+      action="https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/authorize"
+    >
+      <input type="hidden" name="wa" value="wsignin1.0" />
+      <input
+        type="hidden"
+        name="wreply"
+        value="https://dev.azure.com/EXAMPLE_ORG/_signin?realm=dev.azure.com&amp;protocol=wsfed"
+      />
+      <input type="hidden" name="wctx" value="REDACTED_NONCE" />
+    </form>
+    <script type="text/javascript">
+      function SignInRedirect() {
+        document.forms['fmHF'].submit();
+      }
+      SignInRedirect();
+    </script>
+    <h1>Sign in to your account</h1>
+    <p>
+      You are being redirected to sign in. If you are not redirected
+      automatically, <a href="/EXAMPLE_ORG/_signin">continue here</a>.
+    </p>
+  </body>
+</html>

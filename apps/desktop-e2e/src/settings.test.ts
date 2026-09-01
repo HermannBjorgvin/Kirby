@@ -17,7 +17,14 @@ function storedPat(homeDir: string): string | undefined {
 
 test.describe('Settings', () => {
   test.use({
-    kirbyConfig: { vendorAuth: { 'azure-devops': { pat: PAT } } },
+    kirbyConfig: {
+      vendorAuth: { 'azure-devops': { pat: PAT } },
+      // Long enough that nothing in these tests can be explained by a
+      // poll happening to fire: a refetch inside them is one something
+      // asked for.
+      prPollInterval: 3_600_000,
+      mergePollInterval: 3_600_000,
+    },
     // A provider's auth fields only appear in the settings model once a
     // vendor is selected, and the vendor is per-project config.
     projectConfig: {
@@ -79,6 +86,50 @@ test.describe('Settings', () => {
     });
 
     expect(storedPat(homeDir)).toBe('ado_rotated');
+  });
+
+  /**
+   * Replacing a rejected access token has to take effect now.
+   *
+   * There is no Azure organization behind `acme/widgets`, so the
+   * provider fails here exactly as it does against a revoked token —
+   * which is the situation being tested. What the assertion turns on
+   * is not whether the fetch succeeds but whether one was *started*:
+   * `remoteFetches` is monotonic, and with the poll interval set to an
+   * hour nothing else in the test can move it.
+   */
+  test('saving a token refetches immediately instead of waiting for the poll', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    const syncState = () => page.evaluate(() => window.kirby.getSyncState());
+
+    // Let the launch fetch finish and record a failure, so there is a
+    // stale error to clear.
+    await expect
+      .poll(async () => (await syncState()).remoteError, { timeout: 20_000 })
+      .not.toBeNull();
+    const before = (await syncState()).remoteFetches;
+
+    const after = await page.evaluate(async () => {
+      const view = await window.kirby.getSettingsView();
+      const field = view.find((f) => f.masked);
+      if (!field) throw new Error('no masked field in the settings view');
+      await window.kirby.updateSettingsField(
+        { label: field.label, key: field.key },
+        'ado_rotated'
+      );
+      // Read straight after the save. What is asserted below is that
+      // a fetch was *started* — the clearing of the stale error is a
+      // unit-level concern (host/services/sidebar.spec.ts), because
+      // the new attempt may already have failed again by the time this
+      // second round trip lands.
+      return window.kirby.getSyncState();
+    });
+
+    expect(after.remoteFetches).toBeGreaterThan(before);
+    // A poll is an hour away, so the fetch above came from the write.
+    expect(after.remoteIntervalMs).toBe(3_600_000);
   });
 
   test('the settings page renders the secret as dots', async ({ desktop }) => {
