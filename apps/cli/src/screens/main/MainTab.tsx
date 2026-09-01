@@ -25,7 +25,7 @@ import {
 } from '@kirby/app-core';
 import { dequeueOldest, getItemKey } from '@kirby/core';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
-import { handleConfirmInput, handleSidebarInput } from './main-input.js';
+import { handleSessionMenuInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';
 import { getMainFocused, getSidebarFocused, getPaneTitle } from './focus.js';
 
@@ -131,8 +131,8 @@ function MainTabBody({
     if (deleteConfirm.confirmDelete) return;
     if (settings.settingsOpen) return;
 
-    if (pane.reviewConfirm) {
-      return handleConfirmInput(input, key, {
+    if (pane.sessionMenu) {
+      return handleSessionMenuInput(input, key, {
         pane,
         nav,
         asyncOps,
@@ -183,7 +183,7 @@ function MainTabBody({
     paneMode: pane.paneMode,
     branchPickerCreating: branchPicker.creating,
     settingsOpen: settings.settingsOpen,
-    reviewConfirmActive: pane.reviewConfirm !== null,
+    sessionMenuActive: pane.sessionMenu !== null,
     deleteConfirmActive: deleteConfirm.confirmDelete !== null,
   };
   const mainFocused = getMainFocused(focusState);
@@ -194,7 +194,7 @@ function MainTabBody({
     branchPickerCreating: branchPicker.creating,
     settingsOpen: settings.settingsOpen,
     controlsOpen: settings.controlsOpen,
-    reviewConfirmActive: pane.reviewConfirm !== null,
+    sessionMenuActive: pane.sessionMenu !== null,
     agentId: configCtx.config.agentId,
     aiCommand: configCtx.config.aiCommand,
     prTitle: sidebar.selectedPr?.title,

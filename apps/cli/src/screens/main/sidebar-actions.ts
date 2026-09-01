@@ -8,6 +8,7 @@ import {
   getItemKey,
   getPrFromItem,
   orderRunningTabs,
+  openSessionMenuState,
 } from '@kirby/core';
 import {
   canRemoveBranch,
@@ -19,7 +20,6 @@ import {
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
 import type { SidebarInputCtx } from './input-types.js';
-import { startAiSession } from './branch-picker-input.js';
 import { resolveEditorTarget } from './editor-target.js';
 
 /** One sidebar action. Everything it needs comes from the context. */
@@ -35,36 +35,32 @@ function focusTerminal(ctx: SidebarInputCtx): void {
 }
 
 /**
- * The same three updates for a terminal whose agent was just
- * launched, in the order that path has always applied them: reconnect
- * key first, then the mode switch.
+ * Open the session menu for a row whose agent is not running: pick an
+ * agent and start, or (PR rows) start a review. A start already in
+ * flight will move selection and focus when it completes; a second
+ * menu opened now would only have its Enter swallowed by the op
+ * dedup, so it is refused with feedback instead.
  */
-function focusLaunchedTerminal(ctx: SidebarInputCtx): void {
-  ctx.pane.setReconnectKey((k) => k + 1);
-  ctx.pane.setPaneMode('terminal');
-  ctx.nav.setFocus('terminal');
+function openSessionMenu(ctx: SidebarInputCtx, item: SidebarItem): void {
+  if (ctx.asyncOps.isRunning('start-session')) {
+    ctx.sessions.flashStatus('A session is already starting…');
+    return;
+  }
+  ctx.pane.setPaneMode('confirm');
+  ctx.pane.setSessionMenu(openSessionMenuState(getPrFromItem(item)));
 }
 
 /**
- * Start the agent in the session's worktree and jump into it. A stale
- * row whose worktree is gone is left alone.
+ * Enter/Tab on a row: into a live terminal, or into the session menu
+ * for a dormant one.
  */
-async function launchSessionForRow(
-  ctx: SidebarInputCtx,
-  sessionName: string
-): Promise<void> {
-  const worktrees = await listWorktrees();
-  const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
-  if (!wt) return;
-  startAiSession(
-    sessionName,
-    ctx.terminal.paneCols,
-    ctx.terminal.paneRows,
-    wt.path,
-    ctx.config.config
-  );
-  await ctx.sessions.refreshSessions();
-  focusLaunchedTerminal(ctx);
+function enterRow(ctx: SidebarInputCtx, item: SidebarItem): void {
+  const name = ctx.sidebar.sessionNameForTerminal;
+  if (name && hasSession(name)) {
+    focusTerminal(ctx);
+    return;
+  }
+  openSessionMenu(ctx, item);
 }
 
 /**
@@ -121,69 +117,20 @@ const openSettings: SidebarAction = (ctx) => {
 /** Tab: into the terminal from the sidebar, back out from the terminal. */
 const focusTerminalPane: SidebarAction = (ctx) => {
   const { sidebar } = ctx;
-  const selectedItem = sidebar.selectedItem;
-
   if (ctx.nav.focus === 'terminal') {
     ctx.nav.setFocus('sidebar');
     return;
   }
   if (ctx.nav.focus !== 'sidebar' || !sidebar.sessionNameForTerminal) return;
-
-  void ctx.asyncOps.run('start-session', async () => {
-    if (!selectedItem) return;
-
-    if (hasSession(sidebar.sessionNameForTerminal!)) {
-      focusTerminal(ctx);
-      return;
-    }
-
-    // Session item → auto-start PTY
-    if (selectedItem.kind === 'session') {
-      await launchSessionForRow(ctx, selectedItem.session.name);
-      return;
-    }
-
-    // Review/orphan PR → show confirm dialog
-    if (selectedItem.pr) {
-      ctx.pane.setPaneMode('confirm');
-      ctx.pane.setReviewConfirm({ pr: selectedItem.pr, selectedOption: 0 });
-    }
-  });
+  if (!sidebar.selectedItem) return;
+  enterRow(ctx, sidebar.selectedItem);
 };
 
-/** Enter: focus a live agent, start a dormant one, or offer a review. */
+/** Enter: focus a live agent, or open the session menu for a dormant one. */
 const startSession: SidebarAction = (ctx) => {
-  const { sidebar, pane } = ctx;
-  const selectedItem = sidebar.selectedItem;
+  const selectedItem = ctx.sidebar.selectedItem;
   if (!selectedItem) return;
-
-  const live = Boolean(
-    sidebar.sessionNameForTerminal && hasSession(sidebar.sessionNameForTerminal)
-  );
-
-  // Session with running PTY → focus terminal
-  if (selectedItem.kind === 'session' && live) {
-    focusTerminal(ctx);
-    return;
-  }
-
-  // Session with no PTY, no PR → auto-start session
-  if (selectedItem.kind === 'session' && !selectedItem.pr) {
-    void ctx.asyncOps.run('start-session', () =>
-      launchSessionForRow(ctx, selectedItem.session.name)
-    );
-    return;
-  }
-
-  // Item with PR → show confirm dialog
-  const pr = getPrFromItem(selectedItem);
-  if (!pr) return;
-  if (live) {
-    focusTerminal(ctx);
-  } else {
-    pane.setPaneMode('confirm');
-    pane.setReviewConfirm({ pr, selectedOption: 0 });
-  }
+  enterRow(ctx, selectedItem);
 };
 
 // ── Branches and sessions ────────────────────────────────────────

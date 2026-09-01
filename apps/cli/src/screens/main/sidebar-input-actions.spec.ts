@@ -47,10 +47,6 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: vi.fn(),
 }));
 
-vi.mock('./branch-picker-input.js', () => ({
-  startAiSession: vi.fn(),
-}));
-
 import { spawn } from 'node:child_process';
 import {
   canRemoveBranch,
@@ -59,7 +55,6 @@ import {
   listWorktrees,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
-import { startAiSession } from './branch-picker-input.js';
 import { handleSidebarInput } from './sidebar-input.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────
@@ -195,7 +190,7 @@ function makeCtx(opts: CtxOpts = {}) {
   const pane = {
     setPaneMode: vi.fn(),
     setReconnectKey: vi.fn(),
-    setReviewConfirm: vi.fn(),
+    setSessionMenu: vi.fn(),
     setDiffFileIndex: vi.fn(),
     setGeneralCommentsIndex: vi.fn(),
     setGeneralCommentsScrollOffset: vi.fn(),
@@ -396,7 +391,7 @@ describe('sidebar handler — checkout-branch', () => {
 // ── focus-terminal ───────────────────────────────────────────────
 
 describe('sidebar handler — focus-terminal', () => {
-  it('focuses a live terminal for the selected session', async () => {
+  it('focuses a live terminal for the selected session', () => {
     liveSessions.add('alpha');
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
@@ -404,56 +399,32 @@ describe('sidebar handler — focus-terminal', () => {
     });
 
     press(KEYS.focusTerminal(), t.ctx);
-    await t.settle();
 
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
-    expect(startAiSession).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 
-  it('starts the agent for a session row with no live PTY', async () => {
+  it('opens the session menu for a session row with no live PTY', () => {
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
       sessionNameForTerminal: 'alpha',
     });
-    vi.mocked(listWorktrees).mockResolvedValue([
-      worktree('/wt/alpha', 'alpha'),
-    ]);
 
     press(KEYS.focusTerminal(), t.ctx);
-    await t.settle();
 
-    expect(startAiSession).toHaveBeenCalledExactlyOnceWith(
-      'alpha',
-      80,
-      24,
-      '/wt/alpha',
-      { editor: undefined }
-    );
-    expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
-    expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
-    expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
-  });
-
-  it('does nothing when the session row has no worktree', async () => {
-    const t = makeCtx({
-      selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+    expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
+    expect(t.pane.setSessionMenu).toHaveBeenCalledExactlyOnceWith({
+      pr: null,
+      selectedOption: 0,
+      agentIndex: 0,
     });
-    vi.mocked(listWorktrees).mockResolvedValue([
-      worktree('/wt/other', 'other'),
-    ]);
-
-    press(KEYS.focusTerminal(), t.ctx);
-    await t.settle();
-
-    expect(startAiSession).not.toHaveBeenCalled();
-    expect(t.pane.setPaneMode).not.toHaveBeenCalled();
     expect(t.nav.setFocus).not.toHaveBeenCalled();
+    expect(t.asyncOps.run).not.toHaveBeenCalled();
   });
 
-  it('opens the review confirm dialog for a PR row with no live PTY', async () => {
+  it('opens the session menu with the PR for a PR row with no live PTY', () => {
     const pr = makePr();
     const t = makeCtx({
       selectedItem: reviewPrItem(pr, true),
@@ -461,27 +432,42 @@ describe('sidebar handler — focus-terminal', () => {
     });
 
     press(KEYS.focusTerminal(), t.ctx);
-    await t.settle();
 
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
-    expect(t.pane.setReviewConfirm).toHaveBeenCalledExactlyOnceWith({
+    expect(t.pane.setSessionMenu).toHaveBeenCalledExactlyOnceWith({
       pr,
       selectedOption: 0,
+      agentIndex: 0,
     });
     expect(t.nav.setFocus).not.toHaveBeenCalled();
   });
 
-  it('does nothing when there is no selected item', async () => {
+  it('refuses to open the menu while a start is already in flight', () => {
+    const t = makeCtx({
+      selectedItem: sessionItem('alpha'),
+      sessionNameForTerminal: 'alpha',
+    });
+    t.asyncOps.isRunning.mockReturnValue(true);
+
+    press(KEYS.focusTerminal(), t.ctx);
+
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
+    expect(t.pane.setPaneMode).not.toHaveBeenCalled();
+    expect(t.sessions.flashStatus).toHaveBeenCalledExactlyOnceWith(
+      'A session is already starting…'
+    );
+  });
+
+  it('does nothing when there is no selected item', () => {
     const t = makeCtx({ sessionNameForTerminal: 'alpha' });
 
     press(KEYS.focusTerminal(), t.ctx);
-    await t.settle();
 
     expect(t.pane.setPaneMode).not.toHaveBeenCalled();
-    expect(t.pane.setReviewConfirm).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 
-  it('does not start an operation when no terminal session is bound', () => {
+  it('does not open the menu when no terminal session is bound', () => {
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
       sessionNameForTerminal: null,
@@ -489,7 +475,7 @@ describe('sidebar handler — focus-terminal', () => {
 
     press(KEYS.focusTerminal(), t.ctx);
 
-    expect(t.asyncOps.run).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
     expect(t.nav.setFocus).not.toHaveBeenCalled();
   });
 
@@ -503,7 +489,7 @@ describe('sidebar handler — focus-terminal', () => {
     press(KEYS.focusTerminal(), t.ctx);
 
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('sidebar');
-    expect(t.asyncOps.run).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 });
 
@@ -912,101 +898,69 @@ describe('sidebar handler — start-session', () => {
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
-    expect(t.asyncOps.run).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 
-  it('starts the agent for a PR-less session row', async () => {
+  it('opens the session menu for a PR-less session row', () => {
     const t = makeCtx({ selectedItem: sessionItem('alpha') });
-    vi.mocked(listWorktrees).mockResolvedValue([
-      worktree('/wt/alpha', 'alpha'),
-    ]);
 
     press(KEYS.startSession(), t.ctx);
-    await t.settle();
 
-    expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('start-session');
-    expect(startAiSession).toHaveBeenCalledExactlyOnceWith(
-      'alpha',
-      80,
-      24,
-      '/wt/alpha',
-      { editor: undefined }
-    );
-    expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
-    expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
-    expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
+    expect(t.asyncOps.run).not.toHaveBeenCalled();
+    expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
+    expect(t.pane.setSessionMenu).toHaveBeenCalledExactlyOnceWith({
+      pr: null,
+      selectedOption: 0,
+      agentIndex: 0,
+    });
+    expect(t.nav.setFocus).not.toHaveBeenCalled();
   });
 
-  it('restarts the agent when the bound session name is stale', async () => {
+  it('opens the session menu when the bound session name is stale', () => {
     // `sessionNameForTerminal` still names this row's session but the
-    // PTY exited, so Enter relaunches it instead of focusing an empty
-    // pane — the same staleness the switch-tab digits guard against.
+    // PTY exited, so Enter offers a relaunch instead of focusing an
+    // empty pane — the same staleness the switch-tab digits guard
+    // against.
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
       sessionNameForTerminal: 'alpha',
-    });
-    vi.mocked(listWorktrees).mockResolvedValue([
-      worktree('/wt/alpha', 'alpha'),
-    ]);
-
-    press(KEYS.startSession(), t.ctx);
-    await t.settle();
-
-    expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('start-session');
-    expect(startAiSession).toHaveBeenCalledOnce();
-  });
-
-  it('confirms a review on a PR row whose bound session name is stale', () => {
-    const t = makeCtx({
-      selectedItem: orphanPrItem(makePr({ sourceBranch: 'feat/thing' })),
-      sessionNameForTerminal: 'feat-thing',
     });
 
     press(KEYS.startSession(), t.ctx);
 
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
-    expect(t.nav.setFocus).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).toHaveBeenCalledOnce();
   });
 
-  it('does nothing when a PR-less session row has no worktree', async () => {
-    const t = makeCtx({ selectedItem: sessionItem('alpha') });
-    vi.mocked(listWorktrees).mockResolvedValue([]);
-
-    press(KEYS.startSession(), t.ctx);
-    await t.settle();
-
-    expect(startAiSession).not.toHaveBeenCalled();
-    expect(t.pane.setPaneMode).not.toHaveBeenCalled();
-  });
-
-  it('opens the review confirm dialog for a session row that has a PR', () => {
+  it('opens the session menu with the PR for a session row that has a PR', () => {
     const pr = makePr();
     const t = makeCtx({ selectedItem: sessionItem('alpha', { pr }) });
 
     press(KEYS.startSession(), t.ctx);
 
-    expect(t.asyncOps.run).not.toHaveBeenCalled();
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
-    expect(t.pane.setReviewConfirm).toHaveBeenCalledExactlyOnceWith({
+    expect(t.pane.setSessionMenu).toHaveBeenCalledExactlyOnceWith({
       pr,
       selectedOption: 0,
+      agentIndex: 0,
     });
   });
 
-  it('opens the review confirm dialog for a PR row', () => {
+  it('opens the session menu with the PR for a PR row', () => {
     const pr = makePr();
     const t = makeCtx({ selectedItem: orphanPrItem(pr) });
 
     press(KEYS.startSession(), t.ctx);
 
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
-    expect(t.pane.setReviewConfirm).toHaveBeenCalledExactlyOnceWith({
+    expect(t.pane.setSessionMenu).toHaveBeenCalledExactlyOnceWith({
       pr,
       selectedOption: 0,
+      agentIndex: 0,
     });
   });
 
-  it('focuses the live terminal instead of confirming for a PR row with a session', () => {
+  it('focuses the live terminal instead of the menu for a PR row with a session', () => {
     liveSessions.add('feat-thing');
     const t = makeCtx({
       selectedItem: orphanPrItem(makePr({ sourceBranch: 'feat/thing' })),
@@ -1017,7 +971,7 @@ describe('sidebar handler — start-session', () => {
 
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
-    expect(t.pane.setReviewConfirm).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 
   it('ignores an empty selection', () => {
@@ -1026,6 +980,6 @@ describe('sidebar handler — start-session', () => {
     press(KEYS.startSession(), t.ctx);
 
     expect(t.pane.setPaneMode).not.toHaveBeenCalled();
-    expect(t.asyncOps.run).not.toHaveBeenCalled();
+    expect(t.pane.setSessionMenu).not.toHaveBeenCalled();
   });
 });

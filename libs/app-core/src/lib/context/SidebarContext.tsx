@@ -211,7 +211,25 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   //
   // Both helpers are idempotent, so the state write settles on the
   // next pass rather than looping.
-  let current = selection;
+  // The requested key is translated here, against the maps of this
+  // render, for the same reason: `selectByKey('session:x')` right
+  // after a worktree was created for a PR branch runs from a callback
+  // whose maps predate the refresh, so translating there would miss
+  // the `review:<id>` row the branch is folded into. Idempotent, so it
+  // settles with the anchor.
+  const translatedKey =
+    selection.key === null
+      ? null
+      : translateSelectKey(
+          selection.key,
+          sessionCtx.sessionBranchMap,
+          sessionCtx.sessionPrMap,
+          sessionCtx.categorizedReviews
+        );
+  let current =
+    translatedKey === selection.key
+      ? selection
+      : { key: translatedKey, index: selection.index };
   if (anchoredItems !== items) {
     current = reconcileSelection(items, selection);
     setAnchoredItems(items);
@@ -234,27 +252,15 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     : branchToSessionName(selectedItem.pr.sourceBranch);
 
   // ── Navigation helpers ───────────────────────────────────────────
-  const selectByKey = useCallback(
-    (key: string) => {
-      const translated = translateSelectKey(
-        key,
-        sessionCtx.sessionBranchMap,
-        sessionCtx.sessionPrMap,
-        sessionCtx.categorizedReviews
-      );
-      // Stores the key only — which row owns it is a question about
-      // the committed list, and the render above is the only place
-      // that knows which list that is.
-      setSelection((prev) =>
-        prev.key === translated ? prev : { key: translated, index: prev.index }
-      );
-    },
-    [
-      sessionCtx.sessionBranchMap,
-      sessionCtx.sessionPrMap,
-      sessionCtx.categorizedReviews,
-    ]
-  );
+  const selectByKey = useCallback((key: string) => {
+    // Stores the key only — which row owns it (and how a session key
+    // translates to its review row) is a question about the committed
+    // list, and the render above is the only place that knows which
+    // list that is.
+    setSelection((prev) =>
+      prev.key === key ? prev : { key, index: prev.index }
+    );
+  }, []);
 
   const moveSelection = useCallback(
     (offset: number) => {

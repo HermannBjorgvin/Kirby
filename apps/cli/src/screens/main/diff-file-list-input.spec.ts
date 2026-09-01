@@ -93,7 +93,7 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
     replyBuffer: '',
     generalCommentsIndex: 0,
     generalCommentsScrollOffset: 0,
-    reviewConfirm: null,
+    sessionMenu: null,
     reviewInstruction: '',
     reconnectKey: 0,
     annotatingPlanKey: null,
@@ -184,12 +184,10 @@ function makePane(initial: Partial<PaneModeValue> = {}): PaneModeValue {
     setGeneralCommentsScrollOffset: updater<number>(
       'generalCommentsScrollOffset'
     ),
-    get reviewConfirm() {
-      return state.reviewConfirm as PaneModeValue['reviewConfirm'];
+    get sessionMenu() {
+      return state.sessionMenu as PaneModeValue['sessionMenu'];
     },
-    setReviewConfirm: (c) => {
-      state.reviewConfirm = c;
-    },
+    setSessionMenu: updater<PaneModeValue['sessionMenu']>('sessionMenu'),
     get reviewInstruction() {
       return state.reviewInstruction as string;
     },

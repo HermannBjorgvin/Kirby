@@ -9,7 +9,10 @@ import {
   useKeybindResolve,
   useLayout,
   useSidebar,
+  useNavState,
+  useNavActions,
 } from '@kirby/app-core';
+import type { PaneModeValue } from '@kirby/app-core';
 import { computeScrollWindow } from '@kirby/core';
 import { handleBranchPickerInput } from './branch-picker-input.js';
 
@@ -18,11 +21,13 @@ export const BranchPicker = memo(function BranchPicker({
   branches,
   selectedIndex,
   paneRows,
+  pane,
 }: {
   filter: string;
   branches: string[];
   selectedIndex: number;
   paneRows: number;
+  pane: PaneModeValue;
 }) {
   // ── Input handling ────────────────────────────────────────────
   // Moved out of MainTab so the branch picker owns its own keypress
@@ -41,6 +46,12 @@ export const BranchPicker = memo(function BranchPicker({
   const config = useConfig();
   const keybinds = useKeybindResolve();
   const { terminal } = useLayout();
+  const navState = useNavState();
+  const navActions = useNavActions();
+  const nav = useMemo(
+    () => ({ ...navState, ...navActions }),
+    [navState, navActions]
+  );
 
   useInput(
     (input, key) => {
@@ -52,6 +63,8 @@ export const BranchPicker = memo(function BranchPicker({
         terminal,
         config,
         keybinds,
+        pane,
+        nav,
       });
     },
     { isActive: branchPicker.creating }
