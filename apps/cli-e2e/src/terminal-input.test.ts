@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/kirby.js';
+import { startFromSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 // Vim preset for the keybindings this test uses (s settings, c branch
@@ -58,8 +59,8 @@ test.describe('Terminal Input', () => {
       timeout: 10_000,
     });
 
-    // ── 4. Tab to start bash session and focus terminal ──────────
-    await kirby.term.press('Tab');
+    // ── 4. Start the bash session from the menu, focus terminal ──
+    await startFromSessionMenu(kirby.term);
     await expect(
       kirby.term.getByText('ctrl+space to exit').first()
     ).toBeVisible({ timeout: 10_000 });

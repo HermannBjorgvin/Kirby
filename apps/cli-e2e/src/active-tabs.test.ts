@@ -4,6 +4,7 @@ import {
   createSession,
   pressUntil,
   waitForSidebarFocused,
+  tabIntoSession,
 } from './setup/sessions.js';
 
 // Quiet agents that just print a banner then sleep keep the PTYs alive
@@ -22,8 +23,7 @@ test.describe('Active-session tab bar', () => {
     kirby,
   }) => {
     // 1. Create `alpha` and start its PTY.
-    await createSession(kirby.term, 'alpha');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'alpha', { start: true });
     await expect(
       kirby.term.getByText('kirby-session-active').first()
     ).toBeVisible({ timeout: 10_000 });
@@ -32,8 +32,7 @@ test.describe('Active-session tab bar', () => {
 
     // 2. Create `beta` and start its PTY. Focus is now in beta's
     //    terminal; both sessions are running.
-    await createSession(kirby.term, 'beta');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'beta', { start: true });
     await expect(kirby.term.getByText(/Agent.*beta/).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -100,24 +99,21 @@ test.describe('Active-session tab bar', () => {
 
     // 1. Spawn order: alpha → long → bravo. Tab into each so the PTY
     //    starts before moving on (createSession alone doesn't spawn).
-    await createSession(kirby.term, 'alpha');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'alpha', { start: true });
     await expect(
       kirby.term.getByText('kirby-session-active').first()
     ).toBeVisible({ timeout: 10_000 });
     await kirby.term.write('\x00');
     await waitForSidebarFocused(kirby.term);
 
-    await createSession(kirby.term, longBranch);
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, longBranch, { start: true });
     await expect(kirby.term.getByText(/Agent.*ch-name/).first()).toBeVisible({
       timeout: 10_000,
     });
     await kirby.term.write('\x00');
     await waitForSidebarFocused(kirby.term);
 
-    await createSession(kirby.term, 'bravo');
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, 'bravo', { start: true });
     await expect(kirby.term.getByText(/Agent.*bravo/).first()).toBeVisible({
       timeout: 10_000,
     });
@@ -163,7 +159,7 @@ test.describe('Active-session tab bar', () => {
     // 5. Restart the long-branch agent (Tab on its still-selected row).
     //    It must land at the END (tab 3), not back in its original
     //    slot at tab 2 — that's browser-tab semantics.
-    await kirby.term.press('Tab');
+    await tabIntoSession(kirby.term);
     await expect(kirby.term.getByText(/Agent.*ch-name/).first()).toBeVisible({
       timeout: 10_000,
     });

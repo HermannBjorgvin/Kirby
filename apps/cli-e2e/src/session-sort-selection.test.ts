@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { dismissSessionMenu } from './setup/sessions.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO } from './setup/constants.js';
 import { sidebarLocator } from './setup/sidebar.js';
@@ -51,6 +52,8 @@ async function createSessionViaBranchPicker(
   // creation is async. Wait for the picker to close before asserting
   // the session row.
   await expect(term.getByText('Branch Picker').first()).toBeHidden();
+  // Worktree creation lands in the session menu; dismiss it.
+  await dismissSessionMenu(term);
 
   // Wait for the session row in any icon state (selected or not, running or not).
   await expect(sidebarLocator(term.page, waitForTitle).any()).toBeVisible({

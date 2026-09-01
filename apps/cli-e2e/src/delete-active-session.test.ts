@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
+import { startFromSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 test.use({
@@ -64,11 +65,11 @@ test.describe('Delete active session', () => {
         timeout: 10_000,
       });
 
-      // Tab spawns the PTY (focus-terminal auto-starts a session when
-      // none exists). Wait for the agent's stdout marker to confirm the
-      // PTY is alive, then exit back to the sidebar with Ctrl+Space
-      // (\x00 — Tab is forwarded into the PTY when focused there).
-      await kirby.term.press('Tab');
+      // Worktree creation lands in the session menu; Enter starts the
+      // PTY. Wait for the agent's stdout marker to confirm the PTY is
+      // alive, then exit back to the sidebar with Ctrl+Space (\x00 —
+      // Tab is forwarded into the PTY when focused there).
+      await startFromSessionMenu(kirby.term);
       await expect(
         kirby.term.getByText('kirby-session-active').first()
       ).toBeVisible({ timeout: 10_000 });
