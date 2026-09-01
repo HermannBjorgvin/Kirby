@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/desktop.js';
-import { createWorktree, tab } from './setup/app.js';
+import { createWorktree, launchAgentFromRail, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
 import {
   UNSET_BACKEND,
@@ -28,7 +28,7 @@ test.skip(!tmuxAvailable(), 'tmux is not installed');
 const BRANCH = 'tmux-default';
 
 async function launchAgent(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+  await launchAgentFromRail(page);
   await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
     timeout: 30_000,
   });

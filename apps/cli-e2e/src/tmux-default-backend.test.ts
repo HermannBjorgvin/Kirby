@@ -47,8 +47,7 @@ test.describe('Terminal backend default (tmux detected)', () => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch);
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, branch, { start: true });
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
@@ -82,8 +81,7 @@ test.describe('Terminal backend explicitly set to pty', () => {
   test('a stored "pty" survives tmux being installed', async ({ kirby }) => {
     const branch = uniqueTmuxBranch();
 
-    await createSession(kirby.term, branch);
-    await kirby.term.press('Tab');
+    await createSession(kirby.term, branch, { start: true });
     // The agent is genuinely running, so the absence of a tmux session
     // below means "not through tmux" rather than "not yet".
     await expect(
