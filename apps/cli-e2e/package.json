@@ -9,6 +9,10 @@
       "type:app",
       "scope:cli-e2e"
     ],
+    "implicitDependencies": [
+      "cli",
+      "cli-wterm-host"
+    ],
     "targets": {
       "e2e": {
         "executor": "nx:run-commands",
