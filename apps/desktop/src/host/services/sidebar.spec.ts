@@ -296,6 +296,112 @@ describe('remote cache', () => {
   });
 });
 
+/**
+ * The tab strip spans repositories, and following a foreign tab opens
+ * its repository — so a user working across two checkouts switches back
+ * and forth all day. A cache with one slot made every switch a full
+ * refetch of the other side, which on a provider that spends a request
+ * per pull request is where a rate limit comes from.
+ */
+describe('across repositories', () => {
+  /** Fetch and settle one repo's pull requests. */
+  async function sync(cwd: string, value: Record<string, unknown>) {
+    env.cwd = cwd;
+    const model = sidebar.getSidebarModel();
+    await flush();
+    settle(env.fetchCount - 1, value);
+    await model;
+  }
+
+  it('does not refetch a repo it has already fetched when coming back', async () => {
+    await sync('/repo-a', { a: 1 });
+    await sync('/repo-b', { b: 1 });
+    expect(env.fetchCount).toBe(2);
+
+    // Back to the first, inside its TTL: the answer is already here.
+    env.cwd = '/repo-a';
+    await sidebar.getSidebarModel();
+    await flush();
+    expect(env.fetchCount).toBe(2);
+  });
+
+  it('keeps each repo’s last-sync time separately', async () => {
+    await sync('/repo-a', {});
+    env.now += 10_000;
+    await sync('/repo-b', {});
+
+    env.cwd = '/repo-a';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(1_000_000);
+    env.cwd = '/repo-b';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(1_010_000);
+  });
+
+  it('lets a fetch land for the repo it was started for, after a switch', async () => {
+    // Switching away used to retire the in-flight fetch, so the repo it
+    // was for ended up with nothing cached and refetched on return.
+    env.cwd = '/repo-a';
+    const slow = sidebar.getSidebarModel();
+    await flush();
+
+    env.cwd = '/repo-b';
+    const other = sidebar.getSidebarModel();
+    await flush();
+    settle(1, { b: 1 });
+    await other;
+
+    settle(0, { a: 1 });
+    await slow;
+
+    env.cwd = '/repo-a';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
+    await sidebar.getSidebarModel();
+    await flush();
+    expect(env.fetchCount).toBe(2);
+  });
+
+  it('reports only this repo as syncing while another one fetches', async () => {
+    env.cwd = '/repo-a';
+    const slow = sidebar.getSidebarModel();
+    await flush();
+    expect(sidebar.getSyncState().remoteSyncing).toBe(true);
+
+    env.cwd = '/repo-b';
+    expect(sidebar.getSyncState().remoteSyncing).toBe(false);
+
+    env.cwd = '/repo-a';
+    settle(0);
+    await slow;
+  });
+
+  it('forgets the least recently fetched repo rather than growing forever', async () => {
+    for (let i = 0; i < 9; i++) {
+      env.now += 1_000;
+      await sync(`/repo-${i}`, {});
+    }
+    expect(env.fetchCount).toBe(9);
+
+    // The ninth eviction takes the first repo; the second is still here.
+    env.cwd = '/repo-1';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
+    env.cwd = '/repo-0';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
+  });
+
+  it('drops every repo’s cache when the credentials change', async () => {
+    await sync('/repo-a', {});
+    await sync('/repo-b', {});
+
+    env.cwd = '/repo-a';
+    sidebar.onCredentialsChanged();
+    await flush();
+
+    // The token is global, so what the other checkout fetched was
+    // fetched as somebody else too.
+    env.cwd = '/repo-b';
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
+  });
+});
+
 describe('sidebar model', () => {
   it('shows a worktree its real branch name, not the sanitized session name', async () => {
     // Session names flatten slashes, and only branches with a PR are in

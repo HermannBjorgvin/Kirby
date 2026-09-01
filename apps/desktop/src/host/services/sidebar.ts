@@ -26,6 +26,16 @@ import type { SyncState } from '../contract.js';
  * poll the model frequently without hammering the provider API. The
  * TUI's `prPollInterval` config drives the TTL.
  *
+ * **The cache holds one entry per repository, not one entry.** The tab
+ * strip spans repositories and following a foreign tab opens its
+ * repository, so a user working across two checkouts switches back and
+ * forth constantly. A single slot meant every switch evicted the
+ * other repository's pull requests and refetched them from scratch —
+ * on Azure DevOps, where a cycle costs a request per pull request,
+ * that is what a rate limit is made of. Entries are bounded and the
+ * least recently fetched is dropped, so the map cannot grow with every
+ * repository ever opened.
+ *
  * **The model never waits for the network.** A cold start has no
  * cached pull requests, and awaiting them here meant the sidebar — the
  * whole left half of the window, including worktrees git could have
@@ -42,19 +52,29 @@ import type { SyncState } from '../contract.js';
 
 const DEFAULT_REMOTE_MS = 60_000;
 
+/**
+ * How many repositories' pull requests to keep. Enough to cover moving
+ * between the checkouts one person has open at once; past that the
+ * least recently fetched goes, because a cache that never forgets is a
+ * leak wearing a hat.
+ */
+const MAX_CACHED_REPOS = 8;
+
 interface RemoteCache {
-  cwd: string;
   prMap: BranchPrMap;
   fetchedAt: number;
 }
 
-let cache: RemoteCache | null = null;
-let inflight: { cwd: string; promise: Promise<BranchPrMap> } | null = null;
+const cache = new Map<string, RemoteCache>();
+const inflight = new Map<string, Promise<BranchPrMap>>();
 let lastError: string | null = null;
-// Monotonic fetch id: only the latest fetch may commit to the cache,
-// so a slow pre-refresh response can't overwrite a forced refresh's
-// fresher data with a fresh timestamp.
-let fetchSeq = 0;
+// Monotonic fetch id *per repository*: only the latest fetch for a repo
+// may commit its result, so a slow pre-refresh response can't overwrite
+// a forced refresh's fresher data with a fresh timestamp. Per repo
+// rather than global, or switching away mid-fetch retires a fetch that
+// was going to answer correctly for the repo it was started for — and
+// switching back then has nothing cached.
+const fetchSeq = new Map<string, number>();
 // Every fetch this process has started. Reported in the sync state so
 // "did the credential change actually trigger one?" is answerable
 // without waiting to see whether it succeeded.
@@ -88,13 +108,31 @@ function resolveProvider(cwd: string) {
 
 /** What the cache can answer right now, without going anywhere. */
 function cachedPrMap(cwd: string): BranchPrMap {
-  return cache && cache.cwd === cwd ? cache.prMap : {};
+  return cache.get(cwd)?.prMap ?? {};
 }
 
-/** The cache, if it is this repo's and still inside its TTL. */
+/** The cache for this repo, if it is still inside its TTL. */
 function freshCache(cwd: string, ttl: number): RemoteCache | null {
-  if (!cache || cache.cwd !== cwd) return null;
-  return Date.now() - cache.fetchedAt < ttl ? cache : null;
+  const entry = cache.get(cwd);
+  if (!entry) return null;
+  return Date.now() - entry.fetchedAt < ttl ? entry : null;
+}
+
+/** Record a repo's pull requests, evicting the stalest if the map is full. */
+function remember(cwd: string, prMap: BranchPrMap): void {
+  cache.set(cwd, { prMap, fetchedAt: Date.now() });
+  while (cache.size > MAX_CACHED_REPOS) {
+    let oldest: string | null = null;
+    let oldestAt = Infinity;
+    for (const [key, entry] of cache) {
+      if (entry.fetchedAt < oldestAt) {
+        oldestAt = entry.fetchedAt;
+        oldest = key;
+      }
+    }
+    if (oldest === null) break;
+    cache.delete(oldest);
+  }
 }
 
 async function fetchRemote(
@@ -104,7 +142,7 @@ async function fetchRemote(
 ): Promise<BranchPrMap> {
   const { config, provider, configured } = resolveProvider(cwd);
   if (!provider || !configured) {
-    cache = { cwd, prMap: {}, fetchedAt: Date.now() };
+    remember(cwd, {});
     lastError = null;
     return {};
   }
@@ -112,35 +150,35 @@ async function fetchRemote(
     ? null
     : freshCache(cwd, remoteIntervalMs(config.prPollInterval));
   if (fresh) return fresh.prMap;
-  // Join an in-flight fetch only when it is for this repo and the
-  // caller isn't forcing a refresh — a forced refresh (or a repo
-  // switch mid-fetch) starts its own request so it can't resolve
-  // against another repo's (or a pre-change) response.
-  if (inflight && inflight.cwd === cwd && !force) return inflight.promise;
-  const seq = ++fetchSeq;
+  // Join an in-flight fetch for this repo unless the caller is forcing
+  // a refresh — a forced one starts its own request so it cannot
+  // resolve against a pre-change response.
+  const joinable = inflight.get(cwd);
+  if (joinable && !force) return joinable;
+  const seq = (fetchSeq.get(cwd) ?? 0) + 1;
+  fetchSeq.set(cwd, seq);
   fetchCount += 1;
   const promise = provider
     .fetchPullRequests(config.vendorAuth, config.vendorProject)
     .then((prMap) => {
-      if (seq === fetchSeq) {
-        cache = { cwd, prMap, fetchedAt: Date.now() };
+      if (seq === fetchSeq.get(cwd)) {
+        remember(cwd, prMap);
         lastError = null;
         onCommit?.();
       }
       return prMap;
     })
     .catch((err: unknown) => {
-      if (seq === fetchSeq) {
+      if (seq === fetchSeq.get(cwd)) {
         lastError = err instanceof Error ? err.message : String(err);
       }
       // Serve stale data on failure rather than blanking the sidebar.
-      if (cache && cache.cwd === cwd) return cache.prMap;
-      return {};
+      return cache.get(cwd)?.prMap ?? {};
     })
     .finally(() => {
-      if (inflight?.promise === promise) inflight = null;
+      if (inflight.get(cwd) === promise) inflight.delete(cwd);
     });
-  inflight = { cwd, promise };
+  inflight.set(cwd, promise);
   return promise;
 }
 
@@ -216,10 +254,10 @@ export function getSyncState(): SyncState {
   return {
     providerId: provider?.id ?? null,
     providerConfigured: configured,
-    lastRemoteSyncAt: cache && cache.cwd === cwd ? cache.fetchedAt : null,
+    lastRemoteSyncAt: cache.get(cwd)?.fetchedAt ?? null,
     lastGitSyncAt: getSyncDecorations().lastGitSyncAt,
     remoteError: lastError,
-    remoteSyncing: inflight !== null,
+    remoteSyncing: inflight.has(cwd),
     remoteIntervalMs: remoteIntervalMs(config.prPollInterval),
     remoteFetches: fetchCount,
   };
@@ -243,10 +281,13 @@ export async function refreshRemote(): Promise<void> {
  */
 export function onCredentialsChanged(): void {
   const cwd = requireRepo();
-  cache = null;
-  inflight = null;
+  // Every repository, not just this one: `vendorAuth` is global, so a
+  // replaced token invalidates what any of them fetched.
+  cache.clear();
+  inflight.clear();
   lastError = null;
-  fetchSeq += 1;
+  // Retire every fetch already in the air, whichever repo it was for.
+  for (const [key, seq] of fetchSeq) fetchSeq.set(key, seq + 1);
   void fetchRemote(cwd, true, () => remoteUpdated?.()).catch(() => {
     // fetchRemote records failures in lastError rather than rejecting;
     // a rejection here must not take the main process down.
@@ -256,8 +297,9 @@ export function onCredentialsChanged(): void {
 
 /** Test hook: forget cached remote data. */
 export function resetRemoteCache(): void {
-  cache = null;
-  inflight = null;
+  cache.clear();
+  inflight.clear();
+  fetchSeq.clear();
   lastError = null;
   fetchCount = 0;
 }
