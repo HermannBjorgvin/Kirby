@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
+  UNSET_BACKEND,
+  killKirbySessions,
+  tmuxAvailable,
+} from './setup/tmux.js';
+import {
   agentSpinner,
   createWorktree,
   focusTerminal,
@@ -256,14 +261,29 @@ test.describe('Terminal fit', () => {
     cols: number;
     rows: number;
   }
+  interface Report extends Grid {
+    /** Which agent said so. */
+    pid: string;
+  }
 
-  /** Every grid the agent has reported, oldest first. */
-  async function reportedGrids(page: Page): Promise<Grid[]> {
+  /** Every grid an agent has reported, oldest first. */
+  async function reportedGrids(page: Page): Promise<Report[]> {
     const text = await page.evaluate(() => document.body.innerText);
-    return [...text.matchAll(/size:(\d+)x(\d+)/g)].map((m) => ({
+    return [...text.matchAll(/size:(\d+)x(\d+)#(\d+)/g)].map((m) => ({
       cols: Number(m[1]),
       rows: Number(m[2]),
+      pid: m[3],
     }));
+  }
+
+  /** The agent currently reporting, once it has said anything. */
+  async function currentPid(page: Page): Promise<string> {
+    await expect
+      .poll(async () => (await reportedGrids(page)).length, {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
+    return (await reportedGrids(page)).at(-1)!.pid;
   }
 
   /**
@@ -308,18 +328,22 @@ test.describe('Terminal fit', () => {
   /**
    * Wait for the agent to settle on the grid that fills its pane.
    *
-   * `after` is how many `size:` lines were already on screen. A restart
-   * leaves the previous agent's scrollback in place, so reading the last
-   * line without waiting for a new one reads the *old* agent's size —
-   * and passes on a terminal that never resized at all.
+   * `notPid` is the agent that was there before. Without it a restart
+   * reads the *previous* agent's last line — still on screen, and still
+   * correct — and passes on a terminal that never resized at all.
    */
-  async function expectAgentFillsPane(page: Page, after = 0): Promise<void> {
+  async function expectAgentFillsPane(
+    page: Page,
+    notPid?: string
+  ): Promise<void> {
     const expected = await paneGrid(page);
     await expect
       .poll(
         async () => {
-          const grids = await reportedGrids(page);
-          return grids.length > after ? grids[grids.length - 1] : null;
+          const last = (await reportedGrids(page))
+            .filter((g) => g.pid !== notPid)
+            .at(-1);
+          return last ? { cols: last.cols, rows: last.rows } : null;
         },
         { timeout: 20_000 }
       )
@@ -335,7 +359,7 @@ test.describe('Terminal fit', () => {
     await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
 
     await expectAgentFillsPane(page);
-    const before = (await reportedGrids(page)).length;
+    const before = await currentPid(page);
 
     // Stopped from the rail, the tab stays open and the terminal stays
     // mounted — nothing about it changes size, so a fit that only speaks
@@ -386,5 +410,50 @@ test.describe('Terminal fit', () => {
     await startSessionFromMenu(page);
     await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
     await expectAgentFillsPane(page);
+  });
+
+  /**
+   * The same restart, through tmux.
+   *
+   * A tmux session outlives the local PTY that shows it, and tmux sizes
+   * a window to the client attached to it — so the renderer's resize has
+   * one more hop to survive here than it does on a bare PTY.
+   */
+  test.describe('under tmux', () => {
+    test.skip(!tmuxAvailable(), 'tmux is not installed');
+    test.use({
+      kirbyConfig: {
+        ...UNSET_BACKEND,
+        aiCommand: fakeAgent({ printSize: true }),
+      },
+    });
+    // Closing the app detaches rather than kills, by design.
+    test.afterEach(({ desktop }) => killKirbySessions(desktop.homeDir));
+
+    test('a restarted tmux agent is given the pane too', async ({
+      desktop,
+    }) => {
+      const { page } = desktop;
+      await createWorktree(page, 'tmux-refit');
+      await launchAgentFromRail(page);
+      await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+      await expectAgentFillsPane(page);
+      const before = await currentPid(page);
+
+      await page.getByLabel('Stop agent').filter({ visible: true }).click();
+      await expect
+        .poll(
+          async () => {
+            const s = await page.evaluate(() => window.kirby.listSessions());
+            return s.filter((x) => x.running).length;
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(0);
+
+      await launchAgentFromRail(page);
+      await expectAgentFillsPane(page, before);
+    });
   });
 });
