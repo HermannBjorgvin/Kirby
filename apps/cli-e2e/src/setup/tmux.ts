@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { basename, resolve } from 'node:path';
 
 /**
  * Helpers for asserting on the tmux sessions Kirby creates.
@@ -23,6 +25,10 @@ const KIRBY_PREFIX = 'kirby-';
  *  sessions can't be caught in the blast radius. */
 const E2E_BRANCH_PREFIX = 'e2e-tmux-';
 
+/** Basename prefix of the temp homes the fixture creates. The tmux
+ *  socket lives inside one, and `socketEnv` refuses any other dir. */
+const HOME_PREFIX = 'kirby-e2e-web-home-';
+
 /** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
  *  the config file altogether — the state the tmux-when-detected default
  *  applies to. The fixture writes `'pty'` otherwise. */
@@ -44,18 +50,41 @@ export function uniqueTmuxBranch(): string {
   return `${E2E_BRANCH_PREFIX}${randomBytes(3).toString('hex')}`;
 }
 
-/** The environment that reaches the test's own tmux server — the same
- *  `TMUX_TMPDIR` the fixture spawns Kirby with. Empty is refused rather
- *  than defaulted: falling back to the shared socket would make these
- *  helpers act on a developer's real sessions. */
+/** The socket dir a tmux helper is about to use, proven to be one of
+ *  this run's throwaway homes.
+ *
+ *  Two things decide which tmux server a command reaches, and checking
+ *  only the first is the trap that makes this worth asserting:
+ *
+ *    - `TMUX_TMPDIR` picks the directory the socket lives in. Its
+ *      default is the OS temp dir, i.e. the developer's own
+ *      `/tmp/tmux-$UID/default`.
+ *    - `TMUX` names a socket path outright and **wins**. A suite
+ *      started from inside a tmux session — which is how Kirby's own
+ *      agents run — reaches the developer's server no matter what
+ *      `TMUX_TMPDIR` says.
+ *
+ *  These helpers kill sessions by name pattern, and on that server the
+ *  `kirby-` names are the user's running agents. So the socket is
+ *  proven rather than assumed, and anything unproven throws.
+ */
 function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   if (!tmuxTmpdir) {
     throw new Error('tmux helpers need the test homeDir (TMUX_TMPDIR)');
   }
-  const env = { ...process.env, TMUX_TMPDIR: tmuxTmpdir };
-  // `$TMUX` names a socket outright and wins over TMUX_TMPDIR, so
-  // running the suite from inside a tmux session would point every one
-  // of these helpers at the developer's own server.
+  if (resolve(tmuxTmpdir) === resolve(tmpdir())) {
+    throw new Error(
+      `refusing to use the default tmux socket dir (${tmuxTmpdir}) — ` +
+        "that is the developer's own tmux server"
+    );
+  }
+  if (!basename(tmuxTmpdir).startsWith(HOME_PREFIX)) {
+    throw new Error(
+      `${tmuxTmpdir} is not a ${HOME_PREFIX}* temp home created by the fixture`
+    );
+  }
+  const env: NodeJS.ProcessEnv = { ...process.env, TMUX_TMPDIR: tmuxTmpdir };
+  // Removed, not overridden: while it is set tmux ignores TMUX_TMPDIR.
   delete env.TMUX;
   delete env.TMUX_PANE;
   return env;

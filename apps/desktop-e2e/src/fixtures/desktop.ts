@@ -242,6 +242,12 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // app's sessions on the developer's own tmux server.
     delete parentEnv.TMUX;
     delete parentEnv.TMUX_PANE;
+    // The suite exists to drive the *built* app. This variable makes the
+    // main process load the Vite dev server instead, and the desktop dev
+    // orchestrator exports it into every shell it starts — so a run from
+    // one of those terminals silently tests a different bundle, or, once
+    // the dev server is gone, a blank window and 30s timeouts.
+    delete parentEnv.KIRBY_VITE_URL;
 
     const app = await electron.launch({
       args: [
