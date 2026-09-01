@@ -77,6 +77,8 @@ vi.mock('@kirby/core', () => ({
         }
       : undefined,
   isSessionAlive: (name: string) => state.alive.has(name),
+  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+    config.terminalBackend ?? 'tmux',
   killSession: () => undefined,
   checkoutPlan: () => Promise.resolve('spawned'),
   buildReviewLaunchRequest: () => ({ intent: 'blank' }),

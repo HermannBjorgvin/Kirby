@@ -42,7 +42,10 @@ import {
   worktreesBasePath,
 } from '@kirby/worktree-manager';
 import { isSessionAlive } from '../pty-registry.js';
-import { listPersistedTmuxSessions } from '../session-backend.js';
+import {
+  listPersistedTmuxSessions,
+  resolveTerminalBackend,
+} from '../session-backend.js';
 import {
   diffScans,
   type DiscoveredWorktree,
@@ -175,6 +178,13 @@ export function startSessionDiscovery(
     let adopted = 0;
     for (const worktree of delta.adoptable) {
       if (stopped || !isCurrent()) return adopted;
+      // Every offer came from a live tmux session, and Settings can
+      // swap the backend while this loop awaits — its own guard sees an
+      // empty registry, because nothing has attached yet. Carrying on
+      // would spawn a raw PTY agent into a worktree that already has a
+      // live tmux agent in it, so the preference is re-read rather than
+      // taken from the config this scan opened with.
+      if (resolveTerminalBackend(getConfig()) !== 'tmux') return adopted;
       // Re-checked per iteration, not once in `diffScans`: an earlier
       // attach in this same loop can take long enough for the user to
       // launch this session themselves, and handing a live one to

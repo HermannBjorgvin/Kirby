@@ -38,6 +38,8 @@ vi.mock('../pty-registry.js', () => ({
 }));
 vi.mock('../session-backend.js', () => ({
   listPersistedTmuxSessions: () => listPersistedMock(),
+  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+    config.terminalBackend ?? 'tmux',
 }));
 
 import { startSessionDiscovery } from './session-discovery.js';
@@ -404,6 +406,29 @@ describe('startSessionDiscovery', () => {
           current = false; // the user opens another repo mid-flight
         });
       const { discovery } = start({ adopt, isCurrent: () => current });
+      await discovery.scanNow();
+      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual(['first']);
+    });
+
+    // Settings can swap the backend while an attach is awaiting, and
+    // its own guard sees an empty registry because nothing has attached
+    // yet. Spawning a raw PTY agent into a worktree that already has a
+    // live tmux agent is what this prevents.
+    it('stops attaching when the backend is switched away from tmux', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('first', 'second'));
+      listPersistedMock.mockReturnValue(new Set(['first', 'second']));
+      let backend: 'pty' | 'tmux' = 'tmux';
+      const adopt = vi
+        .fn<(wt: DiscoveredWorktree) => Promise<void>>()
+        .mockImplementation(async (wt) => {
+          await Promise.resolve();
+          alive.add(wt.name);
+          backend = 'pty'; // the user picks PTY in Settings mid-flight
+        });
+      const { discovery } = start({
+        adopt,
+        getConfig: () => ({ terminalBackend: backend }),
+      });
       await discovery.scanNow();
       expect(adopt.mock.calls.map((c) => c[0].name)).toEqual(['first']);
     });

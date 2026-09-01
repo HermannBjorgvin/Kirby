@@ -597,6 +597,37 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 
 - **Both e2e fixtures write `terminalBackend: 'pty'` under every test's config.** Not one test in either suite ever set the key, so with the tmux default they would all have flipped to tmux on any machine that has it — and app exit only _detaches_ a tmux session, so each one would leak a live agent. A test that wants the unconfigured state passes `terminalBackend: undefined`, which drops the key from the written file (`UNSET_BACKEND`). The desktop fixture also drops `KIRBY_VITE_URL`, which the dev orchestrator exports into every shell it starts and which points the suite at a dev server instead of the built app.
 
+- **Kirby notices sessions it did not start.** A worktree or a tmux
+  agent can appear while Kirby is running — a second instance, a script,
+  or an operator running `git worktree add … && tmux new-session -d -s
+  kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
+  (`libs/core/src/lib/discovery/`) scans every 4s, diffs against the
+  previous observation (`diffScans`, pure) and attaches through the
+  normal `spawnSession` path, so tmux's `new-session -A` resumes the
+  running agent instead of starting a second one. Both shells subscribe
+  to the one scanner: the TUI from `useSessionManager`, the desktop from
+  `host/services/discovery.ts` (which pushes `kirby/sidebar/discovered`
+  so the renderer's query cache refetches). It replaced the desktop's
+  `restorePersistedSessions` — the first scan does that job — so there is
+  no separate restore path any more. **Polling was chosen deliberately**:
+  a scan is two forks and ~5.5ms (measured), flat in worktree count
+  because `listPersistedTmuxSessions` asks about the whole set in one
+  `tmux list-sessions`. tmux hooks are per-server global state that two
+  Kirby instances overwrite for each other, and a `tmux -C` control
+  client participates in window sizing — it would resize the user's agent
+  panes, and `attach-session -f ignore-size` needs tmux 3.2, above the
+  2.0 floor. A non-recursive `fs.watch` on the resolver's base directory
+  only shortens latency; losing it costs nothing but speed. Two guards
+  are load-bearing and each has a test that fails without it: the attach
+  loop re-reads `isSessionAlive` per iteration (an earlier attach can
+  take long enough for the user to launch that session, and handing a
+  live one to `spawnSession` disposes the PTY behind the pane they are
+  looking at) and re-reads `resolveTerminalBackend` (Settings can swap to
+  PTY mid-loop, and its own guard sees an empty registry because nothing
+  has attached yet). A failing attach is retried a few times, then
+  retired — and a retired name is passed into `diffScans` as
+  `suppressed`, because counting it as a change refreshed both shells
+  every tick forever.
 - **Tmux backend persistence.** Tmux is optional. When selected, the backend spawns `tmux new-session -A -s NAME -- CMD` via the local PTY — `-A` makes the call atomic + idempotent so first launch and resume-after-restart share one code path. **A tmux server keeps the env it was started with** and spawns every session command with it, so the backend pins `-e HOME/-e PATH` + the caller's seed additions per session (tmux ≥ 3.2) — without this, a stale server on the default socket (e.g. left by a test run with a temp HOME) silently kills every agent at launch, and seeded prompts never reach the command at all. E2e runs set `TMUX_TMPDIR` to their temp HOME so test servers can't squat on the user's default socket. `dispose()` detaches the local PTY only; the tmux session keeps running so the next Kirby launch reattaches. `kill()` (called when the user explicitly removes a worktree) runs `tmux kill-session` first. This means **`killAll()` on Kirby exit must call `dispose()`**, not `kill()` — otherwise the persistence benefit is lost.
 - **Desktop uses native OS elements where they exist.** Application menu (`apps/desktop/src/main/menu.ts` → `Menu.setApplicationMenu`, commands reach the renderer via `onMenuCommand`), context menus (`window.kirby.showContextMenu` → `Menu.popup`), native dialogs/about box, optional native window frame (`desktop-prefs.json` → `nativeFrame`). Web-rendered menus are only for things the OS can't express (rich dialogs, command palette). VS Code is inspiration for the shell, not a template.
 - **Desktop review flow mirrors the TUI.** Launching an agent on any PR item opens the same menu (session / review / review with instructions); `launchReviewAgent` creates the worktree if needed and seeds the agent with `buildReviewLaunchRequest` from app-core (shared with the TUI's confirm menu, so prompt + `kirby util add-comment` guidance are identical). Agent drafts live in `~/.kirby/reviews/pr-<id>/comments.json`; the desktop polls them (`useDraftComments`), renders `DraftCard`s at their anchor in the diff, and posts through `@kirby/review-comments` `postReviewComments` (same poster as the TUI). A PR tab is a review workspace (`components/review/PrWorkspace.tsx`): a persistent, collapsible left rail (Agent · Files · Comments) beside one content pane that swaps between the diff and the agent terminal. The rail owns Launch/Stop; selecting a file or comment shows the diff (`DiffPane` — meta strip + the Unified/Split/Wrap/Hide-resolved/post-drafts/comment-nav toolbar lives here, not in the tab header, so it's gone in terminal view); selecting Agent shows the terminal (kept mounted so scrollback survives). Launching an agent auto-selects the terminal once. When the agent has written draft comments, the rail shows a **Review ready** entry (severity breakdown) that opens `ReviewStepper` in the content pane — a guided walkthrough of the drafts in severity order, each with a code snippet (`SnippetView`) and Edit/Discard/Skip/Post (keyboard e/d/↵, arrows to move); posting advances to the next. `lib/diff/diff-model.ts` has `orderDraftsForReview`/`severityCounts`/`snippetAround` (tested). Terminal fit: `SessionTerminal` measures its pane and calls `WTerm.resize` on ready/visible/resize (autoResize alone latched a stale size until a window resize). Editor tabs are keyed by PR id (renderer `itemKey`), stable as a PR moves between sidebar kinds (launching an agent turns an orphan/review PR into a session row) so the open tab never orphans. The sidebar list and the tab strip are two stores that can disagree, and every tab bug so far has come from reconciling them in pieces — so there is exactly one reconciliation point: `Workspace` feeds the item list to `sync-items`, and `lib/tabs/tabs-model.ts` re-keys stale tabs, opens a tab per newly running agent (history in `autoOpened`, so a closed tab stays closed) and pins previews with a live agent, in one pure step. Add nothing to that seam from an effect. `apps/desktop/src/host/services/sidebar.ts` attaches the alive session name to PR items; comment markdown renders images host-fetched with provider auth and its paragraphs render as `<div>` (block images/skeletons can't nest in `<p>`); `ErrorBoundary` wraps each tab so one bad view can't blank the window.
