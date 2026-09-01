@@ -5,7 +5,12 @@ vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
-import { tmuxHasSession, tmuxKillSession, tmuxVersion } from './tmux-cli.js';
+import {
+  tmuxHasSession,
+  tmuxKillSession,
+  tmuxListSessions,
+  tmuxVersion,
+} from './tmux-cli.js';
 
 const mockedExec = vi.mocked(execFileSync);
 
@@ -73,5 +78,36 @@ describe('tmuxHasSession', () => {
     const call = mockedExec.mock.calls[0]!;
     expect(call[0]).toBe('tmux');
     expect(call[1]).toEqual(['has-session', '-t', 'kirby-baz']);
+  });
+});
+
+describe('tmuxListSessions', () => {
+  it('returns one name per line of `list-sessions -F`', () => {
+    mockedExec.mockReturnValueOnce(
+      'kirby-abc-feature-x\nkirby-abc-feature-y\nunrelated\n' as unknown as Buffer
+    );
+    expect(tmuxListSessions()).toEqual([
+      'kirby-abc-feature-x',
+      'kirby-abc-feature-y',
+      'unrelated',
+    ]);
+    const call = mockedExec.mock.calls[0]!;
+    expect(call[0]).toBe('tmux');
+    expect(call[1]).toEqual(['list-sessions', '-F', '#{session_name}']);
+  });
+
+  it('returns [] when there is no server (non-zero exit)', () => {
+    mockedExec.mockImplementationOnce(() => {
+      throw Object.assign(new Error('exit'), {
+        status: 1,
+        stderr: 'no server running on /tmp/tmux-1000/default',
+      });
+    });
+    expect(tmuxListSessions()).toEqual([]);
+  });
+
+  it('drops blank lines rather than yielding empty names', () => {
+    mockedExec.mockReturnValueOnce('one\n\n  \ntwo\n' as unknown as Buffer);
+    expect(tmuxListSessions()).toEqual(['one', 'two']);
   });
 });
