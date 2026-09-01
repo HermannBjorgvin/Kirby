@@ -9,10 +9,10 @@ import {
   type AgentSession,
   type SidebarItem,
 } from '@kirby/core';
-import { PROVIDERS, requireRepo } from './repo.js';
+import { PROVIDERS, activeRepoIs, requireRepo } from './repo.js';
 import { isOwnSessionAlive } from './sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
-import type { SyncState } from '../contract.js';
+import type { SidebarModel, SyncState } from '../contract.js';
 
 /**
  * Assemble the unified, ordered sidebar model exactly like the TUI's
@@ -267,6 +267,28 @@ export async function getSidebarModel(): Promise<SidebarItem[]> {
     sync.merged,
     sync.conflicts
   );
+}
+
+/**
+ * The sidebar stamped with the repository it describes — what the
+ * renderer is handed.
+ *
+ * `getSidebarModel` reads the open repository more than once over its
+ * awaits (the worktree list, then which sessions are this repo's), so a
+ * switch landing in between yields rows of one repository with the
+ * live state of another. Rather than stamp that, it is computed again
+ * for the repository the host is on now, and stamped with that one; the
+ * renderer then knows exactly which workspace the answer is for. Bounded,
+ * because a host that keeps switching under the call has a bigger
+ * problem than a stale sidebar.
+ */
+export async function getSidebarSnapshot(): Promise<SidebarModel> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cwd = requireRepo();
+    const items = await getSidebarModel();
+    if (activeRepoIs(cwd)) return { cwd, items };
+  }
+  throw new Error('The open repository kept changing while listing it');
 }
 
 export function getSyncState(): SyncState {

@@ -21,6 +21,10 @@ import {
   installFakeGh,
   type FakeGitHub,
 } from '../setup/fake-gh.js';
+import {
+  addExternalWorktree,
+  startExternalTmuxSession,
+} from '../setup/external.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -114,6 +118,15 @@ export interface DesktopOptions {
    * credentials; without this it behaves as a repo with no provider.
    */
   githubToken?: string;
+  /**
+   * Agent sessions already running when the app starts — the state
+   * after a previous run whose agents were left in tmux. Each is a
+   * worktree added with plain git plus a tmux session under the name
+   * Kirby uses, on the test's own socket. Needs `terminalBackend:
+   * 'tmux'` to be found. Data rather than a callback: Playwright
+   * reads a function-valued option as a fixture definition.
+   */
+  liveSessions?: { branch: string; command: string }[];
 }
 
 export interface DesktopApp {
@@ -207,6 +220,23 @@ function seedHome(
   return opts.fakeGitHub ? installFakeGh(homeDir, opts.fakeGitHub) : {};
 }
 
+/** Start the agents a test wants already running when the app comes up. */
+function seedLiveSessions(
+  repoPath: string,
+  homeDir: string,
+  sessions: { branch: string; command: string }[] | undefined
+): void {
+  for (const { branch, command } of sessions ?? []) {
+    startExternalTmuxSession({
+      repoPath,
+      homeDir,
+      branch,
+      worktreePath: addExternalWorktree(repoPath, branch),
+      command,
+    });
+  }
+}
+
 export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   kirbyConfig: [undefined, { option: true }],
   projectConfig: [undefined, { option: true }],
@@ -217,6 +247,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   githubToken: [undefined, { option: true }],
   drafts: [undefined, { option: true }],
   fakeGitHub: [undefined, { option: true }],
+  liveSessions: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -229,6 +260,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       githubToken,
       drafts,
       fakeGitHub,
+      liveSessions,
     },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
@@ -271,6 +303,8 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // one of those terminals silently tests a different bundle, or, once
     // the dev server is gone, a blank window and 30s timeouts.
     delete parentEnv.KIRBY_VITE_URL;
+
+    seedLiveSessions(repoPath, homeDir, liveSessions);
 
     const app = await electron.launch({
       args: [

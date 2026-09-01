@@ -1,8 +1,16 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { KirbyHostApi, RepoInfo } from '../../../host/contract.js';
+import type {
+  KirbyHostApi,
+  RepoInfo,
+  SidebarItem,
+} from '../../../host/contract.js';
 import { keys, resetRepoScopedCache } from './query-keys.js';
-import { loadBranchRemovalSafety, loadRepoGate } from './queries.js';
+import {
+  loadBranchRemovalSafety,
+  loadRepoGate,
+  loadSidebarModel,
+} from './queries.js';
 
 /**
  * The renderer runs in a browser; these tests run in node. Only the
@@ -151,5 +159,45 @@ describe('resetRepoScopedCache', () => {
     // A worktree removal pending in the old repo would otherwise keep
     // hiding a same-named sidebar row in the new one.
     expect(qc.getMutationCache().getAll()).toHaveLength(0);
+  });
+});
+
+describe('loadSidebarModel', () => {
+  const row = (name: string): SidebarItem => ({
+    kind: 'session',
+    session: { name, running: true },
+    branch: name,
+    isMerged: false,
+  });
+
+  it('takes the rows when the host answers for this repository', async () => {
+    stubHost({
+      getSidebarModel: () =>
+        Promise.resolve({ cwd: '/repo', items: [row('feature')] }),
+    });
+    await expect(loadSidebarModel('/repo', [row('old')])).resolves.toEqual([
+      row('feature'),
+    ]);
+  });
+
+  it('keeps the rows it had when the host answers for another one', async () => {
+    // The state a repo switch passes through: the host has moved on,
+    // this workspace is still polling. The other repository's rows
+    // must never reach this repository's tabs.
+    stubHost({
+      getSidebarModel: () =>
+        Promise.resolve({ cwd: '/elsewhere', items: [row('theirs')] }),
+    });
+    await expect(loadSidebarModel('/repo', [row('mine')])).resolves.toEqual([
+      row('mine'),
+    ]);
+  });
+
+  it('shows nothing rather than another repository’s rows on a first poll', async () => {
+    stubHost({
+      getSidebarModel: () =>
+        Promise.resolve({ cwd: '/elsewhere', items: [row('theirs')] }),
+    });
+    await expect(loadSidebarModel('/repo', undefined)).resolves.toEqual([]);
   });
 });

@@ -14,6 +14,9 @@ const env = vi.hoisted(() => ({
   config: {} as Record<string, unknown>,
   configured: true,
   worktrees: [] as { branch?: string; state?: string }[],
+  /** When set, the next worktree listing waits until it is called. */
+  releaseWorktrees: null as (() => void) | null,
+  holdWorktrees: false,
   /** Resolvers for each provider fetch, in call order. */
   pending: [] as {
     resolve: (v: Record<string, unknown>) => void;
@@ -28,6 +31,7 @@ const env = vi.hoisted(() => ({
 
 vi.mock('./repo.js', () => ({
   requireRepo: () => env.cwd,
+  activeRepoIs: (cwd: string) => cwd === env.cwd,
   PROVIDERS: [
     {
       id: 'github',
@@ -61,7 +65,13 @@ vi.mock('@kirby/vcs-core', () => ({
 }));
 
 vi.mock('@kirby/worktree-manager', () => ({
-  listWorktrees: () => Promise.resolve(env.worktrees),
+  listWorktrees: () =>
+    env.holdWorktrees
+      ? new Promise<typeof env.worktrees>((resolve) => {
+          env.holdWorktrees = false;
+          env.releaseWorktrees = () => resolve(env.worktrees);
+        })
+      : Promise.resolve(env.worktrees),
   worktreeSessionName: (wt: { branch?: string }) =>
     (wt.branch ?? 'detached').replace(/\//g, '-'),
 }));
@@ -102,6 +112,8 @@ beforeEach(async () => {
   env.config = {};
   env.configured = true;
   env.worktrees = [];
+  env.holdWorktrees = false;
+  env.releaseWorktrees = null;
   env.pending = [];
   env.fetchCount = 0;
   env.forgetCount = 0;
@@ -597,5 +609,34 @@ describe('the model never waits for the provider', () => {
 
     expect(env.fetchCount).toBe(1);
     expect(announced).toBe(0);
+  });
+});
+
+describe('getSidebarSnapshot', () => {
+  it('stamps the rows with the repository they describe', async () => {
+    env.worktrees = [{ branch: 'feature' }];
+    const snapshot = await sidebar.getSidebarSnapshot();
+    expect(snapshot.cwd).toBe('/repo-a');
+    expect(snapshot.items).toHaveLength(1);
+  });
+
+  it('answers for the repository the host is on once a switch lands mid-call', async () => {
+    // The worktree list is where the call awaits; the host moves to
+    // another repository while it is out. Stamping the rows that come
+    // back with either repo would be wrong — they were listed under
+    // one and had their sessions judged under the other — so the
+    // snapshot is the new repository's, computed whole.
+    env.worktrees = [{ branch: 'from-a' }];
+    env.holdWorktrees = true;
+    const pending = sidebar.getSidebarSnapshot();
+    await flush();
+    env.cwd = '/repo-b';
+    env.worktrees = [{ branch: 'from-b' }];
+    env.releaseWorktrees?.();
+    const snapshot = await pending;
+    expect(snapshot.cwd).toBe('/repo-b');
+    expect(snapshot.items).toEqual([
+      expect.objectContaining({ name: 'from-b' }),
+    ]);
   });
 });

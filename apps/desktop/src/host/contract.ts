@@ -146,6 +146,22 @@ export interface RecentRepoEntry {
 
 // ── Sync (remote PR data) ────────────────────────────────────────
 
+/**
+ * The sidebar as the host answers it, together with the repository it
+ * describes.
+ *
+ * The host holds one repository and answers for whichever one that is;
+ * the renderer keys the answer by the repository *it* has open. The
+ * two disagree while a switch is in flight — the host has moved on and
+ * the previous workspace is still mounted and polling — and without
+ * the stamp an answer about the new repository lands in the old one's
+ * cache and is reconciled into its tabs.
+ */
+export interface SidebarModel {
+  cwd: string;
+  items: SidebarItem[];
+}
+
 export interface SyncState {
   providerId: string | null;
   providerConfigured: boolean;
@@ -294,7 +310,9 @@ export interface KirbyHostApi {
   ): Promise<void>;
 
   // ── Sidebar (unified worktrees + PRs + reviews, TUI order) ────
-  getSidebarModel(): Promise<SidebarItem[]>;
+  /** The sidebar of the open repository, stamped with which one that
+   *  is — see `SidebarModel`. */
+  getSidebarModel(): Promise<SidebarModel>;
   getSyncState(): Promise<SyncState>;
   /** Drop the remote PR cache and re-fetch now. */
   refreshRemote(): Promise<void>;
