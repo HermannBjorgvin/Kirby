@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock the underlying child_process.execFile call. Both `useDiffData`
-// (for git fetch / diff) and `diff-fetcher` (for `resolveRef` /
-// `fetchFileDiffText`) reach for the same module, so a single mock
-// covers the whole graph.
+// Mock the underlying child_process calls. Both `useDiffData` (for git
+// fetch / diff, through `execFile`) and `diff-fetcher` (for `resolveRef`
+// / `fetchFileDiffText`, through the streaming `runGit`, which spawns)
+// reach for the same module, so one mock covers the whole graph — but it
+// has to answer on both entry points, or a spawned call escapes to real
+// git and reports the test repo's refs instead of the scripted ones.
 //
 // The real module is spread back in because importing @kirby/core
 // loads its whole barrel, and worktree-manager promisifies `exec` at
@@ -16,24 +18,47 @@ type ExecFileCallback = (
 ) => void;
 
 const execFileMock = vi.fn();
-vi.mock('node:child_process', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  execFile: (
-    cmd: string,
-    args: string[],
-    opts: unknown,
-    cb: ExecFileCallback
-  ) => {
-    // promisified execFile passes (cmd, args, opts?, cb) — opts may
-    // be a function if omitted.
-    const callback: ExecFileCallback =
-      typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
-    Promise.resolve(execFileMock(cmd, args)).then(
-      (stdout: string) => callback(null, { stdout, stderr: '' }),
-      (err: Error) => callback(err, null)
-    );
-  },
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const { EventEmitter } = await import('node:events');
+  return {
+    ...(await importOriginal<object>()),
+    execFile: (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb: ExecFileCallback
+    ) => {
+      // promisified execFile passes (cmd, args, opts?, cb) — opts may
+      // be a function if omitted.
+      const callback: ExecFileCallback =
+        typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
+      Promise.resolve(execFileMock(cmd, args)).then(
+        (stdout: string) => callback(null, { stdout, stderr: '' }),
+        (err: Error) => callback(err, null)
+      );
+    },
+    // `runGit` streams, so it needs a child with stdout/stderr and a
+    // close event. Answers from the same script as execFile, one chunk.
+    spawn: (cmd: string, args: string[]) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        kill: () => undefined,
+      });
+      Promise.resolve(execFileMock(cmd, args)).then(
+        (stdout: string) => {
+          child.stdout.emit('data', Buffer.from(stdout));
+          child.emit('close', 0);
+        },
+        (err: Error) => {
+          child.stderr.emit('data', Buffer.from(err.message));
+          child.emit('close', 1);
+        }
+      );
+      return child;
+    },
+  };
+});
 
 const { fetchAllFiles, __resetTargetFetchTtlForTest } = await import(
   './useDiffData.js'

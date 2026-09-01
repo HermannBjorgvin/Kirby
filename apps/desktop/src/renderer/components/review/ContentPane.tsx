@@ -47,6 +47,7 @@ export function ContentPane({
   branch,
   baseBranch,
   sessionName,
+  sessionEpoch,
   active,
   files,
   filesByName,
@@ -77,6 +78,9 @@ export function ContentPane({
   branch: string;
   baseBranch: string;
   sessionName?: string;
+  /** Changes when a new agent is spawned into this pane — see
+   *  `SessionTerminal`, which re-fits its grid on it. */
+  sessionEpoch: number;
   active: boolean;
   files: [string, DiffLine[]][];
   filesByName: Map<string, DiffLine[]>;
@@ -117,11 +121,12 @@ export function ContentPane({
     ? general.filter((t) => !t.isResolved)
     : general;
   return (
-    <div className="relative h-full min-h-0">
+    <div data-terminal-pane className="relative h-full min-h-0">
       {sessionName && (
         <StackedPane visible={effMode === 'agent'}>
           <SessionTerminal
             name={sessionName}
+            epoch={sessionEpoch}
             active={active && effMode === 'agent'}
           />
         </StackedPane>

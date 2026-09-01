@@ -1,10 +1,12 @@
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
+  agentSpinner,
   createWorktree,
   focusTerminal,
   launchAgentFromRail,
   sidebarRow,
+  startSessionFromMenu,
   tab,
   tabs,
   visibleText,
@@ -234,5 +236,155 @@ test.describe('Pasting an image', () => {
         timeout: 2_000,
       });
     }).toPass({ timeout: 30_000 });
+  });
+});
+
+/**
+ * The grid a relaunched agent is given.
+ *
+ * An agent draws itself to whatever size its terminal hands it, so a
+ * terminal on the wrong grid looks like the agent misbehaving. A launch
+ * can only estimate the pane, so the PTY starts on a guess and is
+ * corrected once the terminal has measured itself — but a restart into a
+ * pane that already holds a correctly-sized terminal moves nothing, and
+ * the correction never came.
+ */
+test.describe('Terminal fit', () => {
+  test.use({ kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) } });
+
+  interface Grid {
+    cols: number;
+    rows: number;
+  }
+
+  /** Every grid the agent has reported, oldest first. */
+  async function reportedGrids(page: Page): Promise<Grid[]> {
+    const text = await page.evaluate(() => document.body.innerText);
+    return [...text.matchAll(/size:(\d+)x(\d+)/g)].map((m) => ({
+      cols: Number(m[1]),
+      rows: Number(m[2]),
+    }));
+  }
+
+  /**
+   * The grid that fills the terminal on screen, measured off its own
+   * box and cell metrics — so this says nothing about how the app
+   * computes a grid, only how much of the pane the agent covers.
+   */
+  async function paneGrid(page: Page): Promise<Grid> {
+    return page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('.wterm');
+      const row = el?.querySelector<HTMLElement>('.term-row');
+      if (!el || !row) throw new Error('no terminal on screen');
+      const style = getComputedStyle(el);
+      const probe = document.createElement('div');
+      probe.className = 'term-row';
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      const span = document.createElement('span');
+      span.textContent = 'W'.repeat(40);
+      probe.appendChild(span);
+      el.appendChild(probe);
+      const charWidth = span.getBoundingClientRect().width / 40;
+      probe.remove();
+      const box = el.getBoundingClientRect();
+      const inner = {
+        width:
+          box.width -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight),
+        height:
+          box.height -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      };
+      return {
+        cols: Math.floor(inner.width / charWidth),
+        rows: Math.floor(inner.height / row.getBoundingClientRect().height),
+      };
+    });
+  }
+
+  /**
+   * Wait for the agent to settle on the grid that fills its pane.
+   *
+   * `after` is how many `size:` lines were already on screen. A restart
+   * leaves the previous agent's scrollback in place, so reading the last
+   * line without waiting for a new one reads the *old* agent's size —
+   * and passes on a terminal that never resized at all.
+   */
+  async function expectAgentFillsPane(page: Page, after = 0): Promise<void> {
+    const expected = await paneGrid(page);
+    await expect
+      .poll(
+        async () => {
+          const grids = await reportedGrids(page);
+          return grids.length > after ? grids[grids.length - 1] : null;
+        },
+        { timeout: 20_000 }
+      )
+      .toEqual(expected);
+  }
+
+  test('an agent restarted in place is given the pane it is drawn in', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'restart');
+    await launchAgentFromRail(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+    await expectAgentFillsPane(page);
+    const before = (await reportedGrids(page)).length;
+
+    // Stopped from the rail, the tab stays open and the terminal stays
+    // mounted — nothing about it changes size, so a fit that only speaks
+    // up when wterm's own grid moved has nothing to say, and the new PTY
+    // keeps whatever the launch request guessed.
+    await page.getByLabel('Stop agent').filter({ visible: true }).click();
+    await expect
+      .poll(
+        async () => {
+          const s = await page.evaluate(() => window.kirby.listSessions());
+          return s.filter((x) => x.running).length;
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(0);
+
+    await launchAgentFromRail(page);
+    await expectAgentFillsPane(page, before);
+  });
+
+  test('a tab closed and launched again comes back on the pane\'s grid', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'refit');
+    await launchAgentFromRail(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+    await expectAgentFillsPane(page);
+
+    // Closing the tab takes the idle agent with it and tears the wterm
+    // instance down; the relaunch mounts a fresh one.
+    await expect(agentSpinner(page)).toHaveCount(0, { timeout: 20_000 });
+    await tab(page, /refit/)
+      .getByLabel('Close tab')
+      .click();
+    await expect(tabs(page)).toHaveCount(0);
+    await expect
+      .poll(
+        async () => {
+          const s = await page.evaluate(() => window.kirby.listSessions());
+          return s.filter((x) => x.running).length;
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(0);
+
+    await sidebarRow(page, /refit/).dblclick();
+    await startSessionFromMenu(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+    await expectAgentFillsPane(page);
   });
 });

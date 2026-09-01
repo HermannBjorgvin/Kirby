@@ -45,12 +45,15 @@ export function fakeAgent(
     streamMs?: number;
     /** Print the seed prompt the launcher handed it, `seed:`-prefixed. */
     printSeed?: boolean;
+    /** Print the PTY grid as `size:<cols>x<rows>`, and again on resize. */
+    printSize?: boolean;
   } = {}
 ): string {
   const flags = [`--banner=kirby-fake-agent-ready`];
   if (opts.stream) flags.push('--stream');
   if (opts.echo) flags.push('--echo');
   if (opts.printSeed) flags.push('--print-seed');
+  if (opts.printSize) flags.push('--print-size');
   if (opts.streamMs != null) flags.push(`--stream-ms=${opts.streamMs}`);
   if (opts.intervalMs != null) flags.push(`--interval-ms=${opts.intervalMs}`);
   if (opts.exitAfterMs != null)

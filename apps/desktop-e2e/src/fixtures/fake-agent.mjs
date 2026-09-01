@@ -25,6 +25,11 @@
 //                        (KIRBY_SEED_PROMPT), one marked line per line, so
 //                        a test can prove what the agent was actually
 //                        started with rather than what the UI claimed.
+//   --print-size         print the PTY's grid as `size:<cols>x<rows>`, on
+//                        start and again on every SIGWINCH. A real agent
+//                        draws itself to whatever size it is given, so
+//                        this is the only way a test can see the size the
+//                        renderer actually asked for.
 //   --echo               echo each completed line of stdin back, so a test
 //                        can prove input travelled renderer → IPC → PTY →
 //                        agent → back. Line-buffered on purpose: a PTY in
@@ -54,6 +59,15 @@ if (args['print-seed']) {
   for (const line of (process.env.KIRBY_SEED_PROMPT ?? '').split('\n')) {
     process.stdout.write(`seed:${line}\r\n`);
   }
+}
+
+if (args['print-size']) {
+  const report = () => {
+    const { columns, rows } = process.stdout;
+    process.stdout.write(`size:${columns ?? 0}x${rows ?? 0}\r\n`);
+  };
+  report();
+  process.stdout.on('resize', report);
 }
 
 const timers = new Set();

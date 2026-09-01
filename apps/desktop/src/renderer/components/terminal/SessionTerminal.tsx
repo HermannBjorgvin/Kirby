@@ -20,9 +20,14 @@ import { errorMessage } from '../../lib/utils.js';
  */
 export function SessionTerminal({
   name,
+  epoch,
   active,
 }: {
   name: string;
+  /** When the PTY behind `name` was spawned. Restarting an agent keeps
+   *  the name, so this is the only thing that changes when the process
+   *  on the other end of this terminal is a new one. */
+  epoch: number;
   active: boolean;
 }) {
   const termRef = useRef<TerminalHandle>(null);
@@ -179,6 +184,14 @@ export function SessionTerminal({
   // skips a same-size SIGWINCH), so the terminal can come back stale or
   // blank. Bouncing the grid one row forces the app to repaint the
   // whole screen — the same thing a manual window resize did.
+  //
+  // The host is told the grid on every fit, not only when wterm's own
+  // grid moved. A launch can only *estimate* the pane, so the PTY starts
+  // on a guess and is corrected by the first `onResize` wterm emits —
+  // but restarting an agent in a pane that already holds a
+  // correctly-sized terminal moves nothing, emits nothing, and left the
+  // new agent drawing itself at the guess until the window was resized.
+  // `epoch` is what makes this run again for the new process.
   useEffect(() => {
     if (!ready) return;
     const el = wrapRef.current;
@@ -195,7 +208,10 @@ export function SessionTerminal({
           measureTerminalGrid(inst.element, rect) ?? estimateTerminalGrid(rect);
         if (grid.cols !== inst.cols || grid.rows !== inst.rows) {
           term.resize(grid.cols, grid.rows);
-        } else if (forceRepaint) {
+          return;
+        }
+        void window.kirby.resizeSession(name, grid.cols, grid.rows);
+        if (forceRepaint) {
           term.resize(grid.cols, grid.rows - 1);
           raf = requestAnimationFrame(() => term.resize(grid.cols, grid.rows));
         }
@@ -208,7 +224,7 @@ export function SessionTerminal({
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [ready, active]);
+  }, [ready, active, name, epoch]);
 
   return (
     <div ref={wrapRef} className="absolute inset-0">

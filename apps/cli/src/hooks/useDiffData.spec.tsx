@@ -15,25 +15,48 @@ type ExecFileCallback = (
 ) => void;
 
 const execFileMock = vi.fn();
-vi.mock('node:child_process', async (importOriginal) => ({
-  // The @kirby/app-core barrel drags in worktree-manager, which
-  // promisifies `exec` at import time — keep the rest of the module
-  // real and swap only `execFile`.
-  ...(await importOriginal<typeof ChildProcess>()),
-  execFile: (
-    cmd: string,
-    args: string[],
-    opts: unknown,
-    cb: ExecFileCallback
-  ) => {
-    const callback: ExecFileCallback =
-      typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
-    Promise.resolve(execFileMock(cmd, args)).then(
-      (stdout: string) => callback(null, { stdout, stderr: '' }),
-      (err: Error) => callback(err, null)
-    );
-  },
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const { EventEmitter } = await import('node:events');
+  return {
+    // The @kirby/app-core barrel drags in worktree-manager, which
+    // promisifies `exec` at import time — keep the rest of the module
+    // real and swap only what the hook's git surface uses.
+    ...(await importOriginal<typeof ChildProcess>()),
+    execFile: (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb: ExecFileCallback
+    ) => {
+      const callback: ExecFileCallback =
+        typeof opts === 'function' ? (opts as ExecFileCallback) : cb;
+      Promise.resolve(execFileMock(cmd, args)).then(
+        (stdout: string) => callback(null, { stdout, stderr: '' }),
+        (err: Error) => callback(err, null)
+      );
+    },
+    // diff-fetcher streams through `runGit`, so it spawns rather than
+    // buffering. Answered from the same script, in one chunk.
+    spawn: (cmd: string, args: string[]) => {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        kill: () => undefined,
+      });
+      Promise.resolve(execFileMock(cmd, args)).then(
+        (stdout: string) => {
+          child.stdout.emit('data', Buffer.from(stdout));
+          child.emit('close', 0);
+        },
+        (err: Error) => {
+          child.stderr.emit('data', Buffer.from(err.message));
+          child.emit('close', 1);
+        }
+      );
+      return child;
+    },
+  };
+});
 
 // `-z`: records are NUL-terminated (see parseNumstat in @kirby/app-core).
 const NUMSTAT = '5\t2\tsrc/foo.ts\0' + '10\t0\tsrc/bar.ts\0';
