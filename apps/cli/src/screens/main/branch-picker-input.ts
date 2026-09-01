@@ -1,7 +1,7 @@
 import {
   handleTextInput,
   type KeyPress,
-  hasSession,
+  isSessionAlive,
   requestSessionMenu,
 } from '@kirby/core';
 import {
@@ -23,7 +23,7 @@ import type { BranchPickerHandlerCtx } from './input-types.js';
  */
 function landInSession(ctx: BranchPickerHandlerCtx, sessionName: string): void {
   ctx.sidebar.selectByKey(`session:${sessionName}`);
-  if (hasSession(sessionName)) {
+  if (isSessionAlive(sessionName)) {
     ctx.pane.setPaneMode('terminal');
     ctx.pane.setReconnectKey((k) => k + 1);
     ctx.nav.setFocus('terminal');

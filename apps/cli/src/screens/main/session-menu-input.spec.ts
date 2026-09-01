@@ -22,7 +22,7 @@ let liveSessions = new Set<string>();
 
 vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
-  hasSession: (name: string) => liveSessions.has(name),
+  isSessionAlive: (name: string) => liveSessions.has(name),
   launchSession: vi.fn(),
 }));
 

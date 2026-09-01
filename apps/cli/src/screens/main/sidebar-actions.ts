@@ -55,8 +55,11 @@ function openSessionMenu(ctx: SidebarInputCtx, item: SidebarItem): void {
  * for a dormant one.
  */
 function enterRow(ctx: SidebarInputCtx, item: SidebarItem): void {
+  // Alive, not merely present: an agent that exited keeps its entry
+  // (and its final frame) in the registry, but has nothing to focus
+  // into — the menu offers to start it again.
   const name = ctx.sidebar.sessionNameForTerminal;
-  if (name && hasSession(name)) {
+  if (name && isSessionAlive(name)) {
     focusTerminal(ctx);
     return;
   }

@@ -23,12 +23,15 @@ import type { SidebarInputCtx } from './input-types.js';
 // breaks these tests.
 
 let liveSessions = new Set<string>();
+/** Sessions whose agent exited: still in the registry, no longer alive. */
+let exitedSessions = new Set<string>();
 const killSessionMock = vi.fn();
 
 vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => (liveSessions.has(name) ? 1 : undefined),
-  hasSession: (name: string) => liveSessions.has(name),
+  hasSession: (name: string) =>
+    liveSessions.has(name) || exitedSessions.has(name),
   isSessionAlive: (name: string) => liveSessions.has(name),
   killSession: (name: string) => killSessionMock(name),
 }));
@@ -264,6 +267,7 @@ function press(binding: readonly [string, KeyPress], ctx: SidebarInputCtx) {
 beforeEach(() => {
   vi.clearAllMocks();
   liveSessions = new Set();
+  exitedSessions = new Set();
   vi.mocked(listWorktrees).mockResolvedValue([]);
   vi.mocked(listAllBranches).mockResolvedValue([]);
   vi.mocked(canRemoveBranch).mockResolvedValue({ safe: true });
@@ -422,6 +426,22 @@ describe('sidebar handler — focus-terminal', () => {
     });
     expect(t.nav.setFocus).not.toHaveBeenCalled();
     expect(t.asyncOps.run).not.toHaveBeenCalled();
+  });
+
+  it('opens the session menu for a session whose agent exited', () => {
+    // The exited entry keeps its final frame in the registry, but there
+    // is nothing to focus into — offer to start it again.
+    exitedSessions.add('alpha');
+    const t = makeCtx({
+      selectedItem: sessionItem('alpha'),
+      sessionNameForTerminal: 'alpha',
+    });
+
+    press(KEYS.focusTerminal(), t.ctx);
+
+    expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('confirm');
+    expect(t.pane.setSessionMenu).toHaveBeenCalledOnce();
+    expect(t.nav.setFocus).not.toHaveBeenCalled();
   });
 
   it('opens the session menu with the PR for a PR row with no live PTY', () => {

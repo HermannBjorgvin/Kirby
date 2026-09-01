@@ -1,7 +1,7 @@
 import {
   handleTextInput,
   type KeyPress,
-  hasSession,
+  isSessionAlive,
   launchSession,
   buildReviewLaunchRequest,
   buildAgentOptions,
@@ -30,8 +30,8 @@ function closeMenu(ctx: SessionMenuHandlerCtx): void {
 }
 
 /**
- * Spawn (unless the PTY already exists), then refresh and move focus
- * into the started terminal. `launch` returns false to abort without
+ * Spawn (unless the agent is already alive — an exited one is
+ * relaunched), then refresh and move focus into the started terminal. `launch` returns false to abort without
  * focusing — no worktree, or the worktree could not be created.
  */
 function runStart(
@@ -41,7 +41,7 @@ function runStart(
   const name = ctx.sessionNameForTerminal;
   if (!name) return;
   void ctx.asyncOps.run('start-session', async () => {
-    if (!hasSession(name) && !(await launch())) return;
+    if (!isSessionAlive(name) && !(await launch())) return;
     await ctx.sessions.refreshSessions();
     if (ctx.selectedItem?.kind !== 'review-pr') {
       ctx.sidebar.selectByKey(`session:${name}`);

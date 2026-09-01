@@ -131,6 +131,30 @@ export function translateSelectKey(
   return reviewPr ? `review:${reviewPr.id}` : key;
 }
 
+/**
+ * Where the cursor is for this render: the requested key, translated
+ * for this render's maps, anchored against the committed list.
+ * `listChanged` selects reconciliation (follow the row, adopt on a
+ * miss) over plain key resolution — see the provider for why the two
+ * are kept apart. Both are idempotent, so this settles.
+ */
+export function anchorSelection(
+  items: SidebarItem[],
+  selection: SidebarSelection,
+  translatedKey: string | null,
+  listChanged: boolean
+): SidebarSelection {
+  const requested =
+    translatedKey === selection.key
+      ? selection
+      : { key: translatedKey, index: selection.index };
+  if (listChanged) return reconcileSelection(items, requested);
+  if (requested.key !== null) {
+    return selectionForKey(items, requested.key, requested);
+  }
+  return requested;
+}
+
 export interface SidebarContextValue {
   items: SidebarItem[];
   /** Resolved numeric index for rendering. Derived from selectedKey + items. */
@@ -226,16 +250,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
           sessionCtx.sessionBranchMap,
           sessionCtx.categorizedReviews
         );
-  let current =
-    translatedKey === selection.key
-      ? selection
-      : { key: translatedKey, index: selection.index };
-  if (anchoredItems !== items) {
-    current = reconcileSelection(items, selection);
-    setAnchoredItems(items);
-  } else if (current.key !== null) {
-    current = selectionForKey(items, current.key, current);
-  }
+  const listChanged = anchoredItems !== items;
+  const current = anchorSelection(items, selection, translatedKey, listChanged);
+  if (listChanged) setAnchoredItems(items);
   if (current.key !== selection.key || current.index !== selection.index) {
     setSelection(current);
   }

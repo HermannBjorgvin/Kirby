@@ -1,9 +1,11 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import { useConfig } from '@kirby/app-core';
+import { useConfig, useKeybindResolve } from '@kirby/app-core';
+import type { KeybindResolveValue } from '@kirby/app-core';
 import {
   buildAgentOptions,
+  keyDescriptorToString,
   sessionMenuOptions,
   type SessionMenuOptionKey,
 } from '@kirby/core';
@@ -60,12 +62,29 @@ function ReviewRows({
   );
 }
 
-const HINTS: Record<SessionMenuOptionKey, string> = {
-  start: 'j/k navigate · ←/→ agent · enter select · esc cancel',
-  review: 'j/k navigate · enter select · esc cancel',
-  instructions: 'type to add instructions · enter start · esc cancel',
-  cancel: 'j/k navigate · enter select · esc cancel',
-};
+/** Primary key of an action under the active preset. */
+function primaryKey(kb: KeybindResolveValue, actionId: string): string {
+  const desc = kb.bindings[actionId]?.[0];
+  return desc ? keyDescriptorToString(desc) : '?';
+}
+
+/** The hint line per row, spelled with the active preset's keys. */
+function buildHints(
+  kb: KeybindResolveValue
+): Record<SessionMenuOptionKey, string> {
+  const nav = `${kb.getNavKeys('confirm')} navigate`;
+  const agent = `${primaryKey(kb, 'confirm.cycle-agent-left')}/${primaryKey(
+    kb,
+    'confirm.cycle-agent-right'
+  )} agent`;
+  const rest = 'enter select · esc cancel';
+  return {
+    start: `${nav} · ${agent} · ${rest}`,
+    review: `${nav} · ${rest}`,
+    instructions: 'type to add instructions · enter start · esc cancel',
+    cancel: `${nav} · ${rest}`,
+  };
+}
 
 export const SessionMenuPane = memo(function SessionMenuPane({
   pr,
@@ -81,6 +100,8 @@ export const SessionMenuPane = memo(function SessionMenuPane({
   instruction: string;
 }) {
   const config = useConfig();
+  const keybinds = useKeybindResolve();
+  const hints = useMemo(() => buildHints(keybinds), [keybinds]);
   const agentOptions = useMemo(
     () => buildAgentOptions(config.config),
     [config.config]
@@ -119,7 +140,7 @@ export const SessionMenuPane = memo(function SessionMenuPane({
       </Box>
 
       <Box marginTop={1}>
-        <Text dimColor>{HINTS[optKey]}</Text>
+        <Text dimColor>{hints[optKey]}</Text>
       </Box>
     </Box>
   );
