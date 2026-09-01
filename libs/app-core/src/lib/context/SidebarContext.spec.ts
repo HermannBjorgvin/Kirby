@@ -182,44 +182,42 @@ describe('selectionForKey', () => {
 describe('translateSelectKey', () => {
   it('returns non-session keys unchanged', () => {
     const cr = makeCr();
-    expect(translateSelectKey('review:42', new Map(), new Map(), cr)).toBe(
-      'review:42'
-    );
-    expect(translateSelectKey('orphan:7', new Map(), new Map(), cr)).toBe(
-      'orphan:7'
-    );
+    expect(translateSelectKey('review:42', new Map(), cr)).toBe('review:42');
+    expect(translateSelectKey('orphan:7', new Map(), cr)).toBe('orphan:7');
   });
 
   it('returns session keys unchanged when the session has no PR', () => {
     const cr = makeCr();
     const sessionBranchMap = new Map([['my-feature', 'feature/my-feature']]);
-    const sessionPrMap = new Map<string, PullRequestInfo>();
-    expect(
-      translateSelectKey(
-        'session:my-feature',
-        sessionBranchMap,
-        sessionPrMap,
-        cr
-      )
-    ).toBe('session:my-feature');
+    expect(translateSelectKey('session:my-feature', sessionBranchMap, cr)).toBe(
+      'session:my-feature'
+    );
   });
 
   it('returns session keys unchanged when the PR is non-review (orphan/active by user)', () => {
-    // Author-side PR: the session row is rendered as `kind: 'session'`
-    // (active-pr section). selectByKey('session:foo') should match the
-    // session row directly — no translation needed.
-    const pr = makePr(99, 'feature/mine');
+    // Author-side PR (#99 on feature/mine): the session row is rendered
+    // as `kind: 'session'` (active-pr section), so the key is not in any
+    // review category and selectByKey('session:foo') matches the session
+    // row directly — no translation needed.
     const sessionBranchMap = new Map([['feature-mine', 'feature/mine']]);
-    const sessionPrMap = new Map([['feature-mine', pr]]);
     const cr = makeCr(); // PR is NOT in any review category
     expect(
-      translateSelectKey(
-        'session:feature-mine',
-        sessionBranchMap,
-        sessionPrMap,
-        cr
-      )
+      translateSelectKey('session:feature-mine', sessionBranchMap, cr)
     ).toBe('session:feature-mine');
+  });
+
+  it('translates from the branch alone, before the session has PR data', () => {
+    // Right after a worktree is created for a PR branch, the session is
+    // in the branch map but its PR data has not resolved yet — the row
+    // is already folded into the review PR, so the key must follow.
+    const cr = {
+      needsReview: [{ id: 42, sourceBranch: 'feat/x' } as PullRequestInfo],
+      waitingForAuthor: [],
+      approvedByYou: [],
+    };
+    expect(
+      translateSelectKey('session:feat-x', new Map([['feat-x', 'feat/x']]), cr)
+    ).toBe('review:42');
   });
 
   it('translates to review:${prId} when the branch is in needsReview', () => {
@@ -227,13 +225,11 @@ describe('translateSelectKey', () => {
     const sessionBranchMap = new Map([
       ['fixture-add-undo-feature', 'fixture/add-undo-feature'],
     ]);
-    const sessionPrMap = new Map([['fixture-add-undo-feature', pr]]);
     const cr = makeCr({ needsReview: [pr] });
     expect(
       translateSelectKey(
         'session:fixture-add-undo-feature',
         sessionBranchMap,
-        sessionPrMap,
         cr
       )
     ).toBe('review:38');
@@ -244,13 +240,11 @@ describe('translateSelectKey', () => {
     const sessionBranchMap = new Map([
       ['fixture-add-undo-feature', 'fixture/add-undo-feature'],
     ]);
-    const sessionPrMap = new Map([['fixture-add-undo-feature', pr]]);
     const cr = makeCr({ waitingForAuthor: [pr] });
     expect(
       translateSelectKey(
         'session:fixture-add-undo-feature',
         sessionBranchMap,
-        sessionPrMap,
         cr
       )
     ).toBe('review:38');
@@ -261,13 +255,11 @@ describe('translateSelectKey', () => {
     const sessionBranchMap = new Map([
       ['fixture-add-color-support', 'fixture/add-color-support'],
     ]);
-    const sessionPrMap = new Map([['fixture-add-color-support', pr]]);
     const cr = makeCr({ approvedByYou: [pr] });
     expect(
       translateSelectKey(
         'session:fixture-add-color-support',
         sessionBranchMap,
-        sessionPrMap,
         cr
       )
     ).toBe('review:37');

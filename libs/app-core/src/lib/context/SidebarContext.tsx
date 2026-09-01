@@ -113,21 +113,22 @@ export function selectionForKey(
 export function translateSelectKey(
   key: string,
   sessionBranchMap: Map<string, string>,
-  sessionPrMap: Map<string, PullRequestInfo>,
   categorizedReviews: CategorizedReviews
 ): string {
   if (!key.startsWith('session:')) return key;
   const sessionName = key.slice('session:'.length);
   const branch = sessionBranchMap.get(sessionName);
-  const pr = sessionPrMap.get(sessionName);
-  if (!branch || !pr) return key;
-  const isReviewBranch =
-    categorizedReviews.needsReview.some((p) => p.sourceBranch === branch) ||
-    categorizedReviews.waitingForAuthor.some(
-      (p) => p.sourceBranch === branch
-    ) ||
-    categorizedReviews.approvedByYou.some((p) => p.sourceBranch === branch);
-  return isReviewBranch ? `review:${pr.id}` : key;
+  if (!branch) return key;
+  // The review PR is looked up by branch, the same test `buildSidebarItems`
+  // folds on — not through the session's own PR data, which resolves
+  // seconds after the worktree exists and would leave a just-created
+  // session's key unmatched until then.
+  const reviewPr = [
+    ...categorizedReviews.needsReview,
+    ...categorizedReviews.waitingForAuthor,
+    ...categorizedReviews.approvedByYou,
+  ].find((p) => p.sourceBranch === branch);
+  return reviewPr ? `review:${reviewPr.id}` : key;
 }
 
 export interface SidebarContextValue {
@@ -223,7 +224,6 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       : translateSelectKey(
           selection.key,
           sessionCtx.sessionBranchMap,
-          sessionCtx.sessionPrMap,
           sessionCtx.categorizedReviews
         );
   let current =
