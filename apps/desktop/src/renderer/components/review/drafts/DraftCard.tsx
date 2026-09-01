@@ -1,5 +1,4 @@
 import {
-  BotIcon,
   CheckIcon,
   Loader2Icon,
   PencilIcon,
@@ -29,8 +28,7 @@ import {
 } from '../../../lib/data/mutations.js';
 import { useThreads } from '../../../lib/data/queries.js';
 import { totalCommentCount } from '../../../lib/diff/thread-model.js';
-import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
-import { Badge } from '../../ui/badge.js';
+import { cn, errorMessage } from '../../../lib/utils.js';
 import { Button } from '../../ui/button.js';
 import {
   Select,
@@ -40,15 +38,12 @@ import {
   SelectValue,
 } from '../../ui/select.js';
 import { Textarea } from '../../ui/textarea.js';
-import {
-  SEVERITIES,
-  SEVERITY_BADGE,
-  SEVERITY_RAIL,
-} from '../../../lib/review/severity.js';
+import { SEVERITIES, SEVERITY_RAIL } from '../../../lib/review/severity.js';
 import { CommentMarkdown } from '../comments/CommentMarkdown.js';
 import { ComposerNoticeLine } from '../comments/ComposerNotice.js';
 import { useComposerRefresh } from '../comments/use-composer-refresh.js';
-import { PlanAttachment, PlanControls } from '../PlanControls.js';
+import { PlanAttachment } from '../PlanControls.js';
+import { DraftHeader } from './DraftHeader.js';
 
 /**
  * The footer of a draft that is not being edited. Every button is
@@ -245,30 +240,11 @@ export function DraftCard({
         focused && 'ring-2 ring-primary/50'
       )}
     >
-      <div
-        className={cn(
-          'flex items-center gap-2 border-b border-border px-3 py-1.5 text-sm',
-          planControls.inPlan ? 'bg-primary/5' : 'bg-muted/40'
-        )}
-      >
-        <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Draft</span>
-        <Badge variant={SEVERITY_BADGE[draft.severity]}>{draft.severity}</Badge>
-        {showLocation && (
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {location}
-          </span>
-        )}
-        <span className="ml-auto text-xs text-muted-foreground">
-          {relativeTime(draft.createdAt)}
-        </span>
-        <PlanControls
-          inPlan={planControls.inPlan}
-          hasNote={planControls.note !== undefined}
-          onToggle={planControls.toggleInPlan}
-          onNote={planControls.startNote}
-        />
-      </div>
+      <DraftHeader
+        draft={draft}
+        location={showLocation ? location : null}
+        plan={planControls}
+      />
 
       {editing ? (
         <DraftEditor

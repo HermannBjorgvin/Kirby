@@ -2,6 +2,7 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CopyIcon,
   CornerDownRightIcon,
   MessageSquareIcon,
 } from 'lucide-react';
@@ -182,6 +183,38 @@ export function ThreadCard({
 }
 
 /**
+ * The thread's id, to copy.
+ *
+ * This is the string the provider knows the conversation by — a GitHub
+ * review-thread node id, an Azure DevOps thread id — and the same one
+ * an agent is given in a plan prompt and hands back through
+ * `kirby util add-comment --thread=…`. Having it on the card is what
+ * lets a reader point an agent at *this* conversation rather than
+ * describing where it is.
+ *
+ * Shown truncated, because it is an identifier and not prose; the full
+ * value is in the tooltip and on the clipboard.
+ */
+function ThreadIdButton({ id }: { id: string }) {
+  return (
+    <button
+      type="button"
+      title={`Thread id: ${id} — click to copy`}
+      aria-label={`Copy thread id ${id}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        void navigator.clipboard.writeText(id);
+        toast.success('Thread id copied');
+      }}
+      className="hidden shrink-0 items-center gap-1 rounded px-1 font-mono text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/card:opacity-100 focus-visible:opacity-100 sm:flex"
+    >
+      <span className="max-w-24 truncate">{id}</span>
+      <CopyIcon className="size-3 shrink-0" />
+    </button>
+  );
+}
+
+/**
  * The card's collapsed-state row: disclosure, author, location, a
  * one-line preview while closed, and the outdated/resolved badges.
  */
@@ -250,6 +283,7 @@ function ThreadSummary({
         </span>
       </button>
       <span className="flex shrink-0 items-center gap-1">
+        <ThreadIdButton id={thread.id} />
         <PlanControls
           inPlan={inPlan}
           hasNote={hasNote}

@@ -178,7 +178,14 @@ export interface RemoteCommentReply {
 }
 
 export interface RemoteCommentThread {
-  id: string; // thread ID (GitHub: reviewThread or IssueComment node ID, ADO: thread id)
+  /**
+   * The provider's own id for the thread — a GitHub `reviewThread` or
+   * `IssueComment` node id, an Azure DevOps thread id. Stable, and the
+   * value each provider's reply and resolve calls take, so it is also
+   * what gets handed to an agent (in the plan prompt, and in a draft's
+   * `threadId`) as the way to name one conversation among many.
+   */
+  id: string;
   file: string | null; // null = general PR comment (not file-specific)
   lineStart: number | null; // null for general comments
   lineEnd: number | null;

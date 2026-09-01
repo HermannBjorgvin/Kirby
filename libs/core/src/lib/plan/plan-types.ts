@@ -36,6 +36,8 @@ export interface LocalPlanItem extends PlanItemBase {
   /** ReviewComment.id */
   id: string;
   severity: CommentSeverity;
+  /** ReviewComment.threadId — the thread this draft answers, if any. */
+  threadId?: string;
 }
 
 export type PlanItem = RemotePlanItem | LocalPlanItem;
@@ -78,6 +80,7 @@ export function snapshotLocal(
     line: comment.lineStart,
     body: comment.body,
     severity: comment.severity,
+    ...(comment.threadId ? { threadId: comment.threadId } : {}),
     ...(annotation ? { annotation } : {}),
   };
 }

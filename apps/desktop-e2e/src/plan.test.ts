@@ -242,6 +242,12 @@ test.describe('Sending the plan', () => {
     ).toBeVisible();
     await expect(visibleText(page, /seed:### 2\. undo\.c:2/)).toBeVisible();
 
+    // Each item names the id the provider knows the thread by. Without
+    // it "comment 2" is a position in this prompt and nothing the agent
+    // can look up, reply to, or re-read.
+    await expect(visibleText(page, /seed:.*\(thread T1\)/)).toBeVisible();
+    await expect(visibleText(page, /seed:.*\(thread T2\)/)).toBeVisible();
+
     // Sent means sent: the queue is emptied, so the same comments are
     // not silently sent twice.
     await expect(planEntry(page)).toHaveCount(0);

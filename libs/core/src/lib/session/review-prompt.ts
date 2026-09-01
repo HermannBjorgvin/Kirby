@@ -26,6 +26,10 @@ export function buildReviewLaunchRequest(
     `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
     `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
     `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
+    `- Add --thread=<id> when the comment answers an existing review thread. ` +
+    `Thread ids come from the review data you are given (a plan prompt names ` +
+    `each one as "(thread <id>)"); they are the provider's own ids and are the ` +
+    `only way to say which conversation you mean.\n` +
     `- Comments appear live in the reviewer's diff viewer`;
 
   let prompt =
