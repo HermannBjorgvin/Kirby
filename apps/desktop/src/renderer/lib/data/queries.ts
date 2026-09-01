@@ -228,6 +228,14 @@ export function useThreads(cwd: string, prId: number) {
   });
 }
 
+/** The session menu's agent picker rows, configured default first. */
+export function useAgentOptions(cwd: string) {
+  return useQuery({
+    queryKey: keys.agentOptions(cwd),
+    queryFn: () => window.kirby.listAgentOptions(),
+  });
+}
+
 /**
  * Sessions the host has actually launched this run — running, or ended
  * with their final frame kept. This is the "does a PTY exist?" signal:

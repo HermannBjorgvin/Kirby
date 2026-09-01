@@ -24,6 +24,7 @@ export const keys = {
   branches: (cwd: string) => ['branches', cwd] as const,
   settings: (cwd: string) => ['settings', cwd] as const,
   sessions: (cwd: string) => ['sessions', cwd] as const,
+  agentOptions: (cwd: string) => ['agent-options', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
   worktreeDiff: (cwd: string, branch: string, target: string) =>

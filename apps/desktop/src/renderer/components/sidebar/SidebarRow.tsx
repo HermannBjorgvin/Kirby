@@ -6,7 +6,6 @@ import {
   useCreateWorktree,
   useKillSession,
   useOpenInEditor,
-  useLaunchAgent,
 } from '../../lib/data/mutations.js';
 import {
   itemBranch,
@@ -20,6 +19,7 @@ import {
   isSidebarRowCommand,
   sidebarRowMenuItems,
 } from '../../lib/sidebar/sidebar-row-menu.js';
+import { requestLaunchMenu } from '../../lib/sidebar/launch-menu-request.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { PrMeta } from './PrMeta.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';
@@ -39,7 +39,9 @@ function RowBadges({
   rebasing: boolean;
   conflictCount: number;
 }) {
-  const conflicts = `${conflictCount} conflict${conflictCount === 1 ? '' : 's'}`;
+  const conflicts = `${conflictCount} conflict${
+    conflictCount === 1 ? '' : 's'
+  }`;
   return (
     <>
       {merged && (
@@ -74,7 +76,6 @@ export function SidebarRow({
   onOpen: (preview: boolean) => void;
 }) {
   const { repo } = useRepo();
-  const launch = useLaunchAgent(repo.cwd);
   const kill = useKillSession(repo.cwd);
   const create = useCreateWorktree(repo.cwd);
   const openEditor = useOpenInEditor();
@@ -91,11 +92,13 @@ export function SidebarRow({
   const conflictCount =
     (item.kind === 'session' ? item.conflictCount : undefined) ?? 0;
 
-  const onLaunch = () =>
-    launch.mutate(
-      { branch, intent: 'continue-or-blank' },
-      { onError: (e) => toast.error(errorMessage(e)) }
-    );
+  // Launching goes through the tab's session menu, where the agent for
+  // this launch is chosen: open (and pin) the tab, and ask it for the
+  // menu. A live agent has nothing to choose — its tab just opens.
+  const onLaunch = () => {
+    if (!running) requestLaunchMenu(branch);
+    onOpen(false);
+  };
   const onKill = () =>
     sessionName &&
     kill.mutate(sessionName, { onError: (e) => toast.error(errorMessage(e)) });
@@ -107,13 +110,10 @@ export function SidebarRow({
     });
   };
 
-  // Double-click on an idle worktree row opens the tab AND starts the
-  // agent (the TUI's Enter behaviour). PR rows keep dblclick = open;
-  // their launch goes through the session/review menu in the tab.
-  const onDoubleClick = () => {
-    onOpen(false);
-    if (item.kind === 'session' && !running) onLaunch();
-  };
+  // Double-click and Enter on a row open the tab and, for an idle
+  // agent, its session menu (the TUI's Enter behaviour); a live agent's
+  // tab just opens. Single click stays a preview.
+  const onActivate = onLaunch;
 
   /** Native (OS) context menu — built from the item's state. */
   const openContextMenu = async (e: React.MouseEvent) => {
@@ -160,10 +160,10 @@ export function SidebarRow({
         role="button"
         tabIndex={0}
         onClick={() => onOpen(true)}
-        onDoubleClick={onDoubleClick}
+        onDoubleClick={onActivate}
         onContextMenu={(e) => void openContextMenu(e)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') onOpen(false);
+          if (e.key === 'Enter') onActivate();
         }}
         className={cn(
           'group flex w-full cursor-default items-center gap-2 py-[3px] pr-2 pl-4 text-base outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring/60',

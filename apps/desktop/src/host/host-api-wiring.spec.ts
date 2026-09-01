@@ -76,6 +76,7 @@ vi.mock('./services/sessions.js', () =>
   recorder('sessions', [
     'launchAgent',
     'launchReviewAgent',
+    'listAgentOptions',
     'checkoutPlan',
     'listSessions',
     'getSessionActivity',
@@ -176,6 +177,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
 
   ['launchAgent', [{ branch: 'b' }], 'sessions.launchAgent'],
   ['launchReviewAgent', [{ pr: {} }], 'sessions.launchReviewAgent'],
+  ['listAgentOptions', [], 'sessions.listAgentOptions'],
   [
     'checkoutPlan',
     [{ pr: {}, prompt: 'p', mode: 'inject' }],

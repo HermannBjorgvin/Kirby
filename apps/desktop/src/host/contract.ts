@@ -12,8 +12,8 @@
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
-export type { ReviewVerdict };
+import type { AgentId, PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
+export type { AgentId, ReviewVerdict };
 import type { LaunchIntent, SidebarItem } from '@kirby/core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
 export type { CommentSeverity, ReviewComment };
@@ -62,6 +62,12 @@ export interface RepoInfo {
 export interface SessionLaunchRequest {
   branch: string;
   intent: LaunchIntent;
+  /**
+   * Launch this agent instead of the configured one — the session
+   * menu's per-launch pick. Unset means the configured default, which
+   * also covers a custom `aiCommand` (the hidden test runner).
+   */
+  agentId?: AgentId;
   prompt?: string;
   /** Delivered as a native system prompt for agents that support it. */
   systemGuidance?: string;
@@ -74,6 +80,17 @@ export interface SessionSummary {
   name: string;
   running: boolean;
   spawnedAt: number;
+}
+
+/**
+ * One row of the session menu's agent picker. The configured agent
+ * comes first, labelled as the default; `id` is the registry id, or
+ * `'test'` for a custom `aiCommand`, which only ever appears in that
+ * first row.
+ */
+export interface AgentOptionView {
+  id: AgentId | 'test';
+  name: string;
 }
 
 /** Snapshot of a session's recent output (host-side ring buffer). */
@@ -330,6 +347,8 @@ export interface KirbyHostApi {
   /** Create the PR's worktree if needed and start/continue a review
    *  session seeded with the shared review prompt + guidance. */
   launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
+  /** The agents the session menu offers, configured default first. */
+  listAgentOptions(): Promise<AgentOptionView[]>;
   /** Send a composed plan to the PR's agent, creating the worktree and
    *  starting one when there is none. Rejects with the reason on
    *  failure, leaving the plan intact for a retry. */
@@ -437,6 +456,7 @@ export const IPC = {
   deleteDraftComment: 'kirby/drafts/delete',
   postDraftComments: 'kirby/drafts/post',
   launchReviewAgent: 'kirby/session/launch-review',
+  listAgentOptions: 'kirby/session/agent-options',
   checkoutPlan: 'kirby/session/checkout-plan',
   fetchDiffText: 'kirby/diff/text',
   fetchWorktreeDiffText: 'kirby/diff/worktree-text',

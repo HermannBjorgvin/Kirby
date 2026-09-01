@@ -57,6 +57,7 @@ const api: KirbyHostApi = {
 
   launchAgent: (req) => ipcRenderer.invoke(IPC.launchAgent, req),
   launchReviewAgent: (req) => ipcRenderer.invoke(IPC.launchReviewAgent, req),
+  listAgentOptions: () => ipcRenderer.invoke(IPC.listAgentOptions),
   checkoutPlan: (req) => ipcRenderer.invoke(IPC.checkoutPlan, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   getSessionActivity: () => ipcRenderer.invoke(IPC.getSessionActivity),

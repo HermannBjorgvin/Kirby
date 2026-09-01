@@ -20,6 +20,10 @@ import {
   itemKey,
   itemTitle,
 } from '../lib/sidebar/sidebar-model.js';
+import {
+  clearLaunchMenuRequest,
+  requestLaunchMenu,
+} from '../lib/sidebar/launch-menu-request.js';
 import { itemTabId, useRepoTabs } from '../lib/tabs/tabs.js';
 import { useTheme } from '../lib/theme.js';
 import { errorMessage, MOD } from '../lib/utils.js';
@@ -108,10 +112,14 @@ export function CommandPalette({
           (t.itemKey === key || t.id === tabId)
       );
     tabs.openItem(key);
+    // Land in the new worktree's session menu — the tab opens it once
+    // the item arrives (or straight away for a row that already exists).
+    requestLaunchMenu(branch);
     create.mutate(branch, {
       onSuccess: () => toast.success(`Worktree ready: ${branch}`, { id }),
       onError: (err) => {
         toast.error(errorMessage(err), { id });
+        clearLaunchMenuRequest(branch);
         // Take the optimistic tab back down with the error: its item is
         // never arriving, so it would otherwise sit on "Preparing…" for
         // the rest of the session. A tab that was already open is the
