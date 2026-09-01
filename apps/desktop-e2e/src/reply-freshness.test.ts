@@ -44,6 +44,23 @@ const GITHUB: FakeGitHub = {
 
 test.use({
   fakeGitHub: GITHUB,
+  // An agent-written draft on the same file, so the draft editor's own
+  // freshness check has something to open.
+  drafts: {
+    42: [
+      {
+        id: 'd1',
+        file: 'undo.c',
+        lineStart: 2,
+        lineEnd: 2,
+        severity: 'minor',
+        body: 'suggestion: name this something less generic.',
+        side: 'RIGHT',
+        status: 'draft',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+  },
   repo: {
     worktrees: [
       {
@@ -105,6 +122,25 @@ test.describe('Refreshing a thread before replying', () => {
   // asserting on here.
   test.describe('with a slow provider', () => {
     test.use({ fakeGitHub: { ...GITHUB, latencyMs: 400 } });
+
+    /** A draft is not anchored to a thread, so its editor checks the
+     *  whole pull request — and it is a separate wiring from the reply
+     *  footer's, on a card that paints before the threads query has
+     *  answered. */
+    test('the draft editor runs the same check', async ({ desktop }) => {
+      const { page } = desktop;
+      await openPr(page);
+
+      const draft = page.locator('[data-draft]').first();
+      await draft.scrollIntoViewIfNeeded();
+      await draft.getByRole('button', { name: 'Edit' }).click();
+
+      await expect(notice(page, 'checking')).toBeVisible({ timeout: 15_000 });
+      await expect(notice(page, 'checking')).toBeHidden({ timeout: 15_000 });
+      // Nothing landed, and a baseline taken before the threads query
+      // answered must not read its first response as news.
+      await expect(notice(page, 'arrived')).toHaveCount(0);
+    });
 
     test('the check is visibly run even when nothing has changed', async ({
       desktop,
