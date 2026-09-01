@@ -59,7 +59,17 @@ export function fakeAgent(
 }
 
 export interface DesktopOptions {
-  /** Written to $HOME/.kirby/config.json before launch. */
+  /**
+   * Written to `$HOME/.kirby/config.json` before launch, over an
+   * `aiCommand` + `terminalBackend: 'pty'` base.
+   *
+   * The backend base is deliberate: with the key absent the app
+   * resolves to tmux wherever tmux is installed, and closing the app
+   * only *detaches* a tmux session — so every agent-launching test
+   * would leave a live fake agent behind. A test about the default
+   * passes `terminalBackend: undefined`, which drops the key from the
+   * file entirely (see `UNSET_BACKEND` in `setup/tmux.ts`).
+   */
   kirbyConfig?: Record<string, unknown>;
   /**
    * Per-project config (vendor, org, repo…), written to the cwd-hashed
@@ -139,7 +149,17 @@ function seedHome(
   mkdirSync(kirby, { recursive: true });
   writeFileSync(
     join(kirby, 'config.json'),
-    JSON.stringify({ aiCommand: fakeAgent(), ...opts.kirbyConfig }, null, 2),
+    // `undefined` from the test's config drops the key, which is how a
+    // test asks for the unconfigured state — see `DesktopOptions`.
+    JSON.stringify(
+      {
+        aiCommand: fakeAgent(),
+        terminalBackend: 'pty',
+        ...opts.kirbyConfig,
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
