@@ -7,6 +7,7 @@ import type { Page, Locator } from '@playwright/test';
 //   ○  not-selected + stopped
 
 const SELECTED = '◉◎';
+const RUNNING = '◉●';
 const ANY = '◉◎●○';
 
 function escapeRegExp(s: string): string {
@@ -21,6 +22,11 @@ export function anyItem(title: string): RegExp {
   return new RegExp(`[${ANY}].*${escapeRegExp(title)}`);
 }
 
+/** A row with a live agent behind it, selected or not. */
+export function runningItem(title: string): RegExp {
+  return new RegExp(`[${RUNNING}].*${escapeRegExp(title)}`);
+}
+
 // Scope the icon-then-title regex to a single .term-row. Without this,
 // Playwright's getByText(/regex/) matches against any element's combined
 // text, so `.*` bridges across rows — e.g. `/[◉◎].*Add color support/`
@@ -31,5 +37,7 @@ export function sidebarLocator(page: Page, title: string) {
     selected: (): Locator =>
       page.locator('.term-row', { hasText: selectedItem(title) }),
     any: (): Locator => page.locator('.term-row', { hasText: anyItem(title) }),
+    running: (): Locator =>
+      page.locator('.term-row', { hasText: runningItem(title) }),
   };
 }

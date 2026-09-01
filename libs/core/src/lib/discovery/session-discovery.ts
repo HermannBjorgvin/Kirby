@@ -110,8 +110,11 @@ export function startSessionDiscovery(
    *  goes away, so a later session under the same name is tried again. */
   const failed = new Set<string>();
   let stopped = false;
-  let running: Promise<void> | null = null;
-  let queued: Promise<void> | null = null;
+  /** Resolves when the last scheduled scan has finished. Everything is
+   *  chained off it, which is what keeps two from overlapping. */
+  let tail: Promise<void> = Promise.resolve();
+  /** A scan that is scheduled but has not started looking yet. */
+  let pending: Promise<void> | null = null;
   let watcher: FSWatcher | null = null;
   let watchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -166,30 +169,31 @@ export function startSessionDiscovery(
     ensureWatch();
   }
 
-  function runOnce(): Promise<void> {
-    running = runScan()
-      // A scan runs on a timer with nobody to report to, and an
-      // unhandled rejection here would end the process.
-      .catch((err: unknown) => logError('discovery', err))
-      .finally(() => {
-        running = null;
-      });
-    return running;
-  }
-
-  /** Never two at once, and never a dropped request: whatever prompted
-   *  a call happened after the running scan had already looked, so the
-   *  returned promise settles only once a scan that could have seen it
-   *  has finished. Further callers join that queued scan rather than
-   *  stacking up more — they would all observe the same state anyway. */
+  /**
+   * Never two at once, and never a dropped request.
+   *
+   * Whatever prompted a call happened after any scan already in
+   * progress had looked, so that one cannot answer it — the returned
+   * promise settles only once a scan that started at or after the call
+   * has finished. A scan that is merely *scheduled* has not looked yet,
+   * so further callers join it rather than stacking up more; they would
+   * all observe the same state anyway.
+   */
   function scanNow(): Promise<void> {
     if (stopped) return Promise.resolve();
-    if (!running) return runOnce();
-    queued ??= running.then(() => {
-      queued = null;
-      return stopped ? undefined : runOnce();
-    });
-    return queued;
+    if (pending) return pending;
+    const scan = tail
+      .then(() => {
+        // Starting now, so it can no longer answer for a later caller.
+        pending = null;
+        return stopped ? undefined : runScan();
+      })
+      // A scan runs on a timer with nobody to report to, and an
+      // unhandled rejection here would end the process.
+      .catch((err: unknown) => logError('discovery', err));
+    pending = scan;
+    tail = scan;
+    return scan;
   }
 
   /** Watch the one directory worktrees are created in — not the

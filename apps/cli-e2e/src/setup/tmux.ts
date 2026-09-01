@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { basename, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 /**
  * Helpers for asserting on the tmux sessions Kirby creates.
@@ -160,4 +160,87 @@ export function cleanupTmuxSessions(
       /* already gone — best effort */
     }
   }
+}
+
+// ── Sessions created without Kirby ───────────────────────────────
+//
+// The other direction from the helpers above: instead of asserting on
+// what Kirby made, these *make* the thing Kirby is supposed to notice —
+// a worktree and a tmux session created the way a second Kirby, a
+// script or an operator at a shell would create them.
+
+/**
+ * The tmux session name Kirby composes for a session in this repo.
+ *
+ * Unlike the assertions above, creating a session has to get the hash
+ * exactly right, so it is derived the way Kirby derives it: sha256 of
+ * the **git toplevel** (not the fixture's `repoPath`, which can differ
+ * when tmpdir is a symlink), first 16 hex characters, with tmux's
+ * forbidden characters replaced.
+ */
+export function kirbyTmuxName(repoPath: string, sessionName: string): string {
+  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: repoPath,
+    encoding: 'utf8',
+  }).trim();
+  const key = createHash('sha256').update(root).digest('hex').slice(0, 16);
+  return `${KIRBY_PREFIX}${key}-${sessionName}`.replace(/[.:]/g, '-');
+}
+
+/**
+ * Add a worktree under the directory Kirby's default resolver owns,
+ * with plain git and no help from Kirby. Returns its absolute path.
+ */
+export function addExternalWorktree(repoPath: string, branch: string): string {
+  const path = join(repoPath, '.claude', 'worktrees', branch);
+  execFileSync('git', ['worktree', 'add', '-b', branch, path], {
+    cwd: repoPath,
+    stdio: 'ignore',
+  });
+  return path;
+}
+
+/**
+ * Start a detached tmux session under the name Kirby would use, on the
+ * test's own tmux server.
+ *
+ * `HOME` and `PATH` are pinned per session for the reason the backend
+ * pins them: a tmux server keeps the environment it was started with
+ * and spawns every session command with it, so whichever process
+ * happened to start the server would otherwise decide what the agent
+ * sees.
+ */
+export function startExternalTmuxSession(opts: {
+  repoPath: string;
+  homeDir: string;
+  branch: string;
+  worktreePath: string;
+  command: string;
+}): string {
+  const name = kirbyTmuxName(opts.repoPath, opts.branch);
+  execFileSync(
+    'tmux',
+    [
+      'new-session',
+      '-d',
+      '-s',
+      name,
+      '-c',
+      opts.worktreePath,
+      '-x',
+      '120',
+      '-y',
+      '40',
+      '-e',
+      `HOME=${opts.homeDir}`,
+      '-e',
+      `PATH=${process.env.PATH ?? ''}`,
+      '--',
+      '/bin/sh',
+      '-c',
+      opts.command,
+    ],
+    { stdio: 'ignore', env: socketEnv(opts.homeDir) }
+  );
+  return name;
 }
