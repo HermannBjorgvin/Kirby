@@ -26,6 +26,7 @@ import { Badge } from '../../ui/badge.js';
 import { CommentMarkdown } from './CommentMarkdown.js';
 import { PlanAttachment, PlanControls } from '../PlanControls.js';
 import { ThreadFooter } from './ThreadFooter.js';
+import { useComposerRefresh } from './use-composer-refresh.js';
 
 /**
  * One review thread. The root comment and every reply render as
@@ -57,6 +58,14 @@ export function ThreadCard({
   const resolve = useSetResolved(repo.cwd);
   const [draft, setDraft] = useState('');
   const [composing, setComposing] = useState(false);
+  // Opening the box refetches the thread, so a reply is never written
+  // against a conversation that has already moved on.
+  const refresh = useComposerRefresh(prId, thread.comments.length);
+  const openComposer = (next: boolean) => {
+    setComposing(next);
+    if (next) refresh.begin();
+    else refresh.end();
+  };
   // Expansion: user toggles win until the card is (re)focused, at
   // which point it always opens. Resolved threads start collapsed.
   const [override, setOverride] = useState<boolean | null>(null);
@@ -85,7 +94,7 @@ export function ThreadCard({
       {
         onSuccess: () => {
           setDraft('');
-          setComposing(false);
+          openComposer(false);
           if (alsoResolve && thread.canResolve && !thread.isResolved) {
             resolve.mutate(
               { prId, thread, resolved: true },
@@ -157,7 +166,8 @@ export function ThreadCard({
             canResolve={thread.canResolve}
             isResolved={thread.isResolved}
             composing={composing}
-            setComposing={setComposing}
+            setComposing={openComposer}
+            notice={refresh.notice}
             draft={draft}
             setDraft={setDraft}
             sending={reply.isPending}

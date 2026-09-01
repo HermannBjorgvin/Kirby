@@ -25,6 +25,12 @@
           "default",
           "^production",
           {
+            "projects": [
+              "desktop"
+            ],
+            "input": "production"
+          },
+          {
             "externalDependencies": [
               "@playwright/test",
               "electron"
@@ -54,6 +60,12 @@
         "inputs": [
           "default",
           "^production",
+          {
+            "projects": [
+              "desktop"
+            ],
+            "input": "production"
+          },
           {
             "externalDependencies": [
               "@playwright/test",

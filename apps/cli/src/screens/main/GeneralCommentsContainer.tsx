@@ -43,11 +43,16 @@ export function GeneralCommentsContainer({
     });
   };
 
+  /** Open the composer now; re-read the conversation behind it, so a
+   *  reply is never written against comments that have already moved
+   *  on in the cache this pane reads from. */
   const startReply = () => {
     const target = generalComments[pane.generalCommentsIndex];
     if (!target) return;
     pane.setReplyingToThreadId(target.id);
     pane.setReplyBuffer('');
+    diffBundle.remote.refresh();
+    flashStatus('Checking for new comments...');
   };
 
   const toggleResolved = () => {

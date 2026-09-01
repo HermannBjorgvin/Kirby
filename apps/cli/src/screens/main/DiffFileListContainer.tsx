@@ -123,6 +123,7 @@ export function DiffFileListContainer({
         remoteCtx: {
           replyToThread: diffBundle.remote.replyToThread,
           toggleResolved: diffBundle.remote.toggleResolved,
+          refresh: diffBundle.remote.refresh,
         },
         plan,
         prId,

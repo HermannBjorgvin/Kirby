@@ -1,9 +1,31 @@
 import { describe, expect, it } from 'vitest';
+import type { RemoteCommentThread } from '../../../host/contract.js';
 import {
+  composerRefreshNotice,
   firstNonEmptyLine,
   threadExpanded,
   threadLocation,
+  totalCommentCount,
 } from './thread-model.js';
+
+function thread(id: string, bodies: string[]): RemoteCommentThread {
+  return {
+    id,
+    file: 'a.ts',
+    lineStart: 1,
+    lineEnd: 1,
+    side: 'RIGHT',
+    isResolved: false,
+    isOutdated: false,
+    canResolve: true,
+    comments: bodies.map((body, i) => ({
+      id: `${id}-${i}`,
+      author: 'alice',
+      body,
+      createdAt: '2026-01-01T00:00:00Z',
+    })),
+  };
+}
 
 describe('threadExpanded', () => {
   it('opens an unresolved thread and collapses a resolved one', () => {
@@ -71,5 +93,75 @@ describe('firstNonEmptyLine', () => {
   it('is empty when the body has nothing in it', () => {
     expect(firstNonEmptyLine('')).toBe('');
     expect(firstNonEmptyLine('\n \n\t')).toBe('');
+  });
+});
+
+describe('composerRefreshNotice', () => {
+  it('reports the refetch while it is in flight', () => {
+    expect(
+      composerRefreshNotice({ checking: true, baseline: 2, current: 2 })
+    ).toEqual({ kind: 'checking', text: 'Checking for new comments…' });
+  });
+
+  /** The in-flight state wins: mid-refetch the count is whatever the
+   *  cache still holds, so counting against it would announce an
+   *  arrival that has not been read back yet. */
+  it('says it is checking even once the count has grown', () => {
+    expect(
+      composerRefreshNotice({ checking: true, baseline: 2, current: 3 })
+    ).toEqual({ kind: 'checking', text: 'Checking for new comments…' });
+  });
+
+  it('names how many comments landed while the composer opened', () => {
+    expect(
+      composerRefreshNotice({ checking: false, baseline: 2, current: 3 })
+    ).toEqual({
+      kind: 'arrived',
+      text: '1 new comment arrived — read it before replying.',
+    });
+    expect(
+      composerRefreshNotice({ checking: false, baseline: 2, current: 5 })
+    ).toEqual({
+      kind: 'arrived',
+      text: '3 new comments arrived — read them before replying.',
+    });
+  });
+
+  it('says nothing when the thread is unchanged', () => {
+    expect(
+      composerRefreshNotice({ checking: false, baseline: 2, current: 2 })
+    ).toBeNull();
+  });
+
+  /** A comment deleted upstream is not news the replier has to act on,
+   *  and "-1 new comments" would be worse than saying nothing. */
+  it('says nothing when the thread shrank', () => {
+    expect(
+      composerRefreshNotice({ checking: false, baseline: 4, current: 2 })
+    ).toBeNull();
+  });
+
+  it('says nothing before a composer has opened', () => {
+    expect(
+      composerRefreshNotice({ checking: false, baseline: null, current: 9 })
+    ).toBeNull();
+  });
+});
+
+describe('totalCommentCount', () => {
+  /** Replies count, not just roots: a thread that grew by an answer is
+   *  exactly the arrival the composer has to announce. */
+  it('counts every comment in every thread and general comment', () => {
+    expect(
+      totalCommentCount({
+        threads: [thread('t1', ['a', 'b']), thread('t2', ['c'])],
+        generalComments: [thread('g1', ['d'])],
+      })
+    ).toBe(4);
+  });
+
+  it('is zero before the query has answered', () => {
+    expect(totalCommentCount(undefined)).toBe(0);
+    expect(totalCommentCount({ threads: [], generalComments: [] })).toBe(0);
   });
 });

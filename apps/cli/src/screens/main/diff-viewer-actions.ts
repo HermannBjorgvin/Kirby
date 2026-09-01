@@ -237,11 +237,20 @@ function actionEditorEdit(a: DiffViewerActionCtx): void {
   ctx.sessions.flashStatus(`Opened comment in ${editor}`);
 }
 
+/**
+ * Open the reply composer, and re-read the thread behind it.
+ *
+ * The composer is usable on this keypress; the refetch is what stops a
+ * reply being written against a conversation that moved on while the
+ * PR view held it cached.
+ */
 function actionReplyToThread(a: DiffViewerActionCtx): void {
   const thread = selectedRemoteThread(a);
   if (!thread || !a.ctx.remoteCtx) return;
   a.ctx.pane.setReplyingToThreadId(thread.id);
   a.ctx.pane.setReplyBuffer('');
+  a.ctx.remoteCtx.refresh();
+  a.ctx.sessions.flashStatus('Checking for new comments...');
 }
 
 function actionToggleThreadResolved(a: DiffViewerActionCtx): void {

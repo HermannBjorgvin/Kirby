@@ -7,9 +7,18 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { toast } from 'sonner';
-import type { CommentSeverity, ReviewComment } from '../../../../host/contract.js';
+import type {
+  CommentSeverity,
+  ReviewComment,
+} from '../../../../host/contract.js';
 import { snapshotLocal } from '@kirby/core/plan';
 import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
@@ -18,6 +27,8 @@ import {
   usePostDrafts,
   useUpdateDraft,
 } from '../../../lib/data/mutations.js';
+import { useThreads } from '../../../lib/data/queries.js';
+import { totalCommentCount } from '../../../lib/diff/thread-model.js';
 import { cn, errorMessage, relativeTime } from '../../../lib/utils.js';
 import { Badge } from '../../ui/badge.js';
 import { Button } from '../../ui/button.js';
@@ -35,6 +46,8 @@ import {
   SEVERITY_RAIL,
 } from '../../../lib/review/severity.js';
 import { CommentMarkdown } from '../comments/CommentMarkdown.js';
+import { ComposerNoticeLine } from '../comments/ComposerNotice.js';
+import { useComposerRefresh } from '../comments/use-composer-refresh.js';
 import { PlanAttachment, PlanControls } from '../PlanControls.js';
 
 /**
@@ -88,6 +101,7 @@ function DraftEditor({
   body,
   severity,
   saving,
+  notice,
   onBody,
   onSeverity,
   onSave,
@@ -96,6 +110,7 @@ function DraftEditor({
   body: string;
   severity: CommentSeverity;
   saving: boolean;
+  notice: ReactNode;
   onBody: (v: string) => void;
   onSeverity: (v: CommentSeverity) => void;
   onSave: () => void;
@@ -103,6 +118,7 @@ function DraftEditor({
 }) {
   return (
     <div className="space-y-2 px-3 py-2">
+      {notice}
       <Textarea
         autoFocus
         value={body}
@@ -176,6 +192,11 @@ export function DraftCard({
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(draft.body);
   const [severity, setSeverity] = useState<CommentSeverity>(draft.severity);
+  // A draft is not anchored to a thread, so its freshness baseline is
+  // the whole pull request: what the author of a review comment needs
+  // to know is that *something* landed, not that this thread grew.
+  const threads = useThreads(repo.cwd, prId);
+  const refresh = useComposerRefresh(prId, totalCommentCount(threads.data));
   const posting = draft.status === 'posting' || post.isPending;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -187,7 +208,10 @@ export function DraftCard({
     update.mutate(
       { prId, id: draft.id, patch: { body: body.trim(), severity } },
       {
-        onSuccess: () => setEditing(false),
+        onSuccess: () => {
+          setEditing(false);
+          refresh.end();
+        },
         onError: (e) => toast.error(errorMessage(e)),
       }
     );
@@ -251,10 +275,14 @@ export function DraftCard({
           body={body}
           severity={severity}
           saving={update.isPending}
+          notice={<ComposerNoticeLine notice={refresh.notice} />}
           onBody={setBody}
           onSeverity={setSeverity}
           onSave={save}
-          onCancel={() => setEditing(false)}
+          onCancel={() => {
+            setEditing(false);
+            refresh.end();
+          }}
         />
       ) : (
         <div className="px-3 py-2">
@@ -280,6 +308,7 @@ export function DraftCard({
             setBody(draft.body);
             setSeverity(draft.severity);
             setEditing(true);
+            refresh.begin();
           }}
           onDelete={doDelete}
           onPost={doPost}

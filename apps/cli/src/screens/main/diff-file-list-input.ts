@@ -80,10 +80,19 @@ function planTarget(
   return thread ? { prId: ctx.prId, thread } : null;
 }
 
-/** Enter reply mode on `thread`, in place, with an empty buffer. */
+/**
+ * Enter reply mode on `thread`, in place, with an empty buffer.
+ *
+ * The composer opens on this keypress and the refetch runs behind it —
+ * remote threads are cached for the life of the PR view, so the reader
+ * may be answering a question somebody has already answered. Nothing
+ * waits on the round trip; the card repaints when it lands.
+ */
 function beginReply(ctx: Ctx, thread: RemoteCommentThread): void {
   ctx.pane.setReplyingToThreadId(thread.id);
   ctx.pane.setReplyBuffer('');
+  ctx.remoteCtx.refresh();
+  ctx.sessions.flashStatus('Checking for new comments...');
 }
 
 // ── Per-action handlers ──────────────────────────────────────────
