@@ -10,6 +10,10 @@ import type * as SessionsModule from './sessions.js';
  *
  * These tests pin the ownership guards that keep one repo's UI from
  * reading, writing to, reattaching to or killing another repo's agent.
+ *
+ * Attaching to sessions this process did not start is discovery's job
+ * now — see `discovery.spec.ts` for the desktop half and
+ * `libs/core/src/lib/discovery` for the decisions behind it.
  */
 
 const state = vi.hoisted(() => ({
@@ -24,8 +28,6 @@ const state = vi.hoisted(() => ({
   killed: [] as string[],
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
-  worktrees: [] as { branch?: string }[],
-  persistedTmux: new Set<string>(),
   createFails: new Set<string>(),
   /** Prompts core's checkoutPlan delivered into a live agent. */
   injected: [] as { name: string; prompt: string }[],
@@ -53,7 +55,6 @@ vi.mock('@kirby/worktree-manager', () => ({
     }
     return Promise.resolve(`${state.cwd}/.claude/worktrees/${branch}`);
   },
-  listWorktrees: () => Promise.resolve(state.worktrees),
 }));
 
 vi.mock('@kirby/core', () => ({
@@ -121,8 +122,6 @@ vi.mock('@kirby/core', () => ({
     state.alive.delete(name);
   },
   isSessionAlive: (name: string) => state.alive.has(name),
-  isTmuxSessionPersisted: (_config: unknown, name: string) =>
-    state.persistedTmux.has(name),
   resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
     config.terminalBackend ?? state.defaultBackend,
   getSpawnedAt: () => 1000,
@@ -146,7 +145,6 @@ let launchAgent: typeof sessions.launchAgent;
 let checkoutPlan: typeof sessions.checkoutPlan;
 let launchReviewAgent: typeof sessions.launchReviewAgent;
 let listSessions: typeof sessions.listSessions;
-let restorePersistedSessions: typeof sessions.restorePersistedSessions;
 
 beforeEach(async () => {
   state.cwd = '/repo-a';
@@ -155,8 +153,6 @@ beforeEach(async () => {
   state.killed = [];
   state.onData = new Map();
   state.configByCwd = {};
-  state.worktrees = [];
-  state.persistedTmux = new Set();
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
@@ -172,7 +168,6 @@ beforeEach(async () => {
     launchAgent,
     launchReviewAgent,
     listSessions,
-    restorePersistedSessions,
   } = sessions);
   sessions.setSessionBroadcaster(() => undefined);
 });
@@ -322,93 +317,6 @@ describe('launchReviewAgent', () => {
       launchReviewAgent({ pr } as Parameters<typeof launchReviewAgent>[0]),
     ]);
     expect(state.spawns).toHaveLength(1);
-  });
-});
-
-describe('restorePersistedSessions', () => {
-  beforeEach(() => {
-    state.configByCwd['/repo-a'] = { terminalBackend: 'tmux' };
-    state.worktrees = [{ branch: 'kept' }];
-    state.persistedTmux = new Set(['kept']);
-  });
-
-  it('reattaches a tmux session that outlived the last run', async () => {
-    await restorePersistedSessions();
-    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
-  });
-
-  it('does nothing at all on the pty backend', async () => {
-    // Only tmux sessions survive a quit; there is nothing to reattach.
-    state.configByCwd['/repo-a'] = { terminalBackend: 'pty' };
-    await restorePersistedSessions();
-    expect(state.spawns).toEqual([]);
-  });
-
-  // Reattach has to follow the same default the backend factory did:
-  // with tmux detected and nothing configured, the sessions from the
-  // last run are tmux sessions and are waiting to be picked back up.
-  it('reattaches on the tmux default with nothing configured', async () => {
-    state.configByCwd['/repo-a'] = {};
-    state.defaultBackend = 'tmux';
-    await restorePersistedSessions();
-    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
-  });
-
-  it('does nothing when nothing is configured and tmux is missing', async () => {
-    state.configByCwd['/repo-a'] = {};
-    state.defaultBackend = 'pty';
-    await restorePersistedSessions();
-    expect(state.spawns).toEqual([]);
-  });
-
-  it('skips a worktree with no branch', async () => {
-    // A detached HEAD has no branch to derive a session name from.
-    state.worktrees = [{ branch: undefined }, { branch: 'kept' }];
-    await restorePersistedSessions();
-    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
-  });
-
-  it('skips a session that is already running', async () => {
-    state.alive.add('kept');
-    await restorePersistedSessions();
-    expect(state.spawns).toEqual([]);
-  });
-
-  it('skips a branch with no persisted tmux session', async () => {
-    // Otherwise every worktree would spawn a fresh agent on startup.
-    state.persistedTmux = new Set();
-    await restorePersistedSessions();
-    expect(state.spawns).toEqual([]);
-  });
-
-  it('keeps going when one worktree fails to reattach', async () => {
-    state.worktrees = [{ branch: 'broken' }, { branch: 'kept' }];
-    state.persistedTmux = new Set(['broken', 'kept']);
-    state.createFails = new Set(['broken']);
-
-    await restorePersistedSessions();
-    // One bad worktree must not cost the user every other agent.
-    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
-  });
-
-  it('stops the moment another repository is opened', async () => {
-    // Every iteration awaits, and the user can switch repo meanwhile.
-    // Carrying on would run the old repo's branch names against the new
-    // checkout, and createWorktree would happily create each one from
-    // its HEAD — phantom branches, worktrees and agents.
-    state.worktrees = [{ branch: 'first' }, { branch: 'second' }];
-    state.persistedTmux = new Set(['first', 'second']);
-    state.configByCwd['/repo-b'] = { terminalBackend: 'tmux' };
-
-    const original = state.cwd;
-    state.onData.set('first', () => undefined);
-    const promise = restorePersistedSessions();
-    // Switch repositories while the first reattach is in flight.
-    state.cwd = '/repo-b';
-    await promise;
-
-    expect(state.cwd).not.toBe(original);
-    expect(state.spawns.map((s) => s.name)).not.toContain('second');
   });
 });
 

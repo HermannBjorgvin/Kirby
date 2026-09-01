@@ -16,6 +16,7 @@ import {
   sanitizeTmuxSessionName,
   tmuxHasSession,
   tmuxKillSession,
+  tmuxListSessions,
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
@@ -164,7 +165,7 @@ export function buildSessionBackendFactory(
       return createPtyBackendFactory();
     }
     return createTmuxBackendFactory({
-      sessionPrefix: `kirby-${projectKey(repoRoot)}-`,
+      sessionPrefix: tmuxPrefixFor(repoRoot),
     });
   }
   return createPtyBackendFactory();
@@ -186,13 +187,77 @@ export function applySessionBackend(config: AppConfig): void {
   setSessionBackendFactory(factory);
 }
 
+/** The namespace every tmux session for this repo lives in. The one
+ *  place the `kirby-` literal is composed; `buildSessionBackendFactory`
+ *  hands it to the backend as its prefix and everything that has to
+ *  recognise one of our sessions later derives from the same call.
+ *
+ *  Sanitization leaves it alone (hex and dashes only), so a live
+ *  session name can be tested against it with `startsWith` even though
+ *  the full name it was built from may have been rewritten. */
+function tmuxPrefixFor(repoRoot: string): string {
+  return `kirby-${projectKey(repoRoot)}-`;
+}
+
 /** The tmux session name the backend would use for a registry session
  *  name — the same composition buildSessionBackendFactory bakes into
  *  its prefix. */
 function tmuxNameFor(sessionName: string, repoRoot: string): string {
-  return sanitizeTmuxSessionName(
-    `kirby-${projectKey(repoRoot)}-${sessionName}`
-  );
+  return sanitizeTmuxSessionName(tmuxPrefixFor(repoRoot) + sessionName);
+}
+
+/** The prefix in force right now, or `null` when tmux is out of the
+ *  picture — the backend in force is not tmux, the probe says tmux is
+ *  missing, or there is no repo root to key the namespace on. Callers
+ *  treat `null` as "this process owns no tmux sessions".
+ *
+ *  Resolved through {@link resolveTerminalBackend}, not read off the
+ *  config: with tmux the detected default, a user who never chose one
+ *  is on tmux, and reading the raw field would report every one of
+ *  their sessions as absent. */
+function activeTmuxPrefix(
+  config: Pick<AppConfig, 'terminalBackend'>
+): string | null {
+  if (resolveTerminalBackend(config) !== 'tmux') return null;
+  const root = getRepoRoot();
+  return root ? tmuxPrefixFor(root) : null;
+}
+
+/**
+ * Which of `sessionNames` currently have a live tmux session belonging
+ * to this repository.
+ *
+ * One `tmux list-sessions` fork for the whole set, where
+ * {@link isTmuxSessionPersisted} costs one `has-session` fork per name
+ * — which is what makes this affordable to run on a timer rather than
+ * only at startup.
+ *
+ * Isolation falls out of the name rather than being enforced on top of
+ * it: a candidate is composed through the same prefix and sanitizer the
+ * backend spawned with, and only an exact match counts. Another
+ * checkout's agents carry that checkout's hash and a session the user
+ * started for their own reasons carries no prefix at all, so neither
+ * can be matched by construction. Never throws; an absent tmux server
+ * yields the empty set, same as no sessions.
+ */
+export function listPersistedTmuxSessions(
+  config: Pick<AppConfig, 'terminalBackend'>,
+  sessionNames: readonly string[]
+): Set<string> {
+  const prefix = activeTmuxPrefix(config);
+  if (!prefix) return new Set();
+  let live: string[];
+  try {
+    live = tmuxListSessions();
+  } catch {
+    return new Set();
+  }
+  const ours = new Set(live);
+  const persisted = new Set<string>();
+  for (const name of sessionNames) {
+    if (ours.has(sanitizeTmuxSessionName(prefix + name))) persisted.add(name);
+  }
+  return persisted;
 }
 
 /** True when a tmux session for this registry name exists right now,

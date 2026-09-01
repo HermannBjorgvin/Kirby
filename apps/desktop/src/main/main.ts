@@ -17,26 +17,15 @@ import {
 import { killAll, probeTmuxAvailability } from '@kirby/core';
 import {
   MENU_EVENTS,
-  SYNC_EVENTS,
   type ContextMenuItem,
   type DesktopPrefs,
   type MenuCommand,
 } from '../host/contract.js';
-import {
-  openStartupRepo,
-  setRepoOpenedListener,
-} from '../host/services/repo.js';
-import {
-  setSyncNotifier,
-  startRemoteSyncLoop,
-  stopRemoteSyncLoop,
-} from '../host/services/remote-sync.js';
-import { setRemoteUpdatedNotifier } from '../host/services/sidebar.js';
+import { openStartupRepo } from '../host/services/repo.js';
+import { stopRemoteSyncLoop } from '../host/services/remote-sync.js';
+import { stopDiscovery } from '../host/services/discovery.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
-import {
-  restorePersistedSessions,
-  setSessionBroadcaster,
-} from '../host/services/sessions.js';
+import { installHostEventBridge } from './host-events.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
 import { buildMenuTemplate } from './menu.js';
 import {
@@ -281,34 +270,7 @@ setShellGlue({
   },
 });
 
-setSessionBroadcaster((channel, payload) => {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, payload);
-  }
-});
-
-// Remote sync loop: (re)started whenever a repo is opened; its
-// user-facing events (auto-deleted merged branch, …) toast in the
-// renderer. Persisted tmux sessions from a previous run reattach so
-// their agents show as running immediately.
-setRepoOpenedListener((cwd) => {
-  startRemoteSyncLoop(cwd);
-  void restorePersistedSessions();
-});
-setSyncNotifier((notice) => {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(SYNC_EVENTS.notice, notice);
-  }
-});
-
-// The sidebar model answers from local git without waiting for the
-// provider, so the renderer needs telling when the pull requests
-// finally arrive — otherwise they wait out its poll interval.
-setRemoteUpdatedNotifier(() => {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(SYNC_EVENTS.remote);
-  }
-});
+installHostEventBridge();
 
 // ── App lifecycle ────────────────────────────────────────────────
 
@@ -371,6 +333,7 @@ app.on('window-all-closed', () => {
 // Agent PTYs must never outlive the app (same guarantee as the TUI).
 app.on('will-quit', () => {
   stopRemoteSyncLoop();
+  stopDiscovery();
   try {
     killAll();
   } catch {

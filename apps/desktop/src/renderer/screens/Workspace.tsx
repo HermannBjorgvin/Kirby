@@ -175,6 +175,20 @@ function WorkspaceInner({
     return off;
   }, [qc, repo.cwd]);
 
+  // Worktrees and agent sessions can also appear without this process
+  // being involved — a second Kirby, a script, an operator with tmux.
+  // The host notices and says so; the sidebar is a query cache, so it
+  // has to be told to look again.
+  useEffect(() => {
+    const off = window.kirby.onDiscoveryChanged(() => {
+      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
+      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
+      // A worktree added from outside usually brought a branch with it.
+      void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
+    });
+    return off;
+  }, [qc, repo.cwd]);
+
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
+  DISCOVERY_EVENTS,
   IPC,
   MENU_EVENTS,
   SESSION_EVENTS,
@@ -104,6 +105,11 @@ const api: KirbyHostApi = {
     const listener = (_e: unknown, payload: SyncNoticeEvent) => cb(payload);
     ipcRenderer.on(SYNC_EVENTS.notice, listener);
     return () => ipcRenderer.removeListener(SYNC_EVENTS.notice, listener);
+  },
+  onDiscoveryChanged: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on(DISCOVERY_EVENTS.changed, listener);
+    return () => ipcRenderer.removeListener(DISCOVERY_EVENTS.changed, listener);
   },
   onRemoteUpdated: (cb) => {
     const listener = () => cb();

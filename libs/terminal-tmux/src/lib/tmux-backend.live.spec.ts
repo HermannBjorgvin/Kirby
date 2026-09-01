@@ -15,7 +15,11 @@
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createTmuxBackendFactory } from './tmux-backend.js';
-import { tmuxHasSession, tmuxKillSession } from './tmux-cli.js';
+import {
+  tmuxHasSession,
+  tmuxKillSession,
+  tmuxListSessions,
+} from './tmux-cli.js';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
 function tmuxAvailable(): boolean {
@@ -208,5 +212,80 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     // Pop from the cleanup list — already gone.
     const idx = createdSessions.indexOf(name);
     if (idx >= 0) createdSessions.splice(idx, 1);
+  });
+
+  // The signal discovery is built on: a session created without this
+  // process being involved has to be *observable*, and observable in one
+  // call rather than one per candidate. Only a real server proves the
+  // `-F` format string and the no-server exit code behave as assumed.
+  describe('tmuxListSessions', () => {
+    it('reports a session created behind the backend\'s back', () => {
+      const name = uniqueName('listed');
+      createdSessions.push(name);
+      expect(tmuxListSessions()).not.toContain(name);
+
+      // Deliberately not through the factory: this is the scenario —
+      // something other than Kirby made the session.
+      execFileSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        name,
+        '--',
+        '/bin/sh',
+        '-c',
+        'sleep 30',
+      ]);
+
+      expect(tmuxListSessions()).toContain(name);
+    });
+
+    it('stops reporting one that was killed from outside', () => {
+      const name = uniqueName('unlisted');
+      createdSessions.push(name);
+      execFileSync('tmux', [
+        'new-session',
+        '-d',
+        '-s',
+        name,
+        '--',
+        '/bin/sh',
+        '-c',
+        'sleep 30',
+      ]);
+      expect(tmuxListSessions()).toContain(name);
+
+      tmuxKillSession(name);
+      expect(tmuxListSessions()).not.toContain(name);
+      const idx = createdSessions.indexOf(name);
+      if (idx >= 0) createdSessions.splice(idx, 1);
+    });
+
+    // Every candidate this repo asks about is answered from one call, so
+    // the listing has to include sessions the caller never created.
+    it('reports every live session in one call', () => {
+      const a = uniqueName('multi-a');
+      const b = uniqueName('multi-b');
+      createdSessions.push(a, b);
+      const factory = createTmuxBackendFactory();
+      for (const name of [a, b]) {
+        factory({
+          name,
+          cmd: '/bin/sh',
+          args: ['-c', 'sleep 30'],
+          cwd: process.cwd(),
+          cols: 80,
+          rows: 24,
+        });
+      }
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          const listed = tmuxListSessions();
+          expect(listed).toContain(a);
+          expect(listed).toContain(b);
+          resolve();
+        }, 500);
+      });
+    });
   });
 });

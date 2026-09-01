@@ -6,9 +6,10 @@ const {
   ptyFactorySpy,
   tmuxFactorySpy,
   isTmuxAvailableMock,
-  execFileSyncMock,
   tmuxHasSessionMock,
   tmuxKillSessionMock,
+  tmuxListSessionsMock,
+  execFileSyncMock,
   readProjectConfigMock,
   SENTINEL_PTY,
   SENTINEL_TMUX,
@@ -17,9 +18,10 @@ const {
     ptyFactorySpy: vi.fn(),
     tmuxFactorySpy: vi.fn(),
     isTmuxAvailableMock: vi.fn<() => Promise<TmuxStatus>>(),
-    execFileSyncMock: vi.fn(),
     tmuxHasSessionMock: vi.fn<(name: string) => boolean>(),
     tmuxKillSessionMock: vi.fn<(name: string) => void>(),
+    tmuxListSessionsMock: vi.fn<() => string[]>(),
+    execFileSyncMock: vi.fn(),
     readProjectConfigMock: vi.fn<() => { terminalBackend?: string }>(),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),
@@ -42,9 +44,13 @@ vi.mock('@kirby/terminal-tmux', () => ({
     return SENTINEL_TMUX;
   },
   isTmuxAvailable: () => isTmuxAvailableMock(),
-  sanitizeTmuxSessionName: (name: string) => name,
+  // The real sanitizer, near enough: discovery matches a composed name
+  // against what tmux reports, so an identity stub would make the match
+  // trivially true.
+  sanitizeTmuxSessionName: (raw: string) => raw.replace(/[.:]/g, '-'),
   tmuxHasSession: (name: string) => tmuxHasSessionMock(name),
   tmuxKillSession: (name: string) => tmuxKillSessionMock(name),
+  tmuxListSessions: () => tmuxListSessionsMock(),
 }));
 vi.mock('@kirby/vcs-core', () => ({
   projectKey: (cwd: string) => `hash(${cwd})`,
@@ -58,6 +64,7 @@ import {
   hasLiveTmuxSession,
   isTmuxSessionPersisted,
   killPersistedTmuxSession,
+  listPersistedTmuxSessions,
   probeTmuxAvailability,
   projectTerminalBackendOverride,
   resetRepoRoot,
@@ -85,6 +92,7 @@ beforeEach(async () => {
   isTmuxAvailableMock.mockReset();
   tmuxHasSessionMock.mockReset();
   tmuxKillSessionMock.mockReset();
+  tmuxListSessionsMock.mockReset();
   readProjectConfigMock.mockReset();
   readProjectConfigMock.mockReturnValue({});
   // getRepoRoot memoizes for the process, so a test that let it resolve
@@ -327,5 +335,109 @@ describe('projectTerminalBackendOverride', () => {
       throw new Error('EACCES');
     });
     expect(projectTerminalBackendOverride('/repo')).toBeUndefined();
+  });
+});
+
+describe('listPersistedTmuxSessions', () => {
+  const tmuxConfig = makeConfig({ terminalBackend: 'tmux' });
+
+  beforeEach(() => {
+    resetRepoRoot();
+    execFileSyncMock.mockReturnValue('/repo\n');
+  });
+
+  it('matches candidate names against this repo prefix', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      'kirby-hash(/repo)-feature-a',
+      'kirby-hash(/repo)-feature-b',
+    ]);
+    expect(
+      listPersistedTmuxSessions(tmuxConfig, ['feature-a', 'feature-b', 'gone'])
+    ).toEqual(new Set(['feature-a', 'feature-b']));
+  });
+
+  // The whole safety property: another checkout's agents carry that
+  // checkout's hash, so nothing here may ever match them.
+  it('ignores sessions belonging to another repository prefix', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      'kirby-hash(/other-repo)-feature-a',
+      'kirby-hash(/repo)-feature-b',
+    ]);
+    expect(
+      listPersistedTmuxSessions(tmuxConfig, ['feature-a', 'feature-b'])
+    ).toEqual(new Set(['feature-b']));
+  });
+
+  it('ignores tmux sessions the user runs for their own reasons', () => {
+    tmuxListSessionsMock.mockReturnValue(['main', 'dotfiles', 'feature-a']);
+    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
+      new Set()
+    );
+  });
+
+  // A branch name carrying a tmux-forbidden character reaches the
+  // server rewritten, so the candidate has to be composed through the
+  // same sanitizer or it never matches its own session.
+  it('composes candidates through the tmux name sanitizer', () => {
+    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-release-1-2-x']);
+    expect(listPersistedTmuxSessions(tmuxConfig, ['release-1.2.x'])).toEqual(
+      new Set(['release-1.2.x'])
+    );
+  });
+
+  it('costs one fork regardless of how many names are asked about', () => {
+    tmuxListSessionsMock.mockReturnValue([]);
+    listPersistedTmuxSessions(tmuxConfig, ['a', 'b', 'c', 'd', 'e']);
+    expect(tmuxListSessionsMock).toHaveBeenCalledTimes(1);
+    expect(tmuxHasSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('never forks when the user chose pty', () => {
+    listPersistedTmuxSessions(makeConfig({ terminalBackend: 'pty' }), ['a']);
+    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
+  });
+
+  // The backend in force, not the raw config field: with tmux the
+  // detected default, a user who never chose one is on tmux, and
+  // reading the field would report every session they have as absent.
+  it('answers for a user who never chose a backend', () => {
+    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-feature-a']);
+    expect(listPersistedTmuxSessions(makeConfig(), ['feature-a'])).toEqual(
+      new Set(['feature-a'])
+    );
+  });
+
+  it('is empty when the default resolves to pty because tmux is missing', async () => {
+    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
+    await probeTmuxAvailability();
+    listPersistedTmuxSessions(makeConfig(), ['feature-a']);
+    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
+  });
+
+  it('is empty when tmux has no server at all', () => {
+    tmuxListSessionsMock.mockReturnValue([]);
+    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
+      new Set()
+    );
+  });
+
+  it('is empty, not a throw, when the tmux call blows up', () => {
+    tmuxListSessionsMock.mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
+    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
+      new Set()
+    );
+  });
+
+  it('is empty outside a git working tree', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error('fatal: not a git repository');
+    });
+    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-feature-a']);
+    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
+      new Set()
+    );
   });
 });

@@ -15,6 +15,7 @@ import {
 import {
   resetWorktreeResolver,
   setWorktreeResolver,
+  worktreesBasePath,
   createTemplateResolver,
 } from './worktree-resolver.js';
 import {
@@ -1059,9 +1060,22 @@ describe('WorktreeResolver', () => {
       expect(resolver.owns(`${base}-old/stale`)).toBe(false);
       expect(resolver.owns('/completely/different/path')).toBe(false);
     });
+
+    it('base() is the directory owns() tests membership of', () => {
+      expect(worktreesBasePath()).toBe(
+        pathResolve(process.cwd(), '.claude/worktrees')
+      );
+    });
   });
 
   describe('createTemplateResolver', () => {
+    it('base() strips the template placeholder tail', () => {
+      setWorktreeResolver(
+        createTemplateResolver('../trees/{session}', '/repos/myrepo')
+      );
+      expect(worktreesBasePath()).toBe('/repos/trees');
+    });
+
     it('with ../{session} produces sibling paths', () => {
       const resolver = createTemplateResolver(
         '../{session}',

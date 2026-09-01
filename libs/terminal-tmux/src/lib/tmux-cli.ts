@@ -60,3 +60,25 @@ export function tmuxSetOption(
 ): TmuxRunResult {
   return runTmux(['set-option', '-t', name, option, value]);
 }
+
+/** Every session name the server currently holds, or `[]` when there
+ *  is no server at all (`list-sessions` exits non-zero with "no server
+ *  running").
+ *
+ *  One fork regardless of how many sessions exist, which is the whole
+ *  reason it exists next to {@link tmuxHasSession}: a caller checking
+ *  N candidates pays N forks through `has-session` and one through
+ *  this. `#{session_name}` is the oldest of tmux's format variables,
+ *  so this works back to the 2.0 floor the backend supports. */
+export function tmuxListSessions(): string[] {
+  const { stdout, exitCode } = runTmux([
+    'list-sessions',
+    '-F',
+    '#{session_name}',
+  ]);
+  if (exitCode !== 0) return [];
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}

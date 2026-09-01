@@ -385,6 +385,10 @@ export interface KirbyHostApi {
   /** Fires when a background remote fetch has changed the sidebar
    *  model. Carries no payload — the renderer refetches. */
   onRemoteUpdated(cb: () => void): () => void;
+  /** Fires when a worktree or agent session created outside this
+   *  process appeared or went away. Carries no payload — the renderer
+   *  refetches. */
+  onDiscoveryChanged(cb: () => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
   /** Native about box. */

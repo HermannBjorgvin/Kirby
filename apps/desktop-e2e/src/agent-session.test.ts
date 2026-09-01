@@ -74,9 +74,15 @@ test.describe('Agent sessions', () => {
     await createWorktree(page, BRANCH);
     await launchAgent(page);
 
-    // The banner counts as output, so the session reads as active for a
-    // moment after launch. Wait for it to settle — this test is about
-    // the idle path.
+    // `useCloseTabs` branches on the renderer's polled activity query,
+    // and the banner makes the agent read as active for a moment after
+    // launch. Both edges have to be observed: waiting only for the
+    // spinner to be *absent* is satisfied before it has ever rendered,
+    // so the close could land on a query that had not yet reported the
+    // banner — and then did. Wait for the UI to consider the agent busy,
+    // the same state the sibling test asserts on, and only then for it
+    // to settle.
+    await expect(agentSpinner(page).first()).toBeVisible({ timeout: 15_000 });
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await closeTabButton(page).click();

@@ -1,0 +1,531 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { WorktreeInfo } from '@kirby/worktree-manager';
+import type { DiscoveredWorktree } from './discovery-model.js';
+
+const {
+  listWorktreesMock,
+  listPersistedMock,
+  isSessionAliveMock,
+  watchMock,
+  basePathMock,
+} = vi.hoisted(() => ({
+  listWorktreesMock: vi.fn<() => Promise<WorktreeInfo[]>>(),
+  listPersistedMock: vi.fn<() => Set<string>>(),
+  isSessionAliveMock: vi.fn<(name: string) => boolean>(),
+  watchMock: vi.fn(),
+  basePathMock: vi.fn<() => string>(),
+}));
+
+vi.mock('node:fs', () => ({
+  watch: (...args: unknown[]) => watchMock(...args),
+}));
+vi.mock('@kirby/logger', () => ({
+  log: () => undefined,
+  logError: () => undefined,
+}));
+vi.mock('@kirby/worktree-manager', () => ({
+  listWorktrees: () => listWorktreesMock(),
+  // The real rule, not `wt.branch`: a detached-HEAD worktree has no
+  // branch and is named after its directory. Stubbing it as the branch
+  // would let the scanner collapse every orphan onto the empty string
+  // and no test would notice.
+  worktreeSessionName: (wt: WorktreeInfo) =>
+    wt.branch || wt.path.split('/').pop(),
+  worktreesBasePath: () => basePathMock(),
+}));
+vi.mock('../pty-registry.js', () => ({
+  isSessionAlive: (name: string) => isSessionAliveMock(name),
+}));
+vi.mock('../session-backend.js', () => ({
+  listPersistedTmuxSessions: () => listPersistedMock(),
+  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+    config.terminalBackend ?? 'tmux',
+}));
+
+import { startSessionDiscovery } from './session-discovery.js';
+
+function worktrees(...branches: string[]): WorktreeInfo[] {
+  return branches.map((branch) => ({
+    branch,
+    path: `/repo/.claude/worktrees/${branch}`,
+    bare: false,
+  }));
+}
+
+const getConfig = () => ({ terminalBackend: 'tmux' as const });
+
+/** A watcher stand-in that hands back the change callback so a test can
+ *  fire it the way the filesystem would. */
+function captureWatcher() {
+  const handle = { close: vi.fn(), on: vi.fn() };
+  let fire: (() => void) | undefined;
+  watchMock.mockImplementation(
+    (_path: unknown, _opts: unknown, cb: () => void) => {
+      fire = cb;
+      return handle;
+    }
+  );
+  return { handle, trigger: () => fire?.() };
+}
+
+let running: { stop(): void } | null = null;
+/** Stands in for the PTY registry: the default `adopt` puts a name in
+ *  here, which is what a real attach does by spawning into it. Without
+ *  that, every scan would keep re-offering a session it just attached
+ *  to — and the tests would be asserting against a world that cannot
+ *  happen. */
+let alive: Set<string>;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  alive = new Set();
+  listWorktreesMock.mockReset().mockResolvedValue([]);
+  listPersistedMock.mockReset().mockReturnValue(new Set());
+  isSessionAliveMock.mockReset().mockImplementation((name) => alive.has(name));
+  basePathMock.mockReset().mockReturnValue('/repo/.claude/worktrees');
+  watchMock.mockReset().mockReturnValue({ close: vi.fn(), on: vi.fn() });
+});
+
+afterEach(() => {
+  running?.stop();
+  running = null;
+  vi.useRealTimers();
+});
+
+function start(over: Partial<Parameters<typeof startSessionDiscovery>[0]> = {}) {
+  const adopt = vi.fn<(wt: DiscoveredWorktree) => void | Promise<void>>(
+    (wt) => {
+      alive.add(wt.name);
+    }
+  );
+  const onChanged = vi.fn();
+  const discovery = startSessionDiscovery({
+    getConfig,
+    adopt,
+    onChanged,
+    intervalMs: 1000,
+    ...over,
+  });
+  running = discovery;
+  return { discovery, adopt, onChanged };
+}
+
+describe('startSessionDiscovery', () => {
+  // A detached-HEAD worktree has no branch and is named after its
+  // directory, so the scanner has to go through worktreeSessionName
+  // rather than reading `branch` — which for an orphan is ''.
+  it('names a detached-HEAD worktree after its directory', async () => {
+    listWorktreesMock.mockResolvedValue([
+      { branch: '', path: '/repo/.claude/worktrees/detached', bare: false },
+    ]);
+    listPersistedMock.mockReturnValue(new Set(['detached']));
+    const { discovery, adopt } = start();
+    await discovery.scanNow();
+    expect(adopt.mock.calls[0]?.[0]).toEqual({
+      name: 'detached',
+      branch: '',
+      path: '/repo/.claude/worktrees/detached',
+    });
+  });
+
+  it('attaches to a session that appears while running', async () => {
+    const { discovery, adopt, onChanged } = start();
+    await discovery.scanNow();
+    expect(adopt).not.toHaveBeenCalled();
+
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    listPersistedMock.mockReturnValue(new Set(['feature-a']));
+    await discovery.scanNow();
+
+    expect(adopt).toHaveBeenCalledTimes(1);
+    expect(adopt.mock.calls[0]![0]).toEqual({
+      name: 'feature-a',
+      branch: 'feature-a',
+      path: '/repo/.claude/worktrees/feature-a',
+    });
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches on the first scan to a session that outlived the last run', async () => {
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    listPersistedMock.mockReturnValue(new Set(['feature-a']));
+    const { discovery, adopt } = start();
+    await discovery.scanNow();
+    expect(adopt).toHaveBeenCalledTimes(1);
+  });
+
+  // The registry entry is live, so attaching again would dispose the
+  // PTY the user is looking at.
+  it('never attaches twice to the same live session', async () => {
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    listPersistedMock.mockReturnValue(new Set(['feature-a']));
+    const { discovery, adopt } = start();
+    await discovery.scanNow();
+    await discovery.scanNow();
+    await discovery.scanNow();
+    expect(adopt).toHaveBeenCalledTimes(1);
+  });
+
+  // The registry is re-read per iteration, not once when the scan
+  // looked: an earlier attach in the same loop can take long enough for
+  // the user to launch this session themselves, and handing a live one
+  // to spawnSession disposes the PTY and emulator behind the pane they
+  // are looking at.
+  it('never attaches to a session the user launched mid-scan', async () => {
+    listWorktreesMock.mockResolvedValue(worktrees('slow', 'raced'));
+    listPersistedMock.mockReturnValue(new Set(['slow', 'raced']));
+    const adopt = vi
+      .fn<(wt: DiscoveredWorktree) => Promise<void>>()
+      .mockImplementation(async (wt) => {
+        await Promise.resolve();
+        alive.add(wt.name);
+        // While the first attach was awaiting, the user hit Enter on
+        // the second row.
+        if (wt.name === 'slow') alive.add('raced');
+      });
+    const { discovery } = start({ adopt });
+    await discovery.scanNow();
+    expect(adopt.mock.calls.map((c) => c[0].name)).toEqual(['slow']);
+  });
+
+  it('announces a new worktree that has no session behind it', async () => {
+    const { discovery, onChanged, adopt } = start();
+    await discovery.scanNow();
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    await discovery.scanNow();
+    expect(adopt).not.toHaveBeenCalled();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(onChanged.mock.calls[0]![0]).toMatchObject({
+      appeared: [expect.objectContaining({ name: 'feature-a' })],
+    });
+  });
+
+  it('announces a session killed from outside', async () => {
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    listPersistedMock.mockReturnValue(new Set(['feature-a']));
+    const { discovery, onChanged } = start();
+    await discovery.scanNow();
+    onChanged.mockClear();
+
+    listPersistedMock.mockReturnValue(new Set());
+    await discovery.scanNow();
+    expect(onChanged.mock.calls[0]![0]).toMatchObject({ ended: ['feature-a'] });
+  });
+
+  it('says nothing when nothing changed', async () => {
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    const { discovery, onChanged } = start();
+    await discovery.scanNow();
+    await discovery.scanNow();
+    await discovery.scanNow();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  // Announcing first would have the shell re-read the registry before
+  // the attach had put anything in it, and report the session as idle.
+  it('announces only after the attach has finished', async () => {
+    const order: string[] = [];
+    listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+    listPersistedMock.mockReturnValue(new Set(['feature-a']));
+    const { discovery } = start({
+      adopt: async (wt) => {
+        await Promise.resolve();
+        alive.add(wt.name);
+        order.push('adopt');
+      },
+      onChanged: () => order.push('changed'),
+    });
+    await discovery.scanNow();
+    expect(order).toEqual(['adopt', 'changed']);
+  });
+
+  describe('a failing attach', () => {
+    // The failures worth surviving are transient — a `git worktree add`
+    // losing to an index.lock — so one is not enough to give up on.
+    it('is retried a few times before the session is retired', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
+      const { discovery } = start({ adopt });
+      for (let i = 0; i < 6; i++) await discovery.scanNow();
+      expect(adopt).toHaveBeenCalledTimes(3);
+    });
+
+    it('succeeds if a retry works, and forgets the earlier failures', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const adopt = vi
+        .fn<(wt: DiscoveredWorktree) => void>()
+        .mockImplementationOnce(() => {
+          throw new Error('index.lock');
+        })
+        .mockImplementation((wt) => {
+          alive.add(wt.name);
+        });
+      const { discovery, onChanged } = start({ adopt });
+      await discovery.scanNow();
+      await discovery.scanNow();
+      expect(adopt).toHaveBeenCalledTimes(2);
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+
+    // A retired session is offered to nobody, so there is nothing to
+    // report. Announcing anyway refreshed both shells every tick for
+    // the life of the process.
+    it('stops reporting the world as changed once retired', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
+      const { discovery, onChanged } = start({ adopt });
+      for (let i = 0; i < 6; i++) await discovery.scanNow();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('is tried again once tmux has dropped that session', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const adopt = vi.fn().mockRejectedValue(new Error('no worktree'));
+      const { discovery } = start({ adopt });
+      for (let i = 0; i < 6; i++) await discovery.scanNow();
+      expect(adopt).toHaveBeenCalledTimes(3);
+
+      // tmux drops it, and a new session appears under the same name.
+      listPersistedMock.mockReturnValue(new Set());
+      await discovery.scanNow();
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      await discovery.scanNow();
+      expect(adopt).toHaveBeenCalledTimes(4);
+    });
+
+    // One unattachable worktree must not cost the user every agent
+    // behind it in the list.
+    it('does not stop the others in the same scan', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('broken', 'fine'));
+      listPersistedMock.mockReturnValue(new Set(['broken', 'fine']));
+      const adopt = vi
+        .fn<(wt: DiscoveredWorktree) => void>()
+        .mockImplementation((wt) => {
+          if (wt.name === 'broken') throw new Error('git refused');
+          alive.add(wt.name);
+        });
+      const { discovery } = start({ adopt });
+      await discovery.scanNow();
+      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
+        'broken',
+        'fine',
+      ]);
+      expect(alive.has('fine')).toBe(true);
+    });
+
+    it('does not take the process down', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const { discovery } = start({
+        adopt: () => {
+          throw new Error('boom');
+        },
+      });
+      await expect(discovery.scanNow()).resolves.toBeUndefined();
+    });
+  });
+
+  it('survives git failing', async () => {
+    listWorktreesMock.mockRejectedValue(new Error('git exploded'));
+    const { discovery, onChanged } = start();
+    await expect(discovery.scanNow()).resolves.toBeUndefined();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  describe('scheduling', () => {
+    it('scans on the interval', async () => {
+      const { discovery } = start();
+      await discovery.scanNow();
+      const before = listWorktreesMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(listWorktreesMock.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it('stops scanning after stop()', async () => {
+      const { discovery } = start();
+      await discovery.scanNow();
+      discovery.stop();
+      const before = listWorktreesMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(listWorktreesMock.mock.calls.length).toBe(before);
+    });
+
+    // Two overlapping scans would diff against each other's `previous`
+    // and could offer the same session to `adopt` twice.
+    it('never runs two scans at once', async () => {
+      let active = 0;
+      let peak = 0;
+      listWorktreesMock.mockImplementation(async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await Promise.resolve();
+        active -= 1;
+        return [];
+      });
+      const { discovery } = start();
+      await Promise.all([
+        discovery.scanNow(),
+        discovery.scanNow(),
+        discovery.scanNow(),
+      ]);
+      expect(peak).toBe(1);
+    });
+
+    // Three simultaneous callers do not buy three scans: the one that
+    // has not started yet can still answer for all of them, so they
+    // join it. Only the scan already looking cannot.
+    it('coalesces concurrent callers onto one queued scan', async () => {
+      const { discovery } = start();
+      await discovery.scanNow();
+      const before = listWorktreesMock.mock.calls.length;
+      await Promise.all([
+        discovery.scanNow(),
+        discovery.scanNow(),
+        discovery.scanNow(),
+      ]);
+      expect(listWorktreesMock.mock.calls.length).toBe(before + 1);
+    });
+
+    // The in-loop guard, not the one at the top of the scan: the repo
+    // can be switched while an earlier attach is still awaiting, and
+    // carrying on would run this repo's branch names against the new
+    // checkout.
+    it('stops attaching the moment another repository is opened', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('first', 'second'));
+      listPersistedMock.mockReturnValue(new Set(['first', 'second']));
+      let current = true;
+      const adopt = vi
+        .fn<(wt: DiscoveredWorktree) => Promise<void>>()
+        .mockImplementation(async (wt) => {
+          await Promise.resolve();
+          alive.add(wt.name);
+          current = false; // the user opens another repo mid-flight
+        });
+      const { discovery } = start({ adopt, isCurrent: () => current });
+      await discovery.scanNow();
+      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual(['first']);
+    });
+
+    // Settings can swap the backend while an attach is awaiting, and
+    // its own guard sees an empty registry because nothing has attached
+    // yet. Spawning a raw PTY agent into a worktree that already has a
+    // live tmux agent is what this prevents.
+    it('stops attaching when the backend is switched away from tmux', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('first', 'second'));
+      listPersistedMock.mockReturnValue(new Set(['first', 'second']));
+      let backend: 'pty' | 'tmux' = 'tmux';
+      const adopt = vi
+        .fn<(wt: DiscoveredWorktree) => Promise<void>>()
+        .mockImplementation(async (wt) => {
+          await Promise.resolve();
+          alive.add(wt.name);
+          backend = 'pty'; // the user picks PTY in Settings mid-flight
+        });
+      const { discovery } = start({
+        adopt,
+        getConfig: () => ({ terminalBackend: backend }),
+      });
+      await discovery.scanNow();
+      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual(['first']);
+    });
+
+    it('abandons a scan when the repo is no longer current', async () => {
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      listPersistedMock.mockReturnValue(new Set(['feature-a']));
+      const { discovery, adopt, onChanged } = start({
+        isCurrent: () => false,
+      });
+      await discovery.scanNow();
+      expect(adopt).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the worktrees directory watch', () => {
+    it('watches the resolver base, one directory, not recursively', () => {
+      start();
+      expect(watchMock).toHaveBeenCalledWith(
+        '/repo/.claude/worktrees',
+        expect.objectContaining({ recursive: false, persistent: false }),
+        expect.any(Function)
+      );
+    });
+
+    it('scans off-cycle when the directory changes', async () => {
+      const watcher = captureWatcher();
+      const { discovery } = start();
+      await discovery.scanNow();
+      const before = listWorktreesMock.mock.calls.length;
+
+      watcher.trigger();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(listWorktreesMock.mock.calls.length).toBeGreaterThan(before);
+    });
+
+    it('coalesces a burst of events into one scan', async () => {
+      const watcher = captureWatcher();
+      const { discovery } = start();
+      await discovery.scanNow();
+      const before = listWorktreesMock.mock.calls.length;
+
+      for (let i = 0; i < 10; i++) watcher.trigger();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(listWorktreesMock.mock.calls.length).toBe(before + 1);
+    });
+
+    it('releases the watch on stop()', async () => {
+      const watcher = captureWatcher();
+      const { discovery } = start();
+      await discovery.scanNow();
+      discovery.stop();
+      expect(watcher.handle.close).toHaveBeenCalled();
+    });
+
+    // Nothing creates the worktrees directory until the first worktree
+    // is made, so an unwatchable path has to be ordinary, not fatal.
+    it('keeps scanning when the directory cannot be watched', async () => {
+      watchMock.mockImplementation(() => {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      const { discovery, onChanged } = start();
+      await discovery.scanNow();
+      listWorktreesMock.mockResolvedValue(worktrees('feature-a'));
+      await discovery.scanNow();
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    // A watch on a directory that is later deleted errors rather than
+    // going quiet, and a dropped watcher that is never replaced makes
+    // the feature silently slower for the rest of the run.
+    it('replaces a watcher that errors', async () => {
+      const handle = { close: vi.fn(), on: vi.fn() };
+      watchMock.mockReturnValue(handle);
+      const { discovery } = start();
+      await discovery.scanNow();
+      const before = watchMock.mock.calls.length;
+
+      const onError = handle.on.mock.calls.find(
+        ([event]) => event === 'error'
+      )?.[1] as () => void;
+      expect(onError).toBeDefined();
+      onError();
+      expect(handle.close).toHaveBeenCalled();
+
+      await discovery.scanNow();
+      expect(watchMock.mock.calls.length).toBe(before + 1);
+    });
+
+    it('re-establishes the watch once the directory exists', async () => {
+      watchMock.mockImplementationOnce(() => {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      const { discovery } = start();
+      await discovery.scanNow();
+      expect(watchMock.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+});
