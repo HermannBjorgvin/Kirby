@@ -190,8 +190,17 @@ export function DraftCard({
   // A draft is not anchored to a thread, so its freshness baseline is
   // the whole pull request: what the author of a review comment needs
   // to know is that *something* landed, not that this thread grew.
+  //
+  // Null until the threads query has answered. Drafts are a local file
+  // read on a two-second poll while threads are a `gh` call, so a card
+  // paints well before them — and taking zero for "not loaded yet"
+  // made the first response read as every comment on the pull request
+  // arriving at once.
   const threads = useThreads(repo.cwd, prId);
-  const refresh = useComposerRefresh(prId, totalCommentCount(threads.data));
+  const refresh = useComposerRefresh(
+    prId,
+    threads.data ? totalCommentCount(threads.data) : null
+  );
   const posting = draft.status === 'posting' || post.isPending;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

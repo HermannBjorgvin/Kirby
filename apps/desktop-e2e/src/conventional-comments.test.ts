@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { AGENT_FOOTER } from '@kirby/review-comments/conventional';
 import { test, expect } from './fixtures/desktop.js';
 import { sidebarRow, visibleText } from './setup/app.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
@@ -20,9 +21,9 @@ const SUBJECT = 'The undo stack is never bounded.';
 const DISCUSSION = 'Every edit pushes onto it and nothing ever pops.';
 const PLAIN = 'Looks good to me, shipping.';
 
-const AGENT_BODY =
-  `issue (blocking): ${SUBJECT}\n\n${DISCUSSION}\n\n---\n` +
-  '_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_';
+// Built from the constant the poster signs with, so the fixture moves
+// with it rather than quietly ceasing to be a signed comment.
+const AGENT_BODY = `issue (blocking): ${SUBJECT}\n\n${DISCUSSION}\n\n---\n${AGENT_FOOTER}`;
 
 const GITHUB: FakeGitHub = {
   username: 'kirby-tester',
@@ -71,14 +72,12 @@ async function openPr(page: Page) {
 }
 
 /**
- * The thread card whose body contains `text`.
- *
- * `.first()` because a thread is mounted both inline in the diff and
- * in the comment list; they are the same card component, so asserting
- * on either proves the same thing.
+ * The thread card whose body contains `text`. Strict on purpose: one
+ * `[data-thread]` element exists per thread, so a second match would be
+ * a real duplicate and should fail rather than be papered over.
  */
 function card(page: Page, text: string) {
-  return page.locator('[data-thread]').filter({ hasText: text }).first();
+  return page.locator('[data-thread]').filter({ hasText: text });
 }
 
 test.describe('Rendering Conventional Comments', () => {

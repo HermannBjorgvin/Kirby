@@ -20,6 +20,12 @@ import {
  * there is" (a thread's comments, a PR's threads). It is snapshotted
  * at open-time so the notice can say what arrived *since*, rather than
  * how much there is.
+ *
+ * Pass `null` when the caller cannot yet say — a query that has not
+ * answered has no count, and taking zero for one turns the first
+ * response into "12 new comments arrived". With no baseline the
+ * composer still reports the check it is running; it just never claims
+ * to know what changed.
  */
 export interface ComposerRefresh {
   /** Call when the composer opens. */
@@ -32,7 +38,7 @@ export interface ComposerRefresh {
 
 export function useComposerRefresh(
   prId: number,
-  count: number
+  count: number | null
 ): ComposerRefresh {
   const { repo } = useRepo();
   const refresh = useRefreshThreads(repo.cwd);
@@ -52,7 +58,7 @@ export function useComposerRefresh(
     notice: composerRefreshNotice({
       checking: refresh.isPending,
       baseline,
-      current: count,
+      current: count ?? 0,
     }),
   };
 }

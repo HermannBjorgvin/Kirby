@@ -76,6 +76,18 @@ export function ThreadCard({
       ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [focused]);
 
+  // The notice belongs to a composer the reader can actually see. The
+  // footer lives inside the expanded branch while `composing` and the
+  // baseline live out here, so collapsing a card mid-reply would leave
+  // the baseline armed — and any later refetch of this pull request
+  // would greet the reader, on re-expanding, with news of a check they
+  // never asked for.
+  const composerVisible = expanded && composing;
+  const { end: endRefresh } = refresh;
+  useEffect(() => {
+    if (!composerVisible) endRefresh();
+  }, [composerVisible, endRefresh]);
+
   const root = thread.comments[0];
   if (!root) return null;
   const replies = thread.comments.slice(1);

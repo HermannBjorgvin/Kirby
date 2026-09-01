@@ -66,6 +66,12 @@ function notice(page: Page, kind: 'checking' | 'arrived') {
   return page.locator(`[data-composer-notice="${kind}"]`);
 }
 
+/** The card's reply button. Exactly one thread in this scenario, so a
+ *  second match would be a real duplicate and should fail loudly. */
+function replyButton(page: Page) {
+  return page.getByRole('button', { name: 'Reply…', exact: true });
+}
+
 test.describe('Refreshing a thread before replying', () => {
   test('a reply that landed while the tab was open shows before the box does', async ({
     desktop,
@@ -83,10 +89,10 @@ test.describe('Refreshing a thread before replying', () => {
     });
     await expect(visibleText(page, ANSWER)).toBeHidden();
 
-    await page.getByRole('button', { name: 'Reply…' }).first().click();
+    await replyButton(page).click();
 
     // The composer is open immediately — it never waits on the fetch.
-    await expect(page.getByPlaceholder(/Write a reply/).first()).toBeVisible();
+    await expect(page.getByPlaceholder(/Write a reply/)).toBeVisible();
 
     // …and the answer arrives into it, announced rather than slipped in.
     await expect(notice(page, 'arrived')).toHaveText(/1 new comment arrived/, {
@@ -95,18 +101,30 @@ test.describe('Refreshing a thread before replying', () => {
     await expect(visibleText(page, ANSWER)).toBeVisible();
   });
 
-  test('an unchanged thread says nothing once the check is done', async ({
-    desktop,
-  }) => {
-    const { page } = desktop;
-    await openPr(page);
+  // A provider that answers in a millisecond hides the state worth
+  // asserting on here.
+  test.describe('with a slow provider', () => {
+    test.use({ fakeGitHub: { ...GITHUB, latencyMs: 400 } });
 
-    await page.getByRole('button', { name: 'Reply…' }).first().click();
-    await expect(page.getByPlaceholder(/Write a reply/).first()).toBeVisible();
+    test('the check is visibly run even when nothing has changed', async ({
+      desktop,
+    }) => {
+      const { page } = desktop;
+      await openPr(page);
 
-    // The in-flight line clears itself, and nothing replaces it: there
-    // is no news, and a permanent banner would train the eye past it.
-    await expect(notice(page, 'checking')).toBeHidden({ timeout: 15_000 });
-    await expect(notice(page, 'arrived')).toHaveCount(0);
+      await replyButton(page).click();
+      await expect(page.getByPlaceholder(/Write a reply/)).toBeVisible();
+
+      // The provider is slowed down (latencyMs above) so the in-flight
+      // state is observable. Asserting only that it *clears* would pass
+      // with the whole feature removed — there would simply never be a
+      // notice at all — so the test has to see it appear first.
+      await expect(notice(page, 'checking')).toBeVisible({ timeout: 15_000 });
+
+      // Then it clears itself, and nothing replaces it: there is no news,
+      // and a permanent banner would train the eye past it.
+      await expect(notice(page, 'checking')).toBeHidden({ timeout: 15_000 });
+      await expect(notice(page, 'arrived')).toHaveCount(0);
+    });
   });
 });

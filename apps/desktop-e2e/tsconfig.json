@@ -4,6 +4,9 @@
   "include": [],
   "references": [
     {
+      "path": "../../libs/review-comments"
+    },
+    {
       "path": "./tsconfig.e2e.json"
     }
   ]
