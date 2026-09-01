@@ -49,11 +49,12 @@ export const DEFAULT_WORKTREE_DIFF_LIMITS: WorktreeDiffLimits = {
 };
 
 /**
- * How many files may be named as `:(exclude)` pathspecs before we stop
- * bothering. Every skipped file costs an argv entry, and a diff that
- * touches thousands of binary assets would otherwise hit ARG_MAX and
- * fail for a reason that has nothing to do with the user. Past this the
- * excludes are dropped and the overall ceiling does the bounding.
+ * How many files may be named as `:(exclude)` pathspecs. Every skipped
+ * file costs an argv entry, and a diff that touches thousands of binary
+ * assets would otherwise hit ARG_MAX and fail for a reason that has
+ * nothing to do with the user. Past this the rest are diffed as they
+ * come and the overall ceiling does the bounding — and they get no
+ * placeholder either, since they are still in git's own output.
  */
 const MAX_EXCLUDE_PATHSPECS = 500;
 
@@ -113,8 +114,12 @@ export function parseNumstat(output: string): ChangedFile[] {
   for (let i = 0; i < fields.length; i++) {
     const parts = fields[i].split('\t');
     if (parts.length < 3) continue;
-    const [adds, dels, path] = parts;
-    const binary = adds === '-' && dels === '-';
+    const binary = parts[0] === '-' && parts[1] === '-';
+    // A path may itself contain a tab, so everything past the two
+    // counts is the path — splitting on the first one truncates it, and
+    // the exclude pathspec built from it then names a file that does
+    // not exist, so the oversized file is diffed after all.
+    const path = parts.slice(2).join('\t');
     if (path === '') {
       // Rename or copy: the destination is the second following record.
       files.push({ path: fields[i + 2] ?? '', binary });
@@ -183,15 +188,17 @@ export function trimToFileBoundary(patch: string): string {
 async function trackedDiff(
   worktreePath: string,
   base: string,
-  skipped: readonly Skipped[],
+  excluded: readonly Skipped[],
   limits: WorktreeDiffLimits
 ): Promise<string> {
-  const excludes =
-    skipped.length > MAX_EXCLUDE_PATHSPECS
-      ? []
-      : skipped.map((s) => `:(exclude,literal)${s.path}`);
   const { text, truncated } = await runGit(
-    ['diff', '-U99999', base, '--', ...excludes],
+    [
+      'diff',
+      '-U99999',
+      base,
+      '--',
+      ...excluded.map((s) => `:(exclude,literal)${s.path}`),
+    ],
     { cwd: worktreePath, maxBytes: limits.maxTotalBytes }
   );
   if (!truncated) return text;
@@ -286,11 +293,15 @@ export async function fetchWorktreeDiffText(
     await changedFiles(worktreePath, base),
     limits
   );
+  // Only what is actually kept out of the diff may be represented by a
+  // placeholder: past the pathspec cap the file is still in git's own
+  // output, and a placeholder as well would make it appear twice.
+  const excluded = skipped.slice(0, MAX_EXCLUDE_PATHSPECS);
   const [tracked, untracked] = await Promise.all([
-    trackedDiff(worktreePath, base, skipped, limits),
+    trackedDiff(worktreePath, base, excluded, limits),
     untrackedDiff(worktreePath, limits),
   ]);
-  const placeholders = skipped
+  const placeholders = excluded
     .map((s) => placeholderPatch(s.path, s.note))
     .join('');
   return tracked + placeholders + untracked;

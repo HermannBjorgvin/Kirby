@@ -123,6 +123,16 @@ describe('parseNumstat', () => {
     );
   });
 
+  it('keeps a path that contains a tab whole', () => {
+    // `-z` does not quote paths, so a tab in one arrives raw and splits
+    // the record into four fields. Taking only the third truncates the
+    // path, and the exclude pathspec built from it then names a file
+    // that does not exist — so the oversized file is diffed after all.
+    expect(parseNumstat(rec('1\t0\tweird\tname.txt'))).toEqual([
+      { path: 'weird\tname.txt', binary: false },
+    ]);
+  });
+
   it('is empty for an empty diff', () => {
     expect(parseNumstat('')).toEqual([]);
   });
