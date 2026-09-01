@@ -132,6 +132,20 @@ export async function pressUntil(
 }
 
 /**
+ * Wait for the user to be focused on the terminal — the pane title's
+ * "(ctrl+space to exit)" suffix. Use this between a Tab that hands
+ * focus to a running terminal and the first keystroke meant for the
+ * agent: Ink can deliver both keys against one render snapshot, and
+ * the keystroke then reaches the sidebar handler instead (an `x`
+ * there is delete-branch).
+ */
+export async function waitForTerminalFocused(term: KirbyTerm): Promise<void> {
+  await expect(term.getByText(/ctrl\+space to exit/).first()).toBeVisible({
+    timeout: 5_000,
+  });
+}
+
+/**
  * Wait for the user to be focused on the sidebar. The pane title only
  * appends "(ctrl+space to exit)" while terminal-focused (see
  * `getPaneTitle` in focus.ts), so its absence is the cheapest

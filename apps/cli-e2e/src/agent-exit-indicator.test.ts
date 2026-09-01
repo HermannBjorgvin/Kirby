@@ -1,5 +1,9 @@
 import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
-import { createSession, waitForSidebarFocused } from './setup/sessions.js';
+import {
+  createSession,
+  waitForSidebarFocused,
+  waitForTerminalFocused,
+} from './setup/sessions.js';
 
 // Regression for issue #55: when an agent terminated on its own
 // (Ctrl-D Ctrl-D in claude, the process being killed, etc.), the
@@ -43,6 +47,7 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
     // Tab back into the terminal and send a keystroke — the agent exits
     // on input, deterministically, only now that ◉ is confirmed.
     await kirby.term.press('Tab');
+    await waitForTerminalFocused(kirby.term);
     await kirby.term.type('x');
 
     // Escape back to the sidebar; the row should flip. Selected +
