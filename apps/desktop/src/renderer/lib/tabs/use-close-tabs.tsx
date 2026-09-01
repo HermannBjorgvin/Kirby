@@ -122,9 +122,9 @@ export function useCloseTabs(items: SidebarItem[]): {
     (id: string) => {
       const tab = tabs.tabs.find((t) => t.id === id);
       if (!tab) return;
-      requestClose([tab], () => tabs.close(id));
+      requestClose([tab], () => tabs.close(id, repo.cwd));
     },
-    [tabs, requestClose]
+    [tabs, requestClose, repo.cwd]
   );
   const closeOthers = useCallback(
     (id: string) => {

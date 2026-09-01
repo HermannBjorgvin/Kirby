@@ -102,7 +102,10 @@ export function CommandPalette({
     const wasOpen =
       existing != null ||
       tabs.tabs.some(
-        (t) => t.kind === 'item' && (t.itemKey === key || t.id === tabId)
+        (t) =>
+          t.kind === 'item' &&
+          t.repo === repo.cwd &&
+          (t.itemKey === key || t.id === tabId)
       );
     tabs.openItem(key);
     create.mutate(branch, {

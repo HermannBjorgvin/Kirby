@@ -254,6 +254,31 @@ describe('another repository owns the name', () => {
     expect(getSessionBuffer('shared').data).toBe('repo-a secrets');
   });
 
+  it('reports it as not alive here, so this repo does not show it running', () => {
+    // The sidebar asks this per worktree row. `isSessionAlive` alone is
+    // answered from a registry keyed by the bare branch name, so the
+    // other repo's agent would make this repo's same-named row look
+    // live — and `sync-items` would auto-open a tab onto an agent this
+    // repo cannot reach, kill or relaunch.
+    return launchInAThenSwitch().then(() => {
+      expect(sessions.isOwnSessionAlive('shared')).toBe(false);
+      state.cwd = '/repo-a';
+      expect(sessions.isOwnSessionAlive('shared')).toBe(true);
+    });
+  });
+
+  it('skips it during worktree removal instead of killing it', async () => {
+    await launchInAThenSwitch();
+    // Housekeeping inside a legitimate operation: removing this repo's
+    // `shared` worktree must not reach the other repo's agent, and must
+    // not abort the removal either.
+    expect(() => sessions.killOwnSession('shared')).not.toThrow();
+    expect(state.killed).toEqual([]);
+    state.cwd = '/repo-a';
+    sessions.killOwnSession('shared');
+    expect(state.killed).toEqual(['shared']);
+  });
+
   it('leaves a name this host never launched to the registry', () => {
     // No entry means no ownership claim — killing is a no-op there
     // rather than an error, matching the registry's own behaviour.

@@ -1,4 +1,4 @@
-import type { Tab } from './tabs-model.js';
+import type { Tab } from './tab-identity.js';
 
 /**
  * How the strip presents a set of tabs that spans repositories.

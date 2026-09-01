@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { autoOpenKey, itemTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
   activeTabRepo,
-  autoOpenKey,
-  itemTabId,
   reduce,
   type ItemEntry,
   type TabsState,
@@ -585,5 +584,67 @@ describe('repo-opened', () => {
   it('is a no-op when the active tab already belongs to the repo', () => {
     const s = open(empty, 'branch:feat-x');
     expect(openRepo(s, REPO)).toBe(s);
+  });
+});
+
+describe('closing a tab keeps focus inside the repo in view', () => {
+  const closeIn = (state: TabsState, tabId: string, repo: string) =>
+    reduce(state, { type: 'close', id: tabId, repo });
+
+  /** alpha's tab sandwiched between two of the other repo's. */
+  const sandwich = () => {
+    let s = open(empty, 'branch:y1', false, OTHER);
+    s = open(s, 'branch:x');
+    s = open(s, 'branch:y2', false, OTHER);
+    return s;
+  };
+
+  it('skips past a foreign neighbour to this repo’s nearest tab', () => {
+    // Focus is what the workspace follows, so handing it to alpha here
+    // would switch the sidebar, status bar and every query because the
+    // user closed a tab — while OTHER still has one open.
+    const s = closeIn(sandwich(), id('branch:y2', OTHER), OTHER);
+    expect(s.activeId).toBe(id('branch:y1', OTHER));
+  });
+
+  it('leaves nothing active when the repo in view has no tab left', () => {
+    let s = open(empty, 'branch:x');
+    s = open(s, 'branch:y', false, OTHER);
+    s = closeIn(s, id('branch:y', OTHER), OTHER);
+    expect(s.activeId).toBeNull();
+    // …and the other repository's tab is still on the strip.
+    expect(s.tabs.map((t) => t.id)).toEqual([id('branch:x')]);
+  });
+
+  it('still prefers the tab that slid into place when it is not foreign', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = open(s, 'branch:three');
+    s = closeIn(s, id('branch:two'), REPO);
+    expect(s.activeId).toBe(id('branch:three'));
+  });
+
+  it('keeps the settings tab eligible — it belongs to no repository', () => {
+    let s = open(empty, 'branch:y', false, OTHER);
+    s = reduce(s, { type: 'open-settings' });
+    s = open(s, 'branch:x');
+    s = closeIn(s, id('branch:x'), REPO);
+    expect(s.activeId).toBe('settings');
+  });
+
+  it('closes an inactive tab without moving focus at all', () => {
+    let s = open(empty, 'branch:one');
+    s = open(s, 'branch:two');
+    s = closeIn(s, id('branch:one'), REPO);
+    expect(s.activeId).toBe(id('branch:two'));
+  });
+
+  it('falls back to the plain neighbour when no repo is named', () => {
+    // The action's `repo` is optional; without it the old rule stands.
+    const s = reduce(sandwich(), {
+      type: 'close',
+      id: id('branch:y2', OTHER),
+    });
+    expect(s.activeId).toBe(id('branch:x'));
   });
 });

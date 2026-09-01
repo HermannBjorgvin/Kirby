@@ -13,60 +13,16 @@
  * `sync-items` only ever reconciles the tabs of the repo it was given —
  * two repos routinely share branch names and so share item keys.
  */
-export type Tab =
-  | {
-      id: string;
-      kind: 'item';
-      /** Absolute path of the repository this tab belongs to. Half of
-       *  the tab's identity: `branch:main` means a different thing in
-       *  each open repo. */
-      repo: string;
-      itemKey: string;
-      preview: boolean;
-      /** Last-known git branch, stamped by `sync-items`. The stable
-       *  identity a tab falls back on when its itemKey goes stale —
-       *  a worktree's key changes from `branch:x` to `pr:n` the moment
-       *  a PR appears (and back when it closes). */
-      branch?: string;
-    }
-  | { id: 'settings'; kind: 'settings'; preview: false };
 
-/** A tab that shows a sidebar item, and so belongs to a repository. */
-export type ItemTab = Extract<Tab, { kind: 'item' }>;
+import {
+  autoOpenKey,
+  isForeignTab,
+  itemTabId,
+  type Tab,
+} from './tab-identity.js';
 
-/**
- * The id of the tab for `itemKey` in `repo`.
- *
- * Length-prefixed rather than joined on a separator: repository paths
- * and branch names can both contain any punctuation a separator might
- * use, and a collision here is two repos' tabs rendering each other's
- * pane (panes are keyed by tab id).
- */
-export function itemTabId(repo: string, itemKey: string): string {
-  return `item:${repo.length}:${repo}:${itemKey}`;
-}
-
-/** Identity of an item tab as a map key — the same pair, unambiguous. */
-function pairKey(tab: Tab): string {
-  return tab.kind === 'item' ? itemTabId(tab.repo, tab.itemKey) : tab.id;
-}
-
-/** Whether `tab` belongs to a repository other than the open one.
- *  Settings belongs to none, so it is never foreign. */
-export function isForeignTab(tab: Tab, repo: string): boolean {
-  return foreignRepoOf(tab, repo) !== null;
-}
-
-/** The other repository `tab` belongs to, or null when it is at home. */
-export function foreignRepoOf(tab: Tab, repo: string): string | null {
-  return tab.kind === 'item' && tab.repo !== repo ? tab.repo : null;
-}
-
-/** The repository the active tab belongs to, if it belongs to one. */
-export function activeTabRepo(state: TabsState): string | null {
-  const active = state.tabs.find((t) => t.id === state.activeId);
-  return active?.kind === 'item' ? active.repo : null;
-}
+export type { ItemTab, Tab } from './tab-identity.js';
+import { pinLive, rekey } from './tab-sync.js';
 
 /** One sidebar item as the tab model needs it. */
 export interface ItemEntry {
@@ -96,9 +52,10 @@ export interface TabsState {
   lastActiveByRepo: Readonly<Record<string, string>>;
 }
 
-/** Identity of an auto-opened session, unique across repositories. */
-export function autoOpenKey(repo: string, sessionName: string): string {
-  return `${repo.length}:${repo}:${sessionName}`;
+/** The repository the active tab belongs to, if it belongs to one. */
+export function activeTabRepo(state: TabsState): string | null {
+  const active = state.tabs.find((t) => t.id === state.activeId);
+  return active?.kind === 'item' ? active.repo : null;
 }
 
 export const EMPTY_TABS: TabsState = {
@@ -113,7 +70,7 @@ export type TabsAction =
   | { type: 'open-settings' }
   | { type: 'pin'; id: string }
   | { type: 'activate'; id: string }
-  | { type: 'close'; id: string }
+  | { type: 'close'; id: string; repo?: string }
   | { type: 'close-others'; id: string }
   | { type: 'close-all' }
   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
@@ -199,7 +156,7 @@ function apply(state: TabsState, action: TabsAction): TabsState {
     case 'activate':
       return activateTab(state, action.id);
     case 'close':
-      return closeTab(state, action.id);
+      return closeTab(state, action.id, action.repo);
     case 'close-others':
       return closeOtherTabs(state, action.id);
     case 'close-all':
@@ -295,16 +252,49 @@ function openSettings(state: TabsState): TabsState {
  * Drop a tab, and when it was the active one hand focus to the tab that
  * slid into its place (the last tab, if it was the rightmost).
  */
-function closeTab(state: TabsState, id: string): TabsState {
+function closeTab(
+  state: TabsState,
+  id: string,
+  repo: string | undefined
+): TabsState {
   const idx = state.tabs.findIndex((t) => t.id === id);
   if (idx < 0) return state;
   const tabs = state.tabs.filter((t) => t.id !== id);
   let activeId = state.activeId;
   if (state.activeId === id) {
-    const neighbour = tabs[Math.min(idx, tabs.length - 1)];
-    activeId = neighbour?.id ?? null;
+    activeId = nextActive(tabs, idx, repo) ?? null;
   }
   return { ...state, tabs, activeId };
+}
+
+/**
+ * Which tab takes over when the active one closes.
+ *
+ * The tab that slid into its place, as ever — but never one from
+ * another repository. Focus is what the workspace follows, so handing
+ * it across a repository boundary would switch the sidebar, the status
+ * bar and every query because the user closed a tab. When the repo in
+ * view has nothing left, nothing is active: that is its empty state,
+ * with the other repositories' tabs still on the strip.
+ */
+function nextActive(
+  tabs: readonly Tab[],
+  idx: number,
+  repo: string | undefined
+): string | null {
+  const neighbour = tabs[Math.min(idx, tabs.length - 1)];
+  if (repo === undefined || !neighbour || !isForeignTab(neighbour, repo)) {
+    return neighbour?.id ?? null;
+  }
+  // Nearest tab of the repo in view, looking right first — the same
+  // direction the plain neighbour rule prefers.
+  for (let d = 0; d < tabs.length; d++) {
+    const right = tabs[idx + d];
+    if (right && !isForeignTab(right, repo)) return right.id;
+    const left = tabs[idx - 1 - d];
+    if (left && !isForeignTab(left, repo)) return left.id;
+  }
+  return null;
 }
 
 /** Drag-reorder: lift a tab out of the strip and drop it beside another. */
@@ -323,91 +313,6 @@ function moveTab(
   if (at < 0) return state;
   tabs.splice(side === 'after' ? at + 1 : at, 0, moved);
   return { ...state, tabs };
-}
-
-/**
- * Follow items whose key changed identity, and collapse any duplicate
- * the change produced.
- */
-function rekey(
-  state: TabsState,
-  repo: string,
-  entries: ItemEntry[]
-): TabsState {
-  // Reconcile open tabs with the current sidebar items. An item's
-  // key changes identity over its life (worktree `branch:x` grows a
-  // PR and becomes `pr:n`; a closed PR reverts) — follow it by
-  // branch so the tab never strands on a key no item carries.
-  const branchOf = new Map<string, string>();
-  const keys = new Set<string>();
-  for (const e of entries) {
-    keys.add(e.itemKey);
-    // On a branch collision prefer the PR-bearing key — it is the
-    // newer identity (the sidebar keys any PR-bearing item by PR).
-    const prev = branchOf.get(e.branch);
-    if (!prev || (prev.startsWith('branch:') && e.itemKey.startsWith('pr:')))
-      branchOf.set(e.branch, e.itemKey);
-  }
-  const entryBranch = new Map(entries.map((e) => [e.itemKey, e.branch]));
-  let changed = false;
-  const remapped = state.tabs.map((t): Tab => {
-    // Another repository's tabs are none of this sync's business: its
-    // items are not in `entries`, so every one of them would read as a
-    // stale key and get followed onto a same-named branch over here.
-    if (t.kind !== 'item' || t.repo !== repo) return t;
-    if (keys.has(t.itemKey)) {
-      const branch = entryBranch.get(t.itemKey);
-      if (branch && t.branch !== branch) {
-        changed = true;
-        return { ...t, branch };
-      }
-      return t;
-    }
-    // Stale key. `branch:`-shaped keys carry their branch; older
-    // tabs may have a stamped one from a previous sync.
-    const branch =
-      t.branch ??
-      (t.itemKey.startsWith('branch:') ? t.itemKey.slice(7) : undefined);
-    const nextKey = branch ? branchOf.get(branch) : undefined;
-    if (!nextKey || nextKey === t.itemKey) return t;
-    changed = true;
-    return { ...t, itemKey: nextKey, branch };
-  });
-  if (!changed) return state;
-  return { ...state, ...collapseDuplicateKeys(remapped, state.activeId) };
-}
-
-/**
- * Re-keying can land two tabs on the same key — the user opened the PR
- * by hand while the worktree tab was stranded on `branch:x`. Keep the
- * leftmost, let the survivor inherit pinned state (a pin is a
- * deliberate act and must not be lost to bookkeeping), and follow the
- * active tab to the survivor so focus does not fall off the strip.
- */
-function collapseDuplicateKeys(
-  remapped: readonly Tab[],
-  startingActiveId: string | null
-): { tabs: Tab[]; activeId: string | null } {
-  const seen = new Map<string, Tab>();
-  const tabs: Tab[] = [];
-  let activeId = startingActiveId;
-  for (const t of remapped) {
-    const key = pairKey(t);
-    const survivor = seen.get(key);
-    if (!survivor) {
-      seen.set(key, t);
-      tabs.push(t);
-      continue;
-    }
-    if (survivor.kind === 'item' && !t.preview && survivor.preview) {
-      const idx = tabs.indexOf(survivor);
-      const pinned: Tab = { ...survivor, preview: false };
-      tabs[idx] = pinned;
-      seen.set(key, pinned);
-    }
-    if (activeId === t.id) activeId = survivor.id;
-  }
-  return { tabs, activeId };
 }
 
 /**
@@ -454,33 +359,4 @@ function autoOpenRunning(
     });
   }
   return changed ? { ...next, autoOpened: [...opened] } : next;
-}
-
-/**
- * A preview tab whose branch has a live agent is active work, not idle
- * browsing: pin it so preview replacement (clicking another sidebar
- * item) can never swallow the tab out from under the agent.
- *
- * Liveness is `running`, not the presence of a session *name*: every
- * worktree item carries a name whether or not an agent was ever
- * started, so keying off the name pinned every preview tab the moment
- * it opened and preview replacement never happened.
- */
-function pinLive(
-  state: TabsState,
-  repo: string,
-  entries: ItemEntry[]
-): TabsState {
-  const branchOf = new Map(entries.map((e) => [e.itemKey, e.branch]));
-  const live = new Set(entries.filter((e) => e.running).map((e) => e.branch));
-  if (live.size === 0) return state;
-  let changed = false;
-  const tabs = state.tabs.map((t): Tab => {
-    if (t.kind !== 'item' || t.repo !== repo || !t.preview) return t;
-    const branch = branchOf.get(t.itemKey);
-    if (!branch || !live.has(branch)) return t;
-    changed = true;
-    return { ...t, preview: false };
-  });
-  return changed ? { ...state, tabs } : state;
 }

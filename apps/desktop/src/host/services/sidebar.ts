@@ -1,7 +1,6 @@
 import { readConfig, type BranchPrMap } from '@kirby/vcs-core';
 import { listWorktrees, worktreeSessionName } from '@kirby/worktree-manager';
 import {
-  isSessionAlive,
   buildSidebarItems,
   buildSessionLookups,
   categorizeReviews,
@@ -11,6 +10,7 @@ import {
   type SidebarItem,
 } from '@kirby/core';
 import { PROVIDERS, requireRepo } from './repo.js';
+import { isOwnSessionAlive } from './sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
 import type { SyncState } from '../contract.js';
 
@@ -171,7 +171,7 @@ export async function getSidebarModel(): Promise<SidebarItem[]> {
     const name = worktreeSessionName(wt);
     return {
       name,
-      running: isSessionAlive(name),
+      running: isOwnSessionAlive(name),
       ...(wt.state ? { state: wt.state } : {}),
     };
   });

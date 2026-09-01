@@ -21,12 +21,8 @@ export type {
   TabsAction,
   TabsState,
 } from './tabs-model.js';
-export {
-  activeTabRepo,
-  foreignRepoOf,
-  isForeignTab,
-  itemTabId,
-} from './tabs-model.js';
+export { activeTabRepo } from './tabs-model.js';
+export { foreignRepoOf, isForeignTab, itemTabId } from './tab-identity.js';
 
 /**
  * The tab strip's api.
@@ -46,7 +42,8 @@ interface TabsApi extends TabsState {
   openSettings: () => void;
   pin: (id: string) => void;
   activate: (id: string) => void;
-  close: (id: string) => void;
+  /** `repo` is the one in view: focus never leaves it on a close. */
+  close: (id: string, repo?: string) => void;
   closeOthers: (id: string) => void;
   closeAll: () => void;
   closeActive: () => void;
@@ -89,7 +86,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     []
   );
   const close = useCallback(
-    (id: string) => dispatch({ type: 'close', id }),
+    (id: string, repo?: string) => dispatch({ type: 'close', id, repo }),
     []
   );
   const closeOthers = useCallback(
@@ -179,6 +176,7 @@ export function useRepoTabs(): RepoTabsApi {
       openItem: (itemKey: string, opts?: { preview?: boolean }) =>
         tabs.openItem(cwd, itemKey, opts),
       syncItems: (entries: ItemEntry[]) => tabs.syncItems(cwd, entries),
+      close: (id: string) => tabs.close(id, cwd),
     }),
     [tabs, cwd]
   );

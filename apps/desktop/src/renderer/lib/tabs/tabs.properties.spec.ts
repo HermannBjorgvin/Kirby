@@ -1,8 +1,8 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { itemTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
-  itemTabId,
   reduce,
   type ItemEntry,
   type Tab,
@@ -60,6 +60,7 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
   fc.record({
     type: fc.constant('close' as const),
     id: fc.constantFrom(...IDS),
+    repo: fc.constantFrom(...REPOS),
   }),
   fc.record({
     type: fc.constant('close-others' as const),
@@ -125,21 +126,41 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
 
 const EMPTY: TabsState = EMPTY_TABS;
 
-const run = (actions: TabsAction[]): TabsState => actions.reduce(reduce, EMPTY);
-
 /**
- * The repository the workspace is showing after `actions`, or null
- * before it has been told about one.
+ * Replay a sequence the way the app dispatches one.
  *
- * Nothing in the state records it — the strip is told about a switch,
- * it does not own one — so it is reconstructed from the action whose
- * whole job is to say so.
+ * Every repo-carrying action names the repository *in view* — the
+ * components dispatching them read it from context, and only a repo
+ * switch changes which that is. Letting the generator pick those repos
+ * independently manufactures states the app cannot reach (a sidebar
+ * poll for a repository nobody is looking at, a close naming one the
+ * user is not in), and the invariants below are about reachable
+ * states. So the in-view repo is tracked here and substituted in.
+ *
+ * Cross-repo adversity is not lost: `repo-opened` still switches the
+ * repo mid-sequence, and the properties that deliberately aim one
+ * action at a *foreign* repo apply it to the finished state themselves.
  */
-const repoInView = (actions: TabsAction[]): string | null => {
-  let repo: string | null = null;
-  for (const a of actions) if (a.type === 'repo-opened') repo = a.repo;
-  return repo;
+const inViewOf = (a: TabsAction, repo: string): TabsAction =>
+  a.type === 'open-item' || a.type === 'sync-items' || a.type === 'close'
+    ? { ...a, repo }
+    : a;
+
+const replay = (
+  actions: TabsAction[]
+): { state: TabsState; inView: string } => {
+  // The app has a repo open before the strip exists: `Gate` announces
+  // one on mount, so there is no "no repo in view" state to model.
+  let inView: string = REPOS[0];
+  let state = EMPTY;
+  for (const a of actions) {
+    if (a.type === 'repo-opened') inView = a.repo;
+    state = reduce(state, inViewOf(a, inView));
+  }
+  return { state, inView };
 };
+
+const run = (actions: TabsAction[]): TabsState => replay(actions).state;
 
 const sequence = fc.array(action, { maxLength: 25 });
 
@@ -203,14 +224,15 @@ describe('tab reducer invariants', () => {
   it('goes without an active tab only when the repo in view has none', () => {
     fc.assert(
       fc.property(sequence, (actions) => {
-        const { tabs, activeId } = run(actions);
-        if (activeId !== null) return;
+        const { state, inView } = replay(actions);
+        if (state.activeId !== null) return;
         // Nothing active is legitimate in exactly one situation: the
         // repository in view has no tab on the strip, so the editor
         // shows its empty state while other repos' tabs stay put.
         // Anywhere else it is a blank editor area with tabs above it.
-        const inView = repoInView(actions);
-        const own = tabs.filter((t) => t.kind === 'item' && t.repo === inView);
+        const own = state.tabs.filter(
+          (t) => t.kind === 'item' && t.repo === inView
+        );
         expect(own).toEqual([]);
       }),
       { numRuns: 500 }
@@ -329,6 +351,63 @@ describe('one repository cannot reach another', () => {
         expect(foreign(after, repo).length).toBe(foreign(before, repo).length);
       }),
       { numRuns: 300 }
+    );
+  });
+});
+
+describe('closing never hands focus to another repository', () => {
+  /**
+   * A close only decides focus when it closes the *active* tab —
+   * otherwise activeId is left exactly where it was, foreign or not
+   * (activating a foreign tab is how the user switches repository in
+   * the first place). So both properties below are about the move.
+   */
+  const closeAndMove = (
+    actions: TabsAction[],
+    id: string,
+    repo: string
+  ): TabsState | null => {
+    const before = run(actions);
+    const after = reduce(before, { type: 'close', id, repo });
+    return after.activeId === before.activeId ? null : after;
+  };
+
+  it('never moves focus onto a tab outside the repo the close named', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...IDS),
+        fc.constantFrom(...REPOS),
+        (actions, id, repo) => {
+          const after = closeAndMove(actions, id, repo);
+          const active = after?.tabs.find((t) => t.id === after.activeId);
+          if (active === undefined || active.kind !== 'item') return;
+          // Focus is what the workspace follows, so a close that hands
+          // it across a repository boundary switches the sidebar, the
+          // status bar and every query — because the user shut a tab.
+          expect(active.repo).toBe(repo);
+        }
+      ),
+      { numRuns: 500 }
+    );
+  });
+
+  it('goes to nothing rather than abroad when the repo runs out of tabs', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...IDS),
+        fc.constantFrom(...REPOS),
+        (actions, id, repo) => {
+          const after = closeAndMove(actions, id, repo);
+          if (after === null || after.activeId !== null) return;
+          const own = after.tabs.filter(
+            (t) => t.kind === 'item' && t.repo === repo
+          );
+          expect(own).toEqual([]);
+        }
+      ),
+      { numRuns: 500 }
     );
   });
 });

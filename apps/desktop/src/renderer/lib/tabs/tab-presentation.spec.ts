@@ -4,7 +4,8 @@ import {
   repoGroupStarts,
   tabRepo,
 } from './tab-presentation.js';
-import { itemTabId, type Tab } from './tabs-model.js';
+import { itemTabId } from './tab-identity.js';
+import type { Tab } from './tabs-model.js';
 
 const A = '/repos/alpha';
 const B = '/repos/beta';
