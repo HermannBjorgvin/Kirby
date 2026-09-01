@@ -84,6 +84,7 @@ export function PrWorkspace({
   branch,
   baseBranch,
   sessionName,
+  sessionEpoch,
   running,
   active,
   busy,
@@ -97,6 +98,10 @@ export function PrWorkspace({
   baseBranch: string;
   /** PTY session for this branch, if one exists (running or its final frame). */
   sessionName?: string;
+  /** When that session was spawned. A restart in the same pane keeps
+   *  the name and changes this, which is what tells the terminal a new
+   *  agent is on the other end of it. */
+  sessionEpoch: number;
   running: boolean;
   active: boolean;
   busy: boolean;
@@ -309,6 +314,7 @@ export function PrWorkspace({
               branch={branch}
               baseBranch={baseBranch}
               sessionName={sessionName}
+              sessionEpoch={sessionEpoch}
               active={active}
               files={files}
               filesByName={filesByName}

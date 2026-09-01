@@ -1,7 +1,12 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { launchAgentFromRail, sidebarRow } from './setup/app.js';
+import {
+  fileTree,
+  fileTreeFolder,
+  launchAgentFromRail,
+  sidebarRow,
+} from './setup/app.js';
 
 const BRANCH = 'diff-work';
 
@@ -165,5 +170,102 @@ test.describe('Live worktree diff', () => {
     await expect(page.getByText('appeared-later.txt').first()).toBeVisible({
       timeout: 30_000,
     });
+  });
+});
+
+/**
+ * Collapsing a folder has to outlive the two-second poll a running
+ * agent puts the worktree diff on.
+ *
+ * The tree is rebuilt from every refreshed patch, and the parse runs off
+ * the main thread — so between two patches it is handed no files at all.
+ * Row-local open/closed state dies on that blank tick, which is how one
+ * file being written used to throw the whole tree open.
+ *
+ * The writes here come from the test rather than from the agent: what
+ * the poll sees is a change in the working tree, and who made it is not
+ * something the diff can tell. The agent is running so that the poll is.
+ */
+test.describe('File tree collapse', () => {
+  const TREE = 'tree-work';
+  test.use({
+    repo: {
+      worktrees: [
+        {
+          branch: TREE,
+          files: {
+            'docs/guide.md': 'a guide\n',
+            'src/app.ts': 'export const app = 1;\n',
+          },
+        },
+      ],
+    },
+    kirbyConfig: { aiCommand: fakeAgent({ stream: true }) },
+  });
+
+  test('a closed folder survives a file appearing elsewhere', async ({
+    desktop,
+  }) => {
+    const { page, repoPath } = desktop;
+    const worktree = join(repoPath, '.claude', 'worktrees', TREE);
+
+    await sidebarRow(page, new RegExp(TREE)).click();
+    await expect(fileTree(page).getByText('guide.md')).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const docs = fileTreeFolder(page, 'docs');
+    const src = fileTreeFolder(page, 'src');
+    await docs.click();
+    await expect(docs).toHaveAttribute('aria-expanded', 'false');
+    await expect(fileTree(page).getByText('guide.md')).toHaveCount(0);
+
+    await launchAgentFromRail(page);
+    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    writeFileSync(
+      join(worktree, 'src', 'added.ts'),
+      'export const added = 2;\n'
+    );
+    await expect(fileTree(page).getByText('added.ts')).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // The refresh reached into src, not into docs.
+    await expect(docs).toHaveAttribute('aria-expanded', 'false');
+    await expect(fileTree(page).getByText('guide.md')).toHaveCount(0);
+    await expect(src).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('the folder of an edited file opens, and only that one', async ({
+    desktop,
+  }) => {
+    const { page, repoPath } = desktop;
+    const worktree = join(repoPath, '.claude', 'worktrees', TREE);
+
+    await sidebarRow(page, new RegExp(TREE)).click();
+    await expect(fileTree(page).getByText('guide.md')).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const docs = fileTreeFolder(page, 'docs');
+    const src = fileTreeFolder(page, 'src');
+    await docs.click();
+    await src.click();
+    await expect(fileTree(page).getByText('app.ts')).toHaveCount(0);
+
+    await launchAgentFromRail(page);
+    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    writeFileSync(join(worktree, 'docs', 'guide.md'), 'a guide\nrewritten\n');
+    await expect(docs).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 30_000,
+    });
+    await expect(src).toHaveAttribute('aria-expanded', 'false');
+    await expect(fileTree(page).getByText('app.ts')).toHaveCount(0);
   });
 });

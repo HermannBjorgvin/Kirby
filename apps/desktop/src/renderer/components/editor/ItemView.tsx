@@ -19,7 +19,10 @@ import {
   launchMenuOpen,
   useLaunchMenuRequested,
 } from '../../lib/sidebar/launch-menu-request.js';
-import { estimateTerminalGrid } from '../../lib/terminal-grid.js';
+import {
+  estimateTerminalGrid,
+  paneTerminalGrid,
+} from '../../lib/terminal-grid.js';
 import { PrWorkspace } from './lazy-panes.js';
 import { Button } from '../ui/button.js';
 import { LaunchDialog, type LaunchChoice } from './LaunchDialog.js';
@@ -46,13 +49,18 @@ import { useItemLaunch } from './use-item-launch.js';
 function resolveItemState(
   item: SidebarItem,
   sessionRow: SidebarItem | undefined,
-  aliveSessions: readonly { name: string }[]
+  aliveSessions: readonly { name: string; spawnedAt: number }[]
 ) {
   const rowSessionName =
     itemSessionName(item) ??
     (sessionRow ? itemSessionName(sessionRow) : undefined);
   return {
     sessionName: liveSessionName(rowSessionName, aliveSessions),
+    // Restarting an agent keeps the session's name, so the name alone
+    // cannot tell the terminal that the thing on the other end of it is
+    // a different process that has never been told the pane's size.
+    sessionEpoch:
+      aliveSessions.find((s) => s.name === rowSessionName)?.spawnedAt ?? 0,
     running:
       itemRunning(item) || (sessionRow ? itemRunning(sessionRow) : false),
     hasWorktree: Boolean(rowSessionName) || itemHasWorktree(item),
@@ -179,12 +187,24 @@ export function ItemView({
   const baseBranch = useBaseBranch(repo.cwd);
   const menu = useLaunchMenu(branch, active, state);
 
-  // Half-width: a PR launch lands in the split review workspace where
-  // the terminal shares the pane with the diff.
+  // Measured off the pane the terminal will actually occupy, not off
+  // the tab: the rail beside it is resizable, so no fraction of the tab
+  // is the right answer for long. The terminal re-fits itself once it
+  // mounts, but an agent paints its first frame at whatever size it was
+  // spawned with, and that frame is the one the user sees.
   const estimateGrid = () => {
-    const el = paneRef.current;
-    if (!el) return {};
-    return estimateTerminalGrid(el.getBoundingClientRect(), 0.6);
+    const tab = paneRef.current;
+    if (!tab) return {};
+    const pane = tab.querySelector<HTMLElement>('[data-terminal-pane]');
+    const measured = pane ? paneTerminalGrid(pane) : null;
+    if (measured) return measured;
+    // Launching on a branch with no worktree yet: the content pane does
+    // not exist to measure (nor is it laid out), and the rail whose
+    // width it excludes is not on screen either. A deliberately conservative fraction of the tab
+    // is the least bad guess — too narrow costs a reflow, too wide
+    // costs wrapped output — and the terminal corrects it either way
+    // the moment it mounts.
+    return estimateTerminalGrid(tab.getBoundingClientRect(), 0.6);
   };
   const { choose, stop, busy } = useItemLaunch(
     repo.cwd,
@@ -193,7 +213,7 @@ export function ItemView({
   );
 
   if (!item || !state) return <Preparing itemKey={itemKey} />;
-  const { sessionName, running, hasWorktree, pr } = state;
+  const { sessionName, sessionEpoch, running, hasWorktree, pr } = state;
 
   const onLaunchClick = () => {
     onPin();
@@ -225,6 +245,7 @@ export function ItemView({
           branch={pr.sourceBranch}
           baseBranch={pr.targetBranch}
           sessionName={sessionName}
+          sessionEpoch={sessionEpoch}
           running={running}
           active={active}
           busy={busy}
@@ -246,6 +267,7 @@ export function ItemView({
           branch={branch}
           baseBranch={baseBranch}
           sessionName={sessionName}
+          sessionEpoch={sessionEpoch}
           running={running}
           active={active}
           busy={busy}

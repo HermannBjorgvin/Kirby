@@ -689,6 +689,85 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   looking dead in the very pane the restart came from.
 - **Desktop diffs are whole-file.** `fetchDiffText` uses `-U99999` so threads on untouched lines can be placed; the desktop viewer folds unchanged regions client-side (`lib/diff/diff-model.ts`, ±3 context, expandable gaps, thread anchors pinned) rather than asking git for hunks.
 - **A PR is diffed against commits; a bare worktree against its working tree.** `fetchDiffText` compares two commits, which is what review threads anchor to — a PR tab must never start showing uncommitted scratch work. A worktree with no PR has nothing to anchor, so `PrWorkspace` switches to `fetchWorktreeDiffText` (`libs/core/src/lib/utils/worktree-diff.ts`): merge-base diff run **inside the worktree**, so the index and working tree count, plus hand-built patches for untracked files. Untracked files are assembled rather than obtained via `git add -N`, because writing to the index of a worktree an agent is using changes what its own `git status` and `git commit` see. It polls at 2s **only while the agent is running** — a recursive `fs.watch` over a checkout wants an inotify handle per directory and `node_modules` alone exhausts the Linux default.
+- **Every git call behind a diff streams, and the worktree diff is
+  bounded per file.** `-U99999` makes a patch as large as the files it
+  touches, and `execFile` *discards everything it read* when its buffer
+  is exceeded — one generated file in a worktree and the tab had no
+  diff at all, only "stdout maxBuffer length exceeded". `runGit`
+  (`libs/core/src/lib/utils/git-run.ts`) spawns instead and treats its
+  ceiling as a stop: it returns what arrived plus `truncated`, and only
+  rejects when git itself failed. `fetchWorktreeDiffText` then decides
+  what it can render *before* the expensive diff runs — `git diff
+  --numstat -z` names the changed files, their churn and which git
+  calls binary — and drops what it cannot show with an
+  `:(exclude,literal)` pathspec, putting a one-line placeholder patch
+  in its place, so one unrepresentable file costs the user that file
+  and not the other forty. What "cannot show" means is bounded by what
+  **git will emit**, not by the file, and each clause has a test
+  because each was wrong first:
+
+  - `maxFileBytes` (2 MB) is measured with `lstat`, so a symlink is
+    sized as the link — git renders one as its target path, and
+    following it sizes the link as whatever it points at.
+  - `maxFileLines` (50k) bounds the churn, because a **deletion** has
+    nothing left on disk to size and its whole-file patch is the whole
+    file.
+  - A rename excludes **both** paths: pathspecs are applied before
+    rename detection, so naming only the destination brings the source
+    back unpaired, as a whole-file deletion — bigger than what the
+    bound was avoiding. A rename with no content change is never
+    summarised: its patch is a header and nothing else.
+
+  Untracked files (`untracked-diff.ts`) are sized before they are read
+  rather than after, read at bounded concurrency, rendered as
+  mode-120000 patches when they are symlinks (reading through one
+  printed a file from *outside* the repo as the agent's work), and stay
+  `--exclude-standard`, so nothing git ignores reaches the viewer. An
+  overrun of the overall ceiling is trimmed back to a file boundary
+  (`completePatch`) — half a hunk parses as real lines. The pull
+  request path streams and trims the same way but keeps every file: its
+  comments anchor into the document under review, so dropping one hides
+  what a reviewer was asked to read. The git-backed cases live in
+  `worktree-diff.integration.spec.ts`, including the 56 MB file the old
+  buffer died on.
+- **The diff file tree's collapse state is a function of the delta,
+  never of the poll.** A worktree tab refetches every two seconds while
+  its agent runs and the parse happens off the main thread, so between
+  two patches the tree is handed *no files at all*. Open/closed state
+  living in each row died on that blank tick, which is how one file
+  being written reopened every folder. It lives in `FileTree` now and
+  is reconciled by `lib/diff/file-tree-model.ts`: a refresh opens the
+  ancestors of files that are new or whose contents moved since the
+  last snapshot and nothing else, an empty snapshot is never recorded,
+  and an unchanged snapshot returns the same state object so a quiet
+  poll does not even re-render. The comparison is a per-file
+  `revision` (a hash of that file's added and removed lines, from
+  `buildFileEntries`) — churn counts miss a line swapped for another of
+  the same shape. Adjusted during render, not from an effect: the lint
+  gate forbids `setState` in an effect, and this is React's own
+  "adjusting state when a prop changes".
+- **A terminal is told its grid for every session, not every resize.**
+  A launch can only *estimate* the pane, so the PTY starts on a guess
+  and is corrected by the first resize wterm emits once it has measured
+  itself. Restarting an agent in a pane that already holds a
+  correctly-sized terminal moves nothing and emits nothing, so the new
+  agent stayed on the guess — 79 columns in a 93-column pane — until
+  the window was resized. `SessionTerminal` now sends
+  `resizeSession` on every fit rather than only when wterm's own grid
+  moved, and re-fits on an `epoch` prop carrying the session's
+  `spawnedAt`: a session's *name* survives a restart, that timestamp
+  does not. The estimate is measured too — `paneTerminalGrid` stands a
+  hidden `.wterm` up inside `[data-terminal-pane]` (the content pane
+  the terminal will occupy) and reads the font and padding that will
+  actually apply, replacing a fixed 0.6 of the whole tab left over from
+  a layout where the review workspace split its pane. That fraction
+  survives as the fallback for the one case with no pane to measure —
+  the first launch on a branch with no worktree, where the checkout has
+  not happened yet — because the host's own fallback is a fixed 120x40
+  whatever the window size. The fake agent's
+  `--print-size` reports the PTY grid with its pid, which is what lets
+  a test tell one agent's report from the next one's when tmux repaints
+  the screen instead of appending to it.
 - **The PR row's status circle carries two axes, not one.** `prStatusIndicator` (`renderer/lib/sidebar/sidebar-model.ts`) decides three channels: **colour** is the worst thing standing in the way (red = CI failed or rejected, yellow = CI running or waiting for author, green = all approved, muted = anything else), **glyph** is whichever axis is more severe so the circle depicts what is actually holding the request up, and **filled** means nothing is outstanding at all. Colour is deliberately asymmetric — CI can escalate a row but never vouch for it, so a passing build on an unapproved request stays muted and green means people signed off. Approvals win a glyph tie, which is what stops a green tick appearing inside a red circle on a rejected request. The 4×4 grid is asserted whole in `sidebar/sidebar-model.spec.ts`: every bug here has been a cell nobody thought to check.
 - **The two providers are not tested to the same depth — know which one
   you are changing.** Both implement `VcsProvider` (`libs/vcs/core`),

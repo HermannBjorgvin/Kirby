@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseUnifiedDiff } from '@kirby/diff';
-import { untrackedFilePatch } from './worktree-diff.js';
+import { placeholderPatch, trimToFileBoundary } from './diff-patch.js';
+import { untrackedFilePatch } from './untracked-diff.js';
+import { parseNumstat } from './worktree-diff.js';
 
 /**
  * New files an agent has written but not yet added.
@@ -88,5 +90,72 @@ describe('untrackedFilePatch', () => {
     const both =
       untrackedFilePatch('one.ts', 'a\n') + untrackedFilePatch('two.ts', 'b\n');
     expect([...parse(both).keys()]).toEqual(['one.ts', 'two.ts']);
+  });
+});
+
+describe('parseNumstat', () => {
+  const rec = (...fields: string[]) => fields.map((f) => `${f}\0`).join('');
+
+  it('reads a text file, its churn and its path', () => {
+    expect(parseNumstat(rec('3\t1\tsrc/app.ts'))).toEqual([
+      { path: 'src/app.ts', binary: false, adds: 3, dels: 1 },
+    ]);
+  });
+
+  it('marks a file binary when git declines to count its lines', () => {
+    expect(parseNumstat(rec('-\t-\tlogo.png'))).toEqual([
+      { path: 'logo.png', binary: true, adds: 0, dels: 0 },
+    ]);
+  });
+
+  it('keeps both sides of a rename, destination first', () => {
+    // With -z a rename writes an empty path, then the old and new paths
+    // as two further records. Reading it naively yields a file named ''
+    // and swallows the two paths as if they were records of their own —
+    // and losing the source is what lets an excluded destination leave
+    // its unpaired source behind as a whole-file deletion.
+    expect(
+      parseNumstat(rec('1\t1\t', 'old.ts', 'new.ts', '2\t0\tafter.ts'))
+    ).toEqual([
+      { path: 'new.ts', oldPath: 'old.ts', binary: false, adds: 1, dels: 1 },
+      { path: 'after.ts', binary: false, adds: 2, dels: 0 },
+    ]);
+  });
+
+  it('keeps a path that contains a tab whole', () => {
+    // `-z` does not quote paths, so a tab in one arrives raw and splits
+    // the record into four fields. Taking only the third truncates the
+    // path, and the exclude pathspec built from it then names a file
+    // that does not exist — so the oversized file is diffed after all.
+    expect(parseNumstat(rec('1\t0\tweird\tname.txt'))).toEqual([
+      { path: 'weird\tname.txt', binary: false, adds: 1, dels: 0 },
+    ]);
+  });
+
+  it('is empty for an empty diff', () => {
+    expect(parseNumstat('')).toEqual([]);
+  });
+});
+
+describe('trimToFileBoundary', () => {
+  it('drops a partial last file so the parser never sees half a hunk', () => {
+    const whole = untrackedFilePatch('a.ts', 'one\ntwo\n');
+    const cut = `${whole}diff --git a/b.ts b/b.ts\nnew file mo`;
+    expect(trimToFileBoundary(cut)).toBe(whole);
+  });
+
+  it('returns nothing when not even the first file completed', () => {
+    expect(trimToFileBoundary('diff --git a/a.ts b/a.ts\nnew fi')).toBe('');
+  });
+});
+
+describe('placeholderPatch', () => {
+  it('reads back as a one-line file carrying its explanation', () => {
+    const lines = parse(placeholderPatch('big.bin', 'file too large')).get(
+      'big.bin'
+    )!;
+    expect(lines.filter((l) => l.type === 'add').map((l) => l.content)).toEqual([
+      'file too large',
+    ]);
   });
 });

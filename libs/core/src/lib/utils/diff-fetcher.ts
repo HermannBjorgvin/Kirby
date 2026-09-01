@@ -1,13 +1,34 @@
-import { execFile as execFileCb } from 'node:child_process';
-import { promisify } from 'node:util';
+import { completePatch } from './diff-patch.js';
+import { gitLine, runGit } from './git-run.js';
 
-const execFile = promisify(execFileCb);
+/**
+ * Ceiling on a review diff.
+ *
+ * `-U99999` asks for "whole file" context so review comments placed on
+ * unmodified lines far from any hunk still render in-position (see
+ * diff-fetcher.integration.spec.ts). The large context is a deliberate
+ * product trade-off, so the payload is as big as the pull request's
+ * files — and it streams through `runGit` rather than `execFile` for the
+ * same reason the worktree diff does: `execFile` discards everything it
+ * read when the buffer is exceeded, which turns a big pull request into
+ * "stdout maxBuffer length exceeded" and an empty tab.
+ *
+ * Unlike the worktree diff this does not drop oversized *files*. A pull
+ * request is a document under review and its comments anchor into it;
+ * quietly leaving a file out of what a reviewer is reading is worse
+ * than a long parse. It is still bounded overall, because the main
+ * process holds the chunks, their concatenation and the JS string at
+ * once: past the ceiling the patch is cut back to a file boundary and
+ * carries a notice saying so, which is the one thing a reviewer must
+ * not be left to guess at.
+ */
+const MAX_DIFF_BYTES = 64 * 1024 * 1024;
 
 export async function resolveRef(branch: string): Promise<string> {
   // Prefer remote tracking ref, fall back to local branch
   for (const candidate of [`origin/${branch}`, branch]) {
     try {
-      await execFile('git', ['rev-parse', '--verify', candidate]);
+      await gitLine(['rev-parse', '--verify', candidate]);
       return candidate;
     } catch {
       // try next
@@ -40,16 +61,11 @@ export async function fetchDiffText(
     preResolved
   );
 
-  // `-U99999` asks for "whole file" context so review comments placed
-  // on unmodified lines far from any hunk still render in-position
-  // (see diff-fetcher.integration.spec.ts). The large context is a
-  // deliberate product trade-off, not an oversight.
-  const { stdout } = await execFile(
-    'git',
+  const { text, truncated } = await runGit(
     ['diff', '-U99999', `${targetRef}...${sourceRef}`],
-    { maxBuffer: 50 * 1024 * 1024 }
+    { maxBytes: MAX_DIFF_BYTES }
   );
-  return stdout;
+  return completePatch(text, truncated, MAX_DIFF_BYTES);
 }
 
 // Per-file diff — used by the diff viewer on file open. Scoping to a
@@ -68,10 +84,9 @@ export async function fetchFileDiffText(
     targetBranch,
     preResolved
   );
-  const { stdout } = await execFile(
-    'git',
+  const { text, truncated } = await runGit(
     ['diff', '-U99999', `${targetRef}...${sourceRef}`, '--', filename],
-    { maxBuffer: 50 * 1024 * 1024 }
+    { maxBytes: MAX_DIFF_BYTES }
   );
-  return stdout;
+  return completePatch(text, truncated, MAX_DIFF_BYTES);
 }

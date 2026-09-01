@@ -258,6 +258,39 @@ describe('buildFileEntries', () => {
       buildFileEntries(diffed, new Map(), new Map()).map((e) => e.path)
     ).toEqual(['src/a.ts', 'src/b.ts']);
   });
+
+  // `revision` is what the file tree's collapse rule compares two polls
+  // by (see lib/diff/file-tree-model.ts). A key that does not move when
+  // the file does means the folder never opens; a key that moves when
+  // the file has not means the tree reopens on every poll.
+  describe('revision', () => {
+    const of = (lines: DiffLine[]) =>
+      buildFileEntries([['f.ts', lines]], new Map(), new Map())[0].revision;
+    const text = (type: DiffLine['type'], content: string): DiffLine =>
+      ({ type, content, oldLine: 1, newLine: 1 }) as DiffLine;
+
+    it('is stable for the same changed lines', () => {
+      expect(of([text('add', 'one'), text('remove', 'two')])).toBe(
+        of([text('add', 'one'), text('remove', 'two')])
+      );
+    });
+
+    it('moves when a changed line is swapped for another of the same shape', () => {
+      // The counts are identical here, which is exactly why churn
+      // counts alone are not enough to detect the edit.
+      expect(of([text('add', 'one')])).not.toBe(of([text('add', 'two')]));
+    });
+
+    it('moves when an addition becomes a removal', () => {
+      expect(of([text('add', 'one')])).not.toBe(of([text('remove', 'one')]));
+    });
+
+    it('ignores context, which with -U99999 is the rest of the file', () => {
+      expect(of([text('add', 'one'), text('context', 'noise')])).toBe(
+        of([text('add', 'one'), text('context', 'different noise')])
+      );
+    });
+  });
 });
 
 // ── the unified comment list ─────────────────────────────────────

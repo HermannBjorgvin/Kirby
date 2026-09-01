@@ -6,13 +6,23 @@ import {
   FolderIcon,
   MessageSquareIcon,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  buildTree,
+  collapseAfterRefresh,
+  NO_COLLAPSE,
+  toggleCollapsed,
+  type TreeCollapse,
+  type TreeNode,
+} from '../../../lib/diff/file-tree-model.js';
 import { cn } from '../../../lib/utils.js';
 import { ScrollArea } from '../../ui/scroll-area.js';
 import { Skeleton } from '../../ui/skeleton.js';
 
 export interface FileEntry {
   path: string;
+  /** Identity of this file's changed lines — see `fileRevision`. */
+  revision: string;
   additions: number;
   deletions: number;
   comments: number;
@@ -20,68 +30,17 @@ export interface FileEntry {
   drafts?: number;
 }
 
-interface DirNode {
-  kind: 'dir';
-  name: string;
-  path: string;
-  children: TreeNode[];
-}
-interface FileNode {
-  kind: 'file';
-  name: string;
-  entry: FileEntry;
-}
-type TreeNode = DirNode | FileNode;
-
-/** Build a directory tree and collapse single-child directory chains
- *  (`src/lib/utils` as one row) the way VS Code's compact folders do. */
-function buildTree(entries: FileEntry[]): TreeNode[] {
-  const root: DirNode = { kind: 'dir', name: '', path: '', children: [] };
-  for (const entry of entries) {
-    const parts = entry.path.split('/');
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const name = parts[i];
-      let next = node.children.find(
-        (c): c is DirNode => c.kind === 'dir' && c.name === name
-      );
-      if (!next) {
-        next = {
-          kind: 'dir',
-          name,
-          path: parts.slice(0, i + 1).join('/'),
-          children: [],
-        };
-        node.children.push(next);
-      }
-      node = next;
-    }
-    node.children.push({ kind: 'file', name: parts[parts.length - 1], entry });
-  }
-  const compact = (node: DirNode): DirNode => {
-    let cur = node;
-    while (cur.children.length === 1 && cur.children[0].kind === 'dir') {
-      const only = cur.children[0];
-      cur = {
-        kind: 'dir',
-        name: cur.name ? `${cur.name}/${only.name}` : only.name,
-        path: only.path,
-        children: only.children,
-      };
-    }
-    return {
-      ...cur,
-      children: cur.children
-        .map((c) => (c.kind === 'dir' ? compact(c) : c))
-        .sort((a, b) => {
-          if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        }),
-    };
-  };
-  return compact(root).children;
-}
-
+/**
+ * The diff's files as a tree.
+ *
+ * Which folders are open lives here rather than in each row, and that
+ * is load-bearing rather than tidy. A worktree tab re-fetches its diff
+ * every two seconds while the agent runs; the parse happens off the
+ * main thread, so between two patches the tree is briefly handed no
+ * files at all. Row-local state dies with the row on that blank tick,
+ * which is why an agent writing a file used to throw every folder in
+ * the tree open. `file-tree-model.ts` owns the rule that replaces it.
+ */
 export function FileTree({
   entries,
   loading,
@@ -94,6 +53,7 @@ export function FileTree({
   onSelect: (path: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [collapse, setCollapse] = useState<TreeCollapse>(NO_COLLAPSE);
   const tree = useMemo(() => buildTree(entries), [entries]);
   const totals = useMemo(
     () =>
@@ -107,8 +67,25 @@ export function FileTree({
     [entries]
   );
 
+  // Adjusted during render rather than from an effect: React's own
+  // "adjusting state when a prop changes" pattern. `collapseAfterRefresh`
+  // hands back the state it was given when nothing moved, so a poll that
+  // changed nothing settles in the same render.
+  const [reconciled, setReconciled] = useState(entries);
+  if (reconciled !== entries) {
+    setReconciled(entries);
+    setCollapse(collapseAfterRefresh(collapse, entries));
+  }
+
+  const onToggle = useCallback((path: string) => {
+    setCollapse((c) => toggleCollapsed(c, path));
+  }, []);
+
   return (
-    <div className={cn('flex flex-col', open ? 'h-full' : 'shrink-0')}>
+    <div
+      data-file-tree
+      className={cn('flex flex-col', open ? 'h-full' : 'shrink-0')}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -144,6 +121,8 @@ export function FileTree({
                 key={node.kind === 'dir' ? node.path : node.entry.path}
                 node={node}
                 depth={0}
+                collapsed={collapse.collapsed}
+                onToggle={onToggle}
                 selected={selected}
                 onSelect={onSelect}
               />
@@ -158,24 +137,29 @@ export function FileTree({
 function TreeRow({
   node,
   depth,
+  collapsed,
+  onToggle,
   selected,
   onSelect,
 }: {
-  node: TreeNode;
+  node: TreeNode<FileEntry>;
   depth: number;
+  collapsed: ReadonlySet<string>;
+  onToggle: (path: string) => void;
   selected: string | null;
   onSelect: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
   const pad = { paddingLeft: 8 + depth * 12 };
 
   if (node.kind === 'dir') {
+    const open = !collapsed.has(node.path);
     return (
       <div>
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => onToggle(node.path)}
           style={pad}
+          aria-expanded={open}
           className="flex h-[22px] w-full items-center gap-1 pr-2 text-base text-foreground/90 hover:bg-accent"
         >
           <ChevronRightIcon
@@ -193,6 +177,8 @@ function TreeRow({
               key={c.kind === 'dir' ? c.path : c.entry.path}
               node={c}
               depth={depth + 1}
+              collapsed={collapsed}
+              onToggle={onToggle}
               selected={selected}
               onSelect={onSelect}
             />

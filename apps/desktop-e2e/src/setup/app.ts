@@ -172,3 +172,26 @@ export async function launchAgentFromRail(page: Page): Promise<void> {
     .click();
   await startSessionFromMenu(page);
 }
+
+/**
+ * The review rail's file tree.
+ *
+ * Scoped by its own attribute rather than by text: every path it lists
+ * also appears in the diff pane's file headers, so an unscoped
+ * `getByText('guide.md')` cannot tell a tree row that is hidden from a
+ * diff header that is not.
+ */
+export function fileTree(page: Page): Locator {
+  return page.locator('[data-file-tree]');
+}
+
+/**
+ * A folder row in the file tree. Folder rows are the only buttons whose
+ * whole accessible name is the directory's name — a file row carries its
+ * churn counts too — so an exact match is enough, and strict mode reports
+ * it if that ever stops being true. `aria-expanded` says whether it is
+ * open.
+ */
+export function fileTreeFolder(page: Page, name: string): Locator {
+  return fileTree(page).getByRole('button', { name, exact: true });
+}

@@ -1,6 +1,13 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
-import { createWorktree, openPalette, sidebarRow, tab } from './setup/app.js';
+import {
+  agentPicker,
+  createWorktree,
+  openPalette,
+  sessionMenu,
+  sidebarRow,
+  tab,
+} from './setup/app.js';
 import { armContextMenuChoice, clickAppMenuItem } from './setup/menu.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
 
@@ -83,6 +90,20 @@ test.describe('Visual @visual', () => {
       dialog.getByRole('button', { name: /^(Remove|Force remove)$/ })
     ).toBeVisible();
     await expect(dialog).toHaveScreenshot('dialog-remove-worktree.png', shot);
+  });
+
+  test('session menu', async ({ desktop }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'visual-branch');
+
+    await sidebarRow(page, /visual-branch/).dblclick();
+    const menu = sessionMenu(page);
+    await expect(menu).toBeVisible();
+    // The picker fills in from a host query; capturing before it
+    // answers would freeze the "Loading…" placeholder into the
+    // baseline.
+    await expect(agentPicker(page)).toHaveText(/\(default\)/);
+    await expect(menu).toHaveScreenshot('dialog-session-menu.png', shot);
   });
 
   test('keyboard shortcuts dialog', async ({ desktop }) => {

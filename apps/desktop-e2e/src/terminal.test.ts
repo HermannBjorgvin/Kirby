@@ -1,10 +1,17 @@
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
+  UNSET_BACKEND,
+  killKirbySessions,
+  tmuxAvailable,
+} from './setup/tmux.js';
+import {
+  agentSpinner,
   createWorktree,
   focusTerminal,
   launchAgentFromRail,
   sidebarRow,
+  startSessionFromMenu,
   tab,
   tabs,
   visibleText,
@@ -234,5 +241,259 @@ test.describe('Pasting an image', () => {
         timeout: 2_000,
       });
     }).toPass({ timeout: 30_000 });
+  });
+});
+
+/**
+ * The grid a relaunched agent is given.
+ *
+ * An agent draws itself to whatever size its terminal hands it, so a
+ * terminal on the wrong grid looks like the agent misbehaving. A launch
+ * can only estimate the pane, so the PTY starts on a guess and is
+ * corrected once the terminal has measured itself — but a restart into a
+ * pane that already holds a correctly-sized terminal moves nothing, and
+ * the correction never came.
+ */
+test.describe('Terminal fit', () => {
+  test.use({ kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) } });
+
+  interface Grid {
+    cols: number;
+    rows: number;
+  }
+  interface Report extends Grid {
+    /** Which agent said so. */
+    pid: string;
+  }
+
+  /** Every grid an agent has reported, oldest first. */
+  async function reportedGrids(page: Page): Promise<Report[]> {
+    const text = await page.evaluate(() => document.body.innerText);
+    return [...text.matchAll(/size:(\d+)x(\d+)#(\d+)/g)].map((m) => ({
+      cols: Number(m[1]),
+      rows: Number(m[2]),
+      pid: m[3],
+    }));
+  }
+
+  /** The agent currently reporting, once it has said anything. */
+  async function currentPid(page: Page): Promise<string> {
+    await expect
+      .poll(async () => (await reportedGrids(page)).length, {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
+    return (await reportedGrids(page)).at(-1)!.pid;
+  }
+
+  /**
+   * The grid that fills the terminal on screen, measured off its own
+   * box and cell metrics — so this says nothing about how the app
+   * computes a grid, only how much of the pane the agent covers.
+   */
+  async function paneGrid(page: Page): Promise<Grid> {
+    return page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('.wterm');
+      const row = el?.querySelector<HTMLElement>('.term-row');
+      if (!el || !row) throw new Error('no terminal on screen');
+      const style = getComputedStyle(el);
+      const probe = document.createElement('div');
+      probe.className = 'term-row';
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      const span = document.createElement('span');
+      span.textContent = 'W'.repeat(40);
+      probe.appendChild(span);
+      el.appendChild(probe);
+      const charWidth = span.getBoundingClientRect().width / 40;
+      probe.remove();
+      const box = el.getBoundingClientRect();
+      const inner = {
+        width:
+          box.width -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight),
+        height:
+          box.height -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      };
+      return {
+        cols: Math.floor(inner.width / charWidth),
+        rows: Math.floor(inner.height / row.getBoundingClientRect().height),
+      };
+    });
+  }
+
+  /**
+   * Wait for the agent to settle on the grid that fills its pane.
+   *
+   * `notPid` is the agent that was there before. Without it a restart
+   * reads the *previous* agent's last line — still on screen, and still
+   * correct — and passes on a terminal that never resized at all.
+   */
+  async function expectAgentFillsPane(
+    page: Page,
+    notPid?: string
+  ): Promise<void> {
+    const expected = await paneGrid(page);
+    await expect
+      .poll(
+        async () => {
+          const last = (await reportedGrids(page))
+            .filter((g) => g.pid !== notPid)
+            .at(-1);
+          return last ? { cols: last.cols, rows: last.rows } : null;
+        },
+        { timeout: 20_000 }
+      )
+      .toEqual(expected);
+  }
+
+  test('an agent restarted in place is given the pane it is drawn in', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'restart');
+    await launchAgentFromRail(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+    await expectAgentFillsPane(page);
+    const before = await currentPid(page);
+
+    // Stopped from the rail, the tab stays open and the terminal stays
+    // mounted — nothing about it changes size, so a fit that only speaks
+    // up when wterm's own grid moved has nothing to say, and the new PTY
+    // keeps whatever the launch request guessed.
+    await page.getByLabel('Stop agent').filter({ visible: true }).click();
+    await expect
+      .poll(
+        async () => {
+          const s = await page.evaluate(() => window.kirby.listSessions());
+          return s.filter((x) => x.running).length;
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(0);
+
+    await launchAgentFromRail(page);
+    await expectAgentFillsPane(page, before);
+  });
+
+  test('a tab closed and launched again comes back on the pane\'s grid', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'refit');
+    await launchAgentFromRail(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+    await expectAgentFillsPane(page);
+
+    // Closing the tab takes the idle agent with it and tears the wterm
+    // instance down; the relaunch mounts a fresh one.
+    await expect(agentSpinner(page)).toHaveCount(0, { timeout: 20_000 });
+    await tab(page, /refit/)
+      .getByLabel('Close tab')
+      .click();
+    await expect(tabs(page)).toHaveCount(0);
+    await expect
+      .poll(
+        async () => {
+          const s = await page.evaluate(() => window.kirby.listSessions());
+          return s.filter((x) => x.running).length;
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(0);
+
+    await sidebarRow(page, /refit/).dblclick();
+    await startSessionFromMenu(page);
+    await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+    await expectAgentFillsPane(page);
+  });
+
+  /**
+   * The first launch on a branch that has no worktree yet.
+   *
+   * There is no content pane to measure at that point — the worktree is
+   * still being checked out — so the launch size is a guess whatever
+   * the estimate does. The terminal has to arrive at the pane's grid
+   * anyway, which is the whole reason it re-fits rather than trusting
+   * the launch.
+   */
+  test.describe('on a branch with no worktree', () => {
+    test.use({
+      repo: { branches: ['undo-support'] },
+      kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) },
+      fakeGitHub: {
+        username: 'kirby-tester',
+        prs: [
+          {
+            number: 7,
+            title: 'Add undo support',
+            headRefName: 'undo-support',
+            rollup: 'SUCCESS',
+          },
+        ],
+      },
+    });
+
+    test('checks the branch out and still fills the pane', async ({
+      desktop,
+    }) => {
+      const { page } = desktop;
+      await sidebarRow(page, /Add undo support|#7/)
+        .first()
+        .click();
+      await launchAgentFromRail(page);
+      await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+      await expectAgentFillsPane(page);
+    });
+  });
+
+  /**
+   * The same restart, through tmux.
+   *
+   * A tmux session outlives the local PTY that shows it, and tmux sizes
+   * a window to the client attached to it — so the renderer's resize has
+   * one more hop to survive here than it does on a bare PTY.
+   */
+  test.describe('under tmux', () => {
+    test.skip(!tmuxAvailable(), 'tmux is not installed');
+    test.use({
+      kirbyConfig: {
+        ...UNSET_BACKEND,
+        aiCommand: fakeAgent({ printSize: true }),
+      },
+    });
+    // Closing the app detaches rather than kills, by design.
+    test.afterEach(({ desktop }) => killKirbySessions(desktop.homeDir));
+
+    test('a restarted tmux agent is given the pane too', async ({
+      desktop,
+    }) => {
+      const { page } = desktop;
+      await createWorktree(page, 'tmux-refit');
+      await launchAgentFromRail(page);
+      await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
+
+      await expectAgentFillsPane(page);
+      const before = await currentPid(page);
+
+      await page.getByLabel('Stop agent').filter({ visible: true }).click();
+      await expect
+        .poll(
+          async () => {
+            const s = await page.evaluate(() => window.kirby.listSessions());
+            return s.filter((x) => x.running).length;
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(0);
+
+      await launchAgentFromRail(page);
+      await expectAgentFillsPane(page, before);
+    });
   });
 });

@@ -117,6 +117,9 @@ function addWorktree(dir: string, base: string, wt: TestRepoWorktree): void {
   ]);
 
   for (const [name, contents] of Object.entries(wt.files ?? {})) {
+    // A seeded name may carry directories ('docs/guide.md'), which a
+    // fresh checkout does not have.
+    mkdirSync(dirname(join(path, name)), { recursive: true });
     writeFileSync(join(path, name), contents, 'utf8');
     git(path, ['add', name]);
   }

@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog.js';
+import { Label } from '../ui/label.js';
 import {
   Select,
   SelectContent,
@@ -179,11 +180,18 @@ function PrTitle({ pr }: { pr: PullRequestInfo }) {
   );
 }
 
+const AGENT_PICKER_ID = 'launch-agent';
+
 /**
  * Which agent this launch uses. Indexed rather than by id because the
  * default row and a registry row can share an id (Claude configured →
  * "Claude (default)" is row 0 and there is no second Claude row, but a
  * custom command shows as "Custom (default)" with id `test`).
+ *
+ * Laid out as one more row of the option list — same left and right
+ * edges as the cards above it and the footer buttons below — so it
+ * reads as configuration for the option it sits under rather than as
+ * something floating between the two.
  */
 function AgentPicker({
   agents,
@@ -195,14 +203,20 @@ function AgentPicker({
   onChange: (index: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 pl-10">
-      <span className="text-sm text-muted-foreground">Agent</span>
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2">
+      <Label htmlFor={AGENT_PICKER_ID} className="text-muted-foreground">
+        Agent
+      </Label>
       <Select
         value={agents.length > 0 ? String(index) : ''}
         onValueChange={(v) => onChange(Number(v))}
         disabled={agents.length === 0}
       >
-        <SelectTrigger className="w-48" aria-label="Agent">
+        <SelectTrigger
+          id={AGENT_PICKER_ID}
+          className="w-56 shrink-0"
+          aria-label="Agent"
+        >
           <SelectValue placeholder="Loading…" />
         </SelectTrigger>
         <SelectContent>

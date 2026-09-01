@@ -61,3 +61,32 @@ export function estimateTerminalGrid(
   const rows = Math.max(5, Math.floor((rect.height - PAD_Y) / ROW_HEIGHT));
   return { cols, rows };
 }
+
+/**
+ * The grid a pane would give a terminal, measured before one is in it.
+ *
+ * A hidden `.wterm` is stood up inside the pane so the font and padding
+ * that will actually apply are measured rather than assumed — the
+ * constants above are a last resort, and half a column of error is the
+ * difference between an agent's first frame fitting its pane and
+ * wrapping in it. `paneEl` must establish a containing block (the
+ * content pane is `relative`), or the probe escapes it.
+ *
+ * A pane with no box yet answers `null`: the minimums above would
+ * otherwise turn an unlaid-out pane into a plausible-looking 20x5 and
+ * spawn an agent in it.
+ */
+export function paneTerminalGrid(paneEl: HTMLElement): Grid | null {
+  const box = paneEl.getBoundingClientRect();
+  if (box.width < 2 || box.height < 2) return null;
+  const probe = document.createElement('div');
+  probe.className = 'wterm';
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  probe.style.width = `${box.width}px`;
+  probe.style.height = `${box.height}px`;
+  paneEl.appendChild(probe);
+  const measured = measureTerminalGrid(probe, box);
+  probe.remove();
+  return measured ?? estimateTerminalGrid(box);
+}
