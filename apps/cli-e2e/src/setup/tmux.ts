@@ -23,6 +23,13 @@ const KIRBY_PREFIX = 'kirby-';
  *  sessions can't be caught in the blast radius. */
 const E2E_BRANCH_PREFIX = 'e2e-tmux-';
 
+/** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
+ *  the config file altogether — the state the tmux-when-detected default
+ *  applies to. The fixture writes `'pty'` otherwise. */
+export const UNSET_BACKEND: Record<string, unknown> = {
+  terminalBackend: undefined,
+};
+
 export function tmuxAvailable(): boolean {
   try {
     execFileSync('tmux', ['-V'], { stdio: 'ignore' });
@@ -45,7 +52,13 @@ function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   if (!tmuxTmpdir) {
     throw new Error('tmux helpers need the test homeDir (TMUX_TMPDIR)');
   }
-  return { ...process.env, TMUX_TMPDIR: tmuxTmpdir };
+  const env = { ...process.env, TMUX_TMPDIR: tmuxTmpdir };
+  // `$TMUX` names a socket outright and wins over TMUX_TMPDIR, so
+  // running the suite from inside a tmux session would point every one
+  // of these helpers at the developer's own server.
+  delete env.TMUX;
+  delete env.TMUX_PANE;
+  return env;
 }
 
 /** Session names on the test's tmux server. Empty list when no server is

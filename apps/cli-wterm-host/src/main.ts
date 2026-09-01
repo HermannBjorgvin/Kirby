@@ -75,6 +75,13 @@ function spawnKirby(req: SpawnRequest): void {
   delete childEnv.CI;
   delete childEnv.CONTINUOUS_INTEGRATION;
   delete childEnv.GITHUB_ACTIONS;
+  // A tmux client reads the socket path straight out of `$TMUX` and
+  // ignores `TMUX_TMPDIR` when it is set, so a host started from inside
+  // a tmux session hands the spawned Kirby the *developer's* tmux
+  // server — where it would create (and the tests would fail to find)
+  // its sessions. Nothing here should ever be nested in a real session.
+  delete childEnv.TMUX;
+  delete childEnv.TMUX_PANE;
 
   const pty = spawnPty('node', [cliBinary, req.repoPath], {
     name: 'xterm-256color',

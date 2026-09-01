@@ -237,6 +237,11 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // the reverse). Tests that want one set it through config.
     delete parentEnv.EDITOR;
     delete parentEnv.VISUAL;
+    // `$TMUX` names a socket outright and wins over the TMUX_TMPDIR set
+    // below, so launching from inside a tmux session would put the
+    // app's sessions on the developer's own tmux server.
+    delete parentEnv.TMUX;
+    delete parentEnv.TMUX_PANE;
 
     const app = await electron.launch({
       args: [

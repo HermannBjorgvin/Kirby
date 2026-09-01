@@ -53,6 +53,18 @@ export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
 }
 
 export interface KirbyOptions {
+  /**
+   * Written to `$HOME/.kirby/config.json` before Kirby launches, over a
+   * `terminalBackend: 'pty'` base.
+   *
+   * That base is deliberate: with the key absent Kirby resolves the
+   * backend to tmux wherever tmux is installed, and its own exit path
+   * only *detaches* a tmux session — so every session-creating test
+   * would leave a live agent behind, on CI and on any developer machine
+   * with tmux. A test about the tmux backend asks for it explicitly; a
+   * test about the *default* passes `terminalBackend: undefined`, which
+   * drops the key from the file entirely (see `UNSET_BACKEND`).
+   */
   kirbyConfig?: Record<string, unknown>;
   kirbyEnv?: Record<string, string>;
   cols: number;
@@ -103,12 +115,12 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
     const repoPath = kirbyRepoPath ?? createTestRepo();
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
     await mkdir(join(homeDir, '.kirby'), { recursive: true });
-    if (kirbyConfig) {
-      await writeFile(
-        join(homeDir, '.kirby', 'config.json'),
-        JSON.stringify(kirbyConfig, null, 2)
-      );
-    }
+    await writeFile(
+      join(homeDir, '.kirby', 'config.json'),
+      // `undefined` from the test's config drops the key, which is how a
+      // test asks for the unconfigured state — see `KirbyOptions`.
+      JSON.stringify({ terminalBackend: 'pty', ...kirbyConfig }, null, 2)
+    );
 
     const spawnRes = await fetch(`${host}/spawn`, {
       method: 'POST',
