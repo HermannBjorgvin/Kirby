@@ -725,14 +725,29 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   someone's account:
 
   - **What cannot have changed is not re-read.** `pr-details.ts`
-    remembers the combined CI verdict against `lastMergeSourceCommit`:
-    while the commit is where the last cycle left it, a *settled*
-    verdict is still the verdict. A `pending` one is always re-read —
-    CI in flight is the moment the badge is worth watching — and so is
-    anything the cycle could not actually establish, because recording
-    the status list without the runs half shows a red pipeline as
-    green. Comment counts are **not** pinned to the commit: a push does
-    not change what people have said.
+    remembers the combined CI verdict against the **merge identity** —
+    `lastMergeSourceCommit` *and* `lastMergeTargetCommit`, because
+    Azure builds the merge ref and a pull request is rebuilt when its
+    target advances under it. While that identity is where the last
+    cycle left it, a *settled* verdict is still the verdict. A
+    `pending` one is always re-read, and jumps the queue: CI in flight
+    is the moment the badge is worth watching, and by age it would sort
+    last. Comment counts are **not** pinned to the identity: a push
+    does not change what people have said.
+  - **Shown and remembered are different answers.** When the runs
+    listing cannot account for a row, the status list — a request that
+    was actually spent — is still the best thing to display, and is
+    still not enough to remember. Conflating them broke it in both
+    directions: remembering the status list alone showed a red pipeline
+    as green, and discarding it showed "no CI" on every row of a
+    repository whose token lacked `Build (read)`.
+  - **Ordering is by when a row was last *read*, not by the age of its
+    answer.** A read that established nothing otherwise leaves the row
+    looking unread, so the same rows are picked every cycle forever and
+    the rest never at all. For the same reason a memo is aged out
+    rather than deleted — including by `forgetRepoDetails`, which
+    refresh uses: deleting would blank every badge the budget cannot
+    re-read, which on two hundred rows is most of them.
   - **Every cycle is bounded.** Rows read together expire together, so
     a TTL alone turns one quiet cycle into a request per row on the
     next — the shape a sliding-window limit refuses. `pr-cycle.ts`
@@ -751,7 +766,10 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 
   A quiet cycle over a hundred pull requests now costs one request: the
   list. GitHub needs none of this — its search query returns the
-  rollup and the comment counts with the list.
+  rollup and the comment counts with the list, which is also why it
+  implements neither `forgetPullRequestCache` (what a refresh button
+  means: forget the per-row answers, not the credentials) nor
+  `resetCaches`.
 - **The desktop's remote cache holds one entry per repository.** The
   tab strip spans repositories and following a foreign tab opens its
   repository, so switching back and forth is normal; with a single slot
