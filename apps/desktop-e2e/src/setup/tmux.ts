@@ -1,37 +1,30 @@
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
 
 /**
- * Helpers for asserting on the tmux sessions Kirby creates.
+ * Helpers for asserting on the tmux sessions the desktop app creates.
  *
- * Every call takes the test's `kirby.homeDir`, because the fixture spawns
- * Kirby with `TMUX_TMPDIR=<homeDir>` — each test's tmux server therefore
- * listens on a socket inside its own temp home, not the shared
- * /tmp/tmux-$UID one. A helper that omitted it would query a different
- * (usually empty) server and report every session as missing.
+ * Every call takes the test's `desktop.homeDir`: the fixture launches
+ * the app with `TMUX_TMPDIR=<homeDir>`, so each test's tmux server
+ * listens on a socket inside its own temp home rather than the shared
+ * /tmp/tmux-$UID one.
  *
- * Kirby names its sessions `kirby-<projectKeyHash>-<branch>`. Tests match
- * on the branch suffix rather than recomputing the hash: the hash is over
- * the *git toplevel*, which can differ from the fixture's `repoPath` when
- * tmpdir is a symlink (macOS /tmp → /private/tmp).
+ * Kirby names its sessions `kirby-<projectKeyHash>-<branch>`. Tests
+ * match on the branch suffix rather than recomputing the hash: the hash
+ * is over the *git toplevel*, which can differ from the fixture's
+ * `repoPath` when tmpdir is a symlink.
  */
 
 const KIRBY_PREFIX = 'kirby-';
 
-/** Prefix for branches created by tmux e2e tests. Cleanup only ever
- *  touches sessions matching this, so a developer's real Kirby tmux
- *  sessions can't be caught in the blast radius. */
-const E2E_BRANCH_PREFIX = 'e2e-tmux-';
-
 /** Basename prefix of the temp homes the fixture creates. The tmux
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
-const HOME_PREFIX = 'kirby-e2e-web-home-';
+const HOME_PREFIX = 'kirby-desktop-e2e-home-';
 
 /** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
- *  the config file altogether — the state the tmux-when-detected default
- *  applies to. The fixture writes `'pty'` otherwise. */
+ *  the config file altogether — the state the tmux-when-detected
+ *  default applies to. The fixture writes `'pty'` otherwise. */
 export const UNSET_BACKEND: Record<string, unknown> = {
   terminalBackend: undefined,
 };
@@ -43,11 +36,6 @@ export function tmuxAvailable(): boolean {
   } catch {
     return false;
   }
-}
-
-/** Unique, short, git-legal branch name carrying the e2e marker. */
-export function uniqueTmuxBranch(): string {
-  return `${E2E_BRANCH_PREFIX}${randomBytes(3).toString('hex')}`;
 }
 
 /** The socket dir a tmux helper is about to use, proven to be one of
@@ -90,7 +78,7 @@ function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Session names on the test's tmux server. Empty list when no server is
+/** Session names on the test's tmux server. Empty when no server is
  *  running — tmux exits non-zero for that, which is not an error here. */
 export function listTmuxSessions(tmuxTmpdir: string): string[] {
   // Resolved *before* the try: `socketEnv` throws to stop a run that
@@ -113,44 +101,27 @@ export function listTmuxSessions(tmuxTmpdir: string): string[] {
   }
 }
 
-/** The Kirby-created tmux session backing `branch`, if it exists. */
-export function findKirbySessionFor(
-  branch: string,
-  tmuxTmpdir: string
-): string | undefined {
-  return listTmuxSessions(tmuxTmpdir).find(
-    (name) => name.startsWith(KIRBY_PREFIX) && name.endsWith(`-${branch}`)
-  );
+/** Kirby-created tmux session names on the test's server. */
+export function kirbySessions(tmuxTmpdir: string): string[] {
+  return listTmuxSessions(tmuxTmpdir).filter((n) => n.startsWith(KIRBY_PREFIX));
 }
 
 export function kirbySessionExists(
   branch: string,
   tmuxTmpdir: string
 ): boolean {
-  return findKirbySessionFor(branch, tmuxTmpdir) !== undefined;
+  return kirbySessions(tmuxTmpdir).some((n) => n.endsWith(`-${branch}`));
 }
 
 /**
- * Teardown for tmux-backed tests. `killAll()` on Kirby exit deliberately
- * only *detaches*, so every tmux-backed test would otherwise leave a live
- * session (holding a fake-agent process) behind.
- *
- * Refuses any branch without the e2e marker — a guard against a future
- * caller passing something broader and wiping real sessions.
+ * Teardown for tmux-backed tests. Closing the app deliberately only
+ * *detaches*, so a tmux-backed test would otherwise leave a live
+ * session (holding a fake agent) behind on its own socket — which is
+ * removed with the temp home, orphaning the server.
  */
-export function cleanupTmuxSessions(
-  branches: string[],
-  tmuxTmpdir: string
-): void {
+export function killKirbySessions(tmuxTmpdir: string): void {
   const env = socketEnv(tmuxTmpdir);
-  for (const branch of branches) {
-    if (!branch.startsWith(E2E_BRANCH_PREFIX)) {
-      throw new Error(
-        `refusing to clean up tmux sessions for non-e2e branch "${branch}"`
-      );
-    }
-    const name = findKirbySessionFor(branch, tmuxTmpdir);
-    if (!name) continue;
+  for (const name of kirbySessions(tmuxTmpdir)) {
     try {
       execFileSync('tmux', ['kill-session', '-t', name], {
         stdio: 'ignore',

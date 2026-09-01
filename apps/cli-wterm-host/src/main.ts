@@ -70,11 +70,24 @@ function spawnKirby(req: SpawnRequest): void {
     ...process.env,
     HOME: req.homeDir,
     TERM: 'xterm-256color',
+    // A tmux server keeps the environment it was started with, and an
+    // unconfigured Kirby now resolves to the tmux backend wherever tmux
+    // is installed — so every spawn needs a socket of its own, not just
+    // the ones a caller remembered to ask for. Inside the spawn's own
+    // HOME, which its owner deletes on teardown.
+    TMUX_TMPDIR: req.homeDir,
     ...req.env,
   };
   delete childEnv.CI;
   delete childEnv.CONTINUOUS_INTEGRATION;
   delete childEnv.GITHUB_ACTIONS;
+  // A tmux client reads the socket path straight out of `$TMUX` and
+  // ignores `TMUX_TMPDIR` when it is set, so a host started from inside
+  // a tmux session hands the spawned Kirby the *developer's* tmux
+  // server — where it would create (and the tests would fail to find)
+  // its sessions. Nothing here should ever be nested in a real session.
+  delete childEnv.TMUX;
+  delete childEnv.TMUX_PANE;
 
   const pty = spawnPty('node', [cliBinary, req.repoPath], {
     name: 'xterm-256color',

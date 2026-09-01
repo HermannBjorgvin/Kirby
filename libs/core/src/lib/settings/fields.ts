@@ -1,6 +1,6 @@
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { AGENTS } from '../agents/registry.js';
-import { getTmuxAvailability } from '../session-backend.js';
+import { defaultTerminalBackend } from '../session-backend.js';
 
 export interface SettingsField {
   label: string;
@@ -10,6 +10,12 @@ export interface SettingsField {
   presets?: { name: string; value: string | null }[];
   /** Which config bag this field lives in */
   configBag: 'global' | 'project' | 'vendorAuth' | 'vendorProject';
+  /** The value that applies while nothing is stored, when that is
+   *  decided at read time rather than by taking the first preset.
+   *  Shells render the matching preset marked as the default, and step
+   *  their preset cycle from it. Absent for fields whose unset state
+   *  simply means "the first preset". */
+  defaultValue?: string;
   /** If set, Enter on this field triggers a named action instead of editing */
   action?: 'open-controls';
 }
@@ -55,16 +61,19 @@ export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
  *  "(not installed)" if the startup probe found tmux missing. The
  *  underlying value stays `'tmux'` so the displayed label is purely
  *  informational — the input handler still gates the actual selection
- *  via canApplyFieldChange. */
+ *  via canApplyFieldChange.
+ *
+ *  Neither name carries a "(default)" marker: which one is the default
+ *  is `defaultValue`'s job, and duplicating it here would let the two
+ *  disagree the moment tmux appears or disappears. */
 function terminalBackendPresets(): {
   name: string;
   value: string | null;
 }[] {
-  const status = getTmuxAvailability();
   const tmuxLabel =
-    status && !status.available ? 'Tmux (not installed)' : 'Tmux';
+    defaultTerminalBackend() === 'tmux' ? 'Tmux' : 'Tmux (not installed)';
   return [
-    { name: 'PTY (default)', value: 'pty' },
+    { name: 'PTY', value: 'pty' },
     { name: tmuxLabel, value: 'tmux' },
   ];
 }
@@ -137,8 +146,9 @@ export function buildSettingsFields(
       label: 'Terminal Backend',
       key: 'terminalBackend',
       description:
-        'Persists sessions across Kirby restarts. Requires tmux installed. Cannot be changed while sessions are active.',
+        'Persists sessions across Kirby restarts. Defaults to tmux when tmux is installed. Cannot be changed while sessions are active.',
       presets: terminalBackendPresets(),
+      defaultValue: defaultTerminalBackend(),
       configBag: 'global',
     },
   ];

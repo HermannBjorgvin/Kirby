@@ -1,6 +1,6 @@
 {
   "name": "@hermannbjorgvin/kirby",
-  "version": "1.0.0-beta.5",
+  "version": "1.0.0-beta.6",
   "description": "A TUI workflow manager for git worktrees",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
@@ -131,7 +131,8 @@
         "options": {
           "commands": [
             "node apps/cli/scripts/prepare-publish.mjs",
-            "npm publish --tag beta apps/cli/dist"
+            "npm publish --tag beta apps/cli/dist",
+            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby"
           ],
           "parallel": false
         }

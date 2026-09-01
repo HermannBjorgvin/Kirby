@@ -105,6 +105,10 @@ export interface SettingsFieldView {
   description?: string;
   presets?: { name: string; value: string | null }[];
   value: string;
+  /** The value in force while `value` is empty, when the host decides
+   *  it at read time (the terminal backend resolves from the tmux
+   *  probe). The page shows that preset, marked as the default. */
+  defaultValue?: string;
   /** Section the desktop settings page files this field under. */
   group: SettingsGroup;
   /** Widget hint derived from the presets shape. */

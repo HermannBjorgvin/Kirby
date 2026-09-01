@@ -6,6 +6,11 @@ import type { SettingsFieldView } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import { useUpdateSetting } from '../../lib/data/mutations.js';
 import { persistedValue, type PendingSave } from '../../lib/settings-save.js';
+import {
+  CUSTOM,
+  isDefaultedPreset,
+  selectedPreset,
+} from '../../lib/settings-select.js';
 import { cn, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import { Input } from '../ui/input.js';
@@ -18,10 +23,6 @@ import {
 } from '../ui/select.js';
 import { Switch } from '../ui/switch.js';
 import { RowShell } from './RowShell.js';
-
-/** Sentinel value for the select's "Custom…" entry, which is not a
- *  preset but an escape hatch into a free-text box. */
-const CUSTOM = '__custom__';
 
 /** One host-supplied setting, in whichever of the three shapes its
  *  field kind calls for: a switch, a preset select with a custom
@@ -126,11 +127,7 @@ function SelectRow({
 }) {
   const presets = field.presets ?? [];
   const hasCustom = presets.some((p) => p.value === null);
-  const matches = presets.some((p) => p.value === field.value);
-  const firstValue = presets.find((p) => p.value !== null)?.value ?? '';
-  // An unset field resolves to '' — show the default (first) preset.
-  const current =
-    field.value === '' ? firstValue : matches ? field.value : CUSTOM;
+  const current = selectedPreset(field);
   const [custom, setCustom] = useState(current === CUSTOM);
   const [draft, setDraft] = useState(field.value);
 
@@ -172,8 +169,30 @@ function SelectRow({
               {presets
                 .filter((p) => p.value !== null)
                 .map((p) => (
-                  <SelectItem key={p.name} value={p.value ?? ''}>
-                    {p.name}
+                  <SelectItem
+                    key={p.name}
+                    value={p.value ?? ''}
+                    // The trigger already displays this entry, so
+                    // selecting it is not a *value* change and the
+                    // control's own change event cannot be relied on to
+                    // fire — without this the default could never be
+                    // pinned. A pinned value is the difference between
+                    // a preference and one that flips when tmux comes
+                    // or goes. Saving twice is harmless: the second is
+                    // dropped as unchanged (see `persistedValue`).
+                    onClick={
+                      isDefaultedPreset(field, p.value)
+                        ? () => onSave(p.value ?? '')
+                        : undefined
+                    }
+                  >
+                    {/* Marked only while nothing is stored *and* the
+                        host named the default, so the row says "this was
+                        decided for you" rather than labelling a choice
+                        the user made — or inventing one nobody made. */}
+                    {isDefaultedPreset(field, p.value)
+                      ? `${p.name} (default)`
+                      : p.name}
                   </SelectItem>
                 ))}
               {hasCustom && <SelectItem value={CUSTOM}>Custom…</SelectItem>}

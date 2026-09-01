@@ -1,6 +1,6 @@
 {
   "name": "kirby-desktop",
-  "version": "1.0.0-beta.5",
+  "version": "1.0.0-beta.6",
   "description": "Kirby Desktop — GUI shell over the same app core as the Kirby TUI",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
@@ -158,7 +158,8 @@
         "options": {
           "commands": [
             "chmod +x apps/desktop/dist/launcher.mjs",
-            "npm publish --tag beta apps/desktop/dist"
+            "npm publish --tag beta apps/desktop/dist",
+            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby-desktop"
           ],
           "parallel": false
         }

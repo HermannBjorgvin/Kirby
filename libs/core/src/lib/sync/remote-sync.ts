@@ -8,7 +8,7 @@ import {
 import { logError } from '@kirby/logger';
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { isSessionAlive } from '../pty-registry.js';
-import { isTmuxSessionPersisted } from '../session-backend.js';
+import { hasLiveTmuxSession } from '../session-backend.js';
 
 // ── Remote sync core ─────────────────────────────────────────────
 //
@@ -79,22 +79,20 @@ type SweepConfig = Pick<
  */
 async function autoDeleteMerged(args: {
   merged: Set<string>;
-  config: SweepConfig;
   onAutoDelete: (sessionName: string, branch: string) => void | Promise<void>;
   isCancelled: () => boolean;
 }): Promise<string[] | null> {
-  const { merged, config, onAutoDelete, isCancelled } = args;
+  const { merged, onAutoDelete, isCancelled } = args;
   const rebasingNow: string[] = [];
   for (const branch of merged) {
     // A branch with a live agent session — an in-process PTY, or a
-    // persisted tmux session from a previous run — is never
-    // auto-deleted: the user deliberately left that agent running.
-    // It becomes eligible once the session is stopped.
+    // tmux session from a previous run — is never auto-deleted: the
+    // user deliberately left that agent running. It becomes eligible
+    // once the session is stopped. The tmux check ignores the selected
+    // backend on purpose: the agent is running whether or not tmux is
+    // still the preference, and deleting its worktree is destructive.
     const sessionName = branchToSessionName(branch);
-    if (
-      isSessionAlive(sessionName) ||
-      isTmuxSessionPersisted(config, sessionName)
-    ) {
+    if (isSessionAlive(sessionName) || hasLiveTmuxSession(sessionName)) {
       logError(
         'sweepMergedBranches',
         `Skipping auto-delete of ${branch}: agent session is running`
@@ -181,7 +179,6 @@ export async function sweepMergedBranches(opts: {
 
   const rebasingNow = await autoDeleteMerged({
     merged,
-    config,
     onAutoDelete,
     isCancelled,
   });

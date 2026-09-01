@@ -30,10 +30,14 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # desktop-e2e drives the real Electron app, which has no headless
-      # mode of its own and needs an X server on the runner.
-      - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+      # xvfb: desktop-e2e drives the real Electron app, which has no
+      # headless mode of its own and needs an X server on the runner.
+      # tmux: the terminal backend defaults to tmux wherever it is
+      # installed, and the suites that cover that default skip
+      # themselves without it — installed explicitly rather than relying
+      # on the runner image happening to ship it.
+      - name: Install xvfb and tmux
+        run: sudo apt-get update && sudo apt-get install -y xvfb tmux
 
       - uses: nrwl/nx-set-shas@v4
 

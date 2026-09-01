@@ -239,7 +239,15 @@ export function buildScenario() {
   writeFileSync(
     join(kirby, 'config.json'),
     JSON.stringify(
-      { aiCommand: `node ${join(HERE, 'demo-agent.mjs')}` },
+      {
+        aiCommand: `node ${join(HERE, 'demo-agent.mjs')}`,
+        // A capture wants agents that die with the run, not agents that
+        // persist. Left unset, the backend resolves to tmux wherever
+        // tmux is installed, and closing the app only detaches — so
+        // every recording would strand a demo agent on a tmux server
+        // whose socket dir the teardown then deletes.
+        terminalBackend: 'pty',
+      },
       null,
       2
     )

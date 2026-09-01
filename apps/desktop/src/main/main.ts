@@ -329,14 +329,17 @@ if (!app.requestSingleInstanceLock()) {
   // sign of why, so startup failures are logged rather than dropped.
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       mark(MAIN_MARKS.ready);
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
-      // Cache tmux availability for the settings guard, same as the
-      // TUI's startup probe. Fire-and-forget: the guard treats a
-      // missing probe result as "unknown" and allows the switch.
-      void probeTmuxAvailability().catch(() => undefined);
+      // Cache tmux availability, same as the TUI's startup probe. It is
+      // awaited rather than fired off because opening the repo below
+      // wires up the session backend, and an unset `terminalBackend`
+      // resolves to tmux only if the probe has already answered — a
+      // racing probe would silently strand a tmux machine on PTY for
+      // the whole run. The probe is one `tmux -V` fork.
+      await probeTmuxAvailability();
       const opened = openStartupRepo();
       mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);

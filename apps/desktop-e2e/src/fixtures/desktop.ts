@@ -59,7 +59,17 @@ export function fakeAgent(
 }
 
 export interface DesktopOptions {
-  /** Written to $HOME/.kirby/config.json before launch. */
+  /**
+   * Written to `$HOME/.kirby/config.json` before launch, over an
+   * `aiCommand` + `terminalBackend: 'pty'` base.
+   *
+   * The backend base is deliberate: with the key absent the app
+   * resolves to tmux wherever tmux is installed, and closing the app
+   * only *detaches* a tmux session — so every agent-launching test
+   * would leave a live fake agent behind. A test about the default
+   * passes `terminalBackend: undefined`, which drops the key from the
+   * file entirely (see `UNSET_BACKEND` in `setup/tmux.ts`).
+   */
   kirbyConfig?: Record<string, unknown>;
   /**
    * Per-project config (vendor, org, repo…), written to the cwd-hashed
@@ -139,7 +149,17 @@ function seedHome(
   mkdirSync(kirby, { recursive: true });
   writeFileSync(
     join(kirby, 'config.json'),
-    JSON.stringify({ aiCommand: fakeAgent(), ...opts.kirbyConfig }, null, 2),
+    // `undefined` from the test's config drops the key, which is how a
+    // test asks for the unconfigured state — see `DesktopOptions`.
+    JSON.stringify(
+      {
+        aiCommand: fakeAgent(),
+        terminalBackend: 'pty',
+        ...opts.kirbyConfig,
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
@@ -237,6 +257,17 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // the reverse). Tests that want one set it through config.
     delete parentEnv.EDITOR;
     delete parentEnv.VISUAL;
+    // `$TMUX` names a socket outright and wins over the TMUX_TMPDIR set
+    // below, so launching from inside a tmux session would put the
+    // app's sessions on the developer's own tmux server.
+    delete parentEnv.TMUX;
+    delete parentEnv.TMUX_PANE;
+    // The suite exists to drive the *built* app. This variable makes the
+    // main process load the Vite dev server instead, and the desktop dev
+    // orchestrator exports it into every shell it starts — so a run from
+    // one of those terminals silently tests a different bundle, or, once
+    // the dev server is gone, a blank window and 30s timeouts.
+    delete parentEnv.KIRBY_VITE_URL;
 
     const app = await electron.launch({
       args: [

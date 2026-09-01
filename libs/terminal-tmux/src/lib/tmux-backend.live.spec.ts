@@ -1,6 +1,8 @@
 /**
  * Live integration suite — spawns real tmux sessions to verify the
- * backend works end-to-end against a real tmux binary. Auto-skipped
+ * backend works end-to-end against a real tmux binary, on a throwaway
+ * tmux server of its own (`vitest.setup.ts` pins `TMUX_TMPDIR` and
+ * drops `$TMUX`, so nothing here can reach the developer's). Auto-skipped
  * on machines without tmux (`tmux -V` failing) so devs and macOS-
  * without-brew CI legs are not blocked. Ubuntu GitHub Actions
  * runners ship with tmux preinstalled, so this runs in CI for free.
@@ -10,10 +12,11 @@
  * can't see — wrong tmux flag, broken arg ordering, tmux version
  * weirdness, etc.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createTmuxBackendFactory } from './tmux-backend.js';
 import { tmuxHasSession, tmuxKillSession } from './tmux-cli.js';
+import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
 function tmuxAvailable(): boolean {
   try {
@@ -38,6 +41,14 @@ function tmuxPanePid(session: string): string {
 }
 
 const SKIP = !tmuxAvailable();
+
+// This file creates and kills real tmux sessions. `vitest.setup.ts`
+// points them at a throwaway server; if that ever stops taking effect
+// the sessions land on the developer's own — where `kirby-` names are
+// their running agents, not ours. Stop rather than find out.
+beforeAll(() => {
+  assertScratchTmuxSocket();
+});
 
 /** Sessions created during a test, cleaned up in afterEach even on
  *  failure. Names are unique per test so parallel CI workers can't

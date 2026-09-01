@@ -81,7 +81,7 @@ Most of the work goes into the desktop app now, but `kirby` is the whole thing w
 - `kirby` on your `PATH` for agent-drafted reviews, including when you use the desktop app
 - For GitHub: the `gh` CLI, authenticated
 - For Azure DevOps: a personal access token with repo and pull request access
-- `tmux` (optional) — agent sessions then survive quitting and are reattached next launch
+- `tmux` (optional) — installed, it is the default backend: agent sessions survive quitting and are reattached next launch. Settings → Terminal Backend to pin PTY instead.
 - On Linux, the desktop app compiles `node-pty` during install: `build-essential` and `python3` required.
 
 ## Version control providers
