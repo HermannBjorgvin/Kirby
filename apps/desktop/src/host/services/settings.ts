@@ -81,6 +81,7 @@ export function getSettingsView(): SettingsFieldView[] {
     masked: field.masked,
     description: field.description,
     presets: field.presets?.map((preset) => ({ ...preset })),
+    defaultValue: field.defaultValue,
     // Secrets (provider PAT / token) are never sent to the renderer.
     // It renders PR-authored markdown and provider-hosted images, so
     // anything it holds is one script-execution foothold away from

@@ -16,6 +16,7 @@ import {
   getRepoRoot,
   getTmuxAvailability,
   resetRepoRoot,
+  resolveTerminalBackend,
 } from '@kirby/core';
 import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
@@ -77,10 +78,10 @@ export function activeRepoIs(cwd: string): boolean {
  * alone.
  */
 function logSessionBackend(config: ReturnType<typeof readConfig>): void {
-  if (config.terminalBackend !== 'tmux') {
-    console.log(
-      `[desktop] session backend: ${config.terminalBackend ?? 'pty'}`
-    );
+  const resolved = resolveTerminalBackend(config);
+  const chosen = config.terminalBackend ? 'configured' : 'default';
+  if (resolved !== 'tmux') {
+    console.log(`[desktop] session backend: ${resolved} (${chosen})`);
     return;
   }
   const root = getRepoRoot();
@@ -92,7 +93,7 @@ function logSessionBackend(config: ReturnType<typeof readConfig>): void {
       ? 'available'
       : 'UNAVAILABLE — falling back to pty';
   console.log(
-    `[desktop] session backend: tmux (repo root: ${
+    `[desktop] session backend: tmux (${chosen}; repo root: ${
       root ?? 'UNRESOLVED — falling back to pty'
     }; tmux probe: ${probe})`
   );

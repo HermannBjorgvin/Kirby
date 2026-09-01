@@ -6,6 +6,7 @@ import {
   killSession as killSessionEntry,
   isSessionAlive,
   isTmuxSessionPersisted,
+  resolveTerminalBackend,
   getSpawnedAt,
   noteInput,
   noteResize,
@@ -187,9 +188,9 @@ async function doLaunchAgent(
   // different (empty) project bag.
   const config = readConfig(repoCwd);
   console.log(
-    `[desktop] launching session ${name} in ${wtPath} (backend: ${
-      config.terminalBackend ?? 'pty'
-    })`
+    `[desktop] launching session ${name} in ${wtPath} (backend: ${resolveTerminalBackend(
+      config
+    )})`
   );
   launchSession({
     name,
@@ -363,7 +364,7 @@ export function killSession(name: string): void {
 export async function restorePersistedSessions(): Promise<void> {
   const cwd = requireRepo();
   const config = readConfig(cwd);
-  if (config.terminalBackend !== 'tmux') return;
+  if (resolveTerminalBackend(config) !== 'tmux') return;
   // Every iteration awaits, and the user can open another repository in
   // the meantime. Without this check the rest of the loop would run
   // against the new repo carrying the old repo's branch names, and

@@ -253,6 +253,20 @@ describe('getSettingsView', () => {
     expect(getSettingsView().map((f) => f.key)).toEqual(['editor']);
   });
 
+  // The page renders the default marker off this, and picks which
+  // preset to show while nothing is stored. Dropping it would show the
+  // first preset — PTY — on a machine that is actually running tmux.
+  it('passes the resolved default through, leaving the value empty', () => {
+    state.fields = [field({ ...backendField, defaultValue: 'tmux' })];
+    const view = getSettingsView();
+    expect(view[0].defaultValue).toBe('tmux');
+    expect(view[0].value).toBe('');
+  });
+
+  it('carries no default for a field that has none', () => {
+    expect(getSettingsView()[0].defaultValue).toBeUndefined();
+  });
+
   it('grays out the backend switch while a session is alive', () => {
     state.hasSession = true;
     const view = getSettingsView();

@@ -31,6 +31,9 @@ const state = vi.hoisted(() => ({
   injected: [] as { name: string; prompt: string }[],
   /** Branch names whose checkout core should report as failed. */
   checkoutFails: new Set<string>(),
+  /** What core resolves an unset `terminalBackend` to — i.e. whether
+   *  this machine was found to have tmux. */
+  defaultBackend: 'pty' as 'pty' | 'tmux',
 }));
 
 vi.mock('./repo.js', () => ({
@@ -120,6 +123,8 @@ vi.mock('@kirby/core', () => ({
   isSessionAlive: (name: string) => state.alive.has(name),
   isTmuxSessionPersisted: (_config: unknown, name: string) =>
     state.persistedTmux.has(name),
+  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+    config.terminalBackend ?? state.defaultBackend,
   getSpawnedAt: () => 1000,
   noteInput: () => undefined,
   noteResize: () => undefined,
@@ -155,6 +160,7 @@ beforeEach(async () => {
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
+  state.defaultBackend = 'pty';
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -334,6 +340,23 @@ describe('restorePersistedSessions', () => {
   it('does nothing at all on the pty backend', async () => {
     // Only tmux sessions survive a quit; there is nothing to reattach.
     state.configByCwd['/repo-a'] = { terminalBackend: 'pty' };
+    await restorePersistedSessions();
+    expect(state.spawns).toEqual([]);
+  });
+
+  // Reattach has to follow the same default the backend factory did:
+  // with tmux detected and nothing configured, the sessions from the
+  // last run are tmux sessions and are waiting to be picked back up.
+  it('reattaches on the tmux default with nothing configured', async () => {
+    state.configByCwd['/repo-a'] = {};
+    state.defaultBackend = 'tmux';
+    await restorePersistedSessions();
+    expect(state.spawns.map((s) => s.name)).toEqual(['kept']);
+  });
+
+  it('does nothing when nothing is configured and tmux is missing', async () => {
+    state.configByCwd['/repo-a'] = {};
+    state.defaultBackend = 'pty';
     await restorePersistedSessions();
     expect(state.spawns).toEqual([]);
   });
