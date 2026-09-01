@@ -698,20 +698,38 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   ceiling as a stop: it returns what arrived plus `truncated`, and only
   rejects when git itself failed. `fetchWorktreeDiffText` then decides
   what it can render *before* the expensive diff runs — `git diff
-  --numstat -z` names the changed files and which git calls binary, and
-  anything binary or larger than `maxFileBytes` (2 MB on disk) is
-  dropped from the diff by an `:(exclude,literal)` pathspec and
-  represented by a one-line placeholder patch instead, so one
-  unrepresentable file costs the user that file and not the other
-  forty. Untracked files are sized before they are read rather than
-  after, and stay `--exclude-standard`, so nothing git ignores reaches
-  the viewer. An overrun of the overall ceiling is trimmed back to a
-  file boundary (`trimToFileBoundary`) — half a hunk parses as real
-  lines. The pull request path streams the same way but keeps every
-  file: its comments anchor into the document under review, so dropping
-  one hides what a reviewer was asked to read. The git-backed cases
-  live in `worktree-diff.integration.spec.ts`, including the 56 MB file
-  the old buffer died on.
+  --numstat -z` names the changed files, their churn and which git
+  calls binary — and drops what it cannot show with an
+  `:(exclude,literal)` pathspec, putting a one-line placeholder patch
+  in its place, so one unrepresentable file costs the user that file
+  and not the other forty. What "cannot show" means is bounded by what
+  **git will emit**, not by the file, and each clause has a test
+  because each was wrong first:
+
+  - `maxFileBytes` (2 MB) is measured with `lstat`, so a symlink is
+    sized as the link — git renders one as its target path, and
+    following it sizes the link as whatever it points at.
+  - `maxFileLines` (50k) bounds the churn, because a **deletion** has
+    nothing left on disk to size and its whole-file patch is the whole
+    file.
+  - A rename excludes **both** paths: pathspecs are applied before
+    rename detection, so naming only the destination brings the source
+    back unpaired, as a whole-file deletion — bigger than what the
+    bound was avoiding. A rename with no content change is never
+    summarised: its patch is a header and nothing else.
+
+  Untracked files (`untracked-diff.ts`) are sized before they are read
+  rather than after, read at bounded concurrency, rendered as
+  mode-120000 patches when they are symlinks (reading through one
+  printed a file from *outside* the repo as the agent's work), and stay
+  `--exclude-standard`, so nothing git ignores reaches the viewer. An
+  overrun of the overall ceiling is trimmed back to a file boundary
+  (`completePatch`) — half a hunk parses as real lines. The pull
+  request path streams and trims the same way but keeps every file: its
+  comments anchor into the document under review, so dropping one hides
+  what a reviewer was asked to read. The git-backed cases live in
+  `worktree-diff.integration.spec.ts`, including the 56 MB file the old
+  buffer died on.
 - **The diff file tree's collapse state is a function of the delta,
   never of the poll.** A worktree tab refetches every two seconds while
   its agent runs and the parse happens off the main thread, so between
@@ -742,7 +760,11 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   hidden `.wterm` up inside `[data-terminal-pane]` (the content pane
   the terminal will occupy) and reads the font and padding that will
   actually apply, replacing a fixed 0.6 of the whole tab left over from
-  a layout where the review workspace split its pane. The fake agent's
+  a layout where the review workspace split its pane. That fraction
+  survives as the fallback for the one case with no pane to measure —
+  the first launch on a branch with no worktree, where the checkout has
+  not happened yet — because the host's own fallback is a fixed 120x40
+  whatever the window size. The fake agent's
   `--print-size` reports the PTY grid with its pid, which is what lets
   a test tell one agent's report from the next one's when tmux repaints
   the screen instead of appending to it.
