@@ -26,12 +26,15 @@ export {
   conventionalForSeverity,
   conventionalSeverity,
   formatConventionalComment,
+  moreSevere,
+  resolveComment,
   parseConventionalComment,
   splitAgentFooter,
   withAgentFooter,
   type CommentBodyParts,
   type ConventionalComment,
   type ConventionalLabel,
+  type ResolvedComment,
 } from './lib/conventional.js';
 
 export type { CommentSeverity } from './lib/types.js';

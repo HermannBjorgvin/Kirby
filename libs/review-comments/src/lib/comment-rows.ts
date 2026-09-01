@@ -34,7 +34,12 @@ function bodyRowsWithChrome(body: string, contentWidth?: number): number {
   const parts = commentBodyParts(body);
   return (
     (parts.header ? 1 : 0) +
-    estimateBodyRows(parts.body, contentWidth) +
+    // Ink paints `<Text wrap="wrap">{''}</Text>` as no rows at all,
+    // while estimateBodyRows floors at one. That gap used to be
+    // unreachable for a real comment; splitting a header and a
+    // signature out of the body made it reachable — a comment whose
+    // whole content is its signature has empty prose.
+    (parts.body ? estimateBodyRows(parts.body, contentWidth) : 0) +
     (parts.footer ? 1 : 0)
   );
 }
@@ -113,16 +118,14 @@ export function estimateLocalCardRows(
   const MAX_COLLAPSED = 4;
   const shown = selected ? lines : lines.slice(0, MAX_COLLAPSED);
   const truncatedNote = !selected && lines.length > MAX_COLLAPSED ? 1 : 0;
-  // Collapsed cards render each natural line as its own wrapping
-  // <Text> (empty lines become a single space), so count per line.
+  // The card paints the shown lines as ONE <Text> holding the newlines
+  // (see the note in CommentThread.tsx for why), so measure the joined
+  // string rather than summing per line — and measure nothing at all
+  // when the prose is empty, which Ink paints as no rows while
+  // estimateBodyRows floors at one.
+  const prose = shown.join('\n');
   const bodyRows =
-    Math.max(
-      1,
-      shown.reduce(
-        (sum, l) => sum + estimateBodyRows(l || ' ', contentWidth),
-        0
-      )
-    ) +
+    (prose ? estimateBodyRows(prose, contentWidth) : 0) +
     truncatedNote +
     // The badge and the signature each paint one truncating row, and
     // survive the collapse: capping the prose does not remove the

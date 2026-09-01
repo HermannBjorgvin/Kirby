@@ -86,7 +86,12 @@ const LEADING_BLANK_RE = /^(?:[ \t]*\r?\n)+/;
 export function parseConventionalComment(
   text: string
 ): ConventionalComment | null {
-  const trimmed = text.replace(LEADING_BLANK_RE, '');
+  // A CRLF body reaches us from a Windows editor or a provider that
+  // kept the line endings it was given. The header line survives
+  // either way (it is trimmed), but a stray \r left in the discussion
+  // is painted literally by a terminal, so normalise once here rather
+  // than at each of the places that render the result.
+  const trimmed = text.replace(/\r\n/g, '\n').replace(LEADING_BLANK_RE, '');
   const newline = trimmed.indexOf('\n');
   const firstLine = newline === -1 ? trimmed : trimmed.slice(0, newline);
   const rest = newline === -1 ? '' : trimmed.slice(newline + 1);
@@ -163,6 +168,22 @@ const LABEL_SEVERITY: Record<ConventionalLabel, CommentSeverity> = {
   note: 'nit',
   thought: 'nit',
 };
+
+/** Quietest first — the scale the label and the severity share. */
+const SEVERITY_RANK: Record<CommentSeverity, number> = {
+  nit: 0,
+  minor: 1,
+  major: 2,
+  critical: 3,
+};
+
+/** The louder of two verdicts; `a` wins a tie. */
+export function moreSevere(
+  a: CommentSeverity,
+  b: CommentSeverity
+): CommentSeverity {
+  return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
+}
 
 /**
  * How loudly a header should read.
@@ -265,12 +286,89 @@ export interface CommentBodyParts {
  * measured against another puts every row below it in the wrong place.
  */
 export function commentBodyParts(text: string): CommentBodyParts {
-  const { body, footer } = splitAgentFooter(text);
+  const { body, footer } = splitAgentFooter(text.replace(/\r\n/g, '\n'));
   const header = parseConventionalComment(body);
   if (!header) return { header: null, body, footer };
   return {
     header,
     body: header.body ? `${header.subject}\n\n${header.body}` : header.subject,
     footer,
+  };
+}
+
+// ── Reconciling the two vocabularies ─────────────────────────────
+
+export interface ResolvedComment {
+  /** The header the comment is posted under. */
+  header: ConventionalComment;
+  /** What the whole app should treat the comment as. */
+  severity: CommentSeverity;
+}
+
+function firstLine(body: string): string {
+  const at = body.indexOf('\n');
+  return (at === -1 ? body : body.slice(0, at)).trim();
+}
+
+function afterFirstLine(body: string): string {
+  const at = body.indexOf('\n');
+  return at === -1 ? '' : body.slice(at + 1).trim();
+}
+
+/**
+ * Settle a draft's header and its severity against each other.
+ *
+ * A draft carries both a `--severity` and a body that may open with a
+ * label of its own, and the two are the same judgement said twice — so
+ * they must not be allowed to disagree. They can, in two ways, and
+ * both were live:
+ *
+ *  - The agent writes a sharper header than its severity implies
+ *    (`--severity=nit` with `question (blocking): …`, which the launch
+ *    guidance actively invites). Taking the header alone posted a
+ *    blocking question while every severity-driven surface — the
+ *    walkthrough order, the rail dot, the TUI's `[nit]` chip — went on
+ *    calling it a nit.
+ *  - Ordinary prose happens to start with a label word. "Note: this
+ *    drops writes on crash" is a sentence, not a header, and reading it
+ *    as one turned a `critical` finding into the quietest label in the
+ *    vocabulary.
+ *
+ * So the louder verdict wins, and a tie goes to the agent's own words,
+ * which are more specific than a four-value enum. A header that would
+ * quieten the comment keeps its subject and loses its label: the
+ * sentence survives, the severity is not talked down.
+ */
+export function resolveComment(
+  body: string,
+  declared: CommentSeverity
+): ResolvedComment {
+  const parts = commentBodyParts(body);
+  const authored = parts.header;
+
+  if (!authored) {
+    return {
+      severity: declared,
+      header: {
+        ...conventionalForSeverity(declared),
+        // With no header of its own, the first line is the subject and
+        // the rest is the discussion under it.
+        subject: firstLine(parts.body),
+        body: afterFirstLine(parts.body),
+      },
+    };
+  }
+
+  const severity = moreSevere(conventionalSeverity(authored), declared);
+  if (severity === conventionalSeverity(authored)) {
+    return { severity, header: authored };
+  }
+  return {
+    severity,
+    header: {
+      ...conventionalForSeverity(severity),
+      subject: authored.subject,
+      body: authored.body,
+    },
   };
 }

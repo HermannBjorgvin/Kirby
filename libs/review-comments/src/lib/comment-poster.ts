@@ -1,9 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { ReviewComment } from './types.js';
 import {
-  commentBodyParts,
-  conventionalForSeverity,
   formatConventionalComment,
+  resolveComment,
   withAgentFooter,
 } from './conventional.js';
 import { updateComment } from './comment-store.js';
@@ -31,15 +30,9 @@ function execWithStdin(
 /**
  * The body a draft is posted with.
  *
- * Two things happen here, and both are about how the comment reads to
- * the person who receives it:
- *
- * The severity becomes a Conventional Comments header
- * (conventionalcomments.org) — `issue (blocking): …` — so the first
- * line says what kind of remark this is and whether it stops the
- * merge. An agent that already wrote its draft in that shape keeps its
- * own header; the severity only supplies one when the draft has none,
- * because the agent's wording is more specific than a four-value enum.
+ * The severity and the body's own header are settled against each
+ * other first (see `resolveComment`), so what a reviewer reads and what
+ * every severity-driven surface in Kirby shows cannot disagree.
  *
  * The attribution goes at the end, not the front. A comment's opening
  * words are the ones a reviewer sees in a notification and in a
@@ -48,27 +41,30 @@ function execWithStdin(
  * goes.
  */
 export function renderCommentBody(comment: ReviewComment): string {
-  const parts = commentBodyParts(comment.body);
-  const header = parts.header ?? {
-    ...conventionalForSeverity(comment.severity),
-    // With no header of its own, the draft's first line becomes the
-    // subject and the rest becomes the discussion under it.
-    subject: firstLine(parts.body),
-    body: afterFirstLine(parts.body),
-  };
+  const { header } = resolveComment(comment.body, comment.severity);
   return withAgentFooter(formatConventionalComment(header));
 }
 
-function firstLine(body: string): string {
-  const trimmed = body.trim();
-  const at = trimmed.indexOf('\n');
-  return at === -1 ? trimmed : trimmed.slice(0, at).trim();
-}
-
-function afterFirstLine(body: string): string {
-  const trimmed = body.trim();
-  const at = trimmed.indexOf('\n');
-  return at === -1 ? '' : trimmed.slice(at + 1).trim();
+/**
+ * A draft with nothing in it cannot be posted.
+ *
+ * Without this the header is emitted with no subject — `issue
+ * (blocking):` and nothing else — which is a comment that says
+ * nothing, and which the app's own parser then refuses to read back as
+ * a header, so it renders as literal prose. Checked for the whole batch
+ * before anything is sent, because a mid-batch failure leaves some
+ * comments live and some not.
+ */
+function assertPostable(comments: ReviewComment[]): void {
+  const empty = comments.filter(
+    (c) => resolveComment(c.body, c.severity).header.subject.length === 0
+  );
+  if (empty.length > 0) {
+    throw new Error(
+      `Cannot post ${empty.length === 1 ? 'a comment' : 'comments'} with an ` +
+        `empty body: ${empty.map((c) => c.id).join(', ')}`
+    );
+  }
 }
 
 export interface PostContext {
@@ -84,6 +80,7 @@ export async function postReviewComments(
   ctx: PostContext,
   event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES' = 'COMMENT'
 ): Promise<void> {
+  assertPostable(comments);
   if (ctx.vendor === 'github') {
     await postGitHub(comments, ctx, event);
   } else if (ctx.vendor === 'azure-devops') {

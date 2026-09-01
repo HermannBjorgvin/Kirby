@@ -122,6 +122,36 @@ describe('add-comment', () => {
     expect(stored()[0].threadId).toBe('PRRT_kwDOAbC123');
   });
 
+  /** The body's own header states a severity too, and the two must not
+   *  be able to disagree: everything downstream — the walkthrough
+   *  order, the rail dot, the TUI chip, the posted body — reads the
+   *  stored one. */
+  it('raises the stored severity to match a louder header in the body', async () => {
+    await util.handleUtilCommand([
+      'add-comment',
+      `--pr=${PR}`,
+      '--file=src/undo.c',
+      '--lineStart=12',
+      '--lineEnd=12',
+      '--severity=nit',
+      '--body=question (blocking): does this drop writes on crash?',
+    ]);
+    expect(stored()[0].severity).toBe('critical');
+  });
+
+  it('will not let an accidental label quieten the declared severity', async () => {
+    await util.handleUtilCommand([
+      'add-comment',
+      `--pr=${PR}`,
+      '--file=src/undo.c',
+      '--lineStart=12',
+      '--lineEnd=12',
+      '--severity=critical',
+      '--body=Note: this drops writes on crash',
+    ]);
+    expect(stored()[0].severity).toBe('critical');
+  });
+
   it('leaves threadId off a draft that answers nothing', async () => {
     await util.handleUtilCommand(['add-comment', ...BASE]);
     expect(stored()[0].threadId).toBeUndefined();

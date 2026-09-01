@@ -3,6 +3,7 @@ import {
   postReviewComments,
   readComments,
   removeComment,
+  resolveComment,
   updateComment,
   type PostContext,
   type ReviewComment,
@@ -52,9 +53,34 @@ export function updateDraftComment(
   patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>
 ): void {
   requireEditable(requirePrId(prId), id);
-  if (!updateComment(prId, id, patch)) {
+  if (!updateComment(prId, id, resolvedPatch(prId, id, patch))) {
     throw new Error('Draft comment no longer exists');
   }
+}
+
+/**
+ * Settle an edit's body against its severity before it is stored.
+ *
+ * A body that opens with a Conventional Comments header states a
+ * severity too, so an edit can make the two disagree — and everything
+ * downstream reads the stored one: the walkthrough's order, the rail
+ * dot, the TUI's chip. `resolveComment` picks the louder, the same way
+ * `kirby util add-comment` does when the agent writes the draft, so the
+ * two write paths cannot leave the file in different shapes.
+ */
+function resolvedPatch(
+  prId: number,
+  id: string,
+  patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>
+): Partial<Pick<ReviewComment, 'body' | 'severity'>> {
+  if (patch.body === undefined) return patch;
+  const existing = readComments(prId).find((c) => c.id === id);
+  const declared = patch.severity ?? existing?.severity;
+  if (!declared) return patch;
+  return {
+    ...patch,
+    severity: resolveComment(patch.body, declared).severity,
+  };
 }
 
 export function deleteDraftComment(prId: number, id: string): void {

@@ -30,10 +30,13 @@ export function buildReviewLaunchRequest(
     `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
     `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
     `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
-    `- Add --thread=<id> when the comment answers an existing review thread. ` +
-    `Thread ids come from the review data you are given (a plan prompt names ` +
-    `each one as "(thread <id>)"); they are the provider's own ids and are the ` +
-    `only way to say which conversation you mean.\n` +
+    `- Add --thread=<id> to record which existing review thread a comment ` +
+    `is about. It is still posted as a new comment at --file/--lineStart, ` +
+    `not as a reply in that thread — the id is there so the reader can see ` +
+    `which conversation you had in mind. Thread ids come from the review ` +
+    `data you are given (a plan prompt names each one as "(thread <id>)"); ` +
+    `they are the provider's own ids and are the only way to say which ` +
+    `conversation you mean.\n` +
     `- Comments appear live in the reviewer's diff viewer\n\n` +
     `Write each --body as a Conventional Comment (conventionalcomments.org):\n` +
     `  <label> [decorations]: <subject>\n` +
@@ -45,8 +48,11 @@ export function buildReviewLaunchRequest(
     `- The subject is one line saying the thing; the discussion below the ` +
     `blank line is where the reasoning, the evidence and any code go\n` +
     `- Write the header yourself when you have a better one than the ` +
-    `severity implies (e.g. "question (blocking):", "praise:"); a body ` +
-    `without one is given the header its severity maps to\n` +
+    `severity implies (e.g. "question (blocking):"); a body without one ` +
+    `is given the header its severity maps to. The louder of the two ` +
+    `wins, so do not open a comment with a label word unless you mean ` +
+    `it as the label — "Note: ..." on a critical finding is read as the ` +
+    `sentence it is, not as a downgrade\n` +
     `- Do not sign the comment or say it came from an AI — that is added ` +
     `when it is posted`;
 

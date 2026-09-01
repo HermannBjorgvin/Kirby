@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   AGENT_FOOTER,
+  moreSevere,
+  resolveComment,
   CONVENTIONAL_LABELS,
   commentBodyParts,
   conventionalForSeverity,
@@ -299,5 +301,90 @@ describe('commentBodyParts', () => {
       body: 'why the retry here?',
       footer: null,
     });
+  });
+});
+
+describe('CRLF bodies', () => {
+  /** A \r left in the discussion is painted literally by a terminal,
+   *  and the row estimators measure what is painted. */
+  it('normalises Windows line endings out of the prose', () => {
+    const parsed = parseConventionalComment(
+      'issue (blocking): subject\r\n\r\nline one\r\nline two'
+    );
+    expect(parsed?.subject).toBe('subject');
+    expect(parsed?.body).toBe('line one\nline two');
+  });
+
+  it('normalises them out of an unheadered body too', () => {
+    expect(commentBodyParts('line one\r\nline two').body).toBe(
+      'line one\nline two'
+    );
+  });
+});
+
+describe('resolveComment', () => {
+  /** The guidance invites an agent to write a sharper header than its
+   *  severity implies. Taking the header alone posted a blocking
+   *  question while every severity-driven surface — the walkthrough
+   *  order, the rail dot, the TUI chip — went on calling it a nit. */
+  it('raises the severity to match a louder header the agent wrote', () => {
+    const r = resolveComment('question (blocking): drops writes', 'nit');
+    expect(r.severity).toBe('critical');
+    expect(r.header).toMatchObject({
+      label: 'question',
+      decorations: ['blocking'],
+      subject: 'drops writes',
+    });
+  });
+
+  /** "Note: this drops writes on crash" is a sentence, not a header.
+   *  Reading it as one turned a critical finding into the quietest
+   *  label in the vocabulary. */
+  it('will not let an accidental label quieten a declared severity', () => {
+    const r = resolveComment('Note: this drops writes on crash', 'critical');
+    expect(r.severity).toBe('critical');
+    expect(r.header).toMatchObject({
+      label: 'issue',
+      decorations: ['blocking'],
+      // The sentence survives; only the label it accidentally wore is
+      // replaced.
+      subject: 'this drops writes on crash',
+    });
+  });
+
+  it("keeps the agent's own header when the two agree", () => {
+    const r = resolveComment('nitpick: rename this', 'nit');
+    expect(r.severity).toBe('nit');
+    expect(r.header.label).toBe('nitpick');
+  });
+
+  it('gives an unheadered body the header its severity implies', () => {
+    const r = resolveComment(
+      'This leaks a handle.\nThe fd is never closed.',
+      'major'
+    );
+    expect(r.severity).toBe('major');
+    expect(r.header).toMatchObject({
+      label: 'issue',
+      decorations: ['non-blocking'],
+      subject: 'This leaks a handle.',
+      body: 'The fd is never closed.',
+    });
+  });
+
+  it('reports an empty body as a subject-less header, for the caller to refuse', () => {
+    expect(resolveComment('   \n  ', 'critical').header.subject).toBe('');
+  });
+});
+
+describe('moreSevere', () => {
+  it('ranks the four severities', () => {
+    expect(moreSevere('nit', 'critical')).toBe('critical');
+    expect(moreSevere('major', 'minor')).toBe('major');
+    expect(moreSevere('minor', 'nit')).toBe('minor');
+  });
+
+  it('gives a tie to the first', () => {
+    expect(moreSevere('major', 'major')).toBe('major');
   });
 });

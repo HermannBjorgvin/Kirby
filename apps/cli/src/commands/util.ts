@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   appendComment,
+  resolveComment,
   type CommentSeverity,
   type ReviewComment,
 } from '@kirby/review-comments';
@@ -85,7 +86,12 @@ function handleAddComment(args: string[]): void {
     file: parsed.file,
     lineStart,
     lineEnd,
-    severity,
+    // A body that opens with its own Conventional Comments header is
+    // stating a severity too, and the two must not be able to
+    // disagree — the louder wins. Settled once, here, so everything
+    // that reads the stored draft (the walkthrough order, the rail
+    // dot, the TUI chip, the posted body) says the same thing.
+    severity: resolveComment(parsed.body, severity).severity,
     body: parsed.body,
     side,
     status: 'draft',

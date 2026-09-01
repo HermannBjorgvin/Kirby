@@ -189,6 +189,39 @@ describe('posting to GitHub', () => {
     expect(body.comments[0].body).not.toContain('nitpick');
   });
 
+  /** Ordinary prose can open with a label word. Reading it as a header
+   *  turned a critical finding into the quietest label there is, so the
+   *  declared severity wins and only the accidental label is replaced. */
+  it('will not let an accidental label quieten the declared severity', async () => {
+    await postReviewComments(
+      [
+        comment({
+          severity: 'critical',
+          body: 'Note: this drops writes on crash',
+        }),
+      ],
+      github
+    );
+    const body = env.ghInputs[0].body as { comments: { body: string }[] };
+    expect(body.comments[0].body).toContain(
+      'issue (blocking): this drops writes on crash'
+    );
+    expect(body.comments[0].body).not.toContain('note:');
+  });
+
+  /** A comment that says nothing, under a header the app's own parser
+   *  then refuses to read back. Checked for the whole batch first: a
+   *  mid-batch throw would leave some comments live and some not. */
+  it('refuses to post a draft with an empty body, before sending any', async () => {
+    await expect(
+      postReviewComments(
+        [comment({ id: 'ok' }), comment({ id: 'blank', body: '   \n ' })],
+        github
+      )
+    ).rejects.toThrow(/empty body: blank/);
+    expect(env.ghInputs).toHaveLength(0);
+  });
+
   /** A multi-line draft has a subject and a discussion; the split has
    *  to fall at the first line, not swallow the paragraph into the
    *  header. */
