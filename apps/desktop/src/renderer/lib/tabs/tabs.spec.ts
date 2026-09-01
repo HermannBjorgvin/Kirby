@@ -648,3 +648,46 @@ describe('closing a tab keeps focus inside the repo in view', () => {
     expect(s.activeId).toBe(id('branch:x'));
   });
 });
+
+describe('sync-items stamps the title', () => {
+  const find = (s: TabsState, key: string) =>
+    s.tabs.find((t) => t.id === id(key));
+
+  it('remembers what the item is called, and follows a rename', () => {
+    let s = open(empty, 'pr:42');
+    s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x', title: 'Add undo' }]);
+    expect(find(s, 'pr:42')).toMatchObject({ title: 'Add undo' });
+    s = sync(s, [
+      { itemKey: 'pr:42', branch: 'feat-x', title: 'Add undo support' },
+    ]);
+    expect(find(s, 'pr:42')).toMatchObject({ title: 'Add undo support' });
+  });
+
+  it('stamps the new title when a tab is re-keyed onto its pull request', () => {
+    let s = open(empty, 'branch:feat-x');
+    s = sync(s, [
+      { itemKey: 'branch:feat-x', branch: 'feat-x', title: 'feat-x' },
+    ]);
+    s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x', title: 'Add undo' }]);
+    expect(find(s, 'branch:feat-x')).toMatchObject({
+      itemKey: 'pr:42',
+      title: 'Add undo',
+    });
+  });
+
+  it('keeps the title through a sync that does not carry one', () => {
+    let s = open(empty, 'pr:42');
+    s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x', title: 'Add undo' }]);
+    const before = s;
+    s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x' }]);
+    expect(s).toBe(before);
+  });
+
+  it('leaves another repository’s tabs alone', () => {
+    let s = open(empty, 'pr:42', false, OTHER);
+    s = sync(s, [{ itemKey: 'pr:42', branch: 'feat-x', title: 'Not yours' }]);
+    expect(find(s, 'pr:42') ?? s.tabs[0]).not.toMatchObject({
+      title: 'Not yours',
+    });
+  });
+});

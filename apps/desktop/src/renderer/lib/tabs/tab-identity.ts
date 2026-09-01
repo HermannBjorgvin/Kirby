@@ -20,6 +20,11 @@ export type Tab =
        *  a worktree's key changes from `branch:x` to `pr:n` the moment
        *  a PR appears (and back when it closes). */
       branch?: string;
+      /** Last-known display title, stamped by `sync-items`. What the
+       *  strip shows once the item is out of reach — its repository is
+       *  not the open one, so the sidebar cannot describe it — rather
+       *  than falling back to a key. */
+      title?: string;
     }
   | { id: 'settings'; kind: 'settings'; preview: false };
 

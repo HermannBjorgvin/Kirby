@@ -28,6 +28,8 @@ import { pinLive, rekey } from './tab-sync.js';
 export interface ItemEntry {
   itemKey: string;
   branch: string;
+  /** What the item is called on screen; remembered on the tab. */
+  title?: string;
   /** Whether an agent is live on this item right now. */
   running?: boolean;
   /** PTY session name, when the item has one. Present on every
