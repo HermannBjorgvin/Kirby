@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import {
   createWorktree,
+  launchAgentFromRail,
   openPalette,
   sidebarRow,
   tab,
@@ -70,7 +71,7 @@ test.describe('Tabs across repositories', () => {
 
     // An agent running in repo alpha, in its own tab.
     await createWorktree(page, BRANCH);
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
@@ -132,7 +133,7 @@ test.describe('Tabs across repositories', () => {
     const { page, repoPath } = desktop;
 
     await createWorktree(page, BRANCH);
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
@@ -163,7 +164,7 @@ test.describe('Tabs across repositories', () => {
     await createWorktree(page, SHARED);
     await switchRepo(page, otherRepo);
     await createWorktree(page, SHARED);
-    await page.getByRole('button', { name: /(Re)?launch agent/i }).click();
+    await launchAgentFromRail(page);
     await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
