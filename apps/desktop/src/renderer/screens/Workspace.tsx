@@ -18,6 +18,7 @@ import {
   itemKey,
   itemRunning,
   itemSessionName,
+  itemTitle,
 } from '../lib/sidebar/sidebar-model.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { EditorArea } from '../components/editor/EditorArea.js';
@@ -114,6 +115,7 @@ function WorkspaceInner({
       items.map((i) => ({
         itemKey: itemKey(i),
         branch: itemBranch(i),
+        title: itemTitle(i),
         running: itemRunning(i),
         sessionName: itemSessionName(i),
       })),
@@ -276,6 +278,7 @@ function WorkspaceInner({
                 <Sidebar
                   items={items}
                   loading={model.isLoading}
+                  updatedAt={model.dataUpdatedAt}
                   error={null}
                   onNewWorktree={() => setPaletteOpen(true)}
                   onCollapse={toggleSidebar}

@@ -10,8 +10,12 @@ import type {
   SidebarItem,
 } from '../../../host/contract.js';
 import { usePlanCount } from '../../lib/plan/plan.js';
-import { itemRunning, itemTitle } from '../../lib/sidebar/sidebar-model.js';
-import { repoDisplayName } from '../../lib/tabs/tab-presentation.js';
+import { itemRunning } from '../../lib/sidebar/sidebar-model.js';
+import {
+  repoDisplayName,
+  tabPresentation,
+  type TabFace,
+} from '../../lib/tabs/tab-presentation.js';
 import { useTabs, type Tab } from '../../lib/tabs/tabs.js';
 import type { useCloseTabs } from '../../lib/tabs/use-close-tabs.js';
 import { cn } from '../../lib/utils.js';
@@ -42,16 +46,11 @@ function TabIcon({
   );
 }
 
-/** What a tab shows for itself: its label and the icon beside it. */
-function tabPresentation(tab: Tab, item: SidebarItem | undefined) {
-  if (tab.kind === 'settings') {
-    return { label: 'Settings', Icon: SettingsIcon };
-  }
-  return {
-    label: item ? itemTitle(item) : tab.itemKey.replace(/^[a-z]+:/, ''),
-    Icon: item?.pr ? GitPullRequestIcon : GitBranchIcon,
-  };
-}
+const FACE_ICON: Record<TabFace, typeof SettingsIcon> = {
+  settings: SettingsIcon,
+  pr: GitPullRequestIcon,
+  branch: GitBranchIcon,
+};
 
 /**
  * The tab's title, prefixed with its repository when that is not the
@@ -164,7 +163,8 @@ export function TabButton({
   startsGroup: boolean;
 }) {
   const tabs = useTabs();
-  const { label, Icon } = tabPresentation(tab, item);
+  const { label, face } = tabPresentation(tab, item);
+  const Icon = FACE_ICON[face];
   // A plan is built inside a tab and then navigated away from, so the
   // count has to be visible from wherever the user ends up.
   const planCount = usePlanCount(item?.pr?.id);

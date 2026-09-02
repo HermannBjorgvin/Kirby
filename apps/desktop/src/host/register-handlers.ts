@@ -41,7 +41,7 @@ export function createHostApi(): KirbyHostApi {
     updateSettingsField: (ref, value) =>
       Promise.resolve(settings.updateSettingsFromView(ref, value)),
 
-    getSidebarModel: () => sidebar.getSidebarModel(),
+    getSidebarModel: () => sidebar.getSidebarSnapshot(),
     getSyncState: () => Promise.resolve(sidebar.getSyncState()),
     refreshRemote: () => sidebar.refreshRemote(),
     listWorktrees: () => worktrees.listWorktrees(),

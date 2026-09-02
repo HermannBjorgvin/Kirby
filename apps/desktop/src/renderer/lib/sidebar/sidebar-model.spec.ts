@@ -10,6 +10,7 @@ import {
   itemKey,
   itemRunning,
   itemSessionName,
+  itemTitle,
   unresolvedCommentsLabel,
   SECTION_ORDER,
   liveSessionName,
@@ -404,5 +405,38 @@ describe('liveSessionName', () => {
 
   it('has nothing to resolve when the row has no name', () => {
     expect(liveSessionName(undefined, [{ name: 'feature-x' }])).toBeUndefined();
+  });
+});
+
+describe('itemTitle', () => {
+  it('is the pull request title whenever the item has one', () => {
+    const thePr = pr({ title: 'Add colour support' });
+    const asSession: SidebarItem = {
+      kind: 'session',
+      session: session('feature-colour'),
+      pr: thePr,
+      branch: 'feature/colour',
+      isMerged: false,
+    };
+    const asOrphan: SidebarItem = { kind: 'orphan-pr', pr: thePr };
+    const asReview: SidebarItem = {
+      kind: 'review-pr',
+      pr: thePr,
+      category: 'needs-review',
+    };
+    for (const item of [asSession, asOrphan, asReview]) {
+      expect(itemTitle(item)).toBe('Add colour support');
+    }
+  });
+
+  it('is the branch for a worktree without one', () => {
+    const item: SidebarItem = {
+      kind: 'session',
+      session: session('feature-colour'),
+      branch: 'feature/colour',
+      isMerged: false,
+    };
+    expect(itemTitle(item)).toBe('feature/colour');
+    expect(itemTitle({ ...item, branch: undefined })).toBe('feature-colour');
   });
 });

@@ -175,7 +175,10 @@ export function SidebarRow({
         <ItemIcon item={item} running={running} />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex items-center gap-1.5">
-            <span className={cn('truncate', running && 'font-medium')}>
+            <span
+              className={cn('truncate', running && 'font-medium')}
+              title={title}
+            >
               {title}
             </span>
             <RowBadges
@@ -187,11 +190,13 @@ export function SidebarRow({
           {pr && (
             <div
               className="flex items-center gap-1.5 text-xs text-muted-foreground"
-              title={pr.title}
+              title={item.kind === 'session' ? itemBranch(item) : pr.title}
             >
               <span className="shrink-0 tabular-nums">#{pr.id}</span>
               <span className="min-w-0 truncate">
-                {item.kind === 'session' ? pr.title : pr.createdByDisplayName}
+                {item.kind === 'session'
+                  ? itemBranch(item)
+                  : pr.createdByDisplayName}
               </span>
             </div>
           )}

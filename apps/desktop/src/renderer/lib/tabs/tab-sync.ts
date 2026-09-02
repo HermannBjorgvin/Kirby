@@ -1,5 +1,5 @@
 import { pairKey } from './tab-identity.js';
-import type { ItemEntry, Tab, TabsState } from './tabs-model.js';
+import type { ItemEntry, ItemTab, Tab, TabsState } from './tabs-model.js';
 
 /**
  * The passes `sync-items` runs over tabs that already exist:
@@ -37,7 +37,7 @@ export function rekey(
     if (!prev || (prev.startsWith('branch:') && e.itemKey.startsWith('pr:')))
       branchOf.set(e.branch, e.itemKey);
   }
-  const entryBranch = new Map(entries.map((e) => [e.itemKey, e.branch]));
+  const entryByKey = new Map(entries.map((e) => [e.itemKey, e]));
   let changed = false;
   const remapped = state.tabs.map((t): Tab => {
     // Another repository's tabs are none of this sync's business: its
@@ -45,12 +45,9 @@ export function rekey(
     // stale key and get followed onto a same-named branch over here.
     if (t.kind !== 'item' || t.repo !== repo) return t;
     if (keys.has(t.itemKey)) {
-      const branch = entryBranch.get(t.itemKey);
-      if (branch && t.branch !== branch) {
-        changed = true;
-        return { ...t, branch };
-      }
-      return t;
+      const stamped = stamp(t, entryByKey.get(t.itemKey));
+      if (stamped !== t) changed = true;
+      return stamped;
     }
     // Stale key. `branch:`-shaped keys carry their branch; older
     // tabs may have a stamped one from a previous sync.
@@ -60,10 +57,24 @@ export function rekey(
     const nextKey = branch ? branchOf.get(branch) : undefined;
     if (!nextKey || nextKey === t.itemKey) return t;
     changed = true;
-    return { ...t, itemKey: nextKey, branch };
+    return stamp({ ...t, itemKey: nextKey, branch }, entryByKey.get(nextKey));
   });
   if (!changed) return state;
   return { ...state, ...collapseDuplicateKeys(remapped, state.activeId) };
+}
+
+/**
+ * Remember on the tab what its item says about itself — branch and
+ * title — so the strip can still describe the tab once the item is out
+ * of reach. Returns the same tab when nothing changed, so a quiet poll
+ * does not re-render the strip.
+ */
+function stamp(tab: ItemTab, entry: ItemEntry | undefined): ItemTab {
+  if (!entry) return tab;
+  const branch = entry.branch || tab.branch;
+  const title = entry.title ?? tab.title;
+  if (branch === tab.branch && title === tab.title) return tab;
+  return { ...tab, branch, title };
 }
 
 /**

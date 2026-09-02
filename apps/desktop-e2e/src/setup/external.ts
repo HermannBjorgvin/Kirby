@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { socketEnv } from './tmux.js';
 
 /**
  * Creating the things Kirby is supposed to notice on its own: a
@@ -9,8 +10,11 @@ import { join } from 'node:path';
  * them.
  *
  * Every call takes the test's `homeDir`, because the fixture launches
- * the app with `TMUX_TMPDIR=<homeDir>`. A helper that omitted it would
- * act on the developer's own tmux server instead of the test's.
+ * the app with `TMUX_TMPDIR=<homeDir>`. The env is built by `socketEnv`
+ * in `./tmux.ts`, which proves the dir is a fixture home and drops
+ * `$TMUX` — set whenever the suite itself runs inside tmux, and then
+ * winning over `TMUX_TMPDIR`, so a session started "for the test" lands
+ * on the developer's own server, where the app never sees it.
  */
 
 const KIRBY_PREFIX = 'kirby-';
@@ -30,13 +34,6 @@ export function tmuxAvailable(): boolean {
 
 export function uniqueExternalBranch(): string {
   return `${E2E_BRANCH_PREFIX}${randomBytes(3).toString('hex')}`;
-}
-
-function socketEnv(homeDir: string): NodeJS.ProcessEnv {
-  if (!homeDir) {
-    throw new Error('tmux helpers need the test homeDir (TMUX_TMPDIR)');
-  }
-  return { ...process.env, TMUX_TMPDIR: homeDir };
 }
 
 /**

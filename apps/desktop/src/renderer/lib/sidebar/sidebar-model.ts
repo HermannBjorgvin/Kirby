@@ -60,12 +60,15 @@ export function itemRunning(item: SidebarItem): boolean {
   return item.running === true;
 }
 
-/** Display title for an item (branch for sessions, PR title otherwise). */
+/**
+ * What an item is called on screen: its pull request's title when it
+ * has one, its branch otherwise. A branch name is a slug the author
+ * typed once; the title is what the work is about, and it is what a
+ * reader scanning a sidebar or a tab strip is looking for.
+ */
 export function itemTitle(item: SidebarItem): string {
-  if (item.kind === 'session') {
-    return item.branch ?? item.session.name;
-  }
-  return item.pr.title;
+  if (item.kind !== 'session') return item.pr.title;
+  return item.pr?.title ?? item.branch ?? item.session.name;
 }
 
 /** The git branch an item corresponds to. */

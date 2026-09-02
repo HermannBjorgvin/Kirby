@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DiffLine } from '@kirby/diff';
 import { contentKey } from '../content-key.js';
 import { loadDesktopPrefs } from '../desktop-prefs.js';
@@ -7,7 +7,7 @@ import { parseDiffInWorker } from '../diff/diff-worker-client.js';
 import { measured } from '../perf.js';
 import { keys } from './query-keys.js';
 import { errorMessage } from '../utils.js';
-import type { RepoInfo } from '../../../host/contract.js';
+import type { RepoInfo, SidebarItem } from '../../../host/contract.js';
 
 /**
  * The renderer's reads: every host query the app makes, so refetch
@@ -65,13 +65,36 @@ export function useRecentRepos() {
   });
 }
 
+/**
+ * The sidebar rows for `cwd`, from a host that answers for whichever
+ * repository it has open.
+ *
+ * An answer about another repository is not this workspace's, however
+ * it arrived: the host moves on before the renderer does during a
+ * switch, and the workspace being left keeps polling until it unmounts.
+ * Reconciling such an answer into this repo's tabs opens a tab stamped
+ * with this repo for a branch that exists only in the other one — a
+ * tab that then reads as the other repo's and opens it when clicked.
+ * So the rows stay what they were, and a first poll with nothing to
+ * keep shows nothing rather than someone else's rows.
+ */
+export async function loadSidebarModel(
+  cwd: string,
+  previous: SidebarItem[] | undefined
+): Promise<SidebarItem[]> {
+  const answer = await window.kirby.getSidebarModel();
+  if (answer.cwd !== cwd) return previous ?? [];
+  return answer.items;
+}
+
 /** Sidebar model. Local state (worktrees, alive PTYs) is cheap so we
  *  poll it every few seconds; remote PR data is cached host-side and
  *  only re-fetched on its own interval or an explicit refresh. */
 export function useSidebarModel(cwd: string) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: keys.sidebar(cwd),
-    queryFn: () => window.kirby.getSidebarModel(),
+    queryFn: () => loadSidebarModel(cwd, qc.getQueryData(keys.sidebar(cwd))),
     refetchInterval: 4_000,
     placeholderData: (prev) => prev,
   });

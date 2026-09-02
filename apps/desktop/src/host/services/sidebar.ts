@@ -9,10 +9,10 @@ import {
   type AgentSession,
   type SidebarItem,
 } from '@kirby/core';
-import { PROVIDERS, requireRepo } from './repo.js';
+import { PROVIDERS, activeRepoIs, requireRepo } from './repo.js';
 import { isOwnSessionAlive } from './sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
-import type { SyncState } from '../contract.js';
+import type { SidebarModel, SyncState } from '../contract.js';
 
 /**
  * Assemble the unified, ordered sidebar model exactly like the TUI's
@@ -93,7 +93,7 @@ const fetchSeq = new Map<string, number>();
 let fetchCount = 0;
 
 // Installed by main.ts. Fires when a background fetch has changed what
-// getSidebarModel() would answer, so the renderer can refetch then
+// listSidebarItems() would answer, so the renderer can refetch then
 // rather than on its next poll tick.
 let remoteUpdated: (() => void) | null = null;
 
@@ -216,7 +216,9 @@ function refreshRemoteInBackground(cwd: string): void {
   });
 }
 
-export async function getSidebarModel(): Promise<SidebarItem[]> {
+/** The rows alone. Exported for its tests; the bridge serves
+ *  `getSidebarSnapshot`, which says which repository they are of. */
+export async function listSidebarItems(): Promise<SidebarItem[]> {
   const cwd = requireRepo();
   const { config, provider } = resolveProvider(cwd);
 
@@ -267,6 +269,28 @@ export async function getSidebarModel(): Promise<SidebarItem[]> {
     sync.merged,
     sync.conflicts
   );
+}
+
+/**
+ * The sidebar stamped with the repository it describes — what the
+ * renderer is handed.
+ *
+ * `listSidebarItems` reads the open repository more than once over its
+ * awaits (the worktree list, then which sessions are this repo's), so a
+ * switch landing in between yields rows of one repository with the
+ * live state of another. Rather than stamp that, it is computed again
+ * for the repository the host is on now, and stamped with that one; the
+ * renderer then knows exactly which workspace the answer is for. Bounded,
+ * because a host that keeps switching under the call has a bigger
+ * problem than a stale sidebar.
+ */
+export async function getSidebarSnapshot(): Promise<SidebarModel> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cwd = requireRepo();
+    const items = await listSidebarItems();
+    if (activeRepoIs(cwd)) return { cwd, items };
+  }
+  throw new Error('The open repository kept changing while listing it');
 }
 
 export function getSyncState(): SyncState {

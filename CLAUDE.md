@@ -600,7 +600,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **Kirby notices sessions it did not start.** A worktree or a tmux
   agent can appear while Kirby is running — a second instance, a script,
   or an operator running `git worktree add … && tmux new-session -d -s
-  kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
+kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   (`libs/core/src/lib/discovery/`) scans every 4s, diffs against the
   previous observation (`diffScans`, pure) and attaches through the
   normal `spawnSession` path, so tmux's `new-session -A` resumes the
@@ -662,7 +662,31 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   worktree resolver, and buys nothing the switch does not already do.
   What it costs is that a foreign tab shows no live agent state —
   `getSessionActivity` and `listSessions` answer for the open repo only
-  — so the strip says an agent is *there*, not what it is doing.
+  — so the strip says an agent is _there_, not what it is doing.
+
+  **A sidebar answer names the repository it describes, and the
+  renderer drops the ones that are not its own.** The host answers
+  every sidebar query for whichever repo it has open, and the renderer
+  keys those answers by the repo _it_ has open; the two disagree while
+  a switch is in flight — the host has moved on, the previous workspace
+  is still mounted and polling — and an answer about the new repo
+  reconciled into the old one's tabs made a tab stamped with the repo
+  being left, named after a branch that exists only in the one being
+  entered: a second tab under the other repo's name that opened it with
+  nothing to show. `getSidebarSnapshot` stamps the rows with their
+  `cwd` (recomputing when a switch lands between its awaits, since the
+  worktrees are listed under one repo and the sessions judged under the
+  other), and `loadSidebarModel` keeps the rows it had when the stamp
+  is not the query's repo. `sidebar-answer-repo.test.ts` holds the
+  window open by switching the host through the bridge alone.
+
+  **A tab remembers its title.** A foreign tab's item is out of reach —
+  that sidebar has no row for it — so `sync-items` stamps `title`
+  beside `branch`, and `tabPresentation` reads item, stamp, branch, key
+  in that order. In the desktop, an item with a pull request is named
+  by its title (`itemTitle`), the branch moving to the row's detail
+  line; the TUI still names rows by branch.
+
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the
   agent's own drafts — into a queue and hands the whole thing to one
@@ -691,14 +715,14 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 - **A PR is diffed against commits; a bare worktree against its working tree.** `fetchDiffText` compares two commits, which is what review threads anchor to — a PR tab must never start showing uncommitted scratch work. A worktree with no PR has nothing to anchor, so `PrWorkspace` switches to `fetchWorktreeDiffText` (`libs/core/src/lib/utils/worktree-diff.ts`): merge-base diff run **inside the worktree**, so the index and working tree count, plus hand-built patches for untracked files. Untracked files are assembled rather than obtained via `git add -N`, because writing to the index of a worktree an agent is using changes what its own `git status` and `git commit` see. It polls at 2s **only while the agent is running** — a recursive `fs.watch` over a checkout wants an inotify handle per directory and `node_modules` alone exhausts the Linux default.
 - **Every git call behind a diff streams, and the worktree diff is
   bounded per file.** `-U99999` makes a patch as large as the files it
-  touches, and `execFile` *discards everything it read* when its buffer
+  touches, and `execFile` _discards everything it read_ when its buffer
   is exceeded — one generated file in a worktree and the tab had no
   diff at all, only "stdout maxBuffer length exceeded". `runGit`
   (`libs/core/src/lib/utils/git-run.ts`) spawns instead and treats its
   ceiling as a stop: it returns what arrived plus `truncated`, and only
   rejects when git itself failed. `fetchWorktreeDiffText` then decides
-  what it can render *before* the expensive diff runs — `git diff
-  --numstat -z` names the changed files, their churn and which git
+  what it can render _before_ the expensive diff runs — `git diff
+--numstat -z` names the changed files, their churn and which git
   calls binary — and drops what it cannot show with an
   `:(exclude,literal)` pathspec, putting a one-line placeholder patch
   in its place, so one unrepresentable file costs the user that file
@@ -721,7 +745,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   Untracked files (`untracked-diff.ts`) are sized before they are read
   rather than after, read at bounded concurrency, rendered as
   mode-120000 patches when they are symlinks (reading through one
-  printed a file from *outside* the repo as the agent's work), and stay
+  printed a file from _outside_ the repo as the agent's work), and stay
   `--exclude-standard`, so nothing git ignores reaches the viewer. An
   overrun of the overall ceiling is trimmed back to a file boundary
   (`completePatch`) — half a hunk parses as real lines. The pull
@@ -730,10 +754,11 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   what a reviewer was asked to read. The git-backed cases live in
   `worktree-diff.integration.spec.ts`, including the 56 MB file the old
   buffer died on.
+
 - **The diff file tree's collapse state is a function of the delta,
   never of the poll.** A worktree tab refetches every two seconds while
   its agent runs and the parse happens off the main thread, so between
-  two patches the tree is handed *no files at all*. Open/closed state
+  two patches the tree is handed _no files at all_. Open/closed state
   living in each row died on that blank tick, which is how one file
   being written reopened every folder. It lives in `FileTree` now and
   is reconciled by `lib/diff/file-tree-model.ts`: a refresh opens the
@@ -747,7 +772,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   gate forbids `setState` in an effect, and this is React's own
   "adjusting state when a prop changes".
 - **A terminal is told its grid for every session, not every resize.**
-  A launch can only *estimate* the pane, so the PTY starts on a guess
+  A launch can only _estimate_ the pane, so the PTY starts on a guess
   and is corrected by the first resize wterm emits once it has measured
   itself. Restarting an agent in a pane that already holds a
   correctly-sized terminal moves nothing and emits nothing, so the new
@@ -755,7 +780,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   the window was resized. `SessionTerminal` now sends
   `resizeSession` on every fit rather than only when wterm's own grid
   moved, and re-fits on an `epoch` prop carrying the session's
-  `spawnedAt`: a session's *name* survives a restart, that timestamp
+  `spawnedAt`: a session's _name_ survives a restart, that timestamp
   does not. The estimate is measured too — `paneTerminalGrid` stands a
   hidden `.wterm` up inside `[data-terminal-pane]` (the content pane
   the terminal will occupy) and reads the font and padding that will
@@ -805,10 +830,10 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
 
   - **What cannot have changed is not re-read.** `pr-details.ts`
     remembers the combined CI verdict against the **merge identity** —
-    `lastMergeSourceCommit` *and* `lastMergeTargetCommit`, because
+    `lastMergeSourceCommit` _and_ `lastMergeTargetCommit`, because
     Azure builds the merge ref and a pull request is rebuilt when its
     target advances under it. While that identity is where the last
-    cycle left it, a *settled* verdict is still the verdict. A
+    cycle left it, a _settled_ verdict is still the verdict. A
     `pending` one is always re-read, and jumps the queue: CI in flight
     is the moment the badge is worth watching, and by age it would sort
     last. Comment counts are **not** pinned to the identity: a push
@@ -820,7 +845,7 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
     directions: remembering the status list alone showed a red pipeline
     as green, and discarding it showed "no CI" on every row of a
     repository whose token lacked `Build (read)`.
-  - **Ordering is by when a row was last *read*, not by the age of its
+  - **Ordering is by when a row was last _read_, not by the age of its
     answer.** A read that established nothing otherwise leaves the row
     looking unread, so the same rows are picked every cycle forever and
     the rest never at all. For the same reason a memo is aged out
@@ -836,8 +861,8 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
     open pull requests costs a cycle no more than one with 50 and takes
     more cycles to come round.
   - **The runs fallback is capped, and absence means two things.** On a
-    *complete* page, a row missing from the listing genuinely has no
-    build and is recorded `none`; on a *truncated* one, a row left
+    _complete_ page, a row missing from the listing genuinely has no
+    build and is recorded `none`; on a _truncated_ one, a row left
     unresolved is **omitted from the map**, which the caller must read
     as "not looked up" and must not remember. A failed lookup is
     omitted for the same reason — a network error is not evidence that
@@ -849,12 +874,13 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   implements neither `forgetPullRequestCache` (what a refresh button
   means: forget the per-row answers, not the credentials) nor
   `resetCaches`.
+
 - **The desktop's remote cache holds one entry per repository.** The
   tab strip spans repositories and following a foreign tab opens its
   repository, so switching back and forth is normal; with a single slot
   every switch evicted the other side and refetched it, which on Azure
   is a cycle's worth of requests each time. `host/services/sidebar.ts`
-  keys the cache, the in-flight map *and* the fetch-sequence guard by
+  keys the cache, the in-flight map _and_ the fetch-sequence guard by
   cwd, bounded at eight with the least recently fetched evicted. The
   seq guard being global was its own bug: switching away mid-fetch
   retired a fetch that was going to answer correctly, so the repo it

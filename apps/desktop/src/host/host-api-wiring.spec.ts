@@ -45,7 +45,7 @@ vi.mock('./services/settings.js', () =>
   recorder('settings', ['getSettingsView', 'updateSettingsFromView'])
 );
 vi.mock('./services/sidebar.js', () =>
-  recorder('sidebar', ['getSidebarModel', 'getSyncState', 'refreshRemote'])
+  recorder('sidebar', ['getSidebarSnapshot', 'getSyncState', 'refreshRemote'])
 );
 vi.mock('./services/worktrees.js', () =>
   recorder('worktrees', [
@@ -128,7 +128,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'settings.updateSettingsFromView',
   ],
 
-  ['getSidebarModel', [], 'sidebar.getSidebarModel'],
+  ['getSidebarModel', [], 'sidebar.getSidebarSnapshot'],
   ['getSyncState', [], 'sidebar.getSyncState'],
   ['refreshRemote', [], 'sidebar.refreshRemote'],
 
