@@ -15,7 +15,9 @@ const env = vi.hoisted(() => ({
   configured: true,
   worktrees: [] as { branch?: string; state?: string }[],
   /** When set, the next worktree listing waits until it is called. */
-  releaseWorktrees: null as (() => void) | null,
+  releaseWorktrees: null as
+    | ((list?: { branch?: string; state?: string }[]) => void)
+    | null,
   holdWorktrees: false,
   /** Resolvers for each provider fetch, in call order. */
   pending: [] as {
@@ -69,7 +71,7 @@ vi.mock('@kirby/worktree-manager', () => ({
     env.holdWorktrees
       ? new Promise<typeof env.worktrees>((resolve) => {
           env.holdWorktrees = false;
-          env.releaseWorktrees = () => resolve(env.worktrees);
+          env.releaseWorktrees = (list) => resolve(list ?? env.worktrees);
         })
       : Promise.resolve(env.worktrees),
   worktreeSessionName: (wt: { branch?: string }) =>
@@ -139,11 +141,11 @@ describe('remote cache', () => {
     expect(env.fetchCount).toBe(1);
 
     env.now += 30_000; // default TTL is 60s
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     expect(env.fetchCount).toBe(1);
 
     env.now += 31_000;
-    const later = sidebar.getSidebarModel();
+    const later = sidebar.listSidebarItems();
     await flush();
     settle(1, { a: 1 });
     await later;
@@ -158,7 +160,7 @@ describe('remote cache', () => {
     await first;
 
     env.now += 6_000;
-    const second = sidebar.getSidebarModel();
+    const second = sidebar.listSidebarItems();
     await flush();
     settle(1);
     await second;
@@ -166,8 +168,8 @@ describe('remote cache', () => {
   });
 
   it('collapses concurrent polls into one provider request', async () => {
-    const a = sidebar.getSidebarModel();
-    const b = sidebar.getSidebarModel();
+    const a = sidebar.listSidebarItems();
+    const b = sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(1);
     settle(0);
@@ -175,7 +177,7 @@ describe('remote cache', () => {
   });
 
   it('gives a forced refresh its own request rather than a stale one', async () => {
-    const poll = sidebar.getSidebarModel();
+    const poll = sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(1);
 
@@ -324,7 +326,7 @@ describe('remote cache', () => {
     // A failed fetch caches nothing, so the renderer's four-second
     // sidebar poll used to start a fresh cycle every time — a burst
     // aimed at a service that is already unhappy.
-    const bad = sidebar.getSidebarModel();
+    const bad = sidebar.listSidebarItems();
     await flush();
     env.pending[0].reject(new Error('provider down'));
     await bad;
@@ -332,12 +334,12 @@ describe('remote cache', () => {
     expect(env.fetchCount).toBe(1);
 
     env.now += 4_000;
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(1);
 
     env.now += 57_000; // past the 60s interval
-    const retry = sidebar.getSidebarModel();
+    const retry = sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(2);
     settle(1);
@@ -346,7 +348,7 @@ describe('remote cache', () => {
 
   it('does not call the provider at all when it is not configured', async () => {
     env.configured = false;
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     expect(env.fetchCount).toBe(0);
     expect(sidebar.getSyncState().providerConfigured).toBe(false);
   });
@@ -376,7 +378,7 @@ describe('across repositories', () => {
   /** Fetch and settle one repo's pull requests. */
   async function sync(cwd: string, value: Record<string, unknown>) {
     env.cwd = cwd;
-    const model = sidebar.getSidebarModel();
+    const model = sidebar.listSidebarItems();
     await flush();
     settle(env.fetchCount - 1, value);
     await model;
@@ -389,7 +391,7 @@ describe('across repositories', () => {
 
     // Back to the first, inside its TTL: the answer is already here.
     env.cwd = '/repo-a';
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(2);
   });
@@ -409,11 +411,11 @@ describe('across repositories', () => {
     // Switching away used to retire the in-flight fetch, so the repo it
     // was for ended up with nothing cached and refetched on return.
     env.cwd = '/repo-a';
-    const slow = sidebar.getSidebarModel();
+    const slow = sidebar.listSidebarItems();
     await flush();
 
     env.cwd = '/repo-b';
-    const other = sidebar.getSidebarModel();
+    const other = sidebar.listSidebarItems();
     await flush();
     settle(1, { b: 1 });
     await other;
@@ -423,14 +425,14 @@ describe('across repositories', () => {
 
     env.cwd = '/repo-a';
     expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     await flush();
     expect(env.fetchCount).toBe(2);
   });
 
   it('reports only this repo as syncing while another one fetches', async () => {
     env.cwd = '/repo-a';
-    const slow = sidebar.getSidebarModel();
+    const slow = sidebar.listSidebarItems();
     await flush();
     expect(sidebar.getSyncState().remoteSyncing).toBe(true);
 
@@ -474,7 +476,7 @@ describe('across repositories', () => {
 
   it('keeps a failure to the repo it happened in', async () => {
     env.cwd = '/repo-a';
-    const bad = sidebar.getSidebarModel();
+    const bad = sidebar.listSidebarItems();
     await flush();
 
     // The user follows a foreign tab while A's fetch is still in the
@@ -494,7 +496,7 @@ describe('across repositories', () => {
     // A repo whose only attempt failed has no sync time to report; the
     // failure timestamp is not one.
     env.cwd = '/repo-a';
-    const bad = sidebar.getSidebarModel();
+    const bad = sidebar.listSidebarItems();
     await flush();
     env.pending[0].reject(new Error('nope'));
     await bad;
@@ -522,7 +524,7 @@ describe('sidebar model', () => {
     // Session names flatten slashes, and only branches with a PR are in
     // the lookup — so a PR-less `feat/foo` would display as `feat-foo`.
     env.worktrees = [{ branch: 'feat/foo' }];
-    const model = sidebar.getSidebarModel();
+    const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
     await model;
@@ -532,7 +534,7 @@ describe('sidebar model', () => {
 
   it('carries a mid-rebase worktree state through to its session', async () => {
     env.worktrees = [{ branch: 'rebasing-one', state: 'rebasing' }];
-    const model = sidebar.getSidebarModel();
+    const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
     const items = (await model) as { state?: string }[];
@@ -541,7 +543,7 @@ describe('sidebar model', () => {
 
   it('omits the state key entirely for a normal worktree', async () => {
     env.worktrees = [{ branch: 'normal' }];
-    const model = sidebar.getSidebarModel();
+    const model = sidebar.listSidebarItems();
     await flush();
     settle(0);
     const items = (await model) as Record<string, unknown>[];
@@ -563,7 +565,7 @@ describe('the model never waits for the provider', () => {
 
     // No `settle` anywhere: if this ever awaits the fetch again, the
     // await below never resolves and the test times out.
-    const model = (await sidebar.getSidebarModel()) as unknown[];
+    const model = (await sidebar.listSidebarItems()) as unknown[];
 
     expect(model).toHaveLength(1);
     expect(env.fetchCount).toBe(1);
@@ -572,11 +574,11 @@ describe('the model never waits for the provider', () => {
 
   it('serves the pull requests on the next call, once they have landed', async () => {
     env.worktrees = [{ branch: 'feature' }];
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     settle(0, { feature: { id: 7 } });
     await flush();
 
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     // Still one request: the second call read the cache the first
     // call's fetch filled, rather than starting another.
     expect(env.fetchCount).toBe(1);
@@ -586,7 +588,7 @@ describe('the model never waits for the provider', () => {
     let announced = 0;
     sidebar.setRemoteUpdatedNotifier(() => announced++);
 
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     // Nothing to say yet — the model that just went out is local-only.
     expect(announced).toBe(0);
 
@@ -598,13 +600,13 @@ describe('the model never waits for the provider', () => {
   });
 
   it('stays quiet when the cache was already fresh', async () => {
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     settle(0);
     await flush();
 
     let announced = 0;
     sidebar.setRemoteUpdatedNotifier(() => announced++);
-    await sidebar.getSidebarModel();
+    await sidebar.listSidebarItems();
     await flush();
 
     expect(env.fetchCount).toBe(1);
@@ -626,13 +628,13 @@ describe('getSidebarSnapshot', () => {
     // back with either repo would be wrong — they were listed under
     // one and had their sessions judged under the other — so the
     // snapshot is the new repository's, computed whole.
-    env.worktrees = [{ branch: 'from-a' }];
+    const listedUnderA = [{ branch: 'from-a' }];
     env.holdWorktrees = true;
     const pending = sidebar.getSidebarSnapshot();
     await flush();
     env.cwd = '/repo-b';
     env.worktrees = [{ branch: 'from-b' }];
-    env.releaseWorktrees?.();
+    env.releaseWorktrees?.(listedUnderA);
     const snapshot = await pending;
     expect(snapshot.cwd).toBe('/repo-b');
     expect(snapshot.items).toEqual([

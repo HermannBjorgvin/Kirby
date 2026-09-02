@@ -25,6 +25,7 @@ import {
   addExternalWorktree,
   startExternalTmuxSession,
 } from '../setup/external.js';
+import { killKirbySessions } from '../setup/tmux.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -237,6 +238,16 @@ function seedLiveSessions(
   }
 }
 
+/** The app's exit only detaches from tmux, so agents seeded before
+ *  launch would outlive the test — with their socket dir about to be
+ *  deleted from under them. */
+function reapSeededSessions(
+  homeDir: string,
+  sessions: { branch: string; command: string }[] | undefined
+): void {
+  if (sessions?.length) killKirbySessions(homeDir);
+}
+
 export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   kirbyConfig: [undefined, { option: true }],
   projectConfig: [undefined, { option: true }],
@@ -397,6 +408,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       } catch {
         /* already gone */
       }
+      reapSeededSessions(homeDir, liveSessions);
       if (ownsRepo) cleanupTestRepo(repoPath);
       await rm(homeDir, { recursive: true, force: true }).catch(
         () => undefined

@@ -56,7 +56,7 @@ test.describe('A sidebar answer about another repository', () => {
   });
 
   test('never becomes a tab of the repository in view', async ({ desktop }) => {
-    const { page, repoPath } = desktop;
+    const { page } = desktop;
     await expect(tabs(page)).toHaveCount(0);
 
     // The host moves to beta and starts an agent there, while the
@@ -72,12 +72,17 @@ test.describe('A sidebar answer about another repository', () => {
       { cwd: otherRepo, branch: BETA_BRANCH }
     );
 
-    // Force alpha's workspace to ask the host again, and wait for the
-    // round trip. The host answers about beta; alpha keeps its own rows
-    // rather than showing them, and none of beta's becomes a tab here.
-    const refreshIcon = sidebar(page).getByLabel('Refresh').locator('svg');
+    // Force alpha's workspace to ask the host again, and wait until an
+    // answer has landed — the sidebar stamps when its rows last came
+    // back, which is the only thing an answer about beta changes. Alpha
+    // keeps its own rows rather than showing beta's, and none of beta's
+    // becomes a tab here.
+    const landedBefore = await sidebar(page).getAttribute('data-updated-at');
     await sidebar(page).getByLabel('Refresh').click();
-    await expect(refreshIcon).not.toHaveClass(/animate-spin/);
+    await expect(sidebar(page)).not.toHaveAttribute(
+      'data-updated-at',
+      landedBefore ?? ''
+    );
     await expect(sidebarRow(page, new RegExp(ALPHA_BRANCH))).toBeVisible();
     await expect(sidebarRow(page, new RegExp(BETA_BRANCH))).toHaveCount(0);
     await expect(tabs(page)).toHaveCount(0);
@@ -92,7 +97,5 @@ test.describe('A sidebar answer about another repository', () => {
       tab(page, new RegExp(`${ALPHA}\\s*/\\s*${BETA_BRANCH}`))
     ).toHaveCount(0);
     await expect(tabs(page)).toHaveCount(1);
-
-    expect(repoPath).not.toBe(otherRepo);
   });
 });

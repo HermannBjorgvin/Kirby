@@ -175,7 +175,10 @@ export function SidebarRow({
         <ItemIcon item={item} running={running} />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex items-center gap-1.5">
-            <span className={cn('truncate', running && 'font-medium')}>
+            <span
+              className={cn('truncate', running && 'font-medium')}
+              title={title}
+            >
               {title}
             </span>
             <RowBadges

@@ -34,12 +34,17 @@ import { SidebarRow } from './SidebarRow.js';
 export function Sidebar({
   items,
   loading,
+  updatedAt,
   error,
   onNewWorktree,
   onCollapse,
 }: {
   items: SidebarItem[];
   loading: boolean;
+  /** When the rows last came back from the host — for a test to tell a
+   *  poll that landed from one that has not, since a poll answered
+   *  about another repository changes nothing else on screen. */
+  updatedAt?: number;
   error: string | null;
   onNewWorktree: () => void;
   onCollapse: () => void;
@@ -61,7 +66,10 @@ export function Sidebar({
   })();
 
   return (
-    <aside className="flex h-full min-w-0 flex-col bg-sidebar text-sidebar-foreground">
+    <aside
+      className="flex h-full min-w-0 flex-col bg-sidebar text-sidebar-foreground"
+      data-updated-at={updatedAt}
+    >
       <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
         <span className="truncate text-base font-semibold">
           {basename(repo.cwd)}

@@ -683,8 +683,9 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   **A tab remembers its title.** A foreign tab's item is out of reach —
   that sidebar has no row for it — so `sync-items` stamps `title`
   beside `branch`, and `tabPresentation` reads item, stamp, branch, key
-  in that order. Items with a pull request are named by its title
-  everywhere (`itemTitle`), the branch moving to the row's detail line.
+  in that order. In the desktop, an item with a pull request is named
+  by its title (`itemTitle`), the branch moving to the row's detail
+  line; the TUI still names rows by branch.
 
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the

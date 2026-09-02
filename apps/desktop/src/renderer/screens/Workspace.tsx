@@ -278,6 +278,7 @@ function WorkspaceInner({
                 <Sidebar
                   items={items}
                   loading={model.isLoading}
+                  updatedAt={model.dataUpdatedAt}
                   error={null}
                   onNewWorktree={() => setPaletteOpen(true)}
                   onCollapse={toggleSidebar}
