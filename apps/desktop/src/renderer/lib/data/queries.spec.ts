@@ -124,9 +124,21 @@ describe('resetRepoScopedCache', () => {
     qc.setQueryData(keys.settings('/repo'), { fields: [] });
     qc.setQueryData(keys.threads('/repo', 7), { threads: [] });
     qc.setQueryData(keys.version, { app: '1', electron: '2' });
+    qc.setQueryData(keys.terminals, [{ name: 'kirby-term-shell-1' }]);
     qc.getMutationCache().build(qc, { mutationFn: () => Promise.resolve(1) });
     return qc;
   }
+
+  // Terminals belong to directories, not to the repository being left;
+  // dropping them would blank every terminal tab on a switch until the
+  // next poll, and a restored terminal's tab is opened off this list.
+  it('keeps the terminal listing, which no repository owns', () => {
+    const qc = seeded();
+    resetRepoScopedCache(qc);
+    expect(qc.getQueryData(keys.terminals)).toEqual([
+      { name: 'kirby-term-shell-1' },
+    ]);
+  });
 
   it('keeps the open repository so the gate never blanks', () => {
     const qc = seeded();

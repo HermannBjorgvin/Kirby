@@ -6,8 +6,9 @@ import {
   repoGroupStarts,
   tabPresentation,
   tabRepo,
+  truncateLeading,
 } from './tab-presentation.js';
-import { itemTabId } from './tab-identity.js';
+import { itemTabId, terminalTabId } from './tab-identity.js';
 import type { ItemTab, Tab } from './tabs-model.js';
 
 const A = '/repos/alpha';
@@ -22,6 +23,17 @@ const item = (repo: string, itemKey: string): Tab => ({
 });
 
 const settings: Tab = { id: 'settings', kind: 'settings', preview: false };
+
+const terminal = (name: string, repo: string | null, cwd = '/x'): Tab => ({
+  id: terminalTabId(name),
+  kind: 'terminal',
+  name,
+  terminalKind: 'shell',
+  cwd,
+  displayPath: cwd,
+  repo,
+  preview: false,
+});
 
 describe('repoDisplayName', () => {
   it('is the checkout directory name', () => {
@@ -77,6 +89,25 @@ describe('repoGroupStarts', () => {
   it('is empty for an empty strip', () => {
     expect(repoGroupStarts([])).toEqual([]);
   });
+
+  // Plain-folder terminals are a group of their own: they sit apart
+  // from every repository's tabs, and together with each other.
+  it('gives repo-less terminals a group of their own', () => {
+    expect(
+      repoGroupStarts([
+        item(A, 'branch:x'),
+        terminal('t1', null),
+        terminal('t2', null),
+        item(A, 'pr:1'),
+      ])
+    ).toEqual([false, true, false, true]);
+  });
+
+  it('files a repository-root terminal with that repository', () => {
+    expect(
+      repoGroupStarts([item(A, 'branch:x'), terminal('t1', A), item(B, 'pr:1')])
+    ).toEqual([false, false, true]);
+  });
 });
 
 describe('tabRepo', () => {
@@ -86,6 +117,39 @@ describe('tabRepo', () => {
 
   it('is null for settings', () => {
     expect(tabRepo(settings)).toBeNull();
+  });
+
+  it('is the terminal’s repository, or null for a plain folder', () => {
+    expect(tabRepo(terminal('t', A))).toBe(A);
+    expect(tabRepo(terminal('t', null))).toBeNull();
+  });
+});
+
+/**
+ * A directory is read from its tail — the last segments are what tells
+ * `~/Code/kirby` from `~/Code/other` — so a long one loses its head,
+ * never its end.
+ */
+describe('truncateLeading', () => {
+  it('keeps a short path whole', () => {
+    expect(truncateLeading('~/Code/kirby', 24)).toBe('~/Code/kirby');
+  });
+
+  it('drops leading segments and marks the cut', () => {
+    expect(truncateLeading('~/Documents/Code/Personal/kirby', 24)).toBe(
+      '…/Code/Personal/kirby'
+    );
+  });
+
+  it('never cuts inside a segment while a whole one fits', () => {
+    const out = truncateLeading('/a/very-long-directory-name/tail', 16);
+    expect(out).toBe('…/tail');
+  });
+
+  it('cuts the last segment itself when nothing else fits', () => {
+    expect(truncateLeading('/x/abcdefghijklmnopqrstuvwxyz', 10)).toBe(
+      '…rstuvwxyz'
+    );
   });
 });
 
@@ -134,6 +198,15 @@ describe('tabPresentation', () => {
       'feat-undo'
     );
     expect(tabPresentation(tab(), undefined).label).toBe('42');
+  });
+
+  it('shows a terminal as its directory, cut from the front', () => {
+    expect(
+      tabPresentation(
+        terminal('t', null, '~/Documents/Code/Personal/kirby'),
+        undefined
+      )
+    ).toEqual({ label: '…/Code/Personal/kirby', face: 'terminal' });
   });
 
   it('names the settings tab', () => {

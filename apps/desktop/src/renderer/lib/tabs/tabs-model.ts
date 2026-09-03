@@ -18,11 +18,18 @@ import {
   autoOpenKey,
   isForeignTab,
   itemTabId,
+  tabHome,
   type Tab,
 } from './tab-identity.js';
 
-export type { ItemTab, Tab } from './tab-identity.js';
+export type { ItemTab, Tab, TerminalTab } from './tab-identity.js';
+export type { TerminalEntry } from './tab-terminals.js';
 import { pinLive, rekey } from './tab-sync.js';
+import {
+  openTerminal,
+  syncTerminals,
+  type TerminalEntry,
+} from './tab-terminals.js';
 
 /** One sidebar item as the tab model needs it. */
 export interface ItemEntry {
@@ -54,10 +61,12 @@ export interface TabsState {
   lastActiveByRepo: Readonly<Record<string, string>>;
 }
 
-/** The repository the active tab belongs to, if it belongs to one. */
+/** The repository the active tab belongs to, if it belongs to one. A
+ *  plain-folder terminal belongs to none, so activating it switches
+ *  nothing. */
 export function activeTabRepo(state: TabsState): string | null {
   const active = state.tabs.find((t) => t.id === state.activeId);
-  return active?.kind === 'item' ? active.repo : null;
+  return active ? tabHome(active) : null;
 }
 
 export const EMPTY_TABS: TabsState = {
@@ -77,6 +86,10 @@ export type TabsAction =
   | { type: 'close-all' }
   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
   | { type: 'sync-items'; repo: string; entries: ItemEntry[] }
+  /** Open (or activate) the tab for a terminal the host just started. */
+  | { type: 'open-terminal'; terminal: TerminalEntry }
+  /** The host's terminal listing: a tab per terminal, once each. */
+  | { type: 'sync-terminals'; terminals: TerminalEntry[] }
   /** A repository was opened. Dispatched for every open, tab-driven or
    *  not; it only does something when the tab in front of the user
    *  belongs to somewhere else. */
@@ -114,11 +127,12 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
  */
 function remember(state: TabsState): TabsState {
   const active = state.tabs.find((t) => t.id === state.activeId);
-  if (active?.kind !== 'item') return state;
-  if (state.lastActiveByRepo[active.repo] === active.id) return state;
+  const home = active ? tabHome(active) : null;
+  if (!active || home === null) return state;
+  if (state.lastActiveByRepo[home] === active.id) return state;
   return {
     ...state,
-    lastActiveByRepo: { ...state.lastActiveByRepo, [active.repo]: active.id },
+    lastActiveByRepo: { ...state.lastActiveByRepo, [home]: active.id },
   };
 }
 
@@ -141,13 +155,29 @@ function focusRepo(state: TabsState, repo: string): TabsState {
     (t) => t.id === state.lastActiveByRepo[repo]
   );
   const own =
-    remembered ??
-    [...state.tabs].reverse().find((t) => t.kind === 'item' && t.repo === repo);
+    remembered ?? [...state.tabs].reverse().find((t) => tabHome(t) === repo);
   const activeId = own?.id ?? null;
   return activeId === state.activeId ? state : { ...state, activeId };
 }
 
+/** The actions about item and settings tabs — the strip as it was
+ *  before terminals joined it. */
+type StripAction = Exclude<
+  TabsAction,
+  { type: 'open-terminal' } | { type: 'sync-terminals' }
+>;
+
 function apply(state: TabsState, action: TabsAction): TabsState {
+  if (action.type === 'open-terminal') {
+    return openTerminal(state, action.terminal);
+  }
+  if (action.type === 'sync-terminals') {
+    return syncTerminals(state, action.terminals);
+  }
+  return applyStrip(state, action);
+}
+
+function applyStrip(state: TabsState, action: StripAction): TabsState {
   switch (action.type) {
     case 'open-item':
       return openItem(state, action.repo, action.itemKey, action.preview);

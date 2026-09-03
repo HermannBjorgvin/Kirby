@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { itemTabId } from './tab-identity.js';
+import { itemTabId, tabHome, terminalTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
   reduce,
@@ -8,6 +8,7 @@ import {
   type Tab,
   type TabsAction,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
 
 /**
@@ -35,10 +36,42 @@ import {
 const KEYS = ['branch:a', 'branch:b', 'pr:1', 'pr:2'] as const;
 const REPOS = ['/repos/alpha', '/repos/beta'] as const;
 
+/**
+ * Terminal tabs: two in plain folders (repo-less), one at each repo's
+ * root. The repo-less ones are the interesting case — they are never
+ * foreign, and no repository's sync may touch them.
+ */
+const TERMINALS: TerminalEntry[] = [
+  {
+    name: 'kirby-term-shell-000001',
+    kind: 'shell',
+    cwd: '/home/dev/notes',
+    displayPath: '~/notes',
+    repo: null,
+  },
+  {
+    name: 'kirby-term-agent-000002',
+    kind: 'agent',
+    cwd: '/tmp/scratch',
+    displayPath: '/tmp/scratch',
+    repo: null,
+  },
+  ...REPOS.map(
+    (repo, i): TerminalEntry => ({
+      name: `kirby-term-shell-00001${i}`,
+      kind: 'shell',
+      cwd: repo,
+      displayPath: repo,
+      repo,
+    })
+  ),
+];
+
 /** Every id the actions below can name, in either repository. */
 const IDS = [
   'settings',
   ...REPOS.flatMap((repo) => KEYS.map((k) => itemTabId(repo, k))),
+  ...TERMINALS.map((t) => terminalTabId(t.name)),
 ];
 
 const action: fc.Arbitrary<TabsAction> = fc.oneof(
@@ -49,6 +82,17 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     preview: fc.boolean(),
   }),
   fc.record({ type: fc.constant('open-settings' as const) }),
+  fc.record({
+    type: fc.constant('open-terminal' as const),
+    terminal: fc.constantFrom(...TERMINALS),
+  }),
+  // The host's terminal listing, as after a restart or a scan.
+  fc.record({
+    type: fc.constant('sync-terminals' as const),
+    terminals: fc.uniqueArray(fc.constantFrom(...TERMINALS), {
+      maxLength: 4,
+    }),
+  }),
   fc.record({
     type: fc.constant('pin' as const),
     id: fc.constantFrom(...IDS),
@@ -244,16 +288,15 @@ describe('tab reducer invariants', () => {
       fc.property(sequence, fc.constantFrom(...REPOS), (actions, repo) => {
         const state = reduce(run(actions), { type: 'repo-opened', repo });
         const own = state.tabs.filter(
-          (t) => t.kind === 'item' && t.repo === repo
+          (t) => t.kind !== 'settings' && t.repo === repo
         );
         if (own.length === 0) return;
         const active = state.tabs.find((t) => t.id === state.activeId);
-        // Either one of this repo's tabs, or the settings tab — which
-        // belongs to nobody and so is never displaced by a switch.
-        expect(
-          active?.kind === 'settings' ||
-            (active?.kind === 'item' && active.repo === repo)
-        ).toBe(true);
+        // Either one of this repo's tabs, or a tab that belongs to
+        // nobody — settings, a plain-folder terminal — which is never
+        // displaced by a switch.
+        const home = active === undefined ? null : tabHome(active);
+        expect(home === null || home === repo).toBe(true);
       }),
       { numRuns: 500 }
     );
@@ -381,7 +424,10 @@ describe('closing never hands focus to another repository', () => {
         (actions, id, repo) => {
           const after = closeAndMove(actions, id, repo);
           const active = after?.tabs.find((t) => t.id === after.activeId);
-          if (active === undefined || active.kind !== 'item') return;
+          if (active === undefined || active.kind === 'settings') return;
+          // A plain-folder terminal belongs to nobody, so focus may
+          // land on it from anywhere.
+          if (active.kind === 'terminal' && active.repo === null) return;
           // Focus is what the workspace follows, so a close that hands
           // it across a repository boundary switches the sidebar, the
           // status bar and every query — because the user shut a tab.
@@ -408,6 +454,69 @@ describe('closing never hands focus to another repository', () => {
         }
       ),
       { numRuns: 500 }
+    );
+  });
+});
+
+describe('terminal tabs', () => {
+  it('never holds two tabs for the same terminal', () => {
+    fc.assert(
+      fc.property(sequence, (actions) => {
+        const names = run(actions)
+          .tabs.filter((t) => t.kind === 'terminal')
+          .map((t) => t.name);
+        // One session, one tab: two would render the same PTY twice
+        // and close it out from under each other.
+        expect(new Set(names).size).toBe(names.length);
+      }),
+      { numRuns: 500 }
+    );
+  });
+
+  it('is never re-keyed, pinned or collapsed by any repository’s sync', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...REPOS),
+        fc.array(
+          fc.constantFrom<ItemEntry>(
+            { itemKey: 'branch:a', branch: 'a' },
+            { itemKey: 'pr:1', branch: 'a', sessionName: 'sa', running: true },
+            { itemKey: 'branch:b', branch: 'b', sessionName: 'sb' }
+          ),
+          { maxLength: 4 }
+        ),
+        (actions, repo, entries) => {
+          const before = run(actions);
+          const after = reduce(before, { type: 'sync-items', repo, entries });
+          const terminals = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'terminal');
+          // Identity, not equality: a terminal tab that came out rebuilt
+          // has been reconciled against a sidebar it has no row in.
+          expect(terminals(after).length).toBe(terminals(before).length);
+          for (const [i, t] of terminals(after).entries()) {
+            expect(t).toBe(terminals(before)[i]);
+          }
+        }
+      ),
+      { numRuns: 500 }
+    );
+  });
+
+  it('never moves focus on a listing, only on an open', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.uniqueArray(fc.constantFrom(...TERMINALS), { maxLength: 4 }),
+        (actions, terminals) => {
+          const before = run(actions);
+          const after = reduce(before, { type: 'sync-terminals', terminals });
+          // A restored terminal from another repository would otherwise
+          // switch the workspace at startup.
+          expect(after.activeId).toBe(before.activeId);
+        }
+      ),
+      { numRuns: 300 }
     );
   });
 });

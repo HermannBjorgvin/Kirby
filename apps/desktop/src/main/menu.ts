@@ -68,6 +68,11 @@ export function buildMenuTemplate(
         accelerator: `${mod}+N`,
         click: () => send('new-worktree'),
       },
+      {
+        label: 'New Terminal…',
+        accelerator: `${mod}+Shift+T`,
+        click: () => send('new-terminal'),
+      },
       { type: 'separator' },
       ...(isMac
         ? []

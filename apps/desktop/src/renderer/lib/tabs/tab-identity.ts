@@ -5,6 +5,8 @@
  * the app asks about a tab — which repository it belongs to, whether
  * that is the open one — and none of them involve a transition.
  */
+import type { TerminalKind } from '../../../host/contract.js';
+
 export type Tab =
   | {
       id: string;
@@ -26,10 +28,28 @@ export type Tab =
        *  than falling back to a key. */
       title?: string;
     }
-  | { id: 'settings'; kind: 'settings'; preview: false };
+  | { id: 'settings'; kind: 'settings'; preview: false }
+  | {
+      id: string;
+      kind: 'terminal';
+      /** Session name — the terminal's identity, on both backends. */
+      name: string;
+      terminalKind: TerminalKind;
+      cwd: string;
+      /** `cwd` with home written as `~`, as the host renders it. */
+      displayPath: string;
+      /** The repository this terminal's directory is the root of, or
+       *  `null` for a plain folder — which belongs to nobody, sits in
+       *  the repo-less group, and is never foreign. */
+      repo: string | null;
+      /** Terminals are always pinned: a preview tab gets replaced by
+       *  the next click, and a shell is not something to lose that way. */
+      preview: false;
+    };
 
 /** A tab that shows a sidebar item, and so belongs to a repository. */
 export type ItemTab = Extract<Tab, { kind: 'item' }>;
+export type TerminalTab = Extract<Tab, { kind: 'terminal' }>;
 
 /**
  * The id of the tab for `itemKey` in `repo`.
@@ -43,6 +63,18 @@ export function itemTabId(repo: string, itemKey: string): string {
   return `item:${repo.length}:${repo}:${itemKey}`;
 }
 
+/** The id of the tab for a terminal session. Session names are unique
+ *  across directories and repositories, so the name alone is the key. */
+export function terminalTabId(name: string): string {
+  return `terminal:${name}`;
+}
+
+/** The repository a tab is at home in, or null for one that belongs to
+ *  nobody — settings, and a terminal in a plain folder. */
+export function tabHome(tab: Tab): string | null {
+  return tab.kind === 'settings' ? null : tab.repo;
+}
+
 /** Identity of an item tab as a map key — the same pair, unambiguous. */
 export function pairKey(tab: Tab): string {
   return tab.kind === 'item' ? itemTabId(tab.repo, tab.itemKey) : tab.id;
@@ -54,9 +86,11 @@ export function isForeignTab(tab: Tab, repo: string): boolean {
   return foreignRepoOf(tab, repo) !== null;
 }
 
-/** The other repository `tab` belongs to, or null when it is at home. */
+/** The other repository `tab` belongs to, or null when it is at home
+ *  — or belongs to nobody, which counts as at home everywhere. */
 export function foreignRepoOf(tab: Tab, repo: string): string | null {
-  return tab.kind === 'item' && tab.repo !== repo ? tab.repo : null;
+  const home = tabHome(tab);
+  return home !== null && home !== repo ? home : null;
 }
 
 /** Identity of an auto-opened session, unique across repositories. */

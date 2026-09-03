@@ -6,7 +6,9 @@ import {
   reduce,
   type ItemEntry,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
+import { terminalTabId } from './tab-identity.js';
 
 /** The repository every case below is about unless it says otherwise. */
 const REPO = '/repos/alpha';
@@ -689,5 +691,118 @@ describe('sync-items stamps the title', () => {
     expect(find(s, 'pr:42') ?? s.tabs[0]).not.toMatchObject({
       title: 'Not yours',
     });
+  });
+});
+
+/**
+ * Terminal tabs: a session bound to a directory. One in a repository
+ * root belongs to that repository's group; one anywhere else belongs to
+ * nobody, sits in the repo-less group, and is never foreign.
+ */
+describe('terminal tabs', () => {
+  const plain: TerminalEntry = {
+    name: 'kirby-term-shell-1a2b3c',
+    kind: 'shell',
+    cwd: '/home/dev/notes',
+    displayPath: '~/notes',
+    repo: null,
+  };
+  const inAlpha: TerminalEntry = {
+    name: 'kirby-term-agent-4d5e6f',
+    kind: 'agent',
+    cwd: REPO,
+    displayPath: REPO,
+    repo: REPO,
+  };
+  const openTerminal = (state: TabsState, terminal: TerminalEntry) =>
+    reduce(state, { type: 'open-terminal', terminal });
+  const syncTerminals = (state: TabsState, terminals: TerminalEntry[]) =>
+    reduce(state, { type: 'sync-terminals', terminals });
+
+  it('opens a pinned tab and activates it', () => {
+    const s = openTerminal(empty, plain);
+    expect(s.tabs).toEqual([
+      expect.objectContaining({
+        kind: 'terminal',
+        name: plain.name,
+        repo: null,
+        preview: false,
+      }),
+    ]);
+    expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  it('activates the existing tab rather than opening a second one', () => {
+    let s = openTerminal(empty, plain);
+    s = open(s, 'branch:x');
+    s = openTerminal(s, plain);
+    expect(s.tabs).toHaveLength(2);
+    expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  // A repo-less terminal is at home everywhere; a repository terminal
+  // is foreign anywhere but its own repository — which is what makes
+  // activating it open that repository.
+  it('reports the repository a terminal belongs to, and none for a plain folder', () => {
+    expect(activeTabRepo(openTerminal(empty, plain))).toBeNull();
+    expect(activeTabRepo(openTerminal(empty, inAlpha))).toBe(REPO);
+  });
+
+  // The restore path: the host lists the terminals tmux gave back, and
+  // every one gets a tab — without moving focus, since a terminal from
+  // another repository would otherwise switch the workspace at startup.
+  it('opens a tab per listed terminal without stealing focus', () => {
+    let s = open(empty, 'branch:x');
+    s = syncTerminals(s, [plain, inAlpha]);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:x'),
+      terminalTabId(plain.name),
+      terminalTabId(inAlpha.name),
+    ]);
+    expect(s.activeId).toBe(id('branch:x'));
+  });
+
+  // Auto-opened once: a tab the user closed stays closed while the host
+  // keeps listing the terminal, exactly as for running agents.
+  it('does not reopen a terminal tab the user closed', () => {
+    let s = syncTerminals(empty, [plain]);
+    s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('returns the same state when the listing changed nothing', () => {
+    const s = syncTerminals(empty, [plain]);
+    expect(syncTerminals(s, [plain])).toBe(s);
+  });
+
+  // The sidebar poll re-keys and pins *item* tabs; a terminal has no
+  // item and no branch, and a poll about any repository must leave it
+  // exactly as it was.
+  it('is untouched by a sidebar sync of any repository', () => {
+    const before = openTerminal(openTerminal(empty, plain), inAlpha);
+    const after = sync(
+      before,
+      [{ itemKey: 'branch:x', branch: 'x', sessionName: 'x', running: true }],
+      OTHER
+    );
+    const terminals = (st: TabsState) =>
+      st.tabs.filter((t) => t.kind === 'terminal');
+    expect(terminals(after)).toHaveLength(2);
+    terminals(after).forEach((t, i) => expect(t).toBe(terminals(before)[i]));
+  });
+
+  it('brings a repository’s own terminal forward when that repo opens', () => {
+    let s = openTerminal(empty, inAlpha);
+    s = open(s, 'branch:y', false, OTHER); // now looking at beta
+    s = reduce(s, { type: 'repo-opened', repo: REPO });
+    expect(s.activeId).toBe(terminalTabId(inAlpha.name));
+  });
+
+  it('leaves a plain-folder terminal active across a repo switch', () => {
+    let s = open(empty, 'branch:x');
+    s = openTerminal(s, plain);
+    s = reduce(s, { type: 'repo-opened', repo: OTHER });
+    expect(s.activeId).toBe(terminalTabId(plain.name));
   });
 });

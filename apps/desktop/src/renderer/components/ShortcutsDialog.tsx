@@ -13,6 +13,7 @@ const ROWS: [string, string[]][] = [
   ['Command palette', [MOD, '⇧', 'P']],
   ['Toggle sidebar', [MOD, 'B']],
   ['New worktree', [MOD, 'N']],
+  ['New terminal', [MOD, '⇧', 'T']],
   ['Open repository', [MOD, 'O']],
   ['Settings', [MOD, ',']],
   ['Close tab', [MOD, 'W']],

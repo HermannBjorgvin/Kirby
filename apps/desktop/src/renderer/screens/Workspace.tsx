@@ -38,6 +38,8 @@ import { BOOT_MARKS, markOnce } from '../lib/perf.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
 import { useRepoTabs, type ItemEntry } from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
+import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
+import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
 
@@ -97,6 +99,7 @@ function WorkspaceInner({
     [model.data, removing]
   );
   const closer = useCloseTabs(items);
+  const terminalTabs = useTerminalTabs();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(
@@ -183,6 +186,8 @@ function WorkspaceInner({
     const off = window.kirby.onDiscoveryChanged(() => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
       void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
+      // Discovery also brings back terminal tabs.
+      void qc.invalidateQueries({ queryKey: keys.terminals });
       // A worktree added from outside usually brought a branch with it.
       void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
     });
@@ -221,6 +226,7 @@ function WorkspaceInner({
       'open-repo': onPickRepoFolder,
       'switch-repo': onSwitchRepo,
       'new-worktree': () => setPaletteOpen(true),
+      'new-terminal': terminalTabs.openDialog,
       'command-palette': () => setPaletteOpen(true),
       'open-settings': () => tabs.openSettings(),
       'close-tab': () => closer.closeActive(),
@@ -244,7 +250,14 @@ function WorkspaceInner({
       ({ command, arg }: MenuCommandEvent) => handlers[command](arg)
     );
     return off;
-  }, [tabs, closer, refresh, onPickRepoFolder, onSwitchRepo]);
+  }, [
+    tabs,
+    closer,
+    refresh,
+    onPickRepoFolder,
+    onSwitchRepo,
+    terminalTabs.openDialog,
+  ]);
 
   // In-page shortcuts for the web-rendered UI. Anything that is also a
   // native menu accelerator reaches us through onMenuCommand instead;
@@ -321,8 +334,16 @@ function WorkspaceInner({
         items={items}
         onToggleSidebar={toggleSidebar}
         onSwitchRepo={onSwitchRepo}
+        onNewTerminal={terminalTabs.openDialog}
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {terminalTabs.dialogOpen && (
+        <NewTerminalDialog
+          onLaunch={terminalTabs.launchTerminal}
+          onClose={terminalTabs.closeDialog}
+          busy={terminalTabs.busy}
+        />
+      )}
       {closer.confirmDialog}
     </div>
   );

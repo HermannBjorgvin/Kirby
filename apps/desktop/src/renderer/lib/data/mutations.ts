@@ -19,6 +19,7 @@ import type {
   ReviewVerdict,
   SessionLaunchRequest,
   SidebarItem,
+  TerminalLaunchRequest,
 } from '../../../host/contract.js';
 
 /**
@@ -279,6 +280,30 @@ export function useStopBabysit(cwd: string) {
     mutationFn: (prId: number) => window.kirby.stopBabysit(prId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
+    },
+  });
+}
+
+export function useLaunchTerminal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: TerminalLaunchRequest) =>
+      window.kirby.launchTerminal(req),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.terminals });
+      // A terminal at another repository's root put that repo on the
+      // recents list.
+      void qc.invalidateQueries({ queryKey: keys.recents });
+    },
+  });
+}
+
+export function useKillTerminal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => window.kirby.killTerminal(name),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.terminals });
     },
   });
 }

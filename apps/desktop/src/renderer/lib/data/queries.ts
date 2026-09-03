@@ -275,6 +275,20 @@ export function useSessions(cwd: string) {
   });
 }
 
+/**
+ * Every terminal tab the host holds, whatever repository is open. Not
+ * keyed by repo on purpose: the strip is reconciled against this list
+ * from every workspace, and a restored terminal's tab is opened off it.
+ */
+export function useTerminals() {
+  return useQuery({
+    queryKey: keys.terminals,
+    queryFn: () => window.kirby.listTerminals(),
+    refetchInterval: 2_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 /** Debounced per-session agent activity (spinner/blink source). The
  *  snapshot is an in-memory read host-side, so a 1s poll is cheap. */
 export function useSessionActivity(cwd: string) {

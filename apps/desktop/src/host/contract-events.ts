@@ -42,6 +42,7 @@ export type MenuCommand =
   | 'open-repo'
   | 'switch-repo'
   | 'new-worktree'
+  | 'new-terminal'
   | 'open-settings'
   | 'close-tab'
   | 'command-palette'

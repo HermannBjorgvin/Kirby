@@ -24,6 +24,9 @@ export const keys = {
   branches: (cwd: string) => ['branches', cwd] as const,
   settings: (cwd: string) => ['settings', cwd] as const,
   sessions: (cwd: string) => ['sessions', cwd] as const,
+  /** Not repo-scoped: a terminal belongs to a directory, and the host
+   *  lists every one whatever repository is open. */
+  terminals: ['terminals'] as const,
   agentOptions: (cwd: string) => ['agent-options', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
@@ -50,6 +53,12 @@ export const keys = {
     ['code-tokens', tag, theme, code] as const,
 };
 
+/** Keys that survive a repository switch. */
+const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
+  keys.repo[0],
+  keys.terminals[0],
+]);
+
 /**
  * Drop everything cached for the repository being left.
  *
@@ -57,13 +66,16 @@ export const keys = {
  * and in-flight mutation state goes too, so a worktree removal pending
  * in the old repo cannot hide a same-named row in the new one.
  *
- * The repo entry itself is deliberately spared: the gate observes it,
- * and removing it would drop that observer into its pending state for
- * a frame, flashing the loading screen between two workspaces.
+ * Two entries are deliberately spared. The repo entry: the gate
+ * observes it, and removing it would drop that observer into its
+ * pending state for a frame, flashing the loading screen between two
+ * workspaces. And the terminal listing: terminals belong to
+ * directories, not to the repository being left, and the tab strip is
+ * reconciled against that list wherever the user goes.
  */
 export function resetRepoScopedCache(qc: QueryClient): void {
   qc.removeQueries({
-    predicate: (query) => query.queryKey[0] !== keys.repo[0],
+    predicate: (query) => !CROSS_REPO_KEYS.has(String(query.queryKey[0])),
   });
   qc.getMutationCache().clear();
 }

@@ -11,6 +11,7 @@ import {
   reduce,
   type ItemEntry,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
 import { useRepo } from '../repo-context.js';
 
@@ -20,9 +21,16 @@ export type {
   Tab,
   TabsAction,
   TabsState,
+  TerminalEntry,
+  TerminalTab,
 } from './tabs-model.js';
 export { activeTabRepo } from './tabs-model.js';
-export { foreignRepoOf, isForeignTab, itemTabId } from './tab-identity.js';
+export {
+  foreignRepoOf,
+  isForeignTab,
+  itemTabId,
+  terminalTabId,
+} from './tab-identity.js';
 
 /**
  * The tab strip's api.
@@ -59,6 +67,10 @@ interface TabsApi extends TabsState {
   syncItems: (repo: string, entries: ItemEntry[]) => void;
   /** Tell the strip a repository is now the one in view. */
   repoOpened: (repo: string) => void;
+  /** Open (or activate) the tab for a terminal the host just started. */
+  openTerminal: (terminal: TerminalEntry) => void;
+  /** Reconcile the strip with the host's terminal listing. */
+  syncTerminals: (terminals: TerminalEntry[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -121,6 +133,15 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     (repo: string) => dispatch({ type: 'repo-opened', repo }),
     []
   );
+  const openTerminal = useCallback(
+    (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
+    []
+  );
+  const syncTerminals = useCallback(
+    (terminals: TerminalEntry[]) =>
+      dispatch({ type: 'sync-terminals', terminals }),
+    []
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -137,6 +158,8 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       moveTab,
       syncItems,
       repoOpened,
+      openTerminal,
+      syncTerminals,
     }),
     [
       state,
@@ -152,6 +175,8 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       moveTab,
       syncItems,
       repoOpened,
+      openTerminal,
+      syncTerminals,
     ]
   );
 

@@ -2,6 +2,7 @@ import {
   GitBranchIcon,
   GitPullRequestIcon,
   SettingsIcon,
+  TerminalIcon,
   XIcon,
 } from 'lucide-react';
 import type {
@@ -50,6 +51,7 @@ const FACE_ICON: Record<TabFace, typeof SettingsIcon> = {
   settings: SettingsIcon,
   pr: GitPullRequestIcon,
   branch: GitBranchIcon,
+  terminal: TerminalIcon,
 };
 
 /**
@@ -115,6 +117,14 @@ function TabCloseButton({
   );
 }
 
+/** The hover title: the full path, for telling two checkouts of the
+ *  same repo apart — and a terminal's whole directory, since its label
+ *  is cut from the front. */
+function tabTitle(tab: Tab, foreignRepo: string | null): string | undefined {
+  if (foreignRepo) return foreignRepo;
+  return tab.kind === 'terminal' ? tab.cwd : undefined;
+}
+
 /** The native context menu a tab offers. */
 function tabMenuItems(tab: Tab, tabCount: number): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
@@ -150,12 +160,15 @@ export function TabButton({
   snapshot,
   foreignRepo,
   startsGroup,
+  running = false,
 }: {
   tab: Tab;
   item: SidebarItem | undefined;
   active: boolean;
   closer: Closer;
   snapshot: SessionActivitySnapshot | undefined;
+  /** Live state for a tab that has no item to read it from. */
+  running?: boolean;
   /** The other repository this tab belongs to, or null when it is at
    *  home in the open one. */
   foreignRepo: string | null;
@@ -205,8 +218,8 @@ export function TabButton({
         e.preventDefault();
         void runTabMenu(tab, tabs, closer);
       }}
-      // The full path, for telling two checkouts of the same repo apart.
-      title={foreignRepo ?? undefined}
+      title={tabTitle(tab, foreignRepo)}
+      data-face={face}
       className={cn(
         'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
         active
@@ -222,7 +235,7 @@ export function TabButton({
       {active && <span className="absolute inset-x-0 top-0 h-px bg-primary" />}
       <TabIcon
         Icon={Icon}
-        running={item ? itemRunning(item) : false}
+        running={item ? itemRunning(item) : running}
         snapshot={snapshot}
       />
       <TabLabel label={label} preview={tab.preview} foreignRepo={foreignRepo} />

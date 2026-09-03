@@ -8,6 +8,7 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   SunIcon,
+  TerminalIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -47,12 +48,14 @@ export function CommandPalette({
   items,
   onToggleSidebar,
   onSwitchRepo,
+  onNewTerminal,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: SidebarItem[];
   onToggleSidebar: () => void;
   onSwitchRepo: () => void;
+  onNewTerminal: () => void;
 }) {
   const { repo } = useRepo();
   const tabs = useRepoTabs();
@@ -164,6 +167,17 @@ export function CommandPalette({
             <SettingsIcon />
             Open settings
             <CommandShortcut>{MOD} ,</CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value="command new terminal shell"
+            onSelect={() => {
+              close();
+              onNewTerminal();
+            }}
+          >
+            <TerminalIcon />
+            New terminal…
+            <CommandShortcut>{MOD} ⇧ T</CommandShortcut>
           </CommandItem>
           <CommandItem
             value="command refresh pull requests sync"
