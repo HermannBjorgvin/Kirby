@@ -37,6 +37,10 @@ export interface DiscoveryScan {
    *  to this repository. Always empty on the PTY backend, which has no
    *  session that outlives the process. */
   persisted: ReadonlySet<string>;
+  /** Every live terminal-tab session, wherever it runs. Empty on the
+   *  PTY backend, and for a shell that has no terminal tabs to attach
+   *  them to. */
+  terminals: DiscoveredTerminal[];
 }
 
 /** What changed between two scans. */
@@ -52,12 +56,21 @@ export interface DiscoveryDelta {
    *  an agent killed from outside, so anything showing it as running
    *  is stale. */
   ended: string[];
+  /** Terminal sessions to attach to: live in tmux, no PTY here. */
+  adoptableTerminals: DiscoveredTerminal[];
+  /** Terminal names whose tmux session was there last scan and is not
+   *  now. */
+  endedTerminals: string[];
   /** True when any of the above is non-empty: the shell's view of
    *  sessions is out of date and should be re-read. */
   changed: boolean;
 }
 
-const EMPTY_SCAN: DiscoveryScan = { worktrees: [], persisted: new Set() };
+const EMPTY_SCAN: DiscoveryScan = {
+  worktrees: [],
+  persisted: new Set(),
+  terminals: [],
+};
 
 /**
  * Diff two scans.
@@ -92,7 +105,9 @@ export function diffScans(
   const now = new Set(next.worktrees.map((wt) => wt.name));
 
   const appeared =
-    previous === null ? [] : next.worktrees.filter((wt) => !before.has(wt.name));
+    previous === null
+      ? []
+      : next.worktrees.filter((wt) => !before.has(wt.name));
   const disappeared = [...before].filter((name) => !now.has(name));
   const adoptable = next.worktrees.filter(
     (wt) =>
@@ -102,15 +117,29 @@ export function diffScans(
   );
   const ended = [...base.persisted].filter((name) => !next.persisted.has(name));
 
+  // Terminals have no worktree to appear through, so they only ever
+  // read as absolute state: offered until attached, ended when gone.
+  const adoptableTerminals = next.terminals.filter(
+    (t) => !isAlive(t.name) && !suppressed.has(t.name)
+  );
+  const liveTerminals = new Set(next.terminals.map((t) => t.name));
+  const endedTerminals = base.terminals
+    .map((t) => t.name)
+    .filter((name) => !liveTerminals.has(name));
+
   return {
     appeared,
     disappeared,
     adoptable,
     ended,
+    adoptableTerminals,
+    endedTerminals,
     changed:
       appeared.length > 0 ||
       disappeared.length > 0 ||
       adoptable.length > 0 ||
-      ended.length > 0,
+      ended.length > 0 ||
+      adoptableTerminals.length > 0 ||
+      endedTerminals.length > 0,
   };
 }

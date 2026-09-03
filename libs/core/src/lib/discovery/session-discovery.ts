@@ -43,11 +43,12 @@ import {
 } from '@kirby/worktree-manager';
 import { isSessionAlive } from '../pty-registry.js';
 import {
-  listPersistedTmuxSessions,
+  observeTmuxSessions,
   resolveTerminalBackend,
 } from '../session-backend.js';
 import {
   diffScans,
+  type DiscoveredTerminal,
   type DiscoveredWorktree,
   type DiscoveryDelta,
   type DiscoveryScan,
@@ -88,7 +89,8 @@ function worthAnnouncing(delta: DiscoveryDelta, adopted: number): boolean {
     adopted > 0 ||
     delta.appeared.length > 0 ||
     delta.disappeared.length > 0 ||
-    delta.ended.length > 0
+    delta.ended.length > 0 ||
+    delta.endedTerminals.length > 0
   );
 }
 
@@ -109,6 +111,14 @@ export interface SessionDiscoveryOptions {
    * attached to does not become a spawn loop.
    */
   adopt: (worktree: DiscoveredWorktree) => void | Promise<void>;
+  /**
+   * Attach to a terminal-tab session, the same way: through the
+   * shell's launch path, under the name and in the directory tmux
+   * reported. A shell with no terminal tabs leaves this unset, and the
+   * scan then does not look for terminals at all — offering them to
+   * nobody would only report the world as changed every tick.
+   */
+  adoptTerminal?: (terminal: DiscoveredTerminal) => void | Promise<void>;
   /** Something changed and the shell's session list is out of date. */
   onChanged: (delta: DiscoveryDelta) => void;
   /** Returning false abandons a scan between steps. The desktop can
@@ -135,7 +145,13 @@ export interface SessionDiscovery {
 export function startSessionDiscovery(
   opts: SessionDiscoveryOptions
 ): SessionDiscovery {
-  const { getConfig, adopt, onChanged, isCurrent = () => true } = opts;
+  const {
+    getConfig,
+    adopt,
+    adoptTerminal,
+    onChanged,
+    isCurrent = () => true,
+  } = opts;
   const intervalMs = opts.intervalMs ?? DISCOVERY_INTERVAL_MS;
 
   let previous: DiscoveryScan | null = null;
@@ -164,19 +180,53 @@ export function startSessionDiscovery(
         path: wt.path,
       })
     );
-    const persisted = listPersistedTmuxSessions(
+    const seen = observeTmuxSessions(
       getConfig(),
       worktrees.map((wt) => wt.name)
     );
-    return { worktrees, persisted };
+    return {
+      worktrees,
+      persisted: seen.persisted,
+      terminals: adoptTerminal ? seen.terminals : [],
+    };
+  }
+
+  /** One attach, through the shell. Reports whether it took. */
+  async function adoptOne<T extends { name: string }>(
+    item: T,
+    attach: (item: T) => void | Promise<void>
+  ): Promise<boolean> {
+    // Re-checked here, not once in `diffScans`: an earlier attach in
+    // the same loop can take long enough for the user to launch this
+    // session themselves, and handing a live one to `spawnSession`
+    // disposes the PTY and emulator behind the pane they are looking at.
+    if (isSessionAlive(item.name)) return false;
+    try {
+      await attach(item);
+      failures.delete(item.name);
+      log('info', 'discovery', `attached external session ${item.name}`);
+      return true;
+    } catch (err: unknown) {
+      const attempts = (failures.get(item.name) ?? 0) + 1;
+      failures.set(item.name, attempts);
+      if (attempts >= MAX_ADOPT_ATTEMPTS) retired.add(item.name);
+      logError('discovery', err);
+      return false;
+    }
   }
 
   /** Attach to what the delta offered, one at a time, and report how
    *  many actually attached. Sequential because each one spawns a PTY,
    *  and because the repo can change underneath a slow one. */
   async function adoptAll(delta: DiscoveryDelta): Promise<number> {
+    const offers = [
+      ...delta.adoptable.map((wt) => () => adoptOne(wt, adopt)),
+      ...delta.adoptableTerminals.map(
+        (t) => () => adoptOne(t, adoptTerminal ?? (() => undefined))
+      ),
+    ];
     let adopted = 0;
-    for (const worktree of delta.adoptable) {
+    for (const offer of offers) {
       if (stopped || !isCurrent()) return adopted;
       // Every offer came from a live tmux session, and Settings can
       // swap the backend while this loop awaits — its own guard sees an
@@ -185,23 +235,7 @@ export function startSessionDiscovery(
       // live tmux agent in it, so the preference is re-read rather than
       // taken from the config this scan opened with.
       if (resolveTerminalBackend(getConfig()) !== 'tmux') return adopted;
-      // Re-checked per iteration, not once in `diffScans`: an earlier
-      // attach in this same loop can take long enough for the user to
-      // launch this session themselves, and handing a live one to
-      // `spawnSession` disposes the PTY and emulator behind the pane
-      // they are looking at.
-      if (isSessionAlive(worktree.name)) continue;
-      try {
-        await adopt(worktree);
-        failures.delete(worktree.name);
-        adopted += 1;
-        log('info', 'discovery', `attached external session ${worktree.name}`);
-      } catch (err: unknown) {
-        const attempts = (failures.get(worktree.name) ?? 0) + 1;
-        failures.set(worktree.name, attempts);
-        if (attempts >= MAX_ADOPT_ATTEMPTS) retired.add(worktree.name);
-        logError('discovery', err);
-      }
+      if (await offer()) adopted += 1;
     }
     return adopted;
   }
@@ -211,8 +245,9 @@ export function startSessionDiscovery(
    *  name deserves a clean try. Run before the diff, so a returning
    *  session is offered on the very scan that finds it. */
   function forgetFailuresFor(next: DiscoveryScan): void {
+    const live = new Set(next.terminals.map((t) => t.name));
     for (const name of [...failures.keys()]) {
-      if (next.persisted.has(name)) continue;
+      if (next.persisted.has(name) || live.has(name)) continue;
       failures.delete(name);
       retired.delete(name);
     }
