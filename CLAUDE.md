@@ -687,6 +687,56 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   by its title (`itemTitle`), the branch moving to the row's detail
   line; the TUI still names rows by branch.
 
+- **A terminal tab is a session bound to a directory, and tmux is its
+  only record.** The desktop can open a plain shell or the configured
+  agent in any directory (File > New Terminal…, the palette,
+  Ctrl/Cmd+Shift+T: where — current repo, another from the recents
+  list, or any folder through the OS picker — then what). There is
+  **no state file** for these. The tmux name is
+  `kirby-term-<shell|agent>-<id>` (`libs/core/src/lib/terminal/
+terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
+  unchanged, several per directory allowed), the kind is parsed from
+  the name, and the directory is tmux's own `#{session_path}` — the
+  `-c` the backend passes to `new-session` — read by
+  `tmuxListSessionsDetailed` in the one `list-sessions` fork discovery
+  already makes (`observeTmuxSessions` answers the worktree-persistence
+  question and the terminal listing together). Anything written to
+  `~/.kirby` would have to be kept in step with a server that already
+  holds the truth, and would be one more thing to reconcile on a
+  machine where the file and the server disagree. A shell is spawned
+  as an **empty `cmd`** — the `SessionSpec` contract for "the
+  backend's default shell": tmux runs `default-shell`, the PTY backend
+  `$SHELL` or `/bin/sh` — so no setting names one. An agent goes
+  through `launchTerminalSession` → `launchSession` with the session
+  menu's plain intent, never a second launch path. Which tab group a
+  terminal sits in is **derived at read time from its directory**
+  (`host/services/terminal-home.ts`: the directory is a repo root → that
+  repo's group and it is put on the recents list; anything else,
+  including a subfolder of a checkout, is repo-less — nothing walks
+  up), so a terminal restored from tmux is grouped the same way one
+  just opened is. The tmux factory takes an `isQualified` seam
+  (`isQualifiedTmuxName`) so a complete name is never prefixed with the
+  project key a second time — `-A` would otherwise create a session
+  beside the one it meant to resume — and the `kirby-` literal lives in
+  `tmux-namespace.ts` alone. The same seam is what lets a worktree
+  session whose agent checked out another branch (the tmux name no
+  longer matches any worktree) **surface as an agent terminal tab in
+  its directory instead of vanishing**. On the strip a terminal tab is
+  pinned, titled by its directory cut from the _front_
+  (`truncateLeading`, so the tail that tells two directories apart
+  stays), shows only its terminal, and is reconciled by
+  `sync-terminals` without ever moving focus — a restored terminal
+  from another repository would otherwise switch the workspace at
+  startup. A repo-root terminal is foreign anywhere but its repo and
+  follows like any foreign tab; a plain-folder one belongs to nobody
+  (`tabHome` is null) and activating it switches nothing. Closing a
+  terminal tab always confirms and **kills** the session on both
+  backends; quitting only detaches, so tmux terminals come back. Two
+  e2e traps: zsh greets a fresh `HOME` with its first-user wizard, which
+  eats the first keystroke, so the fixture seeds an empty `.zshrc`; and
+  Playwright reads any array whose second element is an object as a
+  `[value, options]` fixture tuple, so the fixture's `liveTerminals` is
+  a record keyed by session name rather than a list.
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the
   agent's own drafts — into a queue and hands the whole thing to one

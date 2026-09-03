@@ -26,10 +26,10 @@ export interface TerminalIdentity {
 }
 
 const TERM_PREFIX = `${KIRBY_TMUX_PREFIX}term-`;
-const TERM_NAME = /^kirby-term-(shell|agent)-([0-9a-f]+)$/;
+const TERM_NAME = new RegExp(`^${TERM_PREFIX}(shell|agent)-([0-9a-f]+)$`);
 /** A composed worktree session: the namespace, a 16-hex project key,
  *  and the registry name. */
-const WORKTREE_NAME = /^kirby-[0-9a-f]{16}-./;
+const WORKTREE_NAME = new RegExp(`^${KIRBY_TMUX_PREFIX}[0-9a-f]{16}-.`);
 
 /** `kirby-term-<kind>-<id>`, with a fresh id unless one is given. */
 export function newTerminalSessionName(
