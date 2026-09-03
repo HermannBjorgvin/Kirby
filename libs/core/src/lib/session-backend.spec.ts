@@ -11,6 +11,7 @@ const {
   tmuxListSessionsMock,
   execFileSyncMock,
   readProjectConfigMock,
+  liveSessionNamesMock,
   SENTINEL_PTY,
   SENTINEL_TMUX,
 } = vi.hoisted(() => {
@@ -24,6 +25,10 @@ const {
       vi.fn<() => (string | { name: string; path: string })[]>(),
     execFileSyncMock: vi.fn(),
     readProjectConfigMock: vi.fn<() => { terminalBackend?: string }>(),
+    // Stands in for the PTY registry's own bookkeeping: which bare
+    // session names this process currently holds alive, independent of
+    // whatever the worktree list or tmux happen to report this scan.
+    liveSessionNamesMock: vi.fn<() => string[]>(),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),
   };
@@ -62,6 +67,10 @@ vi.mock('@kirby/terminal-tmux', () => ({
 vi.mock('@kirby/vcs-core', () => ({
   projectKey: (cwd: string) => `hash(${cwd})`,
   readProjectConfig: () => readProjectConfigMock(),
+}));
+vi.mock('./pty-registry.js', () => ({
+  setSessionBackendFactory: () => undefined,
+  liveSessionNames: () => liveSessionNamesMock(),
 }));
 
 import {
@@ -103,6 +112,8 @@ beforeEach(async () => {
   tmuxListSessionsMock.mockReset();
   readProjectConfigMock.mockReset();
   readProjectConfigMock.mockReturnValue({});
+  liveSessionNamesMock.mockReset();
+  liveSessionNamesMock.mockReturnValue([]);
   // getRepoRoot memoizes for the process, so a test that let it resolve
   // to null would decide every later one. Reset and let it find /repo.
   resetRepoRoot();
@@ -518,6 +529,28 @@ describe('observeTmuxSessions', () => {
         path: '/repo/.claude/worktrees/old-branch',
       },
     ]);
+  });
+
+  // The registry keys a worktree session by the branch it was spawned
+  // under, which is exactly what checking out another branch inside
+  // the worktree leaves stale — and stale is not gone: this process is
+  // still driving it. Reporting it as an orphan is how `adoptTerminal`
+  // attaches a second client to a session already live behind another
+  // tab, so it must never be offered while the registry still holds it.
+  it('never reports a session this process already holds as an orphan terminal', () => {
+    liveSessionNamesMock.mockReturnValue(['old-branch']);
+    tmuxListSessionsMock.mockReturnValue([
+      {
+        name: 'kirby-hash(/repo)-old-branch',
+        path: '/repo/.claude/worktrees/old-branch',
+      },
+      {
+        name: 'kirby-hash(/repo)-feature-a',
+        path: '/repo/.claude/worktrees/feature-a',
+      },
+    ]);
+    const seen = observeTmuxSessions(tmuxConfig, ['feature-a']);
+    expect(seen.terminals).toEqual([]);
   });
 
   // …but only this repository's: another checkout's sessions carry

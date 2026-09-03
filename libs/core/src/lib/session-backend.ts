@@ -23,7 +23,7 @@ import {
 import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey, readProjectConfig } from '@kirby/vcs-core';
 import type { DiscoveredTerminal } from './discovery/discovery-model.js';
-import { setSessionBackendFactory } from './pty-registry.js';
+import { liveSessionNames, setSessionBackendFactory } from './pty-registry.js';
 import {
   isQualifiedTmuxName,
   parseTerminalSessionName,
@@ -274,8 +274,15 @@ const NOTHING: TmuxObservation = { persisted: new Set(), terminals: [] };
  * is an orphan — an agent that checked out another branch inside its
  * worktree renames what the scan looks for, not the session — and is
  * reported as an agent terminal in its directory, so it surfaces as a
- * tab instead of running on invisibly. Never throws; an absent tmux
- * server yields nothing, same as no sessions.
+ * tab instead of running on invisibly. But only when nothing here
+ * already holds it: the PTY registry keys a worktree session by the
+ * *branch it was spawned under*, which is exactly what a mid-session
+ * checkout leaves stale, so a candidate is checked against every live
+ * registry entry's own composed tmux name — not just the current
+ * worktree list — before it is offered as adoptable. Skipping that
+ * check is how the orphan path attaches a second client to a session
+ * this process is already driving. Never throws; an absent tmux server
+ * yields nothing, same as no sessions.
  */
 export function observeTmuxSessions(
   config: Pick<AppConfig, 'terminalBackend'>,
@@ -289,10 +296,14 @@ export function observeTmuxSessions(
     return NOTHING;
   }
   const prefix = activeTmuxPrefix(config);
+  const root = prefix ? getRepoRoot() : null;
   const composed = new Map(
     prefix
       ? sessionNames.map((n) => [sanitizeTmuxSessionName(prefix + n), n])
       : []
+  );
+  const owned = new Set(
+    root ? liveSessionNames().map((n) => tmuxNameFor(n, root)) : []
   );
   const persisted = new Set<string>();
   const terminals: DiscoveredTerminal[] = [];
@@ -305,7 +316,7 @@ export function observeTmuxSessions(
     if (!prefix || !name.startsWith(prefix)) continue;
     const registryName = composed.get(name);
     if (registryName !== undefined) persisted.add(registryName);
-    else terminals.push({ name, kind: 'agent', path });
+    else if (!owned.has(name)) terminals.push({ name, kind: 'agent', path });
   }
   return { persisted, terminals };
 }
