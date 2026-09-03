@@ -139,16 +139,15 @@ export async function fastForwardMainBranch(): Promise<boolean> {
   }
 }
 
-/**
- * Count conflicting files between a branch and origin's main branch.
- * Uses `git merge-tree --write-tree` (Git 2.38+).
- * Returns 0 if no conflicts.
- */
-export async function countConflicts(branch: string): Promise<number> {
-  assertShellSafeRef(branch);
-  const main = await getMainBranch();
+/** Files that `git merge-tree --write-tree base head` reports as
+ *  conflicting: zero on a clean merge, null when git failed for some
+ *  other reason than a conflict. */
+async function mergeTreeConflicts(
+  base: string,
+  head: string
+): Promise<number | null> {
   try {
-    await exec(`git merge-tree --write-tree origin/${main} "${branch}"`, {
+    await exec(`git merge-tree --write-tree ${base} "${head}"`, {
       encoding: 'utf8',
     });
     return 0; // clean merge — no conflicts
@@ -160,8 +159,42 @@ export async function countConflicts(branch: string): Promise<number> {
       const lines = e.stdout.split('\n');
       return lines.filter((l) => l.startsWith('CONFLICT')).length;
     }
-    return 0;
+    return null;
   }
+}
+
+/**
+ * Count conflicting files between a branch and origin's main branch.
+ * Uses `git merge-tree --write-tree` (Git 2.38+).
+ * Returns 0 if no conflicts.
+ */
+export async function countConflicts(branch: string): Promise<number> {
+  assertShellSafeRef(branch);
+  const main = await getMainBranch();
+  return (await mergeTreeConflicts(`origin/${main}`, branch)) ?? 0;
+}
+
+/**
+ * Count conflicting files between a branch and its target as the
+ * remote has them *now*: both refs are fetched first, and the remote
+ * tracking refs are compared rather than local branches, since the
+ * branch under review may have been pushed to from anywhere. Null when
+ * the fetch or the merge failed for a reason other than a conflict —
+ * "could not check" and "no conflicts" are different answers.
+ */
+export async function countRemoteConflicts(
+  branch: string,
+  target: string
+): Promise<number | null> {
+  assertShellSafeRef(branch);
+  assertShellSafeRef(target, 'target branch');
+  try {
+    await exec(`git fetch origin ${target} ${branch}`, { encoding: 'utf8' });
+  } catch (e) {
+    log('error', 'countRemoteConflicts', 'git fetch failed', e);
+    return null;
+  }
+  return mergeTreeConflicts(`origin/${target}`, `origin/${branch}`);
 }
 
 /** Delete a local git branch. Returns true on success, false on failure. */
