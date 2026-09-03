@@ -14,7 +14,7 @@
 
 import type { AgentId, PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
 export type { AgentId, ReviewVerdict };
-import type { LaunchIntent, SidebarItem } from '@kirby/core';
+import type { BabysitStatus, LaunchIntent, SidebarItem } from '@kirby/core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
 export type { CommentSeverity, ReviewComment };
 import type { WorktreeInfo } from '@kirby/worktree-manager';
@@ -30,7 +30,7 @@ export type {
   RemoteCommentReply,
   RemoteCommentThread,
 };
-export type { SidebarItem } from '@kirby/core';
+export type { BabysitStatus, SidebarItem } from '@kirby/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
@@ -426,6 +426,18 @@ export interface KirbyHostApi {
    *  process appeared or went away. Carries no payload — the renderer
    *  refetches. */
   onDiscoveryChanged(cb: () => void): () => void;
+
+  // ── Babysitting ──────────────────────────────────────────────
+  /** Watch a pull request and brief its agent — CI, unresolved review
+   *  threads, conflicts — once the news has settled and the agent is
+   *  idle. Rejects when the pull request is not in the sidebar. */
+  startBabysit(prId: number): Promise<BabysitStatus>;
+  stopBabysit(prId: number): Promise<void>;
+  /** The pull requests being babysat for the open repository. */
+  listBabysat(): Promise<BabysitStatus[]>;
+  /** Fires when a babysat pull request's status moved. Carries no
+   *  payload — the renderer refetches. */
+  onBabysitChanged(cb: () => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
   /** Native about box. */
@@ -485,6 +497,9 @@ export const IPC = {
   getDesktopPrefs: 'kirby/shell/prefs/get',
   setDesktopPrefs: 'kirby/shell/prefs/set',
   showAbout: 'kirby/shell/about',
+  startBabysit: 'kirby/babysit/start',
+  stopBabysit: 'kirby/babysit/stop',
+  listBabysat: 'kirby/babysit/list',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

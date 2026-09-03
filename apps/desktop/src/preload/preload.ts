@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
+  BABYSIT_EVENTS,
   DISCOVERY_EVENTS,
   IPC,
   MENU_EVENTS,
@@ -120,6 +121,15 @@ const api: KirbyHostApi = {
   getDesktopPrefs: () => ipcRenderer.invoke(IPC.getDesktopPrefs),
   setDesktopPrefs: (patch) => ipcRenderer.invoke(IPC.setDesktopPrefs, patch),
   showAbout: () => ipcRenderer.invoke(IPC.showAbout),
+
+  startBabysit: (prId) => ipcRenderer.invoke(IPC.startBabysit, prId),
+  stopBabysit: (prId) => ipcRenderer.invoke(IPC.stopBabysit, prId),
+  listBabysat: () => ipcRenderer.invoke(IPC.listBabysat),
+  onBabysitChanged: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on(BABYSIT_EVENTS.changed, listener);
+    return () => ipcRenderer.removeListener(BABYSIT_EVENTS.changed, listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('kirby', api);

@@ -261,6 +261,26 @@ export function useKillSession(cwd: string) {
   });
 }
 
+export function useStartBabysit(cwd: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prId: number) => window.kirby.startBabysit(prId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.babysat(cwd) });
+    },
+  });
+}
+
+export function useStopBabysit(cwd: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prId: number) => window.kirby.stopBabysit(prId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.babysat(cwd) });
+    },
+  });
+}
+
 export function useOpenInEditor() {
   return useMutation({
     mutationFn: (branch: string) => window.kirby.openInEditor(branch),

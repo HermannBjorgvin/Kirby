@@ -1,4 +1,9 @@
-import { readConfig, type BranchPrMap } from '@kirby/vcs-core';
+import {
+  readConfig,
+  type BranchPrMap,
+  type PullRequestInfo,
+  type VcsProvider,
+} from '@kirby/vcs-core';
 import { listWorktrees, worktreeSessionName } from '@kirby/worktree-manager';
 import {
   buildSidebarItems,
@@ -214,6 +219,26 @@ function refreshRemoteInBackground(cwd: string): void {
     // lastError instead — but a rejection here must not become an
     // unhandled one that takes the main process down.
   });
+}
+
+/** The provider the repository at `cwd` is configured for, if any. */
+export function repoProvider(cwd: string): VcsProvider | null {
+  const { provider, configured } = resolveProvider(cwd);
+  return configured ? provider : null;
+}
+
+/**
+ * One pull request as the cache has it, refreshed on the cache's own
+ * schedule — a babysitter asking every minute reads what the sidebar
+ * reads, rather than costing the provider a fetch per watched row.
+ * Null once the pull request has left the list: merged or closed.
+ */
+export async function findPullRequest(
+  cwd: string,
+  prId: number
+): Promise<PullRequestInfo | null> {
+  const prMap = await fetchRemote(cwd);
+  return Object.values(prMap).find((pr) => pr?.id === prId) ?? null;
 }
 
 /** The rows alone. Exported for its tests; the bridge serves

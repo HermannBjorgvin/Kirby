@@ -24,6 +24,7 @@ import {
 import { openStartupRepo } from '../host/services/repo.js';
 import { stopRemoteSyncLoop } from '../host/services/remote-sync.js';
 import { stopDiscovery } from '../host/services/discovery.js';
+import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installHostEventBridge } from './host-events.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
@@ -334,6 +335,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   stopRemoteSyncLoop();
   stopDiscovery();
+  stopAllBabysitters();
   try {
     killAll();
   } catch {

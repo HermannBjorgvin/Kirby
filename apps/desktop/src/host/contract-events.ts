@@ -93,6 +93,17 @@ export const DISCOVERY_EVENTS = {
   changed: 'kirby/sidebar/discovered',
 } as const;
 
+// ── Babysitting ──────────────────────────────────────────────────
+
+export const BABYSIT_EVENTS = {
+  /**
+   * A babysat pull request's status moved — a poll ran, an update went
+   * to the agent, the pull request merged and watching ended. Carries
+   * no payload; the renderer refetches the list.
+   */
+  changed: 'kirby/babysit/changed',
+} as const;
+
 /** A user-facing event from the host's remote sync loop (auto-deleted
  *  merged branch, blocked auto-delete, …), toasted by the renderer. */
 export interface SyncNoticeEvent {

@@ -10,7 +10,11 @@
  * the app should be findable in one place.
  */
 import { BrowserWindow } from 'electron';
-import { DISCOVERY_EVENTS, SYNC_EVENTS } from '../host/contract.js';
+import {
+  BABYSIT_EVENTS,
+  DISCOVERY_EVENTS,
+  SYNC_EVENTS,
+} from '../host/contract.js';
 import { setRepoOpenedListener } from '../host/services/repo.js';
 import {
   setSyncNotifier,
@@ -22,6 +26,7 @@ import {
   startDiscoveryForRepo,
 } from '../host/services/discovery.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
+import { setBabysitNotifier } from '../host/services/babysit.js';
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -55,4 +60,7 @@ export function installHostEventBridge(): void {
   // outside this process changes what the sidebar should show, and the
   // renderer is serving it from a query cache.
   setDiscoveryNotifier(() => broadcast(DISCOVERY_EVENTS.changed));
+
+  // A babysat pull request's status is read from a query cache too.
+  setBabysitNotifier(() => broadcast(BABYSIT_EVENTS.changed));
 }

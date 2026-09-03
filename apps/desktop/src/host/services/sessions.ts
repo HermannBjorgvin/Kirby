@@ -99,6 +99,20 @@ function adoptSession(name: string, branch: string, repoCwd: string): void {
   attachRelay(name, entry);
 }
 
+/**
+ * Adopt a session another service had `@kirby/core` spawn — the
+ * babysitter's, started to receive an update when no agent was
+ * running. Same bookkeeping as a launch from the renderer.
+ */
+export function adoptSpawnedSession(name: string, branch: string): void {
+  adoptSession(name, branch, requireRepo());
+}
+
+/** The grid a session starts on when no pane has measured one yet. */
+export function defaultPaneSize(): { cols: number; rows: number } {
+  return { cols: DEFAULT_COLS, rows: DEFAULT_ROWS };
+}
+
 // ── Known sessions ───────────────────────────────────────────────
 // The pty-registry has no iteration API (the CLI enumerates via its
 // own React state), so the desktop host tracks the sessions it

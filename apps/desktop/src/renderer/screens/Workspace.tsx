@@ -189,6 +189,17 @@ function WorkspaceInner({
     return off;
   }, [qc, repo.cwd]);
 
+  // A babysat pull request's status is served from the cache as well.
+  useEffect(() => {
+    const off = window.kirby.onBabysitChanged(() => {
+      void qc.invalidateQueries({ queryKey: keys.babysat(repo.cwd) });
+      // A delivery may have started an agent, which is a sidebar row.
+      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
+      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
+    });
+    return off;
+  }, [qc, repo.cwd]);
+
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;
   useEffect(() => {

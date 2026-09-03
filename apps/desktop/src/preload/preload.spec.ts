@@ -52,6 +52,7 @@ const EVENT_METHODS = [
   'onSyncNotice',
   'onRemoteUpdated',
   'onDiscoveryChanged',
+  'onBabysitChanged',
 ] as const;
 
 describe('preload bridge', () => {
