@@ -711,6 +711,34 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   terminal ignores chunks at or below the sequence its replay ended at,
   so numbering a restarted session from 1 again left the new agent
   looking dead in the very pane the restart came from.
+- **Babysitting a pull request is core's; the shells start and stop
+  it.** "Babysit pull request" on a desktop sidebar row hands the pull
+  request to `startPrBabysitter` (`libs/core/src/lib/babysit/`), which
+  polls CI, unresolved review threads and conflicts against the target
+  every minute and briefs the agent in one message. Three rules are
+  load-bearing and each has a test in `babysit-model.spec.ts`:
+  the baseline is **what the agent was told**, not what was last seen
+  (a thread that gained a reply is news again; a first green build on
+  its own is not, but green after a reported red is; a thread whose
+  newest comment is the user's own — which is how the agent posts — is
+  not); a pending update is sent after ten minutes of **quiet**, or
+  thirty minutes at most, so a reviewer's burst of comments is one
+  interruption; and it is sent **only while the agent is idle**
+  (`snapshot(name).active`), typed into the session like a plan, or as
+  the opening prompt of a session started in the worktree when none is
+  running. Starting to babysit a pull request that already needs work
+  therefore sends its first update within ten minutes. Conflicts are
+  counted with `countRemoteConflicts`, which fetches both refs and
+  compares the remote tracking branches — the local branch may not be
+  where the author pushed to. The desktop keeps babysitters per
+  repository in memory (`host/services/babysit.ts`), sits one out while
+  another repository is open rather than tearing it down, and reads the
+  pull request from the sidebar's own cache so a watched row costs the
+  provider nothing extra. `KIRBY_BABYSIT_DEBOUNCE_MS` /
+  `KIRBY_BABYSIT_POLL_MS` shorten the cadence for `babysit.test.ts`,
+  which asserts on the prompt the fake agent was actually started with.
+  The TUI does not offer it yet; the watcher takes no shell-specific
+  dependency, so wiring it is a menu entry and a `paneSize`.
 - **Desktop diffs are whole-file.** `fetchDiffText` uses `-U99999` so threads on untouched lines can be placed; the desktop viewer folds unchanged regions client-side (`lib/diff/diff-model.ts`, ±3 context, expandable gaps, thread anchors pinned) rather than asking git for hunks.
 - **A PR is diffed against commits; a bare worktree against its working tree.** `fetchDiffText` compares two commits, which is what review threads anchor to — a PR tab must never start showing uncommitted scratch work. A worktree with no PR has nothing to anchor, so `PrWorkspace` switches to `fetchWorktreeDiffText` (`libs/core/src/lib/utils/worktree-diff.ts`): merge-base diff run **inside the worktree**, so the index and working tree count, plus hand-built patches for untracked files. Untracked files are assembled rather than obtained via `git add -N`, because writing to the index of a worktree an agent is using changes what its own `git status` and `git commit` see. It polls at 2s **only while the agent is running** — a recursive `fs.watch` over a checkout wants an inotify handle per directory and `node_modules` alone exhausts the Linux default.
 - **Every git call behind a diff streams, and the worktree diff is

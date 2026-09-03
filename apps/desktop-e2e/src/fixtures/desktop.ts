@@ -128,6 +128,13 @@ export interface DesktopOptions {
    * reads a function-valued option as a fixture definition.
    */
   liveSessions?: { branch: string; command: string }[];
+  /**
+   * Extra environment for the app process, for the knobs the host
+   * reads from it — a background cadence a test cannot wait out at its
+   * real value. Cannot override the isolation the fixture sets up
+   * (HOME, the tmux socket, the fake `gh`), which is applied after.
+   */
+  env?: Record<string, string>;
 }
 
 export interface DesktopApp {
@@ -259,6 +266,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   drafts: [undefined, { option: true }],
   fakeGitHub: [undefined, { option: true }],
   liveSessions: [undefined, { option: true }],
+  env: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -272,6 +280,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       drafts,
       fakeGitHub,
       liveSessions,
+      env,
     },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
@@ -329,6 +338,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       cwd: WORKSPACE_ROOT,
       env: {
         ...parentEnv,
+        ...env,
         // Isolates config.json, desktop-prefs.json, recents *and*
         // Electron's own userData dir (so the single-instance lock
         // never makes one test's launch quit against another's).

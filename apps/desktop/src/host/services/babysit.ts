@@ -40,6 +40,26 @@ export function setBabysitNotifier(fn: (() => void) | null): void {
   changed = fn;
 }
 
+/**
+ * The cadence, overridable from the environment so a test can watch a
+ * delivery happen in seconds rather than the ten minutes a reviewer
+ * gets to finish typing. Unset means core's defaults.
+ */
+function timingFromEnv(): {
+  intervalMs?: number;
+  timing?: { debounceMs?: number; maxWaitMs?: number };
+} {
+  const read = (name: string): number | undefined => {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  };
+  const debounceMs = read('KIRBY_BABYSIT_DEBOUNCE_MS');
+  return {
+    intervalMs: read('KIRBY_BABYSIT_POLL_MS'),
+    timing: debounceMs === undefined ? undefined : { debounceMs },
+  };
+}
+
 function forRepo(cwd: string): Map<number, Sitter> {
   let byId = sitters.get(cwd);
   if (!byId) {
@@ -74,6 +94,7 @@ export async function startBabysit(prId: number): Promise<BabysitStatus> {
       changed?.();
     },
     isCurrent: () => activeRepoIs(cwd),
+    ...timingFromEnv(),
   });
   forRepo(cwd).set(prId, { handle, sourceBranch: pr.sourceBranch });
   changed?.();
