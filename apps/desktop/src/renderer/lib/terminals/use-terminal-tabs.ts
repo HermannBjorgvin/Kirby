@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { TerminalKind, TerminalSummary } from '../../../host/contract.js';
 import { useTerminals } from '../data/queries.js';
@@ -35,12 +35,16 @@ function estimatePane(): { cols?: number; rows?: number } {
 }
 
 /**
- * Terminal tabs, renderer side: keep the strip reconciled with the
- * host's terminal listing (the restore path, and terminals discovery
- * finds mid-run), and open one on request.
+ * Terminal tabs, renderer side: the host's terminal listing, ready for
+ * Workspace's own `sync-items` effect to reconcile alongside the
+ * sidebar (the restore path, and terminals discovery finds mid-run),
+ * plus opening one on request.
  *
- * Sits beside `sync-items` in the workspace rather than inside it:
- * terminals are not sidebar items, and the listing is not repo-scoped.
+ * Deliberately does not dispatch a sync of its own — terminals are not
+ * sidebar items and the listing is not repo-scoped, but folding both
+ * into the one action Workspace dispatches keeps every reconciliation
+ * of the strip behind a single pure step instead of two effects racing
+ * into the reducer independently.
  */
 export function useTerminalTabs() {
   const tabs = useTabs();
@@ -52,11 +56,6 @@ export function useTerminalTabs() {
     () => (terminals.data ?? []).map(toEntry),
     [terminals.data]
   );
-  // `tabs` changes identity on every dispatch, and re-running settles:
-  // `sync-terminals` returns the same state once there is nothing to do.
-  useEffect(() => {
-    tabs.syncTerminals(entries);
-  }, [tabs, entries]);
 
   const launchMutate = launch.mutate;
   const openTerminal = tabs.openTerminal;
@@ -78,6 +77,8 @@ export function useTerminalTabs() {
   );
 
   return {
+    /** The host's terminal listing, for Workspace's sync effect. */
+    entries,
     dialogOpen,
     openDialog: useCallback(() => setDialogOpen(true), []),
     closeDialog: useCallback(() => setDialogOpen(false), []),

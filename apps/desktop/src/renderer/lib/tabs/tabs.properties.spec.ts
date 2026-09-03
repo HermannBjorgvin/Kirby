@@ -86,13 +86,6 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     type: fc.constant('open-terminal' as const),
     terminal: fc.constantFrom(...TERMINALS),
   }),
-  // The host's terminal listing, as after a restart or a scan.
-  fc.record({
-    type: fc.constant('sync-terminals' as const),
-    terminals: fc.uniqueArray(fc.constantFrom(...TERMINALS), {
-      maxLength: 4,
-    }),
-  }),
   fc.record({
     type: fc.constant('pin' as const),
     id: fc.constantFrom(...IDS),
@@ -130,7 +123,9 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
   // The interesting one: the sidebar re-keying items underneath, and
   // agents coming and going on them — `sync-items` opens a tab for a
   // newly running agent and pins previews that have one, so those run
-  // against the same invariants as everything else.
+  // against the same invariants as everything else. The host's
+  // terminal listing rides along on the same dispatch, as after a
+  // restart or a scan — one action, one pure step.
   fc
     .record({
       repo: fc.constantFrom(...REPOS),
@@ -160,11 +155,15 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
         ),
         { maxLength: 4 }
       ),
+      terminals: fc.uniqueArray(fc.constantFrom(...TERMINALS), {
+        maxLength: 4,
+      }),
     })
-    .map(({ repo, entries }) => ({
+    .map(({ repo, entries, terminals }) => ({
       type: 'sync-items' as const,
       repo,
       entries,
+      terminals,
     }))
 );
 
@@ -366,7 +365,12 @@ describe('one repository cannot reach another', () => {
         ),
         (actions, repo, entries) => {
           const before = run(actions);
-          const after = reduce(before, { type: 'sync-items', repo, entries });
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries,
+            terminals: [],
+          });
           // Identity, not equality: a foreign tab that came out
           // re-keyed, re-pinned or merely rebuilt has been touched by a
           // poll about a repository it has nothing to do with.
@@ -388,6 +392,7 @@ describe('one repository cannot reach another', () => {
           type: 'sync-items',
           repo,
           entries: [],
+          terminals: [],
         });
         // An empty sidebar over here is not a reason to close tabs
         // over there — their agents are still running.
@@ -488,7 +493,12 @@ describe('terminal tabs', () => {
         ),
         (actions, repo, entries) => {
           const before = run(actions);
-          const after = reduce(before, { type: 'sync-items', repo, entries });
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries,
+            terminals: [],
+          });
           const terminals = (s: TabsState) =>
             s.tabs.filter((t) => t.kind === 'terminal');
           // Identity, not equality: a terminal tab that came out rebuilt
@@ -510,7 +520,15 @@ describe('terminal tabs', () => {
         fc.uniqueArray(fc.constantFrom(...TERMINALS), { maxLength: 4 }),
         (actions, terminals) => {
           const before = run(actions);
-          const after = reduce(before, { type: 'sync-terminals', terminals });
+          // Terminals ride along on `sync-items`; an empty `entries` list
+          // is a no-op for the item passes, so this is exactly the
+          // dispatch a terminal-only listing produces.
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo: REPOS[0],
+            entries: [],
+            terminals,
+          });
           // A restored terminal from another repository would otherwise
           // switch the workspace at startup.
           expect(after.activeId).toBe(before.activeId);
@@ -541,6 +559,7 @@ describe('re-keying preserves the tab', () => {
             type: 'sync-items',
             repo: REPOS[0],
             entries: [{ itemKey: key, branch: 'a' }],
+            terminals: [],
           });
         }
 
@@ -570,6 +589,7 @@ describe('re-keying preserves the tab', () => {
           type: 'sync-items',
           repo: REPOS[0],
           entries: [{ itemKey: key, branch: 'a' }],
+          terminals: [],
         });
         // EditorArea and the close-tab path both fall back to this when
         // the key does not resolve during the render before sync-items
@@ -601,6 +621,7 @@ describe('re-keying preserves the tab', () => {
       type: 'sync-items',
       repo: REPOS[0],
       entries: [{ itemKey: 'pr:1', branch: 'a' }],
+      terminals: [],
     });
     expect(state.tabs).toHaveLength(1);
     expect(state.tabs.some((t) => t.id === state.activeId)).toBe(true);

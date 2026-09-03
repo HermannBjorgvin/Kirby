@@ -85,11 +85,20 @@ export type TabsAction =
   | { type: 'close-others'; id: string }
   | { type: 'close-all' }
   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
-  | { type: 'sync-items'; repo: string; entries: ItemEntry[] }
+  /** The one reconciliation dispatched from Workspace's effect: the
+   *  repo's sidebar items *and* the host's terminal listing, applied as
+   *  one pure step. Terminals ride along on every sync rather than
+   *  getting a dispatch of their own — carrying an empty `entries` still
+   *  reconciles the terminal strip on its own, since an empty list is a
+   *  no-op for the item passes. */
+  | {
+      type: 'sync-items';
+      repo: string;
+      entries: ItemEntry[];
+      terminals: TerminalEntry[];
+    }
   /** Open (or activate) the tab for a terminal the host just started. */
   | { type: 'open-terminal'; terminal: TerminalEntry }
-  /** The host's terminal listing: a tab per terminal, once each. */
-  | { type: 'sync-terminals'; terminals: TerminalEntry[] }
   /** A repository was opened. Dispatched for every open, tab-driven or
    *  not; it only does something when the tab in front of the user
    *  belongs to somewhere else. */
@@ -161,18 +170,21 @@ function focusRepo(state: TabsState, repo: string): TabsState {
 }
 
 /** The actions about item and settings tabs — the strip as it was
- *  before terminals joined it. */
-type StripAction = Exclude<
-  TabsAction,
-  { type: 'open-terminal' } | { type: 'sync-terminals' }
->;
+ *  before terminals joined it. `sync-items` stays in this union: its
+ *  item passes (`applyStrip`'s case below) read only `repo`/`entries`,
+ *  and the `terminals` field rides along for {@link apply} to hand to
+ *  `syncTerminals` once the item passes have settled. */
+type StripAction = Exclude<TabsAction, { type: 'open-terminal' }>;
 
 function apply(state: TabsState, action: TabsAction): TabsState {
   if (action.type === 'open-terminal') {
     return openTerminal(state, action.terminal);
   }
-  if (action.type === 'sync-terminals') {
-    return syncTerminals(state, action.terminals);
+  if (action.type === 'sync-items') {
+    // One dispatch, one pure step: the repo's items and the host's
+    // terminal listing are reconciled together rather than from two
+    // effects racing into the reducer separately.
+    return syncTerminals(applyStrip(state, action), action.terminals);
   }
   return applyStrip(state, action);
 }

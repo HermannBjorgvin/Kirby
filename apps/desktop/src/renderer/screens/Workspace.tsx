@@ -125,11 +125,15 @@ function WorkspaceInner({
     [items]
   );
 
-  // The one place the two stores are reconciled. The reducer follows
-  // items whose key changed (a worktree grows a PR: branch:x → pr:n,
-  // and back when it closes), opens a tab for each newly running
-  // agent, and pins preview tabs that have an agent behind them —
-  // atomically, so no render ever sees a half-reconciled strip.
+  // The one place every store the strip depends on is reconciled: the
+  // sidebar items *and* the host's terminal listing, in a single
+  // dispatch. The reducer follows items whose key changed (a worktree
+  // grows a PR: branch:x → pr:n, and back when it closes), opens a tab
+  // for each newly running agent, pins preview tabs that have an agent
+  // behind them, and brings the terminal strip in line with the host —
+  // atomically, so no render ever sees a half-reconciled strip and
+  // terminals never get a reconciliation effect of their own to race
+  // this one.
   //
   // `tabs` (the whole api, which changes identity on every dispatch)
   // is the dependency on purpose: opening a preview tab is itself a
@@ -137,8 +141,8 @@ function WorkspaceInner({
   // live. Re-running settles — every step above is idempotent and
   // returns the same state object once there is nothing left to do.
   useEffect(() => {
-    tabs.syncItems(entries);
-  }, [tabs, entries]);
+    tabs.syncItems(entries, terminalTabs.entries);
+  }, [tabs, entries, terminalTabs.entries]);
 
   // Boot milestones (see lib/perf.ts): the shell is on screen once this
   // mounts, and the sidebar is real once the host's first model lands —

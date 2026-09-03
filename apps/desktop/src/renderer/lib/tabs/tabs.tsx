@@ -60,17 +60,22 @@ interface TabsApi extends TabsState {
   /** Drag-reorder: place `id` before/after `targetId`. */
   moveTab: (id: string, targetId: string, side: 'before' | 'after') => void;
   /**
-   * Reconcile the strip with the current sidebar items, in one step:
-   * follow re-keyed items, open a tab for each newly running agent,
-   * and pin any preview tab that now has a live agent behind it.
+   * Reconcile the strip with the current sidebar items *and* the host's
+   * terminal listing, in one step: follow re-keyed items, open a tab
+   * for each newly running agent, pin any preview tab that now has a
+   * live agent behind it, and bring the terminal strip in line with
+   * what the host lists. One dispatch, so both reconciliations land in
+   * a single render rather than racing from two effects.
    */
-  syncItems: (repo: string, entries: ItemEntry[]) => void;
+  syncItems: (
+    repo: string,
+    entries: ItemEntry[],
+    terminals: TerminalEntry[]
+  ) => void;
   /** Tell the strip a repository is now the one in view. */
   repoOpened: (repo: string) => void;
   /** Open (or activate) the tab for a terminal the host just started. */
   openTerminal: (terminal: TerminalEntry) => void;
-  /** Reconcile the strip with the host's terminal listing. */
-  syncTerminals: (terminals: TerminalEntry[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -125,8 +130,8 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     []
   );
   const syncItems = useCallback(
-    (repo: string, entries: ItemEntry[]) =>
-      dispatch({ type: 'sync-items', repo, entries }),
+    (repo: string, entries: ItemEntry[], terminals: TerminalEntry[]) =>
+      dispatch({ type: 'sync-items', repo, entries, terminals }),
     []
   );
   const repoOpened = useCallback(
@@ -135,11 +140,6 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   );
   const openTerminal = useCallback(
     (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
-    []
-  );
-  const syncTerminals = useCallback(
-    (terminals: TerminalEntry[]) =>
-      dispatch({ type: 'sync-terminals', terminals }),
     []
   );
 
@@ -159,7 +159,6 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
-      syncTerminals,
     }),
     [
       state,
@@ -176,7 +175,6 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
-      syncTerminals,
     ]
   );
 
@@ -200,7 +198,8 @@ export function useRepoTabs(): RepoTabsApi {
       ...tabs,
       openItem: (itemKey: string, opts?: { preview?: boolean }) =>
         tabs.openItem(cwd, itemKey, opts),
-      syncItems: (entries: ItemEntry[]) => tabs.syncItems(cwd, entries),
+      syncItems: (entries: ItemEntry[], terminals: TerminalEntry[]) =>
+        tabs.syncItems(cwd, entries, terminals),
       close: (id: string) => tabs.close(id, cwd),
     }),
     [tabs, cwd]
@@ -209,5 +208,5 @@ export function useRepoTabs(): RepoTabsApi {
 
 export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
-  syncItems: (entries: ItemEntry[]) => void;
+  syncItems: (entries: ItemEntry[], terminals: TerminalEntry[]) => void;
 }

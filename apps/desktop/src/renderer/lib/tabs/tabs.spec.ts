@@ -24,8 +24,12 @@ const open = (
   repo = REPO
 ) => reduce(state, { type: 'open-item', repo, itemKey, preview });
 
-const sync = (state: TabsState, entries: ItemEntry[], repo = REPO) =>
-  reduce(state, { type: 'sync-items', repo, entries });
+const sync = (
+  state: TabsState,
+  entries: ItemEntry[],
+  repo = REPO,
+  terminals: TerminalEntry[] = []
+) => reduce(state, { type: 'sync-items', repo, entries, terminals });
 
 const empty: TabsState = EMPTY_TABS;
 
@@ -302,6 +306,7 @@ describe('open-item after re-key', () => {
       type: 'sync-items',
       repo: REPO,
       entries: [{ itemKey: 'pr:1', branch: 'a' }],
+      terminals: [],
     });
     state = reduce(state, {
       type: 'open-item',
@@ -716,8 +721,12 @@ describe('terminal tabs', () => {
   };
   const openTerminal = (state: TabsState, terminal: TerminalEntry) =>
     reduce(state, { type: 'open-terminal', terminal });
+  // Terminals ride along on the same `sync-items` dispatch Workspace
+  // makes; an empty `entries` list is a no-op for the item passes, so
+  // this exercises exactly the reconciliation a terminal-only poll
+  // produces.
   const syncTerminals = (state: TabsState, terminals: TerminalEntry[]) =>
-    reduce(state, { type: 'sync-terminals', terminals });
+    reduce(state, { type: 'sync-items', repo: REPO, entries: [], terminals });
 
   it('opens a pinned tab and activates it', () => {
     const s = openTerminal(empty, plain);
@@ -804,5 +813,39 @@ describe('terminal tabs', () => {
     s = openTerminal(s, plain);
     s = reduce(s, { type: 'repo-opened', repo: OTHER });
     expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  // Workspace dispatches one `sync-items` action carrying the sidebar
+  // items and the host's terminal listing together, rather than a
+  // second effect dispatching a terminal sync of its own. A single
+  // dispatch that reconciles both in one pure step is the whole point
+  // of folding them: this pins that a newly-running agent's tab and a
+  // newly-listed terminal's tab both land from one `reduce` call, and
+  // that the combined dispatch settles to the same state on repeat.
+  it('reconciles a newly running agent and a newly listed terminal in one dispatch', () => {
+    const running: ItemEntry = {
+      itemKey: 'branch:feat-x',
+      branch: 'feat-x',
+      sessionName: 'kirby-feat-x',
+      running: true,
+    };
+    const action = {
+      type: 'sync-items' as const,
+      repo: REPO,
+      entries: [running],
+      terminals: [plain],
+    };
+    const s = reduce(empty, action);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:feat-x'),
+      terminalTabId(plain.name),
+    ]);
+    // Idempotent: the same combined dispatch settles rather than
+    // reopening either tab or moving focus. One more application lets
+    // `rekey`'s branch/title stamp catch up to the tab `autoOpenRunning`
+    // just opened, the same two-call settle every other stamping test
+    // here relies on.
+    const settled = reduce(s, action);
+    expect(reduce(settled, action)).toBe(settled);
   });
 });
