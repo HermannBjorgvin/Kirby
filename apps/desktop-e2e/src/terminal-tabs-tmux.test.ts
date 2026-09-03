@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { test, expect } from './fixtures/desktop.js';
+import { test, test as base, expect } from './fixtures/desktop.js';
 import { tab, visibleText } from './setup/app.js';
 import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
 import {
@@ -60,36 +60,73 @@ test.describe('Terminal tabs under tmux', () => {
 });
 
 test.describe('Terminal tabs surviving a restart', () => {
-  const folder = mkdtempSync(join(tmpdir(), 'kirby-plain-'));
-  const other = createTestRepo({ name: 'survivor-repo' });
   const PLAIN = 'kirby-term-shell-0a0a0a';
   const IN_REPO = 'kirby-term-agent-0b0b0b';
 
-  test.use({
-    kirbyConfig: { terminalBackend: 'tmux' },
-    liveTerminals: {
-      [PLAIN]: {
-        cwd: folder,
-        command: `printf '%s\\n' plain-shell-was-here; sleep 300`,
-      },
-      [IN_REPO]: {
-        cwd: other,
-        command: `printf '%s\\n' repo-agent-was-here; sleep 300`,
-      },
+  /**
+   * The plain folder and the other repository this test restores a
+   * terminal into, as fixtures rather than describe-scope constants —
+   * scoped, by shadowing `test` for just this describe block, so the
+   * other describe above never triggers them.
+   *
+   * `mkdtempSync`/`createTestRepo` are real filesystem work, and a
+   * describe-scope `const` runs it at collection time — whether or not
+   * the file's tests go on to be skipped. On a machine with no tmux
+   * this whole file is skipped, and a plain `test.afterAll` cleanup is
+   * skipped right along with it (Playwright pairs `beforeAll`/`afterAll`
+   * with the tests they scope, and skips both together), so the
+   * create-always, cleanup-sometimes split used to leak a temp
+   * directory and a git repo on every tmux-less run. A fixture is the
+   * correctly-paired alternative: its setup and its teardown both run
+   * only for a test that actually requests it (transitively, through
+   * `desktop`), so there is nothing asymmetric to leak — the same
+   * guarantee `beforeAll` would give if `test.use()` could take a value
+   * computed that late, which it cannot.
+   */
+  const test = base.extend<{ folder: string; other: string }>({
+    // Named `provide` rather than the conventional `use` so it does not
+    // read as a React hook call to the react-hooks rules, which run
+    // over this workspace — same reason desktop.ts's own `desktop`
+    // fixture does. Playwright parses a fixture's own source to find
+    // its dependencies and requires the first parameter to be a
+    // literal destructuring pattern even with none to declare, so the
+    // empty `{}` below cannot be replaced with a plain parameter name.
+    // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature; see comment above
+    folder: async ({}, provide) => {
+      const dir = mkdtempSync(join(tmpdir(), 'kirby-plain-'));
+      await provide(dir);
+      rmSync(dir, { recursive: true, force: true });
+    },
+    // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature; see comment above
+    other: async ({}, provide) => {
+      const dir = createTestRepo({ name: 'survivor-repo' });
+      await provide(dir);
+      cleanupTestRepo(dir);
+    },
+    liveTerminals: async ({ folder, other }, provide) => {
+      await provide({
+        [PLAIN]: {
+          cwd: folder,
+          command: `printf '%s\\n' plain-shell-was-here; sleep 300`,
+        },
+        [IN_REPO]: {
+          cwd: other,
+          command: `printf '%s\\n' repo-agent-was-here; sleep 300`,
+        },
+      });
     },
   });
+
+  test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
 
   test.afterEach(({ desktop }) => {
     killKirbySessions(desktop.homeDir);
   });
 
-  test.afterAll(() => {
-    cleanupTestRepo(other);
-    rmSync(folder, { recursive: true, force: true });
-  });
-
   test('every surviving terminal reopens as a tab in its group, without switching repository', async ({
     desktop,
+    folder,
+    other,
   }) => {
     const { page, repoPath } = desktop;
 
