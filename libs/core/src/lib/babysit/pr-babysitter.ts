@@ -52,9 +52,10 @@ import { composeBabysitPrompt } from './babysit-prompt.js';
 /** Why a due update has not gone out. */
 export type BabysitHold =
   | 'agent-busy'
-  | 'no-agent'
   | 'foreign-session'
-  | 'branch-unavailable';
+  | 'branch-unavailable'
+  /** The watch stopped, or the repository changed, mid-checkout. */
+  | 'interrupted';
 
 export interface BabysitStatus {
   prId: number;
@@ -140,10 +141,9 @@ function injectIntoLive(
 
 /**
  * Start an agent in the worktree with the update as its opening
- * prompt — but only for the user's own pull request. Starting an agent
- * on somebody else's branch and telling it to push is not something a
- * right-click should do; there the update waits for an agent the user
- * starts.
+ * prompt. Babysitting is opt-in per pull request, and an agent that
+ * exits between updates is the normal case, so the next update starts
+ * one rather than waiting for the user to notice.
  */
 async function spawnForUpdate(
   opts: PrBabysitterOptions,
@@ -152,9 +152,6 @@ async function spawnForUpdate(
   prompt: string,
   live: () => boolean
 ): Promise<Delivery> {
-  const config = opts.getConfig();
-  const own = opts.provider?.matchesUser(pr.createdByIdentifier, config);
-  if (!own) return { outcome: 'held', held: 'no-agent' };
   if (!(await branchAvailable(pr.sourceBranch))) {
     return { outcome: 'held', held: 'branch-unavailable' };
   }
@@ -165,7 +162,8 @@ async function spawnForUpdate(
   // The checkout took time; the repository may have changed under it,
   // or the watch been stopped. A spawn now would run in the wrong
   // repository's terms.
-  if (!live()) return { outcome: 'held', held: 'no-agent' };
+  if (!live()) return { outcome: 'held', held: 'interrupted' };
+  const config = opts.getConfig();
   const { cols, rows } = opts.paneSize();
   // `seed`, never `continue-or-seed`: continuing a prior conversation
   // takes the prompt only when there is nothing to continue, and an

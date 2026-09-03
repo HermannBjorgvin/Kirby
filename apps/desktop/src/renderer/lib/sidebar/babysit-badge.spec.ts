@@ -39,10 +39,10 @@ describe('babysitBadge', () => {
 
   it('says why a due update is being held', () => {
     const badge = babysitBadge(
-      status({ phase: 'pending', pendingSince: 0, held: 'no-agent' }),
+      status({ phase: 'pending', pendingSince: 0, held: 'agent-busy' }),
       MIN
     );
-    expect(badge.title).toContain('held until you start an agent');
+    expect(badge.title).toContain('held until the agent has been quiet');
   });
 
   it('counts deliveries and flags a failed poll', () => {

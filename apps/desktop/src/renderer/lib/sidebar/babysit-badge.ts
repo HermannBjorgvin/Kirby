@@ -23,14 +23,12 @@ function relative(ms: number, now: number): string {
  */
 const HELD: Record<NonNullable<BabysitStatus['held']>, string> = {
   'agent-busy': 'held until the agent has been quiet for a while',
-  'no-agent':
-    'held until you start an agent on it — Kirby does not start one on ' +
-    'a pull request that is not yours',
   'foreign-session':
     'held: a session under this branch name belongs to another repository',
   'branch-unavailable':
     'held: the branch is not available locally or on origin, so no ' +
     'worktree can be made for an agent',
+  interrupted: 'held: the checkout was interrupted; it will be retried',
 };
 
 export function babysitBadge(

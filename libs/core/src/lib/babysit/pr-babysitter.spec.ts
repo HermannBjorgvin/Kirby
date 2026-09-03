@@ -285,23 +285,6 @@ describe('startPrBabysitter', () => {
     sitter.stop();
   });
 
-  it("does not start an agent on somebody else's pull request", async () => {
-    mocks.isSessionAlive.mockReturnValue(false);
-    lookup = () =>
-      Promise.resolve({
-        kind: 'found',
-        pr: { ...failing, createdByIdentifier: 'alice' },
-      });
-    const sitter = start();
-    await pollPastDebounce(sitter);
-    expect(mocks.launchSession).not.toHaveBeenCalled();
-    expect(statuses.at(-1)).toMatchObject({
-      phase: 'pending',
-      held: 'no-agent',
-    });
-    sitter.stop();
-  });
-
   it('does not invent a branch that exists neither locally nor on origin', async () => {
     mocks.isSessionAlive.mockReturnValue(false);
     mocks.refExists.mockResolvedValue(false);

@@ -733,9 +733,9 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   opening prompt of a session started with `seed` (never
   `continue-or-seed`, which drops the prompt whenever there is a
   conversation to continue) in the worktree when none is running. That
-  spawn happens only for the user's **own** pull request and only when
-  the branch resolves locally or on origin; otherwise the update is
-  held and the badge says why. A held or failed delivery leaves the
+  spawn happens for any babysat pull request — babysitting is opt-in
+  per row — but only when the branch resolves locally or on origin;
+  otherwise the update is held and the badge says why. A held or failed delivery leaves the
   baseline alone. Starting to babysit a pull request that already needs
   work therefore sends its first update within ten minutes. The
   expensive half — the provider's thread list and a `git fetch` of both
