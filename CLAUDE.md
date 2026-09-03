@@ -724,8 +724,9 @@ terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
   its directory instead of vanishing**. On the strip a terminal tab is
   pinned, titled by its directory cut from the _front_
   (`truncateLeading`, so the tail that tells two directories apart
-  stays), shows only its terminal, and is reconciled by
-  `sync-terminals` without ever moving focus — a restored terminal
+  stays), shows only its terminal, and rides along on the same
+  `sync-items` dispatch as the sidebar reconciliation — one pure step,
+  not a second effect — without ever moving focus: a restored terminal
   from another repository would otherwise switch the workspace at
   startup. A repo-root terminal is foreign anywhere but its repo and
   follows like any foreign tab; a plain-folder one belongs to nobody
@@ -736,7 +737,11 @@ terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
   eats the first keystroke, so the fixture seeds an empty `.zshrc`; and
   Playwright reads any array whose second element is an object as a
   `[value, options]` fixture tuple, so the fixture's `liveTerminals` is
-  a record keyed by session name rather than a list.
+  a record keyed by session name rather than a list. Discovery resolves
+  the tmux backend from the **open repository's** config
+  (`session-discovery.ts`'s `observe()`), so a repo pinned to a
+  per-project `terminalBackend: 'pty'` override hides every tmux
+  terminal — not just its own — for as long as it is the open one.
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the
   agent's own drafts — into a queue and hands the whole thing to one
