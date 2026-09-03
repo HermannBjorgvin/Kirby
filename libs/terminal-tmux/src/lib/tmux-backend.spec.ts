@@ -133,6 +133,26 @@ describe('createTmuxBackendFactory', () => {
     expect(args[idx + 1]).toBe('kirby-abc12345-release/v1-0-1');
   });
 
+  // The prefix namespaces names by repository; a caller that hands over
+  // a name it composed in full (a terminal session, an orphaned worktree
+  // session being resumed under its original name) must not have the
+  // namespace applied a second time, or `-A` creates a new session
+  // instead of attaching to the one it was asked for.
+  it('uses a name the caller marks as qualified without the prefix', () => {
+    const factory = createTmuxBackendFactory({
+      sessionPrefix: 'kirby-abc12345-',
+      isQualified: (name) => name.startsWith('kirby-term-'),
+    });
+    factory(spec({ name: 'kirby-term-shell-1a2b3c' }));
+    factory(spec({ name: 'feature-x' }));
+    const nameOf = (i: number) => {
+      const { args } = ptySpawnArgs[i]!;
+      return args[args.indexOf('-s') + 1];
+    };
+    expect(nameOf(0)).toBe('kirby-term-shell-1a2b3c');
+    expect(nameOf(1)).toBe('kirby-abc12345-feature-x');
+  });
+
   it('passes cmd and args after the `--` separator', () => {
     const factory = createTmuxBackendFactory();
     factory(spec({ cmd: '/bin/sh', args: ['-c', 'claude --continue'] }));

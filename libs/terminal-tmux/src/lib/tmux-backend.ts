@@ -65,6 +65,11 @@ export interface TmuxFactoryOptions {
    *  sanitization. Use this for any caller-side namespacing — the lib
    *  treats it as opaque. */
   sessionPrefix?: string;
+  /** Optional. Names this answers true for are used as-is (sanitized,
+   *  not prefixed): the caller composed them in full already, and
+   *  prefixing again would make `-A` create a second session beside
+   *  the one it meant to attach to. */
+  isQualified?: (name: string) => boolean;
 }
 
 /** Build a SessionBackendFactory configured with the caller's prefix.
@@ -76,8 +81,11 @@ export function createTmuxBackendFactory(
   opts?: TmuxFactoryOptions
 ): SessionBackendFactory {
   const prefix = opts?.sessionPrefix ?? '';
+  const isQualified = opts?.isQualified ?? (() => false);
   return (spec: SessionSpec): SessionBackend => {
-    const tmuxName = sanitizeTmuxSessionName(prefix + spec.name);
+    const tmuxName = sanitizeTmuxSessionName(
+      isQualified(spec.name) ? spec.name : prefix + spec.name
+    );
     return new TmuxBackend(spec, tmuxName);
   };
 }

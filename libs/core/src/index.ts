@@ -37,6 +37,7 @@ export * from './lib/plan/plan-types.js';
 
 // ── Session / PTY infrastructure (Node host side) ────────────────
 export * from './lib/session-backend.js';
+export * from './lib/terminal/terminal-name.js';
 export * from './lib/pty-registry.js';
 export {
   attach,

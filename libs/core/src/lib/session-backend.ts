@@ -16,12 +16,19 @@ import {
   sanitizeTmuxSessionName,
   tmuxHasSession,
   tmuxKillSession,
-  tmuxListSessions,
+  tmuxListSessionsDetailed,
+  type TmuxSessionInfo,
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey, readProjectConfig } from '@kirby/vcs-core';
+import type { DiscoveredTerminal } from './discovery/discovery-model.js';
 import { setSessionBackendFactory } from './pty-registry.js';
+import {
+  isQualifiedTmuxName,
+  parseTerminalSessionName,
+} from './terminal/terminal-name.js';
+import { KIRBY_TMUX_PREFIX } from './tmux-namespace.js';
 
 /** Resolve the git toplevel of the repo Kirby is running in, or `null`
  *  when there isn't one (launched outside a working tree, `git` missing
@@ -166,6 +173,9 @@ export function buildSessionBackendFactory(
     }
     return createTmuxBackendFactory({
       sessionPrefix: tmuxPrefixFor(repoRoot),
+      // Terminal-tab sessions (and orphaned worktree sessions being
+      // resumed) arrive under their full tmux name.
+      isQualified: isQualifiedTmuxName,
     });
   }
   return createPtyBackendFactory();
@@ -196,14 +206,19 @@ export function applySessionBackend(config: AppConfig): void {
  *  session name can be tested against it with `startsWith` even though
  *  the full name it was built from may have been rewritten. */
 function tmuxPrefixFor(repoRoot: string): string {
-  return `kirby-${projectKey(repoRoot)}-`;
+  return `${KIRBY_TMUX_PREFIX}${projectKey(repoRoot)}-`;
 }
 
 /** The tmux session name the backend would use for a registry session
  *  name — the same composition buildSessionBackendFactory bakes into
- *  its prefix. */
+ *  its prefix, and the same exemption for names that are complete
+ *  already. */
 function tmuxNameFor(sessionName: string, repoRoot: string): string {
-  return sanitizeTmuxSessionName(tmuxPrefixFor(repoRoot) + sessionName);
+  return sanitizeTmuxSessionName(
+    isQualifiedTmuxName(sessionName)
+      ? sessionName
+      : tmuxPrefixFor(repoRoot) + sessionName
+  );
 }
 
 /** The prefix in force right now, or `null` when tmux is out of the
@@ -223,41 +238,88 @@ function activeTmuxPrefix(
   return root ? tmuxPrefixFor(root) : null;
 }
 
+/** What one `tmux list-sessions` fork says about the sessions Kirby
+ *  cares about. */
+export interface TmuxObservation {
+  /** The subset of the asked-about worktree session names that have a
+   *  live tmux session under this repository's prefix. */
+  persisted: Set<string>;
+  /** Every terminal-tab session on the server, whatever directory or
+   *  repository it belongs to, plus this repository's orphaned worktree
+   *  sessions — see {@link observeTmuxSessions}. */
+  terminals: DiscoveredTerminal[];
+}
+
+const NOTHING: TmuxObservation = { persisted: new Set(), terminals: [] };
+
+/**
+ * One fork, two answers: which worktree sessions survived, and which
+ * terminal sessions exist.
+ *
+ * Worktree isolation falls out of the name rather than being enforced
+ * on top of it: a candidate is composed through the same prefix and
+ * sanitizer the backend spawned with, and only an exact match counts.
+ * Another checkout's agents carry that checkout's hash and a session
+ * the user started for their own reasons carries no prefix at all, so
+ * neither can be matched by construction.
+ *
+ * Terminal sessions are the opposite: they are found by *name shape*
+ * (`kirby-term-<kind>-<id>`) and reported wherever they run, because a
+ * terminal belongs to its directory, not to the repository this scan
+ * happens to be for — one opened in another checkout still has to come
+ * back as a tab. Its directory is tmux's own `session_path`; nothing
+ * is written to disk to remember it.
+ *
+ * A session under this repository's prefix that no worktree answers to
+ * is an orphan — an agent that checked out another branch inside its
+ * worktree renames what the scan looks for, not the session — and is
+ * reported as an agent terminal in its directory, so it surfaces as a
+ * tab instead of running on invisibly. Never throws; an absent tmux
+ * server yields nothing, same as no sessions.
+ */
+export function observeTmuxSessions(
+  config: Pick<AppConfig, 'terminalBackend'>,
+  sessionNames: readonly string[]
+): TmuxObservation {
+  if (resolveTerminalBackend(config) !== 'tmux') return NOTHING;
+  let live: TmuxSessionInfo[];
+  try {
+    live = tmuxListSessionsDetailed();
+  } catch {
+    return NOTHING;
+  }
+  const prefix = activeTmuxPrefix(config);
+  const composed = new Map(
+    prefix
+      ? sessionNames.map((n) => [sanitizeTmuxSessionName(prefix + n), n])
+      : []
+  );
+  const persisted = new Set<string>();
+  const terminals: DiscoveredTerminal[] = [];
+  for (const { name, path } of live) {
+    const term = parseTerminalSessionName(name);
+    if (term) {
+      terminals.push({ name, kind: term.kind, path });
+      continue;
+    }
+    if (!prefix || !name.startsWith(prefix)) continue;
+    const registryName = composed.get(name);
+    if (registryName !== undefined) persisted.add(registryName);
+    else terminals.push({ name, kind: 'agent', path });
+  }
+  return { persisted, terminals };
+}
+
 /**
  * Which of `sessionNames` currently have a live tmux session belonging
- * to this repository.
- *
- * One `tmux list-sessions` fork for the whole set, where
- * {@link isTmuxSessionPersisted} costs one `has-session` fork per name
- * — which is what makes this affordable to run on a timer rather than
- * only at startup.
- *
- * Isolation falls out of the name rather than being enforced on top of
- * it: a candidate is composed through the same prefix and sanitizer the
- * backend spawned with, and only an exact match counts. Another
- * checkout's agents carry that checkout's hash and a session the user
- * started for their own reasons carries no prefix at all, so neither
- * can be matched by construction. Never throws; an absent tmux server
- * yields the empty set, same as no sessions.
+ * to this repository — the worktree half of {@link observeTmuxSessions},
+ * for callers with no terminal tabs (the TUI).
  */
 export function listPersistedTmuxSessions(
   config: Pick<AppConfig, 'terminalBackend'>,
   sessionNames: readonly string[]
 ): Set<string> {
-  const prefix = activeTmuxPrefix(config);
-  if (!prefix) return new Set();
-  let live: string[];
-  try {
-    live = tmuxListSessions();
-  } catch {
-    return new Set();
-  }
-  const ours = new Set(live);
-  const persisted = new Set<string>();
-  for (const name of sessionNames) {
-    if (ours.has(sanitizeTmuxSessionName(prefix + name))) persisted.add(name);
-  }
-  return persisted;
+  return observeTmuxSessions(config, sessionNames).persisted;
 }
 
 /** True when a tmux session for this registry name exists right now,

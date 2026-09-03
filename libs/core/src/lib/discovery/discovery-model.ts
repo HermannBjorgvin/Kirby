@@ -17,6 +17,18 @@ export interface DiscoveredWorktree {
   path: string;
 }
 
+/** One terminal-tab session, as a scan saw it. Identified entirely by
+ *  what tmux holds: the kind is parsed from the name, the directory is
+ *  the session's own `session_path`. */
+export interface DiscoveredTerminal {
+  /** Registry session name — the full tmux name, `kirby-term-<kind>-<id>`
+   *  (or, for an orphaned worktree session, `kirby-<projectKey>-<x>`). */
+  name: string;
+  kind: 'shell' | 'agent';
+  /** Absolute directory the session runs in. */
+  path: string;
+}
+
 /** Everything one scan observed about the world outside this process. */
 export interface DiscoveryScan {
   /** Every worktree git reports under the resolver's directory. */
