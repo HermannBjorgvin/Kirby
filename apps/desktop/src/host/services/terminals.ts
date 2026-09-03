@@ -116,13 +116,9 @@ export function launchTerminal(
 
 /** Reattach to a terminal discovery found in tmux — the restore path,
  *  and the mid-run one. The name and directory are tmux's. */
-export function adoptTerminal(
-  terminal: DiscoveredTerminal,
-  home: string = homedir()
-): void {
+export function adoptTerminal(terminal: DiscoveredTerminal): void {
   start(terminal.name, terminal.kind, terminal.path, {});
   noteRepository(terminal.path);
-  void home;
 }
 
 export function listTerminals(home: string = homedir()): TerminalSummary[] {

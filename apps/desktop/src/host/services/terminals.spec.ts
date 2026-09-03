@@ -168,14 +168,11 @@ describe('adoptTerminal', () => {
   // The restore path: the name and directory come from tmux, and the
   // launch reattaches under exactly that name.
   it('reattaches under the name and in the directory tmux reported', () => {
-    terminals.adoptTerminal(
-      {
-        name: 'kirby-term-shell-1a2b3c',
-        kind: 'shell',
-        path: '/home/dev/notes',
-      },
-      HOME
-    );
+    terminals.adoptTerminal({
+      name: 'kirby-term-shell-1a2b3c',
+      kind: 'shell',
+      path: '/home/dev/notes',
+    });
     expect(state.spawns).toEqual([
       expect.objectContaining({
         name: 'kirby-term-shell-1a2b3c',
@@ -196,14 +193,11 @@ describe('adoptTerminal', () => {
   // forgotten still needs its repository on the list: activating its
   // tab opens that repository.
   it('puts a restored terminal’s repository back on the repo list', () => {
-    terminals.adoptTerminal(
-      {
-        name: 'kirby-term-agent-4d5e6f',
-        kind: 'agent',
-        path: '/home/dev/other',
-      },
-      HOME
-    );
+    terminals.adoptTerminal({
+      name: 'kirby-term-agent-4d5e6f',
+      kind: 'agent',
+      path: '/home/dev/other',
+    });
     expect(state.recents).toEqual(['/home/dev/other']);
     expect(terminals.listTerminals(HOME)[0].repo).toBe('/home/dev/other');
   });
