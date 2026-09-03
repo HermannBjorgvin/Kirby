@@ -23,6 +23,18 @@ const state = vi.hoisted(() => ({
   repoRoots: new Set<string>(),
   recents: [] as string[],
   nextId: 0,
+  // Every path used across this file is a real directory as far as
+  // launchTerminal's cwd check is concerned, unless a test says
+  // otherwise — the check itself is exercised by its own describe
+  // block, with a controlled path list.
+  missingDirs: new Set<string>(),
+}));
+
+vi.mock('node:fs', () => ({
+  statSync: (p: string) => {
+    if (state.missingDirs.has(p)) throw new Error('ENOENT');
+    return { isDirectory: () => true };
+  },
 }));
 
 vi.mock('./repo.js', () => ({
@@ -87,6 +99,7 @@ beforeEach(async () => {
   state.repoRoots = new Set(['/home/dev/kirby', '/home/dev/other']);
   state.recents = [];
   state.nextId = 0;
+  state.missingDirs = new Set();
   vi.resetModules();
   terminals = await import('./terminals.js');
 });
@@ -160,6 +173,27 @@ describe('launchTerminal', () => {
     expect(terminals.terminalBuffer(name)).toEqual({
       data: '$ ls\r\n',
       seq: 2,
+    });
+  });
+
+  // A relative or missing directory otherwise reaches node-pty or the
+  // tmux client, which fail opaquely — `posix_spawnp failed`, or a
+  // client that exits the instant it starts — naming neither the
+  // problem nor which of the two backends hit it.
+  describe('rejects a directory it cannot actually launch into', () => {
+    it('refuses a relative path', () => {
+      expect(() =>
+        terminals.launchTerminal({ kind: 'shell', cwd: 'relative/dir' }, HOME)
+      ).toThrow(/absolute path/);
+      expect(state.spawns).toEqual([]);
+    });
+
+    it('refuses a path that does not exist', () => {
+      state.missingDirs.add('/home/dev/gone');
+      expect(() =>
+        terminals.launchTerminal({ kind: 'shell', cwd: '/home/dev/gone' }, HOME)
+      ).toThrow(/does not exist/);
+      expect(state.spawns).toEqual([]);
     });
   });
 });

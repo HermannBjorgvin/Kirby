@@ -1,4 +1,6 @@
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { isAbsolute } from 'node:path';
 import {
   getSpawnedAt,
   isSessionAlive,
@@ -49,6 +51,30 @@ interface KnownTerminal extends RelayEntry {
 }
 
 const known = new Map<string, KnownTerminal>();
+
+/**
+ * Reject a directory a terminal cannot actually launch into, before it
+ * reaches either backend. Without this an invalid `cwd` (a relative
+ * path — the chooser only ever hands over absolute ones, but the host
+ * is the boundary that must not trust that — or one that does not
+ * exist) surfaces as an opaque `posix_spawnp failed` from node-pty or a
+ * tmux client that exits the instant it starts, neither of which names
+ * the actual problem.
+ */
+function assertLaunchableCwd(cwd: string): void {
+  if (!isAbsolute(cwd)) {
+    throw new Error(`Terminal directory must be an absolute path: ${cwd}`);
+  }
+  let isDir: boolean;
+  try {
+    isDir = statSync(cwd).isDirectory();
+  } catch {
+    isDir = false;
+  }
+  if (!isDir) {
+    throw new Error(`Terminal directory does not exist: ${cwd}`);
+  }
+}
 
 function clampDim(value: number | undefined, fallback: number): number {
   if (!value || !Number.isFinite(value) || value < 2) return fallback;
@@ -106,6 +132,7 @@ export function launchTerminal(
   req: TerminalLaunchRequest,
   home: string = homedir()
 ): TerminalSummary {
+  assertLaunchableCwd(req.cwd);
   const name = newTerminalSessionName(req.kind);
   start(name, req.kind, req.cwd, req);
   noteRepository(req.cwd);
