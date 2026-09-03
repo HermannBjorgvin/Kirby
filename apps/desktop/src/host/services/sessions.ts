@@ -23,7 +23,7 @@ import {
   setSessionBroadcaster,
   type RelayEntry,
 } from './session-relay.js';
-import { terminalBuffer, terminalNames } from './terminals.js';
+import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
   AgentOptionView,
   PlanCheckoutRequest,
@@ -389,13 +389,16 @@ export function resizeSession(name: string, cols: number, rows: number): void {
 }
 
 /** Debounced agent-activity snapshots for every session this host has
- *  launched — the same registry the TUI's sidebar spinner reads. */
+ *  launched — the same registry the TUI's sidebar spinner reads. A
+ *  shell terminal is excluded: it animates on whatever the user types
+ *  (`ls`, a build) with no agent behind it, and the working-agent
+ *  spinner would read that as an agent busy at work. */
 export function getSessionActivity(): Record<
   string,
   ReturnType<typeof activitySnapshot>
 > {
   const out: Record<string, ReturnType<typeof activitySnapshot>> = {};
-  for (const name of [...ownSessionNames(), ...terminalNames()]) {
+  for (const name of [...ownSessionNames(), ...agentTerminalNames()]) {
     out[name] = activitySnapshot(name);
   }
   return out;

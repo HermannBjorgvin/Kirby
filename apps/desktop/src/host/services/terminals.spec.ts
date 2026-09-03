@@ -269,3 +269,26 @@ describe('killTerminal', () => {
     expect(state.killed).toEqual([]);
   });
 });
+
+// getSessionActivity folds this into the same working-agent spinner a
+// worktree agent gets. A shell animates on whatever the user types —
+// `ls`, a build — with no agent behind it, so only the `agent` kind may
+// reach that spinner.
+describe('agentTerminalNames', () => {
+  it('reports agent terminals and leaves shells out', () => {
+    const shell = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/home/dev/notes' },
+      HOME
+    );
+    const agent = terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/other' },
+      HOME
+    );
+    expect(terminals.agentTerminalNames()).toEqual([agent.name]);
+    expect(terminals.agentTerminalNames()).not.toContain(shell.name);
+  });
+
+  it('is empty with no terminals at all', () => {
+    expect(terminals.agentTerminalNames()).toEqual([]);
+  });
+});

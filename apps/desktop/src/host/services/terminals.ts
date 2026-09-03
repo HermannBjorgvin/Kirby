@@ -170,6 +170,16 @@ export function terminalNames(): string[] {
   return [...known.keys()];
 }
 
+/** Terminal names of the `agent` kind only — a shell running whatever
+ *  the user types (`ls`, a build) is not agent activity, and must not
+ *  animate its tab with the working-agent spinner the way a real agent
+ *  does. */
+export function agentTerminalNames(): string[] {
+  return [...known.entries()]
+    .filter(([, entry]) => entry.kind === 'agent')
+    .map(([name]) => name);
+}
+
 export function terminalBuffer(name: string): SessionBuffer | undefined {
   const entry = known.get(name);
   return entry ? relayBuffer(entry) : undefined;
