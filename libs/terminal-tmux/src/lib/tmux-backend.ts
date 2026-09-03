@@ -50,6 +50,16 @@ function sessionEnvFlags(spec: SessionSpec): string[] {
   return [...vars].flatMap(([key, value]) => ['-e', `${key}=${value}`]);
 }
 
+/** The command half of `new-session`'s argv. An empty `cmd` is the
+ *  SessionSpec contract for "the backend's default shell": tmux does
+ *  that by itself when no command follows the flags, so nothing is
+ *  appended — a trailing `--` with an empty word would ask it to exec
+ *  "" and fail instead. */
+function sessionCommand(spec: SessionSpec): string[] {
+  if (spec.cmd === '') return [];
+  return ['--', spec.cmd, ...spec.args];
+}
+
 export interface TmuxFactoryOptions {
   /** Optional. Prepended to spec.name (with no separator) before tmux
    *  sanitization. Use this for any caller-side namespacing — the lib
@@ -113,9 +123,7 @@ class TmuxBackend implements SessionBackend {
         '-y',
         String(spec.rows),
         ...sessionEnvFlags(spec),
-        '--',
-        spec.cmd,
-        ...spec.args,
+        ...sessionCommand(spec),
       ],
       { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: clientEnv }
     );

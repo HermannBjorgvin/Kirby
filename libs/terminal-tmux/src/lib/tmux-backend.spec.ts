@@ -142,6 +142,20 @@ describe('createTmuxBackendFactory', () => {
     expect(args.slice(sep + 1)).toEqual(['/bin/sh', '-c', 'claude --continue']);
   });
 
+  // A terminal tab wants whatever the user's shell is, and tmux already
+  // knows: `new-session` with no command runs its `default-shell`. So an
+  // empty `cmd` must end the argv at the flags — appending `--` and an
+  // empty string would ask tmux to exec "" and fail on the spot.
+  it('runs tmux\'s default shell when cmd is empty, with no `--` at all', () => {
+    const factory = createTmuxBackendFactory();
+    factory(spec({ cmd: '', args: [] }));
+    const { args } = ptySpawnArgs[0]!;
+    expect(args).not.toContain('--');
+    expect(args).not.toContain('');
+    // The argv ends at the size flags — nothing follows `-y <rows>`.
+    expect(args.slice(-2)).toEqual(['-y', '30']);
+  });
+
   it('passes cwd, cols, rows to the local PTY for sizing', () => {
     const factory = createTmuxBackendFactory();
     factory(spec({ cols: 120, rows: 40 }));
