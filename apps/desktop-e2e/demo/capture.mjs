@@ -6,7 +6,7 @@
  * downscales to palette-optimized GIFs. Stills come from Playwright
  * screenshots at the same 2x scale.
  *
- *   node apps/desktop-e2e/demo/capture.mjs [hero|worktrees|review|plan|all]
+ *   node apps/desktop-e2e/demo/capture.mjs [hero|worktrees|review|plan|babysit|all]
  *
  * Requires `nx build desktop` first, plus Xvfb and ffmpeg on PATH.
  * Output lands in docs/media/.
@@ -108,9 +108,15 @@ function grabDisplay(out) {
   ]);
 }
 
+/**
+ * `crop` is a region of the 2x display, `{ x, y, width, height }` in
+ * device pixels, for a take about one corner of the window: cropping
+ * before the downscale is what lets a sidebar row read at README size,
+ * where the whole window shrinks its text past legibility.
+ */
 function toGif(
   name,
-  { width = 960, fps = 12, colors = 0, start = 0, end } = {}
+  { width = 960, fps = 12, colors = 0, start = 0, end, crop } = {}
 ) {
   const src = join(RAW, `${name}.mkv`);
   const gif = join(MEDIA, `${name}.gif`);
@@ -121,7 +127,10 @@ function toGif(
   // Capping the palette is worth a lot on a terminal, which uses a
   // handful of colours and would otherwise pay for a full 256 of them.
   const cap = colors ? `:max_colors=${colors}` : '';
-  const filters = `fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff${cap}[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
+  const cut = crop
+    ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},`
+    : '';
+  const filters = `fps=${fps},${cut}scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff${cap}[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
   const res = spawnSync(
     'ffmpeg',
     ['-y', '-loglevel', 'error', ...trim, '-i', src, '-vf', filters, gif],
@@ -133,7 +142,10 @@ function toGif(
 
 // ── App ──────────────────────────────────────────────────────────
 
-async function launchApp(scenario, { theme = 'dark' } = {}) {
+async function launchApp(
+  scenario,
+  { theme = 'dark', env = {}, size = DIP } = {}
+) {
   const parentEnv = { ...process.env };
   delete parentEnv.WAYLAND_DISPLAY;
   delete parentEnv.EDITOR;
@@ -173,6 +185,7 @@ async function launchApp(scenario, { theme = 'dark' } = {}) {
       KIRBY_START_DIR: scenario.repo,
       KIRBY_DESKTOP_VERSION: '1.0.0',
       ...scenario.env,
+      ...env,
       // Last, and not negotiable — see the note in the e2e fixture.
       TMUX_TMPDIR: scenario.home,
     },
@@ -187,7 +200,7 @@ async function launchApp(scenario, { theme = 'dark' } = {}) {
     win.webContents.setBackgroundThrottling(false);
     win.show();
     win.focus();
-  }, DIP);
+  }, size);
   await page.waitForLoadState('domcontentloaded');
   await page
     .getByRole('button', { name: 'New worktree', exact: true })
@@ -760,6 +773,116 @@ async function demoPlan(scenario) {
   toGif('plan');
 }
 
+/**
+ * Let the next native context menu open for real, then choose `label`.
+ *
+ * The e2e suite intercepts `Menu.popup` so the menu never appears; a
+ * recording wants the opposite. The patched popup shows the real menu
+ * through the original, and after a beat fires the item's click and
+ * closes it — `popupContextMenu` in main.ts reads its result from the
+ * click and resolves on close, in that order, so the renderer sees a
+ * genuine selection.
+ */
+async function chooseFromNextContextMenu(
+  app,
+  label,
+  { after = 1500, at } = {}
+) {
+  await app.evaluate(
+    ({ Menu }, { wanted, after, at }) => {
+      const proto = Menu.prototype;
+      const original = proto.popup;
+      proto.popup = function patched(opts) {
+        proto.popup = original; // one-shot
+        const item = this.items.find((i) => i.label === wanted);
+        if (!item) {
+          const labels = this.items.map((i) => i.label).join(', ');
+          throw new Error(
+            `Context menu has no item "${wanted}". Items: ${labels}`
+          );
+        }
+        // Playwright's pointer is synthetic and never moves the X
+        // cursor, so left to itself the menu pops wherever that is.
+        // Pin it to where the click was made.
+        const placed = at
+          ? { ...opts, x: Math.round(at.x), y: Math.round(at.y) }
+          : opts;
+        original.call(this, placed);
+        setTimeout(() => {
+          item.click();
+          this.closePopup(opts?.window);
+        }, after);
+      };
+    },
+    { wanted: label, after, at }
+  );
+}
+
+/**
+ * Babysitting: a pull request with a red build and an open review
+ * thread, watched from the sidebar. The cadence is shortened through
+ * the environment (the real debounce is ten minutes), so the update
+ * lands within the take: no agent is running on the branch, so one is
+ * started in a fresh worktree with the update as its opening prompt.
+ * Cropped to the sidebar and the top of the pane, so the row's badge
+ * and the prompt are legible at README size.
+ */
+async function demoBabysit(scenario) {
+  // A smaller window than the other takes, cropped to exactly its
+  // bounds: the GIF then shrinks it by half rather than by almost
+  // two thirds, which is what keeps the row's badge and the prompt
+  // readable at README width.
+  const size = { width: 1060, height: 640 };
+  const { app, page } = await launchApp(scenario, {
+    size,
+    env: { KIRBY_BABYSIT_DEBOUNCE_MS: '3500', KIRBY_BABYSIT_POLL_MS: '1500' },
+  });
+  await installCursor(page);
+  await sleep(600);
+  const rec = startRecording('babysit');
+  await sleep(700);
+
+  const row = page
+    .locator('aside')
+    .getByRole('button', { name: /Retry transient/ });
+  await glide(page, row, { dwell: 700 });
+  const box = await row.boundingBox();
+  await chooseFromNextContextMenu(app, 'Babysit pull request', {
+    after: 1600,
+    at: { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  });
+  await row.click({ button: 'right' });
+  const badge = row.getByText(/babysitting|update pending/);
+  await badge.waitFor({ state: 'visible', timeout: 15_000 });
+  await glide(page, badge, { dwell: 1800 });
+  // Somewhere harmless: the empty part of the sidebar, well away from
+  // the terminal the take is about to show and from the toasts.
+  const rest = () =>
+    page.mouse.move(size.width * 0.14, size.height * 0.8, { steps: 20 });
+  await rest();
+
+  // The babysitter starts an agent and its tab opens. Fold the review
+  // rail away before the agent prints, so the update gets the width.
+  const hideRail = page.getByRole('button', { name: 'Hide review sidebar' });
+  await hideRail.waitFor({ state: 'visible', timeout: 40_000 });
+  await hideRail.click();
+  await rest();
+  await page
+    .getByText('Status update for PR #124')
+    .filter({ visible: true })
+    .first()
+    .waitFor({ state: 'visible', timeout: 40_000 });
+  await sleep(9500);
+
+  await rec.stop();
+  await app.close();
+  toGif('babysit', {
+    fps: 10,
+    colors: 128,
+    crop: { x: 0, y: 0, width: size.width * 2, height: size.height * 2 },
+  });
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 
 const which = process.argv[2] ?? 'all';
@@ -779,6 +902,7 @@ const demos = {
   review: demoReview,
   'review-in-place': demoReviewInPlace,
   plan: demoPlan,
+  babysit: demoBabysit,
   tui: demoTui,
 };
 const picked =

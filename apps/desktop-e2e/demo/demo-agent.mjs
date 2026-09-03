@@ -62,6 +62,29 @@ const PLAN_STEPS = [
   [200, dim('  Done. 2 review comments resolved — ready for another look.')],
 ];
 
+/** What the agent does with a babysitter's status update. */
+const BABYSIT_STEPS = [
+  [
+    900,
+    `  ${cyan('→')} Reading the failed check ${dim('· ci / test (node 22)')}`,
+  ],
+  [
+    1500,
+    dim('    retry.test.ts: "gives up after N attempts" — timer never fires'),
+  ],
+  [1100, `  ${cyan('→')} Reading ${bold('src/retry.ts')}`],
+  [1300, `  ${yellow('✎')} Editing ${bold('src/retry.ts')} ${dim('+3 −1')}`],
+  [1200, `  ${cyan('$')} npm test ${dim('— 43 passing')}`],
+  [1000, `  ${cyan('$')} git push ${dim('· retry-backoff')}`],
+  [
+    800,
+    `  ${green('✓')} Capped the backoff and pushed a fix; CI is re-running`,
+  ],
+  [400, `  ${green('✓')} Replied on the review thread`],
+  [500, ''],
+  [200, dim('  Done. Will pick up the next update when it lands.')],
+];
+
 const BLANK_STEPS = [
   [700, `  ${cyan('→')} Reading ${bold('package.json')}`],
   [1100, `  ${cyan('→')} Scanning ${bold('src/')} ${dim('· 6 files')}`],
@@ -70,10 +93,14 @@ const BLANK_STEPS = [
 ];
 
 const seed = process.env.KIRBY_SEED_PROMPT;
+// A babysitter starts this agent in a pane that is still being laid
+// out; a beat before the first line lets the terminal take its final
+// width, so the update is not wrapped for a pane that no longer exists.
+if (seed?.startsWith('Status update')) await sleep(1500);
 banner();
 if (seed) {
   showPrompt(seed);
-  await work(PLAN_STEPS);
+  await work(seed.startsWith('Status update') ? BABYSIT_STEPS : PLAN_STEPS);
 } else {
   await work(BLANK_STEPS);
 }

@@ -404,7 +404,20 @@ function github() {
         rollup: 'FAILURE',
         body: 'Exponential backoff around the transient failures.',
         reviews: [{ author: 'marcusv', state: 'APPROVED' }],
-        threads: [],
+        threads: [
+          {
+            id: 'T-cap',
+            path: 'src/retry.ts',
+            line: 7,
+            comments: [
+              {
+                author: 'marcusv',
+                body: 'Unbounded: at times=10 this sleeps for 100s. Cap the delay somewhere sane.',
+                createdAt: hoursAgo(1),
+              },
+            ],
+          },
+        ],
       },
       {
         number: 119,

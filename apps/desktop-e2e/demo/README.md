@@ -16,13 +16,14 @@ Needs `Xvfb` and `ffmpeg` on `PATH` (`sudo apt install xvfb ffmpeg`), and
 Pillow for the slider. Nothing else: no network, no GitHub token, no real
 agent.
 
-| demo        | what it records                                                                 |
-| ----------- | ------------------------------------------------------------------------------- |
-| `hero`      | `hero.png` + `hero-light.png` — stills, both themes                             |
-| `worktrees` | the sidebar's CI/review status, then creating a worktree and launching an agent |
-| `review`    | walking the agent's draft comments and posting one                              |
-| `plan`      | queueing comments, annotating one, sending the plan to an agent                 |
-| `tui`       | the terminal UI: sidebar, changed files, diff with threads inline               |
+| demo        | what it records                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `hero`      | `hero.png` + `hero-light.png` — stills, both themes                                                         |
+| `worktrees` | the sidebar's CI/review status, then creating a worktree and launching an agent                             |
+| `review`    | walking the agent's draft comments and posting one                                                          |
+| `plan`      | queueing comments, annotating one, sending the plan to an agent                                             |
+| `babysit`   | babysitting a red pull request: the row's badge, then the update reaching an agent — cropped to the sidebar |
+| `tui`       | the terminal UI: sidebar, changed files, diff with threads inline                                           |
 
 `theme.gif` is built separately by `theme-slider.py`, from the two
 `hero` stills — so re-run `hero` before it if the UI has moved.

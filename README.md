@@ -55,6 +55,12 @@ This is the feature that needs the CLI installed alongside the desktop app.
 
 The other direction: on a PR you're resolving, add the comments you want to address to a plan, like a shopping cart. Annotate any with a note on how you want it handled, then check out — the whole thing goes to an agent as one task, and you can read the exact prompt first.
 
+### Babysit a pull request
+
+![Right-clicking a pull request with a failing build and choosing Babysit, the row's badge changing to update pending, then an agent starting in the branch's worktree with the CI failure and the open review thread as its prompt](docs/media/babysit.gif)
+
+Right-click a pull request and choose **Babysit**. Kirby watches its CI, unresolved review threads and conflicts against the target branch, and once the news has settled (ten minutes of quiet, thirty at most) and the agent is idle, it types one update into the agent's session: the verdict, the conflicts, and each new thread named by its id. No agent on the branch? One is started in the worktree with the update as its opening prompt. The row's badge says what the babysitter is doing and why an update is being held.
+
 ### Review in place
 
 ![A pull request's overview with its description and approve buttons, then the diff in split and unified views, replying to a reviewer's thread and resolving it](docs/media/review-in-place.gif)
