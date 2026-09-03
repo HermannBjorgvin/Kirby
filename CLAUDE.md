@@ -718,24 +718,38 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   every minute and briefs the agent in one message. Three rules are
   load-bearing and each has a test in `babysit-model.spec.ts`:
   the baseline is **what the agent was told**, not what was last seen
-  (a thread that gained a reply is news again; a first green build on
-  its own is not, but green after a reported red is; a thread whose
-  newest comment is the user's own — which is how the agent posts — is
-  not); a pending update is sent after ten minutes of **quiet**, or
-  thirty minutes at most, so a reviewer's burst of comments is one
-  interruption; and it is sent **only while the agent is idle**
-  (`snapshot(name).active`), typed into the session like a plan, or as
-  the opening prompt of a session started in the worktree when none is
-  running. Starting to babysit a pull request that already needs work
-  therefore sends its first update within ten minutes. Conflicts are
-  counted with `countRemoteConflicts`, which fetches both refs and
-  compares the remote tracking branches — the local branch may not be
-  where the author pushed to. The desktop keeps babysitters per
-  repository in memory (`host/services/babysit.ts`), sits one out while
-  another repository is open rather than tearing it down, and reads the
-  pull request from the sidebar's own cache so a watched row costs the
-  provider nothing extra. `KIRBY_BABYSIT_DEBOUNCE_MS` /
-  `KIRBY_BABYSIT_POLL_MS` shorten the cadence for `babysit.test.ts`,
+  (a thread that gained a reply is news again; a verdict on a new
+  `headSha` is a new verdict even when it reads the same, so a second
+  red after the agent pushed is reported; a first green build on its
+  own is not, but green after a reported red is; a thread whose newest
+  comment is the user's own — the agent posting as the user, or the
+  user answering by hand — is not relayed; a conflict check that could
+  not run says so in the prompt and is never news); a pending update is
+  sent after ten minutes of **quiet**, or thirty minutes at most, so a
+  reviewer's burst of comments is one interruption; and it is sent
+  **only while the agent has been silent for thirty seconds**
+  (`idleFor(name)` — the sidebar spinner's two-second idle is shorter
+  than a tool call), typed into the session like a plan, or as the
+  opening prompt of a session started with `seed` (never
+  `continue-or-seed`, which drops the prompt whenever there is a
+  conversation to continue) in the worktree when none is running. That
+  spawn happens only for the user's **own** pull request and only when
+  the branch resolves locally or on origin; otherwise the update is
+  held and the badge says why. A held or failed delivery leaves the
+  baseline alone. Starting to babysit a pull request that already needs
+  work therefore sends its first update within ten minutes. The
+  expensive half — the provider's thread list and a `git fetch` of both
+  refs — runs every five minutes or when the cached list shows the
+  unresolved count or the head moved; the merge check
+  (`countConflictsBetween` on the remote tracking refs, since the local
+  branch may not be where the author pushed) runs every poll. The
+  desktop keeps babysitters per repository in memory
+  (`host/services/babysit.ts`), sits one out while another repository
+  is open rather than tearing it down, honours the foreign-session
+  guard through `isForeignSession`, and reads the pull request from
+  the sidebar's own cache (`lookupPullRequest`, which distinguishes
+  "gone" from "the provider could not say"). `KIRBY_BABYSIT_DEBOUNCE_MS`
+  / `KIRBY_BABYSIT_POLL_MS` shorten the cadence for `babysit.test.ts`,
   which asserts on the prompt the fake agent was actually started with.
   The TUI does not offer it yet; the watcher takes no shell-specific
   dependency, so wiring it is a menu entry and a `paneSize`.

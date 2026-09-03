@@ -11,6 +11,7 @@ import {
   type SessionDataEvent,
   type SessionExitEvent,
   type SyncNoticeEvent,
+  type BabysitChangedEvent,
 } from '../host/contract.js';
 
 /**
@@ -126,7 +127,7 @@ const api: KirbyHostApi = {
   stopBabysit: (prId) => ipcRenderer.invoke(IPC.stopBabysit, prId),
   listBabysat: () => ipcRenderer.invoke(IPC.listBabysat),
   onBabysitChanged: (cb) => {
-    const listener = () => cb();
+    const listener = (_e: unknown, payload: BabysitChangedEvent) => cb(payload);
     ipcRenderer.on(BABYSIT_EVENTS.changed, listener);
     return () => ipcRenderer.removeListener(BABYSIT_EVENTS.changed, listener);
   },

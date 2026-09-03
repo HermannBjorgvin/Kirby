@@ -6,42 +6,57 @@ import type { BabysitReport, BabysitThread } from './babysit-model.js';
 // The message typed into the agent's session when a babysat pull
 // request has news. Same conventions as the plan prompt: every thread
 // is numbered and carries the provider's own id, so the agent can
-// reply to or resolve the conversation it fixed, and the file:line it
-// was left on.
+// answer the conversation it fixed, and the file:line it was left on.
 
 type PromptPr = Pick<
   PullRequestInfo,
   'id' | 'title' | 'sourceBranch' | 'targetBranch'
 >;
 
-function ciLine(
-  status: BuildStatusState | undefined,
-  changed: boolean
-): string {
-  const now = changed ? ' (changed since you were last told)' : '';
+function verdictWord(status: BuildStatusState | undefined): string {
   switch (status) {
     case 'failed':
-      return `CI: failed${now}. Find out why and fix it.`;
+      return 'failed';
     case 'succeeded':
-      return `CI: passed${now}.`;
+      return 'passed';
     case 'pending':
-      return 'CI: running.';
-    case 'none':
-    case undefined:
-      return 'CI: no checks reported.';
+      return 'running';
     default:
-      return `CI: ${String(status)}.`;
+      return 'no checks reported';
+  }
+}
+
+function ciLine(report: BabysitReport): string {
+  const { buildStatus, lastToldBuildStatus, ciChanged } = report;
+  const changed = ciChanged ? ' (new verdict since you were last told)' : '';
+  switch (buildStatus) {
+    case 'failed':
+      return `CI: failed${changed}. Find out why and fix it.`;
+    case 'succeeded':
+      return `CI: passed${changed}.`;
+    case 'pending':
+      return lastToldBuildStatus === 'failed'
+        ? 'CI: running; the last verdict you were told was failed.'
+        : 'CI: running.';
+    default:
+      return `CI: ${verdictWord(buildStatus)}.`;
   }
 }
 
 function conflictLine(report: BabysitReport, targetBranch: string): string {
-  if (report.conflictCount === 0) {
-    return `Conflicts: none against the latest ${targetBranch}.`;
+  const { conflictCount } = report;
+  if (conflictCount === null) {
+    return (
+      `Conflicts: could not be checked this time (fetching origin/` +
+      `${targetBranch} and the branch failed); check for yourself.`
+    );
   }
-  const files =
-    report.conflictCount === 1 ? 'file conflicts' : 'files conflict';
+  if (conflictCount === 0) {
+    return `Conflicts: none against the latest origin/${targetBranch}.`;
+  }
+  const files = conflictCount === 1 ? 'file conflicts' : 'files conflict';
   return (
-    `Conflicts: ${report.conflictCount} ${files} with the latest ` +
+    `Conflicts: ${conflictCount} ${files} with the latest ` +
     `origin/${targetBranch}. Merge or rebase onto it and resolve them.`
   );
 }
@@ -69,21 +84,23 @@ export function composeBabysitPrompt(
     `Status update for PR #${pr.id} ("${pr.title || pr.sourceBranch}", ` +
       `${pr.sourceBranch} → ${pr.targetBranch}):`,
     '',
-    ciLine(report.buildStatus, report.ciChanged),
+    ciLine(report),
     conflictLine(report, pr.targetBranch),
   ];
   if (report.newThreads.length > 0) {
     parts.push(
       '',
-      'Unresolved review comments you have not been told about:',
+      'Unresolved review threads that are new or have new comments since ' +
+        'you were last told:',
       '',
       ...report.newThreads.map(threadBlock)
     );
   }
   parts.push(
     '',
-    'Address whatever needs addressing, push your changes, and reply to ' +
-      'or resolve the threads you handled.'
+    'Address whatever needs addressing and push your changes. Each thread ' +
+      'above is named by the id its provider uses, so you can answer the ' +
+      'ones you handled.'
   );
   return parts.join('\n');
 }

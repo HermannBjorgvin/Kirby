@@ -139,13 +139,18 @@ export async function fastForwardMainBranch(): Promise<boolean> {
   }
 }
 
-/** Files that `git merge-tree --write-tree base head` reports as
- *  conflicting: zero on a clean merge, null when git failed for some
- *  other reason than a conflict. */
-async function mergeTreeConflicts(
+/**
+ * Files that `git merge-tree --write-tree base head` reports as
+ * conflicting: zero on a clean merge, null when git failed for some
+ * other reason than a conflict — "could not check" and "no conflicts"
+ * are different answers. Git 2.38+.
+ */
+export async function countConflictsBetween(
   base: string,
   head: string
 ): Promise<number | null> {
+  assertShellSafeRef(base, 'base ref');
+  assertShellSafeRef(head, 'head ref');
   try {
     await exec(`git merge-tree --write-tree ${base} "${head}"`, {
       encoding: 'utf8',
@@ -165,36 +170,38 @@ async function mergeTreeConflicts(
 
 /**
  * Count conflicting files between a branch and origin's main branch.
- * Uses `git merge-tree --write-tree` (Git 2.38+).
  * Returns 0 if no conflicts.
  */
 export async function countConflicts(branch: string): Promise<number> {
-  assertShellSafeRef(branch);
   const main = await getMainBranch();
-  return (await mergeTreeConflicts(`origin/${main}`, branch)) ?? 0;
+  return (await countConflictsBetween(`origin/${main}`, branch)) ?? 0;
 }
 
-/**
- * Count conflicting files between a branch and its target as the
- * remote has them *now*: both refs are fetched first, and the remote
- * tracking refs are compared rather than local branches, since the
- * branch under review may have been pushed to from anywhere. Null when
- * the fetch or the merge failed for a reason other than a conflict —
- * "could not check" and "no conflicts" are different answers.
- */
-export async function countRemoteConflicts(
-  branch: string,
-  target: string
-): Promise<number | null> {
-  assertShellSafeRef(branch);
-  assertShellSafeRef(target, 'target branch');
+/** Fetch these branches from origin, so their tracking refs are what
+ *  the remote has now. False when the fetch failed — a branch that
+ *  lives on a fork, or a remote whose refspec excludes it. */
+export async function fetchBranches(branches: string[]): Promise<boolean> {
+  for (const branch of branches) assertShellSafeRef(branch);
   try {
-    await exec(`git fetch origin ${target} ${branch}`, { encoding: 'utf8' });
+    await exec(`git fetch origin ${branches.join(' ')}`, { encoding: 'utf8' });
+    return true;
   } catch (e) {
-    log('error', 'countRemoteConflicts', 'git fetch failed', e);
-    return null;
+    log('error', 'fetchBranches', 'git fetch failed', e);
+    return false;
   }
-  return mergeTreeConflicts(`origin/${target}`, `origin/${branch}`);
+}
+
+/** Whether `ref` names something git can resolve here. */
+export async function refExists(ref: string): Promise<boolean> {
+  assertShellSafeRef(ref, 'ref');
+  try {
+    await exec(`git rev-parse --verify --quiet "${ref}^{commit}"`, {
+      encoding: 'utf8',
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Delete a local git branch. Returns true on success, false on failure. */

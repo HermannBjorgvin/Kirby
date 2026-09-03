@@ -191,7 +191,12 @@ function WorkspaceInner({
 
   // A babysat pull request's status is served from the cache as well.
   useEffect(() => {
-    const off = window.kirby.onBabysitChanged(() => {
+    const off = window.kirby.onBabysitChanged((event) => {
+      if (event.ended) {
+        toast.info(
+          `Stopped babysitting #${event.ended.prId}: the pull request is no longer open`
+        );
+      }
       void qc.invalidateQueries({ queryKey: keys.babysat(repo.cwd) });
       // A delivery may have started an agent, which is a sidebar row.
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });

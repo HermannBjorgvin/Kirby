@@ -86,6 +86,11 @@ test.describe('Babysitting a pull request', () => {
       visibleText(page, /seed:Status update for PR #42/)
     ).toBeVisible({ timeout: 30_000 });
     await expect(visibleText(page, /seed:CI: failed/)).toBeVisible();
+    // The fixture repo has no origin, so the merge check cannot run —
+    // and the prompt must say so rather than claim there are none.
+    await expect(
+      visibleText(page, /seed:Conflicts: could not be checked/)
+    ).toBeVisible();
     await expect(visibleText(page, /seed:.*\(thread T2\)/)).toBeVisible();
     await expect(
       visibleText(page, new RegExp(`seed:.*${NAMING}`))

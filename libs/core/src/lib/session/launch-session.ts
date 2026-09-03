@@ -1,5 +1,6 @@
 import type { AppConfig } from '@kirby/vcs-core';
 import { spawnSession, getSession, type PtyEntry } from '../pty-registry.js';
+import { noteInput } from '../activity.js';
 import {
   resolveAgent,
   type AgentDefinition,
@@ -127,6 +128,8 @@ export function launchSession(params: LaunchSessionParams): PtyEntry {
 export function deliverToRunningSession(name: string, prompt: string): boolean {
   const entry = getSession(name);
   if (!entry || entry.exited) return false;
+  // The terminal echoes what is typed; that is not the agent working.
+  noteInput(name);
   entry.pty.write(prompt + '\r');
   return true;
 }

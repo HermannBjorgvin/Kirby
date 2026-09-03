@@ -19,10 +19,15 @@ import {
   type BabysitStatus,
   type PrBabysitter,
 } from '@kirby/core';
+import type { BabysitChangedEvent } from '../contract.js';
 import { readConfig } from '@kirby/vcs-core';
 import { activeRepoIs, requireRepo } from './repo.js';
-import { adoptSpawnedSession, defaultPaneSize } from './sessions.js';
-import { findPullRequest, repoProvider } from './sidebar.js';
+import {
+  adoptSpawnedSession,
+  defaultPaneSize,
+  isForeignSession,
+} from './sessions.js';
+import { lookupPullRequest, repoProvider } from './sidebar.js';
 
 interface Sitter {
   handle: PrBabysitter;
@@ -34,9 +39,11 @@ const sitters = new Map<string, Map<number, Sitter>>();
 
 // Installed by main.ts. Fires when a status the renderer may be
 // showing has moved.
-let changed: (() => void) | null = null;
+let changed: ((event: BabysitChangedEvent) => void) | null = null;
 
-export function setBabysitNotifier(fn: (() => void) | null): void {
+export function setBabysitNotifier(
+  fn: ((event: BabysitChangedEvent) => void) | null
+): void {
   changed = fn;
 }
 
@@ -78,26 +85,36 @@ export async function startBabysit(prId: number): Promise<BabysitStatus> {
   const cwd = requireRepo();
   const existing = forRepo(cwd).get(prId);
   if (existing) return existing.handle.status();
-  const pr = await findPullRequest(cwd, prId);
-  if (!pr) throw new Error(`Pull request #${prId} is not in the sidebar`);
+  const lookup = await lookupPullRequest(cwd, prId);
+  if (lookup.kind !== 'found') {
+    throw new Error(`Pull request #${prId} is not in the sidebar`);
+  }
+  const { pr } = lookup;
   const handle = startPrBabysitter({
     pr,
     provider: repoProvider(cwd),
     getConfig: () => readConfig(cwd),
-    readPullRequest: () => findPullRequest(cwd, prId),
+    readPullRequest: () => lookupPullRequest(cwd, prId),
     paneSize: defaultPaneSize,
     onSpawned: (name) => adoptSpawnedSession(name, pr.sourceBranch),
+    isForeignSession,
     onStatus: (status) => {
       // A babysitter that ended (the pull request merged or closed)
-      // leaves the list, so the row stops offering to stop it.
-      if (status.phase === 'ended') forRepo(cwd).delete(prId);
-      changed?.();
+      // leaves the list, so the row stops offering to stop it — and
+      // the renderer is told which one, since the row it was on is
+      // usually gone with it.
+      if (status.phase === 'ended') {
+        forRepo(cwd).delete(prId);
+        changed?.({ ended: { prId, sourceBranch: pr.sourceBranch } });
+        return;
+      }
+      changed?.({});
     },
     isCurrent: () => activeRepoIs(cwd),
     ...timingFromEnv(),
   });
   forRepo(cwd).set(prId, { handle, sourceBranch: pr.sourceBranch });
-  changed?.();
+  changed?.({});
   return handle.status();
 }
 
@@ -108,7 +125,7 @@ export function stopBabysit(prId: number): void {
   if (!sitter) return;
   sitter.handle.stop();
   byId.delete(prId);
-  changed?.();
+  changed?.({});
 }
 
 /** The babysitters of the open repository. */

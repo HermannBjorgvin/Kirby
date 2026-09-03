@@ -12,34 +12,49 @@
  * `babysit-model.ts`'s. This file owns the loop: polling, the git and
  * provider calls that make an observation, and delivery through the
  * same paths every other prompt takes — typed into a live session, or
- * a session started in the pull request's worktree when there is none.
- * Both shells drive it; the desktop adds only its session bookkeeping.
+ * as the opening prompt of a session started in the pull request's
+ * worktree when there is none. Both shells drive it; the desktop adds
+ * only its session bookkeeping.
+ *
+ * Two of the guards here are the desktop's, honoured through options
+ * rather than reimplemented: the session registry is keyed by bare
+ * branch name, so a live session under this name may belong to another
+ * repository (`isForeignSession`), and the open repository can change
+ * between two awaits of one poll (`isCurrent`), after which every git
+ * call would run against the wrong checkout.
  */
 import { logError } from '@kirby/logger';
 import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
 import {
   branchToSessionName,
-  countRemoteConflicts,
   createWorktree,
+  refExists,
 } from '@kirby/worktree-manager';
-import { snapshot } from '../activity.js';
+import { idleFor } from '../activity.js';
 import { isSessionAlive } from '../pty-registry.js';
 import {
   deliverToRunningSession,
   launchSession,
 } from '../session/launch-session.js';
 import {
+  BABYSIT_IDLE_MS,
   BABYSIT_POLL_MS,
   initialBabysitState,
   isDue,
   observe,
-  observeThread,
   takeReport,
-  type BabysitObservation,
   type BabysitState,
   type DeliveryTiming,
 } from './babysit-model.js';
+import { observePullRequest, type RemoteSnapshot } from './babysit-observe.js';
 import { composeBabysitPrompt } from './babysit-prompt.js';
+
+/** Why a due update has not gone out. */
+export type BabysitHold =
+  | 'agent-busy'
+  | 'no-agent'
+  | 'foreign-session'
+  | 'branch-unavailable';
 
 export interface BabysitStatus {
   prId: number;
@@ -47,6 +62,8 @@ export interface BabysitStatus {
   /** `pending`: an update is waiting to be sent. `ended`: the pull
    *  request is gone (merged or closed) and watching has stopped. */
   phase: 'watching' | 'pending' | 'ended';
+  /** Set while a due update is being withheld, and why. */
+  held: BabysitHold | null;
   lastPolledAt: number | null;
   pendingSince: number | null;
   lastDeliveredAt: number | null;
@@ -54,21 +71,31 @@ export interface BabysitStatus {
   lastError: string | null;
 }
 
+/** The pull request as the provider has it now. `gone` is a merged or
+ *  closed pull request; `unknown` is a provider that could not answer,
+ *  which is not the same thing and must not end the watch. */
+export type PullRequestLookup =
+  | { kind: 'found'; pr: PullRequestInfo }
+  | { kind: 'gone' }
+  | { kind: 'unknown'; reason: string };
+
 export interface PrBabysitterOptions {
   pr: PullRequestInfo;
   provider: VcsProvider | null;
   /** Read per poll, so a credential change takes effect. */
   getConfig: () => AppConfig;
-  /** The pull request as the provider has it now, or null once it is
-   *  merged or closed — at which point there is nothing left to watch. */
-  readPullRequest: () => Promise<PullRequestInfo | null>;
+  readPullRequest: () => Promise<PullRequestLookup>;
   /** Grid for an agent started because none was running. */
   paneSize: () => { cols: number; rows: number };
   /** A session was started in `cwd` to receive the update. The
    *  desktop attaches its output relay here. */
   onSpawned?: (name: string, cwd: string) => void;
+  /** A live session under this name belongs to another repository. */
+  isForeignSession?: (name: string) => boolean;
   onStatus: (status: BabysitStatus) => void;
   intervalMs?: number;
+  remoteRefreshMs?: number;
+  idleMs?: number;
   timing?: DeliveryTiming;
   /** Returning false skips a tick — the desktop can have another
    *  repository open, and this one's branch names mean nothing there. */
@@ -85,63 +112,104 @@ export interface PrBabysitter {
   stop(): void;
 }
 
-type DeliveryOutcome = 'injected' | 'spawned' | 'busy' | 'failed';
+type Delivery =
+  | { outcome: 'injected' | 'spawned' }
+  | { outcome: 'held'; held: BabysitHold }
+  | { outcome: 'failed'; error: string };
 
-/** One poll's worth of facts about the pull request. */
-export async function observePullRequest(
-  pr: PullRequestInfo,
-  provider: VcsProvider | null,
-  config: AppConfig
-): Promise<BabysitObservation> {
-  const isOwn = (author: string) =>
-    provider?.matchesUser(author, config) ?? false;
-  const comments = provider?.fetchCommentThreads
-    ? await provider.fetchCommentThreads(
-        config.vendorAuth,
-        config.vendorProject,
-        pr.id
-      )
-    : { threads: [], generalComments: [] };
-  const threads = [...comments.threads, ...comments.generalComments]
-    .filter((t) => !t.isResolved)
-    .map((t) => observeThread(t, isOwn));
-  const conflictCount = await countRemoteConflicts(
-    pr.sourceBranch,
-    pr.targetBranch
-  );
-  return { buildStatus: pr.buildStatus, threads, conflictCount };
+/** Whether the branch can be checked out here at all. `createWorktree`
+ *  would otherwise invent a new branch of that name off HEAD and start
+ *  an agent on the wrong base. */
+async function branchAvailable(branch: string): Promise<boolean> {
+  return (await refExists(branch)) || refExists(`origin/${branch}`);
+}
+
+/** Type the update into the live session, if it has been quiet. */
+function injectIntoLive(
+  opts: PrBabysitterOptions,
+  name: string,
+  prompt: string
+): Delivery {
+  if (idleFor(name) < (opts.idleMs ?? BABYSIT_IDLE_MS)) {
+    return { outcome: 'held', held: 'agent-busy' };
+  }
+  return deliverToRunningSession(name, prompt)
+    ? { outcome: 'injected' }
+    : { outcome: 'failed', error: 'The agent exited while being briefed' };
 }
 
 /**
- * Hand the update to the agent: typed into its session when one is
- * running and idle, or as the opening prompt of a new one. Continues
- * the worktree's previous conversation where the agent supports it, so
- * an agent that already worked on this pull request picks up with what
- * it knows.
+ * Start an agent in the worktree with the update as its opening
+ * prompt — but only for the user's own pull request. Starting an agent
+ * on somebody else's branch and telling it to push is not something a
+ * right-click should do; there the update waits for an agent the user
+ * starts.
  */
-async function deliver(
+async function spawnForUpdate(
   opts: PrBabysitterOptions,
   pr: PullRequestInfo,
-  prompt: string
-): Promise<DeliveryOutcome> {
-  const name = branchToSessionName(pr.sourceBranch);
-  if (isSessionAlive(name)) {
-    if (snapshot(name).active) return 'busy';
-    return deliverToRunningSession(name, prompt) ? 'injected' : 'failed';
+  name: string,
+  prompt: string,
+  live: () => boolean
+): Promise<Delivery> {
+  const config = opts.getConfig();
+  const own = opts.provider?.matchesUser(pr.createdByIdentifier, config);
+  if (!own) return { outcome: 'held', held: 'no-agent' };
+  if (!(await branchAvailable(pr.sourceBranch))) {
+    return { outcome: 'held', held: 'branch-unavailable' };
   }
   const cwd = await createWorktree(pr.sourceBranch);
-  if (!cwd) return 'failed';
+  if (!cwd) {
+    return { outcome: 'failed', error: 'Could not create the worktree' };
+  }
+  // The checkout took time; the repository may have changed under it,
+  // or the watch been stopped. A spawn now would run in the wrong
+  // repository's terms.
+  if (!live()) return { outcome: 'held', held: 'no-agent' };
   const { cols, rows } = opts.paneSize();
+  // `seed`, never `continue-or-seed`: continuing a prior conversation
+  // takes the prompt only when there is nothing to continue, and an
+  // agent that already worked on this pull request is the normal case.
   launchSession({
     name,
     cwd,
     cols,
     rows,
-    config: opts.getConfig(),
-    request: { intent: 'continue-or-seed', prompt },
+    config,
+    request: { intent: 'seed', prompt },
   });
   opts.onSpawned?.(name, cwd);
-  return 'spawned';
+  return { outcome: 'spawned' };
+}
+
+/** Hand the update to the agent: typed into its session when one is
+ *  running, or as the opening prompt of a new one. */
+async function deliver(
+  opts: PrBabysitterOptions,
+  pr: PullRequestInfo,
+  prompt: string,
+  live: () => boolean
+): Promise<Delivery> {
+  const name = branchToSessionName(pr.sourceBranch);
+  if (opts.isForeignSession?.(name)) {
+    return { outcome: 'held', held: 'foreign-session' };
+  }
+  if (isSessionAlive(name)) return injectIntoLive(opts, name, prompt);
+  return spawnForUpdate(opts, pr, name, prompt, live);
+}
+
+function initialStatus(pr: PullRequestInfo): BabysitStatus {
+  return {
+    prId: pr.id,
+    sourceBranch: pr.sourceBranch,
+    phase: 'watching',
+    held: null,
+    lastPolledAt: null,
+    pendingSince: null,
+    lastDeliveredAt: null,
+    deliveries: 0,
+    lastError: null,
+  };
 }
 
 export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
@@ -149,18 +217,12 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
   const intervalMs = opts.intervalMs ?? BABYSIT_POLL_MS;
   let pr = opts.pr;
   let state: BabysitState = initialBabysitState();
-  let status: BabysitStatus = {
-    prId: pr.id,
-    sourceBranch: pr.sourceBranch,
-    phase: 'watching',
-    lastPolledAt: null,
-    pendingSince: null,
-    lastDeliveredAt: null,
-    deliveries: 0,
-    lastError: null,
-  };
+  let remote: RemoteSnapshot | null = null;
+  let status = initialStatus(pr);
   let stopped = false;
   let tail: Promise<void> = Promise.resolve();
+
+  const live = () => !stopped && isCurrent();
 
   const publish = (patch: Partial<BabysitStatus>) => {
     const ended = status.phase === 'ended' || patch.phase === 'ended';
@@ -183,18 +245,21 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
     if (!isDue(state, now(), opts.timing)) return;
     const taken = takeReport(state, now());
     if (!taken) return;
-    const outcome = await deliver(
-      opts,
-      pr,
-      composeBabysitPrompt(pr, taken.report)
-    );
-    if (outcome === 'busy') return;
-    if (outcome === 'failed') {
-      publish({ lastError: 'Could not reach an agent for the pull request' });
+    const prompt = composeBabysitPrompt(pr, taken.report);
+    const delivery = await deliver(opts, pr, prompt, live);
+    if (delivery.outcome === 'held') {
+      publish({ held: delivery.held });
       return;
     }
+    if (delivery.outcome === 'failed') {
+      publish({ held: null, lastError: delivery.error });
+      return;
+    }
+    // Only now is the agent deemed to know: a held or failed delivery
+    // leaves the baseline alone and the update pending.
     state = taken.state;
     publish({
+      held: null,
       lastDeliveredAt: taken.state.lastDeliveredAt,
       deliveries: status.deliveries + 1,
       lastError: null,
@@ -202,22 +267,31 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
   };
 
   const poll = async (): Promise<void> => {
-    if (stopped || !isCurrent()) return;
+    if (!live()) return;
     try {
-      const latest = await opts.readPullRequest();
-      if (latest === null) {
+      const lookup = await opts.readPullRequest();
+      if (!live()) return;
+      if (lookup.kind === 'gone') {
         end();
-        publish({ phase: 'ended', lastPolledAt: now() });
+        publish({ phase: 'ended', held: null, lastPolledAt: now() });
         return;
       }
-      pr = latest;
-      const observation = await observePullRequest(
+      if (lookup.kind === 'unknown') {
+        publish({ lastError: lookup.reason });
+        return;
+      }
+      pr = lookup.pr;
+      const observed = await observePullRequest(
         pr,
         opts.provider,
-        opts.getConfig()
+        opts.getConfig(),
+        remote,
+        now(),
+        opts.remoteRefreshMs
       );
-      if (stopped) return;
-      state = observe(state, observation, now());
+      if (!live()) return;
+      remote = observed.remote;
+      state = observe(state, observed.observation, now());
       publish({ lastPolledAt: now(), lastError: null });
       await maybeDeliver();
     } catch (err: unknown) {

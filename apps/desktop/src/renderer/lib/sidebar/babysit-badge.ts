@@ -10,7 +10,7 @@ function relative(ms: number, now: number): string {
   const minutes = Math.max(0, Math.round((now - ms) / 60_000));
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
+  const hours = Math.floor(minutes / 60);
   return `${hours} h ago`;
 }
 
@@ -21,15 +21,27 @@ function relative(ms: number, now: number): string {
  * otherwise see — a watcher that has quietly stopped reaching the
  * provider looks exactly like one with nothing to report.
  */
+const HELD: Record<NonNullable<BabysitStatus['held']>, string> = {
+  'agent-busy': 'held until the agent has been quiet for a while',
+  'no-agent':
+    'held until you start an agent on it — Kirby does not start one on ' +
+    'a pull request that is not yours',
+  'foreign-session':
+    'held: a session under this branch name belongs to another repository',
+  'branch-unavailable':
+    'held: the branch is not available locally or on origin, so no ' +
+    'worktree can be made for an agent',
+};
+
 export function babysitBadge(
   status: BabysitStatus,
   now = Date.now()
 ): BabysitBadge {
   const lines: string[] = [];
   if (status.phase === 'pending' && status.pendingSince !== null) {
+    const held = status.held ? HELD[status.held] : 'sent once quiet';
     lines.push(
-      `Update waiting since ${relative(status.pendingSince, now)}; sent once ` +
-        `quiet and the agent is idle`
+      `Update waiting since ${relative(status.pendingSince, now)}; ${held}`
     );
   } else {
     lines.push('Watching CI, review threads and conflicts');

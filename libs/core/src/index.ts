@@ -45,6 +45,7 @@ export {
   noteResize,
   noteSeen,
   snapshot,
+  idleFor,
   __resetForTests as __resetActivityForTests,
 } from './lib/activity.js';
 export type { ActivitySnapshot } from './lib/activity.js';
@@ -68,6 +69,7 @@ export * from './lib/discovery/discovery-model.js';
 export * from './lib/discovery/session-discovery.js';
 export * from './lib/babysit/babysit-model.js';
 export * from './lib/babysit/babysit-prompt.js';
+export * from './lib/babysit/babysit-observe.js';
 export * from './lib/babysit/pr-babysitter.js';
 
 // ── Pure utilities ───────────────────────────────────────────────

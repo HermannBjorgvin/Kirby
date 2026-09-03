@@ -25,7 +25,13 @@ function thread(
 }
 
 function seen(over: Partial<BabysitObservation> = {}): BabysitObservation {
-  return { buildStatus: 'succeeded', threads: [], conflictCount: 0, ...over };
+  return {
+    buildStatus: 'succeeded',
+    headSha: 'abc',
+    threads: [],
+    conflictCount: 0,
+    ...over,
+  };
 }
 
 const alice = { author: 'alice', body: 'rename this' };
@@ -63,8 +69,32 @@ describe('diffAgainstReported', () => {
   it('does not repeat a failure the agent already heard', () => {
     expect(
       diffAgainstReported(
-        { ...reported, buildStatus: 'failed' },
+        { ...reported, buildStatus: 'failed', headSha: 'abc' },
         seen({ buildStatus: 'failed' })
+      )
+    ).toBeNull();
+  });
+
+  it('reports the same verdict again when it is on a new commit', () => {
+    // The agent pushed a fix and it failed too: news, not a repeat.
+    const told = {
+      ...reported,
+      buildStatus: 'failed' as const,
+      headSha: 'abc',
+    };
+    expect(
+      diffAgainstReported(told, seen({ buildStatus: 'failed', headSha: 'def' }))
+    ).toMatchObject({ ciChanged: true });
+    // A green build on a new commit after a green one is not.
+    const green = {
+      ...reported,
+      buildStatus: 'succeeded' as const,
+      headSha: 'abc',
+    };
+    expect(
+      diffAgainstReported(
+        green,
+        seen({ buildStatus: 'succeeded', headSha: 'def' })
       )
     ).toBeNull();
   });
@@ -87,10 +117,17 @@ describe('diffAgainstReported', () => {
     ).toBeNull();
   });
 
-  it('keeps the reported count when the conflict check could not run', () => {
+  it('does not read a conflict check that could not run as news', () => {
     expect(
       diffAgainstReported(reported, seen({ conflictCount: null }))
     ).toBeNull();
+    // ...but says so when something else is being reported.
+    expect(
+      diffAgainstReported(
+        reported,
+        seen({ conflictCount: null, buildStatus: 'failed' })
+      )
+    ).toMatchObject({ conflictCount: null, conflictsChanged: false });
   });
 
   it('reports an unseen thread and a thread that gained a reply', () => {
@@ -123,10 +160,14 @@ describe('diffAgainstReported', () => {
 
   it('always carries the current CI status alongside other news', () => {
     const report = diffAgainstReported(
-      reported,
+      { ...reported, buildStatus: 'failed' },
       seen({ buildStatus: 'pending', conflictCount: 1 })
     );
-    expect(report).toMatchObject({ buildStatus: 'pending', ciChanged: false });
+    expect(report).toMatchObject({
+      buildStatus: 'pending',
+      lastToldBuildStatus: 'failed',
+      ciChanged: false,
+    });
   });
 });
 
@@ -195,6 +236,16 @@ describe('observe / isDue / takeReport', () => {
     expect(isDue(state, BABYSIT_MAX_WAIT_MS)).toBe(false);
   });
 
+  it('reports conflicts that came back after being resolved', () => {
+    let state = observe(initialBabysitState(), seen({ conflictCount: 3 }), 0);
+    state = takeReport(state, 10 * MIN)!.state;
+    state = observe(state, seen({ conflictCount: 0 }), 11 * MIN);
+    expect(state.pendingSince).toBeNull();
+    // The target moved again and the same three files conflict.
+    state = observe(state, seen({ conflictCount: 3 }), 12 * MIN);
+    expect(state.pendingSince).toBe(12 * MIN);
+  });
+
   it('takes the report and remembers all of it as told', () => {
     const state = observe(
       initialBabysitState(),
@@ -208,6 +259,7 @@ describe('observe / isDue / takeReport', () => {
     expect(taken?.report.newThreads.map((t) => t.id)).toEqual(['t1', 't2']);
     expect(taken?.state.reported).toEqual({
       buildStatus: 'failed',
+      headSha: 'abc',
       conflictCount: 0,
       threadComments: { t1: 1, t2: 2 },
     });
@@ -225,6 +277,7 @@ describe('observe / isDue / takeReport', () => {
         ...initialBabysitState(),
         reported: {
           buildStatus: 'failed',
+          headSha: 'abc',
           conflictCount: 0,
           threadComments: {},
         },
@@ -277,6 +330,7 @@ describe('composeBabysitPrompt', () => {
   it('numbers threads, names their ids and states CI and conflicts', () => {
     const prompt = composeBabysitPrompt(pr, {
       buildStatus: 'failed',
+      lastToldBuildStatus: undefined,
       ciChanged: true,
       conflictsChanged: true,
       conflictCount: 2,
@@ -286,16 +340,16 @@ describe('composeBabysitPrompt', () => {
       [
         'Status update for PR #42 ("Add thing", feat → master):',
         '',
-        'CI: failed (changed since you were last told). Find out why and fix it.',
+        'CI: failed (new verdict since you were last told). Find out why and fix it.',
         'Conflicts: 2 files conflict with the latest origin/master. Merge or rebase onto it and resolve them.',
         '',
-        'Unresolved review comments you have not been told about:',
+        'Unresolved review threads that are new or have new comments since you were last told:',
         '',
         '### 1. src/a.ts:3  (thread PRRT_1)',
         '@alice: rename this',
         '  ↳ @bob: agreed',
         '',
-        'Address whatever needs addressing, push your changes, and reply to or resolve the threads you handled.',
+        'Address whatever needs addressing and push your changes. Each thread above is named by the id its provider uses, so you can answer the ones you handled.',
       ].join('\n')
     );
   });
@@ -303,13 +357,34 @@ describe('composeBabysitPrompt', () => {
   it('omits the comments section when there are none', () => {
     const prompt = composeBabysitPrompt(pr, {
       buildStatus: 'succeeded',
+      lastToldBuildStatus: 'failed',
       ciChanged: true,
       conflictsChanged: false,
       conflictCount: 0,
       newThreads: [],
     });
-    expect(prompt).toContain('CI: passed (changed since you were last told).');
-    expect(prompt).toContain('Conflicts: none against the latest master.');
-    expect(prompt).not.toContain('Unresolved review comments');
+    expect(prompt).toContain(
+      'CI: passed (new verdict since you were last told).'
+    );
+    expect(prompt).toContain(
+      'Conflicts: none against the latest origin/master.'
+    );
+    expect(prompt).not.toContain('Unresolved review threads');
+  });
+
+  it('says when the conflict check could not run, and puts a running build in context', () => {
+    const prompt = composeBabysitPrompt(pr, {
+      buildStatus: 'pending',
+      lastToldBuildStatus: 'failed',
+      ciChanged: false,
+      conflictsChanged: false,
+      conflictCount: null,
+      newThreads: [thread('T', [alice])],
+    });
+    expect(prompt).toContain(
+      'CI: running; the last verdict you were told was failed.'
+    );
+    expect(prompt).toContain('Conflicts: could not be checked this time');
+    expect(prompt).not.toContain('Conflicts: none');
   });
 });

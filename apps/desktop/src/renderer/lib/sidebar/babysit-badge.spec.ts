@@ -9,6 +9,7 @@ function status(over: Partial<BabysitStatus> = {}): BabysitStatus {
     prId: 7,
     sourceBranch: 'feat',
     phase: 'watching',
+    held: null,
     lastPolledAt: null,
     pendingSince: null,
     lastDeliveredAt: null,
@@ -33,7 +34,15 @@ describe('babysitBadge', () => {
       7 * MIN
     );
     expect(badge.label).toBe('update pending');
-    expect(badge.title).toContain('waiting since 7 min ago');
+    expect(badge.title).toContain('waiting since 7 min ago; sent once quiet');
+  });
+
+  it('says why a due update is being held', () => {
+    const badge = babysitBadge(
+      status({ phase: 'pending', pendingSince: 0, held: 'no-agent' }),
+      MIN
+    );
+    expect(badge.title).toContain('held until you start an agent');
   });
 
   it('counts deliveries and flags a failed poll', () => {
@@ -43,9 +52,9 @@ describe('babysitBadge', () => {
         lastDeliveredAt: 60 * MIN,
         lastError: 'gh: rate limited',
       }),
-      180 * MIN
+      150 * MIN
     );
-    expect(badge.title).toContain('2 updates sent, last 2 h ago');
+    expect(badge.title).toContain('2 updates sent, last 1 h ago');
     expect(badge.title).toContain('Last poll failed: gh: rate limited');
     expect(badge.tone).toBe('warning');
   });

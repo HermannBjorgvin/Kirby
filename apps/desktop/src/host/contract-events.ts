@@ -98,11 +98,16 @@ export const DISCOVERY_EVENTS = {
 export const BABYSIT_EVENTS = {
   /**
    * A babysat pull request's status moved — a poll ran, an update went
-   * to the agent, the pull request merged and watching ended. Carries
-   * no payload; the renderer refetches the list.
+   * to the agent, the pull request merged and watching ended. The
+   * renderer refetches the list; `ended` names a watch that stopped on
+   * its own, because the row it was on is usually gone with it.
    */
   changed: 'kirby/babysit/changed',
 } as const;
+
+export interface BabysitChangedEvent {
+  ended?: { prId: number; sourceBranch: string };
+}
 
 /** A user-facing event from the host's remote sync loop (auto-deleted
  *  merged branch, blocked auto-delete, …), toasted by the renderer. */

@@ -25,13 +25,16 @@ vi.mock('@kirby/vcs-core', () => ({
 }));
 vi.mock('./sidebar.js', () => ({
   repoProvider: () => null,
-  findPullRequest: (_cwd: string, prId: number) =>
-    Promise.resolve(state.prs.find((pr) => pr.id === prId) ?? null),
+  lookupPullRequest: (_cwd: string, prId: number) => {
+    const pr = state.prs.find((entry) => entry.id === prId);
+    return Promise.resolve(pr ? { kind: 'found', pr } : { kind: 'gone' });
+  },
 }));
 vi.mock('./sessions.js', () => ({
   adoptSpawnedSession: (name: string, branch: string) =>
     state.adopted.push(`${name}:${branch}`),
   defaultPaneSize: () => ({ cols: 120, rows: 40 }),
+  isForeignSession: () => false,
 }));
 vi.mock('@kirby/core', () => ({
   startPrBabysitter: (opts: {
@@ -67,7 +70,7 @@ const pr = (id: number): PullRequestInfo => ({
 });
 
 let mod: typeof BabysitModule;
-const changes: number[] = [];
+const changes: unknown[] = [];
 
 beforeEach(async () => {
   state.cwd = '/repo';
@@ -78,7 +81,7 @@ beforeEach(async () => {
   changes.length = 0;
   vi.resetModules();
   mod = await import('./babysit.js');
-  mod.setBabysitNotifier(() => changes.push(1));
+  mod.setBabysitNotifier((event) => changes.push(event));
 });
 
 describe('babysit service', () => {
@@ -103,11 +106,13 @@ describe('babysit service', () => {
     expect(mod.listBabysat()).toEqual([]);
   });
 
-  it('drops a babysitter that ended on its own', async () => {
+  it('drops a babysitter that ended on its own and says which', async () => {
     await mod.startBabysit(7);
     state.started[0].onStatus({ prId: 7, phase: 'ended' });
     expect(mod.listBabysat()).toEqual([]);
-    expect(changes.length).toBe(2);
+    expect(changes.at(-1)).toEqual({
+      ended: { prId: 7, sourceBranch: 'feat/7' },
+    });
   });
 
   it('adopts a session the babysitter spawned, under the pull request branch', async () => {

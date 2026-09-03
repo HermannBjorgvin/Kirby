@@ -167,6 +167,13 @@ export function killOwnSession(name: string): void {
   killSessionEntry(name);
 }
 
+/** Whether a session under `name` is another repository's — known to
+ *  this host, and not the open repository's. The babysitter asks
+ *  before typing into one; the launch paths throw on the same test. */
+export function isForeignSession(name: string): boolean {
+  return known.has(name) && !ownSession(name);
+}
+
 /** Thrown when a session name is live but owned by another repository —
  *  acting on it would reach into that repo's agent. */
 function foreignSessionError(name: string): Error {

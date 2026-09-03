@@ -62,5 +62,5 @@ export function installHostEventBridge(): void {
   setDiscoveryNotifier(() => broadcast(DISCOVERY_EVENTS.changed));
 
   // A babysat pull request's status is read from a query cache too.
-  setBabysitNotifier(() => broadcast(BABYSIT_EVENTS.changed));
+  setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
 }

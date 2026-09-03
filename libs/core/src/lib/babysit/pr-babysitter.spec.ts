@@ -5,13 +5,15 @@ import type {
   PullRequestInfo,
   VcsProvider,
 } from '@kirby/vcs-core';
-import type { BabysitStatus } from './pr-babysitter.js';
+import type { BabysitStatus, PullRequestLookup } from './pr-babysitter.js';
 
 const mocks = vi.hoisted(() => ({
-  countRemoteConflicts: vi.fn<() => Promise<number | null>>(),
+  fetchBranches: vi.fn<() => Promise<boolean>>(),
+  countConflictsBetween: vi.fn<() => Promise<number | null>>(),
+  refExists: vi.fn<(ref: string) => Promise<boolean>>(),
   createWorktree: vi.fn<() => Promise<string | null>>(),
   isSessionAlive: vi.fn<() => boolean>(),
-  snapshot: vi.fn<() => { active: boolean; flashing: boolean }>(),
+  idleFor: vi.fn<() => number>(),
   deliverToRunningSession: vi.fn<(name: string, prompt: string) => boolean>(),
   launchSession: vi.fn(),
 }));
@@ -19,22 +21,23 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@kirby/logger', () => ({ logError: () => undefined }));
 vi.mock('@kirby/worktree-manager', () => ({
   branchToSessionName: (b: string) => b.replace(/\//g, '-'),
-  countRemoteConflicts: () => mocks.countRemoteConflicts(),
+  fetchBranches: () => mocks.fetchBranches(),
+  countConflictsBetween: () => mocks.countConflictsBetween(),
+  refExists: (ref: string) => mocks.refExists(ref),
   createWorktree: () => mocks.createWorktree(),
 }));
 vi.mock('../pty-registry.js', () => ({
   isSessionAlive: () => mocks.isSessionAlive(),
 }));
-vi.mock('../activity.js', () => ({ snapshot: () => mocks.snapshot() }));
+vi.mock('../activity.js', () => ({ idleFor: () => mocks.idleFor() }));
 vi.mock('../session/launch-session.js', () => ({
   deliverToRunningSession: (name: string, prompt: string) =>
     mocks.deliverToRunningSession(name, prompt),
   launchSession: (params: unknown) => mocks.launchSession(params),
 }));
 
-const { startPrBabysitter, observePullRequest } = await import(
-  './pr-babysitter.js'
-);
+const { startPrBabysitter } = await import('./pr-babysitter.js');
+const { observePullRequest } = await import('./babysit-observe.js');
 
 const MIN = 60_000;
 
@@ -47,6 +50,7 @@ const pr: PullRequestInfo = {
   createdByIdentifier: 'me',
   createdByDisplayName: 'Me',
   buildStatus: 'succeeded',
+  headSha: 'abc',
 };
 
 const config = {
@@ -57,7 +61,7 @@ const config = {
 function providerWith(comments: PullRequestComments): VcsProvider {
   return {
     matchesUser: (id: string) => id === 'me',
-    fetchCommentThreads: () => Promise.resolve(comments),
+    fetchCommentThreads: vi.fn(() => Promise.resolve(comments)),
   } as unknown as VcsProvider;
 }
 
@@ -76,45 +80,108 @@ const aliceThread = {
 };
 
 describe('observePullRequest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.fetchBranches.mockResolvedValue(true);
+    mocks.countConflictsBetween.mockResolvedValue(2);
+  });
+
   it('keeps unresolved inline and general threads, drops resolved ones', async () => {
-    mocks.countRemoteConflicts.mockResolvedValue(2);
     const provider = providerWith({
       threads: [aliceThread, { ...aliceThread, id: 't2', isResolved: true }],
       generalComments: [
         { ...aliceThread, id: 'g1', file: null, lineStart: null },
       ],
     });
-    const observation = await observePullRequest(pr, provider, config);
+    const { observation } = await observePullRequest(
+      pr,
+      provider,
+      config,
+      null,
+      0
+    );
     expect(observation.threads.map((t) => t.id)).toEqual(['t1', 'g1']);
     expect(observation).toMatchObject({
       buildStatus: 'succeeded',
+      headSha: 'abc',
       conflictCount: 2,
     });
   });
 
-  it('observes without a provider', async () => {
-    mocks.countRemoteConflicts.mockResolvedValue(0);
-    const observation = await observePullRequest(pr, null, config);
-    expect(observation.threads).toEqual([]);
+  it('reports the conflict check as not run when the fetch failed', async () => {
+    mocks.fetchBranches.mockResolvedValue(false);
+    const { observation } = await observePullRequest(pr, null, config, null, 0);
+    expect(observation.conflictCount).toBeNull();
+    expect(mocks.countConflictsBetween).not.toHaveBeenCalled();
+  });
+
+  it('reuses the thread list and skips the fetch until the refresh is due', async () => {
+    const provider = providerWith({
+      threads: [aliceThread],
+      generalComments: [],
+    });
+    const first = await observePullRequest(pr, provider, config, null, 0);
+    const second = await observePullRequest(
+      pr,
+      provider,
+      config,
+      first.remote,
+      MIN
+    );
+    expect(second.observation.threads).toBe(first.observation.threads);
+    expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchBranches).toHaveBeenCalledTimes(1);
+    // The merge check itself still runs against the tracking refs.
+    expect(mocks.countConflictsBetween).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads again early when the list shows the count or the head moved', async () => {
+    const provider = providerWith(noComments);
+    const first = await observePullRequest(pr, provider, config, null, 0);
+    await observePullRequest(
+      { ...pr, activeCommentCount: 1 },
+      provider,
+      config,
+      first.remote,
+      MIN
+    );
+    await observePullRequest(
+      { ...pr, headSha: 'def' },
+      provider,
+      config,
+      first.remote,
+      MIN
+    );
+    expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads again once the refresh interval has passed', async () => {
+    const provider = providerWith(noComments);
+    const first = await observePullRequest(pr, provider, config, null, 0);
+    await observePullRequest(pr, provider, config, first.remote, 5 * MIN);
+    expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('startPrBabysitter', () => {
   let clock = 0;
   const statuses: BabysitStatus[] = [];
-  let readPullRequest: () => Promise<PullRequestInfo | null>;
+  let lookup: () => Promise<PullRequestLookup>;
+  const failing = { ...pr, buildStatus: 'failed' as const };
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     clock = 0;
     statuses.length = 0;
-    mocks.countRemoteConflicts.mockResolvedValue(0);
+    mocks.fetchBranches.mockResolvedValue(true);
+    mocks.countConflictsBetween.mockResolvedValue(0);
+    mocks.refExists.mockResolvedValue(true);
     mocks.createWorktree.mockResolvedValue('/wt/feat-thing');
     mocks.isSessionAlive.mockReturnValue(true);
-    mocks.snapshot.mockReturnValue({ active: false, flashing: false });
+    mocks.idleFor.mockReturnValue(60_000);
     mocks.deliverToRunningSession.mockReturnValue(true);
-    readPullRequest = () => Promise.resolve({ ...pr, buildStatus: 'failed' });
+    lookup = () => Promise.resolve({ kind: 'found', pr: failing });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -125,13 +192,20 @@ describe('startPrBabysitter', () => {
       pr,
       provider: providerWith(noComments),
       getConfig: () => config,
-      readPullRequest: () => readPullRequest(),
+      readPullRequest: () => lookup(),
       paneSize: () => ({ cols: 100, rows: 30 }),
       onStatus: (s) => statuses.push(s),
       now: () => clock,
       intervalMs: MIN,
       ...over,
     });
+  }
+
+  /** Poll once at t=0 and once past the debounce. */
+  async function pollPastDebounce(sitter: { pollNow: () => Promise<void> }) {
+    await sitter.pollNow();
+    clock = 10 * MIN;
+    await sitter.pollNow();
   }
 
   it('waits out the debounce before typing the update into an idle agent', async () => {
@@ -151,75 +225,160 @@ describe('startPrBabysitter', () => {
     );
     expect(statuses.at(-1)).toMatchObject({
       phase: 'watching',
+      held: null,
       deliveries: 1,
       lastDeliveredAt: 10 * MIN,
     });
     sitter.stop();
   });
 
-  it('holds the update while the agent is producing output', async () => {
-    mocks.snapshot.mockReturnValue({ active: true, flashing: false });
+  it('holds the update while the agent has produced output recently', async () => {
+    mocks.idleFor.mockReturnValue(5_000);
     const sitter = start();
-    await sitter.pollNow();
-    clock = 10 * MIN;
-    await sitter.pollNow();
+    await pollPastDebounce(sitter);
     expect(mocks.deliverToRunningSession).not.toHaveBeenCalled();
-    expect(statuses.at(-1)?.phase).toBe('pending');
+    expect(statuses.at(-1)).toMatchObject({
+      phase: 'pending',
+      held: 'agent-busy',
+    });
 
-    mocks.snapshot.mockReturnValue({ active: false, flashing: false });
+    mocks.idleFor.mockReturnValue(60_000);
     clock = 11 * MIN;
     await sitter.pollNow();
     expect(mocks.deliverToRunningSession).toHaveBeenCalledTimes(1);
+    expect(statuses.at(-1)?.held).toBeNull();
     sitter.stop();
   });
 
-  it('starts an agent in the worktree when none is running', async () => {
+  it('never types into a session that belongs to another repository', async () => {
+    const sitter = start({
+      isForeignSession: (name) => name === 'feat-thing',
+    });
+    await pollPastDebounce(sitter);
+    expect(mocks.deliverToRunningSession).not.toHaveBeenCalled();
+    expect(mocks.launchSession).not.toHaveBeenCalled();
+    expect(statuses.at(-1)?.held).toBe('foreign-session');
+    sitter.stop();
+  });
+
+  it('starts an agent seeded with the update when none is running', async () => {
     mocks.isSessionAlive.mockReturnValue(false);
     const spawned: string[] = [];
     const sitter = start({
       onSpawned: (name, cwd) => spawned.push(`${name}@${cwd}`),
     });
-    await sitter.pollNow();
-    clock = 10 * MIN;
-    await sitter.pollNow();
+    await pollPastDebounce(sitter);
     expect(mocks.launchSession).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'feat-thing',
         cwd: '/wt/feat-thing',
         cols: 100,
         rows: 30,
-        request: expect.objectContaining({ intent: 'continue-or-seed' }),
+        request: {
+          intent: 'seed',
+          prompt: expect.stringContaining('Status update for PR #7'),
+        },
       })
     );
     expect(spawned).toEqual(['feat-thing@/wt/feat-thing']);
+    expect(statuses.at(-1)?.deliveries).toBe(1);
     sitter.stop();
   });
 
-  it('ends when the pull request is gone', async () => {
-    readPullRequest = () => Promise.resolve(null);
+  it("does not start an agent on somebody else's pull request", async () => {
+    mocks.isSessionAlive.mockReturnValue(false);
+    lookup = () =>
+      Promise.resolve({
+        kind: 'found',
+        pr: { ...failing, createdByIdentifier: 'alice' },
+      });
+    const sitter = start();
+    await pollPastDebounce(sitter);
+    expect(mocks.launchSession).not.toHaveBeenCalled();
+    expect(statuses.at(-1)).toMatchObject({
+      phase: 'pending',
+      held: 'no-agent',
+    });
+    sitter.stop();
+  });
+
+  it('does not invent a branch that exists neither locally nor on origin', async () => {
+    mocks.isSessionAlive.mockReturnValue(false);
+    mocks.refExists.mockResolvedValue(false);
+    const sitter = start();
+    await pollPastDebounce(sitter);
+    expect(mocks.createWorktree).not.toHaveBeenCalled();
+    expect(statuses.at(-1)?.held).toBe('branch-unavailable');
+    sitter.stop();
+  });
+
+  it('keeps the update pending when delivery fails', async () => {
+    mocks.deliverToRunningSession.mockReturnValue(false);
+    const sitter = start();
+    await pollPastDebounce(sitter);
+    expect(statuses.at(-1)).toMatchObject({
+      phase: 'pending',
+      deliveries: 0,
+      lastError: 'The agent exited while being briefed',
+    });
+    mocks.deliverToRunningSession.mockReturnValue(true);
+    clock = 11 * MIN;
+    await sitter.pollNow();
+    expect(statuses.at(-1)).toMatchObject({ deliveries: 1, lastError: null });
+    sitter.stop();
+  });
+
+  it('does not spawn when the repo moved during the checkout', async () => {
+    mocks.isSessionAlive.mockReturnValue(false);
+    let current = true;
+    const sitter = start({ isCurrent: () => current });
+    mocks.createWorktree.mockImplementation(() => {
+      current = false;
+      return Promise.resolve('/wt/feat-thing');
+    });
+    await pollPastDebounce(sitter);
+    expect(mocks.launchSession).not.toHaveBeenCalled();
+    sitter.stop();
+  });
+
+  it('abandons a poll when the repository changes between its steps', async () => {
+    let current = true;
+    lookup = () => {
+      current = false;
+      return Promise.resolve({ kind: 'found', pr: failing });
+    };
+    const sitter = start({ isCurrent: () => current });
+    await sitter.pollNow();
+    expect(mocks.fetchBranches).not.toHaveBeenCalled();
+    expect(statuses).toEqual([]);
+    sitter.stop();
+  });
+
+  it('ends when the pull request is gone, but not when the provider could not say', async () => {
+    lookup = () => Promise.resolve({ kind: 'unknown', reason: 'offline' });
     const sitter = start();
     await sitter.pollNow();
+    expect(statuses.at(-1)).toMatchObject({
+      phase: 'watching',
+      lastError: 'offline',
+    });
+
+    lookup = () => Promise.resolve({ kind: 'gone' });
+    await sitter.pollNow();
     expect(statuses.at(-1)?.phase).toBe('ended');
-    readPullRequest = () => Promise.resolve(pr);
+    lookup = () => Promise.resolve({ kind: 'found', pr });
     await vi.advanceTimersByTimeAsync(3 * MIN);
     expect(statuses.filter((s) => s.phase === 'ended')).toHaveLength(1);
   });
 
-  it('skips a poll that fails and reports the error', async () => {
-    readPullRequest = () => Promise.reject(new Error('gh: rate limited'));
+  it('skips a poll that throws and reports the error', async () => {
+    lookup = () => Promise.reject(new Error('gh: rate limited'));
     const sitter = start();
     await sitter.pollNow();
     expect(statuses.at(-1)).toMatchObject({
       lastError: 'gh: rate limited',
       lastPolledAt: null,
     });
-    sitter.stop();
-  });
-
-  it('does nothing while the repository is not the open one', async () => {
-    const sitter = start({ isCurrent: () => false });
-    await sitter.pollNow();
-    expect(statuses).toEqual([]);
     sitter.stop();
   });
 

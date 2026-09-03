@@ -30,11 +30,16 @@ export type {
   RemoteCommentReply,
   RemoteCommentThread,
 };
-export type { BabysitStatus, SidebarItem } from '@kirby/core';
+export type {
+  BabysitStatus,
+  PullRequestLookup,
+  SidebarItem,
+} from '@kirby/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
 import type {
+  BabysitChangedEvent,
   MenuCommandEvent,
   SessionDataEvent,
   SessionExitEvent,
@@ -437,7 +442,7 @@ export interface KirbyHostApi {
   listBabysat(): Promise<BabysitStatus[]>;
   /** Fires when a babysat pull request's status moved. Carries no
    *  payload — the renderer refetches. */
-  onBabysitChanged(cb: () => void): () => void;
+  onBabysitChanged(cb: (event: BabysitChangedEvent) => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
   /** Native about box. */

@@ -1,9 +1,9 @@
 import {
   readConfig,
   type BranchPrMap,
-  type PullRequestInfo,
   type VcsProvider,
 } from '@kirby/vcs-core';
+import type { PullRequestLookup } from '@kirby/core';
 import { listWorktrees, worktreeSessionName } from '@kirby/worktree-manager';
 import {
   buildSidebarItems,
@@ -231,14 +231,30 @@ export function repoProvider(cwd: string): VcsProvider | null {
  * One pull request as the cache has it, refreshed on the cache's own
  * schedule — a babysitter asking every minute reads what the sidebar
  * reads, rather than costing the provider a fetch per watched row.
- * Null once the pull request has left the list: merged or closed.
+ *
+ * Absent from the list means merged or closed only when the list is
+ * an answer: with no provider configured, or the last fetch failed
+ * and left the cache stale or empty, the pull request is `unknown`,
+ * which a watcher must not take for gone.
  */
-export async function findPullRequest(
+export async function lookupPullRequest(
   cwd: string,
   prId: number
-): Promise<PullRequestInfo | null> {
+): Promise<PullRequestLookup> {
+  if (!repoProvider(cwd)) {
+    return { kind: 'unknown', reason: 'No provider is configured' };
+  }
   const prMap = await fetchRemote(cwd);
-  return Object.values(prMap).find((pr) => pr?.id === prId) ?? null;
+  const pr = Object.values(prMap).find((entry) => entry?.id === prId);
+  if (pr) return { kind: 'found', pr };
+  const entry = cache.get(cwd);
+  if (!entry || entry.error) {
+    return {
+      kind: 'unknown',
+      reason: entry?.error ?? 'The pull request list has not loaded',
+    };
+  }
+  return { kind: 'gone' };
 }
 
 /** The rows alone. Exported for its tests; the bridge serves
