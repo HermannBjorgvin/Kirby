@@ -26,6 +26,7 @@ import {
   startExternalTmuxSession,
 } from '../setup/external.js';
 import { killKirbySessions } from '../setup/tmux.js';
+import { startSurvivingTerminal } from '../setup/terminals.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -135,6 +136,18 @@ export interface DesktopOptions {
    * (HOME, the tmux socket, the fake `gh`), which is applied after.
    */
   env?: Record<string, string>;
+  /**
+   * Terminal tabs already running when the app starts — the state after
+   * a previous run that opened them was quit, since quitting only
+   * detaches. Each is a tmux session under a terminal-tab name, in the
+   * given directory, on the test's own socket. Needs `terminalBackend:
+   * 'tmux'` to be found.
+   *
+   * Keyed by session name rather than listed: Playwright reads any
+   * array whose second element is an object as a `[value, options]`
+   * fixture tuple, so a two-entry list arrives as its first entry.
+   */
+  liveTerminals?: Record<string, { cwd: string; command: string }>;
 }
 
 export interface DesktopApp {
@@ -171,6 +184,11 @@ function seedHome(
 ): Record<string, string> {
   const kirby = join(homeDir, '.kirby');
   mkdirSync(kirby, { recursive: true });
+  // A terminal tab runs the developer's login shell in this home. zsh
+  // greets a home with no rc file with its first-user wizard, which
+  // swallows whatever a test types next; an empty one means "configured,
+  // nothing to do" and the shell comes up at a prompt.
+  writeFileSync(join(homeDir, '.zshrc'), '', 'utf8');
   writeFileSync(
     join(kirby, 'config.json'),
     // `undefined` from the test's config drops the key, which is how a
@@ -245,14 +263,28 @@ function seedLiveSessions(
   }
 }
 
-/** The app's exit only detaches from tmux, so agents seeded before
+/** Start the terminal tabs a test wants already running when the app
+ *  comes up. */
+function seedLiveTerminals(
+  homeDir: string,
+  terminals: Record<string, { cwd: string; command: string }> | undefined
+): void {
+  for (const [name, t] of Object.entries(terminals ?? {})) {
+    startSurvivingTerminal({ name, ...t, homeDir });
+  }
+}
+
+/** The app's exit only detaches from tmux, so sessions seeded before
  *  launch would outlive the test — with their socket dir about to be
  *  deleted from under them. */
 function reapSeededSessions(
   homeDir: string,
-  sessions: { branch: string; command: string }[] | undefined
+  sessions: readonly unknown[] | undefined,
+  terminals: Record<string, unknown> | undefined
 ): void {
-  if (sessions?.length) killKirbySessions(homeDir);
+  if (sessions?.length || Object.keys(terminals ?? {}).length) {
+    killKirbySessions(homeDir);
+  }
 }
 
 export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
@@ -267,6 +299,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   fakeGitHub: [undefined, { option: true }],
   liveSessions: [undefined, { option: true }],
   env: [undefined, { option: true }],
+  liveTerminals: [undefined, { option: true }],
 
   desktop: async (
     {
@@ -281,6 +314,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       fakeGitHub,
       liveSessions,
       env,
+      liveTerminals,
     },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
@@ -325,6 +359,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     delete parentEnv.KIRBY_VITE_URL;
 
     seedLiveSessions(repoPath, homeDir, liveSessions);
+    seedLiveTerminals(homeDir, liveTerminals);
 
     const app = await electron.launch({
       args: [
@@ -418,7 +453,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       } catch {
         /* already gone */
       }
-      reapSeededSessions(homeDir, liveSessions);
+      reapSeededSessions(homeDir, liveSessions, liveTerminals);
       if (ownsRepo) cleanupTestRepo(repoPath);
       await rm(homeDir, { recursive: true, force: true }).catch(
         () => undefined
