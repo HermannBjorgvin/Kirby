@@ -297,28 +297,66 @@ export function observeTmuxSessions(
   }
   const prefix = activeTmuxPrefix(config);
   const root = prefix ? getRepoRoot() : null;
-  const composed = new Map(
-    prefix
-      ? sessionNames.map((n) => [sanitizeTmuxSessionName(prefix + n), n])
-      : []
-  );
-  const owned = new Set(
-    root ? liveSessionNames().map((n) => tmuxNameFor(n, root)) : []
-  );
+  const ctx: ClassifyContext = {
+    prefix,
+    composed: new Map(
+      prefix
+        ? sessionNames.map((n) => [sanitizeTmuxSessionName(prefix + n), n])
+        : []
+    ),
+    owned: new Set(
+      root ? liveSessionNames().map((n) => tmuxNameFor(n, root)) : []
+    ),
+  };
   const persisted = new Set<string>();
   const terminals: DiscoveredTerminal[] = [];
-  for (const { name, path } of live) {
-    const term = parseTerminalSessionName(name);
-    if (term) {
-      terminals.push({ name, kind: term.kind, path });
-      continue;
-    }
-    if (!prefix || !name.startsWith(prefix)) continue;
-    const registryName = composed.get(name);
-    if (registryName !== undefined) persisted.add(registryName);
-    else if (!owned.has(name)) terminals.push({ name, kind: 'agent', path });
+  for (const session of live) {
+    const found = classifySession(session, ctx);
+    if (!found) continue;
+    if (found.kind === 'terminal') terminals.push(found.terminal);
+    else persisted.add(found.name);
   }
   return { persisted, terminals };
+}
+
+interface ClassifyContext {
+  /** This repository's tmux prefix, or `null` when tmux is out of the
+   *  picture entirely — see {@link activeTmuxPrefix}. */
+  prefix: string | null;
+  /** Composed worktree session name → the registry name it answers to. */
+  composed: Map<string, string>;
+  /** Composed tmux names of every session this process already holds,
+   *  under its own bare registry name — see {@link liveSessionNames}. */
+  owned: Set<string>;
+}
+
+/** What one live tmux session, from `list-sessions`, means to this
+ *  repository: a worktree session that survived (`persisted`), a
+ *  terminal tab to report (`terminal`), or nothing (`null`) — another
+ *  repository's session, one the user runs for their own reasons, or
+ *  one already owned that would otherwise read as an orphan. Split out
+ *  of {@link observeTmuxSessions} so the classification itself, not the
+ *  loop around it, carries the branching. */
+function classifySession(
+  { name, path }: TmuxSessionInfo,
+  ctx: ClassifyContext
+):
+  | { kind: 'terminal'; terminal: DiscoveredTerminal }
+  | { kind: 'persisted'; name: string }
+  | null {
+  const term = parseTerminalSessionName(name);
+  // tmux-cli reports `''` for a line it could not split on a tab —
+  // malformed `list-sessions` output, not a directory. A terminal tab
+  // needs somewhere to run and display, so it is dropped rather than
+  // reported onto no path at all. A *persisted* worktree session below
+  // is matched by name alone and needs no path, so this guard sits on
+  // each terminal branch rather than the top of the function.
+  if (term) return path ? { kind: 'terminal', terminal: { name, kind: term.kind, path } } : null;
+  if (!ctx.prefix || !name.startsWith(ctx.prefix)) return null;
+  const registryName = ctx.composed.get(name);
+  if (registryName !== undefined) return { kind: 'persisted', name: registryName };
+  if (ctx.owned.has(name) || !path) return null;
+  return { kind: 'terminal', terminal: { name, kind: 'agent', path } };
 }
 
 /**

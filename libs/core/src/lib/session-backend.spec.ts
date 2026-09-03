@@ -568,6 +568,19 @@ describe('observeTmuxSessions', () => {
     expect(tmuxListSessionsMock).toHaveBeenCalledTimes(1);
   });
 
+  // tmux-cli hands back '' for a list-sessions line it could not split
+  // on a tab, not a real directory. A terminal tab needs somewhere to
+  // run and display, so a pathless line must be dropped rather than
+  // opening a tab onto nothing — for a terminal-shaped name and for an
+  // orphaned worktree session alike.
+  it('drops a session with no reported path', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      { name: 'kirby-term-shell-1a2b3c', path: '' },
+      { name: 'kirby-hash(/repo)-old-branch', path: '' },
+    ]);
+    expect(observeTmuxSessions(tmuxConfig, []).terminals).toEqual([]);
+  });
+
   it('sees nothing on the pty backend', () => {
     tmuxListSessionsMock.mockReturnValue([
       { name: 'kirby-term-shell-1a2b3c', path: '/x' },
