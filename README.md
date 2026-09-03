@@ -59,7 +59,7 @@ The other direction: on a PR you're resolving, add the comments you want to addr
 
 ![Right-clicking a pull request with a failing build and choosing Babysit, the row's badge changing to update pending, then an agent starting in the branch's worktree with the CI failure and the open review thread as its prompt](docs/media/babysit.gif)
 
-Right-click a pull request and choose **Babysit**. Kirby watches its CI, unresolved review threads and conflicts against the target branch, and once the news has settled (ten minutes of quiet, thirty at most) and the agent is idle, it types one update into the agent's session: the verdict, the conflicts, and each new thread named by its id. No agent on the branch? One is started in the worktree with the update as its opening prompt. The row's badge says what the babysitter is doing and why an update is being held.
+Right-click a pull request and choose **Babysit**. Kirby watches its CI, unresolved review threads and conflicts against the target branch, and once the news has settled and the agent is idle, it types one update into the agent's session: the verdict, the conflicts, and each new thread named by its id.
 
 ### Review in place
 
