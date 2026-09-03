@@ -109,7 +109,7 @@ test.describe('Terminal tabs', () => {
       const tab = terminalTabs(page);
       await expect(tab).toHaveAttribute('title', folder);
       // A group of its own: the strip draws a boundary before it.
-      await expect(tab).toHaveClass(/border-l/);
+      await expect(tab).toHaveAttribute('data-starts-group', 'true');
       // …and no repository prefix, because it belongs to none.
       await expect(tab).not.toContainText(basename(repoPath));
 

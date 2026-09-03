@@ -220,6 +220,11 @@ export function TabButton({
       }}
       title={tabTitle(tab, foreignRepo)}
       data-face={face}
+      // A repository boundary, named rather than left to the Tailwind
+      // classes below — those are a styling detail free to change, and
+      // a test asserting on `border-l` would break on a purely visual
+      // restyle that changes nothing about which tab starts a group.
+      data-starts-group={startsGroup || undefined}
       className={cn(
         'group relative flex h-full max-w-56 min-w-28 cursor-default items-center gap-2 border-r border-border pr-1.5 pl-3 text-base transition-colors select-none',
         active
