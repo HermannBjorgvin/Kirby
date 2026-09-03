@@ -16,6 +16,7 @@ import {
 import { readConfig } from '@kirby/vcs-core';
 import { activeRepoIs } from './repo.js';
 import { launchAgent } from './sessions.js';
+import { adoptTerminal } from './terminals.js';
 
 let discovery: SessionDiscovery | null = null;
 
@@ -62,6 +63,10 @@ export function startDiscoveryForRepo(cwd: string): void {
     getConfig: () => readConfig(cwd),
     isCurrent: () => activeRepoIs(cwd),
     adopt: attach,
+    // Terminal tabs come back the same way — the first scan is what
+    // reopens every one that survived the last run, in whatever
+    // directory tmux remembers for it.
+    adoptTerminal: (terminal) => adoptTerminal(terminal),
     onChanged: () => changed?.(),
   });
 }

@@ -16,6 +16,14 @@ import {
 import { readConfig } from '@kirby/vcs-core';
 import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
+import {
+  attachRelay,
+  newRelayEntry,
+  relayBuffer,
+  setSessionBroadcaster,
+  type RelayEntry,
+} from './session-relay.js';
+import { terminalBuffer, terminalNames } from './terminals.js';
 import type {
   AgentOptionView,
   PlanCheckoutRequest,
@@ -30,22 +38,13 @@ export type { SessionLaunchRequest, SessionSummary };
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 40;
-/** Per-session scrollback kept for late/remounting terminals. */
-const BUFFER_LIMIT = 512 * 1024;
 
-// ── Event streaming (main → renderer) ────────────────────────────
+// The output relay (ring buffer + push to the renderer) lives in
+// session-relay.ts, shared with terminal tabs; main.ts still installs
+// the broadcaster through this module.
+export { setSessionBroadcaster };
 
-let broadcast: ((channel: string, payload: unknown) => void) | null = null;
-
-/** Called from main.ts once windows exist; forwards PTY output and
- *  exit notices to every renderer window. */
-export function setSessionBroadcaster(
-  fn: (channel: string, payload: unknown) => void
-): void {
-  broadcast = fn;
-}
-
-interface KnownSession {
+interface KnownSession extends RelayEntry {
   branch: string;
   /** Repository this session was launched for. The PTY registry is
    *  keyed by branch name alone (it also names worktree directories, so
@@ -54,28 +53,6 @@ interface KnownSession {
    *  every desktop-side lookup ignore, and refuse to act on, a session
    *  belonging to a repository other than the open one. */
   repoCwd: string;
-  /** Ring buffer of recent output chunks (bounded by BUFFER_LIMIT). */
-  chunks: string[];
-  bytes: number;
-  seq: number;
-}
-
-function attachRelay(name: string, entry: KnownSession): void {
-  const session = getSession(name);
-  if (!session) throw new Error(`Session ${name} vanished after spawn`);
-  session.pty.onData((data) => {
-    entry.seq += 1;
-    entry.chunks.push(data);
-    entry.bytes += data.length;
-    while (entry.bytes > BUFFER_LIMIT && entry.chunks.length > 1) {
-      entry.bytes -= entry.chunks.shift()?.length ?? 0;
-    }
-    broadcast?.('kirby/session/data', { name, data, seq: entry.seq });
-  });
-  session.pty.onExit((code) => {
-    console.log(`[desktop] session ${name} exited with code ${code}`);
-    broadcast?.('kirby/session/exit', { name, code });
-  });
 }
 
 /**
@@ -94,7 +71,7 @@ function adoptSession(name: string, branch: string, repoCwd: string): void {
   const entry: KnownSession =
     prev && prev.repoCwd === repoCwd
       ? Object.assign(prev, { branch, chunks: [], bytes: 0 })
-      : { branch, repoCwd, chunks: [], bytes: 0, seq: 0 };
+      : { ...newRelayEntry(), branch, repoCwd };
   known.set(name, entry);
   attachRelay(name, entry);
 }
@@ -290,8 +267,10 @@ export function listAgentOptions(): AgentOptionView[] {
 
 export function getSessionBuffer(name: string): SessionBuffer {
   const entry = ownSession(name);
-  if (!entry) return { data: '', seq: 0 };
-  return { data: entry.chunks.join(''), seq: entry.seq };
+  if (entry) return relayBuffer(entry);
+  // A terminal tab belongs to a directory, not to the open repository,
+  // so its scrollback is answered whatever repository that is.
+  return terminalBuffer(name) ?? { data: '', seq: 0 };
 }
 
 /**
@@ -416,7 +395,7 @@ export function getSessionActivity(): Record<
   ReturnType<typeof activitySnapshot>
 > {
   const out: Record<string, ReturnType<typeof activitySnapshot>> = {};
-  for (const name of ownSessionNames()) {
+  for (const name of [...ownSessionNames(), ...terminalNames()]) {
     out[name] = activitySnapshot(name);
   }
   return out;

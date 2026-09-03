@@ -38,6 +38,12 @@ export type {
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
+// Terminal tabs — sessions bound to a directory rather than a worktree.
+export type * from './contract-terminals.js';
+import type {
+  TerminalLaunchRequest,
+  TerminalSummary,
+} from './contract-terminals.js';
 import type {
   BabysitChangedEvent,
   MenuCommandEvent,
@@ -298,6 +304,9 @@ export interface KirbyHostApi {
   /** Native folder picker. Resolves to the chosen path, or null when
    *  the user cancels. */
   selectRepoDirectory(): Promise<string | null>;
+  /** The same picker, for any folder — a terminal's directory need not
+   *  be a repository. */
+  selectFolder(): Promise<string | null>;
   forgetRecent(cwd: string): Promise<void>;
 
   // ── Config / settings ────────────────────────────────────────
@@ -394,6 +403,15 @@ export interface KirbyHostApi {
    *  a PTY carries text, not bytes. Rejects anything that is not a
    *  recognised image type. */
   saveClipboardImage(data: Uint8Array, mimeType: string): Promise<string>;
+  // ── Terminal tabs ────────────────────────────────────────────
+  /** Open a shell or an agent in a directory. The summary says which
+   *  repository the tab belongs to, if any. */
+  launchTerminal(req: TerminalLaunchRequest): Promise<TerminalSummary>;
+  /** Every terminal this host holds, whatever repository is open —
+   *  terminals belong to directories, not to the open repo. */
+  listTerminals(): Promise<TerminalSummary[]>;
+  /** Kill the terminal's session, on either backend, and forget it. */
+  killTerminal(name: string): Promise<void>;
   /** Subscribe to PTY output. Returns an unsubscribe function. */
   onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
   onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
@@ -453,6 +471,7 @@ export const IPC = {
   openRepo: 'kirby/repo/open',
   listRecentRepos: 'kirby/repo/recents',
   selectRepoDirectory: 'kirby/repo/select-directory',
+  selectFolder: 'kirby/shell/select-folder',
   forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
   getSettingsView: 'kirby/settings/view',
@@ -476,6 +495,9 @@ export const IPC = {
   resizeSession: 'kirby/session/resize',
   killSession: 'kirby/session/kill',
   saveClipboardImage: 'kirby/session/clipboard-image',
+  launchTerminal: 'kirby/terminal/launch',
+  listTerminals: 'kirby/terminal/list',
+  killTerminal: 'kirby/terminal/kill',
   fetchPullRequests: 'kirby/reviews/prs',
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',
