@@ -102,7 +102,15 @@ export type TabsAction =
   /** A repository was opened. Dispatched for every open, tab-driven or
    *  not; it only does something when the tab in front of the user
    *  belongs to somewhere else. */
-  | { type: 'repo-opened'; repo: string };
+  | { type: 'repo-opened'; repo: string }
+  /** A close asked its session to be killed and the kill failed. The
+   *  tab already closed synchronously — the strip must not wait on a
+   *  round trip to feel responsive — so the session is still running
+   *  behind no tab at all unless the next sync is told it has not
+   *  been seen. Forgetting these keys is what lets it: the same
+   *  session or terminal reopens on the next sidebar poll or terminal
+   *  listing instead of staying invisible for the life of the strip. */
+  | { type: 'forget-auto-opened'; keys: string[] };
 
 function pinTab(tabs: Tab[], id: string): Tab[] {
   return tabs.map((t): Tab => {
@@ -226,7 +234,22 @@ function applyStrip(state: TabsState, action: StripAction): TabsState {
       );
     case 'repo-opened':
       return focusRepo(state, action.repo);
+    case 'forget-auto-opened':
+      return forgetAutoOpened(state, action.keys);
   }
+}
+
+/** Drop the given keys from `autoOpened`, so a session or terminal a
+ *  failed kill left running is offered again on the next sync rather
+ *  than staying invisible for the life of the strip. A no-op set
+ *  returns the same state object. */
+function forgetAutoOpened(state: TabsState, keys: string[]): TabsState {
+  if (keys.length === 0) return state;
+  const drop = new Set(keys);
+  const autoOpened = state.autoOpened.filter((k) => !drop.has(k));
+  return autoOpened.length === state.autoOpened.length
+    ? state
+    : { ...state, autoOpened };
 }
 
 /**

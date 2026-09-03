@@ -76,6 +76,11 @@ interface TabsApi extends TabsState {
   repoOpened: (repo: string) => void;
   /** Open (or activate) the tab for a terminal the host just started. */
   openTerminal: (terminal: TerminalEntry) => void;
+  /** A close's kill failed: forget these auto-open keys (from
+   *  `autoOpenKey`/`terminalTabId`) so the session or terminal, still
+   *  running, is offered a tab again on the next sync rather than
+   *  staying invisible. */
+  forgetAutoOpened: (keys: string[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -142,6 +147,10 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
     []
   );
+  const forgetAutoOpened = useCallback(
+    (keys: string[]) => dispatch({ type: 'forget-auto-opened', keys }),
+    []
+  );
 
   const api = useMemo<TabsApi>(
     () => ({
@@ -159,6 +168,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
+      forgetAutoOpened,
     }),
     [
       state,
@@ -175,6 +185,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
+      forgetAutoOpened,
     ]
   );
 

@@ -230,6 +230,44 @@ describe('sync-items opens a tab per running agent', () => {
   });
 });
 
+// use-close-tabs closes a tab synchronously and kills its session after
+// — the strip does not wait on the round trip — so a kill that fails
+// leaves the session running behind no tab. It recovers by forgetting
+// the auto-open key on error, which is exactly this reducer step.
+describe('forget-auto-opened', () => {
+  it('reopens a running agent on the next sync once its key is forgotten', () => {
+    const live: ItemEntry = {
+      itemKey: 'branch:feat-x',
+      branch: 'feat-x',
+      sessionName: 'kirby-feat-x',
+      running: true,
+    };
+    let s = sync(empty, [live]);
+    s = reduce(s, { type: 'close', id: id('branch:feat-x') });
+    expect(s.tabs).toEqual([]);
+    // The kill failed — the agent is still running — but without
+    // forgetting the key the poll that reports it keeps reading as
+    // already seen, forever.
+    s = sync(s, [live]);
+    expect(s.tabs).toEqual([]);
+
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [autoOpenKey(REPO, 'kirby-feat-x')],
+    });
+    s = sync(s, [live]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].id).toBe(id('branch:feat-x'));
+  });
+
+  it('is a no-op for a key nothing has auto-opened', () => {
+    const s = sync(empty, [{ itemKey: 'branch:x', branch: 'x' }]);
+    expect(reduce(s, { type: 'forget-auto-opened', keys: ['nothing'] })).toBe(
+      s
+    );
+  });
+});
+
 describe('sync-items pins previews with a live agent', () => {
   it('pins a preview tab once an agent is running on its branch', () => {
     let s = open(empty, 'branch:feat-x', true);
@@ -783,6 +821,25 @@ describe('terminal tabs', () => {
   it('returns the same state when the listing changed nothing', () => {
     const s = syncTerminals(empty, [plain]);
     expect(syncTerminals(s, [plain])).toBe(s);
+  });
+
+  // Mirrors the item case above: closing a terminal tab kills its
+  // session after the tab is already gone, so a failed kill needs its
+  // auto-open key forgotten or the still-running terminal never gets a
+  // tab back.
+  it('reopens a terminal once its auto-open key is forgotten after a failed kill', () => {
+    let s = syncTerminals(empty, [plain]);
+    s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toEqual([]);
+
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [terminalTabId(plain.name)],
+    });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].id).toBe(terminalTabId(plain.name));
   });
 
   // The sidebar poll re-keys and pins *item* tabs; a terminal has no
