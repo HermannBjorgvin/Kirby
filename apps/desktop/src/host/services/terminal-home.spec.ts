@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { displayPath, terminalRepo } from './terminal-home.js';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { displayPath, resolvePickedFolder, terminalRepo } from './terminal-home.js';
 
 /**
  * Where a terminal belongs. A directory that is itself a repository
@@ -61,5 +64,44 @@ describe('displayPath', () => {
 
   it('is the path itself when home is unknown', () => {
     expect(displayPath('/srv/app', '')).toBe('/srv/app');
+  });
+});
+
+/**
+ * `terminalRepo` compares a picked path against the open repository's
+ * root as plain strings, and `getRepoRoot()` resolves symlinks via
+ * `git rev-parse` — so a folder reached through a symlink into an
+ * already-open repository must be canonicalized before it gets there,
+ * or it reads as a second repository.
+ */
+describe('resolvePickedFolder', () => {
+  let dir: string | null = null;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = null;
+  });
+
+  it('resolves a symlink to the real directory it points at', () => {
+    dir = mkdtempSync(join(tmpdir(), 'kirby-picked-folder-'));
+    const real = realpathSync(join(dir, '.'));
+    const link = join(dir, 'link');
+    symlinkSync(real, link);
+
+    expect(resolvePickedFolder(link, realpathSync)).toBe(real);
+    // The scenario this guards: the symlink and its target must read
+    // as the same repository once resolved.
+    expect(resolvePickedFolder(link, realpathSync)).toBe(
+      resolvePickedFolder(real, realpathSync)
+    );
+  });
+
+  it('falls back to the raw path when resolution fails', () => {
+    const missing = '/definitely/not/a/real/path/kirby-test';
+    expect(
+      resolvePickedFolder(missing, () => {
+        throw new Error('ENOENT');
+      })
+    ).toBe(missing);
   });
 });

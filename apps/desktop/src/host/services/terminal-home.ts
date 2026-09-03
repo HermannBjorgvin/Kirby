@@ -15,6 +15,31 @@ function normalized(cwd: string): string {
 }
 
 /**
+ * Canonicalize a folder the native picker returned, so a symlink into
+ * an already-open repository resolves to the same path `getRepoRoot()`
+ * (which follows symlinks via `git rev-parse`) would give it. Without
+ * this, `terminalRepo` compares the picked path against the open
+ * repository's root as plain strings, and a symlink reads as a second
+ * repository rather than the one already open.
+ *
+ * `realpath` is injected so this is testable without touching the
+ * filesystem, and the raw path is kept when it throws — a permission
+ * error, or the directory vanishing between the pick and this call —
+ * since a terminal opening on the path the user actually picked beats
+ * refusing the launch.
+ */
+export function resolvePickedFolder(
+  path: string,
+  realpath: (p: string) => string
+): string {
+  try {
+    return realpath(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
  * The repository a terminal in `cwd` belongs to: `cwd` itself when it
  * is a repository root, `null` otherwise.
  *

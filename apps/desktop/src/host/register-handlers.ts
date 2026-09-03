@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import type {
   ContextMenuItem,
   KirbyHostApi,
@@ -17,6 +18,7 @@ import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 import * as babysit from './services/babysit.js';
+import { resolvePickedFolder } from './services/terminal-home.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -36,8 +38,8 @@ export function createHostApi(): KirbyHostApi {
     openRepo: (cwd) => Promise.resolve(repo.openRepo(cwd)),
     getRepo: () => Promise.resolve(repo.getRepo()),
     listRecentRepos: () => Promise.resolve(repo.listRecentRepos()),
-    selectRepoDirectory: () => folderPicker('Open repository'),
-    selectFolder: () => folderPicker('Open folder'),
+    selectRepoDirectory: () => pickFolder('Open repository'),
+    selectFolder: () => pickFolder('Open folder'),
     forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
     getSettingsView: () => Promise.resolve(settings.getSettingsView()),
@@ -152,6 +154,15 @@ export function setFolderPicker(
   fn: (title: string) => Promise<string | null>
 ): void {
   folderPicker = fn;
+}
+
+/** The native picker, with its result canonicalized — see
+ *  `resolvePickedFolder`. A symlink the user picks otherwise compares
+ *  unequal to the already-open repository's root (which `getRepoRoot()`
+ *  resolves via `git rev-parse`), and reads as a second repository. */
+async function pickFolder(title: string): Promise<string | null> {
+  const picked = await folderPicker(title);
+  return picked === null ? null : resolvePickedFolder(picked, realpathSync);
 }
 
 export function setExternalOpener(fn: (url: string) => Promise<void>): void {
