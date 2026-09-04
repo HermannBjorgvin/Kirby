@@ -184,6 +184,24 @@ export function killSession(name: string): void {
   }
 }
 
+/** Drop the tombstone of a session that has already exited, without
+ *  touching the backend. A terminal tab closes itself when its process
+ *  ends, so nothing is left to view the final frame through and the
+ *  entry would only accumulate. Deliberately not `killSession`: on tmux
+ *  `kill()` reaches the tmux session, and the client this entry holds
+ *  can exit while that session lives on (the user detached from inside
+ *  tmux), which must not turn into a kill-session. A live entry is left
+ *  alone. */
+export function releaseExitedSession(name: string): void {
+  const entry = registry.get(name);
+  if (!entry || !entry.exited) return;
+  entry.pty.dispose();
+  entry.emu.dispose();
+  activity.detach(name);
+  removeInactiveAlert(name);
+  registry.delete(name);
+}
+
 /** Soft cleanup — used on Kirby process exit. Calls the backend's
  *  `dispose()` so tmux sessions survive and can be reattached on the
  *  next launch. For the direct PTY backend this is the same as kill().

@@ -18,7 +18,13 @@ const state = vi.hoisted(() => ({
     config: unknown;
   }[],
   killed: [] as string[],
+  released: [] as string[],
   onData: new Map<string, (data: string) => void>(),
+  onExit: new Map<string, ((code: number) => void)[]>(),
+  // One session object per spawn, as the registry holds one entry per
+  // spawn: the host tells a session's exit from a successor's by
+  // identity, so the mock must not hand out a fresh object per read.
+  sessions: new Map<string, { exited: boolean; pty: unknown }>(),
   configByCwd: {} as Record<string, unknown>,
   repoRoots: new Set<string>(),
   recents: [] as string[],
@@ -69,20 +75,26 @@ vi.mock('@kirby/core', () => ({
       cwd: spec.cwd,
       config: spec.config,
     });
+    const name = spec.name;
+    state.onExit.set(name, []);
+    state.sessions.set(name, {
+      exited: false,
+      pty: {
+        onData: (cb: (data: string) => void) => state.onData.set(name, cb),
+        onExit: (cb: (code: number) => void) =>
+          state.onExit.get(name)?.push(cb),
+      },
+    });
   },
-  getSession: (name: string) =>
-    state.alive.has(name)
-      ? {
-          exited: false,
-          pty: {
-            onData: (cb: (data: string) => void) => state.onData.set(name, cb),
-            onExit: () => undefined,
-          },
-        }
-      : undefined,
+  getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {
     state.killed.push(name);
     state.alive.delete(name);
+    state.sessions.delete(name);
+  },
+  releaseExitedSession: (name: string) => {
+    state.released.push(name);
+    state.sessions.delete(name);
   },
   isSessionAlive: (name: string) => state.alive.has(name),
   getSpawnedAt: () => 1000,
@@ -94,7 +106,10 @@ beforeEach(async () => {
   state.alive = new Set();
   state.spawns = [];
   state.killed = [];
+  state.released = [];
   state.onData = new Map();
+  state.onExit = new Map();
+  state.sessions = new Map();
   state.configByCwd = {};
   state.repoRoots = new Set(['/home/dev/kirby', '/home/dev/other']);
   state.recents = [];
@@ -249,6 +264,84 @@ describe('listTerminals', () => {
       expect.objectContaining({ name: a.name, running: true }),
       expect.objectContaining({ name: b.name, running: false }),
     ]);
+  });
+});
+
+/** The process behind `name` ends: the registry marks its entry exited
+ *  and every exit subscriber hears about it, in the order they
+ *  subscribed. The entry stays until something releases it. */
+function endProcess(name: string): void {
+  const session = state.sessions.get(name);
+  if (session) session.exited = true;
+  state.alive.delete(name);
+  for (const cb of [...(state.onExit.get(name) ?? [])]) cb(0);
+}
+
+// The tab closes by itself when its process ends — `exit` typed into a
+// shell, an agent quitting, tmux ending the session — so the host must
+// stop listing the terminal, or the strip would keep a tab open on a
+// process that is gone. Everything held for it goes with it: the
+// relay buffer, and the registry tombstone nothing can view any more.
+describe('a terminal whose process ended', () => {
+  it('is no longer listed, and its buffer and registry entry are released', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    state.onData.get(name)?.('$ exit\r\n');
+    endProcess(name);
+    expect(terminals.listTerminals(HOME)).toEqual([]);
+    expect(terminals.terminalBuffer(name)).toBeUndefined();
+    expect(terminals.isTerminal(name)).toBe(false);
+    expect(state.released).toEqual([name]);
+    // Released, never killed: on tmux a kill would reach the session,
+    // and the client can exit while the session lives on.
+    expect(state.killed).toEqual([]);
+  });
+
+  it('applies to an agent terminal as much as a shell', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/other' },
+      HOME
+    );
+    endProcess(name);
+    expect(terminals.listTerminals(HOME)).toEqual([]);
+    expect(terminals.agentTerminalNames()).toEqual([]);
+  });
+
+  // A terminal the user closed was killed and forgotten already; the
+  // exit that follows the kill must not release anything twice, or
+  // touch a terminal that has since been opened under the same name.
+  it('does nothing for a terminal that was already killed', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    const exits = state.onExit.get(name) ?? [];
+    terminals.killTerminal(name);
+    for (const cb of exits) cb(0);
+    expect(state.released).toEqual([]);
+  });
+
+  // Re-adopting a terminal (the user detached from inside tmux, and
+  // discovery found the session still running) respawns under the same
+  // name. The old client's exit lands after the respawn, and must not
+  // drop the terminal the new client is attached to.
+  it('keeps a terminal that was respawned under the same name', () => {
+    terminals.adoptTerminal({
+      name: 'kirby-term-shell-1a2b3c',
+      kind: 'shell',
+      path: '/x',
+    });
+    const oldExits = [...(state.onExit.get('kirby-term-shell-1a2b3c') ?? [])];
+    terminals.adoptTerminal({
+      name: 'kirby-term-shell-1a2b3c',
+      kind: 'shell',
+      path: '/x',
+    });
+    for (const cb of oldExits) cb(0);
+    expect(terminals.listTerminals(HOME)).toHaveLength(1);
+    expect(state.released).toEqual([]);
   });
 });
 

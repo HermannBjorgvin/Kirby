@@ -33,6 +33,7 @@ const terminal = (name: string, repo: string | null, cwd = '/x'): Tab => ({
   displayPath: cwd,
   repo,
   preview: false,
+  listed: true,
 });
 
 describe('repoDisplayName', () => {

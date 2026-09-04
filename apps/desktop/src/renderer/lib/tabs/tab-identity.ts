@@ -45,6 +45,12 @@ export type Tab =
       /** Terminals are always pinned: a preview tab gets replaced by
        *  the next click, and a shell is not something to lose that way. */
       preview: false;
+      /** Whether a host listing has named this terminal yet. A tab
+       *  opened on the launch's own answer starts out unlisted, and a
+       *  listing fetched before the terminal existed says nothing about
+       *  it — only a listing that has named it, and then stops, has
+       *  seen it end. */
+      listed: boolean;
     };
 
 /** A tab that shows a sidebar item, and so belongs to a repository. */

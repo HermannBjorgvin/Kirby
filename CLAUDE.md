@@ -732,7 +732,15 @@ terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
   follows like any foreign tab; a plain-folder one belongs to nobody
   (`tabHome` is null) and activating it switches nothing. Closing a
   terminal tab always confirms and **kills** the session on both
-  backends; quitting only detaches, so tmux terminals come back. Two
+  backends; quitting only detaches, so tmux terminals come back. When
+  the process behind a terminal tab ends on its own — `exit` in the
+  shell, the agent quitting, a tmux session killed from outside — the
+  host drops it from `listTerminals` on the client PTY's exit
+  (`watchForEnd`, releasing the relay buffer and the registry tombstone
+  without a kill, since a tmux client can also exit while its session
+  lives on) and the reducer's `dropEnded` closes any terminal tab a
+  _defined_ listing does not name, with the user's close-focus rules;
+  an `undefined` listing is "not asked yet" and closes nothing. Two
   e2e traps: zsh greets a fresh `HOME` with its first-user wizard, which
   eats the first keystroke, so the fixture seeds an empty `.zshrc`; and
   Playwright reads any array whose second element is an object as a

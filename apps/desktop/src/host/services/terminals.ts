@@ -2,11 +2,13 @@ import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute } from 'node:path';
 import {
+  getSession,
   getSpawnedAt,
   isSessionAlive,
   killSession as killSessionEntry,
   launchTerminalSession,
   newTerminalSessionName,
+  releaseExitedSession,
   type DiscoveredTerminal,
 } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
@@ -104,7 +106,32 @@ function start(
     cwd,
   };
   known.set(name, entry);
+  watchForEnd(name, entry);
   attachRelay(name, entry);
+}
+
+/**
+ * A terminal is over when its process ends — `exit` typed into the
+ * shell, the agent quitting, or on tmux the session ending under the
+ * client, whether its last process exited or someone killed it from
+ * outside. The terminal is then dropped from the listing, which is what
+ * closes its tab, and everything held for it is released.
+ *
+ * Subscribed before the relay so the listing is already without the
+ * terminal when the renderer hears the exit and asks. Identity guards
+ * both ends: a kill or a respawn under the same name deletes or
+ * replaces the registry entry before the old client's exit lands, and
+ * that exit must not drop what replaced it — nor, on quit, does the
+ * client that `killAll` detached find anything left to drop.
+ */
+function watchForEnd(name: string, entry: KnownTerminal): void {
+  const session = getSession(name);
+  if (!session) throw new Error(`Terminal ${name} vanished after launch`);
+  session.pty.onExit(() => {
+    if (getSession(name) !== session || known.get(name) !== entry) return;
+    known.delete(name);
+    releaseExitedSession(name);
+  });
 }
 
 /** A repository root the user reached through a terminal goes on the
@@ -137,7 +164,7 @@ export function launchTerminal(
   start(name, req.kind, req.cwd, req);
   noteRepository(req.cwd);
   const entry = known.get(name);
-  if (!entry) throw new Error(`Terminal ${name} vanished after launch`);
+  if (!entry) throw new Error(`Terminal ${name} ended during launch`);
   return summarize(name, entry, home);
 }
 

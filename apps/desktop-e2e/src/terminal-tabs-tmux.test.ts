@@ -11,7 +11,11 @@ import {
   terminalTabs,
   tmuxSessionPath,
 } from './setup/terminals.js';
-import { killKirbySessions, tmuxAvailable } from './setup/tmux.js';
+import {
+  killKirbySessions,
+  killTmuxSession,
+  tmuxAvailable,
+} from './setup/tmux.js';
 
 /**
  * Terminal tabs under tmux: the session is identified by nothing but
@@ -55,6 +59,31 @@ test.describe('Terminal tabs under tmux', () => {
       .click();
     await expect
       .poll(() => terminalSessions(homeDir), { timeout: 15_000 })
+      .toEqual([]);
+  });
+
+  // A tmux session can end without the app's involvement — its last
+  // process exits, or someone runs `tmux kill-session` in another
+  // window. The client the app holds exits with it, and the tab goes
+  // the way a PTY shell's does on `exit`: by itself, with no dialog.
+  test('a shell tab closes itself when its tmux session is killed from outside', async ({
+    desktop,
+  }) => {
+    const { app, page, homeDir } = desktop;
+    await openNewTerminalDialog(app, page);
+    await confirmNewTerminal(page, 'Shell');
+    await expect(terminalTabs(page)).toHaveCount(1);
+    await expect
+      .poll(() => terminalSessions(homeDir), { timeout: 15_000 })
+      .toHaveLength(1);
+    const [name] = terminalSessions(homeDir);
+
+    killTmuxSession(name, homeDir);
+
+    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => window.kirby.listTerminals()))
       .toEqual([]);
   });
 });

@@ -64,13 +64,15 @@ interface TabsApi extends TabsState {
    * terminal listing, in one step: follow re-keyed items, open a tab
    * for each newly running agent, pin any preview tab that now has a
    * live agent behind it, and bring the terminal strip in line with
-   * what the host lists. One dispatch, so both reconciliations land in
-   * a single render rather than racing from two effects.
+   * what the host lists — closing the tabs of terminals it no longer
+   * has. One dispatch, so both reconciliations land in a single render
+   * rather than racing from two effects. No `terminals` is no listing
+   * yet, which leaves every terminal tab alone.
    */
   syncItems: (
     repo: string,
     entries: ItemEntry[],
-    terminals: TerminalEntry[]
+    terminals: TerminalEntry[] | undefined
   ) => void;
   /** Tell the strip a repository is now the one in view. */
   repoOpened: (repo: string) => void;
@@ -135,8 +137,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     []
   );
   const syncItems = useCallback(
-    (repo: string, entries: ItemEntry[], terminals: TerminalEntry[]) =>
-      dispatch({ type: 'sync-items', repo, entries, terminals }),
+    (
+      repo: string,
+      entries: ItemEntry[],
+      terminals: TerminalEntry[] | undefined
+    ) => dispatch({ type: 'sync-items', repo, entries, terminals }),
     []
   );
   const repoOpened = useCallback(
@@ -209,8 +214,10 @@ export function useRepoTabs(): RepoTabsApi {
       ...tabs,
       openItem: (itemKey: string, opts?: { preview?: boolean }) =>
         tabs.openItem(cwd, itemKey, opts),
-      syncItems: (entries: ItemEntry[], terminals: TerminalEntry[]) =>
-        tabs.syncItems(cwd, entries, terminals),
+      syncItems: (
+        entries: ItemEntry[],
+        terminals: TerminalEntry[] | undefined
+      ) => tabs.syncItems(cwd, entries, terminals),
       close: (id: string) => tabs.close(id, cwd),
     }),
     [tabs, cwd]
@@ -219,5 +226,8 @@ export function useRepoTabs(): RepoTabsApi {
 
 export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
-  syncItems: (entries: ItemEntry[], terminals: TerminalEntry[]) => void;
+  syncItems: (
+    entries: ItemEntry[],
+    terminals: TerminalEntry[] | undefined
+  ) => void;
 }

@@ -68,6 +68,7 @@ import {
   isSessionAlive,
   killAll,
   killSession,
+  releaseExitedSession,
 } from './pty-registry.js';
 
 const NAMES = ['s1', 's2'];
@@ -177,6 +178,36 @@ describe('pty-registry — teardown contract', () => {
       expect(pty.kill).not.toHaveBeenCalled();
     }
     expect(hasAnySession()).toBe(false);
+  });
+
+  // A terminal tab closes itself when its process ends, so nothing is
+  // left to view the tombstone through; the entry is dropped without a
+  // kill, because on tmux `kill()` would reach the session — and the
+  // client can exit while the session lives on (the user detached from
+  // inside tmux), which must not become a kill-session.
+  describe('releaseExitedSession', () => {
+    it('drops an exited entry and its emulator without calling kill()', () => {
+      spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+      const pty = ptys[0]!;
+      const emu = emus[0]!;
+      pty.triggerExit(0);
+
+      releaseExitedSession('s1');
+
+      expect(hasSession('s1')).toBe(false);
+      expect(emu.dispose).toHaveBeenCalledTimes(1);
+      expect(pty.kill).not.toHaveBeenCalled();
+    });
+
+    it('leaves a live session untouched', () => {
+      spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+      const emu = emus[0]!;
+
+      releaseExitedSession('s1');
+
+      expect(isSessionAlive('s1')).toBe(true);
+      expect(emu.dispose).not.toHaveBeenCalled();
+    });
   });
 
   it('respawning the same name disposes the old entry rather than killing it', () => {

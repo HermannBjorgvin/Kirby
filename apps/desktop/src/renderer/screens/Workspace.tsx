@@ -182,6 +182,17 @@ function WorkspaceInner({
     return off;
   }, [qc, repo.cwd]);
 
+  // A terminal tab closes itself when its process ends. The host drops
+  // the terminal from its listing on the exit; refetching on the same
+  // event is what makes the tab go at once rather than on the next
+  // poll of the listing.
+  useEffect(() => {
+    const off = window.kirby.onSessionExit(() => {
+      void qc.invalidateQueries({ queryKey: keys.terminals });
+    });
+    return off;
+  }, [qc]);
+
   // Worktrees and agent sessions can also appear without this process
   // being involved — a second Kirby, a script, an operator with tmux.
   // The host notices and says so; the sidebar is a query cache, so it

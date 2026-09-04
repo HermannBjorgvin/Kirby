@@ -24,6 +24,7 @@ import {
 
 export type { ItemTab, Tab, TerminalTab } from './tab-identity.js';
 export type { TerminalEntry } from './tab-terminals.js';
+import { closeTab } from './tab-close.js';
 import { pinLive, rekey } from './tab-sync.js';
 import {
   openTerminal,
@@ -90,12 +91,18 @@ export type TabsAction =
    *  one pure step. Terminals ride along on every sync rather than
    *  getting a dispatch of their own — carrying an empty `entries` still
    *  reconciles the terminal strip on its own, since an empty list is a
-   *  no-op for the item passes. */
+   *  no-op for the item passes.
+   *
+   *  `terminals` is the host's answer, and `undefined` is no answer
+   *  yet — not an empty one. The listing is authoritative when it is
+   *  there: a terminal tab it does not name has ended and closes. With
+   *  no listing the terminal tabs are left exactly as they are, so a
+   *  tick before the first answer cannot close every one of them. */
   | {
       type: 'sync-items';
       repo: string;
       entries: ItemEntry[];
-      terminals: TerminalEntry[];
+      terminals?: TerminalEntry[];
     }
   /** Open (or activate) the tab for a terminal the host just started. */
   | { type: 'open-terminal'; terminal: TerminalEntry }
@@ -192,7 +199,10 @@ function apply(state: TabsState, action: TabsAction): TabsState {
     // One dispatch, one pure step: the repo's items and the host's
     // terminal listing are reconciled together rather than from two
     // effects racing into the reducer separately.
-    return syncTerminals(applyStrip(state, action), action.terminals);
+    const strip = applyStrip(state, action);
+    return action.terminals
+      ? syncTerminals(strip, action.repo, action.terminals)
+      : strip;
   }
   return applyStrip(state, action);
 }
@@ -313,55 +323,6 @@ function openSettings(state: TabsState): TabsState {
     tabs: [...state.tabs, { id: 'settings', kind: 'settings', preview: false }],
     activeId: 'settings',
   };
-}
-
-/**
- * Drop a tab, and when it was the active one hand focus to the tab that
- * slid into its place (the last tab, if it was the rightmost).
- */
-function closeTab(
-  state: TabsState,
-  id: string,
-  repo: string | undefined
-): TabsState {
-  const idx = state.tabs.findIndex((t) => t.id === id);
-  if (idx < 0) return state;
-  const tabs = state.tabs.filter((t) => t.id !== id);
-  let activeId = state.activeId;
-  if (state.activeId === id) {
-    activeId = nextActive(tabs, idx, repo) ?? null;
-  }
-  return { ...state, tabs, activeId };
-}
-
-/**
- * Which tab takes over when the active one closes.
- *
- * The tab that slid into its place, as ever — but never one from
- * another repository. Focus is what the workspace follows, so handing
- * it across a repository boundary would switch the sidebar, the status
- * bar and every query because the user closed a tab. When the repo in
- * view has nothing left, nothing is active: that is its empty state,
- * with the other repositories' tabs still on the strip.
- */
-function nextActive(
-  tabs: readonly Tab[],
-  idx: number,
-  repo: string | undefined
-): string | null {
-  const neighbour = tabs[Math.min(idx, tabs.length - 1)];
-  if (repo === undefined || !neighbour || !isForeignTab(neighbour, repo)) {
-    return neighbour?.id ?? null;
-  }
-  // Nearest tab of the repo in view, looking right first — the same
-  // direction the plain neighbour rule prefers.
-  for (let d = 0; d < tabs.length; d++) {
-    const right = tabs[idx + d];
-    if (right && !isForeignTab(right, repo)) return right.id;
-    const left = tabs[idx - 1 - d];
-    if (left && !isForeignTab(left, repo)) return left.id;
-  }
-  return null;
 }
 
 /** Drag-reorder: lift a tab out of the strip and drop it beside another. */

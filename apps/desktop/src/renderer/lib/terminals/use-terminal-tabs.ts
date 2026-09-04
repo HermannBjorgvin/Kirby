@@ -52,10 +52,11 @@ export function useTerminalTabs() {
   const launch = useLaunchTerminal();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const entries = useMemo(
-    () => (terminals.data ?? []).map(toEntry),
-    [terminals.data]
-  );
+  // `undefined` until the host has answered once — and it stays the
+  // previous answer across a refetch (`placeholderData`) — so the strip
+  // never sees "no terminals" when the truth is "not asked yet". The
+  // reducer closes the tab of any terminal a listing does not name.
+  const entries = useMemo(() => terminals.data?.map(toEntry), [terminals.data]);
 
   const launchMutate = launch.mutate;
   const openTerminal = tabs.openTerminal;
@@ -77,7 +78,8 @@ export function useTerminalTabs() {
   );
 
   return {
-    /** The host's terminal listing, for Workspace's sync effect. */
+    /** The host's terminal listing, for Workspace's sync effect;
+     *  `undefined` before the first answer. */
     entries,
     dialogOpen,
     openDialog: useCallback(() => setDialogOpen(true), []),

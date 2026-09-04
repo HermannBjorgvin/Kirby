@@ -24,11 +24,13 @@ const open = (
   repo = REPO
 ) => reduce(state, { type: 'open-item', repo, itemKey, preview });
 
+/** A sidebar sync with no terminal listing to reconcile against — the
+ *  state before the host has answered — unless a case hands one over. */
 const sync = (
   state: TabsState,
   entries: ItemEntry[],
   repo = REPO,
-  terminals: TerminalEntry[] = []
+  terminals: TerminalEntry[] | undefined = undefined
 ) => reduce(state, { type: 'sync-items', repo, entries, terminals });
 
 const empty: TabsState = EMPTY_TABS;
@@ -904,5 +906,84 @@ describe('terminal tabs', () => {
     // here relies on.
     const settled = reduce(s, action);
     expect(reduce(settled, action)).toBe(settled);
+  });
+
+  // The process behind a terminal ended — the shell exited, the agent
+  // quit, tmux killed the session from outside — and the host no longer
+  // lists it. The tab closes by itself: there is nothing left behind it
+  // to show, and no session left to confirm ending.
+  describe('when the listing no longer has a terminal', () => {
+    it('closes its tab', () => {
+      let s = syncTerminals(empty, [plain, inAlpha]);
+      s = syncTerminals(s, [inAlpha]);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(inAlpha.name)]);
+    });
+
+    it('hands focus to the tab that slid into its place', () => {
+      let s = open(empty, 'branch:x');
+      s = syncTerminals(s, [plain]);
+      s = open(s, 'branch:y');
+      s = reduce(s, { type: 'activate', id: terminalTabId(plain.name) });
+      s = syncTerminals(s, []);
+      expect(s.activeId).toBe(id('branch:y'));
+    });
+
+    // The same rule a close follows: focus is what the workspace
+    // follows, so it must not land on another repository's tab
+    // because a shell over here exited.
+    it('never hands focus to another repository', () => {
+      let s = open(empty, 'branch:x');
+      s = open(s, 'branch:y', false, OTHER);
+      s = openTerminal(s, plain); // active, rightmost
+      s = syncTerminals(s, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('leaves item tabs exactly as they were', () => {
+      let s = open(empty, 'branch:x');
+      s = syncTerminals(s, [plain]);
+      const before = s.tabs[0];
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([before]);
+      expect(s.tabs[0]).toBe(before);
+    });
+
+    // The host answers the launch before its listing catches up: the
+    // tab opens on the launch's own answer, and a sync can land in
+    // between with a listing fetched before the terminal existed. That
+    // listing says nothing about a terminal it never knew — only one
+    // that has named the terminal, and then stops, has seen it end.
+    it('spares a tab the host has not listed yet', () => {
+      let s = openTerminal(empty, plain);
+      s = syncTerminals(s, []);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(plain.name)]);
+      expect(s.activeId).toBe(terminalTabId(plain.name));
+      s = syncTerminals(s, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([]);
+    });
+
+    // A terminal the host lists again is a live one it re-adopted (the
+    // user detached from inside tmux and discovery found the session
+    // still running), so it gets its tab back rather than running
+    // invisibly behind a stale auto-open stamp.
+    it('gives the terminal a tab again if the host lists it again', () => {
+      let s = syncTerminals(empty, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([]);
+      s = syncTerminals(s, [plain]);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(plain.name)]);
+    });
+  });
+
+  // No listing is not an empty listing: before the host has answered,
+  // or while a query has no data, there is nothing to reconcile
+  // against, and closing every terminal tab on that tick would be
+  // closing them on nothing.
+  it('leaves every terminal tab alone when there is no listing', () => {
+    const s = openTerminal(openTerminal(empty, plain), inAlpha);
+    expect(sync(s, [], REPO, undefined)).toBe(s);
+    expect(sync(s, [], OTHER, undefined)).toBe(s);
   });
 });

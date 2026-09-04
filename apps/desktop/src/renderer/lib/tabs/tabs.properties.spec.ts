@@ -493,11 +493,13 @@ describe('terminal tabs', () => {
         ),
         (actions, repo, entries) => {
           const before = run(actions);
+          // A sidebar poll with no terminal listing on it: the item
+          // passes alone, which must not reach a terminal tab.
           const after = reduce(before, {
             type: 'sync-items',
             repo,
             entries,
-            terminals: [],
+            terminals: undefined,
           });
           const terminals = (s: TabsState) =>
             s.tabs.filter((t) => t.kind === 'terminal');
@@ -513,7 +515,7 @@ describe('terminal tabs', () => {
     );
   });
 
-  it('never moves focus on a listing, only on an open', () => {
+  it('never moves focus on a listing unless the listing ended the active tab', () => {
     fc.assert(
       fc.property(
         sequence,
@@ -530,11 +532,60 @@ describe('terminal tabs', () => {
             terminals,
           });
           // A restored terminal from another repository would otherwise
-          // switch the workspace at startup.
-          expect(after.activeId).toBe(before.activeId);
+          // switch the workspace at startup. The one listing that may
+          // move focus is one that closed the active tab, since its
+          // terminal ended — and then focus follows the close rules,
+          // asserted with every other close above.
+          const stillThere = after.tabs.some((t) => t.id === before.activeId);
+          const moved = after.activeId !== before.activeId;
+          expect(stillThere && moved).toBe(false);
         }
       ),
       { numRuns: 300 }
+    );
+  });
+
+  // The listing is the only word on which terminals exist. After any
+  // sync that carries one, a terminal tab it does not name is a tab
+  // for a process that has ended — a shell that exited, a tmux session
+  // killed from outside — and must be gone; one it does name is
+  // untouched, so a quiet poll cannot remount a live shell's pane. The
+  // one exception is a terminal no listing has ever named: the tab
+  // opened on the launch's own answer, and a listing fetched before
+  // the terminal existed has not seen it end.
+  it('holds no terminal tab a listing named and this one does not, and every one it does', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...REPOS),
+        fc.uniqueArray(fc.constantFrom(...TERMINALS), { maxLength: 4 }),
+        (actions, repo, terminals) => {
+          const before = run(actions);
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries: [],
+            terminals,
+          });
+          const listed = new Set(terminals.map((t) => t.name));
+          const open = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'terminal');
+          // A surviving tab is either named by this listing, or has
+          // never been named by one since it opened (`listed` is the
+          // tab's own record of that, stamped by every listing).
+          for (const t of open(after)) {
+            expect(listed.has(t.name) || !t.listed).toBe(true);
+          }
+          // …and a named tab is the same object as before, once a
+          // listing has stamped it (the first stamp is the one change).
+          for (const t of open(before)) {
+            if (!listed.has(t.name)) continue;
+            const kept = open(after).find((a) => a.id === t.id);
+            expect(t.listed ? kept : kept?.id).toBe(t.listed ? t : t.id);
+          }
+        }
+      ),
+      { numRuns: 500 }
     );
   });
 });

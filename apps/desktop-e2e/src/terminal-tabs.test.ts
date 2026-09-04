@@ -86,6 +86,29 @@ test.describe('Terminal tabs', () => {
       .toEqual([]);
   });
 
+  // The tab is the only handle on the shell, and when the shell is
+  // gone there is nothing left to hold: the tab closes by itself, and
+  // asks nothing — there is no session left to confirm ending.
+  test('a shell tab closes itself when the shell exits', async ({
+    desktop,
+  }) => {
+    const { app, page } = desktop;
+    await openNewTerminalDialog(app, page);
+    await confirmNewTerminal(page, 'Shell');
+    const tab = terminalTabs(page);
+    await expect(tab).toHaveCount(1);
+
+    await expect(
+      page.locator('[data-terminal-pane]').getByText(/\S/).first()
+    ).toBeVisible({ timeout: 15_000 });
+    await focusTerminal(page);
+    await page.keyboard.type('exit\n', { delay: 20 });
+
+    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await page.evaluate(() => window.kirby.listTerminals())).toEqual([]);
+  });
+
   test('a plain folder gets a tab in the repo-less group and switches nothing', async ({
     desktop,
   }) => {
