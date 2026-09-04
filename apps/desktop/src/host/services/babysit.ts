@@ -92,6 +92,7 @@ export async function startBabysit(prId: number): Promise<BabysitStatus> {
   const { pr } = lookup;
   const handle = startPrBabysitter({
     pr,
+    cwd,
     provider: repoProvider(cwd),
     getConfig: () => readConfig(cwd),
     readPullRequest: () => lookupPullRequest(cwd, prId),

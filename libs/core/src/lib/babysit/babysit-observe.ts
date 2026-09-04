@@ -1,6 +1,11 @@
 /**
  * Reading a pull request for the babysitter: what the provider says
  * about its threads, and what git says about merging it.
+ *
+ * Every git call names the repository it is about. The watcher
+ * outlives the desktop's `chdir` between repositories, so a call that
+ * resolved the process's directory at the moment it ran would fetch,
+ * and judge conflicts, in whichever checkout happened to be open.
  */
 import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
 import { countConflictsBetween, fetchBranches } from '@kirby/worktree-manager';
@@ -20,6 +25,21 @@ export interface RemoteSnapshot {
   headSha: string | undefined;
   threads: BabysitThread[];
   fetched: boolean;
+}
+
+export interface ObserveOptions {
+  pr: PullRequestInfo;
+  provider: VcsProvider | null;
+  config: AppConfig;
+  /** The repository the pull request belongs to. */
+  cwd: string;
+  previous: RemoteSnapshot | null;
+  now: number;
+  refreshMs?: number;
+  /** Asked between steps; false abandons the observation — the watch
+   *  was stopped, or the repository it is about is no longer the one
+   *  the shell is on, and its branch names mean nothing there. */
+  live?: () => boolean;
 }
 
 async function readThreads(
@@ -53,36 +73,51 @@ function remoteIsFresh(
   );
 }
 
+/** The provider's threads and a fetch of both refs. Null when the
+ *  observation was abandoned between the two. */
+async function refreshRemote(
+  opts: ObserveOptions,
+  live: () => boolean
+): Promise<RemoteSnapshot | null> {
+  const { pr, provider, config, cwd, now } = opts;
+  const threads = await readThreads(pr, provider, config);
+  if (!live()) return null;
+  const fetched = await fetchBranches([pr.targetBranch, pr.sourceBranch], cwd);
+  if (!live()) return null;
+  return {
+    at: now,
+    activeCommentCount: pr.activeCommentCount,
+    headSha: pr.headSha,
+    threads,
+    fetched,
+  };
+}
+
 /**
  * One poll's worth of facts about the pull request. The provider's
  * thread list and the git fetch are the expensive part and run on
  * their own cadence, or early when the cached list shows the count or
  * the head moved; the merge check runs every time against whatever
- * the tracking refs hold.
+ * the tracking refs hold. Null when abandoned: no git runs after
+ * `live` has said no.
  */
 export async function observePullRequest(
-  pr: PullRequestInfo,
-  provider: VcsProvider | null,
-  config: AppConfig,
-  previous: RemoteSnapshot | null,
-  now: number,
-  refreshMs = BABYSIT_REMOTE_REFRESH_MS
-): Promise<{ observation: BabysitObservation; remote: RemoteSnapshot }> {
+  opts: ObserveOptions
+): Promise<{ observation: BabysitObservation; remote: RemoteSnapshot } | null> {
+  const { pr, cwd, previous, now, live = () => true } = opts;
+  const refreshMs = opts.refreshMs ?? BABYSIT_REMOTE_REFRESH_MS;
   const remote = remoteIsFresh(previous, pr, now, refreshMs)
     ? previous
-    : {
-        at: now,
-        activeCommentCount: pr.activeCommentCount,
-        headSha: pr.headSha,
-        threads: await readThreads(pr, provider, config),
-        fetched: await fetchBranches([pr.targetBranch, pr.sourceBranch]),
-      };
+    : await refreshRemote(opts, live);
+  if (!remote) return null;
   const conflictCount = remote.fetched
     ? await countConflictsBetween(
         `origin/${pr.targetBranch}`,
-        `origin/${pr.sourceBranch}`
+        `origin/${pr.sourceBranch}`,
+        cwd
       )
     : null;
+  if (!live()) return null;
   return {
     observation: {
       buildStatus: pr.buildStatus,

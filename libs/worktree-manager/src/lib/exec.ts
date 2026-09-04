@@ -27,3 +27,15 @@ export function exec(
     env: { ...process.env, ...GIT_NO_PROMPT_ENV, ...options?.env },
   });
 }
+
+/**
+ * Options for a git call made on behalf of a specific repository.
+ * `cwd` is added only when given, so a caller that passes none runs
+ * against the process's directory exactly as before.
+ */
+export function gitOptions(cwd?: string): {
+  encoding: BufferEncoding;
+  cwd?: string;
+} {
+  return cwd ? { encoding: 'utf8', cwd } : { encoding: 'utf8' };
+}

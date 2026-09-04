@@ -5,7 +5,7 @@
  * Nothing here knows about worktrees.
  */
 import { log } from '@kirby/logger';
-import { exec } from './exec.js';
+import { exec, gitOptions } from './exec.js';
 import { assertShellSafeRef } from './refs.js';
 
 let cachedMainBranch: string | null = null;
@@ -147,14 +147,16 @@ export async function fastForwardMainBranch(): Promise<boolean> {
  */
 export async function countConflictsBetween(
   base: string,
-  head: string
+  head: string,
+  cwd?: string
 ): Promise<number | null> {
   assertShellSafeRef(base, 'base ref');
   assertShellSafeRef(head, 'head ref');
   try {
-    await exec(`git merge-tree --write-tree ${base} "${head}"`, {
-      encoding: 'utf8',
-    });
+    await exec(
+      `git merge-tree --write-tree ${base} "${head}"`,
+      gitOptions(cwd)
+    );
     return 0; // clean merge — no conflicts
   } catch (err: unknown) {
     // Exit code 1 = conflicts; stdout lists conflicted files
@@ -179,11 +181,15 @@ export async function countConflicts(branch: string): Promise<number> {
 
 /** Fetch these branches from origin, so their tracking refs are what
  *  the remote has now. False when the fetch failed — a branch that
- *  lives on a fork, or a remote whose refspec excludes it. */
-export async function fetchBranches(branches: string[]): Promise<boolean> {
+ *  lives on a fork, or a remote whose refspec excludes it. `cwd` names
+ *  the repository; without it, the process's directory. */
+export async function fetchBranches(
+  branches: string[],
+  cwd?: string
+): Promise<boolean> {
   for (const branch of branches) assertShellSafeRef(branch);
   try {
-    await exec(`git fetch origin ${branches.join(' ')}`, { encoding: 'utf8' });
+    await exec(`git fetch origin ${branches.join(' ')}`, gitOptions(cwd));
     return true;
   } catch (e) {
     log('error', 'fetchBranches', 'git fetch failed', e);
@@ -191,13 +197,15 @@ export async function fetchBranches(branches: string[]): Promise<boolean> {
   }
 }
 
-/** Whether `ref` names something git can resolve here. */
-export async function refExists(ref: string): Promise<boolean> {
+/** Whether `ref` names something git can resolve in the repository at
+ *  `cwd` (the process's directory when not given). */
+export async function refExists(ref: string, cwd?: string): Promise<boolean> {
   assertShellSafeRef(ref, 'ref');
   try {
-    await exec(`git rev-parse --verify --quiet "${ref}^{commit}"`, {
-      encoding: 'utf8',
-    });
+    await exec(
+      `git rev-parse --verify --quiet "${ref}^{commit}"`,
+      gitOptions(cwd)
+    );
     return true;
   } catch {
     return false;

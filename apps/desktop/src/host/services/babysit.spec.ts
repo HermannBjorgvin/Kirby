@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   prs: [] as PullRequestInfo[],
   started: [] as {
     prId: number;
+    cwd: string;
     stop: () => void;
     onStatus: (s: unknown) => void;
     onSpawned?: (name: string, cwd: string) => void;
@@ -39,12 +40,14 @@ vi.mock('./sessions.js', () => ({
 vi.mock('@kirby/core', () => ({
   startPrBabysitter: (opts: {
     pr: PullRequestInfo;
+    cwd: string;
     onStatus: (s: unknown) => void;
     onSpawned?: (name: string, cwd: string) => void;
     isCurrent: () => boolean;
   }) => {
     const entry = {
       prId: opts.pr.id,
+      cwd: opts.cwd,
       stop: () => state.stopped.push(opts.pr.id),
       onStatus: opts.onStatus,
       onSpawned: opts.onSpawned,
@@ -89,6 +92,9 @@ describe('babysit service', () => {
     await mod.startBabysit(7);
     await mod.startBabysit(7);
     expect(state.started.map((s) => s.prId)).toEqual([7]);
+    // The repository is handed over at start: the host chdir()s when
+    // another one is opened, and the watcher's git must not follow.
+    expect(state.started[0].cwd).toBe('/repo');
     expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
     expect(changes.length).toBe(1);
   });
@@ -129,6 +135,7 @@ describe('babysit service', () => {
     expect(state.started[0].isCurrent()).toBe(false);
     await mod.startBabysit(7);
     expect(state.started).toHaveLength(2);
+    expect(state.started[1].cwd).toBe('/other');
     state.cwd = '/repo';
     expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
     expect(state.started[0].isCurrent()).toBe(true);

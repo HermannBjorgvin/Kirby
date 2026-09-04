@@ -20,14 +20,16 @@
  * rather than reimplemented: the session registry is keyed by bare
  * branch name, so a live session under this name may belong to another
  * repository (`isForeignSession`), and the open repository can change
- * between two awaits of one poll (`isCurrent`), after which every git
- * call would run against the wrong checkout.
+ * between two awaits of one poll (`isCurrent`), after which the
+ * branch names in hand mean nothing to the shell. The git calls
+ * themselves never depend on which repository the shell is on: each
+ * names `cwd`, the repository the pull request belongs to.
  */
 import { logError } from '@kirby/logger';
 import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
 import {
   branchToSessionName,
-  createWorktree,
+  checkoutWorktree,
   refExists,
 } from '@kirby/worktree-manager';
 import { idleFor } from '../activity.js';
@@ -75,6 +77,9 @@ export interface BabysitStatus {
 
 export interface PrBabysitterOptions {
   pr: PullRequestInfo;
+  /** The repository the pull request belongs to. Every git call runs
+   *  against it, whatever the process's directory is by then. */
+  cwd: string;
   provider: VcsProvider | null;
   /** Read per poll, so a credential change takes effect. */
   getConfig: () => AppConfig;
@@ -111,11 +116,11 @@ type Delivery =
   | { outcome: 'held'; held: BabysitHold }
   | { outcome: 'failed'; error: string };
 
-/** Whether the branch can be checked out here at all. `createWorktree`
- *  would otherwise invent a new branch of that name off HEAD and start
- *  an agent on the wrong base. */
-async function branchAvailable(branch: string): Promise<boolean> {
-  return (await refExists(branch)) || refExists(`origin/${branch}`);
+/** Whether the branch can be checked out in `cwd` at all — locally, or
+ *  from origin. The checkout below refuses to invent a branch, so this
+ *  is what turns a missing one into a hold the badge can explain. */
+async function branchAvailable(branch: string, cwd: string): Promise<boolean> {
+  return (await refExists(branch, cwd)) || refExists(`origin/${branch}`, cwd);
 }
 
 /** Type the update into the live session, if it has been quiet. */
@@ -145,11 +150,15 @@ async function spawnForUpdate(
   prompt: string,
   live: () => boolean
 ): Promise<Delivery> {
-  if (!(await branchAvailable(pr.sourceBranch))) {
+  if (!(await branchAvailable(pr.sourceBranch, opts.cwd))) {
     return { outcome: 'held', held: 'branch-unavailable' };
   }
-  const cwd = await createWorktree(pr.sourceBranch);
-  if (!cwd) {
+  if (!live()) return { outcome: 'held', held: 'interrupted' };
+  // Checkout only: a `createWorktree` that falls back to `-b` would
+  // invent a branch of this name off HEAD and start an agent on the
+  // wrong base.
+  const worktree = await checkoutWorktree(pr.sourceBranch, opts.cwd);
+  if (!worktree) {
     return { outcome: 'failed', error: 'Could not create the worktree' };
   }
   // The checkout took time; the repository may have changed under it,
@@ -163,13 +172,13 @@ async function spawnForUpdate(
   // agent that already worked on this pull request is the normal case.
   launchSession({
     name,
-    cwd,
+    cwd: worktree,
     cols,
     rows,
     config,
     request: { intent: 'seed', prompt },
   });
-  opts.onSpawned?.(name, cwd);
+  opts.onSpawned?.(name, worktree);
   return { outcome: 'spawned' };
 }
 
@@ -272,15 +281,17 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
         return;
       }
       pr = lookup.pr;
-      const observed = await observePullRequest(
+      const observed = await observePullRequest({
         pr,
-        opts.provider,
-        opts.getConfig(),
-        remote,
-        now(),
-        opts.remoteRefreshMs
-      );
-      if (!live()) return;
+        provider: opts.provider,
+        config: opts.getConfig(),
+        cwd: opts.cwd,
+        previous: remote,
+        now: now(),
+        refreshMs: opts.remoteRefreshMs,
+        live,
+      });
+      if (!observed) return;
       remote = observed.remote;
       state = observe(state, observed.observation, now());
       publish({ lastPolledAt: now(), lastError: null });

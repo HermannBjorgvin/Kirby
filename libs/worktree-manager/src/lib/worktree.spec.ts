@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolve as pathResolve } from 'node:path';
 import {
+  checkoutWorktree,
   createWorktree,
   removeWorktree,
   canRemoveBranch,
@@ -25,12 +26,17 @@ import {
   listAllBranches,
   fastForwardMainBranch,
   countConflicts,
+  countConflictsBetween,
+  fetchBranches,
+  refExists,
   getMainBranch,
   resetMainBranchCache,
 } from './branches.js';
 import { existsSync, readFileSync } from 'node:fs';
+import type * as ExecModule from './exec.js';
 
-vi.mock('./exec.js', () => ({
+vi.mock('./exec.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof ExecModule>()),
   exec: vi.fn(),
 }));
 
@@ -140,6 +146,93 @@ describe('createWorktree', () => {
     expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//);
     expect(mockExec).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A checkout on behalf of a branch the caller did not choose — a pull
+ * request's source branch — must never fall back to inventing one.
+ */
+describe('checkoutWorktree', () => {
+  it('checks out an existing branch into the repository it is given', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    const result = await checkoutWorktree('feature/auth', '/repos/one');
+    expect(result).toBe('/repos/one/.claude/worktrees/feature-auth');
+    expect(mockExec).toHaveBeenCalledWith(
+      'git worktree add ".claude/worktrees/feature-auth" "feature/auth"',
+      { encoding: 'utf8', cwd: '/repos/one' }
+    );
+  });
+
+  it('never creates a branch: one git refuses is a failure', async () => {
+    mockExec.mockRejectedValueOnce(new Error('invalid reference'));
+    expect(await checkoutWorktree('missing', '/repos/one')).toBeNull();
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec.mock.calls[0][0]).not.toContain('-b');
+  });
+
+  it('returns the existing directory of the given repository without calling git', async () => {
+    mockExistsSync.mockImplementationOnce(
+      (p) => p === '/repos/one/.claude/worktrees/feature-auth'
+    );
+    const result = await checkoutWorktree('feature/auth', '/repos/one');
+    expect(result).toBe('/repos/one/.claude/worktrees/feature-auth');
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it('runs against the process directory when no repository is given', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    const result = await checkoutWorktree('feature/auth');
+    expect(result).toBe(
+      pathResolve(process.cwd(), '.claude/worktrees/feature-auth')
+    );
+    expect(mockExec).toHaveBeenCalledWith(expect.any(String), {
+      encoding: 'utf8',
+      cwd: process.cwd(),
+    });
+  });
+});
+
+/**
+ * The babysitter outlives the desktop's chdir between repositories,
+ * so each of its git calls names the repository it is about.
+ */
+describe('git calls scoped to a repository', () => {
+  it('refExists asks in the given repository', async () => {
+    mockExec.mockResolvedValueOnce(resolve('abc'));
+    expect(await refExists('origin/feat', '/repos/one')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      'git rev-parse --verify --quiet "origin/feat^{commit}"',
+      { encoding: 'utf8', cwd: '/repos/one' }
+    );
+  });
+
+  it('fetchBranches fetches in the given repository', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(await fetchBranches(['main', 'feat'], '/repos/one')).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith('git fetch origin main feat', {
+      encoding: 'utf8',
+      cwd: '/repos/one',
+    });
+  });
+
+  it('countConflictsBetween merges in the given repository', async () => {
+    mockExec.mockResolvedValueOnce(resolve());
+    expect(
+      await countConflictsBetween('origin/main', 'origin/feat', '/repos/one')
+    ).toBe(0);
+    expect(mockExec).toHaveBeenCalledWith(
+      'git merge-tree --write-tree origin/main "origin/feat"',
+      { encoding: 'utf8', cwd: '/repos/one' }
+    );
+  });
+
+  it('leaves the process directory in charge when none is given', async () => {
+    mockExec.mockResolvedValueOnce(resolve('abc'));
+    await refExists('origin/feat');
+    expect(mockExec).toHaveBeenCalledWith(expect.any(String), {
+      encoding: 'utf8',
+    });
   });
 });
 
