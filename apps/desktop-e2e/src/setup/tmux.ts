@@ -126,6 +126,15 @@ export function killTmuxSession(name: string, tmuxTmpdir: string): void {
   }
 }
 
+/** Detach every client from one session on the test's server, leaving
+ *  the session running — what the detach key inside tmux does. */
+export function detachTmuxClients(name: string, tmuxTmpdir: string): void {
+  execFileSync('tmux', ['detach-client', '-s', name], {
+    stdio: 'ignore',
+    env: socketEnv(tmuxTmpdir),
+  });
+}
+
 /**
  * Teardown for tmux-backed tests. Closing the app deliberately only
  * *detaches*, so a tmux-backed test would otherwise leave a live

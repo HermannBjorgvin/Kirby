@@ -15,8 +15,13 @@ const state = vi.hoisted(() => ({
     name: string;
     kind: string;
     cwd: string;
+    cols: number;
+    rows: number;
     config: unknown;
   }[],
+  /** Names tmux still holds a session for when their client exits. */
+  tmuxHolds: new Set<string>(),
+  broadcasts: [] as { channel: string; payload: unknown }[],
   killed: [] as string[],
   released: [] as string[],
   onData: new Map<string, (data: string) => void>(),
@@ -45,6 +50,7 @@ vi.mock('node:fs', () => ({
 
 vi.mock('./repo.js', () => ({
   isGitRepo: (cwd: string) => state.repoRoots.has(cwd),
+  requireRepo: () => '/home/dev/kirby',
 }));
 
 vi.mock('./recent-repos.js', () => ({
@@ -66,6 +72,8 @@ vi.mock('@kirby/core', () => ({
     name: string;
     kind: string;
     cwd: string;
+    cols: number;
+    rows: number;
     config: unknown;
   }) => {
     state.alive.add(spec.name);
@@ -73,6 +81,8 @@ vi.mock('@kirby/core', () => ({
       name: spec.name,
       kind: spec.kind,
       cwd: spec.cwd,
+      cols: spec.cols,
+      rows: spec.rows,
       config: spec.config,
     });
     const name = spec.name;
@@ -80,12 +90,16 @@ vi.mock('@kirby/core', () => ({
     state.sessions.set(name, {
       exited: false,
       pty: {
+        cols: spec.cols,
+        rows: spec.rows,
         onData: (cb: (data: string) => void) => state.onData.set(name, cb),
         onExit: (cb: (code: number) => void) =>
           state.onExit.get(name)?.push(cb),
       },
     });
   },
+  isTmuxSessionPersisted: (_config: unknown, name: string) =>
+    state.tmuxHolds.has(name),
   getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {
     state.killed.push(name);
@@ -115,8 +129,14 @@ beforeEach(async () => {
   state.recents = [];
   state.nextId = 0;
   state.missingDirs = new Set();
+  state.tmuxHolds = new Set();
+  state.broadcasts = [];
   vi.resetModules();
   terminals = await import('./terminals.js');
+  const relay = await import('./session-relay.js');
+  relay.setSessionBroadcaster((channel, payload) =>
+    state.broadcasts.push({ channel, payload })
+  );
 });
 
 const HOME = '/home/dev';
@@ -299,6 +319,17 @@ describe('a terminal whose process ended', () => {
     expect(state.killed).toEqual([]);
   });
 
+  it('tells the renderer, so the tab closes at once rather than on the next poll', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    endProcess(name);
+    expect(state.broadcasts).toEqual([
+      { channel: 'kirby/session/exit', payload: { name, code: 0 } },
+    ]);
+  });
+
   it('applies to an agent terminal as much as a shell', () => {
     const { name } = terminals.launchTerminal(
       { kind: 'agent', cwd: '/home/dev/other' },
@@ -342,6 +373,65 @@ describe('a terminal whose process ended', () => {
     for (const cb of oldExits) cb(0);
     expect(terminals.listTerminals(HOME)).toHaveLength(1);
     expect(state.released).toEqual([]);
+  });
+});
+
+// On tmux the client the host holds can exit while the session lives
+// on: the user pressed the detach key inside the terminal. That is not
+// the terminal ending — the shell is still running, in tmux — so the
+// host reattaches under the same name rather than dropping the
+// terminal, which closed the tab and then had discovery reopen it,
+// unfocused, up to a scan later.
+describe('a terminal whose tmux client detached', () => {
+  it('is reattached at the grid the client had, and stays listed', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x', cols: 100, rows: 30 },
+      HOME
+    );
+    state.tmuxHolds.add(name);
+    state.onData.get(name)?.('$ ');
+    endProcess(name);
+
+    expect(terminals.listTerminals(HOME)).toEqual([
+      expect.objectContaining({ name, kind: 'shell', cwd: '/x', running: true }),
+    ]);
+    expect(state.spawns.map((s) => [s.name, s.cols, s.rows])).toEqual([
+      [name, 100, 30],
+      [name, 100, 30],
+    ]);
+    // Never dropped, never killed — the session is the user's, still
+    // running — and the output sequence carries on, so the mounted
+    // pane keeps reading the new client's bytes.
+    expect(state.released).toEqual([]);
+    expect(state.killed).toEqual([]);
+    state.onData.get(name)?.('again');
+    expect(terminals.terminalBuffer(name)?.seq).toBe(2);
+  });
+
+  // The renderer closes a terminal tab on the exit event by name; a
+  // detach must not reach it as one, or the tab closes and comes back.
+  it('is not reported to the renderer as an exit', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    state.tmuxHolds.add(name);
+    endProcess(name);
+    expect(state.broadcasts).toEqual([]);
+  });
+
+  it('is dropped like any other end once the session itself is gone', () => {
+    const { name } = terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    state.tmuxHolds.add(name);
+    endProcess(name);
+    state.tmuxHolds.delete(name);
+    endProcess(name);
+    expect(terminals.listTerminals(HOME)).toEqual([]);
+    expect(state.released).toEqual([name]);
+    expect(state.killed).toEqual([]);
   });
 });
 

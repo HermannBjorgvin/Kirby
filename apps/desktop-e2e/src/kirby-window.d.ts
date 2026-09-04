@@ -60,6 +60,7 @@ interface KirbyBridge {
       displayPath: string;
       repo: string | null;
       running: boolean;
+      spawnedAt: number;
     }[]
   >;
   listForeignSessions(): Promise<

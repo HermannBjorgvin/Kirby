@@ -55,6 +55,15 @@ export function attachRelay(name: string, entry: RelayEntry): void {
     broadcast?.('kirby/session/data', { name, data, seq: entry.seq });
   });
   session.pty.onExit((code) => {
+    // A respawn under the same name — a restart, or a terminal tab
+    // reattached after a detach from inside tmux — replaces the entry
+    // before the old client's exit lands here. That exit is a client
+    // going away, not the session ending, and the renderer closes a
+    // terminal tab on this event by name. An entry that is *gone* is
+    // different: the terminal host releases a session's tombstone on
+    // the exit that precedes this listener, and that end is reported.
+    const current = getSession(name);
+    if (current && current !== session) return;
     console.log(`[desktop] session ${name} exited with code ${code}`);
     broadcast?.('kirby/session/exit', { name, code });
   });

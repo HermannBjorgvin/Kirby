@@ -5,6 +5,7 @@ import {
   getSession,
   getSpawnedAt,
   isSessionAlive,
+  isTmuxSessionPersisted,
   killSession as killSessionEntry,
   launchTerminalSession,
   newTerminalSessionName,
@@ -19,7 +20,7 @@ import type {
   TerminalSummary,
 } from '../contract.js';
 import { ensureRecent } from './recent-repos.js';
-import { isGitRepo } from './repo.js';
+import { isGitRepo, requireRepo } from './repo.js';
 import {
   attachRelay,
   newRelayEntry,
@@ -111,11 +112,35 @@ function start(
 }
 
 /**
+ * Whether tmux still holds a session under `name` now that the client
+ * this host had on it has exited — a detach from inside tmux, not the
+ * terminal ending. Asked with the backend in force for this process,
+ * which is the open repository's config, the same gate discovery
+ * reads; with no repository open there is no tmux in force and the
+ * answer is no.
+ */
+function stillHeldByTmux(name: string): boolean {
+  try {
+    return isTmuxSessionPersisted(readConfig(requireRepo()), name);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A terminal is over when its process ends — `exit` typed into the
  * shell, the agent quitting, or on tmux the session ending under the
  * client, whether its last process exited or someone killed it from
  * outside. The terminal is then dropped from the listing, which is what
  * closes its tab, and everything held for it is released.
+ *
+ * A tmux client can also exit while its session lives on: the user
+ * pressed the detach key inside the terminal. That is not an end — the
+ * shell is still running — so the terminal is reattached under the same
+ * name, at the grid the client had and with its output sequence
+ * carried, rather than dropped and left for discovery to bring back,
+ * unfocused, a scan later. The relay sees the replacement before the
+ * old client's exit reaches it and reports nothing.
  *
  * Subscribed before the relay so the listing is already without the
  * terminal when the renderer hears the exit and asks. Identity guards
@@ -129,6 +154,13 @@ function watchForEnd(name: string, entry: KnownTerminal): void {
   if (!session) throw new Error(`Terminal ${name} vanished after launch`);
   session.pty.onExit(() => {
     if (getSession(name) !== session || known.get(name) !== entry) return;
+    if (stillHeldByTmux(name)) {
+      start(name, entry.kind, entry.cwd, {
+        cols: session.pty.cols,
+        rows: session.pty.rows,
+      });
+      return;
+    }
     known.delete(name);
     releaseExitedSession(name);
   });

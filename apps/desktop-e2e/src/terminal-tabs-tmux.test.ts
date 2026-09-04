@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { test, test as base, expect } from './fixtures/desktop.js';
-import { tab, visibleText } from './setup/app.js';
+import { focusTerminal, tab, visibleText } from './setup/app.js';
 import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
 import {
   confirmNewTerminal,
@@ -12,6 +12,7 @@ import {
   tmuxSessionPath,
 } from './setup/terminals.js';
 import {
+  detachTmuxClients,
   killKirbySessions,
   killTmuxSession,
   tmuxAvailable,
@@ -85,6 +86,55 @@ test.describe('Terminal tabs under tmux', () => {
     await expect
       .poll(() => page.evaluate(() => window.kirby.listTerminals()))
       .toEqual([]);
+  });
+
+  // A detach is not an end. The client the app holds exits, but the
+  // session — and the shell in it — lives on, so the tab stays where it
+  // is, focused, with a fresh client behind it that still takes what is
+  // typed. Without this the tab closed and discovery reopened it,
+  // unfocused, up to a scan later.
+  test('a detach from inside tmux keeps the tab, focused, and the shell keeps working', async ({
+    desktop,
+  }) => {
+    const { app, page, homeDir } = desktop;
+    await openNewTerminalDialog(app, page);
+    await confirmNewTerminal(page, 'Shell');
+    const tabs = terminalTabs(page);
+    await expect(tabs).toHaveCount(1);
+    await expect(
+      page.locator('[data-terminal-pane]').getByText(/\S/).first()
+    ).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() => terminalSessions(homeDir), { timeout: 15_000 })
+      .toHaveLength(1);
+    const [name] = terminalSessions(homeDir);
+    const before = await page.evaluate(() => window.kirby.listTerminals());
+
+    detachTmuxClients(name, homeDir);
+
+    // The host reattaches under the same name: a new client, so a new
+    // spawn time, and the terminal still listed as running.
+    await expect
+      .poll(
+        async () => {
+          const [t] = await page.evaluate(() => window.kirby.listTerminals());
+          return t
+            ? [t.name, t.running, t.spawnedAt !== before[0].spawnedAt]
+            : null;
+        },
+        { timeout: 15_000 }
+      )
+      .toEqual([name, true, true]);
+    await expect(tabs).toHaveCount(1);
+    await expect(tabs).toHaveAttribute('aria-selected', 'true');
+    expect(terminalSessions(homeDir)).toEqual([name]);
+
+    // …and it is the same shell, still taking commands.
+    await focusTerminal(page);
+    await page.keyboard.type('echo kirby-after-$((6*7))\n', { delay: 20 });
+    await expect(visibleText(page, 'kirby-after-42')).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });
 
