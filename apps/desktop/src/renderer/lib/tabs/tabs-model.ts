@@ -24,7 +24,9 @@ import {
 
 export type { ItemTab, Tab, TerminalTab } from './tab-identity.js';
 export type { TerminalEntry } from './tab-terminals.js';
+export type { ForeignSessionEntry } from './tab-foreign.js';
 import { closeTab } from './tab-close.js';
+import { openForeign, type ForeignSessionEntry } from './tab-foreign.js';
 import { pinLive, rekey } from './tab-sync.js';
 import {
   openTerminal,
@@ -97,12 +99,18 @@ export type TabsAction =
    *  yet — not an empty one. The listing is authoritative when it is
    *  there: a terminal tab it does not name has ended and closes. With
    *  no listing the terminal tabs are left exactly as they are, so a
-   *  tick before the first answer cannot close every one of them. */
+   *  tick before the first answer cannot close every one of them.
+   *
+   *  `foreign` is the host's other listing: agents alive in *other*
+   *  repositories, each of which gets a tab in its own group once
+   *  (see `tab-foreign.ts`). Also `undefined` before the first
+   *  answer. */
   | {
       type: 'sync-items';
       repo: string;
       entries: ItemEntry[];
       terminals?: TerminalEntry[];
+      foreign?: ForeignSessionEntry[];
     }
   /** Open (or activate) the tab for a terminal the host just started. */
   | { type: 'open-terminal'; terminal: TerminalEntry }
@@ -200,9 +208,12 @@ function apply(state: TabsState, action: TabsAction): TabsState {
     // terminal listing are reconciled together rather than from two
     // effects racing into the reducer separately.
     const strip = applyStrip(state, action);
-    return action.terminals
+    const withTerminals = action.terminals
       ? syncTerminals(strip, action.repo, action.terminals)
       : strip;
+    return action.foreign
+      ? openForeign(withTerminals, action.repo, action.foreign)
+      : withTerminals;
   }
   return applyStrip(state, action);
 }

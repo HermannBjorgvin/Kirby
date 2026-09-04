@@ -4,6 +4,7 @@ import { itemTabId, tabHome, terminalTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type Tab,
   type TabsAction,
@@ -66,6 +67,17 @@ const TERMINALS: TerminalEntry[] = [
     })
   ),
 ];
+
+/**
+ * Agents alive in tmux as the host lists them for the strip: one per
+ * repository, on the same branch names the sidebar entries use, so a
+ * listing and that repository's own sync describe the same agent.
+ */
+const FOREIGN: ForeignSessionEntry[] = REPOS.map((repo) => ({
+  repo,
+  branch: 'a',
+  sessionName: 'sa',
+}));
 
 /** Every id the actions below can name, in either repository. */
 const IDS = [
@@ -158,12 +170,14 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
       terminals: fc.uniqueArray(fc.constantFrom(...TERMINALS), {
         maxLength: 4,
       }),
+      foreign: fc.uniqueArray(fc.constantFrom(...FOREIGN), { maxLength: 2 }),
     })
-    .map(({ repo, entries, terminals }) => ({
+    .map(({ repo, entries, terminals, foreign }) => ({
       type: 'sync-items' as const,
       repo,
       entries,
       terminals,
+      foreign,
     }))
 );
 
@@ -676,5 +690,33 @@ describe('re-keying preserves the tab', () => {
     });
     expect(state.tabs).toHaveLength(1);
     expect(state.tabs.some((t) => t.id === state.activeId)).toBe(true);
+  });
+});
+
+describe('agents alive in other repositories', () => {
+  // The listing restores tabs at launch; it must never take the user
+  // anywhere — not to another repository, and not off the tab they
+  // are on — and never speak for the repository in view.
+  it('never moves focus, and never opens a tab in the repo in view', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.uniqueArray(fc.constantFrom(...FOREIGN), { maxLength: 2 }),
+        (actions, foreign) => {
+          const { state: before, inView } = replay(actions);
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo: inView,
+            entries: [],
+            foreign,
+          });
+          expect(after.activeId).toBe(before.activeId);
+          const own = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'item' && t.repo === inView);
+          expect(own(after).length).toBe(own(before).length);
+        }
+      ),
+      { numRuns: 500 }
+    );
   });
 });

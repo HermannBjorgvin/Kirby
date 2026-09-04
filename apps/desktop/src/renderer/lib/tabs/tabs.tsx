@@ -9,6 +9,7 @@ import {
 import {
   EMPTY_TABS,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type TabsState,
   type TerminalEntry,
@@ -16,6 +17,7 @@ import {
 import { useRepo } from '../repo-context.js';
 
 export type {
+  ForeignSessionEntry,
   ItemEntry,
   ItemTab,
   Tab,
@@ -67,12 +69,15 @@ interface TabsApi extends TabsState {
    * what the host lists — closing the tabs of terminals it no longer
    * has. One dispatch, so both reconciliations land in a single render
    * rather than racing from two effects. No `terminals` is no listing
-   * yet, which leaves every terminal tab alone.
+   * yet, which leaves every terminal tab alone. `foreign` is the
+   * host's listing of agents alive in other repositories, each given
+   * a tab in its own group once.
    */
   syncItems: (
     repo: string,
     entries: ItemEntry[],
-    terminals: TerminalEntry[] | undefined
+    terminals: TerminalEntry[] | undefined,
+    foreign: ForeignSessionEntry[] | undefined
   ) => void;
   /** Tell the strip a repository is now the one in view. */
   repoOpened: (repo: string) => void;
@@ -140,8 +145,9 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     (
       repo: string,
       entries: ItemEntry[],
-      terminals: TerminalEntry[] | undefined
-    ) => dispatch({ type: 'sync-items', repo, entries, terminals }),
+      terminals: TerminalEntry[] | undefined,
+      foreign: ForeignSessionEntry[] | undefined
+    ) => dispatch({ type: 'sync-items', repo, entries, terminals, foreign }),
     []
   );
   const repoOpened = useCallback(
@@ -216,8 +222,9 @@ export function useRepoTabs(): RepoTabsApi {
         tabs.openItem(cwd, itemKey, opts),
       syncItems: (
         entries: ItemEntry[],
-        terminals: TerminalEntry[] | undefined
-      ) => tabs.syncItems(cwd, entries, terminals),
+        terminals: TerminalEntry[] | undefined,
+        foreign: ForeignSessionEntry[] | undefined
+      ) => tabs.syncItems(cwd, entries, terminals, foreign),
       close: (id: string) => tabs.close(id, cwd),
     }),
     [tabs, cwd]
@@ -228,6 +235,7 @@ export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
   syncItems: (
     entries: ItemEntry[],
-    terminals: TerminalEntry[] | undefined
+    terminals: TerminalEntry[] | undefined,
+    foreign: ForeignSessionEntry[] | undefined
   ) => void;
 }

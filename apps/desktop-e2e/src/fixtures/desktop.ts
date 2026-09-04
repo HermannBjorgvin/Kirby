@@ -126,9 +126,11 @@ export interface DesktopOptions {
    * worktree added with plain git plus a tmux session under the name
    * Kirby uses, on the test's own socket. Needs `terminalBackend:
    * 'tmux'` to be found. Data rather than a callback: Playwright
-   * reads a function-valued option as a fixture definition.
+   * reads a function-valued option as a fixture definition. `repo`
+   * puts the agent in another repository than the test's own — the
+   * state after a run that had work open across several.
    */
-  liveSessions?: { branch: string; command: string }[];
+  liveSessions?: { branch: string; command: string; repo?: string }[];
   /**
    * Extra environment for the app process, for the knobs the host
    * reads from it — a background cadence a test cannot wait out at its
@@ -246,18 +248,19 @@ function seedHome(
   return opts.fakeGitHub ? installFakeGh(homeDir, opts.fakeGitHub) : {};
 }
 
-/** Start the agents a test wants already running when the app comes up. */
+/** Start the agents a test wants already running when the app comes
+ *  up — in the test's repository, or in another one a test names. */
 function seedLiveSessions(
   repoPath: string,
   homeDir: string,
-  sessions: { branch: string; command: string }[] | undefined
+  sessions: { branch: string; command: string; repo?: string }[] | undefined
 ): void {
-  for (const { branch, command } of sessions ?? []) {
+  for (const { branch, command, repo = repoPath } of sessions ?? []) {
     startExternalTmuxSession({
-      repoPath,
+      repoPath: repo,
       homeDir,
       branch,
-      worktreePath: addExternalWorktree(repoPath, branch),
+      worktreePath: addExternalWorktree(repo, branch),
       command,
     });
   }

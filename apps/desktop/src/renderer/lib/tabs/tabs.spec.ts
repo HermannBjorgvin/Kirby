@@ -4,6 +4,7 @@ import {
   EMPTY_TABS,
   activeTabRepo,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type TabsState,
   type TerminalEntry,
@@ -997,5 +998,104 @@ describe('terminal tabs', () => {
     const s = openTerminal(openTerminal(empty, plain), inAlpha);
     expect(sync(s, [], REPO, undefined)).toBe(s);
     expect(sync(s, [], OTHER, undefined)).toBe(s);
+  });
+});
+
+// Quit with agents open in several repositories, relaunch, and every
+// one is still running in tmux — the host attaches only the open
+// repository's, but the strip spans repositories, so the others get
+// their tabs back in their own groups from the host's wider listing.
+describe('agents alive in other repositories', () => {
+  const inBeta: ForeignSessionEntry = {
+    repo: OTHER,
+    branch: 'feat',
+    sessionName: 'feat',
+  };
+  const foreign = (
+    state: TabsState,
+    entries: ForeignSessionEntry[] | undefined,
+    repo = REPO
+  ) =>
+    reduce(state, { type: 'sync-items', repo, entries: [], foreign: entries });
+
+  it('opens a pinned tab in that repository’s group without moving focus', () => {
+    let s = open(empty, 'branch:x');
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toEqual([
+      expect.objectContaining({ id: id('branch:x') }),
+      expect.objectContaining({
+        kind: 'item',
+        repo: OTHER,
+        itemKey: 'branch:feat',
+        branch: 'feat',
+        title: 'feat',
+        preview: false,
+      }),
+    ]);
+    expect(s.activeId).toBe(id('branch:x'));
+    expect(activeTabRepo(s)).toBe(REPO);
+  });
+
+  // The repository in view describes its own agents through the
+  // sidebar; a listing that names one of them is not this pass's word.
+  it('never opens a tab for the repository in view', () => {
+    const s = foreign(empty, [{ ...inBeta, repo: REPO }]);
+    expect(s).toBe(empty);
+  });
+
+  it('does not reopen a tab the user closed while the agent runs on', () => {
+    let s = foreign(empty, [inBeta]);
+    s = reduce(s, { type: 'close', id: id('branch:feat', OTHER) });
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  // Once the user switches there, that repository's own sync sees the
+  // agent as newly running — and must find its tab already open rather
+  // than opening (and focusing) a second one.
+  it('is not opened again, or focused, by that repository’s own sync', () => {
+    let s = open(empty, 'branch:x');
+    s = foreign(s, [inBeta]);
+    s = sync(
+      s,
+      [
+        {
+          itemKey: 'branch:feat',
+          branch: 'feat',
+          sessionName: 'feat',
+          running: true,
+        },
+      ],
+      OTHER
+    );
+    expect(
+      s.tabs.filter((t) => t.kind === 'item' && t.repo === OTHER)
+    ).toHaveLength(1);
+    expect(s.activeId).toBe(id('branch:x'));
+  });
+
+  // A tab that repository re-keyed onto its pull request is the same
+  // agent's tab; the listing, which only knows the branch, must
+  // recognise it even once its auto-open history is forgotten.
+  it('recognises a tab that was re-keyed onto a pull request', () => {
+    let s = foreign(empty, [inBeta]);
+    s = sync(s, [{ itemKey: 'pr:7', branch: 'feat' }], OTHER);
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [autoOpenKey(OTHER, 'feat')],
+    });
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].kind === 'item' && s.tabs[0].itemKey).toBe('pr:7');
+  });
+
+  it('returns the same state when the listing changed nothing', () => {
+    const s = foreign(empty, [inBeta]);
+    expect(foreign(s, [inBeta])).toBe(s);
+  });
+
+  it('leaves every tab alone with no listing', () => {
+    const s = open(empty, 'branch:x');
+    expect(foreign(s, undefined)).toBe(s);
   });
 });

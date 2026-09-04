@@ -644,7 +644,16 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   `tabs.properties.spec.ts` asserts that as an invariant over arbitrary
   sequences. `TabsProvider` sits above the repo gate in `App.tsx` —
   `Workspace` is keyed by repo and remounts, so anything below it is
-  destroyed on a switch.
+  destroyed on a switch. After a relaunch, agents left running in
+  _other_ repositories get their tabs back too, with no state file:
+  `listLiveWorktreeSessions` (core) reads every `kirby-*` session's
+  tmux `session_path` and `describeWorktreePath` asks git for the
+  worktree's real repo root and branch, the host's
+  `listForeignSessions` drops the open repository's own (those come
+  through the sidebar), and `sync-items`'s `foreign` pass opens a strip
+  entry per agent in its repo group — repo, branch, title, nothing
+  attached, no focus — so activating it switches there and that
+  repository's own discovery attaches the agent.
 
   **The workspace follows the active tab, not the other way round.**
   The host is single-repo by construction (`requireRepo`, the memoized

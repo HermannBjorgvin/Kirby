@@ -13,6 +13,7 @@ import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
+import * as foreignSessions from './services/foreign-sessions.js';
 import * as terminals from './services/terminals.js';
 import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
@@ -79,6 +80,8 @@ export function createHostApi(): KirbyHostApi {
     listAgentOptions: () => Promise.resolve(sessions.listAgentOptions()),
     checkoutPlan: (req) => sessions.checkoutPlan(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
+    listForeignSessions: () =>
+      Promise.resolve(foreignSessions.listForeignSessions()),
     getSessionActivity: () => Promise.resolve(sessions.getSessionActivity()),
     markSessionSeen: (name) => Promise.resolve(sessions.markSessionSeen(name)),
     getSessionBuffer: (name) =>
@@ -212,6 +215,7 @@ export function registerHostHandlers(
     [IPC.openInEditor]: api.openInEditor as HostMethod,
     [IPC.launchAgent]: api.launchAgent as HostMethod,
     [IPC.listSessions]: api.listSessions as HostMethod,
+    [IPC.listForeignSessions]: api.listForeignSessions as HostMethod,
     [IPC.getSessionActivity]: api.getSessionActivity as HostMethod,
     [IPC.markSessionSeen]: api.markSessionSeen as HostMethod,
     [IPC.getSessionBuffer]: api.getSessionBuffer as HostMethod,

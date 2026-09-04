@@ -90,6 +90,9 @@ vi.mock('./services/sessions.js', () =>
 vi.mock('./services/terminals.js', () =>
   recorder('terminals', ['launchTerminal', 'listTerminals', 'killTerminal'])
 );
+vi.mock('./services/foreign-sessions.js', () =>
+  recorder('foreignSessions', ['listForeignSessions'])
+);
 vi.mock('./services/comment-images.js', () =>
   recorder('commentImages', ['fetchCommentImage'])
 );
@@ -190,6 +193,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'sessions.checkoutPlan',
   ],
   ['listSessions', [], 'sessions.listSessions'],
+  ['listForeignSessions', [], 'foreignSessions.listForeignSessions'],
   ['getSessionActivity', [], 'sessions.getSessionActivity'],
   ['markSessionSeen', ['b'], 'sessions.markSessionSeen'],
   ['getSessionBuffer', ['b'], 'sessions.getSessionBuffer'],

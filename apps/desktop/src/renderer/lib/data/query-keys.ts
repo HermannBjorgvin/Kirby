@@ -27,6 +27,9 @@ export const keys = {
   /** Not repo-scoped: a terminal belongs to a directory, and the host
    *  lists every one whatever repository is open. */
   terminals: ['terminals'] as const,
+  /** Not repo-scoped either: agents alive in *other* repositories, the
+   *  same answer whichever repository is open. */
+  foreignSessions: ['foreign-sessions'] as const,
   agentOptions: (cwd: string) => ['agent-options', cwd] as const,
   diff: (cwd: string, source: string, target: string) =>
     ['diff', cwd, source, target] as const,
@@ -57,6 +60,7 @@ export const keys = {
 const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
   keys.repo[0],
   keys.terminals[0],
+  keys.foreignSessions[0],
 ]);
 
 /**
@@ -69,9 +73,10 @@ const CROSS_REPO_KEYS: ReadonlySet<string> = new Set([
  * Two entries are deliberately spared. The repo entry: the gate
  * observes it, and removing it would drop that observer into its
  * pending state for a frame, flashing the loading screen between two
- * workspaces. And the terminal listing: terminals belong to
- * directories, not to the repository being left, and the tab strip is
- * reconciled against that list wherever the user goes.
+ * workspaces. And the two cross-repository listings — terminals, which
+ * belong to directories rather than to the repository being left, and
+ * agents alive in other repositories — since the tab strip is
+ * reconciled against both wherever the user goes.
  */
 export function resetRepoScopedCache(qc: QueryClient): void {
   qc.removeQueries({

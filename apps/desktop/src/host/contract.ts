@@ -44,6 +44,13 @@ import type {
   TerminalLaunchRequest,
   TerminalSummary,
 } from './contract-terminals.js';
+// Agent sessions as the renderer lists them — the open repository's,
+// and those alive in other repositories.
+export type * from './contract-sessions.js';
+import type {
+  ForeignSessionSummary,
+  SessionSummary,
+} from './contract-sessions.js';
 import type {
   BabysitChangedEvent,
   MenuCommandEvent,
@@ -85,12 +92,6 @@ export interface SessionLaunchRequest {
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
-}
-
-export interface SessionSummary {
-  name: string;
-  running: boolean;
-  spawnedAt: number;
 }
 
 /**
@@ -386,6 +387,10 @@ export interface KirbyHostApi {
    *  failure, leaving the plan intact for a retry. */
   checkoutPlan(req: PlanCheckoutRequest): Promise<PlanCheckoutResult>;
   listSessions(): Promise<SessionSummary[]>;
+  /** Agents alive in other repositories, for the tab strip to give
+   *  each a tab in its own group. The open repository's own are left
+   *  out — the sidebar describes those. */
+  listForeignSessions(): Promise<ForeignSessionSummary[]>;
   /** Debounced per-session agent activity (same registry as the TUI's
    *  sidebar spinner): `active` = producing output now, `flashing` =
    *  went idle after a real work streak and the user hasn't looked. */
@@ -488,6 +493,7 @@ export const IPC = {
   openInEditor: 'kirby/worktree/open-in-editor',
   launchAgent: 'kirby/session/launch',
   listSessions: 'kirby/session/list',
+  listForeignSessions: 'kirby/session/list-foreign',
   getSessionActivity: 'kirby/session/activity',
   markSessionSeen: 'kirby/session/seen',
   getSessionBuffer: 'kirby/session/buffer',

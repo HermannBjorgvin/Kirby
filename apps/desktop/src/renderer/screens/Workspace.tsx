@@ -29,14 +29,18 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '../lib/data/query-keys.js';
-import { useSidebarModel } from '../lib/data/queries.js';
+import { useForeignSessions, useSidebarModel } from '../lib/data/queries.js';
 import {
   useRefreshRemote,
   useRemovingBranches,
 } from '../lib/data/mutations.js';
 import { BOOT_MARKS, markOnce } from '../lib/perf.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
-import { useRepoTabs, type ItemEntry } from '../lib/tabs/tabs.js';
+import {
+  useRepoTabs,
+  type ForeignSessionEntry,
+  type ItemEntry,
+} from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
 import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
 import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
@@ -100,6 +104,18 @@ function WorkspaceInner({
   );
   const closer = useCloseTabs(items);
   const terminalTabs = useTerminalTabs();
+  // Agents alive in other repositories, as the tab model needs them;
+  // `undefined` before the host has answered once.
+  const foreignSessions = useForeignSessions();
+  const foreign: ForeignSessionEntry[] | undefined = useMemo(
+    () =>
+      foreignSessions.data?.map((s) => ({
+        repo: s.repo,
+        branch: s.branch,
+        sessionName: s.sessionName,
+      })),
+    [foreignSessions.data]
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(
@@ -126,14 +142,15 @@ function WorkspaceInner({
   );
 
   // The one place every store the strip depends on is reconciled: the
-  // sidebar items *and* the host's terminal listing, in a single
-  // dispatch. The reducer follows items whose key changed (a worktree
-  // grows a PR: branch:x → pr:n, and back when it closes), opens a tab
-  // for each newly running agent, pins preview tabs that have an agent
-  // behind them, and brings the terminal strip in line with the host —
-  // atomically, so no render ever sees a half-reconciled strip and
-  // terminals never get a reconciliation effect of their own to race
-  // this one.
+  // sidebar items, the host's terminal listing *and* its listing of
+  // agents alive in other repositories, in a single dispatch. The
+  // reducer follows items whose key changed (a worktree grows a PR:
+  // branch:x → pr:n, and back when it closes), opens a tab for each
+  // newly running agent, pins preview tabs that have an agent behind
+  // them, brings the terminal strip in line with the host, and gives
+  // each foreign agent a tab in its own group — atomically, so no
+  // render ever sees a half-reconciled strip and no listing gets a
+  // reconciliation effect of its own to race this one.
   //
   // `tabs` (the whole api, which changes identity on every dispatch)
   // is the dependency on purpose: opening a preview tab is itself a
@@ -141,8 +158,8 @@ function WorkspaceInner({
   // live. Re-running settles — every step above is idempotent and
   // returns the same state object once there is nothing left to do.
   useEffect(() => {
-    tabs.syncItems(entries, terminalTabs.entries);
-  }, [tabs, entries, terminalTabs.entries]);
+    tabs.syncItems(entries, terminalTabs.entries, foreign);
+  }, [tabs, entries, terminalTabs.entries, foreign]);
 
   // Boot milestones (see lib/perf.ts): the shell is on screen once this
   // mounts, and the sidebar is real once the host's first model lands —
@@ -201,8 +218,10 @@ function WorkspaceInner({
     const off = window.kirby.onDiscoveryChanged(() => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
       void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
-      // Discovery also brings back terminal tabs.
+      // Discovery also brings back terminal tabs, and what it found
+      // may be another repository's agent too.
       void qc.invalidateQueries({ queryKey: keys.terminals });
+      void qc.invalidateQueries({ queryKey: keys.foreignSessions });
       // A worktree added from outside usually brought a branch with it.
       void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
     });
