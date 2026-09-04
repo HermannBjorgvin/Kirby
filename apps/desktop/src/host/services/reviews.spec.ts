@@ -30,6 +30,11 @@ const env = vi.hoisted(() => ({
 }));
 
 vi.mock('@kirby/core', () => ({
+  // `./sidebar.js` (imported for refreshPrList) stands its cache up at
+  // load, and a verdict re-reads the list through it.
+  createPullRequestCache: () => ({
+    readPullRequests: () => Promise.resolve({}),
+  }),
   fetchDiffText: (...args: unknown[]) => {
     env.calls.push({ method: 'fetchDiffText', args });
     return Promise.resolve('diff');

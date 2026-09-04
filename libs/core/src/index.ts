@@ -65,6 +65,7 @@ export * from './lib/session/session-menu-request.js';
 export * from './lib/session/review-prompt.js';
 export * from './lib/session/checkout-plan.js';
 export * from './lib/sync/remote-sync.js';
+export * from './lib/pull-requests/pull-request-cache.js';
 export * from './lib/discovery/discovery-model.js';
 export * from './lib/discovery/session-discovery.js';
 export * from './lib/babysit/babysit-model.js';

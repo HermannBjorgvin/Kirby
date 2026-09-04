@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SidebarModule from './sidebar.js';
+import type * as Core from '@kirby/core';
 
 /**
- * The renderer polls the sidebar model continuously, so remote pull
- * request data is cached here behind a TTL. That cache is where the
- * subtle failures live: a forced refresh joining a stale in-flight
- * request, a slow response committing over a fresher one, or a fetch
- * started before a repo switch landing in the new repo's cache.
+ * The renderer polls the sidebar model continuously; the pull request
+ * list behind it comes from `@kirby/core`'s per-repository cache,
+ * whose semantics (TTL, joining, retiring, eviction, credentials) are
+ * its own spec's. What is asserted here is the sidebar's use of it:
+ * that the model never waits for the provider, that a landed fetch is
+ * announced, what the sync state reports for the open repository, and
+ * what a refresh tells the provider.
  */
 
 const env = vi.hoisted(() => ({
@@ -78,7 +81,10 @@ vi.mock('@kirby/worktree-manager', () => ({
     (wt.branch ?? 'detached').replace(/\//g, '-'),
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@kirby/core', async (importOriginal) => ({
+  // The cache is the real one: this spec is about what the sidebar
+  // does with it, and a fake would only prove the fake.
+  ...(await importOriginal<typeof Core>()),
   isSessionAlive: () => false,
   buildSessionLookups: () => ({
     sessionBranchMap: new Map<string, string>(),
@@ -132,218 +138,32 @@ function settle(index = 0, value: Record<string, unknown> = {}) {
   env.pending[index].resolve(value);
 }
 
-describe('remote cache', () => {
-  it('serves the cache inside the TTL and refetches after it', async () => {
+describe('sync state', () => {
+  it('reports the cache’s answer for the open repository', async () => {
     const first = sidebar.refreshRemote();
     await flush();
-    settle(0, { a: 1 });
+    settle(0);
     await first;
-    expect(env.fetchCount).toBe(1);
+    expect(sidebar.getSyncState()).toMatchObject({
+      providerId: 'github',
+      providerConfigured: true,
+      lastRemoteSyncAt: 1_000_000,
+      lastGitSyncAt: 42,
+      remoteError: null,
+      remoteSyncing: false,
+      remoteIntervalMs: 60_000,
+      remoteFetches: 1,
+    });
 
-    env.now += 30_000; // default TTL is 60s
-    await sidebar.listSidebarItems();
-    expect(env.fetchCount).toBe(1);
-
-    env.now += 31_000;
-    const later = sidebar.listSidebarItems();
-    await flush();
-    settle(1, { a: 1 });
-    await later;
-    expect(env.fetchCount).toBe(2);
+    env.cwd = '/repo-b';
+    // The cached timestamp belongs to the other checkout; reporting it
+    // here would claim this repo had just synced.
+    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
   });
 
-  it('honours prPollInterval as the TTL', async () => {
+  it('reports the interval the config sets', () => {
     env.config = { prPollInterval: 5_000 };
-    const first = sidebar.refreshRemote();
-    await flush();
-    settle(0);
-    await first;
-
-    env.now += 6_000;
-    const second = sidebar.listSidebarItems();
-    await flush();
-    settle(1);
-    await second;
-    expect(env.fetchCount).toBe(2);
-  });
-
-  it('collapses concurrent polls into one provider request', async () => {
-    const a = sidebar.listSidebarItems();
-    const b = sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(1);
-    settle(0);
-    await Promise.all([a, b]);
-  });
-
-  it('gives a forced refresh its own request rather than a stale one', async () => {
-    const poll = sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(1);
-
-    // Joining the in-flight request would answer the user's explicit
-    // refresh with data fetched before they asked.
-    const forced = sidebar.refreshRemote();
-    await flush();
-    expect(env.fetchCount).toBe(2);
-
-    settle(0);
-    settle(1);
-    await Promise.all([poll, forced]);
-  });
-
-  it('lets the newest fetch win when an older one lands last', async () => {
-    const poll = sidebar.refreshRemote();
-    await flush();
-    const forced = sidebar.refreshRemote();
-    await flush();
-
-    // Newer request answers first, then the older one arrives.
-    env.now = 2_000_000;
-    settle(1, { fresh: true });
-    await forced;
-    env.now = 3_000_000;
-    settle(0, { stale: true });
-    await poll;
-
-    // The stale response must not overwrite the cache — nor stamp it
-    // with a newer timestamp, which would hide the staleness.
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(2_000_000);
-  });
-
-  it('keeps serving the last good data when a fetch fails', async () => {
-    const ok = sidebar.refreshRemote();
-    await flush();
-    settle(0, { a: 1 });
-    await ok;
-
-    const bad = sidebar.refreshRemote();
-    await flush();
-    env.pending[1].reject(new Error('provider exploded'));
-    await bad;
-
-    // Blanking the sidebar on a transient API error would be worse
-    // than showing data a minute old.
-    const state = sidebar.getSyncState();
-    expect(state.remoteError).toBe('provider exploded');
-    expect(state.lastRemoteSyncAt).toBe(1_000_000);
-  });
-
-  it('clears a previous error once a fetch succeeds', async () => {
-    const bad = sidebar.refreshRemote();
-    await flush();
-    env.pending[0].reject(new Error('nope'));
-    await bad;
-    expect(sidebar.getSyncState().remoteError).toBe('nope');
-
-    const good = sidebar.refreshRemote();
-    await flush();
-    settle(1);
-    await good;
-    expect(sidebar.getSyncState().remoteError).toBeNull();
-  });
-
-  /**
-   * Replacing a rejected access token has to look like it worked. The
-   * cache still holds what the old credentials fetched, and the error
-   * on screen describes a state that no longer exists.
-   */
-  describe('after the credentials change', () => {
-    it('clears the error and fetches without waiting for the TTL', async () => {
-      const bad = sidebar.refreshRemote();
-      await flush();
-      env.pending[0].reject(new Error('rejected the access token'));
-      await bad;
-      expect(sidebar.getSyncState().remoteError).toContain('access token');
-
-      sidebar.onCredentialsChanged();
-      // Cleared before the attempt, not after it: leaving the old
-      // message up is what made a correct fix look like it had not
-      // taken.
-      expect(sidebar.getSyncState().remoteError).toBeNull();
-      await flush();
-      expect(env.fetchCount).toBe(2);
-      settle(1, { a: 1 });
-    });
-
-    it('does not serve what the old credentials fetched', async () => {
-      const first = sidebar.refreshRemote();
-      await flush();
-      settle(0, { a: 1 });
-      await first;
-      expect(env.fetchCount).toBe(1);
-
-      sidebar.onCredentialsChanged();
-      await flush();
-      // Inside the TTL, so without dropping the cache this would have
-      // answered from data fetched as somebody else.
-      expect(env.fetchCount).toBe(2);
-      settle(1, { a: 1 });
-    });
-
-    it('tells the renderer straight away', async () => {
-      let announced = 0;
-      sidebar.setRemoteUpdatedNotifier(() => announced++);
-      sidebar.onCredentialsChanged();
-      // The cleared error is itself a change worth painting, before
-      // the fetch it started has landed.
-      expect(announced).toBe(1);
-      await flush();
-      settle(0, {});
-      sidebar.setRemoteUpdatedNotifier(null);
-    });
-  });
-
-  /**
-   * A provider may hold per-row answers well past one response — Azure
-   * remembers a settled CI verdict for ten minutes — so the difference
-   * between "poll again" and "the user asked" has to reach it.
-   */
-  describe('refreshing', () => {
-    it('tells the provider to forget when the user asks', async () => {
-      const forced = sidebar.refreshRemote();
-      await flush();
-      settle(0);
-      await forced;
-      expect(env.forgetCount).toBe(1);
-    });
-
-    it('does not, for a re-read the app asked for itself', async () => {
-      // Submitting a review verdict changes the reviewer votes, which
-      // come from the list. It changes no CI verdict and no comment
-      // count, so making the provider cold again would spend a cycle's
-      // worth of requests for nothing.
-      const quiet = sidebar.refreshPrList();
-      await flush();
-      settle(0);
-      await quiet;
-      expect(env.forgetCount).toBe(0);
-      expect(env.fetchCount).toBe(1);
-    });
-  });
-
-  it('waits out the interval after a failure instead of retrying every poll', async () => {
-    // A failed fetch caches nothing, so the renderer's four-second
-    // sidebar poll used to start a fresh cycle every time — a burst
-    // aimed at a service that is already unhappy.
-    const bad = sidebar.listSidebarItems();
-    await flush();
-    env.pending[0].reject(new Error('provider down'));
-    await bad;
-    await flush();
-    expect(env.fetchCount).toBe(1);
-
-    env.now += 4_000;
-    await sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(1);
-
-    env.now += 57_000; // past the 60s interval
-    const retry = sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(2);
-    settle(1);
-    await retry;
+    expect(sidebar.getSyncState().remoteIntervalMs).toBe(5_000);
   });
 
   it('does not call the provider at all when it is not configured', async () => {
@@ -353,169 +173,90 @@ describe('remote cache', () => {
     expect(sidebar.getSyncState().providerConfigured).toBe(false);
   });
 
-  it('reports no last-sync time for a repo the cache is not about', async () => {
-    const first = sidebar.refreshRemote();
+  it('reports the failure the cache recorded', async () => {
+    const bad = sidebar.refreshRemote();
     await flush();
-    settle(0);
-    await first;
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(1_000_000);
-
-    env.cwd = '/repo-b';
-    // The cached timestamp belongs to the other checkout; reporting it
-    // here would claim this repo had just synced.
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
+    env.pending[0].reject(new Error('provider exploded'));
+    await bad;
+    expect(sidebar.getSyncState().remoteError).toBe('provider exploded');
   });
 });
 
 /**
- * The tab strip spans repositories, and following a foreign tab opens
- * its repository — so a user working across two checkouts switches back
- * and forth all day. A cache with one slot made every switch a full
- * refetch of the other side, which on a provider that spends a request
- * per pull request is where a rate limit comes from.
+ * A provider may hold per-row answers well past one response — Azure
+ * remembers a settled CI verdict for ten minutes — so the difference
+ * between "poll again" and "the user asked" has to reach it.
  */
-describe('across repositories', () => {
-  /** Fetch and settle one repo's pull requests. */
-  async function sync(cwd: string, value: Record<string, unknown>) {
-    env.cwd = cwd;
+describe('refreshing', () => {
+  it('tells the provider to forget when the user asks', async () => {
+    const forced = sidebar.refreshRemote();
+    await flush();
+    settle(0);
+    await forced;
+    expect(env.forgetCount).toBe(1);
+  });
+
+  it('does not, for a re-read the app asked for itself', async () => {
+    // Submitting a review verdict changes the reviewer votes, which
+    // come from the list. It changes no CI verdict and no comment
+    // count, so making the provider cold again would spend a cycle's
+    // worth of requests for nothing.
+    const quiet = sidebar.refreshPrList();
+    await flush();
+    settle(0);
+    await quiet;
+    expect(env.forgetCount).toBe(0);
+    expect(env.fetchCount).toBe(1);
+  });
+});
+
+/**
+ * Replacing a rejected access token has to look like it worked: the
+ * cache is dropped and refetched (its spec), and the renderer is told
+ * at once.
+ */
+describe('after the credentials change', () => {
+  it('tells the renderer straight away and fetches again', async () => {
+    const first = sidebar.refreshRemote();
+    await flush();
+    settle(0, { a: 1 });
+    await first;
+
+    let announced = 0;
+    sidebar.setRemoteUpdatedNotifier(() => announced++);
+    sidebar.onCredentialsChanged();
+    // The cleared error is itself a change worth painting, before
+    // the fetch it started has landed.
+    expect(announced).toBe(1);
+    await flush();
+    expect(env.fetchCount).toBe(2);
+    settle(1, {});
+    sidebar.setRemoteUpdatedNotifier(null);
+  });
+});
+
+/**
+ * A babysitter reads its pull request through the sidebar's cache, so
+ * a watched row costs the provider nothing beyond the list the sidebar
+ * fetches anyway.
+ */
+describe('lookupPullRequest', () => {
+  it('answers from the same list the sidebar shows', async () => {
     const model = sidebar.listSidebarItems();
     await flush();
-    settle(env.fetchCount - 1, value);
+    settle(0, { feature: { id: 7 } });
     await model;
-  }
-
-  it('does not refetch a repo it has already fetched when coming back', async () => {
-    await sync('/repo-a', { a: 1 });
-    await sync('/repo-b', { b: 1 });
-    expect(env.fetchCount).toBe(2);
-
-    // Back to the first, inside its TTL: the answer is already here.
-    env.cwd = '/repo-a';
-    await sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(2);
+    const found = await sidebar.lookupPullRequest('/repo-a', 7);
+    expect(found).toMatchObject({ kind: 'found', pr: { id: 7 } });
+    expect(env.fetchCount).toBe(1);
   });
 
-  it('keeps each repo’s last-sync time separately', async () => {
-    await sync('/repo-a', {});
-    env.now += 10_000;
-    await sync('/repo-b', {});
-
-    env.cwd = '/repo-a';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(1_000_000);
-    env.cwd = '/repo-b';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBe(1_010_000);
-  });
-
-  it('lets a fetch land for the repo it was started for, after a switch', async () => {
-    // Switching away used to retire the in-flight fetch, so the repo it
-    // was for ended up with nothing cached and refetched on return.
-    env.cwd = '/repo-a';
-    const slow = sidebar.listSidebarItems();
-    await flush();
-
-    env.cwd = '/repo-b';
-    const other = sidebar.listSidebarItems();
-    await flush();
-    settle(1, { b: 1 });
-    await other;
-
-    settle(0, { a: 1 });
-    await slow;
-
-    env.cwd = '/repo-a';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
-    await sidebar.listSidebarItems();
-    await flush();
-    expect(env.fetchCount).toBe(2);
-  });
-
-  it('reports only this repo as syncing while another one fetches', async () => {
-    env.cwd = '/repo-a';
-    const slow = sidebar.listSidebarItems();
-    await flush();
-    expect(sidebar.getSyncState().remoteSyncing).toBe(true);
-
-    env.cwd = '/repo-b';
-    expect(sidebar.getSyncState().remoteSyncing).toBe(false);
-
-    env.cwd = '/repo-a';
-    settle(0);
-    await slow;
-  });
-
-  it('never evicts the repository the user is looking at', async () => {
-    // Eviction is by fetch time, and the active repo is the only one
-    // being fetched — so it is always the newest. Pinned because the
-    // alternative (evicting it) empties the sidebar the user is
-    // watching.
-    await sync('/repo-active', {});
-    for (let i = 0; i < 8; i++) {
-      env.now += 1_000;
-      await sync(`/repo-other-${i}`, {});
-      env.now += 1_000;
-      await sync('/repo-active', {});
-    }
-    env.cwd = '/repo-active';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
-  });
-
-  it('forgets the least recently fetched repo rather than growing forever', async () => {
-    for (let i = 0; i < 9; i++) {
-      env.now += 1_000;
-      await sync(`/repo-${i}`, {});
-    }
-    expect(env.fetchCount).toBe(9);
-
-    // The ninth eviction takes the first repo; the second is still here.
-    env.cwd = '/repo-1';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).not.toBeNull();
-    env.cwd = '/repo-0';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
-  });
-
-  it('keeps a failure to the repo it happened in', async () => {
-    env.cwd = '/repo-a';
-    const bad = sidebar.listSidebarItems();
-    await flush();
-
-    // The user follows a foreign tab while A's fetch is still in the
-    // air, and it fails. Reporting that against B would blame the
-    // wrong checkout — and B's fetch may have gone perfectly.
-    env.cwd = '/repo-b';
-    env.pending[0].reject(new Error('rejected the access token'));
-    await bad;
-    await flush();
-
-    expect(sidebar.getSyncState().remoteError).toBeNull();
-    env.cwd = '/repo-a';
-    expect(sidebar.getSyncState().remoteError).toContain('access token');
-  });
-
-  it('reports the repo the user is looking at as never synced, not stale', async () => {
-    // A repo whose only attempt failed has no sync time to report; the
-    // failure timestamp is not one.
-    env.cwd = '/repo-a';
-    const bad = sidebar.listSidebarItems();
-    await flush();
-    env.pending[0].reject(new Error('nope'));
-    await bad;
-    await flush();
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
-  });
-
-  it('drops every repo’s cache when the credentials change', async () => {
-    await sync('/repo-a', {});
-    await sync('/repo-b', {});
-
-    env.cwd = '/repo-a';
-    sidebar.onCredentialsChanged();
-    await flush();
-
-    // The token is global, so what the other checkout fetched was
-    // fetched as somebody else too.
-    env.cwd = '/repo-b';
-    expect(sidebar.getSyncState().lastRemoteSyncAt).toBeNull();
+  it('cannot say when no provider is configured', async () => {
+    env.configured = false;
+    expect(await sidebar.lookupPullRequest('/repo-a', 7)).toMatchObject({
+      kind: 'unknown',
+    });
+    expect(sidebar.repoProvider('/repo-a')).toBeNull();
   });
 });
 

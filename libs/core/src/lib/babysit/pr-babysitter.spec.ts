@@ -5,7 +5,8 @@ import type {
   PullRequestInfo,
   VcsProvider,
 } from '@kirby/vcs-core';
-import type { BabysitStatus, PullRequestLookup } from './pr-babysitter.js';
+import type { BabysitStatus } from './pr-babysitter.js';
+import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
 
 const mocks = vi.hoisted(() => ({
   fetchBranches: vi.fn<() => Promise<boolean>>(),

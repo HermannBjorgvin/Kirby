@@ -48,6 +48,7 @@ import {
 } from './babysit-model.js';
 import { observePullRequest, type RemoteSnapshot } from './babysit-observe.js';
 import { composeBabysitPrompt } from './babysit-prompt.js';
+import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
 
 /** Why a due update has not gone out. */
 export type BabysitHold =
@@ -71,14 +72,6 @@ export interface BabysitStatus {
   deliveries: number;
   lastError: string | null;
 }
-
-/** The pull request as the provider has it now. `gone` is a merged or
- *  closed pull request; `unknown` is a provider that could not answer,
- *  which is not the same thing and must not end the watch. */
-export type PullRequestLookup =
-  | { kind: 'found'; pr: PullRequestInfo }
-  | { kind: 'gone' }
-  | { kind: 'unknown'; reason: string };
 
 export interface PrBabysitterOptions {
   pr: PullRequestInfo;
