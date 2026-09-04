@@ -293,7 +293,7 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
           publish({ phase: 'ended', held: null, lastPolledAt: now() });
         } else {
           goneOnce = true;
-          publish({ lastPolledAt: now() });
+          publish({ lastPolledAt: now(), lastError: null });
         }
         return;
       }

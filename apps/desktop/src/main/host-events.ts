@@ -61,6 +61,7 @@ export function installHostEventBridge(): void {
   // renderer is serving it from a query cache.
   setDiscoveryNotifier(() => broadcast(DISCOVERY_EVENTS.changed));
 
-  // A babysat pull request's status is read from a query cache too.
+  // A babysitter started an agent (a row and a session) or ended; its
+  // status otherwise rides on the sidebar item.
   setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
 }
