@@ -26,12 +26,34 @@ export interface WorktreeResolver {
   base(): string;
 }
 
+/**
+ * Put a path into the form `owns()` compares in.
+ *
+ * On Windows the two sides arrive in different shapes: `path.resolve`
+ * produces backslashes (`C:\repo\.claude\worktrees`) while
+ * `git worktree list --porcelain` reports forward slashes
+ * (`C:/repo/.claude/worktrees/foo`), so a literal comparison never
+ * matches and every worktree looks unowned. Case is folded too, since
+ * the same checkout can be reported under either drive-letter case.
+ *
+ * Off Windows this is the identity function, deliberately: `\` is a
+ * legal character in a POSIX directory name, so rewriting separators
+ * there could make two genuinely distinct paths compare equal, and
+ * POSIX paths are case-sensitive.
+ */
+const normalizePath = (p: string): string =>
+  process.platform === 'win32' ? p.replace(/\\/g, '/').toLowerCase() : p;
+
+/** Shared membership test: is `p` the base directory or inside it? */
+const isUnder = (p: string, baseDir: string): boolean => {
+  const base = normalizePath(baseDir);
+  const target = normalizePath(p);
+  return target === base || target.startsWith(base + '/');
+};
+
 const defaultResolver: WorktreeResolver = {
   dir: (branch) => '.claude/worktrees/' + branchToSessionName(branch),
-  owns: (p) => {
-    const base = defaultResolver.base();
-    return p === base || p.startsWith(base + '/');
-  },
+  owns: (p) => isUnder(p, defaultResolver.base()),
   // Resolved per call, not captured: the default resolver is the one
   // in force before anything has told Kirby which repo it is in, and
   // the desktop chdir()s into a repo after that point.
@@ -61,7 +83,7 @@ export function createTemplateResolver(
       template
         .replace('{branch}', branch)
         .replace('{session}', branchToSessionName(branch)),
-    owns: (p) => p === baseDir || p.startsWith(baseDir + '/'),
+    owns: (p) => isUnder(p, baseDir),
     base: () => baseDir,
   };
 }

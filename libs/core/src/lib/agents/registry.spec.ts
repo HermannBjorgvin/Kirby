@@ -14,6 +14,25 @@ function config(partial: Partial<AppConfig>): AppConfig {
   return { vendorAuth: {}, vendorProject: {}, ...partial };
 }
 
+/**
+ * The shell a shell-composed launch runs under, per platform. Spelled
+ * out rather than imported so these stay assertions about concrete
+ * values: `/bin/sh` does not exist on Windows, and launching an agent
+ * through it there fails in node-pty with a bare "File not found:".
+ */
+const IS_WIN = process.platform === 'win32';
+const SHELL_CMD = IS_WIN ? process.env.ComSpec || 'cmd.exe' : '/bin/sh';
+const SHELL_FLAGS = IS_WIN ? ['/d', '/s', '/c'] : ['-c'];
+/** How an env var is referenced in a script that shell will expand. */
+const envRef = (name: string) => (IS_WIN ? `%${name}%` : `$${name}`);
+/** A full spec for a one-script launch under that shell. */
+const shellSpec = (script: string) => ({
+  cmd: SHELL_CMD,
+  args: [...SHELL_FLAGS, script],
+});
+/** Index of the script within `args`, after the shell's own flags. */
+const SCRIPT_ARG = SHELL_FLAGS.length;
+
 describe('agent registry', () => {
   it('exposes the five user-selectable agents, none hidden', () => {
     expect(AGENTS.map((a) => a.id)).toEqual([
@@ -64,7 +83,7 @@ describe('agent registry', () => {
       const agent = resolveAgent(config({ aiCommand: 'cat' }));
       expect(agent.id).toBe('test');
       expect(agent.hidden).toBe(true);
-      expect(agent.blank()).toEqual({ cmd: '/bin/sh', args: ['-c', 'cat'] });
+      expect(agent.blank()).toEqual(shellSpec('cat'));
     });
 
     it('defaults to claude with an empty config', () => {
@@ -98,12 +117,12 @@ describe('agent registry', () => {
 
     it('claude continue-or-seed delivers the prompt via env, not the command string', () => {
       const spec = claude.continueOrSeed!('the plan');
-      expect(spec.cmd).toBe('/bin/sh');
-      expect(spec.args[0]).toBe('-c');
-      expect(spec.args[1]).toBe(
-        `claude --continue || claude "$${SEED_PROMPT_ENV}"`
+      expect(spec.cmd).toBe(SHELL_CMD);
+      expect(spec.args.slice(0, SCRIPT_ARG)).toEqual(SHELL_FLAGS);
+      expect(spec.args[SCRIPT_ARG]).toBe(
+        `claude --continue || claude "${envRef(SEED_PROMPT_ENV)}"`
       );
-      expect(spec.args[1]).not.toContain('the plan');
+      expect(spec.args[SCRIPT_ARG]).not.toContain('the plan');
       expect(spec.env).toEqual({ [SEED_PROMPT_ENV]: 'the plan' });
     });
 
@@ -111,8 +130,10 @@ describe('agent registry', () => {
       const spec = claude.continueOrSeed!('the plan', {
         appendSystemPrompt: 'guidance',
       });
-      expect(spec.args[1]).toBe(
-        `claude --continue || claude --append-system-prompt "$${SEED_SYSTEM_ENV}" "$${SEED_PROMPT_ENV}"`
+      expect(spec.args[SCRIPT_ARG]).toBe(
+        `claude --continue || claude --append-system-prompt "${envRef(
+          SEED_SYSTEM_ENV
+        )}" "${envRef(SEED_PROMPT_ENV)}"`
       );
       expect(spec.env).toEqual({
         [SEED_PROMPT_ENV]: 'the plan',
@@ -138,6 +159,30 @@ describe('agent registry', () => {
       });
     });
 
+    it('runs the continue path through a shell that exists on this platform', () => {
+      // /bin/sh is absent on Windows: node-pty fails to spawn it with a
+      // bare "File not found:" and the launch dies before the agent runs.
+      const script = 'claude --continue || claude';
+      const expected = IS_WIN
+        ? {
+            cmd: process.env.ComSpec || 'cmd.exe',
+            args: ['/d', '/s', '/c', script],
+          }
+        : { cmd: '/bin/sh', args: ['-c', script] };
+      expect(claude.continueOrBlank!()).toEqual(expected);
+    });
+
+    it('references the seed env vars in the syntax that shell expands', () => {
+      const script = claude.continueOrSeed!('p').args[SCRIPT_ARG];
+      // cmd.exe expands %VAR%, not $VAR: the POSIX form would reach the
+      // agent as a literal and the prompt would be lost.
+      expect(script).toContain(
+        process.platform === 'win32'
+          ? `%${SEED_PROMPT_ENV}%`
+          : `$${SEED_PROMPT_ENV}`
+      );
+    });
+
     it('only claude advertises append-system-prompt support', () => {
       expect(claude.supportsAppendSystemPrompt).toBe(true);
       for (const a of [copilot, codex, gemini, opencode]) {
@@ -149,10 +194,9 @@ describe('agent registry', () => {
   describe('makeTestAgent', () => {
     it('runs the raw command and exposes the seed prompt via env', () => {
       const agent = makeTestAgent('cat');
-      expect(agent.blank()).toEqual({ cmd: '/bin/sh', args: ['-c', 'cat'] });
+      expect(agent.blank()).toEqual(shellSpec('cat'));
       expect(agent.seed!('hello')).toEqual({
-        cmd: '/bin/sh',
-        args: ['-c', 'cat'],
+        ...shellSpec('cat'),
         env: { [SEED_PROMPT_ENV]: 'hello' },
       });
     });

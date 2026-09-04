@@ -52,6 +52,19 @@ export async function createWorktree(branch: string): Promise<string | null> {
     return absoluteDir;
   }
 
+  // Nothing at the derived path, but the branch may still be checked
+  // out somewhere else: a worktree's directory is independent of its
+  // branch name, so the path above only finds the ones Kirby made under
+  // the current template, not one created externally or under a
+  // different `worktreePath`. Without this both `git worktree add`
+  // attempts below fail — the branch is already checked out, and the
+  // branch already exists — and the caller reports a bare
+  // "Failed to resolve a worktree" for a worktree that is right there.
+  const existingPath = await worktreePathForBranch(branch);
+  if (existingPath) {
+    return existingPath;
+  }
+
   try {
     // Try existing branch first
     await exec(`git worktree add "${relativeDir}" "${branch}"`, {

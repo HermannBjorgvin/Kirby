@@ -51,10 +51,18 @@ export function resetMainBranchCache(): void {
  *
  * No `-z` here: `git branch` has no such flag, and needs none — git
  * rejects a ref name containing a control character, so a branch name
- * can never contain the newline this splits on. */
+ * can never contain the newline this splits on.
+ *
+ * The format string is double-quoted, not single-quoted. `exec` goes
+ * through the platform shell, and `cmd.exe` does not treat `'` as a
+ * quote character: git would receive the quotes as part of the format
+ * and echo them back, yielding names like `'main'`. Those then fail
+ * `assertShellSafeRef` and defeat the `origin/` strip in
+ * {@link dedupeBranchNames}. Double quotes are honored by both
+ * `cmd.exe` and POSIX `sh`. */
 export async function listBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch --format='%(refname:short)'", {
+    const { stdout } = await exec('git branch --format="%(refname:short)"', {
       encoding: 'utf8',
     });
     return stdout
@@ -104,7 +112,7 @@ export function dedupeBranchNames(output: string): string[] {
 /** List local + remote git branches (remote branches stripped of origin/ prefix, deduplicated) */
 export async function listAllBranches(): Promise<string[]> {
   try {
-    const { stdout } = await exec("git branch -a --format='%(refname:short)'", {
+    const { stdout } = await exec('git branch -a --format="%(refname:short)"', {
       encoding: 'utf8',
     });
     return dedupeBranchNames(stdout);

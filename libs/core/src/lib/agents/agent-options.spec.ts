@@ -48,9 +48,13 @@ describe('buildAgentOptions', () => {
       config({ aiCommand: 'my-special-cli --foo' })
     );
     expect(opts[0]?.name).toBe('Custom (default)');
+    // The shell differs by platform: /bin/sh does not exist on Windows.
+    const isWin = process.platform === 'win32';
     expect(opts[0]?.agent.blank()).toEqual({
-      cmd: '/bin/sh',
-      args: ['-c', 'my-special-cli --foo'],
+      cmd: isWin ? process.env.ComSpec || 'cmd.exe' : '/bin/sh',
+      args: isWin
+        ? ['/d', '/s', '/c', 'my-special-cli --foo']
+        : ['-c', 'my-special-cli --foo'],
     });
     expect(opts.slice(1).map((o) => o.name)).toEqual([
       'Claude',

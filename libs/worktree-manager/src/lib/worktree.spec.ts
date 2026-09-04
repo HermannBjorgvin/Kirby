@@ -17,6 +17,7 @@ import {
   resetWorktreeResolver,
   setWorktreeResolver,
   worktreesBasePath,
+  ownsWorktreePath,
   createTemplateResolver,
 } from './worktree-resolver.js';
 import {
@@ -110,6 +111,8 @@ describe('listBranches', () => {
 
 describe('createWorktree', () => {
   it('should return absolute path for existing branch', async () => {
+    // No worktree has the branch checked out anywhere.
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockResolvedValueOnce(resolve());
     const result = await createWorktree('feature/auth');
     expect(result).toContain('.claude/worktrees/feature-auth');
@@ -122,11 +125,12 @@ describe('createWorktree', () => {
 
   it('should fall back to -b for new branch', async () => {
     mockExec
+      .mockResolvedValueOnce(worktreeListPorcelain([]))
       .mockRejectedValueOnce(new Error('branch not found'))
       .mockResolvedValueOnce(resolve());
     const result = await createWorktree('new-branch');
     expect(result).toContain('.claude/worktrees/new-branch');
-    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).toHaveBeenLastCalledWith(
       'git worktree add -b "new-branch" ".claude/worktrees/new-branch"',
       { encoding: 'utf8' }
@@ -135,9 +139,30 @@ describe('createWorktree', () => {
 
   it('should return null when both attempts fail', async () => {
     mockExec
+      .mockResolvedValueOnce(worktreeListPorcelain([]))
       .mockRejectedValueOnce(new Error('fail'))
       .mockRejectedValueOnce(new Error('fail'));
     expect(await createWorktree('bad-branch')).toBeNull();
+  });
+
+  it('reuses a worktree that has the branch checked out under another directory name', async () => {
+    // Nothing at the resolver-derived path, but git reports the branch
+    // checked out at a directory named differently — created outside
+    // Kirby, or by Kirby under a different worktreePath template.
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([
+        { branch: 'feature/auth', dir: '.claude/worktrees/some-other-name' },
+      ])
+    );
+    const result = await createWorktree('feature/auth');
+    expect(result).toContain('.claude/worktrees/some-other-name');
+    // The lookup is the only git call: no `worktree add` is attempted,
+    // which would fail with "already used by worktree at …".
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).not.toHaveBeenCalledWith(
+      expect.stringContaining('worktree add'),
+      expect.anything()
+    );
   });
 
   it('should return existing path without calling git when worktree already exists', async () => {
@@ -1232,6 +1257,32 @@ describe('WorktreeResolver', () => {
       const base = pathResolve(cwd, '.claude/worktrees');
       expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
       expect(resolver.owns(`${base}-old/stale`)).toBe(false);
+    });
+  });
+
+  describe('owns() and the separator git reports', () => {
+    // `git worktree list --porcelain` reports forward slashes on every
+    // platform, while `path.resolve` gives backslashes on Windows. When
+    // owns() compared those literally, every worktree looked unowned and
+    // listWorktrees() returned nothing at all on Windows.
+    it('accepts the path shape git emits for a base path from resolve()', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath();
+      const asGitReportsIt = base.replace(/\\/g, '/') + '/feature-auth';
+      expect(ownsWorktreePath(asGitReportsIt)).toBe(true);
+    });
+
+    it('still rejects a sibling directory whose name shares the prefix', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath().replace(/\\/g, '/');
+      expect(ownsWorktreePath(base + '-old/stale')).toBe(false);
+    });
+
+    it('is case-insensitive on Windows only', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath().replace(/\\/g, '/');
+      const shouted = base.toUpperCase() + '/FEATURE-AUTH';
+      expect(ownsWorktreePath(shouted)).toBe(process.platform === 'win32');
     });
   });
 });
