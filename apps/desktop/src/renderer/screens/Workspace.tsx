@@ -199,16 +199,21 @@ function WorkspaceInner({
     return off;
   }, [qc, repo.cwd]);
 
-  // A terminal tab closes itself when its process ends. The host drops
-  // the terminal from its listing on the exit; refetching on the same
-  // event is what makes the tab go at once rather than on the next
-  // poll of the listing.
+  // A terminal tab closes itself when its process ends. The host has
+  // already dropped the terminal from its listing when it says so, and
+  // the tab goes on the event itself — by name, so a terminal that died
+  // before any listing named it closes too — rather than on the next
+  // poll; the listing is refetched behind it to prune the auto-open
+  // stamp. A worktree agent's exit rides the same event and names no
+  // terminal tab, so it closes nothing.
+  const terminalEnded = tabs.terminalEnded;
   useEffect(() => {
-    const off = window.kirby.onSessionExit(() => {
+    const off = window.kirby.onSessionExit(({ name }) => {
+      terminalEnded(name);
       void qc.invalidateQueries({ queryKey: keys.terminals });
     });
     return off;
-  }, [qc]);
+  }, [qc, terminalEnded]);
 
   // Worktrees and agent sessions can also appear without this process
   // being involved — a second Kirby, a script, an operator with tmux.

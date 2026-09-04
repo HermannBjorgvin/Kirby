@@ -83,6 +83,9 @@ interface TabsApi extends TabsState {
   repoOpened: (repo: string) => void;
   /** Open (or activate) the tab for a terminal the host just started. */
   openTerminal: (terminal: TerminalEntry) => void;
+  /** The host says the terminal's process ended: close its tab, listed
+   *  or not. `repo` is the one in view, for the close-focus rules. */
+  terminalEnded: (name: string, repo?: string) => void;
   /** A close's kill failed: forget these auto-open keys (from
    *  `autoOpenKey`/`terminalTabId`) so the session or terminal, still
    *  running, is offered a tab again on the next sync rather than
@@ -158,6 +161,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
     []
   );
+  const terminalEnded = useCallback(
+    (name: string, repo?: string) =>
+      dispatch({ type: 'terminal-ended', name, repo }),
+    []
+  );
   const forgetAutoOpened = useCallback(
     (keys: string[]) => dispatch({ type: 'forget-auto-opened', keys }),
     []
@@ -179,6 +187,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
+      terminalEnded,
       forgetAutoOpened,
     }),
     [
@@ -196,6 +205,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       syncItems,
       repoOpened,
       openTerminal,
+      terminalEnded,
       forgetAutoOpened,
     ]
   );
@@ -226,16 +236,19 @@ export function useRepoTabs(): RepoTabsApi {
         foreign: ForeignSessionEntry[] | undefined
       ) => tabs.syncItems(cwd, entries, terminals, foreign),
       close: (id: string) => tabs.close(id, cwd),
+      terminalEnded: (name: string) => tabs.terminalEnded(name, cwd),
     }),
     [tabs, cwd]
   );
 }
 
-export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
+export interface RepoTabsApi
+  extends Omit<TabsApi, 'openItem' | 'syncItems' | 'terminalEnded'> {
   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
   syncItems: (
     entries: ItemEntry[],
     terminals: TerminalEntry[] | undefined,
     foreign: ForeignSessionEntry[] | undefined
   ) => void;
+  terminalEnded: (name: string) => void;
 }

@@ -990,6 +990,58 @@ describe('terminal tabs', () => {
     });
   });
 
+  // The host says a terminal's process ended, by name, the moment it
+  // happens — before any listing has caught up, and possibly before
+  // one ever named the terminal at all (a shell whose rc file exits, an
+  // agent binary missing under tmux). The tab goes on that word alone,
+  // with the same focus rules as a close, so a terminal that died in
+  // the gap between the launch answer and the first listing does not
+  // leave a tab whose close then asks to end a session that is gone.
+  describe('terminal-ended', () => {
+    const ended = (state: TabsState, name: string, repo = REPO) =>
+      reduce(state, { type: 'terminal-ended', name, repo });
+
+    it('closes the tab of a terminal no listing ever named', () => {
+      let s = open(empty, 'branch:x');
+      s = openTerminal(s, plain);
+      s = ended(s, plain.name);
+      expect(s.tabs.map((t) => t.id)).toEqual([id('branch:x')]);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('closes a listed one the same way', () => {
+      let s = syncTerminals(empty, [plain, inAlpha]);
+      s = ended(s, plain.name);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(inAlpha.name)]);
+    });
+
+    it('never hands focus to another repository', () => {
+      let s = open(empty, 'branch:x');
+      s = open(s, 'branch:y', false, OTHER);
+      s = openTerminal(s, plain); // active, rightmost
+      s = ended(s, plain.name);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('leaves every other tab exactly as it was', () => {
+      let s = open(empty, 'branch:x');
+      s = openTerminal(s, inAlpha);
+      s = openTerminal(s, plain);
+      const before = s.tabs.slice(0, 2);
+      s = ended(s, plain.name);
+      expect(s.tabs).toHaveLength(2);
+      s.tabs.forEach((t, i) => expect(t).toBe(before[i]));
+    });
+
+    // A worktree agent's exit rides the same event; its name is no
+    // terminal tab's, and nothing here may react to it.
+    it('is a no-op for a name that has no terminal tab', () => {
+      const s = open(openTerminal(empty, plain), 'branch:x');
+      expect(ended(s, 'feat-x')).toBe(s);
+      expect(ended(s, 'kirby-term-shell-ffffff')).toBe(s);
+    });
+  });
+
   // No listing is not an empty listing: before the host has answered,
   // or while a query has no data, there is nothing to reconcile
   // against, and closing every terminal tab on that tick would be

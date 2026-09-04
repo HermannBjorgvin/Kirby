@@ -19,6 +19,7 @@ import {
   isForeignTab,
   itemTabId,
   tabHome,
+  terminalTabId,
   type Tab,
 } from './tab-identity.js';
 
@@ -114,6 +115,14 @@ export type TabsAction =
     }
   /** Open (or activate) the tab for a terminal the host just started. */
   | { type: 'open-terminal'; terminal: TerminalEntry }
+  /** The host says the process behind a terminal ended, by name — the
+   *  shell exited, the agent quit, tmux ended the session. Its tab
+   *  closes on that word alone, whether or not a listing ever named it:
+   *  a process that died between the launch answer and the first
+   *  listing would otherwise leave a tab whose close asks to end a
+   *  session that is already gone. Focus follows the close rules for
+   *  `repo`, the one in view. A name with no terminal tab is nothing. */
+  | { type: 'terminal-ended'; name: string; repo?: string }
   /** A repository was opened. Dispatched for every open, tab-driven or
    *  not; it only does something when the tab in front of the user
    *  belongs to somewhere else. */
@@ -192,16 +201,50 @@ function focusRepo(state: TabsState, repo: string): TabsState {
   return activeId === state.activeId ? state : { ...state, activeId };
 }
 
+/** The actions that take tabs off the strip. */
+type CloseAction = Extract<
+  TabsAction,
+  { type: 'close' | 'close-others' | 'close-all' | 'terminal-ended' }
+>;
+
+const CLOSE_ACTIONS: ReadonlySet<TabsAction['type']> = new Set<
+  CloseAction['type']
+>(['close', 'close-others', 'close-all', 'terminal-ended']);
+
+function isCloseAction(action: TabsAction): action is CloseAction {
+  return CLOSE_ACTIONS.has(action.type);
+}
+
+function applyClose(state: TabsState, action: CloseAction): TabsState {
+  switch (action.type) {
+    case 'close':
+      return closeTab(state, action.id, action.repo);
+    case 'terminal-ended':
+      return closeTab(state, terminalTabId(action.name), action.repo);
+    case 'close-others':
+      return closeOtherTabs(state, action.id);
+    case 'close-all':
+      // `autoOpened` survives on purpose: closing every tab is a manual
+      // act, and re-opening the running agents on the next sidebar poll
+      // would undo it.
+      return { ...state, tabs: [], activeId: null };
+  }
+}
+
 /** The actions about item and settings tabs — the strip as it was
- *  before terminals joined it. `sync-items` stays in this union: its
- *  item passes (`applyStrip`'s case below) read only `repo`/`entries`,
- *  and the `terminals` field rides along for {@link apply} to hand to
- *  `syncTerminals` once the item passes have settled. */
-type StripAction = Exclude<TabsAction, { type: 'open-terminal' }>;
+ *  before terminals joined it, minus the closes. `sync-items` stays in
+ *  this union: its item passes (`applyStrip`'s case below) read only
+ *  `repo`/`entries`, and the `terminals` field rides along for
+ *  {@link apply} to hand to `syncTerminals` once the item passes have
+ *  settled. */
+type StripAction = Exclude<TabsAction, { type: 'open-terminal' } | CloseAction>;
 
 function apply(state: TabsState, action: TabsAction): TabsState {
   if (action.type === 'open-terminal') {
     return openTerminal(state, action.terminal);
+  }
+  if (isCloseAction(action)) {
+    return applyClose(state, action);
   }
   if (action.type === 'sync-items') {
     // One dispatch, one pure step: the repo's items and the host's
@@ -228,15 +271,6 @@ function applyStrip(state: TabsState, action: StripAction): TabsState {
       return { ...state, tabs: pinTab(state.tabs, action.id) };
     case 'activate':
       return activateTab(state, action.id);
-    case 'close':
-      return closeTab(state, action.id, action.repo);
-    case 'close-others':
-      return closeOtherTabs(state, action.id);
-    case 'close-all':
-      // `autoOpened` survives on purpose: closing every tab is a manual
-      // act, and re-opening the running agents on the next sidebar poll
-      // would undo it.
-      return { ...state, tabs: [], activeId: null };
     case 'move':
       return moveTab(state, action.id, action.targetId, action.side);
     case 'sync-items':

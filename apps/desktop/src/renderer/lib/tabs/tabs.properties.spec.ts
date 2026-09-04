@@ -116,6 +116,13 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     id: fc.constantFrom(...IDS),
   }),
   fc.record({ type: fc.constant('close-all' as const) }),
+  // The host reporting a terminal's process ended, by name — the one
+  // way a terminal tab closes without the user or a listing.
+  fc.record({
+    type: fc.constant('terminal-ended' as const),
+    name: fc.constantFrom(...TERMINALS.map((t) => t.name)),
+    repo: fc.constantFrom(...REPOS),
+  }),
   // Switching repository. Included because it is the one action that
   // may leave nothing active, and because everything else has to keep
   // holding across it.
@@ -199,7 +206,10 @@ const EMPTY: TabsState = EMPTY_TABS;
  * action at a *foreign* repo apply it to the finished state themselves.
  */
 const inViewOf = (a: TabsAction, repo: string): TabsAction =>
-  a.type === 'open-item' || a.type === 'sync-items' || a.type === 'close'
+  a.type === 'open-item' ||
+  a.type === 'sync-items' ||
+  a.type === 'close' ||
+  a.type === 'terminal-ended'
     ? { ...a, repo }
     : a;
 
@@ -556,6 +566,36 @@ describe('terminal tabs', () => {
         }
       ),
       { numRuns: 300 }
+    );
+  });
+
+  // The host's word that a terminal ended is final, listed or not: no
+  // tab for that name survives it, and no other tab is touched.
+  it('holds no tab for a terminal the host said ended, and every other tab as it was', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...TERMINALS.map((t) => t.name)),
+        (actions, name) => {
+          const { state: before, inView } = replay(actions);
+          const after = reduce(before, {
+            type: 'terminal-ended',
+            name,
+            repo: inView,
+          });
+          expect(
+            after.tabs.some((t) => t.kind === 'terminal' && t.name === name)
+          ).toBe(false);
+          const rest = before.tabs.filter(
+            (t) => !(t.kind === 'terminal' && t.name === name)
+          );
+          expect(after.tabs.length).toBe(rest.length);
+          for (const [i, t] of after.tabs.entries()) {
+            expect(t).toBe(rest[i]);
+          }
+        }
+      ),
+      { numRuns: 500 }
     );
   });
 
