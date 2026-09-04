@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   started: [] as {
     prId: number;
     cwd: string;
+    getProvider: () => unknown;
     stop: () => void;
     onStatus: (s: unknown) => void;
     onSpawned?: (name: string, cwd: string) => void;
@@ -25,7 +26,7 @@ vi.mock('@kirby/vcs-core', () => ({
   readConfig: () => ({ vendorAuth: {}, vendorProject: {} }),
 }));
 vi.mock('./pull-requests.js', () => ({
-  repoProvider: () => null,
+  repoProvider: (cwd: string) => `provider@${cwd}`,
   lookupPullRequest: (_cwd: string, prId: number) => {
     const pr = state.prs.find((entry) => entry.id === prId);
     return Promise.resolve(pr ? { kind: 'found', pr } : { kind: 'gone' });
@@ -41,6 +42,7 @@ vi.mock('@kirby/core', () => ({
   startPrBabysitter: (opts: {
     pr: PullRequestInfo;
     cwd: string;
+    getProvider: () => unknown;
     onStatus: (s: unknown) => void;
     onSpawned?: (name: string, cwd: string) => void;
     isCurrent: () => boolean;
@@ -48,6 +50,7 @@ vi.mock('@kirby/core', () => ({
     const entry = {
       prId: opts.pr.id,
       cwd: opts.cwd,
+      getProvider: opts.getProvider,
       stop: () => state.stopped.push(opts.pr.id),
       onStatus: opts.onStatus,
       onSpawned: opts.onSpawned,
@@ -95,6 +98,9 @@ describe('babysit service', () => {
     // The repository is handed over at start: the host chdir()s when
     // another one is opened, and the watcher's git must not follow.
     expect(state.started[0].cwd).toBe('/repo');
+    // The provider is a getter: a vendor switched in Settings has to
+    // reach a watcher that started under the previous one.
+    expect(state.started[0].getProvider()).toBe('provider@/repo');
     expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
     expect(mod.babysatStatuses('/repo').get(7)).toMatchObject({ prId: 7 });
     // Starting is the renderer's own doing; it refetches the sidebar
@@ -153,6 +159,15 @@ describe('babysit service', () => {
     state.cwd = '/repo';
     expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
     expect(state.started[0].isCurrent()).toBe(true);
+  });
+
+  it('stops the babysitter of a branch whose worktree is being removed', async () => {
+    await mod.startBabysit(7);
+    await mod.startBabysit(8);
+    mod.stopBabysitForBranch('feat/7');
+    mod.stopBabysitForBranch('feat/none');
+    expect(state.stopped).toEqual([7]);
+    expect(mod.listBabysat().map((s) => s.prId)).toEqual([8]);
   });
 
   it('stops every babysitter of every repository on exit', async () => {

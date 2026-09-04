@@ -41,6 +41,11 @@ vi.mock('./sessions.js', () => ({
   killOwnSession: (name: string) => calls.log.push(`kill:${name}`),
 }));
 
+vi.mock('./babysit.js', () => ({
+  stopBabysitForBranch: (branch: string) =>
+    calls.log.push(`stop-babysit:${branch}`),
+}));
+
 vi.mock('@kirby/worktree-manager', () => ({
   listWorktrees: () => Promise.resolve(calls.worktrees),
   listBranches: () => Promise.resolve(['main']),
@@ -87,6 +92,15 @@ describe('removeWorktree', () => {
     expect(killAt).toBeGreaterThanOrEqual(0);
     // Removing first would delete the directory the agent is running in.
     expect(killAt).toBeLessThan(removeAt);
+  });
+
+  it('stops the branch’s babysitter before the agent, so no update restarts one', async () => {
+    await removeWorktree('feature/x', false);
+    const stopAt = calls.log.indexOf('stop-babysit:feature/x');
+    expect(stopAt).toBeGreaterThanOrEqual(0);
+    // A watcher still running would answer its next update by checking
+    // the branch out again and starting an agent in it.
+    expect(stopAt).toBeLessThan(calls.log.indexOf('kill:feature-x'));
   });
 
   it('kills both the branch-derived and worktree-derived session names', async () => {

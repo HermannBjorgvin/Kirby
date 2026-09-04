@@ -57,7 +57,9 @@ vi.mock('../session/launch-session.js', () => ({
   launchSession: (params: unknown) => mocks.launchSession(params),
 }));
 
-const { startPrBabysitter } = await import('./pr-babysitter.js');
+const { startPrBabysitter, babysitTimingFromEnv } = await import(
+  './pr-babysitter.js'
+);
 const { observePullRequest } = await import('./babysit-observe.js');
 
 const MIN = 60_000;
@@ -271,7 +273,7 @@ describe('startPrBabysitter', () => {
     return startPrBabysitter({
       pr,
       cwd: '/repo',
-      provider: providerWith(noComments),
+      getProvider: () => providerWith(noComments),
       getConfig: () => config,
       readPullRequest: () => lookup(),
       paneSize: () => ({ cols: 100, rows: 30 }),
@@ -468,7 +470,7 @@ describe('startPrBabysitter', () => {
     sitter.stop();
   });
 
-  it('ends when the pull request is gone, but not when the provider could not say', async () => {
+  it('ends when the pull request is gone twice running, but not when the provider could not say', async () => {
     lookup = () => Promise.resolve({ kind: 'unknown', reason: 'offline' });
     const sitter = start();
     await sitter.pollNow();
@@ -479,10 +481,70 @@ describe('startPrBabysitter', () => {
 
     lookup = () => Promise.resolve({ kind: 'gone' });
     await sitter.pollNow();
+    await sitter.pollNow();
     expect(statuses.at(-1)?.phase).toBe('ended');
     lookup = () => Promise.resolve({ kind: 'found', pr });
     await vi.advanceTimersByTimeAsync(3 * MIN);
     expect(statuses.filter((s) => s.phase === 'ended')).toHaveLength(1);
+  });
+
+  it('shrugs off a single absence: the list is an eventually consistent search', async () => {
+    const sitter = start();
+    await sitter.pollNow();
+    lookup = () => Promise.resolve({ kind: 'gone' });
+    await sitter.pollNow();
+    expect(sitter.status()).toMatchObject({
+      phase: 'pending',
+      lastError: null,
+    });
+    // Back in the next list: nothing ended, nothing to report, and the
+    // count starts over — a later absence is a first one again.
+    lookup = () => Promise.resolve({ kind: 'found', pr: failing });
+    await sitter.pollNow();
+    lookup = () => Promise.resolve({ kind: 'gone' });
+    await sitter.pollNow();
+    expect(sitter.status().phase).toBe('pending');
+    expect(statuses.some((s) => s.phase === 'ended')).toBe(false);
+    sitter.stop();
+  });
+
+  it('reads the provider per poll, so a vendor switch takes effect', async () => {
+    const providers = [providerWith(noComments), providerWith(noComments)];
+    let which = 0;
+    const sitter = start({ getProvider: () => providers[which] });
+    await sitter.pollNow();
+    which = 1;
+    clock = 5 * MIN;
+    await sitter.pollNow();
+    expect(providers[0].fetchCommentThreads).toHaveBeenCalledTimes(1);
+    expect(providers[1].fetchCommentThreads).toHaveBeenCalledTimes(1);
+    sitter.stop();
+  });
+
+  it('takes its cadence from the environment when the caller sets none', async () => {
+    expect(
+      babysitTimingFromEnv({
+        KIRBY_BABYSIT_POLL_MS: '1000',
+        KIRBY_BABYSIT_DEBOUNCE_MS: '500',
+      })
+    ).toEqual({ intervalMs: 1000, timing: { debounceMs: 500 } });
+    expect(babysitTimingFromEnv({ KIRBY_BABYSIT_POLL_MS: 'soon' })).toEqual({
+      intervalMs: undefined,
+      timing: undefined,
+    });
+
+    vi.stubEnv('KIRBY_BABYSIT_DEBOUNCE_MS', '500');
+    try {
+      const sitter = start();
+      await sitter.pollNow();
+      clock = 600;
+      await sitter.pollNow();
+      // Delivered after half a second, not the ten minutes of the model.
+      expect(mocks.deliverToRunningSession).toHaveBeenCalledTimes(1);
+      sitter.stop();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('skips a poll that throws and reports the error', async () => {

@@ -60,7 +60,9 @@ export interface PrBabysitterOptions {
   /** The repository the pull request belongs to. Every git call runs
    *  against it, whatever the process's directory is by then. */
   cwd: string;
-  provider: VcsProvider | null;
+  /** Read per poll, like the config: a vendor switched in Settings
+   *  takes effect on the next poll rather than at the next start. */
+  getProvider: () => VcsProvider | null;
   /** Read per poll, so a credential change takes effect. */
   getConfig: () => AppConfig;
   readPullRequest: () => Promise<PullRequestLookup>;
@@ -75,6 +77,8 @@ export interface PrBabysitterOptions {
    *  appearing or clearing, the end — and not on a poll that left all
    *  of that where it was. `status()` is always current regardless. */
   onStatus: (status: BabysitStatus) => void;
+  /** Defaults come from the environment when set (`babysitTimingFromEnv`),
+   *  then from the model's constants. */
   intervalMs?: number;
   remoteRefreshMs?: number;
   idleMs?: number;
@@ -92,6 +96,25 @@ export interface PrBabysitter {
   status(): BabysitStatus;
   /** Stop watching. Idempotent. */
   stop(): void;
+}
+
+/**
+ * The cadence as the environment overrides it, so a test in any shell
+ * can watch a delivery happen in seconds rather than the ten minutes a
+ * reviewer gets to finish typing. Unset means the model's defaults.
+ */
+export function babysitTimingFromEnv(
+  env: Record<string, string | undefined> = process.env
+): { intervalMs?: number; timing?: DeliveryTiming } {
+  const read = (name: string): number | undefined => {
+    const value = Number(env[name]);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  };
+  const debounceMs = read('KIRBY_BABYSIT_DEBOUNCE_MS');
+  return {
+    intervalMs: read('KIRBY_BABYSIT_POLL_MS'),
+    timing: debounceMs === undefined ? undefined : { debounceMs },
+  };
 }
 
 type Delivery =
@@ -197,12 +220,18 @@ function initialStatus(pr: PullRequestInfo): BabysitStatus {
 
 export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
   const { onStatus, isCurrent = () => true, now = Date.now } = opts;
-  const intervalMs = opts.intervalMs ?? BABYSIT_POLL_MS;
+  const fromEnv = babysitTimingFromEnv();
+  const intervalMs = opts.intervalMs ?? fromEnv.intervalMs ?? BABYSIT_POLL_MS;
+  const timing = opts.timing ?? fromEnv.timing;
   let pr = opts.pr;
   let state: BabysitState = initialBabysitState();
   let remote: RemoteSnapshot | null = null;
   let status = initialStatus(pr);
   let stopped = false;
+  // Whether the previous poll found the pull request gone. The list
+  // is an eventually consistent search on GitHub, so one absence is
+  // not an answer; the watch ends on the second in a row.
+  let goneOnce = false;
   let tail: Promise<void> = Promise.resolve();
 
   const live = () => !stopped && isCurrent();
@@ -229,7 +258,7 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
   };
 
   const maybeDeliver = async (): Promise<void> => {
-    if (!isDue(state, now(), opts.timing)) return;
+    if (!isDue(state, now(), timing)) return;
     const taken = takeReport(state, now());
     if (!taken) return;
     const prompt = composeBabysitPrompt(pr, taken.report);
@@ -259,10 +288,16 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
       const lookup = await opts.readPullRequest();
       if (!live()) return;
       if (lookup.kind === 'gone') {
-        end();
-        publish({ phase: 'ended', held: null, lastPolledAt: now() });
+        if (goneOnce) {
+          end();
+          publish({ phase: 'ended', held: null, lastPolledAt: now() });
+        } else {
+          goneOnce = true;
+          publish({ lastPolledAt: now() });
+        }
         return;
       }
+      goneOnce = false;
       if (lookup.kind === 'unknown') {
         publish({ lastError: lookup.reason });
         return;
@@ -270,7 +305,7 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
       pr = lookup.pr;
       const observed = await observePullRequest({
         pr,
-        provider: opts.provider,
+        provider: opts.getProvider(),
         config: opts.getConfig(),
         cwd: opts.cwd,
         previous: remote,
