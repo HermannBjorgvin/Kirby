@@ -1,4 +1,6 @@
-import { realpathSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test as base, expect } from './fixtures/desktop.js';
 import { tab, visibleText } from './setup/app.js';
 import { cleanupExternalSessions, tmuxAvailable } from './setup/external.js';
@@ -17,15 +19,32 @@ function agentCommand(banner: string): string {
   return `printf '%s\\n' ${banner}; sleep 300`;
 }
 
-// The other repository is a fixture rather than a describe-scope
-// constant, so it exists only for a test that asks — and is cleaned up
-// only then too (see terminal-tabs-tmux.test.ts for why).
-const test = base.extend<{ other: string }>({
+// Both repositories are fixtures rather than describe-scope constants,
+// so they exist only for a test that asks — and are cleaned up only
+// then too (see terminal-tabs-tmux.test.ts for why).
+const test = base.extend<{ other: string; alphaLink: string }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature
   other: async ({}, provide) => {
     const dir = createTestRepo({ name: 'repo-beta' });
     await provide(dir);
     cleanupTestRepo(dir);
+  },
+  // The repository the app opens on is reached through a symlink. Its
+  // identity everywhere else — the tmux prefix, a worktree's origin,
+  // the foreign listing — is the real path, so the app has to settle
+  // on that one at the door or the same repository is two on the strip.
+  // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature
+  alphaLink: async ({}, provide) => {
+    const real = createTestRepo({ name: 'repo-alpha' });
+    const linkDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-link-'));
+    const link = join(linkDir, 'repo-alpha');
+    symlinkSync(real, link);
+    await provide(link);
+    rmSync(linkDir, { recursive: true, force: true });
+    cleanupTestRepo(real);
+  },
+  repoPathOverride: async ({ alphaLink }, provide) => {
+    await provide(alphaLink);
   },
   liveSessions: async ({ other }, provide) => {
     await provide([
@@ -37,10 +56,7 @@ const test = base.extend<{ other: string }>({
 
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
-test.use({
-  kirbyConfig: { terminalBackend: 'tmux' },
-  repo: { name: 'repo-alpha' },
-});
+test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
 
 test.afterEach(({ desktop, other }) => {
   cleanupExternalSessions(desktop.repoPath, [ALPHA], desktop.homeDir);
@@ -54,6 +70,9 @@ test.describe('Agents restored across repositories', () => {
   }) => {
     const { page, repoPath } = desktop;
     const getRepo = () => page.evaluate(() => window.kirby.getRepo());
+    const groups = page.locator('[role="tab"][data-starts-group="true"]');
+    // Opened through a symlink, known by its real path.
+    const alphaRoot = realpathSync(repoPath);
 
     // The open repository's agent: attached, and on the strip.
     await expect(tab(page, new RegExp(ALPHA))).toBeVisible({
@@ -65,10 +84,8 @@ test.describe('Agents restored across repositories', () => {
     await expect(beta).toBeVisible({ timeout: 30_000 });
     // Two groups on the strip: whichever of the two tabs is second
     // starts one (the leftmost group never draws a boundary).
-    await expect(
-      page.locator('[role="tab"][data-starts-group="true"]')
-    ).toHaveCount(1);
-    expect(await getRepo()).toMatchObject({ cwd: repoPath });
+    await expect(groups).toHaveCount(1);
+    expect(await getRepo()).toMatchObject({ cwd: alphaRoot });
 
     // Activating it opens its repository, whose own discovery attaches
     // the agent that was running there all along.
@@ -81,5 +98,32 @@ test.describe('Agents restored across repositories', () => {
     });
     // One tab for that agent, not a second one opened by the switch.
     await expect(tab(page, new RegExp(BETA))).toHaveCount(1);
+
+    // From here alpha's agent is the foreign one, described by the real
+    // path. Once that listing has landed, it is still the tab alpha
+    // already had — not a second one in a group of its own, which is
+    // what a repository identified by the path it was opened through
+    // gets the moment its agents are described by the real one.
+    await expect
+      .poll(
+        () => page.evaluate(() => window.kirby.listForeignSessions()),
+        { timeout: 30_000 }
+      )
+      .toEqual([expect.objectContaining({ repo: alphaRoot, branch: ALPHA })]);
+    await expect(tab(page, new RegExp(ALPHA))).toHaveCount(1);
+    await expect(groups).toHaveCount(1);
+
+    // …and back, by alpha's own tab: still one tab per agent, still two
+    // groups, and the workspace on the same repository it opened on.
+    await tab(page, new RegExp(ALPHA)).click();
+    await expect
+      .poll(getRepo, { timeout: 30_000 })
+      .toMatchObject({ cwd: alphaRoot });
+    await expect(visibleText(page, 'alpha-agent-here')).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(tab(page, new RegExp(ALPHA))).toHaveCount(1);
+    await expect(tab(page, new RegExp(BETA))).toHaveCount(1);
+    await expect(groups).toHaveCount(1);
   });
 });

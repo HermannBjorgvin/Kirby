@@ -62,6 +62,9 @@ interface KirbyBridge {
       running: boolean;
     }[]
   >;
+  listForeignSessions(): Promise<
+    { repo: string; branch: string; sessionName: string }[]
+  >;
   /** Used by the perf probes to time the host half of a tab open. */
   fetchWorktreeDiffText(branch: string, target: string): Promise<string>;
 }
