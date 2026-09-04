@@ -189,7 +189,10 @@ function WorkspaceInner({
     return off;
   }, [qc, repo.cwd]);
 
-  // A babysat pull request's status is served from the cache as well.
+  // A babysat pull request's status rides on its sidebar item, so the
+  // poll shows it. The host pushes only what a poll would show too
+  // late: an agent it started (a row and a session), or a watch that
+  // ended with its pull request.
   useEffect(() => {
     const off = window.kirby.onBabysitChanged((event) => {
       if (event.ended) {
@@ -197,8 +200,6 @@ function WorkspaceInner({
           `Stopped babysitting #${event.ended.prId}: the pull request is no longer open`
         );
       }
-      void qc.invalidateQueries({ queryKey: keys.babysat(repo.cwd) });
-      // A delivery may have started an agent, which is a sidebar row.
       void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
       void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
     });

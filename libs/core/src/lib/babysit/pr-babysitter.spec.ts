@@ -5,7 +5,7 @@ import type {
   PullRequestInfo,
   VcsProvider,
 } from '@kirby/vcs-core';
-import type { BabysitStatus } from './pr-babysitter.js';
+import type { BabysitStatus } from './babysit-model.js';
 import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
 
 const mocks = vi.hoisted(() => ({
@@ -497,12 +497,41 @@ describe('startPrBabysitter', () => {
   });
 
   it('polls on its own on the interval and stops when told', async () => {
+    let polls = 0;
+    lookup = () => {
+      polls += 1;
+      return Promise.resolve({ kind: 'found', pr: failing });
+    };
     const sitter = start();
     await vi.advanceTimersByTimeAsync(MIN + 1);
-    const polls = statuses.length;
     expect(polls).toBeGreaterThanOrEqual(2);
+    const before = polls;
     sitter.stop();
     await vi.advanceTimersByTimeAsync(5 * MIN);
-    expect(statuses.length).toBe(polls);
+    expect(polls).toBe(before);
+  });
+
+  it('reports transitions, not every poll', async () => {
+    // A poll that leaves the phase, the hold, the delivery count and
+    // the error where they were moves only `lastPolledAt`, which the
+    // status still carries but nobody is told about — a shell would
+    // otherwise repaint once a minute per watched row.
+    const sitter = start();
+    await sitter.pollNow();
+    expect(statuses.map((s) => s.phase)).toEqual(['pending']);
+    clock = MIN;
+    await sitter.pollNow();
+    clock = 2 * MIN;
+    await sitter.pollNow();
+    expect(statuses).toHaveLength(1);
+    expect(sitter.status().lastPolledAt).toBe(2 * MIN);
+
+    clock = 10 * MIN;
+    await sitter.pollNow();
+    expect(statuses.map((s) => s.phase)).toEqual(['pending', 'watching']);
+    clock = 11 * MIN;
+    await sitter.pollNow();
+    expect(statuses).toHaveLength(2);
+    sitter.stop();
   });
 });

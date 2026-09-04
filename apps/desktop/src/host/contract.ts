@@ -438,10 +438,8 @@ export interface KirbyHostApi {
    *  idle. Rejects when the pull request is not in the sidebar. */
   startBabysit(prId: number): Promise<BabysitStatus>;
   stopBabysit(prId: number): Promise<void>;
-  /** The pull requests being babysat for the open repository. */
-  listBabysat(): Promise<BabysitStatus[]>;
-  /** Fires when a babysat pull request's status moved. Carries no
-   *  payload — the renderer refetches. */
+  /** Fires when a babysitter started an agent or ended. Its status
+   *  otherwise travels on the sidebar item (`SidebarItem.babysit`). */
   onBabysitChanged(cb: (event: BabysitChangedEvent) => void): () => void;
   getDesktopPrefs(): Promise<DesktopPrefs>;
   setDesktopPrefs(patch: Partial<DesktopPrefs>): Promise<DesktopPrefs>;
@@ -504,7 +502,6 @@ export const IPC = {
   showAbout: 'kirby/shell/about',
   startBabysit: 'kirby/babysit/start',
   stopBabysit: 'kirby/babysit/stop',
-  listBabysat: 'kirby/babysit/list',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

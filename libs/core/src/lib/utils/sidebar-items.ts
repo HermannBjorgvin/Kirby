@@ -1,6 +1,21 @@
 import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
 import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
+import type { BabysitStatus } from '../babysit/babysit-model.js';
 import { branchToSessionName } from '@kirby/worktree-manager';
+
+/** Babysit statuses by pull request id. */
+export type BabysatMap = ReadonlyMap<number, BabysitStatus>;
+
+/** The `babysit` field for a pull request, present only when it is
+ *  being babysat — an absent key, not an undefined one, so an item's
+ *  shape says what it carries. */
+function babysitOf(
+  pr: PullRequestInfo | undefined,
+  babysat: BabysatMap
+): { babysit: BabysitStatus } | Record<string, never> {
+  const status = pr && babysat.get(pr.id);
+  return status ? { babysit: status } : {};
+}
 
 /** The branches every review section covers, in one set. */
 function collectReviewBranches(reviews: CategorizedReviews): Set<string> {
@@ -33,7 +48,8 @@ function bucketSessions(
   sessionBranchMap: Map<string, string>,
   sessionPrMap: Map<string, PullRequestInfo>,
   mergedBranches: Set<string>,
-  conflictCounts: Map<string, number>
+  conflictCounts: Map<string, number>,
+  babysat: BabysatMap
 ): SessionBuckets {
   const buckets: SessionBuckets = { noPr: [], draftPr: [], activePr: [] };
 
@@ -49,6 +65,7 @@ function bucketSessions(
       branch,
       isMerged: branch ? mergedBranches.has(branch) : false,
       conflictCount: branch ? conflictCounts.get(branch) : undefined,
+      ...babysitOf(pr, babysat),
     };
 
     if (!pr) buckets.noPr.push(item);
@@ -72,7 +89,8 @@ export function buildSidebarItems(
   sessionBranchMap: Map<string, string>,
   sessionPrMap: Map<string, PullRequestInfo>,
   mergedBranches: Set<string>,
-  conflictCounts: Map<string, number>
+  conflictCounts: Map<string, number>,
+  babysat: BabysatMap = new Map()
 ): SidebarItem[] {
   const sessions = bucketSessions(
     sortedSessions,
@@ -80,7 +98,8 @@ export function buildSidebarItems(
     sessionBranchMap,
     sessionPrMap,
     mergedBranches,
-    conflictCounts
+    conflictCounts,
+    babysat
   );
 
   const sessionByName = new Map(sortedSessions.map((s) => [s.name, s]));
@@ -96,6 +115,7 @@ export function buildSidebarItems(
       pr,
       running: session?.running,
       sessionName: session?.name,
+      ...babysitOf(pr, babysat),
     };
   };
 
@@ -109,6 +129,7 @@ export function buildSidebarItems(
         category,
         running: session?.running,
         sessionName: session?.name,
+        ...babysitOf(pr, babysat),
       };
     };
 

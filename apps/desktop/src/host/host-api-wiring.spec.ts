@@ -102,7 +102,7 @@ vi.mock('./services/drafts.js', () =>
   ])
 );
 vi.mock('./services/babysit.js', () =>
-  recorder('babysit', ['startBabysit', 'stopBabysit', 'listBabysat'])
+  recorder('babysit', ['startBabysit', 'stopBabysit'])
 );
 vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
@@ -198,7 +198,6 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
 
   ['startBabysit', [7], 'babysit.startBabysit'],
   ['stopBabysit', [7], 'babysit.stopBabysit'],
-  ['listBabysat', [], 'babysit.listBabysat'],
 ];
 
 describe('host API wiring', () => {

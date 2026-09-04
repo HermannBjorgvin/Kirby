@@ -180,6 +180,46 @@ describe('buildSidebarItems', () => {
     ]);
   });
 
+  it('puts a babysat pull request’s status on its row, whichever kind the row is', () => {
+    // The desktop row wears its badge from the item, so a babysat pull
+    // request has to carry the status whether it is a worktree row, an
+    // orphan or a review — and a row that is not babysat has no key at
+    // all, so the item's shape says what it carries.
+    const session: AgentSession = { name: 'feature-branch-1', running: true };
+    const watched = makePr({ id: 1 });
+    const orphan = makePr({ id: 2 });
+    const review = makePr({ id: 3 });
+    const status = (prId: number) => ({
+      prId,
+      sourceBranch: `feature/branch-${prId}`,
+      phase: 'pending' as const,
+      held: null,
+      lastPolledAt: 1,
+      pendingSince: 1,
+      lastDeliveredAt: null,
+      deliveries: 0,
+      lastError: null,
+    });
+    const babysat = new Map([
+      [1, status(1)],
+      [3, status(3)],
+    ]);
+
+    const items = buildSidebarItems(
+      [session],
+      [orphan],
+      { needsReview: [review], waitingForAuthor: [], approvedByYou: [] },
+      new Map([['feature-branch-1', 'feature/branch-1']]),
+      new Map([['feature-branch-1', watched]]),
+      new Set(),
+      new Map(),
+      babysat
+    );
+
+    expect(items.map((i) => i.babysit?.prId)).toEqual([1, undefined, 3]);
+    expect('babysit' in items[1]).toBe(false);
+  });
+
   it('returns empty array when all inputs are empty', () => {
     const items = buildSidebarItems(
       [],

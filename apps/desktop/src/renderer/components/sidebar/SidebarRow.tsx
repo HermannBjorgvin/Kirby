@@ -143,7 +143,7 @@ export function SidebarRow({
         hasWorktree,
         running,
         hasPr: Boolean(pr),
-        babysitting: Boolean(pullRequest.babysit),
+        babysitting: Boolean(item.babysit),
       })
     );
     if (!isSidebarRowCommand(chosen)) return;
@@ -211,7 +211,7 @@ export function SidebarRow({
               merged={merged}
               rebasing={rebasing}
               conflictCount={conflictCount}
-              babysit={pullRequest.babysit}
+              babysit={item.babysit}
             />
           </div>
           {pr && (

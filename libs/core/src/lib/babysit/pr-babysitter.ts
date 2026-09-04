@@ -44,36 +44,16 @@ import {
   initialBabysitState,
   isDue,
   observe,
+  statusSignature,
   takeReport,
+  type BabysitHold,
   type BabysitState,
+  type BabysitStatus,
   type DeliveryTiming,
 } from './babysit-model.js';
 import { observePullRequest, type RemoteSnapshot } from './babysit-observe.js';
 import { composeBabysitPrompt } from './babysit-prompt.js';
 import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
-
-/** Why a due update has not gone out. */
-export type BabysitHold =
-  | 'agent-busy'
-  | 'foreign-session'
-  | 'branch-unavailable'
-  /** The watch stopped, or the repository changed, mid-checkout. */
-  | 'interrupted';
-
-export interface BabysitStatus {
-  prId: number;
-  sourceBranch: string;
-  /** `pending`: an update is waiting to be sent. `ended`: the pull
-   *  request is gone (merged or closed) and watching has stopped. */
-  phase: 'watching' | 'pending' | 'ended';
-  /** Set while a due update is being withheld, and why. */
-  held: BabysitHold | null;
-  lastPolledAt: number | null;
-  pendingSince: number | null;
-  lastDeliveredAt: number | null;
-  deliveries: number;
-  lastError: string | null;
-}
 
 export interface PrBabysitterOptions {
   pr: PullRequestInfo;
@@ -91,6 +71,9 @@ export interface PrBabysitterOptions {
   onSpawned?: (name: string, cwd: string) => void;
   /** A live session under this name belongs to another repository. */
   isForeignSession?: (name: string) => boolean;
+  /** Fires on a transition — the phase, a hold, a delivery, an error
+   *  appearing or clearing, the end — and not on a poll that left all
+   *  of that where it was. `status()` is always current regardless. */
   onStatus: (status: BabysitStatus) => void;
   intervalMs?: number;
   remoteRefreshMs?: number;
@@ -227,13 +210,17 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
   const publish = (patch: Partial<BabysitStatus>) => {
     const ended = status.phase === 'ended' || patch.phase === 'ended';
     const phase = state.pendingSince === null ? 'watching' : 'pending';
+    const before = statusSignature(status);
     status = {
       ...status,
       ...patch,
       pendingSince: state.pendingSince,
       phase: ended ? 'ended' : phase,
     };
-    onStatus(status);
+    // A poll that only moved `lastPolledAt` is not news to anyone
+    // showing the status; a shell told about every tick of every
+    // watched row would repaint its sidebar once a minute per row.
+    if (statusSignature(status) !== before) onStatus(status);
   };
 
   const end = () => {

@@ -97,15 +97,21 @@ export const DISCOVERY_EVENTS = {
 
 export const BABYSIT_EVENTS = {
   /**
-   * A babysat pull request's status moved — a poll ran, an update went
-   * to the agent, the pull request merged and watching ended. The
-   * renderer refetches the list; `ended` names a watch that stopped on
-   * its own, because the row it was on is usually gone with it.
+   * A babysitter did something the sidebar cannot wait a poll to show:
+   * started an agent to receive an update, or ended because the pull
+   * request merged or closed. A status that merely moved — a poll, a
+   * hold, a delivery into a running agent — reaches the renderer on
+   * the sidebar item and needs no event.
    */
   changed: 'kirby/babysit/changed',
 } as const;
 
 export interface BabysitChangedEvent {
+  /** An agent was started in the branch's worktree; a sidebar row and
+   *  a session appeared with it. */
+  spawned?: { prId: number; name: string };
+  /** The watch stopped on its own. Named, because the row it was on is
+   *  usually gone with it. */
   ended?: { prId: number; sourceBranch: string };
 }
 

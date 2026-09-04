@@ -37,6 +37,43 @@ export const BABYSIT_REMOTE_REFRESH_MS = 5 * 60_000;
  *  is two seconds, which a tool call or a permission prompt exceeds. */
 export const BABYSIT_IDLE_MS = 30_000;
 
+/** Why a due update has not gone out. */
+export type BabysitHold =
+  | 'agent-busy'
+  | 'foreign-session'
+  | 'branch-unavailable'
+  /** The watch stopped, or the repository changed, mid-checkout. */
+  | 'interrupted';
+
+/** What a shell shows about a babysat pull request. Carried on its
+ *  sidebar item, so a row wears its badge without a query of its own. */
+export interface BabysitStatus {
+  prId: number;
+  sourceBranch: string;
+  /** `pending`: an update is waiting to be sent. `ended`: the pull
+   *  request is gone (merged or closed) and watching has stopped. */
+  phase: 'watching' | 'pending' | 'ended';
+  /** Set while a due update is being withheld, and why. */
+  held: BabysitHold | null;
+  lastPolledAt: number | null;
+  pendingSince: number | null;
+  lastDeliveredAt: number | null;
+  deliveries: number;
+  lastError: string | null;
+}
+
+/** The part of a status a reader would notice changing: the phase, a
+ *  hold, a delivery, an error. Two statuses with the same signature
+ *  differ at most in when they were last polled. */
+export function statusSignature(status: BabysitStatus): string {
+  return [
+    status.phase,
+    status.held ?? '',
+    status.deliveries,
+    status.lastError ?? '',
+  ].join('|');
+}
+
 /** One unresolved thread, as it stood when observed. */
 export interface BabysitThread {
   id: string;

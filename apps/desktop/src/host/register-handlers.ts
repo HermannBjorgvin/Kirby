@@ -117,7 +117,6 @@ export function createHostApi(): KirbyHostApi {
 
     startBabysit: (prId) => babysit.startBabysit(prId),
     stopBabysit: (prId) => Promise.resolve(babysit.stopBabysit(prId)),
-    listBabysat: () => Promise.resolve(babysit.listBabysat()),
     onBabysitChanged: () => () => undefined,
   };
 }
@@ -227,7 +226,6 @@ export function registerHostHandlers(
     [IPC.showAbout]: api.showAbout as HostMethod,
     [IPC.startBabysit]: api.startBabysit as HostMethod,
     [IPC.stopBabysit]: api.stopBabysit as HostMethod,
-    [IPC.listBabysat]: api.listBabysat as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

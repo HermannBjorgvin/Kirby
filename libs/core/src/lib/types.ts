@@ -1,4 +1,5 @@
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { BabysitStatus } from './babysit/babysit-model.js';
 
 export type Focus = 'sidebar' | 'terminal';
 
@@ -21,6 +22,8 @@ export type SidebarItem =
       branch?: string;
       isMerged: boolean;
       conflictCount?: number;
+      /** Set while the pull request is being babysat. */
+      babysit?: BabysitStatus;
     }
   | {
       kind: 'orphan-pr';
@@ -28,6 +31,7 @@ export type SidebarItem =
       running?: boolean;
       /** PTY session name when the PR's branch has a worktree session. */
       sessionName?: string;
+      babysit?: BabysitStatus;
     }
   | {
       kind: 'review-pr';
@@ -36,6 +40,7 @@ export type SidebarItem =
       running?: boolean;
       /** PTY session name when the PR's branch has a worktree session. */
       sessionName?: string;
+      babysit?: BabysitStatus;
     };
 
 /** Extract the PR from any sidebar item kind. */

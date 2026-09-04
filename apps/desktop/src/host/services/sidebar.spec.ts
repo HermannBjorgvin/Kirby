@@ -33,6 +33,10 @@ const env = vi.hoisted(() => ({
   now: 1_000_000,
   /** Last sessionBranchMap handed to buildSidebarItems. */
   lastBranchMap: new Map<string, string>(),
+  /** Last babysat map handed to buildSidebarItems. */
+  lastBabysat: null as ReadonlyMap<number, unknown> | null,
+  /** cwd → babysit statuses the babysit service answers with. */
+  babysat: new Map<string, Map<number, unknown>>(),
 }));
 
 vi.mock('./repo.js', () => ({
@@ -56,6 +60,10 @@ vi.mock('./repo.js', () => ({
       },
     },
   ],
+}));
+
+vi.mock('./babysit.js', () => ({
+  babysatStatuses: (cwd: string) => env.babysat.get(cwd) ?? new Map(),
 }));
 
 vi.mock('./remote-sync.js', () => ({
@@ -102,9 +110,14 @@ vi.mock('@kirby/core', async (importOriginal) => ({
     sessions: unknown[],
     _orphans: unknown,
     _reviews: unknown,
-    sessionBranchMap: Map<string, string>
+    sessionBranchMap: Map<string, string>,
+    _sessionPrMap: unknown,
+    _merged: unknown,
+    _conflicts: unknown,
+    babysat: ReadonlyMap<number, unknown>
   ) => {
     env.lastBranchMap = sessionBranchMap;
+    env.lastBabysat = babysat;
     return sessions;
   },
 }));
@@ -129,6 +142,8 @@ beforeEach(async () => {
   env.forgetCount = 0;
   env.now = 1_000_000;
   env.lastBranchMap = new Map();
+  env.lastBabysat = null;
+  env.babysat = new Map();
 
   vi.spyOn(Date, 'now').mockImplementation(() => env.now);
   vi.resetModules();
@@ -283,6 +298,16 @@ describe('sidebar model', () => {
     settle(0);
     const items = (await model) as { state?: string }[];
     expect(items[0].state).toBe('rebasing');
+  });
+
+  it('decorates the rows with the babysitters of the open repository', async () => {
+    env.babysat.set('/repo-a', new Map([[7, { prId: 7 }]]));
+    env.babysat.set('/repo-b', new Map([[8, { prId: 8 }]]));
+    const model = sidebar.listSidebarItems();
+    await flush();
+    settle(0);
+    await model;
+    expect([...(env.lastBabysat?.keys() ?? [])]).toEqual([7]);
   });
 
   it('omits the state key entirely for a normal worktree', async () => {

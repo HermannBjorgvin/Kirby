@@ -125,7 +125,6 @@ const api: KirbyHostApi = {
 
   startBabysit: (prId) => ipcRenderer.invoke(IPC.startBabysit, prId),
   stopBabysit: (prId) => ipcRenderer.invoke(IPC.stopBabysit, prId),
-  listBabysat: () => ipcRenderer.invoke(IPC.listBabysat),
   onBabysitChanged: (cb) => {
     const listener = (_e: unknown, payload: BabysitChangedEvent) => cb(payload);
     ipcRenderer.on(BABYSIT_EVENTS.changed, listener);

@@ -4,8 +4,10 @@
  * What to watch, what counts as news and when to tell the agent all
  * live in `@kirby/core`; what the desktop adds is the same thing it
  * adds to every other launch — adopting a session core spawned so its
- * output reaches the renderer — plus a push to the renderer, whose
- * sidebar reads babysit status from a query cache.
+ * output reaches the renderer. Status travels on the sidebar item
+ * (`getSidebarSnapshot` decorates the rows from `babysatStatuses`),
+ * so the renderer is pushed to only for what a poll would show too
+ * late: an agent started, or a watch ended.
  *
  * Babysitters are kept per repository, because the tab strip spans
  * repositories and switching back and forth is normal: one for a repo
@@ -37,8 +39,8 @@ interface Sitter {
 /** cwd → pull request id → its babysitter. */
 const sitters = new Map<string, Map<number, Sitter>>();
 
-// Installed by main.ts. Fires when a status the renderer may be
-// showing has moved.
+// Installed by main.ts. Fires when a babysitter started an agent or
+// ended — the two things the sidebar's next poll would show too late.
 let changed: ((event: BabysitChangedEvent) => void) | null = null;
 
 export function setBabysitNotifier(
@@ -97,25 +99,24 @@ export async function startBabysit(prId: number): Promise<BabysitStatus> {
     getConfig: () => readConfig(cwd),
     readPullRequest: () => lookupPullRequest(cwd, prId),
     paneSize: defaultPaneSize,
-    onSpawned: (name) => adoptSpawnedSession(name, pr.sourceBranch),
+    onSpawned: (name) => {
+      adoptSpawnedSession(name, pr.sourceBranch);
+      changed?.({ spawned: { prId, name } });
+    },
     isForeignSession,
     onStatus: (status) => {
       // A babysitter that ended (the pull request merged or closed)
       // leaves the list, so the row stops offering to stop it — and
       // the renderer is told which one, since the row it was on is
       // usually gone with it.
-      if (status.phase === 'ended') {
-        forRepo(cwd).delete(prId);
-        changed?.({ ended: { prId, sourceBranch: pr.sourceBranch } });
-        return;
-      }
-      changed?.({});
+      if (status.phase !== 'ended') return;
+      forRepo(cwd).delete(prId);
+      changed?.({ ended: { prId, sourceBranch: pr.sourceBranch } });
     },
     isCurrent: () => activeRepoIs(cwd),
     ...timingFromEnv(),
   });
   forRepo(cwd).set(prId, { handle, sourceBranch: pr.sourceBranch });
-  changed?.({});
   return handle.status();
 }
 
@@ -126,12 +127,21 @@ export function stopBabysit(prId: number): void {
   if (!sitter) return;
   sitter.handle.stop();
   byId.delete(prId);
-  changed?.({});
 }
 
 /** The babysitters of the open repository. */
 export function listBabysat(): BabysitStatus[] {
   return [...forRepo(requireRepo()).values()].map((s) => s.handle.status());
+}
+
+/** The babysitters of `cwd`, by pull request id — what the sidebar
+ *  decorates its rows with. */
+export function babysatStatuses(cwd: string): Map<number, BabysitStatus> {
+  const out = new Map<number, BabysitStatus>();
+  for (const [prId, sitter] of forRepo(cwd)) {
+    out.set(prId, sitter.handle.status());
+  }
+  return out;
 }
 
 /** Every babysitter of every repository. For app exit. */

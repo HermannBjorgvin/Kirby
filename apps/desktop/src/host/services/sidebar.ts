@@ -10,6 +10,7 @@ import {
   type SidebarItem,
 } from '@kirby/core';
 import { activeRepoIs, requireRepo } from './repo.js';
+import { babysatStatuses } from './babysit.js';
 import { isOwnSessionAlive } from './sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
 import {
@@ -43,7 +44,9 @@ import type { SidebarModel, SyncState } from '../contract.js';
  * a spinner they asked for, still awaits.
  *
  * Merge/conflict decorations (mergedBranches, conflictCounts) come
- * from the host's remote sync loop (services/remote-sync.ts).
+ * from the host's remote sync loop (services/remote-sync.ts); a
+ * babysat pull request's status from the babysit service, so a row
+ * wears its badge without a query of its own.
  */
 
 /** The rows alone. Exported for its tests; the bridge serves
@@ -97,7 +100,8 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
     sessionBranchMap,
     sessionPrMap,
     sync.merged,
-    sync.conflicts
+    sync.conflicts,
+    babysatStatuses(cwd)
   );
 }
 

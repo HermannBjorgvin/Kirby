@@ -96,7 +96,10 @@ describe('babysit service', () => {
     // another one is opened, and the watcher's git must not follow.
     expect(state.started[0].cwd).toBe('/repo');
     expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
-    expect(changes.length).toBe(1);
+    expect(mod.babysatStatuses('/repo').get(7)).toMatchObject({ prId: 7 });
+    // Starting is the renderer's own doing; it refetches the sidebar
+    // itself, so nothing is pushed.
+    expect(changes).toEqual([]);
   });
 
   it('refuses a pull request the sidebar does not have', async () => {
@@ -110,6 +113,7 @@ describe('babysit service', () => {
     mod.stopBabysit(7);
     expect(state.stopped).toEqual([7]);
     expect(mod.listBabysat()).toEqual([]);
+    expect(mod.babysatStatuses('/repo').size).toBe(0);
   });
 
   it('drops a babysitter that ended on its own and says which', async () => {
@@ -121,10 +125,19 @@ describe('babysit service', () => {
     });
   });
 
-  it('adopts a session the babysitter spawned, under the pull request branch', async () => {
+  it('adopts a session the babysitter spawned, under the pull request branch, and says so', async () => {
     await mod.startBabysit(7);
     state.started[0].onSpawned?.('feat-7', '/wt/feat-7');
     expect(state.adopted).toEqual(['feat-7:feat/7']);
+    // A new agent is a sidebar row and a session the renderer's next
+    // poll would show seconds late.
+    expect(changes).toEqual([{ spawned: { prId: 7, name: 'feat-7' } }]);
+  });
+
+  it('pushes nothing for a status that merely moved', async () => {
+    await mod.startBabysit(7);
+    state.started[0].onStatus({ prId: 7, phase: 'pending' });
+    expect(changes).toEqual([]);
   });
 
   it('keeps babysitters per repository and sits out ticks while another is open', async () => {
@@ -132,6 +145,7 @@ describe('babysit service', () => {
     state.cwd = '/other';
     state.prs = [pr(7)];
     expect(mod.listBabysat()).toEqual([]);
+    expect(mod.babysatStatuses('/repo').size).toBe(1);
     expect(state.started[0].isCurrent()).toBe(false);
     await mod.startBabysit(7);
     expect(state.started).toHaveLength(2);

@@ -100,17 +100,6 @@ export function useSidebarModel(cwd: string) {
   });
 }
 
-/** The pull requests being babysat. The host pushes a change event
- *  that invalidates this; the interval is a backstop. */
-export function useBabysat(cwd: string) {
-  return useQuery({
-    queryKey: keys.babysat(cwd),
-    queryFn: () => window.kirby.listBabysat(),
-    refetchInterval: 30_000,
-    placeholderData: (prev) => prev,
-  });
-}
-
 export function useSyncState(cwd: string) {
   return useQuery({
     queryKey: keys.sync(cwd),
