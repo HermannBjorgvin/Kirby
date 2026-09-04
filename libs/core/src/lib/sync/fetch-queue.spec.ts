@@ -120,10 +120,13 @@ describe('fetchRefs', () => {
     expect(git.log.filter((l) => l.startsWith('start'))).toHaveLength(2);
   });
 
-  it('counts a fetch of everything for any refs, but not the reverse', async () => {
+  it('never lets a fetch of everything stand in for named refs, nor the reverse', async () => {
+    // `git fetch --all` on a repository with no remote succeeds having
+    // fetched nothing; a fetch of the branch would have failed, and the
+    // merge check that follows must know which happened.
     await fetchRefs({ cwd: '/a', refs: 'all' });
     await fetchRefs({ cwd: '/a', refs: ['main', 'feat'], maxAgeMs: 300_000 });
-    expect(git.log.filter((l) => l.startsWith('start'))).toHaveLength(1);
+    expect(git.log.filter((l) => l.startsWith('start'))).toHaveLength(2);
 
     __resetFetchQueueForTests();
     git.log = [];

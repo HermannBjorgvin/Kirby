@@ -754,8 +754,10 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   unresolved count or the head moved. The fetch goes through core's
   per-repository fetch line (`sync/fetch-queue.ts`), which the sync
   pass's `git fetch --all` also waits in, so the two cannot collide on
-  ref locks; a fetch of the same refs (or of everything) younger than
-  the refresh interval is reused rather than repeated. The merge check
+  ref locks; a fetch of the same refs by name younger than the refresh
+  interval is reused rather than repeated (a `fetch --all` that
+  succeeded says nothing about a branch: on a repository with no
+  remote it succeeds having fetched nothing). The merge check
   runs every poll by the same predicate the sidebar badge uses
   (`sync/conflicts.ts`: `origin/<target>` against `origin/<source>`
   for a branch with a pull request, since the local branch may not be

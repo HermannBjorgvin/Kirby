@@ -160,10 +160,13 @@ export async function countConflictsBetween(
     );
     return 0; // clean merge — no conflicts
   } catch (err: unknown) {
-    // Exit code 1 = conflicts; stdout lists conflicted files
+    // Exit code 1 with a merge result on stdout (the tree, then a
+    // CONFLICT line per file) is a conflicting merge. Exit code 1 with
+    // nothing on stdout is a ref that is "not something we can merge"
+    // — a tracking branch never fetched, a source on a fork — which is
+    // "could not check", not "no conflicts".
     const e = err as { code?: number; stdout?: string };
-    if (e.code === 1 && typeof e.stdout === 'string') {
-      // Each "CONFLICT" line in stdout represents a conflicting file
+    if (e.code === 1 && typeof e.stdout === 'string' && e.stdout.trim()) {
       const lines = e.stdout.split('\n');
       return lines.filter((l) => l.startsWith('CONFLICT')).length;
     }

@@ -11,9 +11,12 @@
  *
  * A fetch also remembers when it landed, so a caller that would accept
  * refs a few minutes old (`maxAgeMs`) is answered from the last fetch
- * of the same refs instead of starting another — and a fetch of
- * everything counts for any refs, since it brought those too. Only a
- * fetch that succeeded is reused: a failure may have been transient.
+ * of the same refs instead of starting another. The same refs, by
+ * name: a `git fetch --all` that succeeded says nothing about a
+ * particular branch — on a repository with no remote it succeeds
+ * having fetched nothing, and a fetch of the branch would have failed
+ * and said so. Only a fetch that succeeded is reused: a failure may
+ * have been transient.
  */
 import { fetchBranches, fetchRemote } from '@kirby/worktree-manager';
 
@@ -50,21 +53,11 @@ function keyOf(refs: FetchRequest['refs']): string {
   return refs === 'all' ? ALL : [...refs].sort().join('\n');
 }
 
-/** When these refs were last fetched successfully — by name, or by a
- *  fetch of everything, whichever is more recent. */
-function lastFetched(queue: RepoQueue, key: string): number {
-  return Math.max(
-    queue.fetchedAt.get(key) ?? -Infinity,
-    queue.fetchedAt.get(ALL) ?? -Infinity
-  );
-}
-
 async function run(queue: RepoQueue, req: FetchRequest): Promise<boolean> {
   const key = keyOf(req.refs);
   const maxAge = req.maxAgeMs ?? 0;
-  if (maxAge > 0 && Date.now() - lastFetched(queue, key) < maxAge) {
-    return true;
-  }
+  const last = queue.fetchedAt.get(key) ?? -Infinity;
+  if (maxAge > 0 && Date.now() - last < maxAge) return true;
   const ok =
     req.refs === 'all'
       ? await fetchRemote(req.cwd)

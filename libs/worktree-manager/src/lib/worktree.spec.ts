@@ -1068,6 +1068,21 @@ describe('countConflicts', () => {
     expect(await countConflicts('feature/conflicts')).toBe(2);
   });
 
+  it('cannot check when a ref is not something git can merge', async () => {
+    // git exits 1 for this too, but with nothing on stdout: an
+    // unfetched tracking branch must not read as a clean merge.
+    const err = new Error('not something we can merge') as Error & {
+      code: number;
+      stdout: string;
+    };
+    err.code = 1;
+    err.stdout = '';
+    mockExec.mockRejectedValueOnce(err);
+    expect(
+      await countConflictsBetween('origin/main', 'origin/feat')
+    ).toBeNull();
+  });
+
   it('should return 0 for non-conflict errors', async () => {
     mockExec
       .mockResolvedValueOnce(resolve('refs/remotes/origin/master')) // getMainBranch
