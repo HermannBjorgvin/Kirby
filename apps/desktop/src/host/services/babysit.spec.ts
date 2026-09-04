@@ -101,7 +101,9 @@ describe('babysit service', () => {
     // The provider is a getter: a vendor switched in Settings has to
     // reach a watcher that started under the previous one.
     expect(state.started[0].getProvider()).toBe('provider@/repo');
-    expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
+    expect(
+      [...mod.babysatStatuses(state.cwd).values()].map((s) => s.prId)
+    ).toEqual([7]);
     expect(mod.babysatStatuses('/repo').get(7)).toMatchObject({ prId: 7 });
     // Starting is the renderer's own doing; it refetches the sidebar
     // itself, so nothing is pushed.
@@ -110,7 +112,7 @@ describe('babysit service', () => {
 
   it('refuses a pull request the sidebar does not have', async () => {
     await expect(mod.startBabysit(99)).rejects.toThrow('#99');
-    expect(mod.listBabysat()).toEqual([]);
+    expect([...mod.babysatStatuses(state.cwd).values()]).toEqual([]);
   });
 
   it('stops and forgets, and tolerates stopping nothing', async () => {
@@ -118,14 +120,14 @@ describe('babysit service', () => {
     mod.stopBabysit(7);
     mod.stopBabysit(7);
     expect(state.stopped).toEqual([7]);
-    expect(mod.listBabysat()).toEqual([]);
+    expect([...mod.babysatStatuses(state.cwd).values()]).toEqual([]);
     expect(mod.babysatStatuses('/repo').size).toBe(0);
   });
 
   it('drops a babysitter that ended on its own and says which', async () => {
     await mod.startBabysit(7);
     state.started[0].onStatus({ prId: 7, phase: 'ended' });
-    expect(mod.listBabysat()).toEqual([]);
+    expect([...mod.babysatStatuses(state.cwd).values()]).toEqual([]);
     expect(changes.at(-1)).toEqual({
       ended: { prId: 7, sourceBranch: 'feat/7' },
     });
@@ -150,14 +152,16 @@ describe('babysit service', () => {
     await mod.startBabysit(7);
     state.cwd = '/other';
     state.prs = [pr(7)];
-    expect(mod.listBabysat()).toEqual([]);
+    expect([...mod.babysatStatuses(state.cwd).values()]).toEqual([]);
     expect(mod.babysatStatuses('/repo').size).toBe(1);
     expect(state.started[0].isCurrent()).toBe(false);
     await mod.startBabysit(7);
     expect(state.started).toHaveLength(2);
     expect(state.started[1].cwd).toBe('/other');
     state.cwd = '/repo';
-    expect(mod.listBabysat().map((s) => s.prId)).toEqual([7]);
+    expect(
+      [...mod.babysatStatuses(state.cwd).values()].map((s) => s.prId)
+    ).toEqual([7]);
     expect(state.started[0].isCurrent()).toBe(true);
   });
 
@@ -167,7 +171,9 @@ describe('babysit service', () => {
     mod.stopBabysitForBranch('feat/7');
     mod.stopBabysitForBranch('feat/none');
     expect(state.stopped).toEqual([7]);
-    expect(mod.listBabysat().map((s) => s.prId)).toEqual([8]);
+    expect(
+      [...mod.babysatStatuses(state.cwd).values()].map((s) => s.prId)
+    ).toEqual([8]);
   });
 
   it('stops every babysitter of every repository on exit', async () => {
@@ -175,6 +181,6 @@ describe('babysit service', () => {
     await mod.startBabysit(8);
     mod.stopAllBabysitters();
     expect(state.stopped.sort()).toEqual([7, 8]);
-    expect(mod.listBabysat()).toEqual([]);
+    expect([...mod.babysatStatuses(state.cwd).values()]).toEqual([]);
   });
 });

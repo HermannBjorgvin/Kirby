@@ -145,7 +145,8 @@ async function runSyncPass(cwd: string, gen: number): Promise<void> {
     // applies, so the badge and the agent's briefing agree.
     const conflicts = await computeConflictCounts(
       branches.filter((b) => !merged.has(b)),
-      cachedPullRequests(cwd)
+      cachedPullRequests(cwd),
+      cwd
     );
     if (cancelled()) return;
     decorations = { merged, conflicts, lastGitSyncAt: ts };

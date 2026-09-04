@@ -178,9 +178,12 @@ export async function countConflictsBetween(
  * Count conflicting files between a branch and origin's main branch.
  * Returns 0 if no conflicts.
  */
-export async function countConflicts(branch: string): Promise<number> {
+export async function countConflicts(
+  branch: string,
+  cwd?: string
+): Promise<number> {
   const main = await getMainBranch();
-  return (await countConflictsBetween(`origin/${main}`, branch)) ?? 0;
+  return (await countConflictsBetween(`origin/${main}`, branch, cwd)) ?? 0;
 }
 
 /** Fetch these branches from origin, so their tracking refs are what

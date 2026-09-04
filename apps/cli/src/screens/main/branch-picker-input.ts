@@ -1,4 +1,5 @@
 import {
+  fetchRefs,
   handleTextInput,
   type KeyPress,
   isSessionAlive,
@@ -7,7 +8,6 @@ import {
 import {
   createWorktree,
   listAllBranches,
-  fetchRemote,
   branchToSessionName,
 } from '@kirby/worktree-manager';
 import type { BranchPickerHandlerCtx } from './input-types.js';
@@ -42,7 +42,7 @@ function fetchBranches(ctx: BranchPickerHandlerCtx): void {
   void ctx.asyncOps.run('fetch-branches', async () => {
     // No "Fetching remotes…" flash — the 'fetch-branches' spinner
     // (label: "Fetching branches") already shows we're working.
-    await fetchRemote();
+    await fetchRefs({ cwd: process.cwd(), refs: 'all' });
     const allBranches = await listAllBranches();
     ctx.branchPicker.setBranches(allBranches);
     ctx.branchPicker.setBranchIndex(0);

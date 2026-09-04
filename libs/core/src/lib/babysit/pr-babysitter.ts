@@ -22,7 +22,7 @@
  * repository (`isForeignSession`), and the open repository can change
  * between two awaits of one poll (`isCurrent`), after which the
  * branch names in hand mean nothing to the shell. The git calls
- * themselves never depend on which repository the shell is on: each
+ * themselves are told which repository they are about: each
  * names `cwd`, the repository the pull request belongs to.
  */
 import { logError } from '@kirby/logger';
@@ -240,11 +240,14 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
     const ended = status.phase === 'ended' || patch.phase === 'ended';
     const phase = state.pendingSince === null ? 'watching' : 'pending';
     const before = statusSignature(status);
+    const next = { ...status, ...patch };
     status = {
-      ...status,
-      ...patch,
+      ...next,
       pendingSince: state.pendingSince,
       phase: ended ? 'ended' : phase,
+      // A hold explains an update that is waiting; once the news has
+      // resolved itself, or the watch has ended, there is nothing held.
+      held: phase === 'pending' && !ended ? next.held : null,
     };
     // A poll that only moved `lastPolledAt` is not news to anyone
     // showing the status; a shell told about every tick of every
@@ -299,7 +302,7 @@ export function startPrBabysitter(opts: PrBabysitterOptions): PrBabysitter {
       }
       goneOnce = false;
       if (lookup.kind === 'unknown') {
-        publish({ lastError: lookup.reason });
+        publish({ lastPolledAt: now(), lastError: lookup.reason });
         return;
       }
       pr = lookup.pr;

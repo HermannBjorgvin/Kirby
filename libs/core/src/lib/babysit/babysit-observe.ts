@@ -84,13 +84,17 @@ async function refreshRemote(
   refreshMs: number,
   live: () => boolean
 ): Promise<RemoteSnapshot | null> {
-  const { pr, provider, config, cwd, now } = opts;
+  const { pr, provider, config, cwd, now, previous } = opts;
   const threads = await readThreads(pr, provider, config);
   if (!live()) return null;
+  // A refresh brought forward because the head moved must fetch: the
+  // refs a minute ago hold the commit the author just replaced, and a
+  // merge check against them would report on the wrong code.
+  const headMoved = previous !== null && previous.headSha !== pr.headSha;
   const fetched = await fetchRefs({
     cwd,
     refs: [pr.targetBranch, pr.sourceBranch],
-    maxAgeMs: refreshMs,
+    maxAgeMs: headMoved ? 0 : refreshMs,
   });
   if (!live()) return null;
   return {

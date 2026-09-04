@@ -172,7 +172,7 @@ describe('cancellation', () => {
     env.pending[0](1234);
     await flush();
     expect(env.synced).toEqual(['/repo-a']);
-    expect(env.conflictCalls).toEqual([[['feature/a'], env.prMap]]);
+    expect(env.conflictCalls).toEqual([[['feature/a'], env.prMap, '/repo-a']]);
   });
 });
 

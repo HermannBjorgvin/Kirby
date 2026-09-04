@@ -31,8 +31,9 @@ export function countPullRequestConflicts(
  *  not doubt. */
 export async function countBranchConflicts(
   branch: string,
-  pr: Pick<PullRequestInfo, 'sourceBranch' | 'targetBranch'> | undefined
+  pr: Pick<PullRequestInfo, 'sourceBranch' | 'targetBranch'> | undefined,
+  cwd?: string
 ): Promise<number> {
-  if (pr) return (await countPullRequestConflicts(pr)) ?? 0;
-  return countConflicts(branch);
+  if (pr) return (await countPullRequestConflicts(pr, cwd)) ?? 0;
+  return countConflicts(branch, cwd);
 }

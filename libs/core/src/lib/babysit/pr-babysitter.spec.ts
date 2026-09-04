@@ -211,6 +211,21 @@ describe('observePullRequest', () => {
     );
   });
 
+  it('fetches rather than reuses when the head moved', async () => {
+    const first = await observePullRequest(observing({ provider: null }));
+    await observePullRequest(
+      observing({
+        provider: null,
+        pr: { ...pr, headSha: 'def' },
+        previous: first?.remote ?? null,
+        now: MIN,
+      })
+    );
+    expect(mocks.fetchRefs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxAgeMs: 0 })
+    );
+  });
+
   /**
    * The desktop switches repositories with `chdir`, and a poll
    * straddles several awaits. Once the watch is no longer live, no
@@ -330,6 +345,19 @@ describe('startPrBabysitter', () => {
     await sitter.pollNow();
     expect(mocks.deliverToRunningSession).toHaveBeenCalledTimes(1);
     expect(statuses.at(-1)?.held).toBeNull();
+    sitter.stop();
+  });
+
+  it('drops the hold once the news resolves itself', async () => {
+    mocks.idleFor.mockReturnValue(5_000);
+    const sitter = start();
+    await pollPastDebounce(sitter);
+    expect(statuses.at(-1)?.held).toBe('agent-busy');
+    // CI went green on its own while the update was held.
+    lookup = () => Promise.resolve({ kind: 'found', pr });
+    clock = 11 * MIN;
+    await sitter.pollNow();
+    expect(statuses.at(-1)).toMatchObject({ phase: 'watching', held: null });
     sitter.stop();
   });
 

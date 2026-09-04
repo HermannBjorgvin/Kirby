@@ -123,11 +123,6 @@ export function stopBabysitForBranch(branch: string): void {
   }
 }
 
-/** The babysitters of the open repository. */
-export function listBabysat(): BabysitStatus[] {
-  return [...forRepo(requireRepo()).values()].map((s) => s.handle.status());
-}
-
 /** The babysitters of `cwd`, by pull request id — what the sidebar
  *  decorates its rows with. */
 export function babysatStatuses(cwd: string): Map<number, BabysitStatus> {

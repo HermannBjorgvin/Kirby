@@ -198,14 +198,16 @@ export async function sweepMergedBranches(opts: {
  */
 export async function computeConflictCounts(
   branches: string[],
-  prMap: BranchPrMap = {}
+  prMap: BranchPrMap = {},
+  cwd?: string
 ): Promise<Map<string, number>> {
   const entries = await Promise.all(
     branches.map(async (branch) => {
       try {
         const count = await countBranchConflicts(
           branch,
-          prMap[branch] ?? undefined
+          prMap[branch] ?? undefined,
+          cwd
         );
         return [branch, count] as const;
       } catch {

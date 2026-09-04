@@ -755,9 +755,13 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   per-repository fetch line (`sync/fetch-queue.ts`), which the sync
   pass's `git fetch --all` also waits in, so the two cannot collide on
   ref locks; a fetch of the same refs by name younger than the refresh
-  interval is reused rather than repeated (a `fetch --all` that
-  succeeded says nothing about a branch: on a repository with no
-  remote it succeeds having fetched nothing). The merge check
+  interval is reused rather than repeated, except when the head moved
+  — the refs would hold the commit the author just replaced (a
+  `fetch --all` that succeeded says nothing about a branch: on a
+  repository with no remote it succeeds having fetched nothing). The
+  worktree checkout on the spawn path resolves its directory through
+  the process-global worktree resolver, which is why the `live()`
+  check immediately before it is load-bearing. The merge check
   runs every poll by the same predicate the sidebar badge uses
   (`sync/conflicts.ts`: `origin/<target>` against `origin/<source>`
   for a branch with a pull request, since the local branch may not be
@@ -784,7 +788,7 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   per repository in memory (`host/services/babysit.ts`), sits one out
   while another repository is open rather than tearing it down,
   honours the foreign-session guard through `isForeignSession`,
-  decorates `getSidebarSnapshot` from `babysatStatuses`, stops the
+  decorates `listSidebarItems` from `babysatStatuses`, stops the
   babysitter of a branch whose worktree is being removed (a watcher
   left behind would check the branch out again at its next update),
   and pushes `BabysitChangedEvent` only for `spawned` (an agent
