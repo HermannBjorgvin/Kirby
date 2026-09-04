@@ -156,6 +156,12 @@ describe('opening a repository through a symlink', () => {
     link = join(gitDir, '..', 'link-to-repo');
     symlinkSync(gitDir, link);
   });
+  // Only this test's own paths: the recents store is the real one on
+  // this machine, shared with anything else writing it meanwhile.
+  const ours = () =>
+    listRecentRepos()
+      .map((r) => r.cwd)
+      .filter((cwd) => cwd === link || cwd === real || cwd === plainDir);
 
   it('opens it under its real path', () => {
     saveRecents([]);
@@ -169,18 +175,18 @@ describe('opening a repository through a symlink', () => {
   it('records one recent, under the real path, even over an old symlink entry', () => {
     saveRecents(recents([link]));
     openRepo(link);
-    expect(listRecentRepos().map((r) => r.cwd)).toEqual([real]);
+    expect(ours()).toEqual([real]);
   });
 
   it('lists an existing symlink-path recent under its real path, once', () => {
     saveRecents(recents([link, real, plainDir]));
-    expect(listRecentRepos().map((r) => r.cwd)).toEqual([real, plainDir]);
+    expect(ours()).toEqual([real, plainDir]);
   });
 
   it('forgets a repository whichever path the entry was stored under', () => {
     saveRecents(recents([link, plainDir]));
     forgetRecentRepo(real);
-    expect(listRecentRepos().map((r) => r.cwd)).toEqual([plainDir]);
+    expect(ours()).toEqual([plainDir]);
   });
 
   it('canonicalises the start directory the same way', () => {
