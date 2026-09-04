@@ -67,10 +67,11 @@ export async function listBranches(): Promise<string[]> {
   }
 }
 
-/** Fetch from all remotes and prune stale tracking branches */
-export async function fetchRemote(): Promise<boolean> {
+/** Fetch from all remotes and prune stale tracking branches. `cwd`
+ *  names the repository; without it, the process's directory. */
+export async function fetchRemote(cwd?: string): Promise<boolean> {
   try {
-    await exec('git fetch --all --prune', { encoding: 'utf8' });
+    await exec('git fetch --all --prune', gitOptions(cwd));
     return true;
   } catch (e) {
     log('error', 'fetchRemote', 'git fetch failed', e);

@@ -27,7 +27,7 @@ import {
   defaultPaneSize,
   isForeignSession,
 } from './sessions.js';
-import { lookupPullRequest, repoProvider } from './sidebar.js';
+import { lookupPullRequest, repoProvider } from './pull-requests.js';
 
 interface Sitter {
   handle: PrBabysitter;

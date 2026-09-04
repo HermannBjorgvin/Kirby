@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SidebarModule from './sidebar.js';
+import type * as PullRequestsModule from './pull-requests.js';
 import type * as Core from '@kirby/core';
 
 /**
@@ -109,6 +110,7 @@ vi.mock('@kirby/core', async (importOriginal) => ({
 }));
 
 let sidebar: typeof SidebarModule;
+let pullRequests: typeof PullRequestsModule;
 
 /** Settle the promise chain without advancing the clock. */
 async function flush(times = 4) {
@@ -131,6 +133,7 @@ beforeEach(async () => {
   vi.spyOn(Date, 'now').mockImplementation(() => env.now);
   vi.resetModules();
   sidebar = await import('./sidebar.js');
+  pullRequests = await import('./pull-requests.js');
 });
 
 /** Resolve the nth outstanding provider fetch. */
@@ -223,7 +226,7 @@ describe('after the credentials change', () => {
     await first;
 
     let announced = 0;
-    sidebar.setRemoteUpdatedNotifier(() => announced++);
+    pullRequests.setRemoteUpdatedNotifier(() => announced++);
     sidebar.onCredentialsChanged();
     // The cleared error is itself a change worth painting, before
     // the fetch it started has landed.
@@ -231,7 +234,7 @@ describe('after the credentials change', () => {
     await flush();
     expect(env.fetchCount).toBe(2);
     settle(1, {});
-    sidebar.setRemoteUpdatedNotifier(null);
+    pullRequests.setRemoteUpdatedNotifier(null);
   });
 });
 
@@ -246,17 +249,17 @@ describe('lookupPullRequest', () => {
     await flush();
     settle(0, { feature: { id: 7 } });
     await model;
-    const found = await sidebar.lookupPullRequest('/repo-a', 7);
+    const found = await pullRequests.lookupPullRequest('/repo-a', 7);
     expect(found).toMatchObject({ kind: 'found', pr: { id: 7 } });
     expect(env.fetchCount).toBe(1);
   });
 
   it('cannot say when no provider is configured', async () => {
     env.configured = false;
-    expect(await sidebar.lookupPullRequest('/repo-a', 7)).toMatchObject({
+    expect(await pullRequests.lookupPullRequest('/repo-a', 7)).toMatchObject({
       kind: 'unknown',
     });
-    expect(sidebar.repoProvider('/repo-a')).toBeNull();
+    expect(pullRequests.repoProvider('/repo-a')).toBeNull();
   });
 });
 
@@ -327,7 +330,7 @@ describe('the model never waits for the provider', () => {
 
   it('announces the pull requests when the background fetch commits', async () => {
     let announced = 0;
-    sidebar.setRemoteUpdatedNotifier(() => announced++);
+    pullRequests.setRemoteUpdatedNotifier(() => announced++);
 
     await sidebar.listSidebarItems();
     // Nothing to say yet — the model that just went out is local-only.
@@ -346,7 +349,7 @@ describe('the model never waits for the provider', () => {
     await flush();
 
     let announced = 0;
-    sidebar.setRemoteUpdatedNotifier(() => announced++);
+    pullRequests.setRemoteUpdatedNotifier(() => announced++);
     await sidebar.listSidebarItems();
     await flush();
 

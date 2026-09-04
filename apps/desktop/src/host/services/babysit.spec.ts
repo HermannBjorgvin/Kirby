@@ -24,7 +24,7 @@ vi.mock('./repo.js', () => ({
 vi.mock('@kirby/vcs-core', () => ({
   readConfig: () => ({ vendorAuth: {}, vendorProject: {} }),
 }));
-vi.mock('./sidebar.js', () => ({
+vi.mock('./pull-requests.js', () => ({
   repoProvider: () => null,
   lookupPullRequest: (_cwd: string, prId: number) => {
     const pr = state.prs.find((entry) => entry.id === prId);

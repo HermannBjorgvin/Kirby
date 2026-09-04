@@ -9,8 +9,14 @@ import type { BabysitStatus } from './pr-babysitter.js';
 import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
 
 const mocks = vi.hoisted(() => ({
-  fetchBranches:
-    vi.fn<(branches: string[], cwd?: string) => Promise<boolean>>(),
+  fetchRefs:
+    vi.fn<
+      (req: {
+        cwd: string;
+        refs: readonly string[] | 'all';
+        maxAgeMs?: number;
+      }) => Promise<boolean>
+    >(),
   countConflictsBetween:
     vi.fn<
       (base: string, head: string, cwd?: string) => Promise<number | null>
@@ -30,13 +36,16 @@ vi.mock('@kirby/logger', () => ({ logError: () => undefined }));
 // loudly rather than pass through a stub.
 vi.mock('@kirby/worktree-manager', () => ({
   branchToSessionName: (b: string) => b.replace(/\//g, '-'),
-  fetchBranches: (branches: string[], cwd?: string) =>
-    mocks.fetchBranches(branches, cwd),
   countConflictsBetween: (base: string, head: string, cwd?: string) =>
     mocks.countConflictsBetween(base, head, cwd),
   refExists: (ref: string, cwd?: string) => mocks.refExists(ref, cwd),
   checkoutWorktree: (branch: string, cwd?: string) =>
     mocks.checkoutWorktree(branch, cwd),
+}));
+// The fetch line is shared with the sync pass; here it is the fetch.
+vi.mock('../sync/fetch-queue.js', () => ({
+  fetchRefs: (req: Parameters<typeof mocks.fetchRefs>[0]) =>
+    mocks.fetchRefs(req),
 }));
 vi.mock('../pty-registry.js', () => ({
   isSessionAlive: () => mocks.isSessionAlive(),
@@ -109,7 +118,7 @@ const aliceThread = {
 describe('observePullRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.fetchBranches.mockResolvedValue(true);
+    mocks.fetchRefs.mockResolvedValue(true);
     mocks.countConflictsBetween.mockResolvedValue(2);
   });
 
@@ -131,7 +140,7 @@ describe('observePullRequest', () => {
   });
 
   it('reports the conflict check as not run when the fetch failed', async () => {
-    mocks.fetchBranches.mockResolvedValue(false);
+    mocks.fetchRefs.mockResolvedValue(false);
     const result = await observePullRequest(observing({ provider: null }));
     expect(result?.observation.conflictCount).toBeNull();
     expect(mocks.countConflictsBetween).not.toHaveBeenCalled();
@@ -148,7 +157,7 @@ describe('observePullRequest', () => {
     );
     expect(second?.observation.threads).toBe(first?.observation.threads);
     expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(1);
-    expect(mocks.fetchBranches).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchRefs).toHaveBeenCalledTimes(1);
     // The merge check itself still runs against the tracking refs.
     expect(mocks.countConflictsBetween).toHaveBeenCalledTimes(2);
   });
@@ -184,12 +193,15 @@ describe('observePullRequest', () => {
     expect(provider.fetchCommentThreads).toHaveBeenCalledTimes(2);
   });
 
-  it('names the repository in every git call', async () => {
+  it('names the repository in every git call, and fetches through the shared line', async () => {
     await observePullRequest(observing({ provider: null }));
-    expect(mocks.fetchBranches).toHaveBeenCalledWith(
-      ['master', 'feat/thing'],
-      '/repo'
-    );
+    // A fetch of the same refs younger than the refresh interval is
+    // reused rather than repeated.
+    expect(mocks.fetchRefs).toHaveBeenCalledWith({
+      cwd: '/repo',
+      refs: ['master', 'feat/thing'],
+      maxAgeMs: 5 * MIN,
+    });
     expect(mocks.countConflictsBetween).toHaveBeenCalledWith(
       'origin/master',
       'origin/feat/thing',
@@ -215,11 +227,11 @@ describe('observePullRequest', () => {
       observing({ provider, live: () => live })
     );
     expect(abandoned).toBeNull();
-    expect(mocks.fetchBranches).not.toHaveBeenCalled();
+    expect(mocks.fetchRefs).not.toHaveBeenCalled();
     expect(mocks.countConflictsBetween).not.toHaveBeenCalled();
 
     live = true;
-    mocks.fetchBranches.mockImplementation(() => {
+    mocks.fetchRefs.mockImplementation(() => {
       live = false;
       return Promise.resolve(true);
     });
@@ -242,7 +254,7 @@ describe('startPrBabysitter', () => {
     vi.clearAllMocks();
     clock = 0;
     statuses.length = 0;
-    mocks.fetchBranches.mockResolvedValue(true);
+    mocks.fetchRefs.mockResolvedValue(true);
     mocks.countConflictsBetween.mockResolvedValue(0);
     mocks.refExists.mockResolvedValue(true);
     mocks.checkoutWorktree.mockResolvedValue('/wt/feat-thing');
@@ -438,14 +450,14 @@ describe('startPrBabysitter', () => {
     };
     const sitter = start({ isCurrent: () => current });
     await sitter.pollNow();
-    expect(mocks.fetchBranches).not.toHaveBeenCalled();
+    expect(mocks.fetchRefs).not.toHaveBeenCalled();
     expect(statuses).toEqual([]);
     sitter.stop();
   });
 
   it('abandons a poll when the repository changes mid-observation, running no more git', async () => {
     let current = true;
-    mocks.fetchBranches.mockImplementation(() => {
+    mocks.fetchRefs.mockImplementation(() => {
       current = false;
       return Promise.resolve(true);
     });

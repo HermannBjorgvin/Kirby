@@ -20,7 +20,7 @@ import {
   setSyncNotifier,
   startRemoteSyncLoop,
 } from '../host/services/remote-sync.js';
-import { setRemoteUpdatedNotifier } from '../host/services/sidebar.js';
+import { setRemoteUpdatedNotifier } from '../host/services/pull-requests.js';
 import {
   setDiscoveryNotifier,
   startDiscoveryForRepo,

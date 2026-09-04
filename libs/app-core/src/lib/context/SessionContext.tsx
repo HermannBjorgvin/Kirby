@@ -130,7 +130,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [sessionMgr.worktreeBranches, mergedBranches]
   );
   const { counts: conflictCounts, loading: conflictsLoading } =
-    useConflictCounts(conflictBranches, lastSynced);
+    useConflictCounts(conflictBranches, lastSynced, prMap);
 
   const orphanPrs = useMemo(() => {
     if (!provider) return [];

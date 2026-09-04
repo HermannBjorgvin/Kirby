@@ -1,21 +1,22 @@
-import { readConfig, type VcsProvider } from '@kirby/vcs-core';
 import { listWorktrees, worktreeSessionName } from '@kirby/worktree-manager';
 import {
   buildSidebarItems,
   buildSessionLookups,
   categorizeReviews,
-  createPullRequestCache,
   findOrphanPrs,
   pullRequestPollIntervalMs,
   sortSessionsByPrId,
   type AgentSession,
-  type ProviderResolution,
-  type PullRequestLookup,
   type SidebarItem,
 } from '@kirby/core';
-import { PROVIDERS, activeRepoIs, requireRepo } from './repo.js';
+import { activeRepoIs, requireRepo } from './repo.js';
 import { isOwnSessionAlive } from './sessions.js';
 import { getSyncDecorations } from './remote-sync.js';
+import {
+  notifyRemoteUpdated,
+  pullRequests,
+  resolveProvider,
+} from './pull-requests.js';
 import type { SidebarModel, SyncState } from '../contract.js';
 
 /**
@@ -26,9 +27,9 @@ import type { SidebarModel, SyncState } from '../contract.js';
  * result is plain data streamed to the renderer.
  *
  * Local state (worktrees, alive PTYs) is cheap and re-read on every
- * call; remote pull request data comes from `@kirby/core`'s
- * per-repository cache, which the babysitters read too, so the
- * renderer can poll the model frequently without hammering the
+ * call; remote pull request data comes from the host's one instance
+ * of `@kirby/core`'s per-repository cache (`services/pull-requests.ts`),
+ * so the renderer can poll the model frequently without hammering the
  * provider API.
  *
  * **The model never waits for the network.** A cold start has no
@@ -44,49 +45,6 @@ import type { SidebarModel, SyncState } from '../contract.js';
  * Merge/conflict decorations (mergedBranches, conflictCounts) come
  * from the host's remote sync loop (services/remote-sync.ts).
  */
-
-// Installed by main.ts. Fires when a background fetch has changed what
-// listSidebarItems() would answer, so the renderer can refetch then
-// rather than on its next poll tick.
-let remoteUpdated: (() => void) | null = null;
-
-export function setRemoteUpdatedNotifier(fn: (() => void) | null): void {
-  remoteUpdated = fn;
-}
-
-function resolveProvider(cwd: string): ProviderResolution {
-  const config = readConfig(cwd);
-  const provider = config.vendor
-    ? PROVIDERS.find((p) => p.id === config.vendor) ?? null
-    : null;
-  const configured =
-    provider != null &&
-    provider.isConfigured(config.vendorAuth, config.vendorProject);
-  return { config, provider, configured };
-}
-
-const pullRequests = createPullRequestCache({
-  resolveProvider,
-  onCommitted: () => remoteUpdated?.(),
-});
-
-/** The provider the repository at `cwd` is configured for, if any. */
-export function repoProvider(cwd: string): VcsProvider | null {
-  const { provider, configured } = resolveProvider(cwd);
-  return configured ? provider : null;
-}
-
-/**
- * One pull request as the cache has it, refreshed on the cache's own
- * schedule — a babysitter asking every minute reads what the sidebar
- * reads, rather than costing the provider a fetch per watched row.
- */
-export function lookupPullRequest(
-  cwd: string,
-  prId: number
-): Promise<PullRequestLookup> {
-  return pullRequests.lookupPullRequest(cwd, prId);
-}
 
 /** The rows alone. Exported for its tests; the bridge serves
  *  `getSidebarSnapshot`, which says which repository they are of. */
@@ -221,7 +179,7 @@ export async function refreshPrList(): Promise<void> {
  */
 export function onCredentialsChanged(): void {
   pullRequests.forgetCredentials(requireRepo());
-  remoteUpdated?.();
+  notifyRemoteUpdated();
 }
 
 /** Test hook: forget cached remote data. */

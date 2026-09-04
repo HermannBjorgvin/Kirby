@@ -7,6 +7,7 @@ import {
 import { listWorktrees } from '@kirby/worktree-manager';
 import { readConfig } from '@kirby/vcs-core';
 import { PROVIDERS } from './repo.js';
+import { cachedPullRequests } from './pull-requests.js';
 import { removeWorktree } from './worktrees.js';
 import type { SyncNoticeEvent } from '../contract.js';
 
@@ -106,7 +107,7 @@ async function runSyncPass(cwd: string, gen: number): Promise<void> {
     // The TUI's polling is gated on vcsConfigured too.
     if (!vcsConfigured) return;
 
-    const ts = await syncRemote();
+    const ts = await syncRemote(cwd);
     if (cancelled()) return;
     const branches = (await listWorktrees())
       .map((w) => w.branch)
@@ -139,8 +140,12 @@ async function runSyncPass(cwd: string, gen: number): Promise<void> {
     if (cancelled()) return;
     warnedRebase = nextWarned;
 
+    // A branch with a pull request is judged against that request's
+    // target on the remote refs — the same predicate the babysitter
+    // applies, so the badge and the agent's briefing agree.
     const conflicts = await computeConflictCounts(
-      branches.filter((b) => !merged.has(b))
+      branches.filter((b) => !merged.has(b)),
+      cachedPullRequests(cwd)
     );
     if (cancelled()) return;
     decorations = { merged, conflicts, lastGitSyncAt: ts };

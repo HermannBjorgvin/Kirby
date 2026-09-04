@@ -8,7 +8,8 @@
  * and judge conflicts, in whichever checkout happened to be open.
  */
 import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
-import { countConflictsBetween, fetchBranches } from '@kirby/worktree-manager';
+import { countPullRequestConflicts } from '../sync/conflicts.js';
+import { fetchRefs } from '../sync/fetch-queue.js';
 import {
   BABYSIT_REMOTE_REFRESH_MS,
   observeThread,
@@ -74,15 +75,23 @@ function remoteIsFresh(
 }
 
 /** The provider's threads and a fetch of both refs. Null when the
- *  observation was abandoned between the two. */
+ *  observation was abandoned between the two. The fetch waits its turn
+ *  behind any other fetch of the repository, and a fetch of the same
+ *  refs younger than the refresh interval is reused rather than
+ *  repeated. */
 async function refreshRemote(
   opts: ObserveOptions,
+  refreshMs: number,
   live: () => boolean
 ): Promise<RemoteSnapshot | null> {
   const { pr, provider, config, cwd, now } = opts;
   const threads = await readThreads(pr, provider, config);
   if (!live()) return null;
-  const fetched = await fetchBranches([pr.targetBranch, pr.sourceBranch], cwd);
+  const fetched = await fetchRefs({
+    cwd,
+    refs: [pr.targetBranch, pr.sourceBranch],
+    maxAgeMs: refreshMs,
+  });
   if (!live()) return null;
   return {
     at: now,
@@ -108,14 +117,10 @@ export async function observePullRequest(
   const refreshMs = opts.refreshMs ?? BABYSIT_REMOTE_REFRESH_MS;
   const remote = remoteIsFresh(previous, pr, now, refreshMs)
     ? previous
-    : await refreshRemote(opts, live);
+    : await refreshRemote(opts, refreshMs, live);
   if (!remote) return null;
   const conflictCount = remote.fetched
-    ? await countConflictsBetween(
-        `origin/${pr.targetBranch}`,
-        `origin/${pr.sourceBranch}`,
-        cwd
-      )
+    ? await countPullRequestConflicts(pr, cwd)
     : null;
   if (!live()) return null;
   return {
