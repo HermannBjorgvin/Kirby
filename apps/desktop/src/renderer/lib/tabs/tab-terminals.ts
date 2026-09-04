@@ -133,7 +133,10 @@ function openListed(state: TabsState, entries: TerminalEntry[]): TabsState {
  * lists a name again when it re-adopted a live session under it (the
  * user detached from inside tmux and discovery found it still
  * running), and that terminal deserves its tab back rather than
- * running invisibly behind a stamp for a tab that ended.
+ * running invisibly behind a stamp for a tab that ended. A tab still
+ * open keeps its stamp whether or not the listing names it — closing
+ * it later relies on that, or the listing that still names the
+ * terminal until its kill lands would reopen it.
  */
 function dropEnded(
   state: TabsState,
@@ -146,8 +149,9 @@ function dropEnded(
     if (tab.kind !== 'terminal' || !tab.listed || listed.has(tab.id)) continue;
     next = closeTab(next, tab.id, repo);
   }
+  const open = new Set(next.tabs.map((t) => t.id));
   const autoOpened = next.autoOpened.filter(
-    (key) => !key.startsWith('terminal:') || listed.has(key)
+    (key) => !key.startsWith('terminal:') || listed.has(key) || open.has(key)
   );
   if (autoOpened.length === next.autoOpened.length) return next;
   return { ...next, autoOpened };

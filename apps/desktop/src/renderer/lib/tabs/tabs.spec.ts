@@ -964,6 +964,18 @@ describe('terminal tabs', () => {
       expect(s.tabs).toEqual([]);
     });
 
+    // The stamp of a tab that is still open is not for pruning, listed
+    // or not: closing that tab later relies on it, or the listing that
+    // still names the terminal until its kill lands would reopen it.
+    it('keeps the stamp of an open tab the listing has not named', () => {
+      let s = openTerminal(empty, plain);
+      s = syncTerminals(s, []);
+      s = syncTerminals(s, [plain]);
+      s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+      s = syncTerminals(s, [plain]);
+      expect(s.tabs).toEqual([]);
+    });
+
     // A terminal the host lists again is a live one it re-adopted (the
     // user detached from inside tmux and discovery found the session
     // still running), so it gets its tab back rather than running
