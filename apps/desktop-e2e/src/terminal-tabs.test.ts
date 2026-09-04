@@ -185,6 +185,40 @@ test.describe('Terminal tabs', () => {
     }
   });
 
+  // The dialog is two steps and two Enters from the keyboard: focus
+  // opens on the first choice, the arrows walk every choice on screen
+  // as one list, Enter on a "where" choice moves on to "what", and
+  // Enter on a "what" choice opens the terminal as that kind.
+  test('is driven from the keyboard alone', async ({ desktop }) => {
+    const { app, page, repoPath } = desktop;
+    const dialog = await openNewTerminalDialog(app, page);
+    const choice = (name: RegExp) => dialog.getByRole('button', { name });
+
+    await expect(choice(/^Current repository/)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(choice(/^Other repository/)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(choice(/^Shell /)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    // …round to the top again, where Enter takes the current repository
+    // and moves on to the second step.
+    await expect(choice(/^Current repository/)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(choice(/^Shell /)).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expect(dialog).toBeHidden();
+    const tab = terminalTabs(page);
+    await expect(tab).toHaveCount(1);
+    await expect(tab).toHaveAttribute('title', repoPath);
+    const listed = await page.evaluate(() => window.kirby.listTerminals());
+    expect(listed).toEqual([
+      expect.objectContaining({ kind: 'shell', cwd: repoPath, running: true }),
+    ]);
+  });
+
   test('is offered from the command palette too', async ({ desktop }) => {
     const { page } = desktop;
     await openPalette(page);

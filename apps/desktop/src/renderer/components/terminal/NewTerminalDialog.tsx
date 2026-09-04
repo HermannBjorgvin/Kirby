@@ -5,11 +5,12 @@ import {
   GitBranchIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { toast } from 'sonner';
 import type { TerminalKind } from '../../../host/contract.js';
 import { useRecentRepos } from '../../lib/data/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
+import { stepChoice } from '../../lib/terminals/choice-keys.js';
 import { basename, cn, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
@@ -27,6 +28,15 @@ type Where =
   | { kind: 'repo'; cwd: string }
   | { kind: 'folder'; cwd: string };
 
+/** Which step a choice belongs to. Every choice button carries one, and
+ *  the keyboard handling below reads it back. */
+type Step = 'where' | 'repo' | 'what';
+
+/** Every choice in the dialog, in the order the arrows walk them. */
+function choicesIn(root: HTMLElement | null): HTMLButtonElement[] {
+  return [...(root?.querySelectorAll<HTMLButtonElement>('[data-step]') ?? [])];
+}
+
 /**
  * "New terminal": where, then what.
  *
@@ -34,6 +44,13 @@ type Where =
  * the recents list, or any folder through the OS picker. What is a
  * plain shell or the configured agent. The host decides which group
  * the resulting tab belongs to from the directory itself.
+ *
+ * Driven from the keyboard as one list with a roving focus: Up/Down
+ * walk every choice on screen, Enter activates the focused one, and
+ * Escape closes. Focus opens on the first choice. Activating a "where"
+ * choice moves focus on to the "what" step, and activating a "what"
+ * choice opens the terminal as that kind — the two Enters of the two
+ * steps — so the footer button is the mouse's way to the same place.
  */
 export function NewTerminalDialog({
   onLaunch,
@@ -51,6 +68,11 @@ export function NewTerminalDialog({
   });
   const [what, setWhat] = useState<TerminalKind>('shell');
   const [pickingRepo, setPickingRepo] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Set when a "where" choice was activated from the keyboard, so the
+  // render its answer produces moves focus on to the next step. A
+  // click leaves focus where the pointer put it.
+  const advanceRef = useRef(false);
 
   const pickFolder = async () => {
     try {
@@ -64,18 +86,49 @@ export function NewTerminalDialog({
     }
   };
 
-  const go = () => {
-    if (where) onLaunch(what, where.cwd);
+  const go = (kind: TerminalKind = what) => {
+    if (where) onLaunch(kind, where.cwd);
+  };
+
+  useEffect(() => {
+    if (!advanceRef.current) return;
+    advanceRef.current = false;
+    const next = pickingRepo
+      ? '[data-step="repo"]'
+      : '[data-step="what"][aria-pressed="true"]';
+    listRef.current?.querySelector<HTMLButtonElement>(next)?.focus();
+  }, [where, pickingRepo]);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const choices = choicesIn(listRef.current);
+    const index = choices.findIndex((el) => el === e.target);
+    const next = stepChoice(e.key, index, choices.length);
+    if (next !== null) {
+      e.preventDefault();
+      choices[next]?.focus();
+      return;
+    }
+    if (e.key !== 'Enter' || index < 0) return;
+    const focused = choices[index];
+    if (focused?.dataset.step === 'what') {
+      e.preventDefault();
+      go(focused.dataset.value as TerminalKind);
+      return;
+    }
+    // The choice's own click follows this keydown; the answer it
+    // produces is what moves focus on.
+    advanceRef.current = true;
   };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         className="sm:max-w-lg"
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' || !where) return;
+        ref={listRef}
+        onKeyDown={onKeyDown}
+        onOpenAutoFocus={(e) => {
           e.preventDefault();
-          go();
+          choicesIn(listRef.current)[0]?.focus();
         }}
       >
         <DialogHeader>
@@ -88,6 +141,7 @@ export function NewTerminalDialog({
         <p className="text-base">Where?</p>
         <div className="space-y-2">
           <Choice
+            step="where"
             selected={where?.kind === 'current'}
             onSelect={() => {
               setPickingRepo(false);
@@ -98,6 +152,7 @@ export function NewTerminalDialog({
             description={repo.cwd}
           />
           <Choice
+            step="where"
             selected={where?.kind === 'repo'}
             onSelect={() => setPickingRepo(true)}
             icon={FolderIcon}
@@ -116,6 +171,7 @@ export function NewTerminalDialog({
             />
           )}
           <Choice
+            step="where"
             selected={where?.kind === 'folder'}
             onSelect={() => void pickFolder()}
             icon={FolderOpenIcon}
@@ -131,6 +187,8 @@ export function NewTerminalDialog({
         <p className="text-base">What?</p>
         <div className="grid grid-cols-2 gap-2">
           <Choice
+            step="what"
+            value="shell"
             selected={what === 'shell'}
             onSelect={() => setWhat('shell')}
             icon={SquareTerminalIcon}
@@ -138,6 +196,8 @@ export function NewTerminalDialog({
             description="Your login shell"
           />
           <Choice
+            step="what"
+            value="agent"
             selected={what === 'agent'}
             onSelect={() => setWhat('agent')}
             icon={BotIcon}
@@ -150,7 +210,7 @@ export function NewTerminalDialog({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={go} disabled={!where || busy}>
+          <Button onClick={() => go()} disabled={!where || busy}>
             Open terminal
           </Button>
         </DialogFooter>
@@ -188,6 +248,7 @@ function RepoList({
           type="button"
           role="option"
           aria-selected={false}
+          data-step="repo"
           onClick={() => onPick(r.cwd)}
           className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-accent"
         >
@@ -202,12 +263,17 @@ function RepoList({
 }
 
 function Choice({
+  step,
+  value,
   selected,
   onSelect,
   icon: Icon,
   title,
   description,
 }: {
+  step: Step;
+  /** What activating a "what" choice opens the terminal as. */
+  value?: TerminalKind;
   selected: boolean;
   onSelect: () => void;
   icon: typeof FolderIcon;
@@ -217,6 +283,8 @@ function Choice({
   return (
     <button
       type="button"
+      data-step={step}
+      data-value={value}
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
