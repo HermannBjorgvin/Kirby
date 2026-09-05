@@ -18,6 +18,10 @@ const env = vi.hoisted(() => ({
   branches: ['feature/a'] as string[],
   merged: new Set<string>(),
   conflicts: new Map<string, number>(),
+  prMap: {} as Record<string, unknown>,
+  /** Arguments of every computeConflictCounts call. */
+  conflictCalls: [] as unknown[][],
+  synced: [] as unknown[],
   sweeps: 0,
   removed: [] as { branch: string; force: boolean }[],
   notices: [] as { message: string; kind: string }[],
@@ -40,6 +44,10 @@ vi.mock('./repo.js', () => ({
   requireRepo: () => '/repo-a',
 }));
 
+vi.mock('./pull-requests.js', () => ({
+  cachedPullRequests: () => env.prMap,
+}));
+
 vi.mock('./worktrees.js', () => ({
   removeWorktree: (branch: string, force: boolean) => {
     env.removed.push({ branch, force });
@@ -58,7 +66,10 @@ vi.mock('@kirby/worktree-manager', () => ({
 
 vi.mock('@kirby/core', () => ({
   remoteSyncIntervalMs: () => 3_600_000,
-  syncRemote: () => nextSync(),
+  syncRemote: (cwd: string) => {
+    env.synced.push(cwd);
+    return nextSync();
+  },
   sweepMergedBranches: async (opts: {
     isCancelled: () => boolean;
     onAutoDelete: (session: string, branch: string) => Promise<void>;
@@ -70,7 +81,10 @@ vi.mock('@kirby/core', () => ({
     }
     return { merged: env.merged, nextWarned: new Set<string>() };
   },
-  computeConflictCounts: () => Promise.resolve(env.conflicts),
+  computeConflictCounts: (...args: unknown[]) => {
+    env.conflictCalls.push(args);
+    return Promise.resolve(env.conflicts);
+  },
 }));
 
 let sync: typeof RemoteSyncModule;
@@ -86,6 +100,9 @@ beforeEach(async () => {
   env.branches = ['feature/a'];
   env.merged = new Set();
   env.conflicts = new Map();
+  env.prMap = {};
+  env.conflictCalls = [];
+  env.synced = [];
   env.sweeps = 0;
   env.removed = [];
   env.notices = [];
@@ -143,6 +160,19 @@ describe('cancellation', () => {
 
     expect(env.sweeps).toBe(1);
     expect(sync.getSyncDecorations().lastGitSyncAt).toBe(1234);
+  });
+
+  it('fetches in the repository it is for, and judges conflicts by the cached pull requests', async () => {
+    // The conflict predicate needs each branch's target, which only
+    // the pull request list knows; the fetch goes through the line the
+    // babysitters share, keyed by repository.
+    env.prMap = { 'feature/a': { id: 1, targetBranch: 'release' } };
+    sync.startRemoteSyncLoop('/repo-a');
+    await flush();
+    env.pending[0](1234);
+    await flush();
+    expect(env.synced).toEqual(['/repo-a']);
+    expect(env.conflictCalls).toEqual([[['feature/a'], env.prMap, '/repo-a']]);
   });
 });
 

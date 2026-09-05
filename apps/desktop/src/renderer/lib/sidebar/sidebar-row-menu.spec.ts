@@ -14,9 +14,35 @@ describe('sidebarRowMenuItems', () => {
       'open',
       'checkout',
       'open-pr',
+      'babysit',
       'open-editor',
       'copy',
     ]);
+  });
+
+  it('offers babysitting on a pull request, and stopping it once it is on', () => {
+    const idle = ids({ hasWorktree: true, running: false, hasPr: true });
+    expect(idle).toContain('babysit');
+    expect(idle).not.toContain('stop-babysit');
+
+    const on = ids({
+      hasWorktree: true,
+      running: true,
+      hasPr: true,
+      babysitting: true,
+    });
+    expect(on).toContain('stop-babysit');
+    expect(on).not.toContain('babysit');
+
+    // Nothing to watch without a pull request, whatever the flag says.
+    const none = ids({
+      hasWorktree: true,
+      running: false,
+      hasPr: false,
+      babysitting: true,
+    });
+    expect(none).not.toContain('babysit');
+    expect(none).not.toContain('stop-babysit');
   });
 
   it('offers launch on an idle worktree and stop on a busy one, never both', () => {

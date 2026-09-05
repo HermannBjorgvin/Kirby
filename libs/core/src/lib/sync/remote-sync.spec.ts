@@ -27,6 +27,8 @@ const env = vi.hoisted(() => ({
   deleted: [] as { session: string; branch: string }[],
   rebaseWarned: [] as string[],
   conflicts: {} as Record<string, number>,
+  /** Every merge check, as `base..head`. */
+  compared: [] as string[],
   cancelAfterChecks: Infinity,
   checks: 0,
 }));
@@ -37,10 +39,17 @@ vi.mock('@kirby/worktree-manager', () => ({
     env.checks += 1;
     return Promise.resolve(env.removable[branch] ?? { safe: true });
   },
-  countConflicts: (branch: string) =>
-    Promise.resolve(env.conflicts[branch] ?? 0),
+  countConflicts: (branch: string) => {
+    env.compared.push(`origin/main..${branch}`);
+    return Promise.resolve(env.conflicts[branch] ?? 0);
+  },
+  countConflictsBetween: (base: string, head: string) => {
+    env.compared.push(`${base}..${head}`);
+    return Promise.resolve(env.conflicts[head] ?? null);
+  },
   fastForwardMainBranch: () => Promise.resolve(),
-  fetchRemote: () => Promise.resolve(),
+  fetchRemote: () => Promise.resolve(true),
+  fetchBranches: () => Promise.resolve(true),
 }));
 
 vi.mock('@kirby/logger', () => ({ logError: () => undefined }));
@@ -98,6 +107,7 @@ beforeEach(() => {
   env.deleted = [];
   env.rebaseWarned = [];
   env.conflicts = {};
+  env.compared = [];
   env.cancelAfterChecks = Infinity;
   env.checks = 0;
 });
@@ -240,11 +250,41 @@ describe('sweepMergedBranches', () => {
   });
 });
 
+/**
+ * The badge and the babysitter must agree about a branch, so both
+ * judge it the same way: a pull request on the remote refs against its
+ * target, a bare branch locally against origin's main.
+ */
 describe('computeConflictCounts', () => {
-  it('counts each branch', async () => {
+  const pr = (sourceBranch: string, targetBranch: string) =>
+    ({ id: 1, sourceBranch, targetBranch } as never);
+
+  it('counts a branch with no pull request against origin’s main, locally', async () => {
     env.conflicts = { a: 2, b: 0 };
     const counts = await computeConflictCounts(['a', 'b']);
     expect(counts.get('a')).toBe(2);
     expect(counts.get('b')).toBe(0);
+    expect(env.compared).toEqual(['origin/main..a', 'origin/main..b']);
+  });
+
+  it('counts a branch with a pull request on the remote refs, against its target', async () => {
+    env.conflicts = { 'origin/feat': 3 };
+    const counts = await computeConflictCounts(['feat', 'bare'], {
+      feat: pr('feat', 'release/2'),
+      bare: null,
+    });
+    expect(counts.get('feat')).toBe(3);
+    expect(env.compared).toEqual([
+      'origin/release/2..origin/feat',
+      'origin/main..bare',
+    ]);
+  });
+
+  it('counts 0 when the remote check could not run', async () => {
+    // No tracking ref for the source — a fork, or not yet fetched.
+    const counts = await computeConflictCounts(['feat'], {
+      feat: pr('feat', 'main'),
+    });
+    expect(counts.get('feat')).toBe(0);
   });
 });

@@ -5,7 +5,7 @@
  * Nothing here knows about worktrees.
  */
 import { log } from '@kirby/logger';
-import { exec } from './exec.js';
+import { exec, gitOptions } from './exec.js';
 import { assertShellSafeRef } from './refs.js';
 
 let cachedMainBranch: string | null = null;
@@ -67,10 +67,11 @@ export async function listBranches(): Promise<string[]> {
   }
 }
 
-/** Fetch from all remotes and prune stale tracking branches */
-export async function fetchRemote(): Promise<boolean> {
+/** Fetch from all remotes and prune stale tracking branches. `cwd`
+ *  names the repository; without it, the process's directory. */
+export async function fetchRemote(cwd?: string): Promise<boolean> {
   try {
-    await exec('git fetch --all --prune', { encoding: 'utf8' });
+    await exec('git fetch --all --prune', gitOptions(cwd));
     return true;
   } catch (e) {
     log('error', 'fetchRemote', 'git fetch failed', e);
@@ -140,27 +141,81 @@ export async function fastForwardMainBranch(): Promise<boolean> {
 }
 
 /**
- * Count conflicting files between a branch and origin's main branch.
- * Uses `git merge-tree --write-tree` (Git 2.38+).
- * Returns 0 if no conflicts.
+ * Files that `git merge-tree --write-tree base head` reports as
+ * conflicting: zero on a clean merge, null when git failed for some
+ * other reason than a conflict — "could not check" and "no conflicts"
+ * are different answers. Git 2.38+.
  */
-export async function countConflicts(branch: string): Promise<number> {
-  assertShellSafeRef(branch);
-  const main = await getMainBranch();
+export async function countConflictsBetween(
+  base: string,
+  head: string,
+  cwd?: string
+): Promise<number | null> {
+  assertShellSafeRef(base, 'base ref');
+  assertShellSafeRef(head, 'head ref');
   try {
-    await exec(`git merge-tree --write-tree origin/${main} "${branch}"`, {
-      encoding: 'utf8',
-    });
+    await exec(
+      `git merge-tree --write-tree ${base} "${head}"`,
+      gitOptions(cwd)
+    );
     return 0; // clean merge — no conflicts
   } catch (err: unknown) {
-    // Exit code 1 = conflicts; stdout lists conflicted files
+    // Exit code 1 with a merge result on stdout (the tree, then a
+    // CONFLICT line per file) is a conflicting merge. Exit code 1 with
+    // nothing on stdout is a ref that is "not something we can merge"
+    // — a tracking branch never fetched, a source on a fork — which is
+    // "could not check", not "no conflicts".
     const e = err as { code?: number; stdout?: string };
-    if (e.code === 1 && typeof e.stdout === 'string') {
-      // Each "CONFLICT" line in stdout represents a conflicting file
+    if (e.code === 1 && typeof e.stdout === 'string' && e.stdout.trim()) {
       const lines = e.stdout.split('\n');
       return lines.filter((l) => l.startsWith('CONFLICT')).length;
     }
-    return 0;
+    return null;
+  }
+}
+
+/**
+ * Count conflicting files between a branch and origin's main branch.
+ * Returns 0 if no conflicts.
+ */
+export async function countConflicts(
+  branch: string,
+  cwd?: string
+): Promise<number> {
+  const main = await getMainBranch();
+  return (await countConflictsBetween(`origin/${main}`, branch, cwd)) ?? 0;
+}
+
+/** Fetch these branches from origin, so their tracking refs are what
+ *  the remote has now. False when the fetch failed — a branch that
+ *  lives on a fork, or a remote whose refspec excludes it. `cwd` names
+ *  the repository; without it, the process's directory. */
+export async function fetchBranches(
+  branches: string[],
+  cwd?: string
+): Promise<boolean> {
+  for (const branch of branches) assertShellSafeRef(branch);
+  try {
+    await exec(`git fetch origin ${branches.join(' ')}`, gitOptions(cwd));
+    return true;
+  } catch (e) {
+    log('error', 'fetchBranches', 'git fetch failed', e);
+    return false;
+  }
+}
+
+/** Whether `ref` names something git can resolve in the repository at
+ *  `cwd` (the process's directory when not given). */
+export async function refExists(ref: string, cwd?: string): Promise<boolean> {
+  assertShellSafeRef(ref, 'ref');
+  try {
+    await exec(
+      `git rev-parse --verify --quiet "${ref}^{commit}"`,
+      gitOptions(cwd)
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

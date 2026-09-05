@@ -15,6 +15,7 @@ import * as sessions from './services/sessions.js';
 import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
+import * as babysit from './services/babysit.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -113,6 +114,10 @@ export function createHostApi(): KirbyHostApi {
       return Promise.resolve(next);
     },
     showAbout: () => aboutBox(),
+
+    startBabysit: (prId) => babysit.startBabysit(prId),
+    stopBabysit: (prId) => Promise.resolve(babysit.stopBabysit(prId)),
+    onBabysitChanged: () => () => undefined,
   };
 }
 
@@ -219,6 +224,8 @@ export function registerHostHandlers(
     [IPC.getDesktopPrefs]: api.getDesktopPrefs as HostMethod,
     [IPC.setDesktopPrefs]: api.setDesktopPrefs as HostMethod,
     [IPC.showAbout]: api.showAbout as HostMethod,
+    [IPC.startBabysit]: api.startBabysit as HostMethod,
+    [IPC.stopBabysit]: api.stopBabysit as HostMethod,
   };
 
   for (const [channel, fn] of Object.entries(handlers)) {

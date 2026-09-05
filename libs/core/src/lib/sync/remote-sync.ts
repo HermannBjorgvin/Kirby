@@ -1,14 +1,14 @@
 import {
   branchToSessionName,
   canRemoveBranch,
-  countConflicts,
   fastForwardMainBranch,
-  fetchRemote,
 } from '@kirby/worktree-manager';
 import { logError } from '@kirby/logger';
-import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
+import type { AppConfig, BranchPrMap, VcsProvider } from '@kirby/vcs-core';
 import { isSessionAlive } from '../pty-registry.js';
 import { hasLiveTmuxSession } from '../session-backend.js';
+import { countBranchConflicts } from './conflicts.js';
+import { fetchRefs } from './fetch-queue.js';
 
 // ── Remote sync core ─────────────────────────────────────────────
 //
@@ -31,11 +31,12 @@ export function remoteSyncIntervalMs(
   );
 }
 
-/** One sync pass: fetch all remotes (pruning) and fast-forward the
+/** One sync pass: fetch all remotes (pruning), through the fetch line
+ *  every other fetch of the repository waits in, and fast-forward the
  *  main branch. Never throws; returns the completion timestamp. */
-export async function syncRemote(): Promise<number> {
+export async function syncRemote(cwd = process.cwd()): Promise<number> {
   try {
-    await fetchRemote();
+    await fetchRefs({ cwd, refs: 'all' });
     await fastForwardMainBranch();
   } catch (err: unknown) {
     logError('remote-sync', err);
@@ -189,14 +190,26 @@ export async function sweepMergedBranches(opts: {
   return { merged, nextWarned };
 }
 
-/** Batch conflict counting; a branch that fails to check counts 0. */
+/**
+ * Batch conflict counting, by the one predicate the babysitter uses
+ * too (`conflicts.ts`): a branch with a pull request in `prMap` is
+ * judged on the remote refs against its target; the rest locally
+ * against origin's main branch. A branch that fails to check counts 0.
+ */
 export async function computeConflictCounts(
-  branches: string[]
+  branches: string[],
+  prMap: BranchPrMap = {},
+  cwd?: string
 ): Promise<Map<string, number>> {
   const entries = await Promise.all(
     branches.map(async (branch) => {
       try {
-        return [branch, await countConflicts(branch)] as const;
+        const count = await countBranchConflicts(
+          branch,
+          prMap[branch] ?? undefined,
+          cwd
+        );
+        return [branch, count] as const;
       } catch {
         return [branch, 0] as const;
       }

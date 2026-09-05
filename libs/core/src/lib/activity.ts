@@ -114,6 +114,21 @@ export function noteSeen(name: string): void {
   if (state) state.lastSeenAt = Date.now();
 }
 
+/**
+ * How long the session has produced nothing, in ms — the raw fact
+ * behind `snapshot().active`, for callers whose idea of idle is longer
+ * than the sidebar spinner's two seconds. Zero for a session that has
+ * not produced anything yet: an agent still starting up is not idle,
+ * it is not there yet, and typing into it loses the text. Infinity
+ * for a session the registry does not know.
+ */
+export function idleFor(name: string): number {
+  const state = sessions.get(name);
+  if (!state) return Number.POSITIVE_INFINITY;
+  if (state.lastDataAt == null) return 0;
+  return Date.now() - state.lastDataAt;
+}
+
 export interface ActivitySnapshot {
   /** Agent is currently producing output. */
   active: boolean;

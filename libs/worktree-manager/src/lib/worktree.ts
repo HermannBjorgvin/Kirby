@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { log } from '@kirby/logger';
-import { exec } from './exec.js';
+import { exec, gitOptions } from './exec.js';
 import { assertShellSafeRef } from './refs.js';
 import { worktreeDir } from './worktree-resolver.js';
 import { listWorktrees, type WorktreeInfo } from './worktree-list.js';
@@ -80,6 +80,40 @@ export async function createWorktree(branch: string): Promise<string | null> {
       );
       return null;
     }
+  }
+}
+
+/**
+ * Check out a branch that already exists — locally, or on exactly one
+ * remote, which git resolves to a tracking branch of the same name —
+ * into its worktree, and return the path. Null when git refused,
+ * which includes the branch not existing at all: unlike
+ * {@link createWorktree}, this never invents a branch of that name
+ * off HEAD. For a caller acting on a branch it did not choose (a pull
+ * request's source branch), a new branch would put an agent to work
+ * on the wrong base.
+ *
+ * `cwd` names the repository to add the worktree to. A caller that
+ * outlives a change of the process's directory must pass it: the
+ * worktree directory is resolved against it, and so is the git call.
+ */
+export async function checkoutWorktree(
+  branch: string,
+  cwd = process.cwd()
+): Promise<string | null> {
+  assertShellSafeRef(branch);
+  const relativeDir = worktreeDir(branch);
+  const absoluteDir = resolve(cwd, relativeDir);
+  if (existsSync(absoluteDir)) return absoluteDir;
+  try {
+    await exec(
+      `git worktree add "${relativeDir}" "${branch}"`,
+      gitOptions(cwd)
+    );
+    return absoluteDir;
+  } catch (e) {
+    log('error', 'checkoutWorktree', `checkout failed for ${branch}`, e);
+    return null;
   }
 }
 

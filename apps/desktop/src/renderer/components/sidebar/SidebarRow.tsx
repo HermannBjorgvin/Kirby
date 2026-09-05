@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { SidebarItem } from '../../../host/contract.js';
+import type { BabysitStatus, SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
 import {
   useCreateWorktree,
   useKillSession,
   useOpenInEditor,
 } from '../../lib/data/mutations.js';
+import { babysitBadge } from '../../lib/sidebar/babysit-badge.js';
 import {
   itemBranch,
   itemHasWorktree,
@@ -16,6 +17,7 @@ import {
   itemTitle,
 } from '../../lib/sidebar/sidebar-model.js';
 import {
+  isPrRowCommand,
   isSidebarRowCommand,
   sidebarRowMenuItems,
 } from '../../lib/sidebar/sidebar-row-menu.js';
@@ -24,6 +26,7 @@ import { cn, errorMessage } from '../../lib/utils.js';
 import { PrMeta } from './PrMeta.js';
 import { RemoveWorktreeDialog } from './RemoveWorktreeDialog.js';
 import { ItemIcon } from './SidebarRowIcon.js';
+import { usePullRequestRow } from './use-pull-request-row.js';
 
 /**
  * What the branch is doing, beside its name. All three can be true at
@@ -34,16 +37,32 @@ function RowBadges({
   merged,
   rebasing,
   conflictCount,
+  babysit,
 }: {
   merged: boolean;
   rebasing: boolean;
   conflictCount: number;
+  babysit: BabysitStatus | undefined;
 }) {
   const conflicts = `${conflictCount} conflict${
     conflictCount === 1 ? '' : 's'
   }`;
+  const sitter = babysit && babysitBadge(babysit);
   return (
     <>
+      {sitter && (
+        <span
+          className={cn(
+            'shrink-0 rounded px-1 text-[10px] font-medium',
+            sitter.tone === 'warning'
+              ? 'bg-warning/15 text-warning'
+              : 'bg-info/15 text-info'
+          )}
+          title={sitter.title}
+        >
+          {sitter.label}
+        </span>
+      )}
       {merged && (
         <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] font-medium text-success">
           merged
@@ -91,6 +110,7 @@ export function SidebarRow({
   const merged = item.kind === 'session' && item.isMerged;
   const conflictCount =
     (item.kind === 'session' ? item.conflictCount : undefined) ?? 0;
+  const pullRequest = usePullRequestRow(pr, repo.cwd);
 
   // Launching goes through the tab's session menu, where the agent for
   // this launch is chosen: open (and pin) the tab, and ask it for the
@@ -119,9 +139,18 @@ export function SidebarRow({
   const openContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
     const chosen = await window.kirby.showContextMenu(
-      sidebarRowMenuItems({ hasWorktree, running, hasPr: Boolean(pr) })
+      sidebarRowMenuItems({
+        hasWorktree,
+        running,
+        hasPr: Boolean(pr),
+        babysitting: Boolean(item.babysit),
+      })
     );
     if (!isSidebarRowCommand(chosen)) return;
+    if (isPrRowCommand(chosen)) {
+      pullRequest.run(chosen);
+      return;
+    }
     switch (chosen) {
       case 'open':
         onOpen(false);
@@ -134,9 +163,6 @@ export function SidebarRow({
         break;
       case 'checkout':
         onCheckout();
-        break;
-      case 'open-pr':
-        if (pr) void window.kirby.openExternal(pr.url);
         break;
       case 'open-editor':
         openEditor.mutate(branch, {
@@ -185,6 +211,7 @@ export function SidebarRow({
               merged={merged}
               rebasing={rebasing}
               conflictCount={conflictCount}
+              babysit={item.babysit}
             />
           </div>
           {pr && (

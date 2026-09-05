@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process';
 import { fetchWorktreeDiffText, killPersistedTmuxSession } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
+import { stopBabysitForBranch } from './babysit.js';
 // Not @kirby/core's killSession: that registry is keyed by the bare
 // branch name, so another repository's agent answers to the same one.
 import { killOwnSession } from './sessions.js';
@@ -55,6 +56,9 @@ export async function removeWorktree(
   force: boolean
 ): Promise<boolean> {
   requireRepo();
+  // A babysitter of this branch would start a fresh agent in a fresh
+  // checkout at its next update, undoing the removal.
+  stopBabysitForBranch(branch);
   // Mirrors the TUI's performDelete (useSessionManager): kill the
   // agent, remove the worktree, then delete the branch — removal
   // without the other two strands a PTY in a deleted directory and

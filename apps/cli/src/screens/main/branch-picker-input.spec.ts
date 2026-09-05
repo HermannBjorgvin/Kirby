@@ -21,13 +21,13 @@ let liveSessions = new Set<string>();
 vi.mock('@kirby/core', async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   isSessionAlive: (name: string) => liveSessions.has(name),
+  fetchRefs: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('@kirby/worktree-manager', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeManagerModule>()),
   createWorktree: vi.fn(),
   listAllBranches: vi.fn(),
-  fetchRemote: vi.fn(),
 }));
 
 import { createWorktree } from '@kirby/worktree-manager';

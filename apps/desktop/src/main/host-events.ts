@@ -10,18 +10,23 @@
  * the app should be findable in one place.
  */
 import { BrowserWindow } from 'electron';
-import { DISCOVERY_EVENTS, SYNC_EVENTS } from '../host/contract.js';
+import {
+  BABYSIT_EVENTS,
+  DISCOVERY_EVENTS,
+  SYNC_EVENTS,
+} from '../host/contract.js';
 import { setRepoOpenedListener } from '../host/services/repo.js';
 import {
   setSyncNotifier,
   startRemoteSyncLoop,
 } from '../host/services/remote-sync.js';
-import { setRemoteUpdatedNotifier } from '../host/services/sidebar.js';
+import { setRemoteUpdatedNotifier } from '../host/services/pull-requests.js';
 import {
   setDiscoveryNotifier,
   startDiscoveryForRepo,
 } from '../host/services/discovery.js';
 import { setSessionBroadcaster } from '../host/services/sessions.js';
+import { setBabysitNotifier } from '../host/services/babysit.js';
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -55,4 +60,8 @@ export function installHostEventBridge(): void {
   // outside this process changes what the sidebar should show, and the
   // renderer is serving it from a query cache.
   setDiscoveryNotifier(() => broadcast(DISCOVERY_EVENTS.changed));
+
+  // A babysitter started an agent (a row and a session) or ended; its
+  // status otherwise rides on the sidebar item.
+  setBabysitNotifier((event) => broadcast(BABYSIT_EVENTS.changed, event));
 }

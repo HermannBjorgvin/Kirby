@@ -5,12 +5,26 @@ const SIDEBAR_ROW_COMMANDS = [
   'kill',
   'checkout',
   'open-pr',
+  'babysit',
+  'stop-babysit',
   'open-editor',
   'copy',
   'remove',
 ] as const;
 
 export type SidebarRowCommand = (typeof SIDEBAR_ROW_COMMANDS)[number];
+
+/** The commands that address the row's pull request rather than its
+ *  worktree; the row hands these to its pull request hook. */
+const PR_ROW_COMMANDS = ['open-pr', 'babysit', 'stop-babysit'] as const;
+
+export type PrRowCommand = (typeof PR_ROW_COMMANDS)[number];
+
+export function isPrRowCommand(
+  command: SidebarRowCommand
+): command is PrRowCommand {
+  return (PR_ROW_COMMANDS as readonly string[]).includes(command);
+}
 
 /**
  * Narrow what the native menu resolves to.
@@ -48,6 +62,8 @@ export interface SidebarRowMenuState {
   running: boolean;
   /** The row is backed by a pull request. */
   hasPr: boolean;
+  /** The pull request is being babysat. */
+  babysitting?: boolean;
 }
 
 /**
@@ -60,10 +76,25 @@ export interface SidebarRowMenuState {
  * value rather than as JSX is what lets the rules be asserted without
  * driving Electron.
  */
+/**
+ * The entries that address the pull request. Babysitting is a pull
+ * request's, not a worktree's: it watches CI, review threads and
+ * conflicts, and starts an agent in the worktree if none is running
+ * when there is something to say.
+ */
+function pullRequestEntries(babysitting: boolean): SidebarRowMenuEntry[] {
+  return [
+    { id: 'open-pr', label: 'Open pull request in browser' },
+    babysitting
+      ? { id: 'stop-babysit', label: 'Stop babysitting' }
+      : { id: 'babysit', label: 'Babysit pull request' },
+  ];
+}
+
 export function sidebarRowMenuItems(
   state: SidebarRowMenuState
 ): SidebarRowMenuEntry[] {
-  const { hasWorktree, running, hasPr } = state;
+  const { hasWorktree, running, hasPr, babysitting = false } = state;
   const items: SidebarRowMenuEntry[] = [
     { id: 'open', label: 'Open' },
     { type: 'separator' },
@@ -73,8 +104,7 @@ export function sidebarRowMenuItems(
   if (hasWorktree && running) items.push({ id: 'kill', label: 'Stop agent' });
   if (!hasWorktree)
     items.push({ id: 'checkout', label: 'Check out as worktree' });
-  if (hasPr)
-    items.push({ id: 'open-pr', label: 'Open pull request in browser' });
+  if (hasPr) items.push(...pullRequestEntries(babysitting));
   items.push({ id: 'open-editor', label: 'Open in editor' });
   items.push({ id: 'copy', label: 'Copy branch name' });
   if (hasWorktree) {

@@ -128,7 +128,10 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
 
       <span className="mx-1 h-4 w-px shrink-0 bg-border" />
 
-      <span className="flex min-w-0 items-center gap-2 text-sm">
+      {/* Never squeezed: the title truncates instead, and a cluster that
+          shrinks wraps its counts onto a second line or runs under the
+          buttons. */}
+      <span className="flex shrink-0 items-center gap-2 text-sm whitespace-nowrap">
         <Tip label={`Opened by ${pr.createdByDisplayName}`}>
           <span className="flex items-center gap-1.5">
             <Avatar name={pr.createdByDisplayName} size="xs" />
@@ -142,7 +145,7 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
         <ReviewerDots reviewers={reviewers} />
         {(pr.activeCommentCount ?? 0) > 0 && (
           <Tip label={unresolvedCommentsLabel(pr.activeCommentCount ?? 0)}>
-            <span className="flex items-center gap-1 text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-muted-foreground">
               <MessageSquareIcon className="size-3.5" />
               {pr.activeCommentCount} unresolved
             </span>

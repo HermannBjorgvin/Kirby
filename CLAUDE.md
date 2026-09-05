@@ -711,6 +711,98 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   terminal ignores chunks at or below the sequence its replay ended at,
   so numbering a restarted session from 1 again left the new agent
   looking dead in the very pane the restart came from.
+- **Babysitting a pull request is core's; the shells start and stop
+  it.** "Babysit pull request" on a desktop sidebar row hands the pull
+  request to `startPrBabysitter` (`libs/core/src/lib/babysit/`), which
+  polls CI, unresolved review threads and conflicts against the target
+  every minute and briefs the agent in one message. Three rules are
+  load-bearing and each has a test in `babysit-model.spec.ts`:
+  the baseline is **what the agent was told**, not what was last seen
+  (a thread that gained a reply is news again; a verdict on a new
+  `headSha` is a new verdict even when it reads the same, so a second
+  red after the agent pushed is reported; a first green build on its
+  own is not, but green after a reported red is; a thread whose newest
+  comment is the user's own — the agent posting as the user, or the
+  user answering by hand — is not relayed; a conflict check that could
+  not run says so in the prompt and is never news); a pending update is
+  sent after ten minutes of **quiet**, or thirty minutes at most, so a
+  reviewer's burst of comments is one interruption; and it is sent
+  **only while the agent has been silent for thirty seconds**
+  (`idleFor(name)` — the sidebar spinner's two-second idle is shorter
+  than a tool call), typed into the session like a plan, or as the
+  opening prompt of a session started with `seed` (never
+  `continue-or-seed`, which drops the prompt whenever there is a
+  conversation to continue) in the worktree when none is running. That
+  spawn happens for any babysat pull request — babysitting is opt-in
+  per row — but only when the branch resolves locally or on origin,
+  and through `checkoutWorktree`, the worktree-manager variant that
+  only checks out an existing branch: `createWorktree`'s `-b` fallback
+  would put an agent to work on a branch invented off HEAD. Otherwise
+  the update is held and the badge says why. A held or failed delivery
+  leaves the baseline alone. Starting to babysit a pull request that
+  already needs work therefore sends its first update within ten
+  minutes.
+
+  **Every git call names its repository.** The desktop switches
+  repositories with `chdir` and a poll straddles several awaits, so
+  `PrBabysitterOptions.cwd` is threaded into `refExists`,
+  `checkoutWorktree`, the fetch and the merge check; the observation
+  asks `live()` after each await and abandons the poll rather than run
+  git once the watch is stopped or the shell has moved on. The
+  expensive half — the provider's thread list and a fetch of both refs
+  — runs every five minutes or when the cached list shows the
+  unresolved count or the head moved. The fetch goes through core's
+  per-repository fetch line (`sync/fetch-queue.ts`), which the sync
+  pass's `git fetch --all` also waits in, so the two cannot collide on
+  ref locks; a fetch of the same refs by name younger than the refresh
+  interval is reused rather than repeated, except when the head moved
+  — the refs would hold the commit the author just replaced (a
+  `fetch --all` that succeeded says nothing about a branch: on a
+  repository with no remote it succeeds having fetched nothing). The
+  worktree checkout on the spawn path resolves its directory through
+  the process-global worktree resolver, which is why the `live()`
+  check immediately before it is load-bearing. The merge check
+  runs every poll by the same predicate the sidebar badge uses
+  (`sync/conflicts.ts`: `origin/<target>` against `origin/<source>`
+  for a branch with a pull request, since the local branch may not be
+  where the author pushed; `origin/<main>` against the local branch
+  for one without), so the badge and the briefing cannot disagree.
+
+  **The pull request itself comes from the shared cache.** The
+  watcher reads its row through `lookupPullRequest` on core's pull
+  request cache, which distinguishes `gone` from `unknown` (no
+  provider, or a list that failed or never loaded — never taken for
+  merged). One absence is not an answer either: GitHub's list is an
+  eventually consistent search, so the watch stays `watching` with no
+  error and ends on the second consecutive absence. The provider is a
+  getter read per poll (`getProvider`), so a vendor switched in
+  Settings reaches a watcher started under the previous one.
+
+  **Status rides on the sidebar item; the shell is pushed to for two
+  things only.** `onStatus` fires on transitions only — the phase, a hold, a
+  delivery, an error appearing or clearing, the end — never for a poll
+  that moved `lastPolledAt` alone; `status()` is current regardless.
+  `buildSidebarItems` takes a `babysat` map beside `mergedBranches`
+  and `conflictCounts` and sets `item.babysit`, so a row wears its
+  badge from the model it already has. The desktop keeps babysitters
+  per repository in memory (`host/services/babysit.ts`), sits one out
+  while another repository is open rather than tearing it down,
+  honours the foreign-session guard through `isForeignSession`,
+  decorates `listSidebarItems` from `babysatStatuses`, stops the
+  babysitter of a branch whose worktree is being removed (a watcher
+  left behind would check the branch out again at its next update),
+  and pushes `BabysitChangedEvent` only for `spawned` (an agent
+  started: a row and a session the next poll would show late) and
+  `ended` (the row is usually gone with it); the renderer invalidates
+  the sidebar and sessions on those and reads everything else off the
+  sidebar poll. `KIRBY_BABYSIT_DEBOUNCE_MS` / `KIRBY_BABYSIT_POLL_MS`
+  shorten the cadence (`babysitTimingFromEnv`, applied by
+  `startPrBabysitter` when the caller sets none, so any shell's tests
+  get it); `babysit.test.ts` asserts on the prompt the fake agent was
+  actually started with. The TUI does not offer it yet; the watcher
+  takes no shell-specific dependency, so wiring it is a menu entry and
+  a `paneSize`.
+
 - **Desktop diffs are whole-file.** `fetchDiffText` uses `-U99999` so threads on untouched lines can be placed; the desktop viewer folds unchanged regions client-side (`lib/diff/diff-model.ts`, ±3 context, expandable gaps, thread anchors pinned) rather than asking git for hunks.
 - **A PR is diffed against commits; a bare worktree against its working tree.** `fetchDiffText` compares two commits, which is what review threads anchor to — a PR tab must never start showing uncommitted scratch work. A worktree with no PR has nothing to anchor, so `PrWorkspace` switches to `fetchWorktreeDiffText` (`libs/core/src/lib/utils/worktree-diff.ts`): merge-base diff run **inside the worktree**, so the index and working tree count, plus hand-built patches for untracked files. Untracked files are assembled rather than obtained via `git add -N`, because writing to the index of a worktree an agent is using changes what its own `git status` and `git commit` see. It polls at 2s **only while the agent is running** — a recursive `fs.watch` over a checkout wants an inotify handle per directory and `node_modules` alone exhausts the Linux default.
 - **Every git call behind a diff streams, and the worktree diff is
@@ -869,23 +961,40 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
     a repository has no CI.
 
   A quiet cycle over a hundred pull requests now costs one request: the
-  list. GitHub needs none of this — its search query returns the
+  list. A babysitter's thread reads go through the provider's throttle
+  gate and TTL like any other but sit outside `planCycle`'s 25-read
+  budget, bounded instead by the number of babysat rows. GitHub needs
+  none of this — its search query returns the
   rollup and the comment counts with the list, which is also why it
   implements neither `forgetPullRequestCache` (what a refresh button
   means: forget the per-row answers, not the credentials) nor
   `resetCaches`.
 
-- **The desktop's remote cache holds one entry per repository.** The
-  tab strip spans repositories and following a foreign tab opens its
-  repository, so switching back and forth is normal; with a single slot
-  every switch evicted the other side and refetched it, which on Azure
-  is a cycle's worth of requests each time. `host/services/sidebar.ts`
-  keys the cache, the in-flight map _and_ the fetch-sequence guard by
-  cwd, bounded at eight with the least recently fetched evicted. The
-  seq guard being global was its own bug: switching away mid-fetch
-  retired a fetch that was going to answer correctly, so the repo it
-  was for ended up with nothing cached. Credentials still drop every
-  entry — `vendorAuth` is global.
+- **The pull request list is cached once, in core, per repository.**
+  `libs/core/src/lib/pull-requests/pull-request-cache.ts` is what
+  every host-side reader of the list sits on — the sidebar model, the
+  babysitters (one row each, every minute) and the sync loop's
+  conflict counts, which need a branch's target — so however many
+  readers there are, the provider is asked once per `prPollInterval`.
+  It is created with a `resolveProvider(cwd)` callback and knows no
+  shell; the desktop's instance lives in `host/services/pull-requests.ts`
+  and `services/sidebar.ts` is a thin caller. The tab strip spans
+  repositories and following a foreign tab opens its repository, so
+  switching back and forth is normal: the cache, the in-flight map
+  _and_ the fetch-sequence guard are keyed by cwd, bounded at eight
+  with the least recently fetched evicted (a global seq guard retired
+  a fetch that was going to answer correctly for the repo the user
+  switched away from, which then had nothing cached on return). A
+  reader never waits for the network unless it asks to: `cached` and
+  `refreshInBackground` serve the sidebar, `readPullRequests` awaits
+  for a refresh button and for `lookupPullRequest`. A failure keeps the
+  last good list and is retried on the interval, not on every read.
+  Only the newest fetch per repository commits; a credentials change
+  drops every entry (`vendorAuth` is global) and retires every fetch in
+  the air, and a reader that had joined one of those is handed the
+  post-clear cache rather than the list the old credentials fetched.
+  The TUI's `usePrData` still polls the provider through its own hook;
+  it is the only reader in that process.
 - **Azure PR statuses are a history, not a current state.** `GET /pullrequests/{id}/statuses` returns every status a check has ever posted, across every iteration — re-running appends rather than replaces. `deriveBuildStatus` therefore groups by `context` and counts only the newest entry per check (highest `iterationId`, then date, then `id`); reducing over the raw list made the first failure permanent, so a fixed pull request showed red until it merged and no refresh could clear it. `notApplicable` competes on recency and retracts its own check's earlier verdict, but casts no vote; a missing `state` means `notSet` (Azure omits the field for enum zero) and reads as queued. A recorded, anonymised response lives in `libs/vcs/azure-devops/src/lib/__fixtures__/` — record new ones by hitting the API with the PAT from `~/.kirby/config.json`, scrubbing org/repo names and the `createdBy` identity, and reading them with `readFileSync` in the spec so they stay data rather than joining the module graph. Note the badge only ever reflects `/statuses`: a repo whose CI runs through **branch-policy build validation** reports under `_apis/policy/evaluations` instead, which Kirby does not read.
 - **The three `@wterm/*` packages move as one, and are pinned exactly.** `@wterm/react` declares `@wterm/dom` as an **exact** peer (`"0.3.4"`, not a range) and `@wterm/dom` pins `@wterm/core` the same way, so a caret on any of them lets npm take a newer one than its sibling peer-requires and the tree stops resolving. To upgrade, set the same exact version in **both** `apps/desktop/package.json` (`@wterm/dom`, `@wterm/react`) and `apps/cli-wterm-host/package.json` (`@wterm/dom`), then `npm install` and check `npm ls @wterm/dom @wterm/react @wterm/core` shows one deduped copy of each. Verify with `nx e2e cli-e2e` (the harness terminal), `nx e2e desktop-e2e` and `nx e2e:visual desktop-e2e` — the last is what catches a stylesheet change, at zero pixel tolerance. Releases have been roughly weekly, so this is worth doing periodically rather than once.
 - **Take the terminal stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.** The react one is a single `@import "../../dom/src/terminal.css"` — a relative path that resolves only while npm keeps the two packages physically adjacent. The moment anything else in the workspace wants the same `@wterm/dom` version, npm hoists it to the root and the renderer build fails to resolve the import. `@wterm/dom` publishes the identical file under its own `./css` entry, which package resolution finds wherever the package lands.

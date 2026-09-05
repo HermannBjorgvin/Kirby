@@ -101,6 +101,9 @@ vi.mock('./services/drafts.js', () =>
     'postDraftComments',
   ])
 );
+vi.mock('./services/babysit.js', () =>
+  recorder('babysit', ['startBabysit', 'stopBabysit'])
+);
 vi.mock('./services/desktop-prefs.js', () =>
   recorder('prefs', ['loadDesktopPrefs', 'saveDesktopPrefs'])
 );
@@ -192,6 +195,9 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
   ['killSession', ['b'], 'sessions.killSession'],
 
   ['getDesktopPrefs', [], 'prefs.loadDesktopPrefs'],
+
+  ['startBabysit', [7], 'babysit.startBabysit'],
+  ['stopBabysit', [7], 'babysit.stopBabysit'],
 ];
 
 describe('host API wiring', () => {
@@ -218,6 +224,7 @@ describe('host API wiring', () => {
       'onSessionData',
       'onSessionExit',
       'onMenuCommand',
+      'onBabysitChanged',
       'onSyncNotice',
       'onRemoteUpdated',
       'onDiscoveryChanged',
