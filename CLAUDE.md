@@ -638,7 +638,14 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   therefore carries its `repo` and is identified by the pair — two
   checkouts share branch names, so `branch:main` alone is not an
   identity, and neither is a PTY session name (`autoOpened` is
-  repo-qualified for the same reason). `sync-items` reconciles only the
+  repo-qualified for the same reason). That `repo` is the **real
+  path**: `openRepo` resolves every path a repository is opened by
+  (`canonicalRepoPath` — the picker, the recents list,
+  `KIRBY_START_DIR`, a foreign tab) and the recents list is read
+  through the same resolution, because git names the real path
+  everywhere else (the tmux prefix, a worktree's origin, the foreign
+  listing) and a repository opened through a symlink was otherwise two
+  on the strip once another was open. `sync-items` reconciles only the
   tabs of the repo it is handed; a foreign tab must never be re-keyed,
   pinned or collapsed by a poll about somewhere else, and
   `tabs.properties.spec.ts` asserts that as an invariant over arbitrary
@@ -653,7 +660,19 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   through the sidebar), and `sync-items`'s `foreign` pass opens a strip
   entry per agent in its repo group — repo, branch, title, nothing
   attached, no focus — so activating it switches there and that
-  repository's own discovery attaches the agent.
+  repository's own discovery attaches the agent. Only a session whose
+  name is **exactly** what Kirby composes for its directory's
+  repository and branch is listed: an orphan (the worktree checked out
+  another branch mid-session) is left to its own repository's scanner,
+  and a detached-HEAD worktree's agent is dropped host-side because
+  the desktop attaches by branch and would open the repository and
+  attach nothing. Describing a directory is three blocking git forks
+  on the main process and the listing is polled, so an origin is
+  remembered for as long as the directory exists and the name still
+  composes from it — the name stops matching only on that checkout —
+  never when git failed to answer (a transient `index.lock` would hide
+  a session), and only for the paths tmux lists now; the recents list
+  is written when the foreign set changes, not on every poll.
 
   **The workspace follows the active tab, not the other way round.**
   The host is single-repo by construction (`requireRepo`, the memoized
@@ -737,7 +756,11 @@ terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
   `sync-items` dispatch as the sidebar reconciliation — one pure step,
   not a second effect — without ever moving focus: a restored terminal
   from another repository would otherwise switch the workspace at
-  startup. A repo-root terminal is foreign anywhere but its repo and
+  startup. The dialog's steps are radix `ToggleGroup`s (roving focus,
+  arrows move without choosing, `loop`), and whether choosing moves
+  focus on to the next step is read off the click's `detail` — zero
+  for a keyboard-caused click — rather than a flag set on keydown,
+  which a cancelled folder picker left armed. A repo-root terminal is foreign anywhere but its repo and
   follows like any foreign tab; a plain-folder one belongs to nobody
   (`tabHome` is null) and activating it switches nothing. Closing a
   terminal tab always confirms and **kills** the session on both
@@ -746,10 +769,24 @@ terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
   shell, the agent quitting, a tmux session killed from outside — the
   host drops it from `listTerminals` on the client PTY's exit
   (`watchForEnd`, releasing the relay buffer and the registry tombstone
-  without a kill, since a tmux client can also exit while its session
-  lives on) and the reducer's `dropEnded` closes any terminal tab a
-  _defined_ listing does not name, with the user's close-focus rules;
-  an `undefined` listing is "not asked yet" and closes nothing. Two
+  without a kill) and the relay's exit event reaches the renderer,
+  whose `terminal-ended` closes the tab **by name, at once** rather
+  than on the next poll, whether or not a listing ever named it (a
+  process that died before the first listing would otherwise leave a
+  tab whose close asks to end nothing); the reducer's `dropEnded` still
+  closes any terminal tab a _defined_ listing does not name, with the
+  user's close-focus rules, and an `undefined` listing is "not asked
+  yet" and closes nothing. "At once" depends on every exit listener
+  running: the host's handler releases the session, which detaches an
+  earlier listener, and `PtySession` walks a **snapshot** of its
+  listeners because iterating the live array starved the relay's
+  broadcast. A tmux client that exits while its session lives on — the
+  user pressed the detach key inside the terminal — is **not** an end:
+  `watchForEnd` asks `isTmuxSessionPersisted` and reattaches under the
+  same name at the client's grid with the output sequence carried, and
+  the relay reports no exit for an entry that has been replaced (a
+  released one still is), so the tab neither closes nor comes back
+  unfocused a scan later. Two
   e2e traps: zsh greets a fresh `HOME` with its first-user wizard, which
   eats the first keystroke, so the fixture seeds an empty `.zshrc`; and
   Playwright reads any array whose second element is an object as a
