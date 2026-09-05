@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import {
   sanitizeTmuxSessionName,
   tmuxListSessionsDetailed,
@@ -38,32 +39,63 @@ export interface LiveWorktreeSession {
   sessionName: string;
 }
 
-/** How long a path's description is trusted before git is asked again.
- *  A worktree's repository never changes and its branch rarely does;
- *  three forks per session per listing would otherwise be paid every
- *  poll. */
-const ORIGIN_TTL_MS = 30_000;
-
-const origins = new Map<
-  string,
-  { at: number; origin: WorktreeOrigin | null }
->();
-
-function originOf(
-  path: string,
-  describe: (path: string) => WorktreeOrigin | null,
-  now: number
-): WorktreeOrigin | null {
-  const cached = origins.get(path);
-  if (cached && now - cached.at < ORIGIN_TTL_MS) return cached.origin;
-  const origin = describe(path);
-  origins.set(path, { at: now, origin });
-  return origin;
-}
+/**
+ * What git last said about each listed directory.
+ *
+ * Describing a directory is three blocking git forks on the main
+ * process, and this listing is polled. An origin is trusted for as long
+ * as the directory still exists and the session's name still composes
+ * from it: a worktree's repository never changes, and its branch
+ * changes only when something checks another one out — which shows as
+ * the name no longer matching, the one case git is asked again. A
+ * failure is never remembered (a transient `index.lock` would otherwise
+ * hide a session until the entry aged out), and the map is bounded to
+ * the paths tmux currently lists, so it cannot grow with every session
+ * that ever ran. No clock: nothing here expires by time.
+ */
+const origins = new Map<string, WorktreeOrigin>();
 
 /** Drop what was learned about every path. Tests only. */
 export function __resetLiveWorktreeSessionsForTests(): void {
   origins.clear();
+}
+
+/** The tmux name Kirby composes for a worktree of this origin. */
+function composedName(origin: WorktreeOrigin): string {
+  return sanitizeTmuxSessionName(
+    `${KIRBY_TMUX_PREFIX}${projectKey(origin.repoRoot)}-${branchToSessionName(
+      origin.branch
+    )}`
+  );
+}
+
+/** The seams a listing depends on, injectable for tests. */
+export interface LiveWorktreeSessionDeps {
+  describe?: (path: string) => WorktreeOrigin | null;
+  exists?: (path: string) => boolean;
+}
+
+/**
+ * The origin of `path` if a session named `name` is that worktree's —
+ * from the cache when the directory is still there and the name still
+ * composes from what was cached, from git otherwise.
+ */
+function matchingOrigin(
+  name: string,
+  path: string,
+  deps: Required<LiveWorktreeSessionDeps>
+): WorktreeOrigin | null {
+  const cached = origins.get(path);
+  if (cached && deps.exists(path) && composedName(cached) === name) {
+    return cached;
+  }
+  const origin = deps.describe(path);
+  if (!origin) {
+    origins.delete(path);
+    return null;
+  }
+  origins.set(path, origin);
+  return composedName(origin) === name ? origin : null;
 }
 
 /**
@@ -81,8 +113,7 @@ export function __resetLiveWorktreeSessionsForTests(): void {
  */
 export function listLiveWorktreeSessions(
   config: Pick<AppConfig, 'terminalBackend'>,
-  describe: (path: string) => WorktreeOrigin | null = describeWorktreePath,
-  now: number = Date.now()
+  deps: LiveWorktreeSessionDeps = {}
 ): LiveWorktreeSession[] {
   if (resolveTerminalBackend(config) !== 'tmux') return [];
   let live: { name: string; path: string }[];
@@ -91,26 +122,46 @@ export function listLiveWorktreeSessions(
   } catch {
     return [];
   }
+  const resolved = {
+    describe: deps.describe ?? describeWorktreePath,
+    exists: deps.exists ?? existsSync,
+  };
+  const candidates = live.filter(isWorktreeCandidate);
+  evictUnlisted(new Set(candidates.map((c) => c.path)));
   const found: LiveWorktreeSession[] = [];
-  for (const { name, path } of live) {
-    if (!name.startsWith(KIRBY_TMUX_PREFIX) || parseTerminalSessionName(name)) {
-      continue;
-    }
-    if (!path) continue;
-    const origin = originOf(path, describe, now);
+  for (const { name, path } of candidates) {
+    const origin = matchingOrigin(name, path, resolved);
     if (!origin) continue;
-    const sessionName = branchToSessionName(origin.branch);
-    const composed = sanitizeTmuxSessionName(
-      `${KIRBY_TMUX_PREFIX}${projectKey(origin.repoRoot)}-${sessionName}`
-    );
-    if (composed !== name) continue;
     found.push({
       tmuxName: name,
       path,
       repoRoot: origin.repoRoot,
       branch: origin.branch,
-      sessionName,
+      sessionName: branchToSessionName(origin.branch),
     });
   }
   return found;
+}
+
+/** A Kirby session that is not a terminal tab and has a directory to
+ *  be asked about. */
+function isWorktreeCandidate({
+  name,
+  path,
+}: {
+  name: string;
+  path: string;
+}): boolean {
+  return (
+    name.startsWith(KIRBY_TMUX_PREFIX) &&
+    !parseTerminalSessionName(name) &&
+    path !== ''
+  );
+}
+
+/** Keep the cache to the directories tmux lists right now. */
+function evictUnlisted(listed: ReadonlySet<string>): void {
+  for (const path of [...origins.keys()]) {
+    if (!listed.has(path)) origins.delete(path);
+  }
 }
