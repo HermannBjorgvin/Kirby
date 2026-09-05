@@ -33,8 +33,9 @@ export async function confirmNewTerminal(
   kind: 'Shell' | 'Agent'
 ): Promise<void> {
   const dialog = newTerminalDialog(page);
-  // A choice's accessible name is its title followed by its description.
-  await dialog.getByRole('button', { name: new RegExp(`^${kind} `) }).click();
+  // A choice is a radio in its step's group; its accessible name is its
+  // title followed by its description.
+  await dialog.getByRole('radio', { name: new RegExp(`^${kind} `) }).click();
   await dialog.getByRole('button', { name: 'Open terminal' }).click();
   await dialog.waitFor({ state: 'hidden' });
 }

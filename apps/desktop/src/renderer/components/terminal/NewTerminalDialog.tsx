@@ -5,13 +5,12 @@ import {
   GitBranchIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import type { TerminalKind } from '../../../host/contract.js';
 import { useRecentRepos } from '../../lib/data/queries.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { stepChoice } from '../../lib/terminals/choice-keys.js';
-import { basename, cn, errorMessage } from '../../lib/utils.js';
+import { basename, errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
   Dialog,
@@ -21,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog.js';
+import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group.js';
 
 /** Where the terminal opens, once the user has said. */
 type Where =
@@ -28,13 +28,31 @@ type Where =
   | { kind: 'repo'; cwd: string }
   | { kind: 'folder'; cwd: string };
 
-/** Which step a choice belongs to. Every choice button carries one, and
- *  the keyboard handling below reads it back. */
-type Step = 'where' | 'repo' | 'what';
+/** The recents list: closed, or open by whichever means opened it —
+ *  opened from the keyboard, its first entry takes focus as it mounts. */
+type RepoList = 'closed' | 'mouse' | 'keyboard';
 
-/** Every choice in the dialog, in the order the arrows walk them. */
-function choicesIn(root: HTMLElement | null): HTMLButtonElement[] {
-  return [...(root?.querySelectorAll<HTMLButtonElement>('[data-step]') ?? [])];
+/**
+ * Whether a click came from the keyboard — Enter or Space on the
+ * focused choice — rather than the pointer. The browser counts pointer
+ * presses in `detail`; a synthesized click from a key has none. This
+ * is what decides whether choosing moves focus on to the next step:
+ * derived from the event itself, so nothing outlives a choice that
+ * never completed (a folder picker that was cancelled).
+ */
+function fromKeyboard(e: MouseEvent<HTMLElement>): boolean {
+  return e.detail === 0;
+}
+
+function focusFirst(root: HTMLElement | null): void {
+  root?.querySelector<HTMLElement>('[role="radio"]')?.focus();
+}
+
+/** The chosen item of a step, or its first when nothing is chosen. */
+function focusChosen(root: HTMLElement | null): void {
+  const chosen = root?.querySelector<HTMLElement>('[data-state="on"]');
+  if (chosen) chosen.focus();
+  else focusFirst(root);
 }
 
 /**
@@ -45,12 +63,13 @@ function choicesIn(root: HTMLElement | null): HTMLButtonElement[] {
  * plain shell or the configured agent. The host decides which group
  * the resulting tab belongs to from the directory itself.
  *
- * Driven from the keyboard as one list with a roving focus: Up/Down
- * walk every choice on screen, Enter activates the focused one, and
- * Escape closes. Focus opens on the first choice. Activating a "where"
- * choice moves focus on to the "what" step, and activating a "what"
- * choice opens the terminal as that kind — the two Enters of the two
- * steps — so the footer button is the mouse's way to the same place.
+ * Each step is a toggle group with a roving focus: the arrows walk its
+ * choices (wrapping), Home/End jump, Enter chooses. Focus opens on the
+ * first "where" choice. Choosing a "where" from the keyboard moves
+ * focus on to "what" (or into the repository list), and choosing a
+ * "what" from the keyboard opens the terminal as that kind — the two
+ * Enters of the two steps. A click chooses and leaves focus where the
+ * pointer put it; the footer button is the mouse's way to the launch.
  */
 export function NewTerminalDialog({
   onLaunch,
@@ -67,20 +86,21 @@ export function NewTerminalDialog({
     cwd: repo.cwd,
   });
   const [what, setWhat] = useState<TerminalKind>('shell');
-  const [pickingRepo, setPickingRepo] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
-  // Set when a "where" choice was activated from the keyboard, so the
-  // render its answer produces moves focus on to the next step. A
-  // click leaves focus where the pointer put it.
-  const advanceRef = useRef(false);
+  const [repoList, setRepoList] = useState<RepoList>('closed');
+  const whereRef = useRef<HTMLDivElement>(null);
+  const whatRef = useRef<HTMLDivElement>(null);
 
-  const pickFolder = async () => {
+  /** Answer "where"; from the keyboard, move on to "what". */
+  const choose = (next: Where, advance: boolean) => {
+    setRepoList('closed');
+    setWhere(next);
+    if (advance) focusChosen(whatRef.current);
+  };
+
+  const pickFolder = async (advance: boolean) => {
     try {
       const dir = await window.kirby.selectFolder();
-      if (dir) {
-        setPickingRepo(false);
-        setWhere({ kind: 'folder', cwd: dir });
-      }
+      if (dir) choose({ kind: 'folder', cwd: dir }, advance);
     } catch (err: unknown) {
       toast.error(errorMessage(err));
     }
@@ -90,45 +110,13 @@ export function NewTerminalDialog({
     if (where) onLaunch(kind, where.cwd);
   };
 
-  useEffect(() => {
-    if (!advanceRef.current) return;
-    advanceRef.current = false;
-    const next = pickingRepo
-      ? '[data-step="repo"]'
-      : '[data-step="what"][aria-pressed="true"]';
-    listRef.current?.querySelector<HTMLButtonElement>(next)?.focus();
-  }, [where, pickingRepo]);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const choices = choicesIn(listRef.current);
-    const index = choices.findIndex((el) => el === e.target);
-    const next = stepChoice(e.key, index, choices.length);
-    if (next !== null) {
-      e.preventDefault();
-      choices[next]?.focus();
-      return;
-    }
-    if (e.key !== 'Enter' || index < 0) return;
-    const focused = choices[index];
-    if (focused?.dataset.step === 'what') {
-      e.preventDefault();
-      go(focused.dataset.value as TerminalKind);
-      return;
-    }
-    // The choice's own click follows this keydown; the answer it
-    // produces is what moves focus on.
-    advanceRef.current = true;
-  };
-
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         className="sm:max-w-lg"
-        ref={listRef}
-        onKeyDown={onKeyDown}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
-          choicesIn(listRef.current)[0]?.focus();
+          focusFirst(whereRef.current);
         }}
       >
         <DialogHeader>
@@ -139,41 +127,42 @@ export function NewTerminalDialog({
         </DialogHeader>
 
         <p className="text-base">Where?</p>
-        <div className="space-y-2">
+        <ToggleGroup
+          type="single"
+          value={where?.kind ?? ''}
+          loop
+          ref={whereRef}
+          aria-label="Where"
+          className="flex-col gap-2"
+        >
           <Choice
-            step="where"
-            selected={where?.kind === 'current'}
-            onSelect={() => {
-              setPickingRepo(false);
-              setWhere({ kind: 'current', cwd: repo.cwd });
-            }}
+            value="current"
+            onActivate={(kb) => choose({ kind: 'current', cwd: repo.cwd }, kb)}
             icon={GitBranchIcon}
             title="Current repository"
             description={repo.cwd}
           />
           <Choice
-            step="where"
-            selected={where?.kind === 'repo'}
-            onSelect={() => setPickingRepo(true)}
+            value="repo"
+            onActivate={(kb) => setRepoList(kb ? 'keyboard' : 'mouse')}
             icon={FolderIcon}
             title="Other repository"
             description={
               where?.kind === 'repo' ? where.cwd : 'One you have opened before'
             }
           />
-          {pickingRepo && (
+          {repoList !== 'closed' && (
             <RepoList
               exclude={repo.cwd}
-              onPick={(cwd) => {
-                setPickingRepo(false);
-                setWhere({ kind: 'repo', cwd });
-              }}
+              autoFocus={repoList === 'keyboard'}
+              onPick={(cwd, kb) => choose({ kind: 'repo', cwd }, kb)}
             />
           )}
           <Choice
-            step="where"
-            selected={where?.kind === 'folder'}
-            onSelect={() => void pickFolder()}
+            value="folder"
+            // The picker is reached through the choice's own click,
+            // whichever way it was activated.
+            onActivate={(kb) => void pickFolder(kb)}
             icon={FolderOpenIcon}
             title="Other folder…"
             description={
@@ -182,29 +171,32 @@ export function NewTerminalDialog({
                 : 'Any directory, repository or not'
             }
           />
-        </div>
+        </ToggleGroup>
 
         <p className="text-base">What?</p>
-        <div className="grid grid-cols-2 gap-2">
+        <ToggleGroup
+          type="single"
+          value={what}
+          loop
+          ref={whatRef}
+          aria-label="What"
+          className="grid grid-cols-2 gap-2"
+        >
           <Choice
-            step="what"
             value="shell"
-            selected={what === 'shell'}
-            onSelect={() => setWhat('shell')}
+            onActivate={(kb) => (kb ? go('shell') : setWhat('shell'))}
             icon={SquareTerminalIcon}
             title="Shell"
             description="Your login shell"
           />
           <Choice
-            step="what"
             value="agent"
-            selected={what === 'agent'}
-            onSelect={() => setWhat('agent')}
+            onActivate={(kb) => (kb ? go('agent') : setWhat('agent'))}
             icon={BotIcon}
             title="Agent"
             description="The configured agent, no task"
           />
-        </div>
+        </ToggleGroup>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
@@ -219,13 +211,19 @@ export function NewTerminalDialog({
   );
 }
 
-/** The recents list, minus the repository already on offer. */
+/** The recents list, minus the repository already on offer. Its own
+ *  group: nothing is chosen in it, and choosing answers "where". The
+ *  list is a query, so with `autoFocus` the first entry takes focus
+ *  whenever it actually mounts — which may be a fetch after the
+ *  keyboard asked for the list, not the same render. */
 function RepoList({
   exclude,
+  autoFocus,
   onPick,
 }: {
   exclude: string;
-  onPick: (cwd: string) => void;
+  autoFocus: boolean;
+  onPick: (cwd: string, fromKeyboard: boolean) => void;
 }) {
   const recents = useRecentRepos();
   const list = (recents.data ?? []).filter((r) => r.valid && r.cwd !== exclude);
@@ -237,75 +235,67 @@ function RepoList({
     );
   }
   return (
-    <div
-      role="listbox"
+    <ToggleGroup
+      type="single"
+      value=""
+      loop
       aria-label="Repositories"
-      className="max-h-40 overflow-y-auto rounded-md border border-border"
+      className="max-h-40 flex-col overflow-y-auto rounded-md border border-border"
     >
-      {list.map((r) => (
-        <button
+      {list.map((r, i) => (
+        <ToggleGroupItem
           key={r.cwd}
-          type="button"
-          role="option"
-          aria-selected={false}
-          data-step="repo"
-          onClick={() => onPick(r.cwd)}
+          value={r.cwd}
+          autoFocus={autoFocus && i === 0}
+          onClick={(e) => {
+            e.preventDefault();
+            onPick(r.cwd, fromKeyboard(e));
+          }}
           className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-accent"
         >
           <span className="font-medium">{basename(r.cwd)}</span>
           <span className="truncate font-mono text-xs text-muted-foreground">
             {r.cwd}
           </span>
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
 function Choice({
-  step,
   value,
-  selected,
-  onSelect,
+  onActivate,
   icon: Icon,
   title,
   description,
 }: {
-  step: Step;
-  /** What activating a "what" choice opens the terminal as. */
-  value?: TerminalKind;
-  selected: boolean;
-  onSelect: () => void;
+  value: string;
+  /** Called on a click, with whether the keyboard caused it. */
+  onActivate: (fromKeyboard: boolean) => void;
   icon: typeof FolderIcon;
   title: string;
   description: string;
 }) {
   return (
-    <button
-      type="button"
-      data-step={step}
-      data-value={value}
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        'flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left transition-colors',
-        selected
-          ? 'border-primary bg-primary/10'
-          : 'border-border hover:bg-accent'
-      )}
+    <ToggleGroupItem
+      value={value}
+      // Chosen here, not by the group's own toggle: the group's value is
+      // the dialog's state, and a second click on the chosen item must
+      // not clear it.
+      onClick={(e) => {
+        e.preventDefault();
+        onActivate(fromKeyboard(e));
+      }}
+      className="group flex w-full items-start gap-3 rounded-md border border-border px-3 py-2 text-left transition-colors hover:bg-accent data-[state=on]:border-primary data-[state=on]:bg-primary/10"
     >
-      <Icon
-        className={cn(
-          'mt-0.5 size-4 shrink-0',
-          selected ? 'text-primary' : 'text-muted-foreground'
-        )}
-      />
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground group-data-[state=on]:text-primary" />
       <span className="min-w-0">
         <span className="block font-medium">{title}</span>
         <span className="block truncate text-sm text-muted-foreground">
           {description}
         </span>
       </span>
-    </button>
+    </ToggleGroupItem>
   );
 }

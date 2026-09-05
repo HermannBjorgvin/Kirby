@@ -81,7 +81,9 @@ test.describe('Terminal tabs under tmux', () => {
 
     killTmuxSession(name, homeDir);
 
-    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 15_000 });
+    // At once — on the client's exit, not the listing's next poll two
+    // seconds away.
+    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 750 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect
       .poll(() => page.evaluate(() => window.kirby.listTerminals()))

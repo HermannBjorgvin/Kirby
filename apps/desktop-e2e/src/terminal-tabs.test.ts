@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
@@ -37,8 +37,8 @@ test.describe('Terminal tabs', () => {
     const dialog = await openNewTerminalDialog(app, page);
     // The open repository is the default answer to "where".
     await expect(
-      dialog.getByRole('button', { name: /Current repository/ })
-    ).toHaveAttribute('aria-pressed', 'true');
+      dialog.getByRole('radio', { name: /Current repository/ })
+    ).toHaveAttribute('aria-checked', 'true');
     await confirmNewTerminal(page, 'Shell');
 
     const tab = terminalTabs(page);
@@ -104,7 +104,9 @@ test.describe('Terminal tabs', () => {
     await focusTerminal(page);
     await page.keyboard.type('exit\n', { delay: 20 });
 
-    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 15_000 });
+    // At once — on the host's exit event, not the listing's next poll,
+    // which is two seconds away.
+    await expect(terminalTabs(page)).toHaveCount(0, { timeout: 750 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await page.evaluate(() => window.kirby.listTerminals())).toEqual([]);
   });
@@ -122,10 +124,10 @@ test.describe('Terminal tabs', () => {
       await openNewTerminalDialog(app, page);
       await armFolderPick(app, folder);
       await newTerminalDialog(page)
-        .getByRole('button', { name: /Other folder/ })
+        .getByRole('radio', { name: /Other folder/ })
         .click();
       await expect(
-        newTerminalDialog(page).getByRole('button', { name: /Other folder/ })
+        newTerminalDialog(page).getByRole('radio', { name: /Other folder/ })
       ).toContainText(folder);
       await confirmNewTerminal(page, 'Shell');
 
@@ -158,7 +160,7 @@ test.describe('Terminal tabs', () => {
       await openNewTerminalDialog(app, page);
       await armFolderPick(app, other);
       await newTerminalDialog(page)
-        .getByRole('button', { name: /Other folder/ })
+        .getByRole('radio', { name: /Other folder/ })
         .click();
       await confirmNewTerminal(page, 'Shell');
 
@@ -186,26 +188,32 @@ test.describe('Terminal tabs', () => {
   });
 
   // The dialog is two steps and two Enters from the keyboard: focus
-  // opens on the first choice, the arrows walk every choice on screen
-  // as one list, Enter on a "where" choice moves on to "what", and
-  // Enter on a "what" choice opens the terminal as that kind.
+  // opens on the first choice, the arrows walk a step's choices and
+  // wrap, Enter on a "where" choice moves on to "what", and Enter on a
+  // "what" choice opens the terminal as that kind.
   test('is driven from the keyboard alone', async ({ desktop }) => {
     const { app, page, repoPath } = desktop;
     const dialog = await openNewTerminalDialog(app, page);
-    const choice = (name: RegExp) => dialog.getByRole('button', { name });
+    const choice = (name: RegExp) => dialog.getByRole('radio', { name });
 
     await expect(choice(/^Current repository/)).toBeFocused();
     await page.keyboard.press('ArrowDown');
     await expect(choice(/^Other repository/)).toBeFocused();
     await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('ArrowDown');
-    await expect(choice(/^Shell /)).toBeFocused();
-    await page.keyboard.press('ArrowDown');
+    await expect(choice(/^Other folder/)).toBeFocused();
     await page.keyboard.press('ArrowDown');
     // …round to the top again, where Enter takes the current repository
-    // and moves on to the second step.
+    // and moves on to the second step. Moving focus chose nothing.
     await expect(choice(/^Current repository/)).toBeFocused();
+    await expect(choice(/^Other folder/)).toHaveAttribute(
+      'aria-checked',
+      'false'
+    );
     await page.keyboard.press('Enter');
+    await expect(choice(/^Shell /)).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(choice(/^Agent /)).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
     await expect(choice(/^Shell /)).toBeFocused();
     await page.keyboard.press('Enter');
 
@@ -217,6 +225,59 @@ test.describe('Terminal tabs', () => {
     expect(listed).toEqual([
       expect.objectContaining({ kind: 'shell', cwd: repoPath, running: true }),
     ]);
+  });
+
+  // The longer keyboard path: Enter on "Other repository" opens the
+  // recents list with its first repository focused, Enter there
+  // answers "where" and moves on to "what", and Enter opens the
+  // terminal in that repository — which the workspace follows.
+  test('reaches another repository from the keyboard', async ({ desktop }) => {
+    const { app, page, homeDir, repoPath } = desktop;
+    const other = createTestRepo({ name: 'kb-repo' });
+    try {
+      // On the recents list, as a repository opened before would be.
+      // The app rewrote the file at startup with the one it opened on,
+      // so both are written back.
+      writeFileSync(
+        join(homeDir, '.kirby', 'desktop-recents.json'),
+        JSON.stringify([
+          { cwd: repoPath, lastOpenedAt: 2 },
+          { cwd: other, lastOpenedAt: 1 },
+        ])
+      );
+      const dialog = await openNewTerminalDialog(app, page);
+      const choice = (name: RegExp) => dialog.getByRole('radio', { name });
+
+      await page.keyboard.press('ArrowDown');
+      await expect(choice(/^Other repository/)).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(choice(/kb-repo/)).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(choice(/^Other repository/)).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      await expect(choice(/^Shell /)).toBeFocused();
+      await page.keyboard.press('Enter');
+
+      await expect(dialog).toBeHidden();
+      const otherRoot = realpathSync(other);
+      await expect
+        .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+          timeout: 30_000,
+        })
+        .toMatchObject({ cwd: otherRoot });
+      const listed = await page.evaluate(() => window.kirby.listTerminals());
+      expect(listed).toEqual([
+        expect.objectContaining({
+          kind: 'shell',
+          cwd: otherRoot,
+          repo: otherRoot,
+        }),
+      ]);
+    } finally {
+      cleanupTestRepo(other);
+    }
   });
 
   test('is offered from the command palette too', async ({ desktop }) => {
