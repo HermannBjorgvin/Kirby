@@ -20,6 +20,10 @@ export interface WorktreeOrigin {
    *  on a detached HEAD — the same fallback `worktreeSessionName` uses
    *  to name such a worktree's session. */
   branch: string;
+  /** Whether `branch` is that fallback: no branch is checked out. A
+   *  shell that attaches by branch has nothing to attach such a
+   *  worktree by. */
+  detached: boolean;
 }
 
 function git(cwd: string, args: string[]): string | null {
@@ -61,6 +65,6 @@ export function describeWorktreePath(path: string): WorktreeOrigin | null {
   }
   const head = git(path, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (head === null) return null;
-  const branch = head === '' || head === 'HEAD' ? basename(path) : head;
-  return { repoRoot, branch };
+  const detached = head === '' || head === 'HEAD';
+  return { repoRoot, branch: detached ? basename(path) : head, detached };
 }

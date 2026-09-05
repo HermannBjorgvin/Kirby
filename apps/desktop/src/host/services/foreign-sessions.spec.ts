@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
     path: string;
     repoRoot: string;
     branch: string;
+    detached: boolean;
     sessionName: string;
   }[],
   realpaths: {} as Record<string, string>,
@@ -49,6 +50,7 @@ const ALPHA_AGENT = {
   path: '/repos/alpha/.claude/worktrees/feat-a',
   repoRoot: '/repos/alpha',
   branch: 'feat-a',
+  detached: false,
   sessionName: 'feat-a',
 };
 const BETA_AGENT = {
@@ -56,7 +58,17 @@ const BETA_AGENT = {
   path: '/repos/beta/.claude/worktrees/feat-b',
   repoRoot: '/repos/beta',
   branch: 'feat/b',
+  detached: false,
   sessionName: 'feat-b',
+};
+/** A worktree on a detached HEAD, named after its directory. */
+const BETA_DETACHED = {
+  tmuxName: 'kirby-bbbb-hotfix',
+  path: '/repos/beta/.claude/worktrees/hotfix',
+  repoRoot: '/repos/beta',
+  branch: 'hotfix',
+  detached: true,
+  sessionName: 'hotfix',
 };
 
 beforeEach(async () => {
@@ -81,6 +93,34 @@ describe('listForeignSessions', () => {
     state.live = [ALPHA_AGENT, BETA_AGENT];
     foreign.listForeignSessions();
     expect(state.recents).toEqual(['/repos/beta']);
+  });
+
+  // This is a read that is polled, and the list is the user's: a
+  // repository they removed from it must not come back on every tick.
+  // The list is written only when the set of foreign sessions changes.
+  it('writes the repo list when the foreign set changes, not on every poll', () => {
+    state.live = [BETA_AGENT];
+    foreign.listForeignSessions();
+    state.recents = []; // the user removed it
+    foreign.listForeignSessions();
+    foreign.listForeignSessions();
+    expect(state.recents).toEqual([]);
+    state.live = [
+      BETA_AGENT,
+      { ...BETA_AGENT, tmuxName: 'kirby-cccc-x', repoRoot: '/repos/gamma' },
+    ];
+    foreign.listForeignSessions();
+    expect(state.recents).toEqual(['/repos/beta', '/repos/gamma']);
+  });
+
+  // The desktop attaches by branch all the way down, and refuses a
+  // detached-HEAD worktree (`discovery.ts`); a tab for one would open
+  // its repository and then attach nothing.
+  it('leaves out an agent on a detached HEAD, which the desktop cannot attach', () => {
+    state.live = [BETA_AGENT, BETA_DETACHED];
+    expect(foreign.listForeignSessions().map((s) => s.sessionName)).toEqual([
+      'feat-b',
+    ]);
   });
 
   // The core answers with real paths; a repository opened through a

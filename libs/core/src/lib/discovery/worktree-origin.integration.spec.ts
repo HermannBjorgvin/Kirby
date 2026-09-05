@@ -44,6 +44,7 @@ describe('describeWorktreePath', () => {
     expect(describeWorktreePath(worktree)).toEqual({
       repoRoot: git(repo, ['rev-parse', '--show-toplevel']),
       branch: 'feat/x',
+      detached: false,
     });
   });
 
@@ -51,6 +52,7 @@ describe('describeWorktreePath', () => {
     expect(describeWorktreePath(repo)).toEqual({
       repoRoot: git(repo, ['rev-parse', '--show-toplevel']),
       branch: 'main',
+      detached: false,
     });
   });
 
@@ -66,6 +68,7 @@ describe('describeWorktreePath', () => {
     ).toEqual({
       repoRoot: realpathSync(repo),
       branch: 'feat/x',
+      detached: false,
     });
   });
 

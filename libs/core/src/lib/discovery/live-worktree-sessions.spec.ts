@@ -40,10 +40,17 @@ const ORIGINS: Record<string, WorktreeOrigin> = {
   '/repos/alpha/.claude/worktrees/feat-a': {
     repoRoot: '/repos/alpha',
     branch: 'feat/a',
+    detached: false,
   },
   '/repos/beta/.claude/worktrees/feat-b': {
     repoRoot: '/repos/beta',
     branch: 'feat-b',
+    detached: false,
+  },
+  '/repos/beta/.claude/worktrees/hotfix': {
+    repoRoot: '/repos/beta',
+    branch: 'hotfix',
+    detached: true,
   },
 };
 /** Which directories exist: every known worktree, unless a test says
@@ -83,6 +90,7 @@ describe('listLiveWorktreeSessions', () => {
         path: ALPHA.path,
         repoRoot: '/repos/alpha',
         branch: 'feat/a',
+        detached: false,
         sessionName: 'feat-a',
       },
       {
@@ -90,8 +98,23 @@ describe('listLiveWorktreeSessions', () => {
         path: BETA.path,
         repoRoot: '/repos/beta',
         branch: 'feat-b',
+        detached: false,
         sessionName: 'feat-b',
       },
+    ]);
+  });
+
+  // A detached-HEAD worktree is named after its directory, and the
+  // listing says so: which shells can attach to one is their rule.
+  it('reports a detached HEAD as such, under the directory name', () => {
+    state.sessions = [
+      {
+        name: 'kirby-key(/repos/beta)-hotfix',
+        path: '/repos/beta/.claude/worktrees/hotfix',
+      },
+    ];
+    expect(list()).toEqual([
+      expect.objectContaining({ branch: 'hotfix', detached: true }),
     ]);
   });
 

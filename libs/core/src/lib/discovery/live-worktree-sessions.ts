@@ -34,6 +34,9 @@ export interface LiveWorktreeSession {
   /** The main checkout the worktree belongs to — real path. */
   repoRoot: string;
   branch: string;
+  /** `branch` is the directory's name because no branch is checked
+   *  out — see `WorktreeOrigin.detached`. */
+  detached: boolean;
   /** The registry name the session runs under in its repository
    *  (`branchToSessionName`), the key its tab's auto-open history uses. */
   sessionName: string;
@@ -137,6 +140,7 @@ export function listLiveWorktreeSessions(
       path,
       repoRoot: origin.repoRoot,
       branch: origin.branch,
+      detached: origin.detached,
       sessionName: branchToSessionName(origin.branch),
     });
   }
