@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useSessionActivity } from '../data/queries.js';
-import { useKillSession, useKillTerminal } from '../data/mutations.js';
+import { useKillSession } from '../data/mutations.js';
+import { useKillTerminal } from '../data/mutations-terminals.js';
 import { CloseConfirmDialog, type PendingClose } from './CloseConfirmDialog.js';
 import { useRepo } from '../repo-context.js';
 import {

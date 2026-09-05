@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { TerminalKind, TerminalSummary } from '../../../host/contract.js';
 import { useTerminals } from '../data/queries.js';
-import { useLaunchTerminal } from '../data/mutations.js';
+import { useLaunchTerminal } from '../data/mutations-terminals.js';
 import { useTabs, type TerminalEntry } from '../tabs/tabs.js';
 import { estimateTerminalGrid, paneTerminalGrid } from '../terminal-grid.js';
 import { errorMessage } from '../utils.js';

@@ -27,8 +27,6 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
 import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
-import { useQueryClient } from '@tanstack/react-query';
-import { keys } from '../lib/data/query-keys.js';
 import { useForeignSessions, useSidebarModel } from '../lib/data/queries.js';
 import {
   useRefreshRemote,
@@ -46,6 +44,7 @@ import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
 import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
+import { useHostEvents } from './use-host-events.js';
 
 const SIDEBAR_KEY = 'kirby.sidebar.hidden';
 
@@ -175,80 +174,7 @@ function WorkspaceInner({
     if (sidebarSettled) markOnce(BOOT_MARKS.sidebar);
   }, [sidebarSettled]);
 
-  // The host's remote sync loop toasts its events (auto-deleted merged
-  // branch, blocked auto-delete) and the sidebar refetches to match.
-  const qc = useQueryClient();
-  useEffect(() => {
-    const off = window.kirby.onSyncNotice(({ message, kind }) => {
-      if (kind === 'success') toast.success(message);
-      else toast.warning(message);
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // The host serves the sidebar from local git without waiting for the
-  // provider, and says so when the pull requests land. Refetching on
-  // that event is what keeps "fast" from meaning "stale for four
-  // seconds": the rows appear as soon as the host has them.
-  useEffect(() => {
-    const off = window.kirby.onRemoteUpdated(() => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sync(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // A terminal tab closes itself when its process ends. The host has
-  // already dropped the terminal from its listing when it says so, and
-  // the tab goes on the event itself — by name, so a terminal that died
-  // before any listing named it closes too — rather than on the next
-  // poll; the listing is refetched behind it to prune the auto-open
-  // stamp. A worktree agent's exit rides the same event and names no
-  // terminal tab, so it closes nothing.
-  const terminalEnded = tabs.terminalEnded;
-  useEffect(() => {
-    const off = window.kirby.onSessionExit(({ name }) => {
-      terminalEnded(name);
-      void qc.invalidateQueries({ queryKey: keys.terminals });
-    });
-    return off;
-  }, [qc, terminalEnded]);
-
-  // Worktrees and agent sessions can also appear without this process
-  // being involved — a second Kirby, a script, an operator with tmux.
-  // The host notices and says so; the sidebar is a query cache, so it
-  // has to be told to look again.
-  useEffect(() => {
-    const off = window.kirby.onDiscoveryChanged(() => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
-      // Discovery also brings back terminal tabs, and what it found
-      // may be another repository's agent too.
-      void qc.invalidateQueries({ queryKey: keys.terminals });
-      void qc.invalidateQueries({ queryKey: keys.foreignSessions });
-      // A worktree added from outside usually brought a branch with it.
-      void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // A babysat pull request's status rides on its sidebar item, so the
-  // poll shows it. The host pushes only what a poll would show too
-  // late: an agent it started (a row and a session), or a watch that
-  // ended with its pull request.
-  useEffect(() => {
-    const off = window.kirby.onBabysitChanged((event) => {
-      if (event.ended) {
-        toast.info(
-          `Stopped babysitting #${event.ended.prId}: the pull request is no longer open`
-        );
-      }
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
+  useHostEvents(repo.cwd, tabs.terminalEnded);
 
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;

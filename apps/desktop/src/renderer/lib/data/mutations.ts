@@ -19,7 +19,6 @@ import type {
   ReviewVerdict,
   SessionLaunchRequest,
   SidebarItem,
-  TerminalLaunchRequest,
 } from '../../../host/contract.js';
 
 /**
@@ -258,52 +257,6 @@ export function useKillSession(cwd: string) {
     onSuccess: () => {
       void inv.sidebar();
       void inv.sessions();
-    },
-  });
-}
-
-// A babysat pull request's status rides on its sidebar item, so the
-// row's badge appears — and goes — with the sidebar's refetch.
-export function useStartBabysit(cwd: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (prId: number) => window.kirby.startBabysit(prId),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
-    },
-  });
-}
-
-export function useStopBabysit(cwd: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (prId: number) => window.kirby.stopBabysit(prId),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
-    },
-  });
-}
-
-export function useLaunchTerminal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (req: TerminalLaunchRequest) =>
-      window.kirby.launchTerminal(req),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.terminals });
-      // A terminal at another repository's root put that repo on the
-      // recents list.
-      void qc.invalidateQueries({ queryKey: keys.recents });
-    },
-  });
-}
-
-export function useKillTerminal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => window.kirby.killTerminal(name),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: keys.terminals });
     },
   });
 }
