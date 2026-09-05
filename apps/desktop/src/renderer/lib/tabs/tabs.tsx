@@ -9,20 +9,30 @@ import {
 import {
   EMPTY_TABS,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
 import { useRepo } from '../repo-context.js';
 
 export type {
+  ForeignSessionEntry,
   ItemEntry,
   ItemTab,
   Tab,
   TabsAction,
   TabsState,
+  TerminalEntry,
+  TerminalTab,
 } from './tabs-model.js';
 export { activeTabRepo } from './tabs-model.js';
-export { foreignRepoOf, isForeignTab, itemTabId } from './tab-identity.js';
+export {
+  foreignRepoOf,
+  isForeignTab,
+  itemTabId,
+  terminalTabId,
+} from './tab-identity.js';
 
 /**
  * The tab strip's api.
@@ -52,13 +62,35 @@ interface TabsApi extends TabsState {
   /** Drag-reorder: place `id` before/after `targetId`. */
   moveTab: (id: string, targetId: string, side: 'before' | 'after') => void;
   /**
-   * Reconcile the strip with the current sidebar items, in one step:
-   * follow re-keyed items, open a tab for each newly running agent,
-   * and pin any preview tab that now has a live agent behind it.
+   * Reconcile the strip with the current sidebar items *and* the host's
+   * terminal listing, in one step: follow re-keyed items, open a tab
+   * for each newly running agent, pin any preview tab that now has a
+   * live agent behind it, and bring the terminal strip in line with
+   * what the host lists — closing the tabs of terminals it no longer
+   * has. One dispatch, so both reconciliations land in a single render
+   * rather than racing from two effects. No `terminals` is no listing
+   * yet, which leaves every terminal tab alone. `foreign` is the
+   * host's listing of agents alive in other repositories, each given
+   * a tab in its own group once.
    */
-  syncItems: (repo: string, entries: ItemEntry[]) => void;
+  syncItems: (
+    repo: string,
+    entries: ItemEntry[],
+    terminals: TerminalEntry[] | undefined,
+    foreign: ForeignSessionEntry[] | undefined
+  ) => void;
   /** Tell the strip a repository is now the one in view. */
   repoOpened: (repo: string) => void;
+  /** Open (or activate) the tab for a terminal the host just started. */
+  openTerminal: (terminal: TerminalEntry) => void;
+  /** The host says the terminal's process ended: close its tab, listed
+   *  or not. `repo` is the one in view, for the close-focus rules. */
+  terminalEnded: (name: string, repo?: string) => void;
+  /** A close's kill failed: forget these auto-open keys (from
+   *  `autoOpenKey`/`terminalTabId`) so the session or terminal, still
+   *  running, is offered a tab again on the next sync rather than
+   *  staying invisible. */
+  forgetAutoOpened: (keys: string[]) => void;
 }
 
 const TabsContext = createContext<TabsApi | null>(null);
@@ -113,12 +145,29 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     []
   );
   const syncItems = useCallback(
-    (repo: string, entries: ItemEntry[]) =>
-      dispatch({ type: 'sync-items', repo, entries }),
+    (
+      repo: string,
+      entries: ItemEntry[],
+      terminals: TerminalEntry[] | undefined,
+      foreign: ForeignSessionEntry[] | undefined
+    ) => dispatch({ type: 'sync-items', repo, entries, terminals, foreign }),
     []
   );
   const repoOpened = useCallback(
     (repo: string) => dispatch({ type: 'repo-opened', repo }),
+    []
+  );
+  const openTerminal = useCallback(
+    (terminal: TerminalEntry) => dispatch({ type: 'open-terminal', terminal }),
+    []
+  );
+  const terminalEnded = useCallback(
+    (name: string, repo?: string) =>
+      dispatch({ type: 'terminal-ended', name, repo }),
+    []
+  );
+  const forgetAutoOpened = useCallback(
+    (keys: string[]) => dispatch({ type: 'forget-auto-opened', keys }),
     []
   );
 
@@ -137,6 +186,9 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       moveTab,
       syncItems,
       repoOpened,
+      openTerminal,
+      terminalEnded,
+      forgetAutoOpened,
     }),
     [
       state,
@@ -152,6 +204,9 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       moveTab,
       syncItems,
       repoOpened,
+      openTerminal,
+      terminalEnded,
+      forgetAutoOpened,
     ]
   );
 
@@ -175,14 +230,25 @@ export function useRepoTabs(): RepoTabsApi {
       ...tabs,
       openItem: (itemKey: string, opts?: { preview?: boolean }) =>
         tabs.openItem(cwd, itemKey, opts),
-      syncItems: (entries: ItemEntry[]) => tabs.syncItems(cwd, entries),
+      syncItems: (
+        entries: ItemEntry[],
+        terminals: TerminalEntry[] | undefined,
+        foreign: ForeignSessionEntry[] | undefined
+      ) => tabs.syncItems(cwd, entries, terminals, foreign),
       close: (id: string) => tabs.close(id, cwd),
+      terminalEnded: (name: string) => tabs.terminalEnded(name, cwd),
     }),
     [tabs, cwd]
   );
 }
 
-export interface RepoTabsApi extends Omit<TabsApi, 'openItem' | 'syncItems'> {
+export interface RepoTabsApi
+  extends Omit<TabsApi, 'openItem' | 'syncItems' | 'terminalEnded'> {
   openItem: (itemKey: string, opts?: { preview?: boolean }) => void;
-  syncItems: (entries: ItemEntry[]) => void;
+  syncItems: (
+    entries: ItemEntry[],
+    terminals: TerminalEntry[] | undefined,
+    foreign: ForeignSessionEntry[] | undefined
+  ) => void;
+  terminalEnded: (name: string) => void;
 }

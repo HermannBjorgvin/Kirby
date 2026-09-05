@@ -1,16 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
-import type { DiscoveredWorktree } from './discovery-model.js';
+import type {
+  DiscoveredTerminal,
+  DiscoveredWorktree,
+} from './discovery-model.js';
 
 const {
   listWorktreesMock,
   listPersistedMock,
+  listTerminalsMock,
   isSessionAliveMock,
   watchMock,
   basePathMock,
 } = vi.hoisted(() => ({
   listWorktreesMock: vi.fn<() => Promise<WorktreeInfo[]>>(),
   listPersistedMock: vi.fn<() => Set<string>>(),
+  listTerminalsMock: vi.fn<() => DiscoveredTerminal[]>(),
   isSessionAliveMock: vi.fn<(name: string) => boolean>(),
   watchMock: vi.fn(),
   basePathMock: vi.fn<() => string>(),
@@ -37,7 +42,10 @@ vi.mock('../pty-registry.js', () => ({
   isSessionAlive: (name: string) => isSessionAliveMock(name),
 }));
 vi.mock('../session-backend.js', () => ({
-  listPersistedTmuxSessions: () => listPersistedMock(),
+  observeTmuxSessions: () => ({
+    persisted: listPersistedMock(),
+    terminals: listTerminalsMock(),
+  }),
   resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
     config.terminalBackend ?? 'tmux',
 }));
@@ -81,6 +89,7 @@ beforeEach(() => {
   alive = new Set();
   listWorktreesMock.mockReset().mockResolvedValue([]);
   listPersistedMock.mockReset().mockReturnValue(new Set());
+  listTerminalsMock.mockReset().mockReturnValue([]);
   isSessionAliveMock.mockReset().mockImplementation((name) => alive.has(name));
   basePathMock.mockReset().mockReturnValue('/repo/.claude/worktrees');
   watchMock.mockReset().mockReturnValue({ close: vi.fn(), on: vi.fn() });
@@ -92,23 +101,37 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function start(over: Partial<Parameters<typeof startSessionDiscovery>[0]> = {}) {
+function start(
+  over: Partial<Parameters<typeof startSessionDiscovery>[0]> = {}
+) {
   const adopt = vi.fn<(wt: DiscoveredWorktree) => void | Promise<void>>(
     (wt) => {
       alive.add(wt.name);
+    }
+  );
+  const adoptTerminal = vi.fn<(t: DiscoveredTerminal) => void | Promise<void>>(
+    (t) => {
+      alive.add(t.name);
     }
   );
   const onChanged = vi.fn();
   const discovery = startSessionDiscovery({
     getConfig,
     adopt,
+    adoptTerminal,
     onChanged,
     intervalMs: 1000,
     ...over,
   });
   running = discovery;
-  return { discovery, adopt, onChanged };
+  return { discovery, adopt, adoptTerminal, onChanged };
 }
+
+const shellTerm: DiscoveredTerminal = {
+  name: 'kirby-term-shell-1a2b3c',
+  kind: 'shell',
+  path: '/home/dev/notes',
+};
 
 describe('startSessionDiscovery', () => {
   // A detached-HEAD worktree has no branch and is named after its
@@ -326,6 +349,73 @@ describe('startSessionDiscovery', () => {
         },
       });
       await expect(discovery.scanNow()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('terminal sessions', () => {
+    // The restore path: a terminal tab from the previous run is a tmux
+    // session with nobody attached, and the first scan is what brings
+    // it back — through the shell's own launch path, with the directory
+    // tmux remembered for it.
+    it('attaches on the first scan to a terminal that outlived the last run', async () => {
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      const { discovery, adoptTerminal, onChanged } = start();
+      await discovery.scanNow();
+      expect(adoptTerminal).toHaveBeenCalledTimes(1);
+      expect(adoptTerminal.mock.calls[0]![0]).toEqual(shellTerm);
+      expect(onChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('attaches to a terminal that appears mid-run, once', async () => {
+      const { discovery, adoptTerminal } = start();
+      await discovery.scanNow();
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      await discovery.scanNow();
+      await discovery.scanNow();
+      expect(adoptTerminal).toHaveBeenCalledTimes(1);
+    });
+
+    // A terminal this process started is in the registry already;
+    // attaching again would dispose the PTY behind the pane on screen.
+    it('never attaches to a terminal that is already alive here', async () => {
+      alive.add(shellTerm.name);
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      const { discovery, adoptTerminal, onChanged } = start();
+      await discovery.scanNow();
+      expect(adoptTerminal).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('announces a terminal killed from outside', async () => {
+      alive.add(shellTerm.name);
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      const { discovery, onChanged } = start();
+      await discovery.scanNow();
+      listTerminalsMock.mockReturnValue([]);
+      await discovery.scanNow();
+      expect(onChanged).toHaveBeenCalledTimes(1);
+      expect(onChanged.mock.calls[0]![0]).toMatchObject({
+        endedTerminals: [shellTerm.name],
+      });
+    });
+
+    it('retires a terminal that keeps failing to attach', async () => {
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      const adoptTerminal = vi.fn().mockRejectedValue(new Error('gone'));
+      const { discovery, onChanged } = start({ adoptTerminal });
+      for (let i = 0; i < 6; i++) await discovery.scanNow();
+      expect(adoptTerminal).toHaveBeenCalledTimes(3);
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    // A shell with no terminal tabs (the TUI) passes no `adoptTerminal`,
+    // and must not be told every scan that there is something to do.
+    it('ignores terminals entirely for a shell that cannot adopt them', async () => {
+      listTerminalsMock.mockReturnValue([shellTerm]);
+      const { discovery, onChanged } = start({ adoptTerminal: undefined });
+      await discovery.scanNow();
+      await discovery.scanNow();
+      expect(onChanged).not.toHaveBeenCalled();
     });
   });
 

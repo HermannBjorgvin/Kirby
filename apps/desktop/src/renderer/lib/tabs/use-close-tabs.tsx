@@ -1,17 +1,10 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { SidebarItem } from '../../../host/contract.js';
-import { Button } from '../../components/ui/button.js';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../../components/ui/dialog.js';
 import { useSessionActivity } from '../data/queries.js';
 import { useKillSession } from '../data/mutations.js';
+import { useKillTerminal } from '../data/mutations-terminals.js';
+import { CloseConfirmDialog, type PendingClose } from './CloseConfirmDialog.js';
 import { useRepo } from '../repo-context.js';
 import {
   itemBranch,
@@ -19,14 +12,8 @@ import {
   itemSessionName,
 } from '../sidebar/sidebar-model.js';
 import { useTabs, type Tab } from './tabs.js';
+import { autoOpenKey, terminalTabId } from './tab-identity.js';
 import { errorMessage } from '../utils.js';
-
-interface PendingClose {
-  /** Branches whose agents are actively working right now. */
-  activeBranches: string[];
-  /** Kill + close, once the user confirms. */
-  run: () => void;
-}
 
 /**
  * Tab closing that also shuts down the agent: an item tab is the
@@ -35,6 +22,10 @@ interface PendingClose {
  * to reattach to. When the agent is *actively working* (debounced
  * activity, same signal as the tab spinner), the close asks for
  * confirmation first — render `confirmDialog` next to any consumer.
+ *
+ * A terminal tab always asks, and closing it kills its session on both
+ * backends: the tab is the only handle on that shell, and unlike a
+ * worktree agent there is no row to reattach from.
  */
 export function useCloseTabs(items: SidebarItem[]): {
   close: (id: string) => void;
@@ -46,8 +37,10 @@ export function useCloseTabs(items: SidebarItem[]): {
   const { repo } = useRepo();
   const tabs = useTabs();
   const kill = useKillSession(repo.cwd);
+  const killTerminal = useKillTerminal();
   const activity = useSessionActivity(repo.cwd);
   const killMutate = kill.mutate;
+  const killTerminalMutate = killTerminal.mutate;
   const [pending, setPending] = useState<PendingClose | null>(null);
 
   /** Session names (and their branches) tied to the closing tabs. */
@@ -86,13 +79,40 @@ export function useCloseTabs(items: SidebarItem[]): {
     [items, repo.cwd]
   );
 
+  const forgetAutoOpened = tabs.forgetAutoOpened;
+
+  // The tab already closed synchronously — the strip does not wait on
+  // the kill's round trip to feel responsive — so a kill that fails
+  // leaves its session running behind no tab at all. Forgetting the
+  // auto-open key is what stops that being permanent: the session is
+  // still there on the next sidebar poll or terminal listing, and
+  // without this it reads as already seen and never gets a tab again.
   const killNames = useCallback(
     (names: string[]) => {
       for (const name of names) {
-        killMutate(name, { onError: (e) => toast.error(errorMessage(e)) });
+        killMutate(name, {
+          onError: (e) => {
+            toast.error(errorMessage(e));
+            forgetAutoOpened([autoOpenKey(repo.cwd, name)]);
+          },
+        });
       }
     },
-    [killMutate]
+    [killMutate, forgetAutoOpened, repo.cwd]
+  );
+
+  const killTerminals = useCallback(
+    (names: string[]) => {
+      for (const name of names) {
+        killTerminalMutate(name, {
+          onError: (e) => {
+            toast.error(errorMessage(e));
+            forgetAutoOpened([terminalTabId(name)]);
+          },
+        });
+      }
+    },
+    [killTerminalMutate, forgetAutoOpened]
   );
 
   const requestClose = useCallback(
@@ -102,20 +122,23 @@ export function useCloseTabs(items: SidebarItem[]): {
       const activeBranches = sessions
         .filter((s) => activity.data?.[s.name]?.active)
         .map((s) => s.branch);
-      if (activeBranches.length > 0) {
+      const terminals = closing.filter((t) => t.kind === 'terminal');
+      const finish = () => {
+        killNames(names);
+        killTerminals(terminals.map((t) => t.name));
+        run();
+      };
+      if (activeBranches.length > 0 || terminals.length > 0) {
         setPending({
           activeBranches,
-          run: () => {
-            killNames(names);
-            run();
-          },
+          terminals: terminals.map((t) => t.displayPath),
+          run: finish,
         });
         return;
       }
-      killNames(names);
-      run();
+      finish();
     },
-    [collectSessions, killNames, activity.data]
+    [collectSessions, killNames, killTerminals, activity.data]
   );
 
   const close = useCallback(
@@ -146,40 +169,7 @@ export function useCloseTabs(items: SidebarItem[]): {
   // native-menu subscription) must not resubscribe on every render.
   return useMemo(() => {
     const confirmDialog: ReactNode = pending ? (
-      <Dialog open onOpenChange={(o) => !o && setPending(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Agent{pending.activeBranches.length === 1 ? ' is' : 's are'} still
-              working
-            </DialogTitle>
-            <DialogDescription>
-              {pending.activeBranches.map((b, i) => (
-                <span key={b}>
-                  {i > 0 && ', '}
-                  <span className="font-mono text-foreground">{b}</span>
-                </span>
-              ))}{' '}
-              {pending.activeBranches.length === 1 ? 'is' : 'are'} actively
-              producing output. Closing the tab stops the agent.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPending(null)}>
-              Keep working
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setPending(null);
-                pending.run();
-              }}
-            >
-              Stop agent &amp; close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CloseConfirmDialog pending={pending} onCancel={() => setPending(null)} />
     ) : null;
     return { close, closeOthers, closeAll, closeActive, confirmDialog };
   }, [close, closeOthers, closeAll, closeActive, pending]);

@@ -4,9 +4,12 @@ import {
   EMPTY_TABS,
   activeTabRepo,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
+import { terminalTabId } from './tab-identity.js';
 
 /** The repository every case below is about unless it says otherwise. */
 const REPO = '/repos/alpha';
@@ -22,8 +25,14 @@ const open = (
   repo = REPO
 ) => reduce(state, { type: 'open-item', repo, itemKey, preview });
 
-const sync = (state: TabsState, entries: ItemEntry[], repo = REPO) =>
-  reduce(state, { type: 'sync-items', repo, entries });
+/** A sidebar sync with no terminal listing to reconcile against — the
+ *  state before the host has answered — unless a case hands one over. */
+const sync = (
+  state: TabsState,
+  entries: ItemEntry[],
+  repo = REPO,
+  terminals: TerminalEntry[] | undefined = undefined
+) => reduce(state, { type: 'sync-items', repo, entries, terminals });
 
 const empty: TabsState = EMPTY_TABS;
 
@@ -224,6 +233,44 @@ describe('sync-items opens a tab per running agent', () => {
   });
 });
 
+// use-close-tabs closes a tab synchronously and kills its session after
+// — the strip does not wait on the round trip — so a kill that fails
+// leaves the session running behind no tab. It recovers by forgetting
+// the auto-open key on error, which is exactly this reducer step.
+describe('forget-auto-opened', () => {
+  it('reopens a running agent on the next sync once its key is forgotten', () => {
+    const live: ItemEntry = {
+      itemKey: 'branch:feat-x',
+      branch: 'feat-x',
+      sessionName: 'kirby-feat-x',
+      running: true,
+    };
+    let s = sync(empty, [live]);
+    s = reduce(s, { type: 'close', id: id('branch:feat-x') });
+    expect(s.tabs).toEqual([]);
+    // The kill failed — the agent is still running — but without
+    // forgetting the key the poll that reports it keeps reading as
+    // already seen, forever.
+    s = sync(s, [live]);
+    expect(s.tabs).toEqual([]);
+
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [autoOpenKey(REPO, 'kirby-feat-x')],
+    });
+    s = sync(s, [live]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].id).toBe(id('branch:feat-x'));
+  });
+
+  it('is a no-op for a key nothing has auto-opened', () => {
+    const s = sync(empty, [{ itemKey: 'branch:x', branch: 'x' }]);
+    expect(reduce(s, { type: 'forget-auto-opened', keys: ['nothing'] })).toBe(
+      s
+    );
+  });
+});
+
 describe('sync-items pins previews with a live agent', () => {
   it('pins a preview tab once an agent is running on its branch', () => {
     let s = open(empty, 'branch:feat-x', true);
@@ -300,6 +347,7 @@ describe('open-item after re-key', () => {
       type: 'sync-items',
       repo: REPO,
       entries: [{ itemKey: 'pr:1', branch: 'a' }],
+      terminals: [],
     });
     state = reduce(state, {
       type: 'open-item',
@@ -689,5 +737,417 @@ describe('sync-items stamps the title', () => {
     expect(find(s, 'pr:42') ?? s.tabs[0]).not.toMatchObject({
       title: 'Not yours',
     });
+  });
+});
+
+/**
+ * Terminal tabs: a session bound to a directory. One in a repository
+ * root belongs to that repository's group; one anywhere else belongs to
+ * nobody, sits in the repo-less group, and is never foreign.
+ */
+describe('terminal tabs', () => {
+  const plain: TerminalEntry = {
+    name: 'kirby-term-shell-1a2b3c',
+    kind: 'shell',
+    cwd: '/home/dev/notes',
+    displayPath: '~/notes',
+    repo: null,
+  };
+  const inAlpha: TerminalEntry = {
+    name: 'kirby-term-agent-4d5e6f',
+    kind: 'agent',
+    cwd: REPO,
+    displayPath: REPO,
+    repo: REPO,
+  };
+  const openTerminal = (state: TabsState, terminal: TerminalEntry) =>
+    reduce(state, { type: 'open-terminal', terminal });
+  // Terminals ride along on the same `sync-items` dispatch Workspace
+  // makes; an empty `entries` list is a no-op for the item passes, so
+  // this exercises exactly the reconciliation a terminal-only poll
+  // produces.
+  const syncTerminals = (state: TabsState, terminals: TerminalEntry[]) =>
+    reduce(state, { type: 'sync-items', repo: REPO, entries: [], terminals });
+
+  it('opens a pinned tab and activates it', () => {
+    const s = openTerminal(empty, plain);
+    expect(s.tabs).toEqual([
+      expect.objectContaining({
+        kind: 'terminal',
+        name: plain.name,
+        repo: null,
+        preview: false,
+      }),
+    ]);
+    expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  it('activates the existing tab rather than opening a second one', () => {
+    let s = openTerminal(empty, plain);
+    s = open(s, 'branch:x');
+    s = openTerminal(s, plain);
+    expect(s.tabs).toHaveLength(2);
+    expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  // A repo-less terminal is at home everywhere; a repository terminal
+  // is foreign anywhere but its own repository — which is what makes
+  // activating it open that repository.
+  it('reports the repository a terminal belongs to, and none for a plain folder', () => {
+    expect(activeTabRepo(openTerminal(empty, plain))).toBeNull();
+    expect(activeTabRepo(openTerminal(empty, inAlpha))).toBe(REPO);
+  });
+
+  // The restore path: the host lists the terminals tmux gave back, and
+  // every one gets a tab — without moving focus, since a terminal from
+  // another repository would otherwise switch the workspace at startup.
+  it('opens a tab per listed terminal without stealing focus', () => {
+    let s = open(empty, 'branch:x');
+    s = syncTerminals(s, [plain, inAlpha]);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:x'),
+      terminalTabId(plain.name),
+      terminalTabId(inAlpha.name),
+    ]);
+    expect(s.activeId).toBe(id('branch:x'));
+  });
+
+  // Auto-opened once: a tab the user closed stays closed while the host
+  // keeps listing the terminal, exactly as for running agents.
+  it('does not reopen a terminal tab the user closed', () => {
+    let s = syncTerminals(empty, [plain]);
+    s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  it('returns the same state when the listing changed nothing', () => {
+    const s = syncTerminals(empty, [plain]);
+    expect(syncTerminals(s, [plain])).toBe(s);
+  });
+
+  // Mirrors the item case above: closing a terminal tab kills its
+  // session after the tab is already gone, so a failed kill needs its
+  // auto-open key forgotten or the still-running terminal never gets a
+  // tab back.
+  it('reopens a terminal once its auto-open key is forgotten after a failed kill', () => {
+    let s = syncTerminals(empty, [plain]);
+    s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toEqual([]);
+
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [terminalTabId(plain.name)],
+    });
+    s = syncTerminals(s, [plain]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].id).toBe(terminalTabId(plain.name));
+  });
+
+  // The sidebar poll re-keys and pins *item* tabs; a terminal has no
+  // item and no branch, and a poll about any repository must leave it
+  // exactly as it was.
+  it('is untouched by a sidebar sync of any repository', () => {
+    const before = openTerminal(openTerminal(empty, plain), inAlpha);
+    const after = sync(
+      before,
+      [{ itemKey: 'branch:x', branch: 'x', sessionName: 'x', running: true }],
+      OTHER
+    );
+    const terminals = (st: TabsState) =>
+      st.tabs.filter((t) => t.kind === 'terminal');
+    expect(terminals(after)).toHaveLength(2);
+    terminals(after).forEach((t, i) => expect(t).toBe(terminals(before)[i]));
+  });
+
+  it('brings a repository’s own terminal forward when that repo opens', () => {
+    let s = openTerminal(empty, inAlpha);
+    s = open(s, 'branch:y', false, OTHER); // now looking at beta
+    s = reduce(s, { type: 'repo-opened', repo: REPO });
+    expect(s.activeId).toBe(terminalTabId(inAlpha.name));
+  });
+
+  it('leaves a plain-folder terminal active across a repo switch', () => {
+    let s = open(empty, 'branch:x');
+    s = openTerminal(s, plain);
+    s = reduce(s, { type: 'repo-opened', repo: OTHER });
+    expect(s.activeId).toBe(terminalTabId(plain.name));
+  });
+
+  // Workspace dispatches one `sync-items` action carrying the sidebar
+  // items and the host's terminal listing together, rather than a
+  // second effect dispatching a terminal sync of its own. A single
+  // dispatch that reconciles both in one pure step is the whole point
+  // of folding them: this pins that a newly-running agent's tab and a
+  // newly-listed terminal's tab both land from one `reduce` call, and
+  // that the combined dispatch settles to the same state on repeat.
+  it('reconciles a newly running agent and a newly listed terminal in one dispatch', () => {
+    const running: ItemEntry = {
+      itemKey: 'branch:feat-x',
+      branch: 'feat-x',
+      sessionName: 'kirby-feat-x',
+      running: true,
+    };
+    const action = {
+      type: 'sync-items' as const,
+      repo: REPO,
+      entries: [running],
+      terminals: [plain],
+    };
+    const s = reduce(empty, action);
+    expect(s.tabs.map((t) => t.id)).toEqual([
+      id('branch:feat-x'),
+      terminalTabId(plain.name),
+    ]);
+    // Idempotent: the same combined dispatch settles rather than
+    // reopening either tab or moving focus. One more application lets
+    // `rekey`'s branch/title stamp catch up to the tab `autoOpenRunning`
+    // just opened, the same two-call settle every other stamping test
+    // here relies on.
+    const settled = reduce(s, action);
+    expect(reduce(settled, action)).toBe(settled);
+  });
+
+  // The process behind a terminal ended — the shell exited, the agent
+  // quit, tmux killed the session from outside — and the host no longer
+  // lists it. The tab closes by itself: there is nothing left behind it
+  // to show, and no session left to confirm ending.
+  describe('when the listing no longer has a terminal', () => {
+    it('closes its tab', () => {
+      let s = syncTerminals(empty, [plain, inAlpha]);
+      s = syncTerminals(s, [inAlpha]);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(inAlpha.name)]);
+    });
+
+    it('hands focus to the tab that slid into its place', () => {
+      let s = open(empty, 'branch:x');
+      s = syncTerminals(s, [plain]);
+      s = open(s, 'branch:y');
+      s = reduce(s, { type: 'activate', id: terminalTabId(plain.name) });
+      s = syncTerminals(s, []);
+      expect(s.activeId).toBe(id('branch:y'));
+    });
+
+    // The same rule a close follows: focus is what the workspace
+    // follows, so it must not land on another repository's tab
+    // because a shell over here exited.
+    it('never hands focus to another repository', () => {
+      let s = open(empty, 'branch:x');
+      s = open(s, 'branch:y', false, OTHER);
+      s = openTerminal(s, plain); // active, rightmost
+      s = syncTerminals(s, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('leaves item tabs exactly as they were', () => {
+      let s = open(empty, 'branch:x');
+      s = syncTerminals(s, [plain]);
+      const before = s.tabs[0];
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([before]);
+      expect(s.tabs[0]).toBe(before);
+    });
+
+    // The host answers the launch before its listing catches up: the
+    // tab opens on the launch's own answer, and a sync can land in
+    // between with a listing fetched before the terminal existed. That
+    // listing says nothing about a terminal it never knew — only one
+    // that has named the terminal, and then stops, has seen it end.
+    it('spares a tab the host has not listed yet', () => {
+      let s = openTerminal(empty, plain);
+      s = syncTerminals(s, []);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(plain.name)]);
+      expect(s.activeId).toBe(terminalTabId(plain.name));
+      s = syncTerminals(s, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([]);
+    });
+
+    // The stamp of a tab that is still open is not for pruning, listed
+    // or not: closing that tab later relies on it, or the listing that
+    // still names the terminal until its kill lands would reopen it.
+    it('keeps the stamp of an open tab the listing has not named', () => {
+      let s = openTerminal(empty, plain);
+      s = syncTerminals(s, []);
+      s = syncTerminals(s, [plain]);
+      s = reduce(s, { type: 'close', id: terminalTabId(plain.name) });
+      s = syncTerminals(s, [plain]);
+      expect(s.tabs).toEqual([]);
+    });
+
+    // A terminal the host lists again is a live one it re-adopted (the
+    // user detached from inside tmux and discovery found the session
+    // still running), so it gets its tab back rather than running
+    // invisibly behind a stale auto-open stamp.
+    it('gives the terminal a tab again if the host lists it again', () => {
+      let s = syncTerminals(empty, [plain]);
+      s = syncTerminals(s, []);
+      expect(s.tabs).toEqual([]);
+      s = syncTerminals(s, [plain]);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(plain.name)]);
+    });
+  });
+
+  // The host says a terminal's process ended, by name, the moment it
+  // happens — before any listing has caught up, and possibly before
+  // one ever named the terminal at all (a shell whose rc file exits, an
+  // agent binary missing under tmux). The tab goes on that word alone,
+  // with the same focus rules as a close, so a terminal that died in
+  // the gap between the launch answer and the first listing does not
+  // leave a tab whose close then asks to end a session that is gone.
+  describe('terminal-ended', () => {
+    const ended = (state: TabsState, name: string, repo = REPO) =>
+      reduce(state, { type: 'terminal-ended', name, repo });
+
+    it('closes the tab of a terminal no listing ever named', () => {
+      let s = open(empty, 'branch:x');
+      s = openTerminal(s, plain);
+      s = ended(s, plain.name);
+      expect(s.tabs.map((t) => t.id)).toEqual([id('branch:x')]);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('closes a listed one the same way', () => {
+      let s = syncTerminals(empty, [plain, inAlpha]);
+      s = ended(s, plain.name);
+      expect(s.tabs.map((t) => t.id)).toEqual([terminalTabId(inAlpha.name)]);
+    });
+
+    it('never hands focus to another repository', () => {
+      let s = open(empty, 'branch:x');
+      s = open(s, 'branch:y', false, OTHER);
+      s = openTerminal(s, plain); // active, rightmost
+      s = ended(s, plain.name);
+      expect(s.activeId).toBe(id('branch:x'));
+    });
+
+    it('leaves every other tab exactly as it was', () => {
+      let s = open(empty, 'branch:x');
+      s = openTerminal(s, inAlpha);
+      s = openTerminal(s, plain);
+      const before = s.tabs.slice(0, 2);
+      s = ended(s, plain.name);
+      expect(s.tabs).toHaveLength(2);
+      s.tabs.forEach((t, i) => expect(t).toBe(before[i]));
+    });
+
+    // A worktree agent's exit rides the same event; its name is no
+    // terminal tab's, and nothing here may react to it.
+    it('is a no-op for a name that has no terminal tab', () => {
+      const s = open(openTerminal(empty, plain), 'branch:x');
+      expect(ended(s, 'feat-x')).toBe(s);
+      expect(ended(s, 'kirby-term-shell-ffffff')).toBe(s);
+    });
+  });
+
+  // No listing is not an empty listing: before the host has answered,
+  // or while a query has no data, there is nothing to reconcile
+  // against, and closing every terminal tab on that tick would be
+  // closing them on nothing.
+  it('leaves every terminal tab alone when there is no listing', () => {
+    const s = openTerminal(openTerminal(empty, plain), inAlpha);
+    expect(sync(s, [], REPO, undefined)).toBe(s);
+    expect(sync(s, [], OTHER, undefined)).toBe(s);
+  });
+});
+
+// Quit with agents open in several repositories, relaunch, and every
+// one is still running in tmux — the host attaches only the open
+// repository's, but the strip spans repositories, so the others get
+// their tabs back in their own groups from the host's wider listing.
+describe('agents alive in other repositories', () => {
+  const inBeta: ForeignSessionEntry = {
+    repo: OTHER,
+    branch: 'feat',
+    sessionName: 'feat',
+  };
+  const foreign = (
+    state: TabsState,
+    entries: ForeignSessionEntry[] | undefined,
+    repo = REPO
+  ) =>
+    reduce(state, { type: 'sync-items', repo, entries: [], foreign: entries });
+
+  it('opens a pinned tab in that repository’s group without moving focus', () => {
+    let s = open(empty, 'branch:x');
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toEqual([
+      expect.objectContaining({ id: id('branch:x') }),
+      expect.objectContaining({
+        kind: 'item',
+        repo: OTHER,
+        itemKey: 'branch:feat',
+        branch: 'feat',
+        title: 'feat',
+        preview: false,
+      }),
+    ]);
+    expect(s.activeId).toBe(id('branch:x'));
+    expect(activeTabRepo(s)).toBe(REPO);
+  });
+
+  // The repository in view describes its own agents through the
+  // sidebar; a listing that names one of them is not this pass's word.
+  it('never opens a tab for the repository in view', () => {
+    const s = foreign(empty, [{ ...inBeta, repo: REPO }]);
+    expect(s).toBe(empty);
+  });
+
+  it('does not reopen a tab the user closed while the agent runs on', () => {
+    let s = foreign(empty, [inBeta]);
+    s = reduce(s, { type: 'close', id: id('branch:feat', OTHER) });
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toEqual([]);
+  });
+
+  // Once the user switches there, that repository's own sync sees the
+  // agent as newly running — and must find its tab already open rather
+  // than opening (and focusing) a second one.
+  it('is not opened again, or focused, by that repository’s own sync', () => {
+    let s = open(empty, 'branch:x');
+    s = foreign(s, [inBeta]);
+    s = sync(
+      s,
+      [
+        {
+          itemKey: 'branch:feat',
+          branch: 'feat',
+          sessionName: 'feat',
+          running: true,
+        },
+      ],
+      OTHER
+    );
+    expect(
+      s.tabs.filter((t) => t.kind === 'item' && t.repo === OTHER)
+    ).toHaveLength(1);
+    expect(s.activeId).toBe(id('branch:x'));
+  });
+
+  // A tab that repository re-keyed onto its pull request is the same
+  // agent's tab; the listing, which only knows the branch, must
+  // recognise it even once its auto-open history is forgotten.
+  it('recognises a tab that was re-keyed onto a pull request', () => {
+    let s = foreign(empty, [inBeta]);
+    s = sync(s, [{ itemKey: 'pr:7', branch: 'feat' }], OTHER);
+    s = reduce(s, {
+      type: 'forget-auto-opened',
+      keys: [autoOpenKey(OTHER, 'feat')],
+    });
+    s = foreign(s, [inBeta]);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].kind === 'item' && s.tabs[0].itemKey).toBe('pr:7');
+  });
+
+  it('returns the same state when the listing changed nothing', () => {
+    const s = foreign(empty, [inBeta]);
+    expect(foreign(s, [inBeta])).toBe(s);
+  });
+
+  it('leaves every tab alone with no listing', () => {
+    const s = open(empty, 'branch:x');
+    expect(foreign(s, undefined)).toBe(s);
   });
 });

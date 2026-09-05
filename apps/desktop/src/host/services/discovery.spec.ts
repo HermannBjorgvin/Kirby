@@ -33,6 +33,11 @@ const state = vi.hoisted(() => ({
 vi.mock('./repo.js', () => ({
   requireRepo: () => state.cwd,
   activeRepoIs: (cwd: string) => cwd === state.cwd,
+  isGitRepo: () => false,
+}));
+
+vi.mock('./recent-repos.js', () => ({
+  ensureRecent: () => undefined,
 }));
 
 vi.mock('@kirby/vcs-core', () => ({
@@ -61,6 +66,10 @@ vi.mock('@kirby/core', () => ({
     };
   },
   launchSession: (spec: { name: string; cwd: string }) => {
+    state.alive.add(spec.name);
+    state.spawns.push({ name: spec.name, cwd: spec.cwd });
+  },
+  launchTerminalSession: (spec: { name: string; cwd: string }) => {
     state.alive.add(spec.name);
     state.spawns.push({ name: spec.name, cwd: spec.cwd });
   },
@@ -185,6 +194,26 @@ describe('startDiscoveryForRepo', () => {
     );
   });
 
+  // The other thing the first scan brings back: terminal tabs. They
+  // attach through the terminals service, under the name tmux holds
+  // them by and in the directory tmux remembers, so the tab comes back
+  // whatever repository happens to be open.
+  it('attaches a surviving terminal through the terminals service', async () => {
+    discovery.startDiscoveryForRepo('/repo-a');
+    await opts().adoptTerminal?.({
+      name: 'kirby-term-shell-1a2b3c',
+      kind: 'shell',
+      path: '/home/dev/notes',
+    });
+    expect(state.spawns).toEqual([
+      { name: 'kirby-term-shell-1a2b3c', cwd: '/home/dev/notes' },
+    ]);
+    const terminals = await import('./terminals.js');
+    expect(terminals.listTerminals().map((t) => t.name)).toEqual([
+      'kirby-term-shell-1a2b3c',
+    ]);
+  });
+
   it('reads config from the repo it was started for', () => {
     state.configByCwd['/repo-a'] = { terminalBackend: 'tmux' };
     discovery.startDiscoveryForRepo('/repo-a');
@@ -215,6 +244,8 @@ describe('the change notification', () => {
     disappeared: [],
     adoptable: [],
     ended: [],
+    adoptableTerminals: [],
+    endedTerminals: [],
     changed: true,
   };
 

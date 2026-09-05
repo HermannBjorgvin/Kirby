@@ -267,7 +267,7 @@ describe('buildFileEntries', () => {
     const of = (lines: DiffLine[]) =>
       buildFileEntries([['f.ts', lines]], new Map(), new Map())[0].revision;
     const text = (type: DiffLine['type'], content: string): DiffLine =>
-      ({ type, content, oldLine: 1, newLine: 1 }) as DiffLine;
+      ({ type, content, oldLine: 1, newLine: 1 } as DiffLine);
 
     it('is stable for the same changed lines', () => {
       expect(of([text('add', 'one'), text('remove', 'two')])).toBe(

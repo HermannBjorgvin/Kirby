@@ -87,6 +87,12 @@ vi.mock('./services/sessions.js', () =>
     'killSession',
   ])
 );
+vi.mock('./services/terminals.js', () =>
+  recorder('terminals', ['launchTerminal', 'listTerminals', 'killTerminal'])
+);
+vi.mock('./services/foreign-sessions.js', () =>
+  recorder('foreignSessions', ['listForeignSessions'])
+);
 vi.mock('./services/comment-images.js', () =>
   recorder('commentImages', ['fetchCommentImage'])
 );
@@ -187,12 +193,21 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'sessions.checkoutPlan',
   ],
   ['listSessions', [], 'sessions.listSessions'],
+  ['listForeignSessions', [], 'foreignSessions.listForeignSessions'],
   ['getSessionActivity', [], 'sessions.getSessionActivity'],
   ['markSessionSeen', ['b'], 'sessions.markSessionSeen'],
   ['getSessionBuffer', ['b'], 'sessions.getSessionBuffer'],
   ['writeSession', ['b', 'ls\n'], 'sessions.writeSession'],
   ['resizeSession', ['b', 120, 40], 'sessions.resizeSession'],
   ['killSession', ['b'], 'sessions.killSession'],
+
+  [
+    'launchTerminal',
+    [{ kind: 'shell', cwd: '/x' }],
+    'terminals.launchTerminal',
+  ],
+  ['listTerminals', [], 'terminals.listTerminals'],
+  ['killTerminal', ['kirby-term-shell-1'], 'terminals.killTerminal'],
 
   ['getDesktopPrefs', [], 'prefs.loadDesktopPrefs'],
 
@@ -216,6 +231,7 @@ describe('host API wiring', () => {
     const notDelegating = new Set([
       'getVersion', // built inline from process.versions
       'selectRepoDirectory', // native dialog, injected by main.ts
+      'selectFolder', // the same dialog, any folder
       'openExternal',
       'showContextMenu',
       'showAppMenu',

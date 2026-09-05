@@ -88,6 +88,7 @@ describe('menu commands', () => {
     ['Open Repository…', ['open-repo']],
     ['Switch Repository…', ['switch-repo']],
     ['New Worktree…', ['new-worktree']],
+    ['New Terminal…', ['new-terminal']],
     ['Settings…', ['open-settings']],
     ['Close Tab', ['close-tab']],
     ['Command Palette…', ['command-palette']],

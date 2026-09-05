@@ -64,3 +64,24 @@ export function forgetRecent(cwd: string, file = recentsFilePath()): void {
   }
   saveRecents(next, file);
 }
+
+/**
+ * Make sure a repository is on the list, without saying it was opened.
+ *
+ * A terminal tab restored at a repository root needs its repository on
+ * the list — activating the tab opens that repository — but nobody
+ * opened it just now, so it goes on the end and the order the user made
+ * is left alone. Already listed means nothing to do.
+ */
+export function ensureRecent(
+  cwd: string,
+  file = recentsFilePath(),
+  now = Date.now()
+): void {
+  const recents = loadRecents(file);
+  if (recents.some((r) => r.cwd === cwd)) return;
+  saveRecents(
+    [...recents, { cwd, lastOpenedAt: now }].slice(0, MAX_RECENTS),
+    file
+  );
+}
