@@ -27,19 +27,24 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog.js';
 import { Sidebar } from '../components/sidebar/Sidebar.js';
 import { StatusBar } from '../components/StatusBar.js';
 import { TitleBar } from '../components/TitleBar.js';
-import { useQueryClient } from '@tanstack/react-query';
-import { keys } from '../lib/data/query-keys.js';
-import { useSidebarModel } from '../lib/data/queries.js';
+import { useForeignSessions, useSidebarModel } from '../lib/data/queries.js';
 import {
   useRefreshRemote,
   useRemovingBranches,
 } from '../lib/data/mutations.js';
 import { BOOT_MARKS, markOnce } from '../lib/perf.js';
 import { RepoProvider, useRepo } from '../lib/repo-context.js';
-import { useRepoTabs, type ItemEntry } from '../lib/tabs/tabs.js';
+import {
+  useRepoTabs,
+  type ForeignSessionEntry,
+  type ItemEntry,
+} from '../lib/tabs/tabs.js';
 import { useCloseTabs } from '../lib/tabs/use-close-tabs.js';
+import { useTerminalTabs } from '../lib/terminals/use-terminal-tabs.js';
+import { NewTerminalDialog } from '../components/terminal/NewTerminalDialog.js';
 import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
+import { useHostEvents } from './use-host-events.js';
 
 const SIDEBAR_KEY = 'kirby.sidebar.hidden';
 
@@ -97,6 +102,19 @@ function WorkspaceInner({
     [model.data, removing]
   );
   const closer = useCloseTabs(items);
+  const terminalTabs = useTerminalTabs();
+  // Agents alive in other repositories, as the tab model needs them;
+  // `undefined` before the host has answered once.
+  const foreignSessions = useForeignSessions();
+  const foreign: ForeignSessionEntry[] | undefined = useMemo(
+    () =>
+      foreignSessions.data?.map((s) => ({
+        repo: s.repo,
+        branch: s.branch,
+        sessionName: s.sessionName,
+      })),
+    [foreignSessions.data]
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(
@@ -122,11 +140,16 @@ function WorkspaceInner({
     [items]
   );
 
-  // The one place the two stores are reconciled. The reducer follows
-  // items whose key changed (a worktree grows a PR: branch:x → pr:n,
-  // and back when it closes), opens a tab for each newly running
-  // agent, and pins preview tabs that have an agent behind them —
-  // atomically, so no render ever sees a half-reconciled strip.
+  // The one place every store the strip depends on is reconciled: the
+  // sidebar items, the host's terminal listing *and* its listing of
+  // agents alive in other repositories, in a single dispatch. The
+  // reducer follows items whose key changed (a worktree grows a PR:
+  // branch:x → pr:n, and back when it closes), opens a tab for each
+  // newly running agent, pins preview tabs that have an agent behind
+  // them, brings the terminal strip in line with the host, and gives
+  // each foreign agent a tab in its own group — atomically, so no
+  // render ever sees a half-reconciled strip and no listing gets a
+  // reconciliation effect of its own to race this one.
   //
   // `tabs` (the whole api, which changes identity on every dispatch)
   // is the dependency on purpose: opening a preview tab is itself a
@@ -134,8 +157,8 @@ function WorkspaceInner({
   // live. Re-running settles — every step above is idempotent and
   // returns the same state object once there is nothing left to do.
   useEffect(() => {
-    tabs.syncItems(entries);
-  }, [tabs, entries]);
+    tabs.syncItems(entries, terminalTabs.entries, foreign);
+  }, [tabs, entries, terminalTabs.entries, foreign]);
 
   // Boot milestones (see lib/perf.ts): the shell is on screen once this
   // mounts, and the sidebar is real once the host's first model lands —
@@ -151,60 +174,7 @@ function WorkspaceInner({
     if (sidebarSettled) markOnce(BOOT_MARKS.sidebar);
   }, [sidebarSettled]);
 
-  // The host's remote sync loop toasts its events (auto-deleted merged
-  // branch, blocked auto-delete) and the sidebar refetches to match.
-  const qc = useQueryClient();
-  useEffect(() => {
-    const off = window.kirby.onSyncNotice(({ message, kind }) => {
-      if (kind === 'success') toast.success(message);
-      else toast.warning(message);
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // The host serves the sidebar from local git without waiting for the
-  // provider, and says so when the pull requests land. Refetching on
-  // that event is what keeps "fast" from meaning "stale for four
-  // seconds": the rows appear as soon as the host has them.
-  useEffect(() => {
-    const off = window.kirby.onRemoteUpdated(() => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sync(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // Worktrees and agent sessions can also appear without this process
-  // being involved — a second Kirby, a script, an operator with tmux.
-  // The host notices and says so; the sidebar is a query cache, so it
-  // has to be told to look again.
-  useEffect(() => {
-    const off = window.kirby.onDiscoveryChanged(() => {
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
-      // A worktree added from outside usually brought a branch with it.
-      void qc.invalidateQueries({ queryKey: keys.branches(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
-
-  // A babysat pull request's status rides on its sidebar item, so the
-  // poll shows it. The host pushes only what a poll would show too
-  // late: an agent it started (a row and a session), or a watch that
-  // ended with its pull request.
-  useEffect(() => {
-    const off = window.kirby.onBabysitChanged((event) => {
-      if (event.ended) {
-        toast.info(
-          `Stopped babysitting #${event.ended.prId}: the pull request is no longer open`
-        );
-      }
-      void qc.invalidateQueries({ queryKey: keys.sidebar(repo.cwd) });
-      void qc.invalidateQueries({ queryKey: keys.sessions(repo.cwd) });
-    });
-    return off;
-  }, [qc, repo.cwd]);
+  useHostEvents(repo.cwd, tabs.terminalEnded);
 
   // Surface query failures once, not on every poll.
   const lastError = model.error ? errorMessage(model.error) : null;
@@ -221,6 +191,7 @@ function WorkspaceInner({
       'open-repo': onPickRepoFolder,
       'switch-repo': onSwitchRepo,
       'new-worktree': () => setPaletteOpen(true),
+      'new-terminal': terminalTabs.openDialog,
       'command-palette': () => setPaletteOpen(true),
       'open-settings': () => tabs.openSettings(),
       'close-tab': () => closer.closeActive(),
@@ -244,7 +215,14 @@ function WorkspaceInner({
       ({ command, arg }: MenuCommandEvent) => handlers[command](arg)
     );
     return off;
-  }, [tabs, closer, refresh, onPickRepoFolder, onSwitchRepo]);
+  }, [
+    tabs,
+    closer,
+    refresh,
+    onPickRepoFolder,
+    onSwitchRepo,
+    terminalTabs.openDialog,
+  ]);
 
   // In-page shortcuts for the web-rendered UI. Anything that is also a
   // native menu accelerator reaches us through onMenuCommand instead;
@@ -321,8 +299,16 @@ function WorkspaceInner({
         items={items}
         onToggleSidebar={toggleSidebar}
         onSwitchRepo={onSwitchRepo}
+        onNewTerminal={terminalTabs.openDialog}
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      {terminalTabs.dialogOpen && (
+        <NewTerminalDialog
+          onLaunch={terminalTabs.launchTerminal}
+          onClose={terminalTabs.closeDialog}
+          busy={terminalTabs.busy}
+        />
+      )}
       {closer.confirmDialog}
     </div>
   );

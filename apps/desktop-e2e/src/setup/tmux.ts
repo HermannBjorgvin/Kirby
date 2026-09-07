@@ -113,6 +113,28 @@ export function kirbySessionExists(
   return kirbySessions(tmuxTmpdir).some((n) => n.endsWith(`-${branch}`));
 }
 
+/** End one session on the test's server from outside the app — what
+ *  an operator's `tmux kill-session` looks like to a terminal tab. */
+export function killTmuxSession(name: string, tmuxTmpdir: string): void {
+  try {
+    execFileSync('tmux', ['kill-session', '-t', name], {
+      stdio: 'ignore',
+      env: socketEnv(tmuxTmpdir),
+    });
+  } catch {
+    /* already gone — best effort */
+  }
+}
+
+/** Detach every client from one session on the test's server, leaving
+ *  the session running — what the detach key inside tmux does. */
+export function detachTmuxClients(name: string, tmuxTmpdir: string): void {
+  execFileSync('tmux', ['detach-client', '-s', name], {
+    stdio: 'ignore',
+    env: socketEnv(tmuxTmpdir),
+  });
+}
+
 /**
  * Teardown for tmux-backed tests. Closing the app deliberately only
  * *detaches*, so a tmux-backed test would otherwise leave a live
@@ -120,15 +142,7 @@ export function kirbySessionExists(
  * removed with the temp home, orphaning the server.
  */
 export function killKirbySessions(tmuxTmpdir: string): void {
-  const env = socketEnv(tmuxTmpdir);
   for (const name of kirbySessions(tmuxTmpdir)) {
-    try {
-      execFileSync('tmux', ['kill-session', '-t', name], {
-        stdio: 'ignore',
-        env,
-      });
-    } catch {
-      /* already gone — best effort */
-    }
+    killTmuxSession(name, tmuxTmpdir);
   }
 }

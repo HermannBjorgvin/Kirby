@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import { useSessionActivity } from '../../lib/data/queries.js';
+import { useSessionActivity, useTerminals } from '../../lib/data/queries.js';
 import {
   itemBranch,
   itemKey,
@@ -17,6 +17,36 @@ import { SettingsView } from './lazy-panes.js';
 import { ItemView } from './ItemView.js';
 import { ForeignRepoPane } from './ForeignRepoPane.js';
 import { TabButton } from './TabButton.js';
+import { TerminalView } from './TerminalView.js';
+
+/** The pane body for a tab. Each kind renders its own placeholder
+ *  while its module lands; nothing here suspends. */
+function PaneBody({
+  tab,
+  item,
+  items,
+  active,
+  onPin,
+}: {
+  tab: Tab;
+  item: SidebarItem | undefined;
+  items: SidebarItem[];
+  active: boolean;
+  onPin: () => void;
+}) {
+  if (tab.kind === 'settings') return <SettingsView />;
+  if (tab.kind === 'terminal')
+    return <TerminalView tab={tab} active={active} />;
+  return (
+    <ItemView
+      item={item}
+      items={items}
+      itemKey={tab.itemKey}
+      active={active}
+      onPin={onPin}
+    />
+  );
+}
 
 /**
  * Tab strip + stacked panes. Every open tab stays mounted (panes are
@@ -35,6 +65,14 @@ export function EditorArea({
   const tabs = useTabs();
   const closer = useCloseTabs(items);
   const activity = useSessionActivity(repo.cwd);
+  const terminals = useTerminals();
+  const terminalRunning = useMemo(
+    () =>
+      new Set(
+        (terminals.data ?? []).filter((t) => t.running).map((t) => t.name)
+      ),
+    [terminals.data]
+  );
   const byKey = useMemo(
     () => new Map(items.map((i) => [itemKey(i), i])),
     [items]
@@ -68,6 +106,9 @@ export function EditorArea({
   };
 
   const sessionNameFor = (tab: Tab): string | undefined => {
+    // A terminal's session is the tab itself — always mounted, so its
+    // scrollback survives switching away.
+    if (tab.kind === 'terminal') return tab.name;
     const item = itemFor(tab);
     if (!item) return undefined;
     const branch = itemBranch(item);
@@ -125,12 +166,13 @@ export function EditorArea({
               snapshot={sessionName ? activity.data?.[sessionName] : undefined}
               foreignRepo={foreignRepoOf(tab, repo.cwd)}
               startsGroup={groupStarts[i]}
+              running={tab.kind === 'terminal' && terminalRunning.has(tab.name)}
             />
           );
         })}
         <div className="flex-1" />
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1" data-editor-panes>
         {paneTabs.map((tab) => {
           // A foreign tab has no pane here: its data lives in a
           // repository this window is not pointing at.
@@ -147,21 +189,17 @@ export function EditorArea({
               )}
             >
               <ErrorBoundary resetKey={tab.id}>
-                {/* Both pane bodies are code-split (see lazy-panes),
-                    but neither suspends — each renders its own
-                    placeholder until its module lands, so there is no
-                    Suspense boundary here to throttle the swap. */}
-                {tab.kind === 'settings' ? (
-                  <SettingsView />
-                ) : (
-                  <ItemView
-                    item={itemFor(tab)}
-                    items={items}
-                    itemKey={tab.itemKey}
-                    active={active}
-                    onPin={() => tabs.pin(tab.id)}
-                  />
-                )}
+                {/* The pane bodies are code-split (see lazy-panes), but
+                    none suspends — each renders its own placeholder
+                    until its module lands, so there is no Suspense
+                    boundary here to throttle the swap. */}
+                <PaneBody
+                  tab={tab}
+                  item={itemFor(tab)}
+                  items={items}
+                  active={active}
+                  onPin={() => tabs.pin(tab.id)}
+                />
               </ErrorBoundary>
             </div>
           );

@@ -242,10 +242,10 @@ registerHostHandlers(ipcMain);
 
 // Native folder picker — Electron glue lives here so the handler
 // registry stays testable without Electron.
-setFolderPicker(async () => {
+setFolderPicker(async (title) => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory'],
-    title: 'Open repository',
+    title,
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];

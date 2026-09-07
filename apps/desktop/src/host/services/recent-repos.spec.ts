@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  ensureRecent,
   forgetRecent,
   loadRecents,
   recordOpen,
@@ -62,6 +63,35 @@ describe('recordOpen', () => {
     expect(recents).toHaveLength(10);
     expect(recents[0]!.cwd).toBe('/repo-14');
     expect(recents.at(-1)!.cwd).toBe('/repo-5');
+  });
+});
+
+describe('ensureRecent', () => {
+  // A terminal restored at a repository root puts that repository back
+  // on the list — at the end, and without touching the order the user
+  // made by opening things, because nobody opened it just now.
+  it('appends a repository that is missing without reordering', () => {
+    saveRecents(
+      [
+        { cwd: '/a', lastOpenedAt: 2 },
+        { cwd: '/b', lastOpenedAt: 1 },
+      ],
+      file
+    );
+    ensureRecent('/c', file);
+    expect(loadRecents(file).map((r) => r.cwd)).toEqual(['/a', '/b', '/c']);
+  });
+
+  it('leaves a repository that is already listed where it is', () => {
+    saveRecents(
+      [
+        { cwd: '/a', lastOpenedAt: 2 },
+        { cwd: '/b', lastOpenedAt: 1 },
+      ],
+      file
+    );
+    ensureRecent('/b', file);
+    expect(loadRecents(file).map((r) => r.cwd)).toEqual(['/a', '/b']);
   });
 });
 

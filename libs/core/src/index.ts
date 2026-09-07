@@ -37,6 +37,8 @@ export * from './lib/plan/plan-types.js';
 
 // ── Session / PTY infrastructure (Node host side) ────────────────
 export * from './lib/session-backend.js';
+export * from './lib/terminal/terminal-name.js';
+export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';
 export {
   attach,
@@ -74,6 +76,8 @@ export * from './lib/babysit/babysit-model.js';
 export * from './lib/babysit/babysit-prompt.js';
 export * from './lib/babysit/babysit-observe.js';
 export * from './lib/babysit/pr-babysitter.js';
+export * from './lib/discovery/worktree-origin.js';
+export * from './lib/discovery/live-worktree-sessions.js';
 
 // ── Pure utilities ───────────────────────────────────────────────
 export * from './lib/utils/sidebar-items.js';

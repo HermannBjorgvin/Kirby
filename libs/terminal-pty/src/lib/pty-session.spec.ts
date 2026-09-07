@@ -97,6 +97,35 @@ describe('PtySession', () => {
     session.dispose();
   });
 
+  // Every exit listener runs, whatever the earlier ones do to the list.
+  // The registry, the activity tracker and the desktop host all
+  // subscribe to one session's exit, and the host's handler *releases*
+  // the session — which detaches the activity tracker's listener, one
+  // that subscribed before it. Iterating the live array then skips the
+  // listener that slid into the removed one's slot: the desktop's exit
+  // broadcast never fired, and a terminal tab closed on the next poll
+  // rather than at once.
+  it('runs every exit listener even when one removes an earlier one', async () => {
+    const session = new PtySession('true', []);
+    const calls: string[] = [];
+    const a = () => calls.push('a');
+    const b = () => {
+      calls.push('b');
+      session.offExit(a);
+    };
+    const c = () => calls.push('c');
+
+    await new Promise<void>((resolve) => {
+      session.onExit(() => resolve());
+      session.onExit(a);
+      session.onExit(b);
+      session.onExit(c);
+    });
+
+    expect(calls).toEqual(['a', 'b', 'c']);
+    session.dispose();
+  });
+
   it('offExit removes an exit listener', async () => {
     const session = new PtySession('true', []);
     let called = false;

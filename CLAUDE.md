@@ -638,13 +638,41 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   therefore carries its `repo` and is identified by the pair — two
   checkouts share branch names, so `branch:main` alone is not an
   identity, and neither is a PTY session name (`autoOpened` is
-  repo-qualified for the same reason). `sync-items` reconciles only the
+  repo-qualified for the same reason). That `repo` is the **real
+  path**: `openRepo` resolves every path a repository is opened by
+  (`canonicalRepoPath` — the picker, the recents list,
+  `KIRBY_START_DIR`, a foreign tab) and the recents list is read
+  through the same resolution, because git names the real path
+  everywhere else (the tmux prefix, a worktree's origin, the foreign
+  listing) and a repository opened through a symlink was otherwise two
+  on the strip once another was open. `sync-items` reconciles only the
   tabs of the repo it is handed; a foreign tab must never be re-keyed,
   pinned or collapsed by a poll about somewhere else, and
   `tabs.properties.spec.ts` asserts that as an invariant over arbitrary
   sequences. `TabsProvider` sits above the repo gate in `App.tsx` —
   `Workspace` is keyed by repo and remounts, so anything below it is
-  destroyed on a switch.
+  destroyed on a switch. After a relaunch, agents left running in
+  _other_ repositories get their tabs back too, with no state file:
+  `listLiveWorktreeSessions` (core) reads every `kirby-*` session's
+  tmux `session_path` and `describeWorktreePath` asks git for the
+  worktree's real repo root and branch, the host's
+  `listForeignSessions` drops the open repository's own (those come
+  through the sidebar), and `sync-items`'s `foreign` pass opens a strip
+  entry per agent in its repo group — repo, branch, title, nothing
+  attached, no focus — so activating it switches there and that
+  repository's own discovery attaches the agent. Only a session whose
+  name is **exactly** what Kirby composes for its directory's
+  repository and branch is listed: an orphan (the worktree checked out
+  another branch mid-session) is left to its own repository's scanner,
+  and a detached-HEAD worktree's agent is dropped host-side because
+  the desktop attaches by branch and would open the repository and
+  attach nothing. Describing a directory is three blocking git forks
+  on the main process and the listing is polled, so an origin is
+  remembered for as long as the directory exists and the name still
+  composes from it — the name stops matching only on that checkout —
+  never when git failed to answer (a transient `index.lock` would hide
+  a session), and only for the paths tmux lists now; the recents list
+  is written when the foreign set changes, not on every poll.
 
   **The workspace follows the active tab, not the other way round.**
   The host is single-repo by construction (`requireRepo`, the memoized
@@ -687,6 +715,87 @@ kirby-<projectKey>-<branch> …`. `startSessionDiscovery`
   by its title (`itemTitle`), the branch moving to the row's detail
   line; the TUI still names rows by branch.
 
+- **A terminal tab is a session bound to a directory, and tmux is its
+  only record.** The desktop can open a plain shell or the configured
+  agent in any directory (File > New Terminal…, the palette,
+  Ctrl/Cmd+Shift+T: where — current repo, another from the recents
+  list, or any folder through the OS picker — then what). There is
+  **no state file** for these. The tmux name is
+  `kirby-term-<shell|agent>-<id>` (`libs/core/src/lib/terminal/
+terminal-name.ts`; shaped to pass `sanitizeTmuxSessionName`
+  unchanged, several per directory allowed), the kind is parsed from
+  the name, and the directory is tmux's own `#{session_path}` — the
+  `-c` the backend passes to `new-session` — read by
+  `tmuxListSessionsDetailed` in the one `list-sessions` fork discovery
+  already makes (`observeTmuxSessions` answers the worktree-persistence
+  question and the terminal listing together). Anything written to
+  `~/.kirby` would have to be kept in step with a server that already
+  holds the truth, and would be one more thing to reconcile on a
+  machine where the file and the server disagree. A shell is spawned
+  as an **empty `cmd`** — the `SessionSpec` contract for "the
+  backend's default shell": tmux runs `default-shell`, the PTY backend
+  `$SHELL` or `/bin/sh` — so no setting names one. An agent goes
+  through `launchTerminalSession` → `launchSession` with the session
+  menu's plain intent, never a second launch path. Which tab group a
+  terminal sits in is **derived at read time from its directory**
+  (`host/services/terminal-home.ts`: the directory is a repo root → that
+  repo's group and it is put on the recents list; anything else,
+  including a subfolder of a checkout, is repo-less — nothing walks
+  up), so a terminal restored from tmux is grouped the same way one
+  just opened is. The tmux factory takes an `isQualified` seam
+  (`isQualifiedTmuxName`) so a complete name is never prefixed with the
+  project key a second time — `-A` would otherwise create a session
+  beside the one it meant to resume — and the `kirby-` literal lives in
+  `tmux-namespace.ts` alone. The same seam is what lets a worktree
+  session whose agent checked out another branch (the tmux name no
+  longer matches any worktree) **surface as an agent terminal tab in
+  its directory instead of vanishing**. On the strip a terminal tab is
+  pinned, titled by its directory cut from the _front_
+  (`truncateLeading`, so the tail that tells two directories apart
+  stays), shows only its terminal, and rides along on the same
+  `sync-items` dispatch as the sidebar reconciliation — one pure step,
+  not a second effect — without ever moving focus: a restored terminal
+  from another repository would otherwise switch the workspace at
+  startup. The dialog's steps are radix `ToggleGroup`s (roving focus,
+  arrows move without choosing, `loop`), and whether choosing moves
+  focus on to the next step is read off the click's `detail` — zero
+  for a keyboard-caused click — rather than a flag set on keydown,
+  which a cancelled folder picker left armed. A repo-root terminal is foreign anywhere but its repo and
+  follows like any foreign tab; a plain-folder one belongs to nobody
+  (`tabHome` is null) and activating it switches nothing. Closing a
+  terminal tab always confirms and **kills** the session on both
+  backends; quitting only detaches, so tmux terminals come back. When
+  the process behind a terminal tab ends on its own — `exit` in the
+  shell, the agent quitting, a tmux session killed from outside — the
+  host drops it from `listTerminals` on the client PTY's exit
+  (`watchForEnd`, releasing the relay buffer and the registry tombstone
+  without a kill) and the relay's exit event reaches the renderer,
+  whose `terminal-ended` closes the tab **by name, at once** rather
+  than on the next poll, whether or not a listing ever named it (a
+  process that died before the first listing would otherwise leave a
+  tab whose close asks to end nothing); the reducer's `dropEnded` still
+  closes any terminal tab a _defined_ listing does not name, with the
+  user's close-focus rules, and an `undefined` listing is "not asked
+  yet" and closes nothing. "At once" depends on every exit listener
+  running: the host's handler releases the session, which detaches an
+  earlier listener, and `PtySession` walks a **snapshot** of its
+  listeners because iterating the live array starved the relay's
+  broadcast. A tmux client that exits while its session lives on — the
+  user pressed the detach key inside the terminal — is **not** an end:
+  `watchForEnd` asks `isTmuxSessionPersisted` and reattaches under the
+  same name at the client's grid with the output sequence carried, and
+  the relay reports no exit for an entry that has been replaced (a
+  released one still is), so the tab neither closes nor comes back
+  unfocused a scan later. Two
+  e2e traps: zsh greets a fresh `HOME` with its first-user wizard, which
+  eats the first keystroke, so the fixture seeds an empty `.zshrc`; and
+  Playwright reads any array whose second element is an object as a
+  `[value, options]` fixture tuple, so the fixture's `liveTerminals` is
+  a record keyed by session name rather than a list. Discovery resolves
+  the tmux backend from the **open repository's** config
+  (`session-discovery.ts`'s `observe()`), so a repo pinned to a
+  per-project `terminalBackend: 'pty'` override hides every tmux
+  terminal — not just its own — for as long as it is the open one.
 - **The plan is a cart, and both shells share it.** A pull request tab
   collects review comments — reviewer threads, general comments and the
   agent's own drafts — into a queue and hands the whole thing to one

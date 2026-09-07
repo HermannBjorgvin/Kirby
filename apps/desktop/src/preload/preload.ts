@@ -26,6 +26,7 @@ const api: KirbyHostApi = {
   getRepo: () => ipcRenderer.invoke(IPC.getRepo),
   listRecentRepos: () => ipcRenderer.invoke(IPC.listRecentRepos),
   selectRepoDirectory: () => ipcRenderer.invoke(IPC.selectRepoDirectory),
+  selectFolder: () => ipcRenderer.invoke(IPC.selectFolder),
   forgetRecent: (cwd) => ipcRenderer.invoke(IPC.forgetRecent, cwd),
 
   getSettingsView: () => ipcRenderer.invoke(IPC.getSettingsView),
@@ -62,6 +63,7 @@ const api: KirbyHostApi = {
   listAgentOptions: () => ipcRenderer.invoke(IPC.listAgentOptions),
   checkoutPlan: (req) => ipcRenderer.invoke(IPC.checkoutPlan, req),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
+  listForeignSessions: () => ipcRenderer.invoke(IPC.listForeignSessions),
   getSessionActivity: () => ipcRenderer.invoke(IPC.getSessionActivity),
   markSessionSeen: (name) => ipcRenderer.invoke(IPC.markSessionSeen, name),
   getSessionBuffer: (name) => ipcRenderer.invoke(IPC.getSessionBuffer, name),
@@ -72,6 +74,9 @@ const api: KirbyHostApi = {
   killSession: (name) => ipcRenderer.invoke(IPC.killSession, name),
   saveClipboardImage: (data, mimeType) =>
     ipcRenderer.invoke(IPC.saveClipboardImage, data, mimeType),
+  launchTerminal: (req) => ipcRenderer.invoke(IPC.launchTerminal, req),
+  listTerminals: () => ipcRenderer.invoke(IPC.listTerminals),
+  killTerminal: (name) => ipcRenderer.invoke(IPC.killTerminal, name),
   fetchPrDescription: (prId) =>
     ipcRenderer.invoke(IPC.fetchPrDescription, prId),
   submitReviewVerdict: (prId, verdict) =>

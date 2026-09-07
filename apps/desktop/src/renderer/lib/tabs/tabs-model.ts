@@ -18,11 +18,22 @@ import {
   autoOpenKey,
   isForeignTab,
   itemTabId,
+  tabHome,
+  terminalTabId,
   type Tab,
 } from './tab-identity.js';
 
-export type { ItemTab, Tab } from './tab-identity.js';
+export type { ItemTab, Tab, TerminalTab } from './tab-identity.js';
+export type { TerminalEntry } from './tab-terminals.js';
+export type { ForeignSessionEntry } from './tab-foreign.js';
+import { closeTab } from './tab-close.js';
+import { openForeign, type ForeignSessionEntry } from './tab-foreign.js';
 import { pinLive, rekey } from './tab-sync.js';
+import {
+  openTerminal,
+  syncTerminals,
+  type TerminalEntry,
+} from './tab-terminals.js';
 
 /** One sidebar item as the tab model needs it. */
 export interface ItemEntry {
@@ -54,10 +65,12 @@ export interface TabsState {
   lastActiveByRepo: Readonly<Record<string, string>>;
 }
 
-/** The repository the active tab belongs to, if it belongs to one. */
+/** The repository the active tab belongs to, if it belongs to one. A
+ *  plain-folder terminal belongs to none, so activating it switches
+ *  nothing. */
 export function activeTabRepo(state: TabsState): string | null {
   const active = state.tabs.find((t) => t.id === state.activeId);
-  return active?.kind === 'item' ? active.repo : null;
+  return active ? tabHome(active) : null;
 }
 
 export const EMPTY_TABS: TabsState = {
@@ -76,11 +89,52 @@ export type TabsAction =
   | { type: 'close-others'; id: string }
   | { type: 'close-all' }
   | { type: 'move'; id: string; targetId: string; side: 'before' | 'after' }
-  | { type: 'sync-items'; repo: string; entries: ItemEntry[] }
+  /** The one reconciliation dispatched from Workspace's effect: the
+   *  repo's sidebar items *and* the host's terminal listing, applied as
+   *  one pure step. Terminals ride along on every sync rather than
+   *  getting a dispatch of their own — carrying an empty `entries` still
+   *  reconciles the terminal strip on its own, since an empty list is a
+   *  no-op for the item passes.
+   *
+   *  `terminals` is the host's answer, and `undefined` is no answer
+   *  yet — not an empty one. The listing is authoritative when it is
+   *  there: a terminal tab it does not name has ended and closes. With
+   *  no listing the terminal tabs are left exactly as they are, so a
+   *  tick before the first answer cannot close every one of them.
+   *
+   *  `foreign` is the host's other listing: agents alive in *other*
+   *  repositories, each of which gets a tab in its own group once
+   *  (see `tab-foreign.ts`). Also `undefined` before the first
+   *  answer. */
+  | {
+      type: 'sync-items';
+      repo: string;
+      entries: ItemEntry[];
+      terminals?: TerminalEntry[];
+      foreign?: ForeignSessionEntry[];
+    }
+  /** Open (or activate) the tab for a terminal the host just started. */
+  | { type: 'open-terminal'; terminal: TerminalEntry }
+  /** The host says the process behind a terminal ended, by name — the
+   *  shell exited, the agent quit, tmux ended the session. Its tab
+   *  closes on that word alone, whether or not a listing ever named it:
+   *  a process that died between the launch answer and the first
+   *  listing would otherwise leave a tab whose close asks to end a
+   *  session that is already gone. Focus follows the close rules for
+   *  `repo`, the one in view. A name with no terminal tab is nothing. */
+  | { type: 'terminal-ended'; name: string; repo?: string }
   /** A repository was opened. Dispatched for every open, tab-driven or
    *  not; it only does something when the tab in front of the user
    *  belongs to somewhere else. */
-  | { type: 'repo-opened'; repo: string };
+  | { type: 'repo-opened'; repo: string }
+  /** A close asked its session to be killed and the kill failed. The
+   *  tab already closed synchronously — the strip must not wait on a
+   *  round trip to feel responsive — so the session is still running
+   *  behind no tab at all unless the next sync is told it has not
+   *  been seen. Forgetting these keys is what lets it: the same
+   *  session or terminal reopens on the next sidebar poll or terminal
+   *  listing instead of staying invisible for the life of the strip. */
+  | { type: 'forget-auto-opened'; keys: string[] };
 
 function pinTab(tabs: Tab[], id: string): Tab[] {
   return tabs.map((t): Tab => {
@@ -114,11 +168,12 @@ export function reduce(state: TabsState, action: TabsAction): TabsState {
  */
 function remember(state: TabsState): TabsState {
   const active = state.tabs.find((t) => t.id === state.activeId);
-  if (active?.kind !== 'item') return state;
-  if (state.lastActiveByRepo[active.repo] === active.id) return state;
+  const home = active ? tabHome(active) : null;
+  if (!active || home === null) return state;
+  if (state.lastActiveByRepo[home] === active.id) return state;
   return {
     ...state,
-    lastActiveByRepo: { ...state.lastActiveByRepo, [active.repo]: active.id },
+    lastActiveByRepo: { ...state.lastActiveByRepo, [home]: active.id },
   };
 }
 
@@ -141,13 +196,72 @@ function focusRepo(state: TabsState, repo: string): TabsState {
     (t) => t.id === state.lastActiveByRepo[repo]
   );
   const own =
-    remembered ??
-    [...state.tabs].reverse().find((t) => t.kind === 'item' && t.repo === repo);
+    remembered ?? [...state.tabs].reverse().find((t) => tabHome(t) === repo);
   const activeId = own?.id ?? null;
   return activeId === state.activeId ? state : { ...state, activeId };
 }
 
+/** The actions that take tabs off the strip. */
+type CloseAction = Extract<
+  TabsAction,
+  { type: 'close' | 'close-others' | 'close-all' | 'terminal-ended' }
+>;
+
+const CLOSE_ACTIONS: ReadonlySet<TabsAction['type']> = new Set<
+  CloseAction['type']
+>(['close', 'close-others', 'close-all', 'terminal-ended']);
+
+function isCloseAction(action: TabsAction): action is CloseAction {
+  return CLOSE_ACTIONS.has(action.type);
+}
+
+function applyClose(state: TabsState, action: CloseAction): TabsState {
+  switch (action.type) {
+    case 'close':
+      return closeTab(state, action.id, action.repo);
+    case 'terminal-ended':
+      return closeTab(state, terminalTabId(action.name), action.repo);
+    case 'close-others':
+      return closeOtherTabs(state, action.id);
+    case 'close-all':
+      // `autoOpened` survives on purpose: closing every tab is a manual
+      // act, and re-opening the running agents on the next sidebar poll
+      // would undo it.
+      return { ...state, tabs: [], activeId: null };
+  }
+}
+
+/** The actions about item and settings tabs — the strip as it was
+ *  before terminals joined it, minus the closes. `sync-items` stays in
+ *  this union: its item passes (`applyStrip`'s case below) read only
+ *  `repo`/`entries`, and the `terminals` field rides along for
+ *  {@link apply} to hand to `syncTerminals` once the item passes have
+ *  settled. */
+type StripAction = Exclude<TabsAction, { type: 'open-terminal' } | CloseAction>;
+
 function apply(state: TabsState, action: TabsAction): TabsState {
+  if (action.type === 'open-terminal') {
+    return openTerminal(state, action.terminal);
+  }
+  if (isCloseAction(action)) {
+    return applyClose(state, action);
+  }
+  if (action.type === 'sync-items') {
+    // One dispatch, one pure step: the repo's items and the host's
+    // terminal listing are reconciled together rather than from two
+    // effects racing into the reducer separately.
+    const strip = applyStrip(state, action);
+    const withTerminals = action.terminals
+      ? syncTerminals(strip, action.repo, action.terminals)
+      : strip;
+    return action.foreign
+      ? openForeign(withTerminals, action.repo, action.foreign)
+      : withTerminals;
+  }
+  return applyStrip(state, action);
+}
+
+function applyStrip(state: TabsState, action: StripAction): TabsState {
   switch (action.type) {
     case 'open-item':
       return openItem(state, action.repo, action.itemKey, action.preview);
@@ -157,15 +271,6 @@ function apply(state: TabsState, action: TabsAction): TabsState {
       return { ...state, tabs: pinTab(state.tabs, action.id) };
     case 'activate':
       return activateTab(state, action.id);
-    case 'close':
-      return closeTab(state, action.id, action.repo);
-    case 'close-others':
-      return closeOtherTabs(state, action.id);
-    case 'close-all':
-      // `autoOpened` survives on purpose: closing every tab is a manual
-      // act, and re-opening the running agents on the next sidebar poll
-      // would undo it.
-      return { ...state, tabs: [], activeId: null };
     case 'move':
       return moveTab(state, action.id, action.targetId, action.side);
     case 'sync-items':
@@ -184,7 +289,22 @@ function apply(state: TabsState, action: TabsAction): TabsState {
       );
     case 'repo-opened':
       return focusRepo(state, action.repo);
+    case 'forget-auto-opened':
+      return forgetAutoOpened(state, action.keys);
   }
+}
+
+/** Drop the given keys from `autoOpened`, so a session or terminal a
+ *  failed kill left running is offered again on the next sync rather
+ *  than staying invisible for the life of the strip. A no-op set
+ *  returns the same state object. */
+function forgetAutoOpened(state: TabsState, keys: string[]): TabsState {
+  if (keys.length === 0) return state;
+  const drop = new Set(keys);
+  const autoOpened = state.autoOpened.filter((k) => !drop.has(k));
+  return autoOpened.length === state.autoOpened.length
+    ? state
+    : { ...state, autoOpened };
 }
 
 /**
@@ -248,55 +368,6 @@ function openSettings(state: TabsState): TabsState {
     tabs: [...state.tabs, { id: 'settings', kind: 'settings', preview: false }],
     activeId: 'settings',
   };
-}
-
-/**
- * Drop a tab, and when it was the active one hand focus to the tab that
- * slid into its place (the last tab, if it was the rightmost).
- */
-function closeTab(
-  state: TabsState,
-  id: string,
-  repo: string | undefined
-): TabsState {
-  const idx = state.tabs.findIndex((t) => t.id === id);
-  if (idx < 0) return state;
-  const tabs = state.tabs.filter((t) => t.id !== id);
-  let activeId = state.activeId;
-  if (state.activeId === id) {
-    activeId = nextActive(tabs, idx, repo) ?? null;
-  }
-  return { ...state, tabs, activeId };
-}
-
-/**
- * Which tab takes over when the active one closes.
- *
- * The tab that slid into its place, as ever — but never one from
- * another repository. Focus is what the workspace follows, so handing
- * it across a repository boundary would switch the sidebar, the status
- * bar and every query because the user closed a tab. When the repo in
- * view has nothing left, nothing is active: that is its empty state,
- * with the other repositories' tabs still on the strip.
- */
-function nextActive(
-  tabs: readonly Tab[],
-  idx: number,
-  repo: string | undefined
-): string | null {
-  const neighbour = tabs[Math.min(idx, tabs.length - 1)];
-  if (repo === undefined || !neighbour || !isForeignTab(neighbour, repo)) {
-    return neighbour?.id ?? null;
-  }
-  // Nearest tab of the repo in view, looking right first — the same
-  // direction the plain neighbour rule prefers.
-  for (let d = 0; d < tabs.length; d++) {
-    const right = tabs[idx + d];
-    if (right && !isForeignTab(right, repo)) return right.id;
-    const left = tabs[idx - 1 - d];
-    if (left && !isForeignTab(left, repo)) return left.id;
-  }
-  return null;
 }
 
 /** Drag-reorder: lift a tab out of the strip and drop it beside another. */

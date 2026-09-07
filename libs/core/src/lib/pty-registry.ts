@@ -146,6 +146,23 @@ export function hasAnySession(): boolean {
   return false;
 }
 
+/** Bare registry names — the ones `spawnSession` was called with, not
+ *  the tmux names they may compose into — of every still-running
+ *  session. Discovery composes each of these through the same tmux
+ *  naming this process spawned with, so a live tmux session it already
+ *  holds is recognised as owned rather than reported as an orphan to
+ *  adopt a second time (worktree sessions are keyed by branch here,
+ *  which drifts from the tmux name once the worktree checks out
+ *  another branch). Exited entries are excluded for the same reason
+ *  {@link hasAnySession} excludes them: a tombstone owns nothing. */
+export function liveSessionNames(): string[] {
+  const names: string[] = [];
+  for (const [name, entry] of registry.entries()) {
+    if (!entry.exited) names.push(name);
+  }
+  return names;
+}
+
 /** Return the spawn time (ms-since-epoch) for the named session, or
  *  undefined if no PTY entry exists. Used by the tab bar's spawn-order
  *  sort. Per-entry-immutable, so safe to read during render. */
@@ -165,6 +182,24 @@ export function killSession(name: string): void {
     removeInactiveAlert(name);
     registry.delete(name);
   }
+}
+
+/** Drop the tombstone of a session that has already exited, without
+ *  touching the backend. A terminal tab closes itself when its process
+ *  ends, so nothing is left to view the final frame through and the
+ *  entry would only accumulate. Deliberately not `killSession`: on tmux
+ *  `kill()` reaches the tmux session, and the client this entry holds
+ *  can exit while that session lives on (the user detached from inside
+ *  tmux), which must not turn into a kill-session. A live entry is left
+ *  alone. */
+export function releaseExitedSession(name: string): void {
+  const entry = registry.get(name);
+  if (!entry || !entry.exited) return;
+  entry.pty.dispose();
+  entry.emu.dispose();
+  activity.detach(name);
+  removeInactiveAlert(name);
+  registry.delete(name);
 }
 
 /** Soft cleanup — used on Kirby process exit. Calls the backend's

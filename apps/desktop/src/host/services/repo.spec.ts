@@ -7,7 +7,14 @@ import {
   afterAll,
   afterEach,
 } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -132,6 +139,60 @@ describe('opening a repository', () => {
     openRepo(gitDir);
     expect(activeRepoIs(gitDir)).toBe(true);
     expect(activeRepoIs(plainDir)).toBe(false);
+  });
+});
+
+// A repository's identity is its real path — the string git reports as
+// the toplevel, which is what the tmux prefix, a worktree's origin and
+// the strip's repo groups are all computed from. Opening through a
+// symlink (or macOS's /var against /private/var) must land on the same
+// identity, or the same repository gets a second tab group, a second
+// recents entry and a foreign tab for its own agents.
+describe('opening a repository through a symlink', () => {
+  let link: string;
+  let real: string;
+  beforeEach(() => {
+    real = realpathSync(gitDir);
+    link = join(gitDir, '..', 'link-to-repo');
+    symlinkSync(gitDir, link);
+  });
+  // Only this test's own paths: the recents store is the real one on
+  // this machine, shared with anything else writing it meanwhile.
+  const ours = () =>
+    listRecentRepos()
+      .map((r) => r.cwd)
+      .filter((cwd) => cwd === link || cwd === real || cwd === plainDir);
+
+  it('opens it under its real path', () => {
+    saveRecents([]);
+    const info = openRepo(link);
+    expect(info.cwd).toBe(real);
+    expect(getRepo()?.cwd).toBe(real);
+    expect(activeRepoIs(real)).toBe(true);
+    expect(realpathSync(process.cwd())).toBe(real);
+  });
+
+  it('records one recent, under the real path, even over an old symlink entry', () => {
+    saveRecents(recents([link]));
+    openRepo(link);
+    expect(ours()).toEqual([real]);
+  });
+
+  it('lists an existing symlink-path recent under its real path, once', () => {
+    saveRecents(recents([link, real, plainDir]));
+    expect(ours()).toEqual([real, plainDir]);
+  });
+
+  it('forgets a repository whichever path the entry was stored under', () => {
+    saveRecents(recents([link, plainDir]));
+    forgetRecentRepo(real);
+    expect(ours()).toEqual([plainDir]);
+  });
+
+  it('canonicalises the start directory the same way', () => {
+    saveRecents([]);
+    const info = openStartupRepo({ KIRBY_START_DIR: link });
+    expect(info?.cwd).toBe(real);
   });
 });
 

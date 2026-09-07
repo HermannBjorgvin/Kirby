@@ -61,24 +61,51 @@ export function tmuxSetOption(
   return runTmux(['set-option', '-t', name, option, value]);
 }
 
-/** Every session name the server currently holds, or `[]` when there
- *  is no server at all (`list-sessions` exits non-zero with "no server
- *  running").
+/** One live session: its name and the directory it was started in. */
+export interface TmuxSessionInfo {
+  name: string;
+  /** `#{session_path}` — the `-c` directory `new-session` was given,
+   *  or the server's cwd when it was not. Empty when tmux reports
+   *  nothing. */
+  path: string;
+}
+
+/** Every session the server currently holds, with the directory each
+ *  was started in, or `[]` when there is no server at all
+ *  (`list-sessions` exits non-zero with "no server running").
  *
  *  One fork regardless of how many sessions exist, which is the whole
  *  reason it exists next to {@link tmuxHasSession}: a caller checking
  *  N candidates pays N forks through `has-session` and one through
- *  this. `#{session_name}` is the oldest of tmux's format variables,
- *  so this works back to the 2.0 floor the backend supports. */
-export function tmuxListSessions(): string[] {
+ *  this. `#{session_name}` is the oldest of tmux's format variables
+ *  and `#{session_path}` predates the 2.0 floor the backend supports.
+ *
+ *  Tab-separated with the name first: a session name never carries a
+ *  tab (the sanitizer only rewrites `.` and `:`, and nothing composes
+ *  one with a tab), so the split is at the first tab and everything
+ *  after it — tabs included — is the path. */
+export function tmuxListSessionsDetailed(): TmuxSessionInfo[] {
   const { stdout, exitCode } = runTmux([
     'list-sessions',
     '-F',
-    '#{session_name}',
+    '#{session_name}\t#{session_path}',
   ]);
   if (exitCode !== 0) return [];
   return stdout
     .split('\n')
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf('\t');
+      return tab < 0
+        ? { name: line, path: '' }
+        : { name: line.slice(0, tab), path: line.slice(tab + 1) };
+    });
+}
+
+/** Every session name the server currently holds — see
+ *  {@link tmuxListSessionsDetailed}, which this reads through so a
+ *  caller wanting only names pays the same single fork. */
+export function tmuxListSessions(): string[] {
+  return tmuxListSessionsDetailed().map((s) => s.name);
 }

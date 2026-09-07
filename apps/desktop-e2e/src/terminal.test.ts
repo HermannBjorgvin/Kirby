@@ -380,7 +380,7 @@ test.describe('Terminal fit', () => {
     await expectAgentFillsPane(page, before);
   });
 
-  test('a tab closed and launched again comes back on the pane\'s grid', async ({
+  test("a tab closed and launched again comes back on the pane's grid", async ({
     desktop,
   }) => {
     const { page } = desktop;
@@ -392,9 +392,7 @@ test.describe('Terminal fit', () => {
     // Closing the tab takes the idle agent with it and tears the wterm
     // instance down; the relaunch mounts a fresh one.
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 20_000 });
-    await tab(page, /refit/)
-      .getByLabel('Close tab')
-      .click();
+    await tab(page, /refit/).getByLabel('Close tab').click();
     await expect(tabs(page)).toHaveCount(0);
     await expect
       .poll(

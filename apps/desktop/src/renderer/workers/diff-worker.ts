@@ -12,7 +12,11 @@ import { bundledLanguages } from 'shiki/langs';
 import { bundledThemes } from 'shiki/themes';
 import { buildSplitRows } from '../lib/diff/diff-model.js';
 import { wordDiff, type CharRange } from '../lib/diff/word-diff.js';
-import { languageForFile, languageForTag, THEME } from '../lib/diff/lang-map.js';
+import {
+  languageForFile,
+  languageForTag,
+  THEME,
+} from '../lib/diff/lang-map.js';
 
 export interface SlimToken {
   content: string;

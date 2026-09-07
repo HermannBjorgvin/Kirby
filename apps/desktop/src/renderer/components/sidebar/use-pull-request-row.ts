@@ -1,6 +1,9 @@
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core/types';
-import { useStartBabysit, useStopBabysit } from '../../lib/data/mutations.js';
+import {
+  useStartBabysit,
+  useStopBabysit,
+} from '../../lib/data/mutations-babysit.js';
 import type { PrRowCommand } from '../../lib/sidebar/sidebar-row-menu.js';
 import { errorMessage } from '../../lib/utils.js';
 

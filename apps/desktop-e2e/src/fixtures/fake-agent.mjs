@@ -67,7 +67,9 @@ if (args['print-seed']) {
 if (args['print-size']) {
   const report = () => {
     const { columns, rows } = process.stdout;
-    process.stdout.write(`size:${columns ?? 0}x${rows ?? 0}#${process.pid}\r\n`);
+    process.stdout.write(
+      `size:${columns ?? 0}x${rows ?? 0}#${process.pid}\r\n`
+    );
   };
   report();
   process.stdout.on('resize', report);

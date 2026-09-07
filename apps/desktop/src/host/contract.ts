@@ -12,7 +12,7 @@
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type { AgentId, PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
+import type { AgentId, ReviewVerdict } from '@kirby/vcs-core';
 export type { AgentId, ReviewVerdict };
 import type { BabysitStatus, LaunchIntent, SidebarItem } from '@kirby/core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
@@ -38,6 +38,30 @@ export type {
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
+// Terminal tabs — sessions bound to a directory rather than a worktree.
+export type * from './contract-terminals.js';
+import type {
+  TerminalLaunchRequest,
+  TerminalSummary,
+} from './contract-terminals.js';
+// Agent sessions as the renderer lists them — the open repository's,
+// and those alive in other repositories.
+export type * from './contract-sessions.js';
+import type {
+  ForeignSessionSummary,
+  SessionSummary,
+} from './contract-sessions.js';
+// Review requests — replies, resolutions, review launches, drafts.
+export type * from './contract-reviews.js';
+import type {
+  CommentImagePayload,
+  PlanCheckoutRequest,
+  PlanCheckoutResult,
+  PostDraftsRequest,
+  ReplyRequest,
+  ResolveRequest,
+  ReviewLaunchRequest,
+} from './contract-reviews.js';
 import type {
   BabysitChangedEvent,
   MenuCommandEvent,
@@ -79,12 +103,6 @@ export interface SessionLaunchRequest {
   /** Initial PTY size — the renderer knows the real pane geometry. */
   cols?: number;
   rows?: number;
-}
-
-export interface SessionSummary {
-  name: string;
-  running: boolean;
-  spawnedAt: number;
 }
 
 /**
@@ -219,71 +237,6 @@ export interface SessionActivitySnapshot {
   exited?: boolean;
 }
 
-// ── Reviews ──────────────────────────────────────────────────────
-
-export interface ReplyRequest {
-  prId: number;
-  thread: RemoteCommentThread;
-  body: string;
-}
-
-export interface ResolveRequest {
-  prId: number;
-  thread: RemoteCommentThread;
-  resolved: boolean;
-}
-
-/** Launch (or resume) an AI review of a PR in its worktree. */
-export interface ReviewLaunchRequest {
-  pr: PullRequestInfo;
-  /** Extra user instruction appended to the review task prompt. */
-  instruction?: string;
-  cols?: number;
-  rows?: number;
-}
-
-/**
- * Deliver a plan — the comments the user queued for this pull request,
- * already composed into one prompt — to the agent in its worktree.
- *
- * The prompt is composed in the renderer rather than here because the
- * plan pane shows the user the exact text before sending it, and
- * composing it twice is how the preview and the delivery drift apart.
- */
-export interface PlanCheckoutRequest {
-  pr: PullRequestInfo;
-  /** Output of `composePlanPrompt` — sent verbatim. */
-  prompt: string;
-  /**
-   * Only meaningful when an agent is already running on the branch:
-   * `inject` types the plan into the conversation it is already having,
-   * `new-session` restarts it seeded with the plan.
-   */
-  mode: 'inject' | 'new-session';
-  /** Initial PTY size for a spawn — the renderer knows the pane. */
-  cols?: number;
-  rows?: number;
-}
-
-/** What checkout did, so the renderer can say which one happened. */
-export type PlanCheckoutResult = 'injected' | 'spawned';
-
-export interface PostDraftsRequest {
-  prId: number;
-  /** Subset to post; every draft when omitted. */
-  ids?: string[];
-  /** Required for GitHub (review API). */
-  headSha?: string;
-  event?: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES';
-}
-
-/** An image embedded in a comment, fetched host-side with provider auth. */
-export interface CommentImagePayload {
-  dataUrl: string;
-  contentType: string;
-  bytes: number;
-}
-
 /** The API surface exposed on `window.kirby`. */
 export interface KirbyHostApi {
   getVersion(): Promise<KirbyVersionInfo>;
@@ -298,6 +251,9 @@ export interface KirbyHostApi {
   /** Native folder picker. Resolves to the chosen path, or null when
    *  the user cancels. */
   selectRepoDirectory(): Promise<string | null>;
+  /** The same picker, for any folder — a terminal's directory need not
+   *  be a repository. */
+  selectFolder(): Promise<string | null>;
   forgetRecent(cwd: string): Promise<void>;
 
   // ── Config / settings ────────────────────────────────────────
@@ -377,6 +333,10 @@ export interface KirbyHostApi {
    *  failure, leaving the plan intact for a retry. */
   checkoutPlan(req: PlanCheckoutRequest): Promise<PlanCheckoutResult>;
   listSessions(): Promise<SessionSummary[]>;
+  /** Agents alive in other repositories, for the tab strip to give
+   *  each a tab in its own group. The open repository's own are left
+   *  out — the sidebar describes those. */
+  listForeignSessions(): Promise<ForeignSessionSummary[]>;
   /** Debounced per-session agent activity (same registry as the TUI's
    *  sidebar spinner): `active` = producing output now, `flashing` =
    *  went idle after a real work streak and the user hasn't looked. */
@@ -394,6 +354,15 @@ export interface KirbyHostApi {
    *  a PTY carries text, not bytes. Rejects anything that is not a
    *  recognised image type. */
   saveClipboardImage(data: Uint8Array, mimeType: string): Promise<string>;
+  // ── Terminal tabs ────────────────────────────────────────────
+  /** Open a shell or an agent in a directory. The summary says which
+   *  repository the tab belongs to, if any. */
+  launchTerminal(req: TerminalLaunchRequest): Promise<TerminalSummary>;
+  /** Every terminal this host holds, whatever repository is open —
+   *  terminals belong to directories, not to the open repo. */
+  listTerminals(): Promise<TerminalSummary[]>;
+  /** Kill the terminal's session, on either backend, and forget it. */
+  killTerminal(name: string): Promise<void>;
   /** Subscribe to PTY output. Returns an unsubscribe function. */
   onSessionData(cb: (payload: SessionDataEvent) => void): () => void;
   onSessionExit(cb: (payload: SessionExitEvent) => void): () => void;
@@ -453,6 +422,7 @@ export const IPC = {
   openRepo: 'kirby/repo/open',
   listRecentRepos: 'kirby/repo/recents',
   selectRepoDirectory: 'kirby/repo/select-directory',
+  selectFolder: 'kirby/shell/select-folder',
   forgetRecent: 'kirby/repo/forget',
   getRepo: 'kirby/repo/get',
   getSettingsView: 'kirby/settings/view',
@@ -469,6 +439,7 @@ export const IPC = {
   openInEditor: 'kirby/worktree/open-in-editor',
   launchAgent: 'kirby/session/launch',
   listSessions: 'kirby/session/list',
+  listForeignSessions: 'kirby/session/list-foreign',
   getSessionActivity: 'kirby/session/activity',
   markSessionSeen: 'kirby/session/seen',
   getSessionBuffer: 'kirby/session/buffer',
@@ -476,6 +447,9 @@ export const IPC = {
   resizeSession: 'kirby/session/resize',
   killSession: 'kirby/session/kill',
   saveClipboardImage: 'kirby/session/clipboard-image',
+  launchTerminal: 'kirby/terminal/launch',
+  listTerminals: 'kirby/terminal/list',
+  killTerminal: 'kirby/terminal/kill',
   fetchPullRequests: 'kirby/reviews/prs',
   fetchCommentThreads: 'kirby/reviews/comments',
   replyToThread: 'kirby/reviews/reply',

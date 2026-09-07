@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import type {
   ContextMenuItem,
   KirbyHostApi,
@@ -12,10 +13,13 @@ import * as sidebar from './services/sidebar.js';
 import * as worktrees from './services/worktrees.js';
 import * as reviews from './services/reviews.js';
 import * as sessions from './services/sessions.js';
+import * as foreignSessions from './services/foreign-sessions.js';
+import * as terminals from './services/terminals.js';
 import * as commentImages from './services/comment-images.js';
 import * as clipboardImage from './services/clipboard-image.js';
 import * as drafts from './services/drafts.js';
 import * as babysit from './services/babysit.js';
+import { resolvePickedFolder } from './services/terminal-home.js';
 
 /**
  * The main-process implementation of the host contract. Pure data
@@ -35,7 +39,8 @@ export function createHostApi(): KirbyHostApi {
     openRepo: (cwd) => Promise.resolve(repo.openRepo(cwd)),
     getRepo: () => Promise.resolve(repo.getRepo()),
     listRecentRepos: () => Promise.resolve(repo.listRecentRepos()),
-    selectRepoDirectory: () => folderPicker(),
+    selectRepoDirectory: () => pickFolder('Open repository'),
+    selectFolder: () => pickFolder('Open folder'),
     forgetRecent: (cwd) => Promise.resolve(repo.forgetRecentRepo(cwd)),
 
     getSettingsView: () => Promise.resolve(settings.getSettingsView()),
@@ -75,6 +80,8 @@ export function createHostApi(): KirbyHostApi {
     listAgentOptions: () => Promise.resolve(sessions.listAgentOptions()),
     checkoutPlan: (req) => sessions.checkoutPlan(req),
     listSessions: () => Promise.resolve(sessions.listSessions()),
+    listForeignSessions: () =>
+      Promise.resolve(foreignSessions.listForeignSessions()),
     getSessionActivity: () => Promise.resolve(sessions.getSessionActivity()),
     markSessionSeen: (name) => Promise.resolve(sessions.markSessionSeen(name)),
     getSessionBuffer: (name) =>
@@ -86,6 +93,9 @@ export function createHostApi(): KirbyHostApi {
     killSession: (name) => Promise.resolve(sessions.killSession(name)),
     saveClipboardImage: (data, mimeType) =>
       Promise.resolve(clipboardImage.saveClipboardImage(data, mimeType)),
+    launchTerminal: (req) => Promise.resolve(terminals.launchTerminal(req)),
+    listTerminals: () => Promise.resolve(terminals.listTerminals()),
+    killTerminal: (name) => Promise.resolve(terminals.killTerminal(name)),
     onSessionData: () => {
       // Events are pushed via setSessionBroadcaster; the preload side
       // subscribes directly to ipcRenderer events. Nothing to do here.
@@ -134,7 +144,7 @@ type HostMethod = (...args: never[]) => unknown;
 
 // Injected by main.ts (Electron's native dialog / shell). Defaults are
 // no-ops so tests and non-Electron contexts never touch those modules.
-let folderPicker: () => Promise<string | null> = async () => null;
+let folderPicker: (title: string) => Promise<string | null> = async () => null;
 let externalOpener: (url: string) => Promise<void> = async () => undefined;
 let contextMenu: (
   items: ContextMenuItem[]
@@ -143,8 +153,19 @@ let appMenuPopup: () => Promise<void> = async () => undefined;
 let aboutBox: () => Promise<void> = async () => undefined;
 let prefsChanged: (next: prefs.DesktopPrefsLike) => void = () => undefined;
 
-export function setFolderPicker(fn: () => Promise<string | null>): void {
+export function setFolderPicker(
+  fn: (title: string) => Promise<string | null>
+): void {
   folderPicker = fn;
+}
+
+/** The native picker, with its result canonicalized — see
+ *  `resolvePickedFolder`. A symlink the user picks otherwise compares
+ *  unequal to the already-open repository's root (which `getRepoRoot()`
+ *  resolves via `git rev-parse`), and reads as a second repository. */
+async function pickFolder(title: string): Promise<string | null> {
+  const picked = await folderPicker(title);
+  return picked === null ? null : resolvePickedFolder(picked, realpathSync);
 }
 
 export function setExternalOpener(fn: (url: string) => Promise<void>): void {
@@ -178,6 +199,7 @@ export function registerHostHandlers(
     [IPC.getRepo]: api.getRepo as HostMethod,
     [IPC.listRecentRepos]: api.listRecentRepos as HostMethod,
     [IPC.selectRepoDirectory]: api.selectRepoDirectory as HostMethod,
+    [IPC.selectFolder]: api.selectFolder as HostMethod,
     [IPC.forgetRecent]: api.forgetRecent as HostMethod,
     [IPC.getSettingsView]: api.getSettingsView as HostMethod,
     [IPC.updateSettingsField]: api.updateSettingsField as HostMethod,
@@ -193,6 +215,7 @@ export function registerHostHandlers(
     [IPC.openInEditor]: api.openInEditor as HostMethod,
     [IPC.launchAgent]: api.launchAgent as HostMethod,
     [IPC.listSessions]: api.listSessions as HostMethod,
+    [IPC.listForeignSessions]: api.listForeignSessions as HostMethod,
     [IPC.getSessionActivity]: api.getSessionActivity as HostMethod,
     [IPC.markSessionSeen]: api.markSessionSeen as HostMethod,
     [IPC.getSessionBuffer]: api.getSessionBuffer as HostMethod,
@@ -200,6 +223,9 @@ export function registerHostHandlers(
     [IPC.resizeSession]: api.resizeSession as HostMethod,
     [IPC.killSession]: api.killSession as HostMethod,
     [IPC.saveClipboardImage]: api.saveClipboardImage as HostMethod,
+    [IPC.launchTerminal]: api.launchTerminal as HostMethod,
+    [IPC.listTerminals]: api.listTerminals as HostMethod,
+    [IPC.killTerminal]: api.killTerminal as HostMethod,
     [IPC.fetchPullRequests]: api.fetchPullRequests as HostMethod,
     [IPC.fetchCommentThreads]: api.fetchCommentThreads as HostMethod,
     [IPC.replyToThread]: api.replyToThread as HostMethod,

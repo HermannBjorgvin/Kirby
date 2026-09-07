@@ -11,6 +11,10 @@ export interface SessionSpec {
    *  the tmux backend, after the lib's own sanitization). The caller is
    *  responsible for whatever uniqueness/namespacing it needs. */
   name: string;
+  /** Command to run. The empty string means the backend's own default
+   *  interactive shell: tmux runs its `default-shell`, the direct PTY
+   *  backend runs `$SHELL` (falling back to `/bin/sh`). Callers wanting
+   *  "a terminal" rather than "this program" pass that. */
   cmd: string;
   args: string[];
   cwd: string;

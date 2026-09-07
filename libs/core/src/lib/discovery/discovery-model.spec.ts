@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   diffScans,
+  type DiscoveredTerminal,
   type DiscoveredWorktree,
   type DiscoveryScan,
 } from './discovery-model.js';
@@ -9,11 +10,19 @@ function wt(name: string, branch = name): DiscoveredWorktree {
   return { name, branch, path: `/repo/.claude/worktrees/${name}` };
 }
 
+function term(
+  id: string,
+  kind: 'shell' | 'agent' = 'shell'
+): DiscoveredTerminal {
+  return { name: `kirby-term-${kind}-${id}`, kind, path: `/dir/${id}` };
+}
+
 function scan(
   worktrees: DiscoveredWorktree[],
-  persisted: string[] = []
+  persisted: string[] = [],
+  terminals: DiscoveredTerminal[] = []
 ): DiscoveryScan {
-  return { worktrees, persisted: new Set(persisted) };
+  return { worktrees, persisted: new Set(persisted), terminals };
 }
 
 const nothingAlive = () => false;
@@ -171,6 +180,56 @@ describe('diffScans', () => {
       );
       expect(delta.ended).toEqual([]);
       expect(delta.changed).toBe(false);
+    });
+  });
+
+  /**
+   * Terminal sessions have no worktree to be "appeared" through, so
+   * they are offered on absolute state alone: every live one this
+   * process holds no PTY for, every scan, until it is attached.
+   */
+  describe('terminals', () => {
+    it('offers every terminal this process is not attached to', () => {
+      const delta = diffScans(
+        null,
+        scan([], [], [term('aa'), term('bb', 'agent')]),
+        nothingAlive
+      );
+      expect(delta.adoptableTerminals).toEqual([
+        term('aa'),
+        term('bb', 'agent'),
+      ]);
+      expect(delta.changed).toBe(true);
+    });
+
+    it('never offers a terminal that is already alive here', () => {
+      const delta = diffScans(
+        scan([], [], [term('aa')]),
+        scan([], [], [term('aa')]),
+        allAlive
+      );
+      expect(delta.adoptableTerminals).toEqual([]);
+      expect(delta.changed).toBe(false);
+    });
+
+    it('leaves out a terminal the scanner has retired', () => {
+      const delta = diffScans(
+        null,
+        scan([], [], [term('aa'), term('bb')]),
+        nothingAlive,
+        new Set([term('aa').name])
+      );
+      expect(delta.adoptableTerminals).toEqual([term('bb')]);
+    });
+
+    it('reports a terminal whose tmux session went away', () => {
+      const delta = diffScans(
+        scan([], [], [term('aa')]),
+        scan([], [], []),
+        allAlive
+      );
+      expect(delta.endedTerminals).toEqual([term('aa').name]);
+      expect(delta.changed).toBe(true);
     });
   });
 });

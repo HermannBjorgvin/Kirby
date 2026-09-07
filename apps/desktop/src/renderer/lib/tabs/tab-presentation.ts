@@ -12,7 +12,32 @@ import type { Tab } from './tab-identity.js';
  */
 
 /** What a tab is a tab of, as far as its icon is concerned. */
-export type TabFace = 'settings' | 'pr' | 'branch';
+export type TabFace = 'settings' | 'pr' | 'branch' | 'terminal';
+
+/** How many characters of a terminal's directory the tab shows. The
+ *  strip truncates from the end (CSS), which for a path hides exactly
+ *  the part that tells two directories apart, so the cut is made here
+ *  from the front instead. */
+const TERMINAL_LABEL_MAX = 24;
+
+/**
+ * Shorten a path from the front, so its tail stays readable.
+ *
+ * Whole segments go first — `…/Code/kirby` rather than `…e/Code/kirby`
+ * — and only when the last segment alone is too long is it cut inside.
+ */
+export function truncateLeading(path: string, max: number): string {
+  if (path.length <= max) return path;
+  const segments = path.split('/');
+  let tail = '';
+  for (let i = segments.length - 1; i > 0; i--) {
+    const next = `/${segments[i]}${tail}`;
+    if (`…${next}`.length > max) break;
+    tail = next;
+  }
+  if (tail) return `…${tail}`;
+  return `…${path.slice(path.length - (max - 1))}`;
+}
 
 /**
  * What a tab shows for itself.
@@ -29,6 +54,12 @@ export function tabPresentation(
   item: SidebarItem | undefined
 ): { label: string; face: TabFace } {
   if (tab.kind === 'settings') return { label: 'Settings', face: 'settings' };
+  if (tab.kind === 'terminal') {
+    return {
+      label: truncateLeading(tab.displayPath, TERMINAL_LABEL_MAX),
+      face: 'terminal',
+    };
+  }
   const label =
     (item ? itemTitle(item) : undefined) ??
     tab.title ??
@@ -40,7 +71,17 @@ export function tabPresentation(
 
 /** The repository a tab belongs to, or null for a repo-agnostic tab. */
 export function tabRepo(tab: Tab): string | null {
-  return tab.kind === 'item' ? tab.repo : null;
+  return tab.kind === 'settings' ? null : tab.repo;
+}
+
+/** The group a tab sits in on the strip: its repository, the repo-less
+ *  group for a plain-folder terminal, or nothing for settings — which
+ *  is transparent to grouping. The sentinel cannot collide with a
+ *  repository path, which is always absolute. */
+const REPOLESS_GROUP = 'repo-less';
+function tabGroup(tab: Tab): string | null {
+  if (tab.kind === 'settings') return null;
+  return tab.repo ?? REPOLESS_GROUP;
 }
 
 /** The short name a repository goes by on screen: its directory name. */
@@ -50,20 +91,21 @@ export function repoDisplayName(cwd: string): string {
 }
 
 /**
- * Which tabs start a new repository group, positionally.
+ * Which tabs start a new group, positionally.
  *
- * A tab starts a group when the nearest item tab to its left belongs to
- * a different repository — so the leftmost group never draws a
- * separator, and the settings tab (which belongs to no repository)
- * neither starts a group nor breaks the one it sits in.
+ * A tab starts a group when the nearest grouped tab to its left is in
+ * a different one — so the leftmost group never draws a separator, and
+ * the settings tab (which belongs to no group) neither starts one nor
+ * breaks the one it sits in. Plain-folder terminals form a group of
+ * their own, apart from every repository's.
  */
 export function repoGroupStarts(tabs: readonly Tab[]): boolean[] {
   let previous: string | null = null;
   return tabs.map((tab) => {
-    const repo = tabRepo(tab);
-    if (repo === null) return false;
-    const starts = previous !== null && previous !== repo;
-    previous = repo;
+    const group = tabGroup(tab);
+    if (group === null) return false;
+    const starts = previous !== null && previous !== group;
+    previous = group;
     return starts;
   });
 }

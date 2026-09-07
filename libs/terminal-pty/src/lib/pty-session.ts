@@ -22,14 +22,19 @@ export class PtySession {
       env: opts.env ?? (process.env as Record<string, string>),
     });
 
+    // Both loops walk a snapshot: a listener that unsubscribes another
+    // (the desktop host's exit handler releases the session, which
+    // detaches the activity tracker's listener) splices the live array
+    // mid-iteration and shifts whatever came next into an already
+    // visited slot, so it never runs.
     this.process.onData((data) => {
-      for (const listener of this.dataListeners) {
+      for (const listener of [...this.dataListeners]) {
         listener(data);
       }
     });
 
     this.process.onExit(({ exitCode, signal }) => {
-      for (const listener of this.exitListeners) {
+      for (const listener of [...this.exitListeners]) {
         listener(exitCode, signal);
       }
     });

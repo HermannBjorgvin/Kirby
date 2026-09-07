@@ -1,13 +1,15 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { itemTabId } from './tab-identity.js';
+import { itemTabId, tabHome, terminalTabId } from './tab-identity.js';
 import {
   EMPTY_TABS,
   reduce,
+  type ForeignSessionEntry,
   type ItemEntry,
   type Tab,
   type TabsAction,
   type TabsState,
+  type TerminalEntry,
 } from './tabs-model.js';
 
 /**
@@ -35,10 +37,53 @@ import {
 const KEYS = ['branch:a', 'branch:b', 'pr:1', 'pr:2'] as const;
 const REPOS = ['/repos/alpha', '/repos/beta'] as const;
 
+/**
+ * Terminal tabs: two in plain folders (repo-less), one at each repo's
+ * root. The repo-less ones are the interesting case — they are never
+ * foreign, and no repository's sync may touch them.
+ */
+const TERMINALS: TerminalEntry[] = [
+  {
+    name: 'kirby-term-shell-000001',
+    kind: 'shell',
+    cwd: '/home/dev/notes',
+    displayPath: '~/notes',
+    repo: null,
+  },
+  {
+    name: 'kirby-term-agent-000002',
+    kind: 'agent',
+    cwd: '/tmp/scratch',
+    displayPath: '/tmp/scratch',
+    repo: null,
+  },
+  ...REPOS.map(
+    (repo, i): TerminalEntry => ({
+      name: `kirby-term-shell-00001${i}`,
+      kind: 'shell',
+      cwd: repo,
+      displayPath: repo,
+      repo,
+    })
+  ),
+];
+
+/**
+ * Agents alive in tmux as the host lists them for the strip: one per
+ * repository, on the same branch names the sidebar entries use, so a
+ * listing and that repository's own sync describe the same agent.
+ */
+const FOREIGN: ForeignSessionEntry[] = REPOS.map((repo) => ({
+  repo,
+  branch: 'a',
+  sessionName: 'sa',
+}));
+
 /** Every id the actions below can name, in either repository. */
 const IDS = [
   'settings',
   ...REPOS.flatMap((repo) => KEYS.map((k) => itemTabId(repo, k))),
+  ...TERMINALS.map((t) => terminalTabId(t.name)),
 ];
 
 const action: fc.Arbitrary<TabsAction> = fc.oneof(
@@ -49,6 +94,10 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     preview: fc.boolean(),
   }),
   fc.record({ type: fc.constant('open-settings' as const) }),
+  fc.record({
+    type: fc.constant('open-terminal' as const),
+    terminal: fc.constantFrom(...TERMINALS),
+  }),
   fc.record({
     type: fc.constant('pin' as const),
     id: fc.constantFrom(...IDS),
@@ -67,6 +116,13 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
     id: fc.constantFrom(...IDS),
   }),
   fc.record({ type: fc.constant('close-all' as const) }),
+  // The host reporting a terminal's process ended, by name — the one
+  // way a terminal tab closes without the user or a listing.
+  fc.record({
+    type: fc.constant('terminal-ended' as const),
+    name: fc.constantFrom(...TERMINALS.map((t) => t.name)),
+    repo: fc.constantFrom(...REPOS),
+  }),
   // Switching repository. Included because it is the one action that
   // may leave nothing active, and because everything else has to keep
   // holding across it.
@@ -86,7 +142,9 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
   // The interesting one: the sidebar re-keying items underneath, and
   // agents coming and going on them — `sync-items` opens a tab for a
   // newly running agent and pins previews that have one, so those run
-  // against the same invariants as everything else.
+  // against the same invariants as everything else. The host's
+  // terminal listing rides along on the same dispatch, as after a
+  // restart or a scan — one action, one pure step.
   fc
     .record({
       repo: fc.constantFrom(...REPOS),
@@ -116,11 +174,17 @@ const action: fc.Arbitrary<TabsAction> = fc.oneof(
         ),
         { maxLength: 4 }
       ),
+      terminals: fc.uniqueArray(fc.constantFrom(...TERMINALS), {
+        maxLength: 4,
+      }),
+      foreign: fc.uniqueArray(fc.constantFrom(...FOREIGN), { maxLength: 2 }),
     })
-    .map(({ repo, entries }) => ({
+    .map(({ repo, entries, terminals, foreign }) => ({
       type: 'sync-items' as const,
       repo,
       entries,
+      terminals,
+      foreign,
     }))
 );
 
@@ -142,7 +206,10 @@ const EMPTY: TabsState = EMPTY_TABS;
  * action at a *foreign* repo apply it to the finished state themselves.
  */
 const inViewOf = (a: TabsAction, repo: string): TabsAction =>
-  a.type === 'open-item' || a.type === 'sync-items' || a.type === 'close'
+  a.type === 'open-item' ||
+  a.type === 'sync-items' ||
+  a.type === 'close' ||
+  a.type === 'terminal-ended'
     ? { ...a, repo }
     : a;
 
@@ -244,16 +311,15 @@ describe('tab reducer invariants', () => {
       fc.property(sequence, fc.constantFrom(...REPOS), (actions, repo) => {
         const state = reduce(run(actions), { type: 'repo-opened', repo });
         const own = state.tabs.filter(
-          (t) => t.kind === 'item' && t.repo === repo
+          (t) => t.kind !== 'settings' && t.repo === repo
         );
         if (own.length === 0) return;
         const active = state.tabs.find((t) => t.id === state.activeId);
-        // Either one of this repo's tabs, or the settings tab — which
-        // belongs to nobody and so is never displaced by a switch.
-        expect(
-          active?.kind === 'settings' ||
-            (active?.kind === 'item' && active.repo === repo)
-        ).toBe(true);
+        // Either one of this repo's tabs, or a tab that belongs to
+        // nobody — settings, a plain-folder terminal — which is never
+        // displaced by a switch.
+        const home = active === undefined ? null : tabHome(active);
+        expect(home === null || home === repo).toBe(true);
       }),
       { numRuns: 500 }
     );
@@ -323,7 +389,12 @@ describe('one repository cannot reach another', () => {
         ),
         (actions, repo, entries) => {
           const before = run(actions);
-          const after = reduce(before, { type: 'sync-items', repo, entries });
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries,
+            terminals: [],
+          });
           // Identity, not equality: a foreign tab that came out
           // re-keyed, re-pinned or merely rebuilt has been touched by a
           // poll about a repository it has nothing to do with.
@@ -345,6 +416,7 @@ describe('one repository cannot reach another', () => {
           type: 'sync-items',
           repo,
           entries: [],
+          terminals: [],
         });
         // An empty sidebar over here is not a reason to close tabs
         // over there — their agents are still running.
@@ -381,7 +453,10 @@ describe('closing never hands focus to another repository', () => {
         (actions, id, repo) => {
           const after = closeAndMove(actions, id, repo);
           const active = after?.tabs.find((t) => t.id === after.activeId);
-          if (active === undefined || active.kind !== 'item') return;
+          if (active === undefined || active.kind === 'settings') return;
+          // A plain-folder terminal belongs to nobody, so focus may
+          // land on it from anywhere.
+          if (active.kind === 'terminal' && active.repo === null) return;
           // Focus is what the workspace follows, so a close that hands
           // it across a repository boundary switches the sidebar, the
           // status bar and every query — because the user shut a tab.
@@ -412,6 +487,163 @@ describe('closing never hands focus to another repository', () => {
   });
 });
 
+describe('terminal tabs', () => {
+  it('never holds two tabs for the same terminal', () => {
+    fc.assert(
+      fc.property(sequence, (actions) => {
+        const names = run(actions)
+          .tabs.filter((t) => t.kind === 'terminal')
+          .map((t) => t.name);
+        // One session, one tab: two would render the same PTY twice
+        // and close it out from under each other.
+        expect(new Set(names).size).toBe(names.length);
+      }),
+      { numRuns: 500 }
+    );
+  });
+
+  it('is never re-keyed, pinned or collapsed by any repository’s sync', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...REPOS),
+        fc.array(
+          fc.constantFrom<ItemEntry>(
+            { itemKey: 'branch:a', branch: 'a' },
+            { itemKey: 'pr:1', branch: 'a', sessionName: 'sa', running: true },
+            { itemKey: 'branch:b', branch: 'b', sessionName: 'sb' }
+          ),
+          { maxLength: 4 }
+        ),
+        (actions, repo, entries) => {
+          const before = run(actions);
+          // A sidebar poll with no terminal listing on it: the item
+          // passes alone, which must not reach a terminal tab.
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries,
+            terminals: undefined,
+          });
+          const terminals = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'terminal');
+          // Identity, not equality: a terminal tab that came out rebuilt
+          // has been reconciled against a sidebar it has no row in.
+          expect(terminals(after).length).toBe(terminals(before).length);
+          for (const [i, t] of terminals(after).entries()) {
+            expect(t).toBe(terminals(before)[i]);
+          }
+        }
+      ),
+      { numRuns: 500 }
+    );
+  });
+
+  it('never moves focus on a listing unless the listing ended the active tab', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.uniqueArray(fc.constantFrom(...TERMINALS), { maxLength: 4 }),
+        (actions, terminals) => {
+          const before = run(actions);
+          // Terminals ride along on `sync-items`; an empty `entries` list
+          // is a no-op for the item passes, so this is exactly the
+          // dispatch a terminal-only listing produces.
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo: REPOS[0],
+            entries: [],
+            terminals,
+          });
+          // A restored terminal from another repository would otherwise
+          // switch the workspace at startup. The one listing that may
+          // move focus is one that closed the active tab, since its
+          // terminal ended — and then focus follows the close rules,
+          // asserted with every other close above.
+          const stillThere = after.tabs.some((t) => t.id === before.activeId);
+          const moved = after.activeId !== before.activeId;
+          expect(stillThere && moved).toBe(false);
+        }
+      ),
+      { numRuns: 300 }
+    );
+  });
+
+  // The host's word that a terminal ended is final, listed or not: no
+  // tab for that name survives it, and no other tab is touched.
+  it('holds no tab for a terminal the host said ended, and every other tab as it was', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...TERMINALS.map((t) => t.name)),
+        (actions, name) => {
+          const { state: before, inView } = replay(actions);
+          const after = reduce(before, {
+            type: 'terminal-ended',
+            name,
+            repo: inView,
+          });
+          expect(
+            after.tabs.some((t) => t.kind === 'terminal' && t.name === name)
+          ).toBe(false);
+          const rest = before.tabs.filter(
+            (t) => !(t.kind === 'terminal' && t.name === name)
+          );
+          expect(after.tabs.length).toBe(rest.length);
+          for (const [i, t] of after.tabs.entries()) {
+            expect(t).toBe(rest[i]);
+          }
+        }
+      ),
+      { numRuns: 500 }
+    );
+  });
+
+  // The listing is the only word on which terminals exist. After any
+  // sync that carries one, a terminal tab it does not name is a tab
+  // for a process that has ended — a shell that exited, a tmux session
+  // killed from outside — and must be gone; one it does name is
+  // untouched, so a quiet poll cannot remount a live shell's pane. The
+  // one exception is a terminal no listing has ever named: the tab
+  // opened on the launch's own answer, and a listing fetched before
+  // the terminal existed has not seen it end.
+  it('holds no terminal tab a listing named and this one does not, and every one it does', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.constantFrom(...REPOS),
+        fc.uniqueArray(fc.constantFrom(...TERMINALS), { maxLength: 4 }),
+        (actions, repo, terminals) => {
+          const before = run(actions);
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo,
+            entries: [],
+            terminals,
+          });
+          const listed = new Set(terminals.map((t) => t.name));
+          const open = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'terminal');
+          // A surviving tab is either named by this listing, or has
+          // never been named by one since it opened (`listed` is the
+          // tab's own record of that, stamped by every listing).
+          for (const t of open(after)) {
+            expect(listed.has(t.name) || !t.listed).toBe(true);
+          }
+          // …and a named tab is the same object as before, once a
+          // listing has stamped it (the first stamp is the one change).
+          for (const t of open(before)) {
+            if (!listed.has(t.name)) continue;
+            const kept = open(after).find((a) => a.id === t.id);
+            expect(t.listed ? kept : kept?.id).toBe(t.listed ? t : t.id);
+          }
+        }
+      ),
+      { numRuns: 500 }
+    );
+  });
+});
+
 describe('re-keying preserves the tab', () => {
   /** Every way the sidebar can describe branch `a`. */
   const keyForA = fc.constantFrom('branch:a', 'pr:1');
@@ -432,6 +664,7 @@ describe('re-keying preserves the tab', () => {
             type: 'sync-items',
             repo: REPOS[0],
             entries: [{ itemKey: key, branch: 'a' }],
+            terminals: [],
           });
         }
 
@@ -461,6 +694,7 @@ describe('re-keying preserves the tab', () => {
           type: 'sync-items',
           repo: REPOS[0],
           entries: [{ itemKey: key, branch: 'a' }],
+          terminals: [],
         });
         // EditorArea and the close-tab path both fall back to this when
         // the key does not resolve during the render before sync-items
@@ -492,8 +726,37 @@ describe('re-keying preserves the tab', () => {
       type: 'sync-items',
       repo: REPOS[0],
       entries: [{ itemKey: 'pr:1', branch: 'a' }],
+      terminals: [],
     });
     expect(state.tabs).toHaveLength(1);
     expect(state.tabs.some((t) => t.id === state.activeId)).toBe(true);
+  });
+});
+
+describe('agents alive in other repositories', () => {
+  // The listing restores tabs at launch; it must never take the user
+  // anywhere — not to another repository, and not off the tab they
+  // are on — and never speak for the repository in view.
+  it('never moves focus, and never opens a tab in the repo in view', () => {
+    fc.assert(
+      fc.property(
+        sequence,
+        fc.uniqueArray(fc.constantFrom(...FOREIGN), { maxLength: 2 }),
+        (actions, foreign) => {
+          const { state: before, inView } = replay(actions);
+          const after = reduce(before, {
+            type: 'sync-items',
+            repo: inView,
+            entries: [],
+            foreign,
+          });
+          expect(after.activeId).toBe(before.activeId);
+          const own = (s: TabsState) =>
+            s.tabs.filter((t) => t.kind === 'item' && t.repo === inView);
+          expect(own(after).length).toBe(own(before).length);
+        }
+      ),
+      { numRuns: 500 }
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   readConfig,
@@ -59,6 +59,41 @@ export function isGitRepo(cwd: string): boolean {
   }
 }
 
+/**
+ * The identity of a repository directory: its real path.
+ *
+ * That is the string git answers for the toplevel, which is what the
+ * tmux prefix (`projectKey`), a worktree's origin and the strip's
+ * repository groups are all computed from. Every path a repository is
+ * opened by — the picker, the recents list, `KIRBY_START_DIR`, a
+ * foreign tab — goes through here once, at this boundary, so a
+ * checkout reached through a symlink (or macOS's `/var` against
+ * `/private/var`) is the same repository everywhere. A path that
+ * cannot be resolved is kept as given; `isGitRepo` rejects it next.
+ */
+export function canonicalRepoPath(cwd: string): string {
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return cwd;
+  }
+}
+
+/** The recents list under canonical paths, one entry per repository —
+ *  an entry written under a symlink path before this canonicalisation
+ *  existed collapses onto its real one, newest kept. */
+function canonicalRecents(recents: RecentRepo[]): RecentRepo[] {
+  const seen = new Set<string>();
+  const out: RecentRepo[] = [];
+  for (const r of recents) {
+    const cwd = canonicalRepoPath(r.cwd);
+    if (seen.has(cwd)) continue;
+    seen.add(cwd);
+    out.push(cwd === r.cwd ? r : { ...r, cwd });
+  }
+  return out;
+}
+
 export function requireRepo(): string {
   if (activeCwd === null) throw new NoActiveRepoError();
   return activeCwd;
@@ -99,9 +134,10 @@ function logSessionBackend(config: ReturnType<typeof readConfig>): void {
   );
 }
 
-export function openRepo(cwd: string): RepoInfo {
+export function openRepo(path: string): RepoInfo {
+  const cwd = canonicalRepoPath(path);
   if (!isGitRepo(cwd)) {
-    throw new Error(`Not a git repository: ${cwd}`);
+    throw new Error(`Not a git repository: ${path}`);
   }
   activeCwd = cwd;
   process.chdir(cwd);
@@ -112,7 +148,7 @@ export function openRepo(cwd: string): RepoInfo {
   // up killing an agent running over there.
   resetRepoRoot();
   try {
-    saveRecents(recordOpen(loadRecents(), cwd));
+    saveRecents(recordOpen(canonicalRecents(loadRecents()), cwd));
   } catch {
     // Recent-repos bookkeeping must never block opening a repo.
   }
@@ -202,11 +238,16 @@ export function openStartupRepo(
  * invalid instead of failing on click.
  */
 export function listRecentRepos(): (RecentRepo & { valid: boolean })[] {
-  return loadRecents()
+  return canonicalRecents(loadRecents())
     .slice(0, 10)
     .map((r) => ({ ...r, valid: isGitRepo(r.cwd) }));
 }
 
+/** Forget a repository under whichever path its entry was stored — the
+ *  list shows canonical paths, and the entry may predate that. */
 export function forgetRecentRepo(cwd: string): void {
-  forgetRecent(cwd);
+  const target = canonicalRepoPath(cwd);
+  for (const r of loadRecents()) {
+    if (canonicalRepoPath(r.cwd) === target) forgetRecent(r.cwd);
+  }
 }

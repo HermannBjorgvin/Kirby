@@ -16,10 +16,19 @@ import { PtySession } from './pty-session.js';
  */
 export function createPtyBackendFactory(): SessionBackendFactory {
   return (spec: SessionSpec): SessionBackend =>
-    new PtySession(spec.cmd, spec.args, {
+    new PtySession(spec.cmd === '' ? defaultShell(spec) : spec.cmd, spec.args, {
       cols: spec.cols,
       rows: spec.rows,
       cwd: spec.cwd,
       env: spec.env,
     });
+}
+
+/** What an empty `cmd` runs here: the user's shell. There is no tmux
+ *  around to consult a `default-shell` option, so this is the terminal
+ *  emulator's answer — `$SHELL`, from the session's own environment
+ *  when it was given one, and `/bin/sh` when nothing says. */
+function defaultShell(spec: SessionSpec): string {
+  const env = spec.env ?? process.env;
+  return env.SHELL || '/bin/sh';
 }
