@@ -28,13 +28,19 @@ import { getMainBranch } from './branches.js';
  * Kirby-owned worktrees. Returns `null` if no owned worktree currently
  * has the branch checked out.
  */
-async function worktreeForBranch(branch: string): Promise<WorktreeInfo | null> {
-  const wt = (await listWorktrees()).find((w) => w.branch === branch);
+async function worktreeForBranch(
+  branch: string,
+  cwd?: string
+): Promise<WorktreeInfo | null> {
+  const wt = (await listWorktrees(cwd)).find((w) => w.branch === branch);
   return wt ?? null;
 }
 
-async function worktreePathForBranch(branch: string): Promise<string | null> {
-  return (await worktreeForBranch(branch))?.path ?? null;
+async function worktreePathForBranch(
+  branch: string,
+  cwd?: string
+): Promise<string | null> {
+  return (await worktreeForBranch(branch, cwd))?.path ?? null;
 }
 
 /**
@@ -118,6 +124,17 @@ export async function checkoutWorktree(
   const relativeDir = worktreeDir(branch);
   const absoluteDir = resolve(cwd, relativeDir);
   if (existsSync(absoluteDir)) return absoluteDir;
+
+  // As in `createWorktree`: a worktree's directory is independent of
+  // its branch name, so the path above only finds the ones Kirby made
+  // under the current template. Asking git — about `cwd`'s repository,
+  // not the process's, since a caller here may outlive a change of
+  // directory — is what stops a branch that is already checked out
+  // somewhere from reading as "no worktree, and git refused to make
+  // one", which for a babysitter means silently doing nothing.
+  const existingPath = await worktreePathForBranch(branch, cwd);
+  if (existingPath) return existingPath;
+
   try {
     await exec(
       `git worktree add "${relativeDir}" "${branch}"`,

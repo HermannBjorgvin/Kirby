@@ -12,8 +12,16 @@ import { branchToSessionName } from './refs.js';
 export interface WorktreeResolver {
   /** Relative path for a new worktree for this branch */
   dir(branch: string): string;
-  /** True if this absolute worktree path belongs to this resolver */
-  owns(absolutePath: string): boolean;
+  /**
+   * True if this absolute worktree path belongs to this resolver.
+   *
+   * `cwd` names the repository to judge membership of. Omitting it
+   * means the process's directory, which is the open repository and
+   * what every long-standing caller wants. A caller acting on a
+   * repository it was handed — one that must survive the desktop
+   * `chdir`-ing elsewhere between its awaits — passes it explicitly.
+   */
+  owns(absolutePath: string, cwd?: string): boolean;
   /**
    * The absolute directory every owned worktree sits under — the root
    * `owns()` is testing membership of.
@@ -22,8 +30,12 @@ export interface WorktreeResolver {
    * appears needs somewhere to point a watcher, and the alternative is
    * recursing a checkout. It may not exist on disk yet: nothing
    * creates it until the first worktree is made.
+   *
+   * `cwd` is resolved against as in {@link owns}. An absolute template
+   * ignores it, which is correct: that base is the same directory
+   * whichever repository is asking.
    */
-  base(): string;
+  base(cwd?: string): string;
 }
 
 /**
@@ -53,11 +65,11 @@ const isUnder = (p: string, baseDir: string): boolean => {
 
 const defaultResolver: WorktreeResolver = {
   dir: (branch) => '.claude/worktrees/' + branchToSessionName(branch),
-  owns: (p) => isUnder(p, defaultResolver.base()),
+  owns: (p, cwd) => isUnder(p, defaultResolver.base(cwd)),
   // Resolved per call, not captured: the default resolver is the one
   // in force before anything has told Kirby which repo it is in, and
   // the desktop chdir()s into a repo after that point.
-  base: () => resolve(process.cwd(), '.claude/worktrees'),
+  base: (cwd = process.cwd()) => resolve(cwd, '.claude/worktrees'),
 };
 
 let activeResolver: WorktreeResolver = defaultResolver;
@@ -76,15 +88,20 @@ export function createTemplateResolver(
 ): WorktreeResolver {
   const baseTemplate =
     template.replace(/\/?\{(?:branch|session)\}.*$/, '') || '.';
-  const baseDir = resolve(cwd, baseTemplate);
+  // The template is kept, not just the directory it resolved to at
+  // creation: a relative one names a different directory in each
+  // repository (`../{session}` is a sibling of whichever checkout is
+  // asking), so a caller naming its own repository has to re-resolve.
+  // An absolute template resolves to itself whatever `cwd` is.
+  const baseFor = (at?: string) => resolve(at ?? cwd, baseTemplate);
 
   return {
     dir: (branch) =>
       template
         .replace('{branch}', branch)
         .replace('{session}', branchToSessionName(branch)),
-    owns: (p) => isUnder(p, baseDir),
-    base: () => baseDir,
+    owns: (p, at) => isUnder(p, baseFor(at)),
+    base: (at) => baseFor(at),
   };
 }
 
@@ -93,13 +110,16 @@ export function worktreeDir(branch: string): string {
   return activeResolver.dir(branch);
 }
 
-/** True if this absolute worktree path is one Kirby manages. */
-export function ownsWorktreePath(absolutePath: string): boolean {
-  return activeResolver.owns(absolutePath);
+/**
+ * True if this absolute worktree path is one Kirby manages, judged
+ * against `cwd`'s repository (the process's directory when omitted).
+ */
+export function ownsWorktreePath(absolutePath: string, cwd?: string): boolean {
+  return activeResolver.owns(absolutePath, cwd);
 }
 
 /** The absolute directory Kirby's worktrees live under, per the
  *  resolver in force. May not exist yet. */
-export function worktreesBasePath(): string {
-  return activeResolver.base();
+export function worktreesBasePath(cwd?: string): string {
+  return activeResolver.base(cwd);
 }
