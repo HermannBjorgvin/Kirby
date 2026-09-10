@@ -24,6 +24,12 @@
       "path": "../../libs/diff/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/image-loader/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/kitty-graphics/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/review-comments/tsconfig.lib.json"
     },
     {

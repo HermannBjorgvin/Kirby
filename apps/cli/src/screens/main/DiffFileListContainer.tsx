@@ -4,6 +4,7 @@ import type { PullRequestInfo } from '@kirby/vcs-core';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 import type {
   TerminalLayout,
   PaneModeValue,
@@ -42,6 +43,7 @@ export function DiffFileListContainer({
 
   // Shell-agnostic derivations live in the app-core controller; this
   // wrapper only adds TUI layout geometry and Ink input wiring.
+  const { layouts: imageLayouts } = useCommentImagesValue();
   const vm = useDiffFileListViewModel({ pane, selectedPr, diffBundle });
   const {
     treeMode,
@@ -76,6 +78,7 @@ export function DiffFileListContainer({
           annotatingPlanKey: pane.annotatingPlanKey,
           annotationBuffer: pane.annotationBuffer,
         },
+        imageLayouts,
       }),
     [
       terminal.paneRows,
@@ -88,6 +91,7 @@ export function DiffFileListContainer({
       pane.replyBuffer,
       pane.annotatingPlanKey,
       pane.annotationBuffer,
+      imageLayouts,
     ]
   );
 

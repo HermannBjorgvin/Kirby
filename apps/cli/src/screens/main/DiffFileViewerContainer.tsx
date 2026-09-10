@@ -18,6 +18,7 @@ import {
 } from '@kirby/app-core';
 import { diffViewportHeight } from '@kirby/core';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 import { handleDiffViewerInput } from './main-input.js';
 
 interface DiffFileViewerContainerProps {
@@ -66,12 +67,15 @@ export function DiffFileViewerContainer({
   );
   const cardContentWidth = Math.max(1, cardWidth - 4);
 
+  const { layouts: imageLayouts } = useCommentImagesValue();
+
   const vm = useDiffFileViewerViewModel({
     pane,
     paneRows: terminal.paneRows,
     cardContentWidth,
     selectedPr,
     diffBundle,
+    imageLayouts,
   });
   const {
     inPlanKeys,

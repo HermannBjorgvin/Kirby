@@ -5,9 +5,11 @@ import {
   estimateBodyRows,
   estimateCardRows,
   estimateReplyInputRows,
+  type CommentImageLayouts,
   type ReviewComment,
 } from '@kirby/review-comments';
 import { planItemKey } from '@kirby/core';
+import { CommentProse } from './CommentProse.js';
 import {
   cardBorderColor,
   collapseBody,
@@ -67,12 +69,12 @@ function HeaderLine({ spans }: { spans: HeaderSpan[] }) {
  * is what lets `estimateCardRows` add a flat 1 for each rather than
  * measuring them — see the note there.
  */
-function CommentBodyText({ body }: { body: string }) {
+function CommentBodyText({ body, width }: { body: string; width?: number }) {
   const view = commentBodyView(body);
   return (
     <>
       {view.badge.length > 0 && <HeaderLine spans={view.badge} />}
-      <Text wrap="wrap">{view.body}</Text>
+      <CommentProse body={view.body} width={width} />
       {view.footer && (
         <Text wrap="truncate-end" dimColor>
           {view.footer}
@@ -81,6 +83,13 @@ function CommentBodyText({ body }: { body: string }) {
     </>
   );
 }
+
+// Card interior width: card box minus round border (2) + paddingX (2).
+const cardInterior = (maxWidth: number | undefined): number | undefined =>
+  maxWidth === undefined ? undefined : Math.max(1, maxWidth - 4);
+// Reply column sits 2 cells further in (marginLeft 2).
+const replyInterior = (maxWidth: number | undefined): number | undefined =>
+  maxWidth === undefined ? undefined : Math.max(1, maxWidth - 6);
 
 /**
  * Indent the card so it lines up with the diff gutter when requested.
@@ -184,13 +193,19 @@ export const CommentThreadCard = memo(function CommentThreadCard({
             inPlan,
           })}
         />
-        <CommentBodyText body={rootComment.body} />
+        <CommentBodyText
+          body={rootComment.body}
+          width={cardInterior(maxWidth)}
+        />
         {thread.comments.length > 1 && (
           <Box flexDirection="column" marginTop={1}>
             {thread.comments.slice(1).map((reply) => (
               <Box key={reply.id} flexDirection="column" marginLeft={2}>
                 <HeaderLine spans={replyHeaderSpans(reply)} />
-                <CommentBodyText body={reply.body} />
+                <CommentBodyText
+                  body={reply.body}
+                  width={replyInterior(maxWidth)}
+                />
               </Box>
             ))}
           </Box>
@@ -339,7 +354,8 @@ export interface FooterComposeState {
 export function planCommentFooter(
   threads: RemoteCommentThread[],
   contentWidth?: number,
-  compose?: FooterComposeState
+  compose?: FooterComposeState,
+  imageLayouts?: CommentImageLayouts
 ): {
   shown: RemoteCommentThread[];
   rows: number;
@@ -359,10 +375,13 @@ export function planCommentFooter(
         1 +
         estimateBodyRows(`${compose.annotationBuffer ?? ''}▍`, contentWidth) +
         1;
-      return Math.max(estimateCardRows(thread, contentWidth), composerRows);
+      return Math.max(
+        estimateCardRows(thread, contentWidth, imageLayouts),
+        composerRows
+      );
     }
     return (
-      estimateCardRows(thread, contentWidth) +
+      estimateCardRows(thread, contentWidth, imageLayouts) +
       (thread.id === compose?.replyingToThreadId
         ? estimateReplyInputRows(compose.replyBuffer ?? '', contentWidth)
         : 0)
