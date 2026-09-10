@@ -1,7 +1,6 @@
 import { test, expect } from './fixtures/kirby.js';
-import type { KirbyTerm } from './fixtures/kirby.js';
 import { sidebarLocator } from './setup/sidebar.js';
-import { settleFor } from './setup/waits.js';
+import { createSession } from './setup/sessions.js';
 
 // Wheel + click over the sidebar column. The browser terminal has no
 // mouse reporting, so raw SGR sequences are injected via term.write()
@@ -17,37 +16,13 @@ test.use({
   },
 });
 
-async function createSession(kirby: { term: KirbyTerm }, branch: string) {
-  await kirby.term.type('c');
-  await expect(kirby.term.getByText('Branch Picker')).toBeVisible();
-  await kirby.term.type(branch);
-  await expect(kirby.term.getByText(/\(new branch\)/).first()).toBeVisible({
-    timeout: 5_000,
-  });
-  // Let React re-render so useInput's closure captures the filter.
-  await settleFor(
-    kirby.term.page,
-    2_000,
-    "branch picker's useInput closure catches up to the typed filter"
-  );
-  await kirby.term.press('Enter');
-  // Wait for the picker to fully close before the next `c` — a second
-  // picker opened too early races the first one's teardown.
-  await expect(kirby.term.getByText('Branch Picker')).toBeHidden({
-    timeout: 5_000,
-  });
-  await expect(kirby.term.getByText(branch).first()).toBeVisible({
-    timeout: 10_000,
-  });
-}
-
 test.describe('Sidebar wheel scrolling', () => {
   test('wheel over the sidebar moves the selection', async ({ kirby }) => {
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
     await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
 
-    await createSession(kirby, 'wheel-a');
-    await createSession(kirby, 'wheel-b');
+    await createSession(kirby.term, 'wheel-a');
+    await createSession(kirby.term, 'wheel-b');
 
     const a = sidebarLocator(kirby.term.page, 'wheel-a');
     const b = sidebarLocator(kirby.term.page, 'wheel-b');
@@ -64,8 +39,8 @@ test.describe('Sidebar wheel scrolling', () => {
 test.describe('Sidebar click-to-select', () => {
   test('clicking an item row selects it', async ({ kirby }) => {
     await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await createSession(kirby, 'click-a');
-    await createSession(kirby, 'click-b');
+    await createSession(kirby.term, 'click-a');
+    await createSession(kirby.term, 'click-b');
 
     const a = sidebarLocator(kirby.term.page, 'click-a');
     const b = sidebarLocator(kirby.term.page, 'click-b');
