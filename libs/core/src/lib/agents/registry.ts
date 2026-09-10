@@ -82,6 +82,30 @@ export interface AgentDefinition {
 export const SEED_PROMPT_ENV = 'KIRBY_SEED_PROMPT';
 export const SEED_SYSTEM_ENV = 'KIRBY_SEED_SYSTEM';
 
+/**
+ * Run `script` through the platform shell.
+ *
+ * The `continue || fallback` paths need a shell for the `||`, but
+ * `/bin/sh` does not exist on Windows — node-pty fails to spawn it with
+ * a bare "File not found:", which carries no hint about the cause.
+ * `cmd.exe` implements `||` with the same short-circuit semantics.
+ */
+const shellInvoke = (script: string): Pick<LaunchSpec, 'cmd' | 'args'> =>
+  process.platform === 'win32'
+    ? {
+        cmd: process.env.ComSpec || 'cmd.exe',
+        args: ['/d', '/s', '/c', script],
+      }
+    : { cmd: '/bin/sh', args: ['-c', script] };
+
+/**
+ * Reference an environment variable in a shell script, in the syntax
+ * the shell chosen by {@link shellInvoke} expands: `%NAME%` for
+ * `cmd.exe`, `$NAME` for POSIX `sh`.
+ */
+const shellEnvRef = (name: string): string =>
+  process.platform === 'win32' ? `%${name}%` : `$${name}`;
+
 const CLAUDE: AgentDefinition = {
   id: 'claude',
   name: 'Claude',
@@ -94,18 +118,16 @@ const CLAUDE: AgentDefinition = {
           args: ['--append-system-prompt', opts.appendSystemPrompt, prompt],
         }
       : { cmd: 'claude', args: [prompt] },
-  continueOrBlank: () => ({
-    cmd: '/bin/sh',
-    args: ['-c', 'claude --continue || claude'],
-  }),
+  continueOrBlank: () => shellInvoke('claude --continue || claude'),
   continueOrSeed: (prompt, opts) => {
     const sys = opts?.appendSystemPrompt;
     const fresh = sys
-      ? `claude --append-system-prompt "$${SEED_SYSTEM_ENV}" "$${SEED_PROMPT_ENV}"`
-      : `claude "$${SEED_PROMPT_ENV}"`;
+      ? `claude --append-system-prompt "${shellEnvRef(
+          SEED_SYSTEM_ENV
+        )}" "${shellEnvRef(SEED_PROMPT_ENV)}"`
+      : `claude "${shellEnvRef(SEED_PROMPT_ENV)}"`;
     return {
-      cmd: '/bin/sh',
-      args: ['-c', `claude --continue || ${fresh}`],
+      ...shellInvoke(`claude --continue || ${fresh}`),
       env: {
         [SEED_PROMPT_ENV]: prompt,
         ...(sys ? { [SEED_SYSTEM_ENV]: sys } : {}),
@@ -175,12 +197,11 @@ export function makeTestAgent(rawCommand: string): AgentDefinition {
     name: 'Test Runner',
     hidden: true,
     supportsAppendSystemPrompt: false,
-    blank: () => ({ cmd: '/bin/sh', args: ['-c', rawCommand] }),
+    blank: () => shellInvoke(rawCommand),
     // Seeding a fake is best-effort: run the raw command and expose the
     // prompt via env for fakes that choose to read it.
     seed: (prompt) => ({
-      cmd: '/bin/sh',
-      args: ['-c', rawCommand],
+      ...shellInvoke(rawCommand),
       env: { [SEED_PROMPT_ENV]: prompt },
     }),
   };

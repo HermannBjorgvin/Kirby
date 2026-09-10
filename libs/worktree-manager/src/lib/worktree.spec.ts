@@ -17,6 +17,7 @@ import {
   resetWorktreeResolver,
   setWorktreeResolver,
   worktreesBasePath,
+  ownsWorktreePath,
   createTemplateResolver,
 } from './worktree-resolver.js';
 import {
@@ -66,9 +67,17 @@ function resolve(stdout = '') {
  * directory matches its branch name); pass an explicit `dir` to model a
  * mismatched directory. To model a branch with no live worktree, pass an
  * empty entries array.
+ *
+ * `root` is the repository the worktrees sit under, defaulting to the
+ * process's directory. Pass one to model a listing for a repository a
+ * caller named explicitly. Paths are emitted with forward slashes on
+ * every platform, which is what git's porcelain does.
  */
-function worktreeListPorcelain(entries: { branch: string; dir?: string }[]) {
-  const cwd = process.cwd();
+function worktreeListPorcelain(
+  entries: { branch: string; dir?: string }[],
+  root = process.cwd()
+) {
+  const cwd = root.replace(/\\/g, '/');
   const blocks = entries.map(({ branch, dir }) =>
     [
       `worktree ${cwd}/${
@@ -110,6 +119,8 @@ describe('listBranches', () => {
 
 describe('createWorktree', () => {
   it('should return absolute path for existing branch', async () => {
+    // No worktree has the branch checked out anywhere.
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockResolvedValueOnce(resolve());
     const result = await createWorktree('feature/auth');
     expect(result).toContain('.claude/worktrees/feature-auth');
@@ -122,11 +133,12 @@ describe('createWorktree', () => {
 
   it('should fall back to -b for new branch', async () => {
     mockExec
+      .mockResolvedValueOnce(worktreeListPorcelain([]))
       .mockRejectedValueOnce(new Error('branch not found'))
       .mockResolvedValueOnce(resolve());
     const result = await createWorktree('new-branch');
     expect(result).toContain('.claude/worktrees/new-branch');
-    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).toHaveBeenLastCalledWith(
       'git worktree add -b "new-branch" ".claude/worktrees/new-branch"',
       { encoding: 'utf8' }
@@ -135,9 +147,30 @@ describe('createWorktree', () => {
 
   it('should return null when both attempts fail', async () => {
     mockExec
+      .mockResolvedValueOnce(worktreeListPorcelain([]))
       .mockRejectedValueOnce(new Error('fail'))
       .mockRejectedValueOnce(new Error('fail'));
     expect(await createWorktree('bad-branch')).toBeNull();
+  });
+
+  it('reuses a worktree that has the branch checked out under another directory name', async () => {
+    // Nothing at the resolver-derived path, but git reports the branch
+    // checked out at a directory named differently — created outside
+    // Kirby, or by Kirby under a different worktreePath template.
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([
+        { branch: 'feature/auth', dir: '.claude/worktrees/some-other-name' },
+      ])
+    );
+    const result = await createWorktree('feature/auth');
+    expect(result).toContain('.claude/worktrees/some-other-name');
+    // The lookup is the only git call: no `worktree add` is attempted,
+    // which would fail with "already used by worktree at …".
+    expect(mockExec).toHaveBeenCalledTimes(1);
+    expect(mockExec).not.toHaveBeenCalledWith(
+      expect.stringContaining('worktree add'),
+      expect.anything()
+    );
   });
 
   it('should return existing path without calling git when worktree already exists', async () => {
@@ -155,6 +188,8 @@ describe('createWorktree', () => {
  */
 describe('checkoutWorktree', () => {
   it('checks out an existing branch into the repository it is given', async () => {
+    // No worktree in that repository has the branch checked out.
+    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
     mockExec.mockResolvedValueOnce(resolve());
     const result = await checkoutWorktree('feature/auth', '/repos/one');
     expect(result).toBe('/repos/one/.claude/worktrees/feature-auth');
@@ -165,10 +200,70 @@ describe('checkoutWorktree', () => {
   });
 
   it('never creates a branch: one git refuses is a failure', async () => {
-    mockExec.mockRejectedValueOnce(new Error('invalid reference'));
+    mockExec
+      .mockResolvedValueOnce(worktreeListPorcelain([]))
+      .mockRejectedValueOnce(new Error('invalid reference'));
     expect(await checkoutWorktree('missing', '/repos/one')).toBeNull();
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(
+      mockExec.mock.calls.map(([command]) => command).join('\n')
+    ).not.toContain('-b');
+  });
+
+  // These three build their repository roots with `path.resolve` and
+  // compare against git's forward-slash shape, so they hold on Windows
+  // too, where a bare '/repos/one' resolves to 'C:\repos\one'.
+  const repoOne = pathResolve('/repos/one');
+  const repoTwo = pathResolve('/repos/two');
+  const asGitReportsIt = (p: string) => p.replace(/\\/g, '/');
+
+  it('asks git about the repository it was given, not the process one', async () => {
+    mockExec.mockResolvedValue(worktreeListPorcelain([]));
+    await checkoutWorktree('feature/auth', repoOne);
+    expect(mockExec).toHaveBeenCalledWith('git worktree list --porcelain -z', {
+      encoding: 'utf8',
+      cwd: repoOne,
+    });
+  });
+
+  it('reuses a worktree that has the branch checked out under another directory name', async () => {
+    // The babysitter's spawn path lands here. Without the lookup both
+    // this and `git worktree add` come up empty — the branch is already
+    // checked out — and the agent is never started.
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain(
+        [{ branch: 'feature/auth', dir: '.claude/worktrees/other-name' }],
+        repoOne
+      )
+    );
+    const result = await checkoutWorktree('feature/auth', repoOne);
+    expect(result).toBe(
+      `${asGitReportsIt(repoOne)}/.claude/worktrees/other-name`
+    );
     expect(mockExec).toHaveBeenCalledTimes(1);
-    expect(mockExec.mock.calls[0][0]).not.toContain('-b');
+    expect(mockExec).not.toHaveBeenCalledWith(
+      expect.stringContaining('worktree add'),
+      expect.anything()
+    );
+  });
+
+  it('ignores a worktree of that branch outside the given repository', async () => {
+    // Ownership is judged against the repository asked about, so a
+    // checkout of the same branch in a different repo is not an answer.
+    mockExec
+      .mockResolvedValueOnce(
+        worktreeListPorcelain(
+          [{ branch: 'feature/auth', dir: '.claude/worktrees/elsewhere' }],
+          repoTwo
+        )
+      )
+      .mockResolvedValueOnce(resolve());
+    const result = await checkoutWorktree('feature/auth', repoOne);
+    expect(result).toBe(pathResolve(repoOne, '.claude/worktrees/feature-auth'));
+    expect(mockExec).toHaveBeenLastCalledWith(
+      'git worktree add ".claude/worktrees/feature-auth" "feature/auth"',
+      { encoding: 'utf8', cwd: repoOne }
+    );
   });
 
   it('returns the existing directory of the given repository without calling git', async () => {
@@ -453,7 +548,11 @@ describe('canRemoveBranch', () => {
   // errors for any other path, so this fails against the branch-derived
   // implementation and passes once the path is resolved from git.
   it('runs the dirty-tree guard against the real worktree path, not a derived guess', async () => {
-    const realDir = `${process.cwd()}/.claude/worktrees/investigate-ci-performance`;
+    // Forward slashes throughout, matching what git's porcelain emits
+    // and so what `worktreeListPorcelain` builds.
+    const realDir = `${process
+      .cwd()
+      .replace(/\\/g, '/')}/.claude/worktrees/investigate-ci-performance`;
     mockExec.mockImplementation((command: string) => {
       if (command.includes('git worktree list')) {
         return Promise.resolve(
@@ -1232,6 +1331,78 @@ describe('WorktreeResolver', () => {
       const base = pathResolve(cwd, '.claude/worktrees');
       expect(resolver.owns(`${base}/feature-auth`)).toBe(true);
       expect(resolver.owns(`${base}-old/stale`)).toBe(false);
+    });
+  });
+
+  describe('owns() and the separator git reports', () => {
+    // `git worktree list --porcelain` reports forward slashes on every
+    // platform, while `path.resolve` gives backslashes on Windows. When
+    // owns() compared those literally, every worktree looked unowned and
+    // listWorktrees() returned nothing at all on Windows.
+    it('accepts the path shape git emits for a base path from resolve()', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath();
+      const asGitReportsIt = base.replace(/\\/g, '/') + '/feature-auth';
+      expect(ownsWorktreePath(asGitReportsIt)).toBe(true);
+    });
+
+    it('still rejects a sibling directory whose name shares the prefix', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath().replace(/\\/g, '/');
+      expect(ownsWorktreePath(base + '-old/stale')).toBe(false);
+    });
+
+    it('is case-insensitive on Windows only', () => {
+      resetWorktreeResolver();
+      const base = worktreesBasePath().replace(/\\/g, '/');
+      const shouted = base.toUpperCase() + '/FEATURE-AUTH';
+      expect(ownsWorktreePath(shouted)).toBe(process.platform === 'win32');
+    });
+  });
+
+  describe('judging ownership for a named repository', () => {
+    // A caller acting on a repository it was handed cannot rely on the
+    // process's directory: the desktop chdir()s between its awaits.
+    it('answers about the given repository, not the process one', () => {
+      resetWorktreeResolver();
+      const elsewhere = pathResolve('/repos/elsewhere');
+      const theirs = `${elsewhere.replace(/\\/g, '/')}/.claude/worktrees/x`;
+      expect(ownsWorktreePath(theirs, elsewhere)).toBe(true);
+      expect(ownsWorktreePath(theirs)).toBe(false);
+    });
+
+    it('re-resolves a relative template against the repository asked about', () => {
+      // '../{session}' is a sibling of whichever checkout is asking, so
+      // the base captured at creation is the wrong answer for another.
+      setWorktreeResolver(
+        createTemplateResolver('../{session}', pathResolve('/repos/one'))
+      );
+      expect(worktreesBasePath()).toBe(pathResolve('/repos'));
+      expect(worktreesBasePath(pathResolve('/elsewhere/two'))).toBe(
+        pathResolve('/elsewhere')
+      );
+      const theirs = `${pathResolve('/elsewhere').replace(
+        /\\/g,
+        '/'
+      )}/feature-auth`;
+      expect(ownsWorktreePath(theirs, pathResolve('/elsewhere/two'))).toBe(
+        true
+      );
+      expect(ownsWorktreePath(theirs)).toBe(false);
+    });
+
+    it('leaves an absolute template alone whichever repository asks', () => {
+      const shared = pathResolve('/custom/worktrees');
+      setWorktreeResolver(
+        createTemplateResolver(`${shared}/{session}`, pathResolve('/repos/one'))
+      );
+      expect(worktreesBasePath(pathResolve('/repos/two'))).toBe(shared);
+      expect(
+        ownsWorktreePath(
+          `${shared.replace(/\\/g, '/')}/feature-auth`,
+          pathResolve('/repos/two')
+        )
+      ).toBe(true);
     });
   });
 });

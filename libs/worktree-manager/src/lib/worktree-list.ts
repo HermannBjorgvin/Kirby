@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { log } from '@kirby/logger';
-import { exec } from './exec.js';
+import { exec, gitOptions } from './exec.js';
 import { branchToSessionName } from './refs.js';
 import { ownsWorktreePath } from './worktree-resolver.js';
 
@@ -126,14 +126,21 @@ export function recoverRebaseBranch(worktreePath: string): string | null {
  * was run with a SHA) are kept with an empty `branch`; consumers name
  * them via `worktreeSessionName` (directory basename) so they render
  * in the sidebar and can host a session by their directory name.
+ *
+ * `cwd` names the repository to list, and to judge ownership against.
+ * Omitting it runs against the process's directory, which is the open
+ * repository — what every caller polling for the sidebar wants. A
+ * caller acting on a repository it was handed passes it, so the answer
+ * cannot be about somewhere the desktop `chdir`-ed to meanwhile.
  */
-export async function listWorktrees(): Promise<WorktreeInfo[]> {
+export async function listWorktrees(cwd?: string): Promise<WorktreeInfo[]> {
   try {
-    const { stdout } = await exec('git worktree list --porcelain -z', {
-      encoding: 'utf8',
-    });
+    const { stdout } = await exec(
+      'git worktree list --porcelain -z',
+      gitOptions(cwd)
+    );
     const owned = parseWorktrees(stdout).filter(
-      (w) => !w.bare && ownsWorktreePath(w.path)
+      (w) => !w.bare && ownsWorktreePath(w.path, cwd)
     );
     const recovered: WorktreeInfo[] = [];
     for (const w of owned) {
