@@ -561,12 +561,57 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
   src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
+libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
+  src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete
+  src/lib/placement.ts           — px→cells placement heuristic (~10px/col, 2:1 aspect, 24-row cap)
+libs/image-loader/               — Comment-image download + decode
+  src/lib/image-format.ts        — magic-byte sniff + header-only dimensions (PNG/JPEG/GIF/WebP)
+  src/lib/decode-image.ts        — PNG passthrough; JPEG/GIF/WebP → RGBA (@cwasm/webp wasm, lazy-loaded)
+  src/lib/gif-animation.ts       — full composited RGBA frames + per-frame delays (native resolution)
+  src/lib/fetch-image.ts         — auth-aware fetch (gh token bearer / Azure DevOps PAT basic)
 ```
+
+## Comment images (kitty graphics)
+
+- Images in PR-comment markdown (`![alt](url)`) render inline in the reviews
+  surfaces when `TERM` is kitty/ghostty (or `KIRBY_IMAGES=kitty` forces it);
+  every other terminal keeps the raw markdown token. `KIRBY_IMAGES=off` disables.
+- Each distinct url is fetched + decoded once and transmitted as a _virtual_
+  kitty placement (`U=1`, out-of-band `process.stdout.write` — same precedent
+  as `apps/cli/src/utils/window-title.ts`), then `CommentProse` renders
+  U+10EEEE placeholder rows as ordinary Ink `<Text>` (clipped to the card
+  interior so Ink never draws a truncation `…` over the image).
+- `useCommentImages` owns the pipeline; `CommentImagesContext` (mounted in
+  `MainContent`) carries per-url state + `layouts` (url → {rows, cols}).
+  `estimateBodyRows` / `estimateCardRows` / `buildRowMap` / `planCommentFooter`
+  take `imageLayouts` so scroll geometry matches painted heights.
+- Animated GIFs: kitty loops them natively (`a=f` frames + `a=a,s=3,v=1`, zero
+  ongoing traffic); ghostty lacks `a=f`, so Kirby re-transmits frames on a
+  chained timeout (≤120 frames, ≥50ms/frame, ≤3 concurrent) while a reviews
+  pane shows. `KIRBY_GIF_ANIMATION=off` keeps a static mid-animation composite.
+- **The browser terminal (e2e) renders cells only** — no kitty graphics, no
+  mouse reports. E2E asserts escape _bytes_ via the host's `GET /output`
+  (base64 ring buffer) and injects SGR wheel/click sequences with
+  `term.write()`. Real-pixel checks are manual QA in kitty/ghostty.
+- `@cwasm/webp` reads its `webp.wasm` from disk at runtime; `copy-webp-wasm.mjs`
+  places it next to the bundle for `install-global` / `publish`.
 
 ## Known Decisions & Learnings
 
 - **ANSI passthrough works:** TerminalEmulator (@xterm/headless) renders ANSI output which Ink `<Text>` passes directly to the terminal. Colors, bold, underline all render correctly.
 - **Input forwarding works:** Raw stdin → PTY write round-trip is responsive enough for interactive use. Mouse tracking and scrollback navigation are supported.
+- **Mouse in the reviews UI.** `useScrollWheel` / `useMouseClicks` enable SGR
+  mouse tracking (`?1000h`), parse every report in a stdin chunk (batched wheel
+  spins), and filter by pointer column so the sidebar (cols ≤ 48) and the main
+  pane scroll independently; the enable/disable writes are refcounted across
+  consumers. Enabling mouse tracking means the terminal stops opening OSC-8
+  links itself, so the sidebar handles a PR-badge click by opening the PR
+  (`open-url.ts`), and `handleTextInput` drops SGR reports Ink surfaces as
+  printable input so a stray click can't type into a compose buffer.
+- **Parallel e2e runs collide on the wterm host port.** `playwright.config.ts`
+  and the fixture both key off `PORT` (default 5174) with `reuseExistingServer`,
+  so a second checkout running e2e will attach to the first's host and drive a
+  stale build. Set `PORT=<n>` when another Kirby session may be running e2e.
 - **NX workspace uses `apps/*` + `libs/*`** (not default `packages/*`). Workspaces configured in root package.json.
 - **`npx nx sync`** may be needed when adding cross-library dependencies (e.g. worktree-manager importing terminal).
 - **A fresh git worktree needs more than the root `node_modules`.** Git
