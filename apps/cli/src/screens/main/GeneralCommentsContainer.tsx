@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
 import type {
@@ -5,7 +6,8 @@ import type {
   PaneModeValue,
   DiffBundle,
 } from '@kirby/app-core';
-import { useSessionActions } from '@kirby/app-core';
+import { useSessionActions, LAYOUT } from '@kirby/app-core';
+import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 
 interface GeneralCommentsContainerProps {
@@ -42,6 +44,33 @@ export function GeneralCommentsContainer({
       return next;
     });
   };
+
+  // Wheel scrolling (this pane slices by comment, so a tick is one
+  // card). Main-pane region only — the sidebar scrolls itself.
+  const { setGeneralCommentsIndex, setGeneralCommentsScrollOffset } = pane;
+  const handleScrollWheel = useCallback(
+    (ticks: number) => {
+      const dir = Math.sign(ticks);
+      setGeneralCommentsIndex((i) => {
+        const next = Math.min(Math.max(i + dir, 0), Math.max(0, count - 1));
+        setGeneralCommentsScrollOffset((off) => {
+          if (next < off) return next;
+          if (next >= off + viewportHeight) return next - viewportHeight + 1;
+          return off;
+        });
+        return next;
+      });
+    },
+    [
+      count,
+      viewportHeight,
+      setGeneralCommentsIndex,
+      setGeneralCommentsScrollOffset,
+    ]
+  );
+  useScrollWheel(!terminalFocused && count > 0, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   /** Open the composer now; re-read the conversation behind it, so a
    *  reply is never written against comments that have already moved

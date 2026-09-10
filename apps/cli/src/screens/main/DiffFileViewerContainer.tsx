@@ -15,9 +15,10 @@ import {
   useAsyncOps,
   usePlan,
   useDiffFileViewerViewModel,
+  LAYOUT,
 } from '@kirby/app-core';
 import { diffViewportHeight } from '@kirby/core';
-import { useScrollWheel } from '../../hooks/useScrollWheel.js';
+import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
 import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 import { handleDiffViewerInput } from './main-input.js';
 
@@ -88,17 +89,21 @@ export function DiffFileViewerContainer({
     sectionAnchorRows,
   } = vm;
 
-  // ── Scroll wheel ────────────────────────────────────────────────
+  // ── Scroll wheel (main-pane region — the sidebar scrolls itself) ─
   const { setDiffScrollOffset } = pane;
   const handleScrollWheel = useCallback(
-    (delta: number) => {
+    (ticks: number) => {
       const viewportHeight = diffViewportHeight(terminal.paneRows);
       const maxScroll = Math.max(0, diffTotalRows - viewportHeight);
-      setDiffScrollOffset((o) => Math.max(0, Math.min(o + delta, maxScroll)));
+      setDiffScrollOffset((o) =>
+        Math.max(0, Math.min(o + ticks * SCROLL_LINES, maxScroll))
+      );
     },
     [terminal.paneRows, diffTotalRows, setDiffScrollOffset]
   );
-  useScrollWheel(!terminalFocused, handleScrollWheel);
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   // ── Input routing ───────────────────────────────────────────────
   useInput(
