@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useInput, Box } from 'ink';
 import { Sidebar } from '../../components/Sidebar.js';
+import { useSidebarMouse } from './useSidebarMouse.js';
 import { Pane } from '../../components/Pane.js';
 import { SessionTabBar } from '../../components/SessionTabBar.js';
 import {
@@ -69,6 +70,15 @@ export function MainTab(props: MainTabProps) {
 interface MainTabBodyProps extends MainTabProps {
   hintsHidden: boolean;
   toggleHints: () => void;
+}
+
+/** True when any modal that owns its own input handler is open. */
+function getAnyModalOpen(
+  branchPickerCreating: boolean,
+  deleteConfirmOpen: boolean,
+  settingsOpen: boolean
+): boolean {
+  return branchPickerCreating || deleteConfirmOpen || settingsOpen;
 }
 
 // MainTabBody owns the pane state + the real input router. React
@@ -220,6 +230,23 @@ function MainTabBody({
       }
     : terminal;
   const showPlanIndicator = pane.paneMode !== 'plan-checkout';
+
+  // Wheel / click over the sidebar column (see useSidebarMouse). Inert
+  // whenever another surface owns input or the sidebar is hidden — the
+  // same gate the sidebar's own keyboard handler uses.
+  const anyModalOpen = getAnyModalOpen(
+    branchPicker.creating,
+    deleteConfirm.confirmDelete != null,
+    settings.settingsOpen
+  );
+  useSidebarMouse({
+    active:
+      !terminalFocused && !showOnboarding && !anyModalOpen && !sidebarHidden,
+    sidebarWidth: layout.sidebarWidth,
+    items: sidebar.items,
+    moveSelection: sidebar.moveSelection,
+    selectByKey: sidebar.selectByKey,
+  });
 
   useInactiveAlertWatcher(sidebar.sessionNameForTerminal);
 
