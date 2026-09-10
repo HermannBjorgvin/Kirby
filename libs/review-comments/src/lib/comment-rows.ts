@@ -13,6 +13,11 @@
 import wrapAnsi from 'wrap-ansi';
 import type { RemoteCommentThread } from '@kirby/vcs-core';
 import { commentBodyParts } from './conventional.js';
+import {
+  segmentCommentBody,
+  imageToken,
+  type CommentImageLayouts,
+} from './comment-images.js';
 import type { ReviewComment } from './types.js';
 import type { AnnotatedLine } from './comment-renderer.js';
 
@@ -30,7 +35,11 @@ import type { AnnotatedLine } from './comment-renderer.js';
  * stay in step: a card measured against a different split from the one
  * it draws puts every row below it in the wrong place.
  */
-function bodyRowsWithChrome(body: string, contentWidth?: number): number {
+function bodyRowsWithChrome(
+  body: string,
+  contentWidth?: number,
+  imageLayouts?: CommentImageLayouts
+): number {
   const parts = commentBodyParts(body);
   return (
     (parts.header ? 1 : 0) +
@@ -39,7 +48,9 @@ function bodyRowsWithChrome(body: string, contentWidth?: number): number {
     // unreachable for a real comment; splitting a header and a
     // signature out of the body made it reachable — a comment whose
     // whole content is its signature has empty prose.
-    (parts.body ? estimateBodyRows(parts.body, contentWidth) : 0) +
+    (parts.body
+      ? estimateBodyRows(parts.body, contentWidth, imageLayouts)
+      : 0) +
     (parts.footer ? 1 : 0)
   );
 }
@@ -59,7 +70,32 @@ function bodyRowsWithChrome(body: string, contentWidth?: number): number {
  * file-list footer's pre-2026 behaviour) — render paths should always
  * pass the real width.
  */
-export function estimateBodyRows(body: string, contentWidth?: number): number {
+export function estimateBodyRows(
+  body: string,
+  contentWidth?: number,
+  imageLayouts?: CommentImageLayouts
+): number {
+  if (imageLayouts && contentWidth && contentWidth > 0) {
+    // Image mode: the body renders as block segments (see
+    // comment-images.ts / <CommentBodyText>). A laid-out image occupies
+    // its placement's rows; anything else — plain text, or an image
+    // whose fetch hasn't finished — wraps as its literal characters.
+    return Math.max(
+      1,
+      segmentCommentBody(body).reduce((sum, block) => {
+        if (block.type === 'text') {
+          return sum + estimateBodyRows(block.text, contentWidth);
+        }
+        const layout = imageLayouts.get(block.url);
+        return (
+          sum +
+          (layout
+            ? layout.rows
+            : estimateBodyRows(imageToken(block), contentWidth))
+        );
+      }, 0)
+    );
+  }
   const naturalLines = Math.max(1, body.split('\n').length);
   if (contentWidth && contentWidth > 0) {
     const wrapped = wrapAnsi(body, contentWidth, { trim: false, hard: true });
@@ -82,11 +118,13 @@ export function estimateBodyRows(body: string, contentWidth?: number): number {
  */
 export function estimateCardRows(
   thread: RemoteCommentThread,
-  contentWidth?: number
+  contentWidth?: number,
+  imageLayouts?: CommentImageLayouts
 ): number {
   const root = thread.comments[0];
   if (!root) return 0;
-  const rootRows = 4 + bodyRowsWithChrome(root.body, contentWidth);
+  const rootRows =
+    4 + bodyRowsWithChrome(root.body, contentWidth, imageLayouts);
   const replies = thread.comments.slice(1);
   const replyWidth =
     contentWidth && contentWidth > 0
@@ -97,7 +135,8 @@ export function estimateCardRows(
       ? 0
       : 1 +
         replies.reduce(
-          (sum, c) => sum + 1 + bodyRowsWithChrome(c.body, replyWidth),
+          (sum, c) =>
+            sum + 1 + bodyRowsWithChrome(c.body, replyWidth, imageLayouts),
           0
         );
   return rootRows + replyRows;
@@ -202,6 +241,12 @@ export interface BuildRowMapInputs {
    * cap at 4 lines). Remote thread cards always render fully expanded.
    */
   selectedCommentId?: string | null;
+  /**
+   * url → placement for comment images the renderer is ready to draw.
+   * When present, a laid-out image contributes its placement rows to
+   * the card span instead of its wrapped markdown token.
+   */
+  imageLayouts?: CommentImageLayouts;
 }
 
 /**
@@ -225,6 +270,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     replyingToThreadId,
     editingCommentId,
     selectedCommentId,
+    imageLayouts,
   } = inputs;
 
   const positions: RowMapEntry[] = new Array(annotatedLines.length);
@@ -233,7 +279,7 @@ export function buildRowMap(inputs: BuildRowMapInputs): RowMap {
     const entry = annotatedLines[i]!;
     let span = 1;
     if (entry.type === 'thread-remote') {
-      span = estimateCardRows(entry.thread, contentWidth);
+      span = estimateCardRows(entry.thread, contentWidth, imageLayouts);
       if (entry.thread.id === replyingToThreadId) {
         span += REPLY_INPUT_ROWS;
       }
