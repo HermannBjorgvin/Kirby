@@ -231,11 +231,7 @@ async function handleRequest(
     return;
   }
 
-  if (req.method === 'GET' && url.pathname === '/status') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ptyAlive: activePty != null }));
-    return;
-  }
+  if (req.method === 'GET' && handleGetJson(url.pathname, res)) return;
 
   if (req.method !== 'GET') {
     res.writeHead(405).end('method not allowed');
@@ -243,6 +239,30 @@ async function handleRequest(
   }
 
   await serveStatic(req, res);
+}
+
+/**
+ * The read-only JSON GET endpoints. Returns true when it answered.
+ *
+ * `/output` hands back the raw PTY ring buffer (base64) — the browser
+ * terminal can't render kitty graphics or synthesise mouse reports, so
+ * e2e tests read the bytes here to assert on the escape sequences
+ * Kirby emitted (kitty APC payloads, DECSET mouse toggles).
+ */
+function handleGetJson(pathname: string, res: http.ServerResponse): boolean {
+  const json = (body: unknown) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  if (pathname === '/status') {
+    json({ ptyAlive: activePty != null });
+    return true;
+  }
+  if (pathname === '/output') {
+    json({ base64: Buffer.concat(outputBuffer).toString('base64') });
+    return true;
+  }
+  return false;
 }
 
 const wss = new WebSocketServer({ noServer: true });
