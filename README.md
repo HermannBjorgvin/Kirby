@@ -1,109 +1,117 @@
 # 😸 Kirby (working title, name of my cat)
 
-A desktop app and a terminal UI for running AI coding agents across git worktrees, with pull request status and code review built in.
+Run AI coding agents across git worktrees, track pull requests, and review code from a desktop app or terminal UI.
 
-Kirby started as a way to solve my own workflow. I spend my working hours in a large monorepo, usually with several features and reviews in flight at once, and I wanted one place to manage the worktrees and agent sessions that go with them and to help me automate reviewing pull requests while remaining familiar with the source code.
+I built Kirby to help with my daily work in a large monorepo. I usually have several features and reviews going at once, and wanted one place to manage their branches and agent sessions. I also wanted help reviewing pull requests while still understanding the code I was approving.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/media/hero-light.png">
-  <img alt="Kirby Desktop reviewing a pull request: the sidebar lists worktrees and pull requests with their status, the review rail shows files and comments, and a reviewer's thread sits inline in the diff" src="docs/media/hero.png">
+  <img alt="Kirby Desktop showing worktrees and pull request status beside a code diff with inline review comments" src="docs/media/hero.png">
 </picture>
 
-## Installation
+Kirby works with Claude, Codex, Gemini, Copilot, and OpenCode. You can choose a different agent for each project. It supports GitHub and Azure DevOps, with [different levels of test coverage](#version-control-providers).
 
-Two front ends over the same core. Install both:
+> Kirby is still early in development. We use it every day, but expect rough edges and breaking changes.
+
+## Getting started
+
+### Prerequisites
+
+You'll need:
+
+- Git, Node.js, and npm.
+- An agent CLI on your `PATH`: `claude`, `codex`, `gemini`, `copilot`, or `opencode`.
+- For GitHub, the `gh` CLI, signed in to your account.
+- For Azure DevOps, a personal access token with repository and pull request access.
+- On Linux, `build-essential` and `python3` to compile `node-pty` when installing the desktop app.
+
+Optionally, install `tmux` to keep agent sessions running after you quit Kirby and reconnect to them on the next launch. Kirby uses it by default when available. To use PTY instead, select it under **Settings → Terminal Backend**.
+
+### Installation
+
+Install the desktop app and CLI:
 
 ```sh
-npm install -g @hermannbjorgvin/kirby-desktop   # desktop app
-npm install -g @hermannbjorgvin/kirby                # terminal UI, and the `kirby` cli utils
+npm install -g @hermannbjorgvin/kirby-desktop  # Desktop app
+npm install -g @hermannbjorgvin/kirby          # Terminal UI and CLI utilities
 ```
 
-Then run `kirby-desktop` or `kirby` from any project directory.
+The desktop app uses the CLI for agent-drafted reviews: agents save their comments with `kirby util add-comment`, so `kirby` must be on your `PATH`. If you don't use that feature, you can install the desktop app on its own.
 
-Both, because review agents record their comments by running `kirby util add-comment` — so agent-drafted reviews need `kirby` on your `PATH` even if you only open the desktop app. Everything else works without it.
-
-### Customizable and agent agnostic
-
-- **Pick your agent** - Claude, Codex, Gemini, Copilot, or OpenCode, configurable per project.
-- **Customizable keybindings** - Normie and Vim presets out of the box, remappable from the Controls panel.
-
-> Kirby is early-stage software. It works well enough that we rely on it every day, but expect rough edges and breaking changes.
+Run `kirby-desktop` or `kirby` from your project directory. On the first run, Kirby walks you through connecting your version control provider.
 
 ## Features
 
-### A worktree and an agent per branch
+### Work on several branches at once
 
-![Creating a branch from the command palette, which opens a worktree and a tab, then launching an agent in it](docs/media/worktrees.gif)
+Each branch gets its own git worktree and agent session. You can keep several features in progress without stashing changes or disturbing your main checkout.
 
-- **Worktree-based sessions** - every branch gets its own git worktree and a long-lived agent session, so several features can be in flight without stashing or disturbing your main checkout.
-- **PR status next to every worktree** - open, draft or merged, CI result, review status and conflict count, inline in the sidebar. One circle carries both axes: red when a build failed or someone rejected, green and filled only when CI passed _and_ everyone approved.
-- **GitHub and Azure DevOps** - see [Version control providers](#version-control-providers).
-- **Branch sync** - detects merged branches, counts conflicts against the base, auto-deletes merged worktrees, and a shortcut to auto rebase to lastest main/master
+The sidebar shows each worktree's pull request state, CI results, review status, and conflict count. The status indicator turns red when a build fails or a reviewer rejects the changes. It turns solid green when CI passes and all reviewers approve.
 
-### Agent-drafted reviews
+Kirby also detects merged branches and conflicts with the base branch. You can enable automatic cleanup of merged worktrees and use a shortcut to rebase onto the latest `main` or `master`.
 
-![Stepping through agent-written draft comments in severity order, posting one and skipping to the next](docs/media/review.gif)
+![Creating a branch and worktree from the command palette, then launching an agent](docs/media/worktrees.gif)
 
-Point an agent at a pull request and have it review the diff. It leaves inline draft comments anchored to the lines they're about, and you walk through them in severity order — edit, discard, skip, or post. You stay the author of record; the agent just does the first pass.
+### Review an agent's draft comments
 
-This is the feature that needs the CLI installed alongside the desktop app.
+Ask an agent to review a pull request. It adds draft comments to the relevant lines in the diff, and you work through them in severity order. Edit, discard, skip, or post each comment; published comments are attributed to you.
 
-### Plan comments into a cart
+This feature requires the `kirby` CLI, including when you use the desktop app.
 
-![Queueing two review comments into a plan, annotating one with a note, previewing the composed prompt, and sending it to an agent](docs/media/plan.gif)
+![Working through an agent's draft review comments, posting one and skipping to the next](docs/media/review.gif)
 
-The other direction: on a PR you're resolving, add the comments you want to address to a plan, like a shopping cart. Annotate any with a note on how you want it handled, then check out — the whole thing goes to an agent as one task, and you can read the exact prompt first.
+### Turn review comments into an agent task
+
+Select the review comments you want an agent to address and add them to a plan. You can include instructions for individual comments, then preview the full prompt before sending the plan to your agent as a single task.
+
+![Adding review comments and instructions to a plan, previewing the prompt, and sending it to an agent](docs/media/plan.gif)
 
 ### Babysit a pull request
 
-![Right-clicking a pull request with a failing build and choosing Babysit, the row's badge changing to update pending, then an agent starting in the branch's worktree with the CI failure and the open review thread as its prompt](docs/media/babysit.gif)
+Right-click a pull request and choose **Babysit** to keep your agent updated on CI results, unresolved review comments, and merge conflicts. Kirby groups updates together and sends them to the agent's session when it's idle.
 
-Right-click a pull request and choose **Babysit**. Kirby watches its CI, unresolved review threads and conflicts against the target branch, and once the news has settled and the agent is idle, it types one update into the agent's session: the verdict, the conflicts, and each new thread named by its id.
+![Enabling Babysit on a pull request and sending CI failures and review comments to its agent](docs/media/babysit.gif)
 
-### Review in place
+### Review code without leaving Kirby
 
-![A pull request's overview with its description and approve buttons, then the diff in split and unified views, replying to a reviewer's thread and resolving it](docs/media/review-in-place.gif)
+Read a pull request's description, browse its diff, and submit your review in Kirby. You can reply to comments, resolve or reopen threads, and switch between split and unified diff views.
 
-The pull request's own overview and verdict buttons, then the diff: browse files, read threads, reply, resolve and reopen, split or unified — without leaving Kirby. Whole-file diffs with folding and word-level highlighting are desktop-only.
+The desktop app also supports whole-file diffs with code folding and word-level highlighting.
+
+![Reading a pull request, switching diff views, and replying to and resolving a review thread](docs/media/review-in-place.gif)
 
 ### Light and dark themes
 
-The most important feature of any software
+The most important feature of any software.
 
-![The review workspace wiped between the dark and light themes](docs/media/theme.gif)
+![The review workspace in dark and light themes](docs/media/theme.gif)
 
 ## The terminal UI
 
-Most of the work goes into the desktop app now, but `kirby` is the whole thing without a window — same core, same config, same worktrees, shared with the desktop. Run `kirby` in your repo root to bring up the TUI.
+Run `kirby` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
 
-![The Kirby TUI: the sidebar with CI and review state, a pull request diff with reviewers' threads inline, queueing a comment with a note, and sending the plan to an agent](docs/media/tui.gif)
+You can check pull request status, read diffs and review threads, and send plans to agents from the terminal. Most development now focuses on the desktop app; some features, such as whole-file diffs, are only available there.
 
-## Prerequisites
-
-- `git`
-- `node` and `npm`
-- An agent CLI on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`
-- `kirby` on your `PATH` for agent-drafted reviews, including when you use the desktop app
-- For GitHub: the `gh` CLI, authenticated
-- For Azure DevOps: a personal access token with repo and pull request access
-- `tmux` (optional) — installed, it is the default backend: agent sessions survive quitting and are reattached next launch. Settings → Terminal Backend to pin PTY instead.
-- On Linux, the desktop app compiles `node-pty` during install: `build-essential` and `python3` required.
-
-## Version control providers
-
-| Provider                  | Auth                   | Tested                                       |
-| ------------------------- | ---------------------- | -------------------------------------------- |
-| GitHub                    | authenticated `gh` CLI | unit, offline e2e, live integration          |
-| Azure DevOps              | personal access token  | unit + recorded API responses; no live tests |
-| GitLab, Bitbucket, etc... | not supported          | —                                            |
-
-An Azure DevOps regression won't be caught by CI, so bug reports help. Providers sit behind one interface (`libs/vcs/`) — more can be added, PRs welcome.
+![The terminal UI showing pull request status, inline review threads, and a plan ready to send to an agent](docs/media/tui.gif)
 
 ## Configuration
 
-On first run in a new project, an onboarding wizard walks you through connecting your VCS provider. After that, open settings (`s` in the TUI, ⌘, / Ctrl+, on the desktop) to change the provider, AI agent, sync intervals, and auto-behaviors (auto-delete merged branches, auto-rebase). Auto-detect fills in project settings from the git remote.
+Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop. From there, you can choose your version control provider and AI agent, set sync intervals, and configure automatic rebasing and cleanup of merged branches. Auto-detect can fill in project settings from your git remote.
 
-Keybindings are remappable. Kirby ships with a Normie preset and a Vim preset; open the Controls panel to switch presets or rebind individual actions.
+For keyboard shortcuts, open the **Controls** panel. Choose the Normie or Vim preset, or remap individual actions.
 
-Everything lives in `~/.kirby/`.
+Kirby stores its configuration in `~/.kirby/`.
+
+## Version control providers
+
+| Provider     | Authentication         | Test coverage                                        |
+| ------------ | ---------------------- | ---------------------------------------------------- |
+| GitHub       | Authenticated `gh` CLI | Unit, offline end-to-end, and live integration       |
+| Azure DevOps | Personal access token  | Unit tests and recorded API responses; no live tests |
+
+GitLab, Bitbucket, and other providers are not currently supported.
+
+Azure DevOps tests use recorded responses, so CI may miss changes to the live service. Bug reports help us catch those gaps.
+
+Providers share an interface in `libs/vcs/`. Contributions adding support for other providers are welcome.
