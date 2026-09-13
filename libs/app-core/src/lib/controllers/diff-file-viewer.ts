@@ -5,6 +5,7 @@ import {
   interleaveComments,
   getCommentPositions,
   buildRowMap,
+  type CommentImageLayouts,
 } from '@kirby/review-comments';
 import { planItemKey } from '@kirby/core';
 import { usePlan } from '../context/PlanContext.js';
@@ -29,6 +30,7 @@ export function useDiffFileViewerViewModel({
   cardContentWidth,
   selectedPr,
   diffBundle,
+  imageLayouts,
 }: {
   pane: PaneModeValue;
   /** Visible content rows of the pane (drives scroll/auto-select math). */
@@ -37,6 +39,13 @@ export function useDiffFileViewerViewModel({
   cardContentWidth: number;
   selectedPr: PullRequestInfo | undefined;
   diffBundle: DiffBundle;
+  /**
+   * url → cell placement for comment images the shell has loaded and
+   * is drawing (terminal graphics). A laid-out image contributes its
+   * placement rows to the row map instead of its wrapped markdown
+   * token. Undefined on shells without inline images.
+   */
+  imageLayouts?: CommentImageLayouts;
 }) {
   const plan = usePlan();
   // The snapshot IS the plan: getSnapshot returns the whole
@@ -125,6 +134,7 @@ export function useDiffFileViewerViewModel({
         replyingToThreadId: pane.replyingToThreadId,
         editingCommentId: pane.editingCommentId,
         selectedCommentId: pane.selectedCommentId,
+        imageLayouts,
       }),
     [
       annotatedLines,
@@ -133,6 +143,7 @@ export function useDiffFileViewerViewModel({
       pane.replyingToThreadId,
       pane.editingCommentId,
       pane.selectedCommentId,
+      imageLayouts,
     ]
   );
 

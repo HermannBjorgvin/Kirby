@@ -213,5 +213,20 @@ from `@wterm/dom/css`; the React package's relative CSS import depends on hoisti
 For pasted images, the host chooses the temporary-file suffix from its own MIME
 table and inserts the path into the PTY; text paste stays with wterm.
 
+Comment images use _virtual_ kitty placements (`U=1`) written out-of-band
+with `process.stdout.write`, the precedent being `apps/cli/src/utils/window-title.ts`;
+`CommentProse` then renders U+10EEEE placeholder rows as ordinary Ink `<Text>`,
+clipped to the card interior so Ink never draws a truncation `…` over the image.
+Each distinct url is fetched and decoded once. Kitty loops animated GIFs natively
+(`a=f` frames plus `a=a,s=3,v=1`, no ongoing traffic); ghostty lacks `a=f`, so
+Kirby re-transmits frames on a chained timeout (≤120 frames, ≥50 ms per frame,
+≤3 concurrent) while a reviews pane shows, and `KIRBY_GIF_ANIMATION=off` keeps a
+static composite. Image download and decoding live in `libs/image-loader`, the
+protocol in `libs/kitty-graphics`.
+
+Mouse tracking (`?1000h`) is refcounted across consumers because the enable and
+disable writes are global to the terminal; batching every SGR report in a stdin
+chunk is what makes a fast wheel spin scroll by more than one line.
+
 For release preparation and global-install constraints, see
 `.agents/skills/publish-beta/references/packaging.md`.

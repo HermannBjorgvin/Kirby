@@ -7,6 +7,7 @@ import {
   getSectionKey,
   rowIcon,
   sidebarAvailableLines,
+  sidebarBadgeLineOffset,
   sidebarRowHeights,
   sidebarScrollWindow,
   type RenderRow,
@@ -296,6 +297,29 @@ describe('sidebarScrollWindow', () => {
       0
     );
     expect(used + win.gap).toBe(availableLines - 2);
+  });
+});
+
+describe('sidebarBadgeLineOffset', () => {
+  it('is the last line of a session row when VCS is configured', () => {
+    expect(sidebarBadgeLineOffset(session(), true)).toBe(1);
+    expect(sidebarBadgeLineOffset(session({ conflictCount: 2 }), true)).toBe(2);
+  });
+
+  it('is null for a session row without VCS (no badge)', () => {
+    expect(sidebarBadgeLineOffset(session(), false)).toBeNull();
+  });
+
+  it('is the second line of a PR row', () => {
+    expect(sidebarBadgeLineOffset({ kind: 'orphan-pr', pr: pr() }, true)).toBe(
+      1
+    );
+    expect(
+      sidebarBadgeLineOffset(
+        { kind: 'review-pr', pr: pr(), category: 'needs-review' },
+        true
+      )
+    ).toBe(1);
   });
 });
 

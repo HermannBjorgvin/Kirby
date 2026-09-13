@@ -78,4 +78,12 @@ libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
   src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
+libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
+  src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete
+  src/lib/placement.ts           — px→cells placement heuristic (~10px/col, 2:1 aspect, 24-row cap)
+libs/image-loader/               — Comment-image download + decode
+  src/lib/image-format.ts        — magic-byte sniff + header-only dimensions (PNG/JPEG/GIF/WebP)
+  src/lib/decode-image.ts        — PNG passthrough; JPEG/GIF/WebP → RGBA (@cwasm/webp wasm, lazy-loaded)
+  src/lib/gif-animation.ts       — full composited RGBA frames + per-frame delays (native resolution)
+  src/lib/fetch-image.ts         — auth-aware fetch (gh token bearer / Azure DevOps PAT basic)
 ```

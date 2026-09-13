@@ -30,3 +30,10 @@ isolated HOME with an optional `.kirby/config.json` (`test.use({ kirbyConfig })`
 - Interactive QA: `npx nx serve cli-wterm-host`, then one Chrome on CDP port
   9222 with the `.vscode/chrome` profile (VS Code F5 or the command in
   `docs/testing.md`); the repository-configured Playwright MCP attaches to it.
+- The browser terminal renders cells only: no kitty graphics, no mouse
+  reports. Assert escape _bytes_ through the host's `GET /output` (base64 ring
+  buffer) and inject SGR wheel/click sequences with `term.write()`. Real-pixel
+  checks are manual QA in kitty or ghostty.
+- `playwright.config.ts` and the fixture key off `PORT` (default 5174) with
+  `reuseExistingServer`; set `PORT=<n>` when another checkout may be running
+  e2e, or you drive its stale build.

@@ -90,6 +90,15 @@ const jumpNextActive: SidebarAction = (ctx) =>
 const jumpPrevActive: SidebarAction = (ctx) =>
   ctx.sidebar.moveSelectionToActive(-1);
 
+// A page is half the visible pane — big enough to move fast, small
+// enough to keep a couple of rows of context across the jump.
+const pageStep = (ctx: Parameters<SidebarAction>[0]) =>
+  Math.max(3, Math.floor(ctx.terminal.paneRows / 2));
+const pageDown: SidebarAction = (ctx) =>
+  ctx.sidebar.moveSelection(pageStep(ctx));
+const pageUp: SidebarAction = (ctx) =>
+  ctx.sidebar.moveSelection(-pageStep(ctx));
+
 /**
  * Select the Nth running session in spawn-time order so the digit
  * matches what's shown in the SessionTabBar and the sidebar prefix,
@@ -321,6 +330,8 @@ export const SIDEBAR_ACTIONS: Record<string, SidebarAction> = {
   'sidebar.navigate-up': navigateUp,
   'sidebar.jump-next-active': jumpNextActive,
   'sidebar.jump-prev-active': jumpPrevActive,
+  'sidebar.page-down': pageDown,
+  'sidebar.page-up': pageUp,
   'sidebar.toggle-hints': toggleHints,
   'sidebar.quit': quit,
   'sidebar.open-settings': openSettings,

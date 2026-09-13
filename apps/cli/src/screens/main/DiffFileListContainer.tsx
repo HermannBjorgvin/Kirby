@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInput } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
+import { clampOffset, totalRows } from '@kirby/core';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
+import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
+import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
 import type {
   TerminalLayout,
   PaneModeValue,
@@ -14,6 +17,7 @@ import {
   useSessionActions,
   usePlan,
   useDiffFileListViewModel,
+  LAYOUT,
 } from '@kirby/app-core';
 import { handleDiffFileListInput } from './main-input.js';
 
@@ -42,6 +46,7 @@ export function DiffFileListContainer({
 
   // Shell-agnostic derivations live in the app-core controller; this
   // wrapper only adds TUI layout geometry and Ink input wiring.
+  const { layouts: imageLayouts } = useCommentImagesValue();
   const vm = useDiffFileListViewModel({ pane, selectedPr, diffBundle });
   const {
     treeMode,
@@ -76,6 +81,7 @@ export function DiffFileListContainer({
           annotatingPlanKey: pane.annotatingPlanKey,
           annotationBuffer: pane.annotationBuffer,
         },
+        imageLayouts,
       }),
     [
       terminal.paneRows,
@@ -88,8 +94,24 @@ export function DiffFileListContainer({
       pane.replyBuffer,
       pane.annotatingPlanKey,
       pane.annotationBuffer,
+      imageLayouts,
     ]
   );
+
+  // ── Scroll wheel (main-pane region — the sidebar scrolls itself) ─
+  const { setDiffListScrollRow } = pane;
+  const handleScrollWheel = useCallback(
+    (ticks: number) => {
+      const total = totalRows(layout.spans);
+      setDiffListScrollRow((o) =>
+        clampOffset(o + ticks * SCROLL_LINES, total, layout.viewportRows)
+      );
+    },
+    [layout.spans, layout.viewportRows, setDiffListScrollRow]
+  );
+  useScrollWheel(!terminalFocused, handleScrollWheel, {
+    xMin: LAYOUT.SIDEBAR_WIDTH + 1,
+  });
 
   // Post-render scroll corrections: keep an open compose input in
   // view, anchor the viewport when item sizes change upstream, and

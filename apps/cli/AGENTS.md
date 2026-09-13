@@ -41,3 +41,17 @@ under `src/screens/main` (sidebar, diff, branch picker) and
   cannot run agent reviews; both READMEs say so. Draft posting is one comment
   per `postReviewComments` call so a mid-batch failure cannot reset live
   comments to draft.
+- Comment images (`![alt](url)`) render inline through kitty graphics only
+  when `TERM` is kitty/ghostty or `KIRBY_IMAGES=kitty`; other terminals keep the
+  markdown token; `KIRBY_IMAGES=off` disables. `useCommentImages` owns the
+  pipeline and `CommentImagesContext` carries per-url state and `layouts`;
+  every row estimator (`estimateBodyRows`, `estimateCardRows`, `buildRowMap`,
+  `planCommentFooter`) takes `imageLayouts` so scroll geometry matches painted
+  height. `@cwasm/webp` reads `webp.wasm` from disk; `scripts/copy-webp-wasm.mjs`
+  places it beside the bundle.
+- Mouse: `useScrollWheel` / `useMouseClicks` enable SGR tracking, parse every
+  report in a stdin chunk, route by pointer column (sidebar cols ≤ 48), and
+  refcount the enable/disable writes. With tracking on the terminal no longer
+  opens OSC-8 links, so the sidebar opens a clicked PR badge itself
+  (`utils/open-url.ts`), and `handleTextInput` drops SGR reports Ink surfaces as
+  printable input.

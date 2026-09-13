@@ -51,7 +51,7 @@
           ],
           "esbuildOptions": {
             "banner": {
-              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);"
+              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);\nimport { dirname as __kirbyDirname } from \"node:path\";\nimport { fileURLToPath as __kirbyFileURLToPath } from \"node:url\";\nconst __filename = __kirbyFileURLToPath(import.meta.url);\nconst __dirname = __kirbyDirname(__filename);"
             },
             "alias": {
               "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
@@ -67,7 +67,7 @@
           "production": {
             "esbuildOptions": {
               "banner": {
-                "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);"
+                "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);\nimport { dirname as __kirbyDirname } from \"node:path\";\nimport { fileURLToPath as __kirbyFileURLToPath } from \"node:url\";\nconst __filename = __kirbyFileURLToPath(import.meta.url);\nconst __dirname = __kirbyDirname(__filename);"
               },
               "alias": {
                 "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
@@ -120,7 +120,7 @@
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "chmod +x apps/cli/dist/main.js && npm install -g ./apps/cli/dist"
+          "command": "node apps/cli/scripts/copy-webp-wasm.mjs && chmod +x apps/cli/dist/main.js && npm install -g ./apps/cli/dist"
         }
       },
       "publish": {

@@ -14,5 +14,6 @@ both in one esbuild script to avoid competing output-directory cleanup.
   (Ink paints nothing under them) and `$TMUX`, and gives each spawn a tmux
   socket inside its own HOME.
 - One active PTY. Playwright runs with `workers: 1`; two worktrees running
-  `cli-e2e` at once share port 5174 and clobber each other.
+  `cli-e2e` at once share port 5174 and clobber each other; set `PORT=<n>`.
+  `GET /output` returns the raw ring buffer base64-encoded for byte assertions.
 - `@wterm/dom` here is pinned to the exact version `apps/desktop` uses.

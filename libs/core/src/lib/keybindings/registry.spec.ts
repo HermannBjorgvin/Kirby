@@ -470,3 +470,22 @@ describe('registry — sidebar.switch-tab-* (active-session tabs)', () => {
     });
   });
 });
+
+describe('registry — sidebar paging', () => {
+  it('registers page-down / page-up', () => {
+    expect(actionExists('sidebar.page-down')).toBe(true);
+    expect(actionExists('sidebar.page-up')).toBe(true);
+  });
+
+  it.each([NORMIE_PRESET, VIM_PRESET])(
+    'PageDown / PageUp resolve to the paging actions in %o',
+    (preset) => {
+      expect(
+        resolveInPreset('', makeKey({ pageDown: true }), 'sidebar', preset)
+      ).toBe('sidebar.page-down');
+      expect(
+        resolveInPreset('', makeKey({ pageUp: true }), 'sidebar', preset)
+      ).toBe('sidebar.page-up');
+    }
+  );
+});

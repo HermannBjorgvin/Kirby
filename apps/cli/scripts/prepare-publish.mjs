@@ -5,6 +5,7 @@
 // but that file carries workspace `@kirby/*` deps that don't exist on the
 // npm registry, plus dev deps and nx config bloat. This strips all of it.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,12 @@ const src = JSON.parse(readFileSync(distPkgPath, 'utf8'));
 
 // The TUI and the desktop app ship as one release under one version.
 assertVersionsMatch();
+
+// @cwasm/webp is bundled but loads its wasm from disk at runtime — it
+// has to sit next to main.js and ship in the tarball.
+execFileSync(process.execPath, [resolve(__dirname, 'copy-webp-wasm.mjs')], {
+  stdio: 'inherit',
+});
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
 // Everything else — ink, react, @kirby/*, @inkjs/ui, @mishieck/ink-titled-box
@@ -33,7 +40,7 @@ const out = {
   license: src.license,
   type: src.type,
   bin: src.bin,
-  files: ['main.js'],
+  files: ['main.js', 'webp.wasm'],
   publishConfig: src.publishConfig,
   engines: src.engines,
   repository: src.repository,
