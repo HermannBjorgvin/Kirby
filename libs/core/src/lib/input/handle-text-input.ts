@@ -1,8 +1,13 @@
 import type { KeyPress } from './key-press.js';
+import { isMouseSequence } from './mouse-sequence.js';
 
 /**
  * Handle common text-input key patterns: backspace to delete last char,
  * printable input to append. Returns true if the key was handled.
+ *
+ * SGR mouse reports that leak through Ink's keypress path (mouse
+ * tracking is on for wheel/click support) are dropped rather than
+ * typed into the buffer.
  */
 export function handleTextInput(
   input: string,
@@ -13,7 +18,7 @@ export function handleTextInput(
     setter((v) => v.slice(0, -1));
     return true;
   }
-  if (input && !key.ctrl && !key.meta) {
+  if (input && !key.ctrl && !key.meta && !isMouseSequence(input)) {
     setter((v) => v + input);
     return true;
   }

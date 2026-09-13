@@ -53,6 +53,12 @@
     },
     {
       "path": "./libs/core"
+    },
+    {
+      "path": "./libs/kitty-graphics"
+    },
+    {
+      "path": "./libs/image-loader"
     }
   ]
 }

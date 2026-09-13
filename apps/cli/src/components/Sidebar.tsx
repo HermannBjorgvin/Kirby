@@ -1,15 +1,22 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { SidebarItem } from '@kirby/core';
 import { useConfig, useKeybindResolve } from '@kirby/app-core';
 import {
   SECTION_LABELS,
   buildSidebarRows,
+  itemRowHeight,
   sidebarAvailableLines,
+  sidebarBadgeLineOffset,
   sidebarRowHeights,
   sidebarScrollWindow,
   type RenderRow,
 } from '../models/sidebar-layout.js';
+import {
+  buildSidebarHitTest,
+  type SidebarHitRow,
+} from './sidebar-hit-regions.js';
+import { sidebarHitTestRef } from './sidebar-hit-test.js';
 import { PrItemRow, SectionHeader, SessionItemRow } from './SidebarRows.js';
 import { SidebarLayout } from './SidebarLayout.js';
 
@@ -100,6 +107,34 @@ export const Sidebar = memo(function Sidebar({
       hintsHidden,
     ]
   );
+
+  // Publish a click hit test built from the rows actually on screen,
+  // so MainTab can map an SGR click coordinate to an item / PR badge.
+  const hitTest = useMemo(() => {
+    const visibleRows: SidebarHitRow[] = fullyVisibleRows.map((row) =>
+      row.type === 'header'
+        ? { type: 'header', height: row.first ? 1 : 2 }
+        : {
+            type: 'item',
+            itemIndex: row.itemIndex,
+            height: itemRowHeight(row.item, vcsConfigured),
+            badgeLineOffset: sidebarBadgeLineOffset(row.item, vcsConfigured),
+          }
+    );
+    return buildSidebarHitTest({
+      visibleRows,
+      hasAboveIndicator: aboveCount > 0,
+    });
+  }, [fullyVisibleRows, aboveCount, vcsConfigured]);
+
+  useEffect(() => {
+    sidebarHitTestRef.current = hitTest;
+    return () => {
+      if (sidebarHitTestRef.current === hitTest) {
+        sidebarHitTestRef.current = null;
+      }
+    };
+  }, [hitTest]);
 
   const renderRow = (row: RenderRow) => {
     if (row.type === 'header') {

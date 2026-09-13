@@ -58,6 +58,16 @@ export type {
   BuildRowMapInputs,
 } from './lib/comment-rows.js';
 export {
+  segmentCommentBody,
+  collectImageUrls,
+  imageToken,
+} from './lib/comment-images.js';
+export type {
+  BodyBlock,
+  CommentImageLayout,
+  CommentImageLayouts,
+} from './lib/comment-images.js';
+export {
   buildRowMap,
   estimateBodyRows,
   estimateCardRows,

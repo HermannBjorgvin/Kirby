@@ -88,23 +88,48 @@ export function buildSidebarRows(items: SidebarItem[]): RenderRow[] {
   return result;
 }
 
+/** Terminal lines a single item row occupies. */
+export function itemRowHeight(
+  item: SidebarItem,
+  vcsConfigured: boolean
+): number {
+  if (item.kind === 'session') {
+    let h = 1; // title line
+    if (item.conflictCount != null && item.conflictCount > 0) h++;
+    if (vcsConfigured) h++; // PrBadge (badge or "(no PR)")
+    return h;
+  }
+  if (item.kind === 'orphan-pr') return 2; // title + badge
+  return 3; // review: title + badge + "by author"
+}
+
 /** Terminal lines each row occupies, in the same order as `rows`. */
 export function sidebarRowHeights(
   rows: RenderRow[],
   vcsConfigured: boolean
 ): number[] {
-  return rows.map((row): number => {
-    if (row.type === 'header') return row.first ? 1 : 2; // divider (+ marginTop if not first)
-    const { item } = row;
-    if (item.kind === 'session') {
-      let h = 1; // title line
-      if (item.conflictCount != null && item.conflictCount > 0) h++;
-      if (vcsConfigured) h++; // PrBadge (badge or "(no PR)")
-      return h;
-    }
-    if (item.kind === 'orphan-pr') return 2; // title + badge
-    return 3; // review: title + badge + "by author"
-  });
+  return rows.map((row): number =>
+    row.type === 'header'
+      ? row.first
+        ? 1
+        : 2 // divider (+ marginTop if not first)
+      : itemRowHeight(row.item, vcsConfigured)
+  );
+}
+
+/**
+ * The 0-based line within an item row that carries the PR-badge (with
+ * the `#id` link), or null when the row has none — a worktree session
+ * without VCS configured. A click on this line opens the PR.
+ */
+export function sidebarBadgeLineOffset(
+  item: SidebarItem,
+  vcsConfigured: boolean
+): number | null {
+  if (item.kind === 'session') {
+    return vcsConfigured ? itemRowHeight(item, vcsConfigured) - 1 : null;
+  }
+  return 1; // orphan-pr / review: badge is the second line
 }
 
 /** Lines left for scrollable rows once the pane's own chrome, the
