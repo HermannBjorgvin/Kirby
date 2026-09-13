@@ -1,8 +1,7 @@
 # apps/cli-wterm-host — PTY-to-browser bridge for the TUI e2e suite
 
 Node HTTP + WS server plus a `@wterm/dom` browser client. `build.mjs` builds
-both in one esbuild script; a split server/client build fought
-`@nx/esbuild`'s output-path cleaning.
+both in one esbuild script to avoid competing output-directory cleanup.
 
 - `POST /spawn` kills any existing PTY, clears the buffer and spawns Kirby.
   `POST /kill` kills it. `WS /pty` replays a ~2 MB ring buffer on connect,

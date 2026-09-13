@@ -24,97 +24,92 @@
 
 # Kirby
 
-Kirby runs coding agents in git worktrees and reviews their pull requests. Two
-shells over one core: an Ink TUI (`apps/cli`) and an Electron app
-(`apps/desktop`), both rendering over `@kirby/core` (`libs/core`,
-shell-agnostic) and `@kirby/app-core` (`libs/app-core`, the React layer).
-Nx monorepo, npm workspaces, ESM throughout (Ink 6 needs top-level await).
+Kirby runs coding agents in git worktrees and reviews their pull requests.
+Nx monorepo with npm workspaces and ESM: `apps/cli` is the Ink TUI,
+`apps/desktop` is Electron, `libs/core` owns shared operations, and
+`libs/app-core` supplies React hooks and controllers.
 
-Per-area notes live in `AGENTS.md` files beside the code (`apps/*/AGENTS.md`,
-`libs/*/AGENTS.md`); the reasoning behind them is in `docs/`. Read the
-area file before changing anything there.
+## Context and tools
+
+- Before editing, read each `AGENTS.md` between the repository root and the
+  target file. A session started at the root may not load nested files automatically.
+- Shared skills live in `.agents/skills/`. Read the relevant `SKILL.md` directly
+  if your agent does not expose it. Claude and Copilot use symlinks to these files.
+- Use Nx MCP when available; otherwise use `npx nx` and installed plugin docs.
+  Claude plugins and hooks are not prerequisites for other agents.
+- Read reference docs only for the task at hand. Paths below are repository-relative.
+  See `docs/agent-context.md` for loading behavior and maintenance.
 
 ## Commands
 
 ```sh
-npx nx test <project>                 # vitest unit tests
-npx nx run-many -t lint --all         # 0 errors, 0 warnings is the baseline
+npx nx test <project>                 # unit tests
+npx nx run-many -t lint --all         # warnings fail too
 npx nx run-many -t typecheck --all
-npx nx serve cli                      # run the TUI (rebuilds stale libs)
-npx nx e2e cli-e2e                    # TUI e2e (Playwright + wterm), offline
-npx nx e2e desktop-e2e                # launches the built Electron app, offline
-npx nx e2e:visual desktop-e2e         # screenshots, pinned container, zero tolerance
-GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e   # live GitHub
+npx nx serve cli                      # rebuild dependencies and run the TUI
+npx nx e2e cli-e2e                    # offline TUI tests
+npx nx e2e desktop-e2e                # offline Electron tests
+npx nx e2e:visual desktop-e2e          # screenshots in a pinned container
+GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
 ```
 
-- A lint **warning fails the build** (`--max-warnings 0`). Measure with `--all`:
-  the three e2e projects lint under their own configs and are invisible otherwise.
-- A fresh worktree needs `npm ci` before anything else; until then `nx` resolves
-  the other checkout's libs. Typecheck before changing code in it.
-- Pre-commit runs lint-staged. Chain `lint && git commit` with `&&` so a
-  rejected commit stops the chain. `--no-verify` only for a throwaway WIP commit.
+- Install dependencies with `npm ci` in a fresh worktree before running code
+  checks. Do not copy another checkout's `node_modules`; workspace links and
+  nested dependencies must belong to this checkout. Typecheck before code edits.
+- Run checks appropriate to the change. Full lint uses `--all` to include
+  projects with their own ESLint configs. Claude's edit hook does not run in Codex.
+- Pre-commit runs lint-staged. Use `lint && git commit` so lint failure stops
+  the commit. Do not bypass hooks except for an explicitly requested throwaway WIP.
 
-## Layering (lint-enforced)
+## Boundaries
 
-- Sequences of git / filesystem / PTY / config / provider calls belong in
-  `@kirby/core`; both shells call them. Worktree removal is already written
-  twice (TUI `performDelete`, desktop `host/services/worktrees.ts`) and has
-  diverged. When you touch one, move it to core rather than adding a third copy.
-- `libs/core` never imports react, ink, electron or `@kirby/app-core`. The
-  desktop renderer never imports `@kirby/core` values (it reaches `node:fs`);
-  it uses the browser-safe `@kirby/core/plan` subpath. Neither barrel re-exports
-  the other.
-- Terminal backends (`libs/terminal-pty`, `libs/terminal-tmux`) implement
-  `SessionBackend` and know nothing about Kirby. The `kirby-` name literal
-  lives only in `libs/core/src/lib/tmux-namespace.ts`.
+- Put shared sequences of git, filesystem, PTY, config and provider operations
+  in `@kirby/core`; both shells call them. When changing worktree removal,
+  consolidate the duplicated TUI and desktop flows there.
+- Core cannot import React, Ink, Electron or `@kirby/app-core`. The desktop
+  renderer uses the browser-safe `@kirby/core/plan`, never core's Node entry.
+  Keep the core and app-core barrels separate.
+- Terminal backends implement `SessionBackend` without Kirby-specific names.
+  `libs/core/src/lib/tmux-namespace.ts` owns the `kirby-` prefix.
 
-## How to work
+## Working conventions
 
-- One feature at a time, smallest visually verifiable increment. After each,
-  stop and tell the user what changed and the exact commands to try it.
-- Get something on screen before building supporting infrastructure; mock data
-  is fine. If behaviour depends on real-world interaction you cannot observe
-  (agent output patterns, terminal quirks), build a testable mock first.
-- Commit immediately after any generator or `npm install`, before manual edits.
-- When adding a test, break the code on purpose and confirm the test fails.
-  Several tests here looked thorough and caught nothing.
-- Property tests (`fast-check`) use random seeds; a CI-only failure is a real
-  counterexample. Pin it as a worked case.
-- Budgets: `max-lines` 300, `complexity` 12, `max-depth` 4. Reach for the
-  refactor before an exemption; all 47 functions that stood between 18 and 12
-  came down without one. Inline `eslint-disable` needs a `--` rationale that
-  says why the rule cannot apply; one naming a plugin rule fails pre-commit,
-  so scope those in the project's `eslint.config.mjs`. Details: `docs/linting.md`.
-- `no-floating-promises` was a crash: `asyncOps.run` never rejects and reports
-  through `setOperationErrorHandler`. Do not silence the rule with `void` where
-  a rejection has nowhere to go.
-- `react-hooks` v7 is React Compiler analysis: a function it cannot lower
-  silences every rule for that file (`try/finally` is the usual trigger).
-  Six files are listed by name in `eslint.config.mjs`; a new one must not join
-  quietly.
+- Make small, verifiable changes. For UI work, prove rendering and interaction
+  before adding supporting infrastructure; use mocks for behavior you cannot observe.
+- Continue through the requested scope. Report milestones and exact manual QA
+  commands; pause when user feedback is needed to decide the next step.
+- Write concise updates: what changed, why, checks run, and remaining limitations.
+  Keep only durable constraints and useful failure modes. Omit session progress,
+  dated counts, incidental history and speculative follow-up ideas.
+- Commit generator or dependency changes before manual implementation edits.
+- When adding a test, temporarily break the relevant behavior and confirm the
+  test fails, then restore it. Preserve property-test counterexamples as regression cases.
+- Lint budgets: 300 lines, complexity 12, nesting depth 4. Refactor before
+  exempting. Suppressions need a `--` rationale; plugin-rule exceptions belong
+  in the owning ESLint config. Details: `docs/linting.md`.
+- Handle rejected promises. `asyncOps.run` reports through
+  `setOperationErrorHandler` and must not reject; `void` is not error handling.
+- Keep `react-hooks/todo` enabled outside the named exceptions in
+  `eslint.config.mjs`; compiler analysis can skip functions it cannot lower.
 
 ## tmux safety
 
-The developer's default tmux server holds their live agents, and `$TMUX` beats
-`TMUX_TMPDIR`. Every test or script that starts tmux pins a scratch socket dir
-inside a fixture-created HOME and drops `$TMUX`. Never run `tmux kill-server`;
-a scratch server exits with its last session. Never restore a `killAll()` that
-kills instead of detaching. Details: `libs/terminal-tmux/AGENTS.md`.
+Tests and scripts must use a scratch socket directory inside a fixture-created
+HOME and unset `TMUX`, which overrides `TMUX_TMPDIR`. Never run
+`tmux kill-server`. Closing Kirby detaches sessions; it must not kill them.
+See `libs/terminal-tmux/AGENTS.md`.
 
-## Git and GitHub
+## Git and releases
 
-- Branch off `master`. Conventional commit subjects with the project as scope
-  (`fix(desktop):`, `feat(core):`, `test(desktop-e2e):`).
-- Reviewing a pull request: follow the `review-pr` skill (`gh api` with inline
-  comments, Conventional Comments body, signed as posted by an agent).
-- Publishing: the `publish-beta` skill. Both packages share one version.
-- Prefer `gh` for anything GitHub.
+- Branch from `master`. Use Conventional Commits with project scopes:
+  `fix(desktop):`, `feat(core):`, `test(desktop-e2e):`.
+- Use `gh` for GitHub and the `review-pr` skill for reviews. Post a review
+  only when requested; a local review does not require publishing comments.
+- Use `publish-beta` when asked to release. Both npm packages share one version.
 
 ## Reference
 
-| Topic                                                                           | Where                  |
-| ------------------------------------------------------------------------------- | ---------------------- |
-| Test infrastructure (desktop and TUI e2e, fixtures, fake `gh`, integration PRs) | `docs/testing.md`      |
-| Lint rules, budgets, the ratchet, why each type-aware rule exists               | `docs/linting.md`      |
-| Directory layout with one-line descriptions                                     | `docs/architecture.md` |
-| The reasoning behind every rule in the area files                               | `docs/decisions.md`    |
+- `docs/architecture.md`: directory map.
+- `docs/testing.md`: fixtures, visual QA and live integration tests.
+- `docs/linting.md`: lint configuration and exceptions.
+- `docs/decisions.md`: design rationale and known limitations.

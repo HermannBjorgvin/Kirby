@@ -17,10 +17,10 @@ The reasoning behind each rule is in `docs/decisions.md`.
   `kill()` kills; `killAll()` on exit must dispose. `isQualifiedTmuxName`
   stops a complete name being prefixed a second time. `tmux-namespace.ts` is
   the only home of the `kirby-` literal.
-- **Discovery** (`discovery/`): a 4 s poll, `diffScans` pure, attach through
+- **Discovery** (`discovery/`): poll with pure `diffScans`; attach through
   `spawnSession` so `-A` resumes rather than duplicates. Polling is
   deliberate: tmux hooks are server-global and a control client resizes
-  panes. Two guards each have a test that fails without them: re-read
+  panes. Re-read
   `isSessionAlive` and `resolveTerminalBackend` per attach iteration. Retired
   names are passed in as `suppressed`. `observeTmuxSessions` answers the
   persistence question and the terminal listing in one fork, from the open
@@ -47,9 +47,8 @@ The reasoning behind each rule is in `docs/decisions.md`.
   `sync/fetch-queue.ts`; the merge check is `sync/conflicts.ts` so badge and
   briefing agree. `onStatus` fires on transitions only. Timing overrides:
   `babysitTimingFromEnv`.
-- **Pull request cache** (`pull-requests/pull-request-cache.ts`): one provider
-  call per `prPollInterval` per repo, keyed by cwd, eight entries, newest fetch
-  commits, a credentials change clears all. `lookupPullRequest` distinguishes
+- **Pull request cache** (`pull-requests/pull-request-cache.ts`): shared per-repo provider reads at `prPollInterval`. Only the newest fetch
+  commits; a credentials change clears all. `lookupPullRequest` distinguishes
   `gone` from `unknown`, and one absence is not an answer.
 - **Git output streams** (`utils/git-run.ts`): `runGit` spawns, returns what
   arrived plus `truncated`, rejects only when git failed. `execFile` discards

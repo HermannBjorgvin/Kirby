@@ -10,11 +10,10 @@ isolated HOME with an optional `.kirby/config.json` (`test.use({ kirbyConfig })`
 - Every test's config writes `terminalBackend: 'pty'`; pass
   `terminalBackend: undefined` (`UNSET_BACKEND`) for the unconfigured state.
   Without that, a machine with tmux would leak one live agent per test.
-- Tag live-GitHub suites `@integration`; `nx e2e` runs
-  `--grep-invert @integration`. They need `GH_TOKEN`, are read-only, and use
-  the permanent fixture PRs #37, #38, #39 and #322 (table and the #322
-  involvement marker in `docs/testing.md`). PR #38 drifts between
-  CHANGES_REQUESTED and COMMENTED; accept either.
+- Tag live-GitHub suites `@integration`; offline runs exclude them. They need
+  `GH_TOKEN`. Fixture-reading tests leave permanent PRs unchanged, but
+  `merge-auto-delete.test.ts` creates branches and PRs and merges them in the
+  test repository. See `docs/testing.md` for credentials and fixture details.
 - Fixed waits go through `src/setup/waits.ts` `settleFor(page, ms, reason)`;
   `playwright/no-wait-for-timeout` is off for that file alone. Reach for an
   auto-waiting assertion first.
@@ -30,4 +29,4 @@ isolated HOME with an optional `.kirby/config.json` (`test.use({ kirbyConfig })`
   caches stale artifacts.
 - Interactive QA: `npx nx serve cli-wterm-host`, then one Chrome on CDP port
   9222 with the `.vscode/chrome` profile (VS Code F5 or the command in
-  `docs/testing.md`); the Playwright MCP only attaches to it.
+  `docs/testing.md`); the repository-configured Playwright MCP attaches to it.

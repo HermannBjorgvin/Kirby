@@ -6,6 +6,8 @@ under `src/screens/main` (sidebar, diff, branch picker) and
 `src/screens/reviews`; pure view-models in `src/models`; Ink-coupled hooks in
 `src/hooks`. Reasoning for the rules below: `docs/decisions.md`.
 
+- Before changing Ink components or input handling, read the shared
+  `building-ink-cli-apps` skill.
 - Full-screen layout: `useStdout()` for rows/columns, `height={rows}` on the
   root `<Box>`. The PTY is sized to the terminal minus chrome (sidebar width,
   borders, status bar).

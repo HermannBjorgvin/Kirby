@@ -1,63 +1,50 @@
 ---
 name: review-pr
-description: Review a GitHub pull request from the CLI with gh — gather metadata and diff, post inline review comments through the REST API, and set the review status without duplicating comments. Use when asked to review a PR, leave line comments, request changes, or approve.
+description: Review a GitHub pull request with gh. Use for PR review, inline comments, approval, or requested changes.
 ---
 
-# Reviewing a pull request with gh
+# Review a pull request
 
-When reviewing a pull request, use `gh` CLI — not the workflow-manager agent.
+Use `gh` to inspect metadata, the diff and existing reviews:
 
-## Gathering info
-
-- `gh pr view <number> --json title,body,files,headRefOid,headRepositoryOwner,headRepository` — get metadata and the commit SHA needed for the review API
-- `gh pr diff <number>` — get the full diff (pipe to a file or read tool if large)
-- `gh repo view --json nameWithOwner` — get the `owner/repo` for API calls
-
-## Posting inline review comments
-
-Use the GitHub API directly to post a review with inline comments:
-
-```bash
-cat <<'EOF' | gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input -
-{
-  "commit_id": "<head SHA from gh pr view>",
-  "body": "Overall review summary here.",
-  "event": "COMMENT",
-  "comments": [
-    {
-      "path": "relative/file/path.ts",
-      "line": 42,
-      "side": "RIGHT",
-      "body": "Comment on the new code at this line."
-    }
-  ]
-}
-EOF
+```sh
+gh pr view <number> --json title,body,files,baseRefName,headRefOid,headRepositoryOwner,headRepository
+gh pr diff <number>
+gh repo view --json nameWithOwner
+gh api repos/OWNER/REPO/pulls/NUMBER/reviews
+gh api --paginate repos/OWNER/REPO/pulls/NUMBER/comments
 ```
 
-- `line` is the line number in the **new version** of the file (right side of the diff)
-- `side: "RIGHT"` targets the new code; use `"LEFT"` to comment on removed lines
-- `event` can be `"COMMENT"`, `"APPROVE"`, or `"REQUEST_CHANGES"`
+Read the applicable `AGENTS.md` files and enough surrounding code to verify
+suspected issues. Prioritize actionable regressions; explain the trigger and
+impact with file and line references. State any checks you could not run.
 
-## Changing review status without duplicating comments
+Return findings in the conversation unless the user requested a GitHub review
+or comments. A request to inspect and fix a branch does not require posting.
 
-To set "Changes requested" after already posting inline comments, submit a **separate review with no `comments` array** — just `body` and `event`:
+## Post when requested
 
-```bash
-cat <<'EOF' | gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input -
-{
-  "commit_id": "<head SHA>",
-  "body": "Requesting changes — see inline comments.",
-  "event": "REQUEST_CHANGES"
-}
-EOF
+Use the base repository's `OWNER/REPO` and current PR head SHA. Inline `line`
+is the actual file line, not a diff position; `side` is `RIGHT` for new code
+or `LEFT` for removed code. Use the REST API because `gh pr review` cannot
+attach inline comments.
+
+Write a JSON payload to a temporary file, then submit it:
+
+```sh
+gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input /tmp/kirby-review.json
 ```
 
-This adds the blocking status without duplicating any inline comments.
+Payload fields: `commit_id`, `body`, `event` (`COMMENT`, `APPROVE`, or
+`REQUEST_CHANGES`), and an optional `comments` array of
+`{path, line, side, body}`. Check existing reviews to avoid duplicates. To change
+status after posting comments, submit a new review without the `comments` array.
 
-## Things to watch out for
+Write posted bodies as Conventional Comments: `<label> [decorations]: <subject>`,
+then the explanation. End each posted body with:
 
-- **Write the body as a Conventional Comment and sign it at the end** — `<label> [decorations]: <subject>`, a blank line, then the discussion, closing with `_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_` after a `---`. Same shape Kirby's own poster emits (`libs/review-comments/src/lib/conventional.ts`), so a reader can still tell at a glance that a machine wrote it — just not before they can tell what it says
-- **Don't use `gh pr review`** for inline comments — it only supports a single body comment, not per-line annotations
-- **Line numbers come from the new file**, not diff positions — count from the `@@` hunk headers to get them right
-- **Heredoc quoting matters** — use `<<'EOF'` (quoted) to prevent shell expansion inside the JSON body
+```markdown
+---
+
+_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_
+```

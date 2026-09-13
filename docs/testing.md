@@ -1,177 +1,115 @@
 # Testing
 
-- **TDD for libraries:** `worktree-manager` (worktree.ts) — mock `exec`, test parsing and CRUD logic.
-- **Ink components:** Use `ink-testing-library` to verify text content + keyboard navigation. No real TTY needed.
-- **Manual testing for:** ANSI/visual rendering, PTY input forwarding, anything involving real terminal interaction.
-- **Run tests via NX:** `npx nx test worktree-manager`
-- **Dev run:** `npx nx serve cli` (rebuilds stale lib deps, then runs via tsx)
-
-## Desktop Tests (`apps/desktop`, `apps/desktop-e2e`)
+Use Nx targets. Unit tests cover core behavior and view models; use
+`ink-testing-library` for TUI text and keyboard handling. E2E exercises terminal
+rendering, PTY forwarding, Electron IPC and complete user flows.
 
 ```sh
-npx nx test desktop              # unit (vitest)
-npx nx e2e desktop-e2e           # e2e: launches the built Electron app
-npx nx e2e:visual desktop-e2e    # screenshots, inside a pinned container
+npx nx test <project>
+npx nx e2e cli-e2e
+npx nx e2e desktop-e2e
+npx nx e2e:visual desktop-e2e
 ```
 
-**E2E drives the real app.** `apps/desktop-e2e` uses Playwright's Electron
-driver to launch the _built_ desktop app against a throwaway git repo with an
-isolated `HOME`, so tests exercise the actual main process, preload bridge and
-renderer. The nx targets depend on `desktop:build` — but `node run-e2e.mjs`
-and `node run-visual.mjs` do not, so when invoking either directly **rebuild
-first** (`npx nx build desktop`) or you are testing the previous build. This
-bites hardest on the screenshots: a stale bundle matches the old baselines
-locally and fails on CI, which builds.
+Confirm new tests fail when the relevant behavior is deliberately broken, then
+restore it. Preserve property-test counterexamples as regression cases. Tab and
+diff properties should check invariants such as valid active ids and comments
+appearing exactly once.
 
-The fixture (`src/fixtures/desktop.ts`) gives each test a repo (optionally
-seeded with branches and worktrees, including mid-rebase / detached-HEAD /
-deleted-directory states), a `~/.kirby` of its own, a scriptable fake agent for
-`aiCommand`, and **fails any test whose renderer throws** — an ErrorBoundary
-otherwise turns a crash into a blank pane that assertions pass straight over.
+## Desktop
 
-**README media is generated, not hand-recorded** (`apps/desktop-e2e/demo/`,
-its own README). `node apps/desktop-e2e/demo/capture.mjs` drives the
-_built_ app under a dedicated Xvfb display at 2x scale, records with
-`ffmpeg -f x11grab` and writes the GIFs and stills in `docs/media/`. It
-reuses the fake `gh` below for pull requests, plus a demo agent whose
-output is paced to look like work rather than to be asserted against,
-so a capture needs no token, no network and no real agent. The TUI demo
-records through the same wterm bridge `cli-e2e` uses, since an Ink app
-on a PTY has no window to grab, and `theme-slider.py` composites the two
-hero stills into the light/dark wipe. Recordings land in the gitignored
-`docs/media/raw/`; a failed take leaves the frame it died on there.
+The `desktop-e2e` targets build Electron before testing. Directly invoking
+`run-e2e.mjs` or `run-visual.mjs` does not; run `npx nx build desktop` first.
 
-**A fake `gh` makes pull requests exist offline.** The GitHub provider
-reaches GitHub only by running the `gh` CLI, so `setup/fake-gh.ts` puts
-an executable named `gh` at the front of the app's PATH and answers from
-a JSON scenario (`fakeGitHub` fixture option: PRs, review threads,
-general comments, check rollup). Point a PR's `headRefName` at a branch
-the test repo really has and the diff is a real one computed by git.
-Before this, everything behind a pull request — the review workspace,
-threads, drafts, the plan — was reachable only from the `@integration`
-suite, which needs a token and so does not run on most pull requests. It
-changes no production code: the seam is PATH. Note `git-repo.ts` seeds a
-worktree at `.claude/worktrees/<branch>` verbatim while the app resolves
-its own sanitized directory name, so seeded branches must be slash-free.
+`src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional git
+states, supplies a scriptable fake agent and fails on renderer exceptions.
+It selects PTY by default; pass `terminalBackend: undefined` for the unconfigured
+state. It drops `KIRBY_VITE_URL` to ensure tests use the built app.
 
-**It runs headless, always.** `run-e2e.mjs` wraps the run in xvfb on Linux even
-when `DISPLAY` is set, because otherwise the app steals focus and anything you
-do meanwhile changes what the tests see. `KIRBY_E2E_HEADED=1` to watch it. On
-Wayland that is not enough on its own: Electron talks to the compositor through
-`WAYLAND_DISPLAY` and ignores the X display xvfb hands it, so the fixture drops
-that variable and pins `--ozone-platform=x11`.
+`src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
+a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for
+a real diff. Seeded worktree branches must be slash-free because the fixture and
+app construct paths differently. Provider project fields belong in `vendorProject`
+or auto-detection replaces them.
 
-**Screenshots run in a container** (`run-visual.mjs`, tagged `@visual`, excluded
-from the default `e2e` target). Fonts differ between machines, and a pixel-ratio
-tolerance is far stricter on a small dialog than on a full window — CI failed
-both dialogs at 4% while passing everything else. Everything renders in the
-Playwright image pinned to our Playwright version, in CI and locally alike, so
-the tolerance is **zero**: any differing pixel fails. Regenerate baselines with
-`node run-visual.mjs --update-snapshots`, and review the diff before accepting.
+Tests run under Xvfb on Linux, even with DISPLAY set. The fixture drops
+`WAYLAND_DISPLAY` and selects X11. Use `KIRBY_E2E_HEADED=1` to watch a run.
+`@visual` tests run in the pinned Playwright container with zero pixel tolerance.
+From `apps/desktop-e2e`, run `node run-visual.mjs --update-snapshots` after building,
+and inspect the resulting image diff.
 
-**Integration tests** (`nx e2e:integration desktop-e2e`, tagged
-`@integration`) read the permanent fixture pull requests in the shared sandbox
-repo through the real provider — the only coverage of the review workspace,
-since everything else runs offline. They are read-only, and skipped without
-`GH_TOKEN`. The app needs that token handed to it explicitly: each test gets an
-isolated `HOME`, so the `gh` CLI it authenticates through cannot see stored
-credentials. Locally: `GH_TOKEN=$(gh auth token) npx nx e2e:integration
-desktop-e2e`.
+`src/setup/menu.ts` controls native context and application menus. Menu
+accelerators such as Ctrl+, are not renderer keybindings. Terminal fixtures seed
+an empty `.zshrc` to avoid the first-run wizard; `liveTerminals` is a record to
+avoid Playwright interpreting an array as a fixture tuple. The fake agent's
+`--print-size` includes its pid so tests can distinguish restarted processes.
 
-When configuring a provider from a test, project fields go under
-`vendorProject` — with that key absent the host auto-detects from the git remote
-and overwrites what you set, which presents as the provider silently returning
-nothing.
-
-**Native menus** are reachable from tests: `setup/menu.ts` arms a one-shot
-interception of `Menu.popup` (context menus) and clicks application-menu items
-directly. Several commands have no other route — Ctrl+, is a menu accelerator,
-not a renderer keybinding.
-
-**Property tests** (`fast-check`) cover the tab reducer and the diff model,
-where the bugs have been invariant violations rather than missing examples:
-every comment emitted exactly once, one tab per item, `activeId` always
-resolving. They use random seeds, so a failure may appear on CI and not
-locally — the reported counterexample is the bug, not noise. Pin any it finds
-as a worked case.
-
-**When adding a test, break the code on purpose and confirm it fails.** Several
-tests here looked thorough and caught nothing until a deliberate mutation showed
-which case actually discriminates.
-
-## E2E Tests (Playwright + wterm)
-
-E2E tests run Kirby in headless Chromium via the `apps/cli-wterm-host/` bridge
-and drive it with `@playwright/test`.
+Desktop `@integration` tests read permanent PRs through the real provider.
+Pass GH_TOKEN explicitly because the isolated HOME hides stored gh credentials:
 
 ```sh
-npx nx e2e cli-e2e               # offline tests only
-npx nx e2e:integration cli-e2e   # offline + @integration-tagged (needs GH_TOKEN)
+GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
 ```
 
-Tests live in `apps/cli-e2e/src/*.test.ts` and use the fixture at
-`apps/cli-e2e/src/fixtures/kirby.ts`. Per test, the fixture:
+## TUI and browser bridge
 
-1. Creates a temp git repo (`createTestRepo()`) + isolated HOME with optional `.kirby/config.json`.
-2. POSTs `/spawn { repoPath, homeDir, env, cols, rows }` to the wterm host.
-3. `page.goto('/')` and waits (30s) for `getByText('Kirby')` — signals the PTY has painted.
-4. Yields `{ term, repoPath, homeDir }` to the test.
-5. Teardown: POSTs `/kill`, removes tempdirs.
+`apps/cli-e2e/src/fixtures/kirby.ts` creates a repo and HOME, sends `/spawn` to
+`cli-wterm-host`, waits for Kirby to render, and yields `{ term, repoPath, homeDir }`.
+Teardown calls `/kill` and removes fixture directories. Configure it with
+`test.use({ kirbyConfig: { keybindPreset: 'vim' } })`.
 
-```ts
-import { test, expect } from './fixtures/kirby.js';
+`term` provides `getByText`, `press`, `type`, `write` and `resize`. Wait for DOM
+updates between tight input/assertion loops, and for dialogs to close before
+sending the next command. Necessary fixed waits use `settleFor(page, ms, reason)`;
+prefer auto-waiting assertions. Use `src/setup/sidebar.ts` for icon locators.
 
-test.use({ kirbyConfig: { keybindPreset: 'vim' } });
+The host serves one PTY; Playwright uses one worker. Concurrent suites cannot
+share port 5174. `/spawn` replaces the PTY, `/kill` ends it, and `/pty` replays
+buffered output after reconnect. A WebSocket disconnect does not end the PTY.
+Strip CI variables from the spawned TUI's environment so Ink renders interactively.
 
-test.describe('Example', () => {
-  test('arrow down works', async ({ kirby }) => {
-    await kirby.term.press('ArrowDown');
-    await expect(kirby.term.getByText('Settings')).toBeVisible();
-  });
-});
+Both suites' tmux helpers must assert that their socket directory belongs to a
+fixture HOME and unset TMUX before any operation. Fixtures choose PTY unless
+a test specifically needs tmux. See `libs/terminal-tmux/AGENTS.md`.
+
+Failures retain traces, screenshots and video in `test-output/`.
+`error-context.md` is useful for text inspection. Open a trace with
+`npx playwright show-trace <trace.zip>`. Keep Playwright `outputDir` aligned with
+Nx target outputs so cached artifacts are valid.
+
+## Interactive QA
+
+Start `npx nx serve cli-wterm-host`. The repository's configured Playwright MCP
+attaches to Chrome on CDP port 9222; it does not launch Chrome. Clients without
+that MCP can use their available browser tools against `http://localhost:5174`.
+
+VS Code's `Kirby in Chrome (wterm)` launch configuration or `Launch Chrome for
+Kirby QA` task starts Chrome with the isolated `.vscode/chrome` profile. A shell
+can start the same instance:
+
+```sh
+chromium --remote-debugging-port=9222 --user-data-dir=.vscode/chrome \
+  --no-first-run --no-default-browser-check --hide-crash-restore-bubble \
+  http://localhost:5174
 ```
 
-The `term` object exposes `getByText`, `press(key)`, `type(text, {delay})`, `write(rawBytes)`, and `resize(cols, rows)`. Integration tests tag their `test.describe(...)` with `@integration` so `nx e2e` skips them via `--grep-invert @integration`.
+Only one process can own that profile and port. Reuse it or close it before
+starting another. Browser launch may require the agent environment's approval.
 
-**wterm host (`apps/cli-wterm-host/`)** — Node HTTP + WS server:
+## README media
 
-- `POST /spawn` — kill any existing PTY, clear buffer, spawn fresh Kirby (see env-strip pitfall below).
-- `POST /kill` — kill current PTY.
-- `WS /pty` — replays the output ring buffer (~2 MB) on connect, streams live. **Does NOT kill the PTY on close** (by design — survives the browser's 1001 "Going Away" during cold start). Auto-spawns a dev-default tempdir if a client connects with no prior `/spawn`, so `npx nx serve cli-wterm-host` + open Chrome "just works".
-- Single active PTY at a time (workers=1 in Playwright, no multiplexing).
-
-**How to debug a failing Playwright test:** `playwright.config.ts` has `trace: 'retain-on-failure'` + `screenshot: 'only-on-failure'` + `video: 'retain-on-failure'`. CI uploads `apps/cli-e2e/test-output/` as `playwright-test-output` artifact on failure. Locally, run `npx playwright show-trace apps/cli-e2e/test-output/playwright/output/<test>/trace.zip`.
-
-## Interactive QA (Playwright MCP + shared Chrome)
-
-Both the VSCode debugger and the Playwright MCP connect to the same Chrome instance via CDP on port 9222, using the isolated profile at `.vscode/chrome` (gitignored). Only **one** Chrome should be running at a time — the user launches it one way or the other, and Claude (via MCP) attaches.
-
-**Launch paths (pick one):**
-
-- **VSCode F5** → `Kirby in Chrome (wterm)` config. Starts the wterm host via the `serve cli-wterm-host` preLaunchTask, then Chrome with `--remote-debugging-port=9222 --user-data-dir=${workspaceFolder}/.vscode/chrome`. Also attaches VSCode's JS debugger.
-- **VSCode Run Task → `Launch Chrome for Kirby QA`** — same Chrome args, no JS debugger attached. Useful if you just want to browse Kirby without a debugger session.
-- **Bash (Claude or user)**:
-  ```sh
-  chromium \
-    --remote-debugging-port=9222 \
-    --user-data-dir=.vscode/chrome \
-    --no-first-run \
-    --no-default-browser-check \
-    --hide-crash-restore-bubble \
-    http://localhost:5174 &
-  ```
-  (Requires `npx nx serve cli-wterm-host` to already be running.)
-
-**Playwright MCP (`.mcp.json`)** is configured with `--cdp-endpoint http://127.0.0.1:9222`, so it _only attaches_ — it never spawns its own browser. The user must start Chrome one of the above ways before MCP tools will work. If MCP shows connection errors, Chrome probably isn't running (or is on a different port).
-
-**Port/profile collisions:** only one Chrome process at a time can own `.vscode/chrome`. If VSCode's F5 complains about the port or profile being in use, close the other Chrome first.
+`apps/desktop-e2e/demo/capture.mjs` drives the built app under Xvfb with fake gh
+and a paced demo agent, then records GIFs and stills into `docs/media/`.
+The TUI capture uses the wterm bridge. `theme-slider.py` makes the light/dark
+hero wipe. Raw captures are ignored under `docs/media/raw/`.
+Read the demo directory's README before recording.
 
 ## Integration Tests
 
 Integration tests exercise real GitHub operations and are **skipped** when `GH_TOKEN` is not set.
 
 - `merge-auto-delete.test.ts` — creates branches, PRs, merges, verifies Kirby auto-deletes the session
-- `reviews-fixture.test.ts` — reads 3 permanent fixture PRs in the test repo, verifies the Reviews tab categorizes them correctly
+- `reviews-fixture.test.ts` — reads permanent fixture PRs in the test repo, verifies the Reviews tab categorizes them correctly
 
 **Running locally:**
 
@@ -209,13 +147,9 @@ flags the thread `isOutdated: true` with `line: null` and only
 diff viewer renders outdated threads inline at their `originalLine`
 instead of dropping them into the "comments on lines not in diff" tail.
 
-PR #322 was authored by HermannBjorgvin and the outdated review
-comments are by HermannBjorgvin too. Kirby's PR sidebar uses GitHub
-search with `involves:${username}`, which would normally exclude this
-PR for `kirby-test-runner`. To keep #322 visible to the test runner
-without changing the production query, a one-time
-`kirby-test-runner`-authored review-comment marker was posted on the
-PR. If the marker is ever lost, restore it with:
+The test account must be involved in #322 for GitHub's `involves:` sidebar
+query to include it. A review-comment marker provides that involvement. If it
+is missing, an authorized fixture-maintenance task can restore it with:
 
 ```bash
 GH_TOKEN=<integration-pat> gh api \
