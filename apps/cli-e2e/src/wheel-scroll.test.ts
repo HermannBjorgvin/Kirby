@@ -8,6 +8,27 @@ import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO, wtermHost } from './setup/constants.js';
 
+// Per-press `waitFor` so each keystroke's re-render settles before the
+// next press — `page.keyboard.press` returns before Kirby has emitted
+// the resulting PTY output. See comments-fixture.test.ts for the same
+// pattern's rationale.
+async function pressUntilSelected(
+  term: KirbyTerm,
+  selectedLocator: ReturnType<KirbyTerm['page']['locator']>,
+  maxPresses: number
+): Promise<boolean> {
+  for (let i = 0; i <= maxPresses; i++) {
+    try {
+      await selectedLocator.waitFor({ state: 'visible', timeout: 1_500 });
+      return true;
+    } catch {
+      if (i === maxPresses) return false;
+      await term.press('j');
+    }
+  }
+  return false;
+}
+
 // Mouse-wheel scrolling in the diff viewer. The browser terminal has
 // no mouse reporting, so raw SGR wheel sequences are injected into
 // stdin via term.write() — exactly the bytes a real terminal sends —
@@ -71,10 +92,28 @@ test.describe('@integration Wheel scrolling', () => {
       await kirby.term.press('j');
     }
     await kirby.term.press('d');
+
+    // PR #37 touches two files: colors.h (a 24-line new file) and
+    // render.c (52 lines, shown with full-file context). Only render.c
+    // is taller than the diff viewer's viewport, so it's the one that
+    // must be opened for a wheel-scroll assertion — colors.h fits
+    // entirely and would never show a "rows above" indicator no matter
+    // how scrolling behaves. Longer timeout on the first wait: cold
+    // diff fetches on CI can take 15-25s.
     await kirby.term.page
-      .locator('.term-row', { hasText: /\.(c|h)\b/ })
+      .locator('.term-row', { hasText: /render\.c/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
+
+    // Navigate the file-list selection onto render.c — the selected
+    // row carries the '›' prefix (DiffFileList.tsx).
+    const renderSelected = kirby.term.page
+      .locator('.term-row', { hasText: /›.*render\.c/ })
+      .first();
+    const gotRender = await pressUntilSelected(kirby.term, renderSelected, 10);
+    if (!gotRender) {
+      throw new Error('Could not select render.c in the file list');
+    }
   }
 
   test('wheel events scroll the diff viewer', async ({ kirby, baseURL }) => {
