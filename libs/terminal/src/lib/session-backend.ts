@@ -33,6 +33,14 @@ export interface SessionSpec {
    *  need additions merge them over `process.env` themselves rather
    *  than passing a partial bag. */
   env?: Record<string, string | undefined>;
+  /** Key/value metadata to attach to the session itself, for backends
+   *  whose session host has somewhere to keep it that other clients of
+   *  that host can read (tmux: session user options). Backends with no
+   *  such place — the direct PTY — ignore it. Keys and values are
+   *  opaque to this contract; the caller owns their naming and their
+   *  meaning. Attaching to a session that already exists applies them
+   *  again. */
+  tags?: Record<string, string>;
 }
 
 export interface SessionBackend {
