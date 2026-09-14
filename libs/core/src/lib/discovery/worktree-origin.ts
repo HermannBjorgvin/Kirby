@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 
 /**
  * Where a worktree directory comes from: the repository it is a
@@ -67,4 +67,55 @@ export function describeWorktreePath(path: string): WorktreeOrigin | null {
   if (head === null) return null;
   const detached = head === '' || head === 'HEAD';
   return { repoRoot, branch: detached ? basename(path) : head, detached };
+}
+
+/** What a checkout's HEAD says: the branch checked out, or the
+ *  directory's name when none is — the same fallback as
+ *  {@link WorktreeOrigin.branch}. */
+export interface WorktreeHead {
+  branch: string;
+  detached: boolean;
+}
+
+/** The git dir of the checkout at `path`: `.git` itself in a main
+ *  checkout, or the directory a linked worktree's `.git` *file* names
+ *  (`gitdir: …`, relative to the worktree when it is not absolute).
+ *  `null` when there is neither. */
+function gitDirOf(path: string): string | null {
+  const dotGit = join(path, '.git');
+  try {
+    if (statSync(dotGit).isDirectory()) return dotGit;
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, 'utf8'));
+    return m ? resolve(path, m[1]!) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read HEAD at `path` from the checkout's own files, without a fork.
+ *
+ * Two callers want exactly this and nothing more: tagging a session
+ * with its branch at spawn time, on a synchronous path, and telling
+ * whether a tag-described session's branch is really a detached HEAD's
+ * directory name. A symbolic HEAD under `refs/heads/` is a branch, and
+ * the name is exact — where `rev-parse --abbrev-ref` would say
+ * `heads/x` when a tag `x` exists too, this says `x`, the same string
+ * `git worktree list` reports. Anything else HEAD holds — a commit, or
+ * a ref outside `refs/heads/` — is detached. `null` when `path` is not
+ * a checkout or its HEAD cannot be read; never throws.
+ */
+export function readWorktreeHead(path: string): WorktreeHead | null {
+  const gitDir = gitDirOf(path);
+  if (!gitDir) return null;
+  let head: string;
+  try {
+    head = readFileSync(join(gitDir, 'HEAD'), 'utf8').trim();
+  } catch {
+    return null;
+  }
+  const ref = /^ref: refs\/heads\/(.+)$/.exec(head);
+  return ref
+    ? { branch: ref[1]!, detached: false }
+    : { branch: basename(path), detached: true };
 }

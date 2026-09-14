@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { describeWorktreePath } from './worktree-origin.js';
+import { describeWorktreePath, readWorktreeHead } from './worktree-origin.js';
 
 /**
  * A worktree path back to its repository and branch, against real git:
@@ -83,5 +83,50 @@ describe('describeWorktreePath', () => {
   it('is null for a directory that is gone or not a worktree', () => {
     expect(describeWorktreePath(join(scratch, 'nope'))).toBeNull();
     expect(describeWorktreePath(scratch)).toBeNull();
+  });
+});
+
+/**
+ * The same answer for the branch, read from the checkout's own HEAD
+ * file instead of a fork — what tags a session at spawn time and what
+ * tells a tag-described session's detached state apart. A linked
+ * worktree's `.git` is a file pointing at its git dir; the main
+ * checkout's is the directory itself; both have to resolve.
+ */
+describe('readWorktreeHead', () => {
+  it('reads the branch of a linked worktree', () => {
+    expect(readWorktreeHead(worktree)).toEqual({
+      branch: 'feat/x',
+      detached: false,
+    });
+  });
+
+  it('reads the branch of the main checkout', () => {
+    expect(readWorktreeHead(repo)).toEqual({ branch: 'main', detached: false });
+  });
+
+  it('falls back to the directory name on a detached HEAD', () => {
+    const detached = join(repo, '.claude', 'worktrees', 'detached-too');
+    git(repo, ['worktree', 'add', '-q', '--detach', detached]);
+    expect(readWorktreeHead(detached)).toEqual({
+      branch: basename(detached),
+      detached: true,
+    });
+  });
+
+  it('agrees with git after the worktree checks out another branch', () => {
+    const moved = join(repo, '.claude', 'worktrees', 'moved');
+    git(repo, ['worktree', 'add', '-q', '-b', 'before/move', moved]);
+    git(moved, ['checkout', '-q', '-b', 'after/move']);
+    expect(readWorktreeHead(moved)).toEqual({
+      branch: 'after/move',
+      detached: false,
+    });
+    expect(describeWorktreePath(moved)?.branch).toBe('after/move');
+  });
+
+  it('is null for a directory that is gone or not a checkout', () => {
+    expect(readWorktreeHead(join(scratch, 'nope'))).toBeNull();
+    expect(readWorktreeHead(scratch)).toBeNull();
   });
 });
