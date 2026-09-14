@@ -76,7 +76,7 @@ libs/terminal/                   — Terminal emulator (renderer) + SessionBacke
 libs/terminal-pty/               — Direct PTY backend (node-pty)
   src/lib/pty-session.ts         — node-pty wrapper (PtySession)
   src/lib/pty-backend.ts         — createPtyBackendFactory()
-libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
+libs/terminal-tmux/              — Tmux backend (optional system tmux; probe floor 2.0, `=name:` option targets need 2.1)
   src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands (sessions, options, listing with user options)
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
   src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
