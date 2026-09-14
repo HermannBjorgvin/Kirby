@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorktreeOrigin } from './worktree-origin.js';
+import type { WorktreeHead, WorktreeOrigin } from './worktree-origin.js';
 
 /**
  * Which live tmux sessions are worktree agents, and whose: the tmux
@@ -9,13 +9,19 @@ import type { WorktreeOrigin } from './worktree-origin.js';
 
 const state = vi.hoisted(() => ({
   backend: 'tmux' as string,
-  sessions: [] as { name: string; path: string }[],
+  sessions: [] as {
+    name: string;
+    path: string;
+    options?: Record<string, string>;
+  }[],
   listThrows: false,
+  askedFor: [] as (readonly string[])[],
 }));
 
 vi.mock('@kirby/terminal-tmux', () => ({
   sanitizeTmuxSessionName: (raw: string) => raw.replace(/[.:]/g, '-'),
-  tmuxListSessionsDetailed: () => {
+  tmuxListSessionsDetailed: (options: readonly string[] = []) => {
+    state.askedFor.push(options);
     if (state.listThrows) throw new Error('no tmux');
     return state.sessions;
   },
@@ -60,8 +66,17 @@ const existsMock = (path: string) => path in ORIGINS && !gone.has(path);
 const describeMock = vi.fn((path: string) =>
   existsMock(path) ? ORIGINS[path] : null
 );
+/** What each directory's HEAD file says: on the branch git knows, or
+ *  detached, as the origin table records. */
+const headMock = vi.fn((path: string): WorktreeHead | null => {
+  const origin = existsMock(path) ? ORIGINS[path] : undefined;
+  return origin ? { branch: origin.branch, detached: origin.detached } : null;
+});
 const list = () =>
-  listLiveWorktreeSessions({}, { describe: describeMock, exists: existsMock });
+  listLiveWorktreeSessions(
+    {},
+    { describe: describeMock, exists: existsMock, readHead: headMock }
+  );
 
 const ALPHA = {
   name: 'kirby-key(/repos/alpha)-feat-a',
@@ -76,7 +91,9 @@ beforeEach(() => {
   state.backend = 'tmux';
   state.sessions = [];
   state.listThrows = false;
+  state.askedFor = [];
   describeMock.mockClear();
+  headMock.mockClear();
   gone.clear();
   __resetLiveWorktreeSessionsForTests();
 });
@@ -151,6 +168,141 @@ describe('listLiveWorktreeSessions', () => {
     state.backend = 'tmux';
     state.listThrows = true;
     expect(list()).toEqual([]);
+  });
+
+  /**
+   * A session created by a program that follows the shared convention
+   * — Kirby itself, or Orchestra — carries its repository and branch
+   * as session user options, and those are the answer: no git at all.
+   * The options come back from the same `list-sessions` fork; the only
+   * thing they cannot say is whether the branch is really a detached
+   * HEAD's directory name, which the worktree's HEAD file can.
+   */
+  describe('sessions that carry their provenance', () => {
+    const TAGGED = {
+      ...ALPHA,
+      options: {
+        '@orchestra-repo': '/repos/alpha',
+        '@orchestra-branch': 'feat/a',
+      },
+    };
+
+    it('asks tmux for every convention tag in the one listing', () => {
+      list();
+      expect(state.askedFor).toEqual([
+        [
+          '@orchestra-repo',
+          '@orchestra-branch',
+          '@orchestra-agent',
+          '@orchestra-orchestrator',
+          '@orchestra-last-report',
+        ],
+      ]);
+    });
+
+    it('describes a tagged session from its tags without asking git', () => {
+      state.sessions = [TAGGED];
+      expect(list()).toEqual([
+        {
+          tmuxName: ALPHA.name,
+          path: ALPHA.path,
+          repoRoot: '/repos/alpha',
+          branch: 'feat/a',
+          detached: false,
+          sessionName: 'feat-a',
+        },
+      ]);
+      expect(describeMock).not.toHaveBeenCalled();
+    });
+
+    it('reports a tagged detached worktree as such', () => {
+      state.sessions = [
+        {
+          name: 'kirby-key(/repos/beta)-hotfix',
+          path: '/repos/beta/.claude/worktrees/hotfix',
+          options: {
+            '@orchestra-repo': '/repos/beta',
+            '@orchestra-branch': 'hotfix',
+          },
+        },
+      ];
+      expect(list()).toEqual([
+        expect.objectContaining({ branch: 'hotfix', detached: true }),
+      ]);
+      expect(describeMock).not.toHaveBeenCalled();
+    });
+
+    it('passes the agent, orchestrator and last report along when set', () => {
+      state.sessions = [
+        {
+          ...TAGGED,
+          options: {
+            ...TAGGED.options,
+            '@orchestra-agent': 'codex',
+            '@orchestra-orchestrator': 'tmux:kirby-key(/repos/alpha)-main',
+            '@orchestra-last-report': 'DONE 2026-09-14T10:22:03Z',
+          },
+        },
+      ];
+      expect(list()).toEqual([
+        expect.objectContaining({
+          agent: 'codex',
+          orchestrator: 'tmux:kirby-key(/repos/alpha)-main',
+          lastReport: 'DONE 2026-09-14T10:22:03Z',
+        }),
+      ]);
+    });
+
+    it('carries the orchestra tags even when the origin came from git', () => {
+      state.sessions = [
+        { ...ALPHA, options: { '@orchestra-agent': 'claude' } },
+      ];
+      expect(list()).toEqual([expect.objectContaining({ agent: 'claude' })]);
+      expect(list()[0]).not.toHaveProperty('orchestrator');
+    });
+
+    // Half a provenance is none: a session from before the convention,
+    // or one whose tags were only partly written, is described by git
+    // exactly as before.
+    it.each([
+      ['no tags', {}],
+      ['only the repo', { '@orchestra-repo': '/repos/alpha' }],
+      ['only the branch', { '@orchestra-branch': 'feat/a' }],
+    ])('asks git about a session with %s', (_label, options) => {
+      state.sessions = [{ ...ALPHA, options }];
+      expect(list()).toEqual([expect.objectContaining({ branch: 'feat/a' })]);
+      expect(describeMock).toHaveBeenCalledWith(ALPHA.path);
+    });
+
+    it('asks git when the directory has no HEAD to read', () => {
+      state.sessions = [TAGGED];
+      headMock.mockReturnValueOnce(null);
+      expect(list()).toHaveLength(1);
+      expect(describeMock).toHaveBeenCalledWith(ALPHA.path);
+    });
+
+    it('leaves out a tagged session whose tags do not compose to its name', () => {
+      state.sessions = [
+        {
+          ...TAGGED,
+          options: { ...TAGGED.options, '@orchestra-branch': 'feat/b' },
+        },
+      ];
+      expect(list()).toEqual([]);
+    });
+
+    it('leaves out a tagged session whose directory is gone', () => {
+      state.sessions = [TAGGED];
+      gone.add(ALPHA.path);
+      expect(list()).toEqual([]);
+    });
+
+    it('remembers a tagged origin like any other', () => {
+      state.sessions = [TAGGED];
+      for (let i = 0; i < 20; i++) expect(list()).toHaveLength(1);
+      expect(headMock).toHaveBeenCalledTimes(1);
+      expect(describeMock).not.toHaveBeenCalled();
+    });
   });
 
   // Describing a directory is three blocking git forks on the main

@@ -2,15 +2,18 @@ import { existsSync } from 'node:fs';
 import {
   sanitizeTmuxSessionName,
   tmuxListSessionsDetailed,
+  type TmuxSessionInfo,
 } from '@kirby/terminal-tmux';
 import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey } from '@kirby/vcs-core';
 import { branchToSessionName } from '@kirby/worktree-manager';
 import { resolveTerminalBackend } from '../session-backend.js';
 import { parseTerminalSessionName } from '../terminal/terminal-name.js';
-import { KIRBY_TMUX_PREFIX } from '../tmux-namespace.js';
+import { KIRBY_TMUX_PREFIX, ORCHESTRA_TAG } from '../tmux-namespace.js';
 import {
   describeWorktreePath,
+  readWorktreeHead,
+  type WorktreeHead,
   type WorktreeOrigin,
 } from './worktree-origin.js';
 
@@ -40,13 +43,30 @@ export interface LiveWorktreeSession {
   /** The registry name the session runs under in its repository
    *  (`branchToSessionName`), the key its tab's auto-open history uses. */
   sessionName: string;
+  /** Orchestra's tags, when the session carries them — see
+   *  `ORCHESTRA_TAG`. The harness running in the pane. */
+  agent?: string;
+  /** The player's reporting target, `codex:<id>` or `tmux:<session>`. */
+  orchestrator?: string;
+  /** `<KIND> <ISO-8601 UTC>` of the last report the player delivered. */
+  lastReport?: string;
 }
 
+/** Every tag the listing asks tmux for, in the one fork. */
+const LISTED_TAGS = [
+  ORCHESTRA_TAG.repo,
+  ORCHESTRA_TAG.branch,
+  ORCHESTRA_TAG.agent,
+  ORCHESTRA_TAG.orchestrator,
+  ORCHESTRA_TAG.lastReport,
+];
+
 /**
- * What git last said about each listed directory.
+ * What was last learned about each listed directory — from its
+ * session's tags, or from git.
  *
- * Describing a directory is three blocking git forks on the main
- * process, and this listing is polled. An origin is trusted for as long
+ * Describing a directory through git is three blocking forks on the
+ * main process, and this listing is polled. An origin is trusted for as long
  * as the directory still exists and the session's name still composes
  * from it: a worktree's repository never changes, and its branch
  * changes only when something checks another one out — which shows as
@@ -76,29 +96,65 @@ function composedName(origin: WorktreeOrigin): string {
 export interface LiveWorktreeSessionDeps {
   describe?: (path: string) => WorktreeOrigin | null;
   exists?: (path: string) => boolean;
+  readHead?: (path: string) => WorktreeHead | null;
 }
 
 /**
- * The origin of `path` if a session named `name` is that worktree's —
- * from the cache when the directory is still there and the name still
- * composes from what was cached, from git otherwise.
+ * The origin a session's own tags describe, or `null` when they do not
+ * describe one and git has to be asked: a session from before the
+ * convention has neither tag, and half a provenance is treated as
+ * none. The tags cannot say whether the branch is really a detached
+ * HEAD's directory name; the worktree's HEAD file can, and reading it
+ * is not a fork. A HEAD that cannot be read is left to git, which
+ * answers `null` for a directory that is gone.
  */
-function matchingOrigin(
-  name: string,
-  path: string,
+function taggedOrigin(
+  { path, options }: TmuxSessionInfo,
   deps: Required<LiveWorktreeSessionDeps>
 ): WorktreeOrigin | null {
+  const repoRoot = options?.[ORCHESTRA_TAG.repo];
+  const branch = options?.[ORCHESTRA_TAG.branch];
+  if (!repoRoot || !branch || !deps.exists(path)) return null;
+  const head = deps.readHead(path);
+  return head ? { repoRoot, branch, detached: head.detached } : null;
+}
+
+/**
+ * The origin of `session.path` if the session is that worktree's —
+ * from the cache when the directory is still there and the name still
+ * composes from what was cached, from the session's tags or git
+ * otherwise.
+ */
+function matchingOrigin(
+  session: TmuxSessionInfo,
+  deps: Required<LiveWorktreeSessionDeps>
+): WorktreeOrigin | null {
+  const { name, path } = session;
   const cached = origins.get(path);
   if (cached && deps.exists(path) && composedName(cached) === name) {
     return cached;
   }
-  const origin = deps.describe(path);
+  const origin = taggedOrigin(session, deps) ?? deps.describe(path);
   if (!origin) {
     origins.delete(path);
     return null;
   }
   origins.set(path, origin);
   return composedName(origin) === name ? origin : null;
+}
+
+/** Orchestra's own tags, carried along when set. */
+function orchestraFields(
+  options: Record<string, string> | undefined
+): Pick<LiveWorktreeSession, 'agent' | 'orchestrator' | 'lastReport'> {
+  const agent = options?.[ORCHESTRA_TAG.agent];
+  const orchestrator = options?.[ORCHESTRA_TAG.orchestrator];
+  const lastReport = options?.[ORCHESTRA_TAG.lastReport];
+  return {
+    ...(agent ? { agent } : {}),
+    ...(orchestrator ? { orchestrator } : {}),
+    ...(lastReport ? { lastReport } : {}),
+  };
 }
 
 /**
@@ -109,39 +165,42 @@ function matchingOrigin(
  * A session counts only when everything agrees: its name is not a
  * terminal tab's, its directory still exists and is a worktree, and the
  * name is exactly what Kirby composes for that worktree's repository
- * and branch. A name that no longer matches its directory's branch is
- * an agent that checked out something else mid-session — the orphan
- * case, left to the scanner of its own repository, which surfaces it
- * as a terminal tab there. Never throws.
+ * and branch — as the session's own tags describe them, or as git does
+ * for a session that carries none. A name that no longer matches its
+ * directory's branch is an agent that checked out something else
+ * mid-session — the orphan case, left to the scanner of its own
+ * repository, which surfaces it as a terminal tab there. Never throws.
  */
 export function listLiveWorktreeSessions(
   config: Pick<AppConfig, 'terminalBackend'>,
   deps: LiveWorktreeSessionDeps = {}
 ): LiveWorktreeSession[] {
   if (resolveTerminalBackend(config) !== 'tmux') return [];
-  let live: { name: string; path: string }[];
+  let live: TmuxSessionInfo[];
   try {
-    live = tmuxListSessionsDetailed();
+    live = tmuxListSessionsDetailed(LISTED_TAGS);
   } catch {
     return [];
   }
   const resolved = {
     describe: deps.describe ?? describeWorktreePath,
     exists: deps.exists ?? existsSync,
+    readHead: deps.readHead ?? readWorktreeHead,
   };
   const candidates = live.filter(isWorktreeCandidate);
   evictUnlisted(new Set(candidates.map((c) => c.path)));
   const found: LiveWorktreeSession[] = [];
-  for (const { name, path } of candidates) {
-    const origin = matchingOrigin(name, path, resolved);
+  for (const session of candidates) {
+    const origin = matchingOrigin(session, resolved);
     if (!origin) continue;
     found.push({
-      tmuxName: name,
-      path,
+      tmuxName: session.name,
+      path: session.path,
       repoRoot: origin.repoRoot,
       branch: origin.branch,
       detached: origin.detached,
       sessionName: branchToSessionName(origin.branch),
+      ...orchestraFields(session.options),
     });
   }
   return found;
