@@ -24,6 +24,7 @@ import type { AppConfig } from '@kirby/vcs-core';
 import { projectKey, readProjectConfig } from '@kirby/vcs-core';
 import type { DiscoveredTerminal } from './discovery/discovery-model.js';
 import { liveSessionNames, setSessionBackendFactory } from './pty-registry.js';
+import { withProvenanceTags } from './session-provenance.js';
 import {
   isQualifiedTmuxName,
   parseTerminalSessionName,
@@ -144,7 +145,9 @@ export function projectTerminalBackendOverride(
 /** Application policy: build a SessionBackendFactory configured for
  *  the backend {@link resolveTerminalBackend} lands on — the user's
  *  choice, or tmux-when-detected. The kirby-`<projectKey>-` prefix is
- *  baked in here — neither backend lib knows about it.
+ *  baked in here — neither backend lib knows about it — and so is the
+ *  provenance every tmux worktree session is tagged with
+ *  ({@link withProvenanceTags}), keyed to the same repo root.
  *
  *  Two fallbacks keep tmux from becoming a hard failure:
  *
@@ -171,12 +174,15 @@ export function buildSessionBackendFactory(
     if (cachedTmuxStatus && !cachedTmuxStatus.available) {
       return createPtyBackendFactory();
     }
-    return createTmuxBackendFactory({
-      sessionPrefix: tmuxPrefixFor(repoRoot),
-      // Terminal-tab sessions (and orphaned worktree sessions being
-      // resumed) arrive under their full tmux name.
-      isQualified: isQualifiedTmuxName,
-    });
+    return withProvenanceTags(
+      createTmuxBackendFactory({
+        sessionPrefix: tmuxPrefixFor(repoRoot),
+        // Terminal-tab sessions (and orphaned worktree sessions being
+        // resumed) arrive under their full tmux name.
+        isQualified: isQualifiedTmuxName,
+      }),
+      repoRoot
+    );
   }
   return createPtyBackendFactory();
 }
@@ -351,10 +357,14 @@ function classifySession(
   // reported onto no path at all. A *persisted* worktree session below
   // is matched by name alone and needs no path, so this guard sits on
   // each terminal branch rather than the top of the function.
-  if (term) return path ? { kind: 'terminal', terminal: { name, kind: term.kind, path } } : null;
+  if (term)
+    return path
+      ? { kind: 'terminal', terminal: { name, kind: term.kind, path } }
+      : null;
   if (!ctx.prefix || !name.startsWith(ctx.prefix)) return null;
   const registryName = ctx.composed.get(name);
-  if (registryName !== undefined) return { kind: 'persisted', name: registryName };
+  if (registryName !== undefined)
+    return { kind: 'persisted', name: registryName };
   if (ctx.owned.has(name) || !path) return null;
   return { kind: 'terminal', terminal: { name, kind: 'agent', path } };
 }

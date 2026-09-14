@@ -12,6 +12,7 @@ const {
   execFileSyncMock,
   readProjectConfigMock,
   liveSessionNamesMock,
+  withProvenanceTagsMock,
   SENTINEL_PTY,
   SENTINEL_TMUX,
 } = vi.hoisted(() => {
@@ -29,6 +30,11 @@ const {
     // session names this process currently holds alive, independent of
     // whatever the worktree list or tmux happen to report this scan.
     liveSessionNamesMock: vi.fn<() => string[]>(),
+    // Pass-through: the wiring test asserts it was applied and with
+    // what; the tagging itself is session-provenance.spec.ts's.
+    withProvenanceTagsMock: vi.fn<
+      (factory: unknown, repoRoot: string) => unknown
+    >((factory) => factory),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),
   };
@@ -72,6 +78,10 @@ vi.mock('./pty-registry.js', () => ({
   setSessionBackendFactory: () => undefined,
   liveSessionNames: () => liveSessionNamesMock(),
 }));
+vi.mock('./session-provenance.js', () => ({
+  withProvenanceTags: (factory: unknown, repoRoot: string) =>
+    withProvenanceTagsMock(factory, repoRoot),
+}));
 
 import {
   buildSessionBackendFactory,
@@ -114,6 +124,7 @@ beforeEach(async () => {
   readProjectConfigMock.mockReturnValue({});
   liveSessionNamesMock.mockReset();
   liveSessionNamesMock.mockReturnValue([]);
+  withProvenanceTagsMock.mockClear();
   // getRepoRoot memoizes for the process, so a test that let it resolve
   // to null would decide every later one. Reset and let it find /repo.
   resetRepoRoot();
@@ -212,6 +223,26 @@ describe('buildSessionBackendFactory', () => {
       expect.objectContaining({ sessionPrefix: 'kirby-hash(/path/to/repo)-' })
     );
     expect(ptyFactorySpy).not.toHaveBeenCalled();
+  });
+
+  // The tags name the repository the prefix was keyed from — the same
+  // string, so a reader can check one against the other — and only a
+  // tmux session has anywhere to keep them.
+  it('tags tmux sessions with their provenance, keyed to the same repo root as the prefix', () => {
+    buildSessionBackendFactory(
+      makeConfig({ terminalBackend: 'tmux' }),
+      '/path/to/repo'
+    );
+    expect(withProvenanceTagsMock).toHaveBeenCalledWith(
+      SENTINEL_TMUX,
+      '/path/to/repo'
+    );
+  });
+
+  it('never wraps the PTY factory', () => {
+    buildSessionBackendFactory(makeConfig({ terminalBackend: 'pty' }), '/repo');
+    buildSessionBackendFactory(makeConfig({ terminalBackend: 'tmux' }), null);
+    expect(withProvenanceTagsMock).not.toHaveBeenCalled();
   });
 
   it('different repoRoots produce different prefixes', () => {
