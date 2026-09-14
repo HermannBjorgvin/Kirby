@@ -120,10 +120,13 @@ describe('createTmuxBackendFactory', () => {
 
   // Tags ride the same "once the session exists" path as the status
   // bar: the client creates the session asynchronously, so an option
-  // set before it exists is lost. Set again on reattach, harmlessly —
-  // the values describe the session, not the attach.
+  // set before it exists is lost. But they describe the session's
+  // creation, so they are written only when this backend created it —
+  // `-A` attaches to a session that is already there, and whatever
+  // that session's creator wrote about it stays.
   describe('spec.tags', () => {
-    it('sets each tag as a session option under the tmux name', () => {
+    it('sets each tag as a session option under the tmux name when creating it', () => {
+      tmuxHasSessionSpy.mockReturnValueOnce(false);
       const factory = createTmuxBackendFactory({
         sessionPrefix: 'kirby-abc12345-',
       });
@@ -135,8 +138,17 @@ describe('createTmuxBackendFactory', () => {
       ]);
     });
 
+    it('leaves the tags of a session that already existed alone, but still hides its status bar', () => {
+      createTmuxBackendFactory()(spec({ tags: { '@a-repo': '/repo' } }));
+      expect(tmuxSetOptionSpy.mock.calls).toEqual([
+        ['feature-foo', 'status', 'off'],
+      ]);
+    });
+
     it('sets nothing beyond the status bar when there are none', () => {
+      tmuxHasSessionSpy.mockReturnValueOnce(false);
       createTmuxBackendFactory()(spec());
+      tmuxHasSessionSpy.mockReturnValueOnce(false);
       createTmuxBackendFactory()(spec({ tags: {} }));
       expect(tmuxSetOptionSpy.mock.calls.map((c) => c[1])).toEqual([
         'status',
@@ -147,7 +159,12 @@ describe('createTmuxBackendFactory', () => {
     it('waits for the session to exist, then sets the tags with the status bar', () => {
       vi.useFakeTimers();
       try {
-        tmuxHasSessionSpy.mockReturnValueOnce(false).mockReturnValueOnce(false);
+        // Absent before the client is spawned, absent on the first two
+        // looks after, there on the third.
+        tmuxHasSessionSpy
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(false);
         createTmuxBackendFactory()(spec({ tags: { '@a': 'v' } }));
         expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
         vi.advanceTimersByTime(200);
@@ -165,7 +182,7 @@ describe('createTmuxBackendFactory', () => {
     it('never sets a tag on a session that was killed while it was still starting', () => {
       vi.useFakeTimers();
       try {
-        tmuxHasSessionSpy.mockReturnValueOnce(false);
+        tmuxHasSessionSpy.mockReturnValueOnce(false).mockReturnValueOnce(false);
         const backend = createTmuxBackendFactory()(
           spec({ tags: { '@a': 'v' } })
         );

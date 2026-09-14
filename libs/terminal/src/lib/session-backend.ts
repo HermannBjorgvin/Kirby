@@ -38,8 +38,9 @@ export interface SessionSpec {
    *  that host can read (tmux: session user options). Backends with no
    *  such place — the direct PTY — ignore it. Keys and values are
    *  opaque to this contract; the caller owns their naming and their
-   *  meaning. Attaching to a session that already exists applies them
-   *  again. */
+   *  meaning. They describe the session's creation: a backend writes
+   *  them when it creates the session and leaves an existing session's
+   *  metadata alone when it merely attaches to it. */
   tags?: Record<string, string>;
 }
 

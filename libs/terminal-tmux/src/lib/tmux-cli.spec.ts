@@ -113,6 +113,7 @@ describe('tmuxShowOption', () => {
     mockedExec.mockReturnValueOnce('/repo/x\n' as unknown as Buffer);
     expect(tmuxShowOption('kirby-abc-feature', '@tag')).toBe('/repo/x');
     expect(mockedExec.mock.calls[0]![1]).toEqual([
+      '-u',
       'show-options',
       '-qv',
       '-t',
@@ -151,6 +152,7 @@ describe('tmuxListSessions', () => {
     const call = mockedExec.mock.calls[0]!;
     expect(call[0]).toBe('tmux');
     expect(call[1]).toEqual([
+      '-u',
       'list-sessions',
       '-F',
       '#{session_name}\t#{session_path}',
@@ -232,6 +234,7 @@ describe('tmuxListSessionsDetailed', () => {
         },
       ]);
       expect(mockedExec.mock.calls[0]![1]).toEqual([
+        '-u',
         'list-sessions',
         '-F',
         '#{session_name}\t#{@x-repo}\t#{@x-branch}\t#{@x-agent}\t#{session_path}',
@@ -266,10 +269,21 @@ describe('tmuxListSessionsDetailed', () => {
       mockedExec.mockReturnValueOnce('a\t/p\n' as unknown as Buffer);
       expect(tmuxListSessionsDetailed([])).toEqual([{ name: 'a', path: '/p' }]);
       expect(mockedExec.mock.calls[0]![1]).toEqual([
+        '-u',
         'list-sessions',
         '-F',
         '#{session_name}\t#{session_path}',
       ]);
     });
+  });
+
+  // tmux decides from LANG/LC_CTYPE/LC_ALL whether its client is UTF-8
+  // and, when it is not, rewrites the tab between columns to `_`, which
+  // folds every column into the name. `-u` declares the client UTF-8
+  // whatever the locale says.
+  it('asks for UTF-8 output so a non-UTF-8 locale cannot rewrite the tabs', () => {
+    mockedExec.mockReturnValueOnce('a\t/p\n' as unknown as Buffer);
+    tmuxListSessionsDetailed();
+    expect(mockedExec.mock.calls[0]![1]?.[0]).toBe('-u');
   });
 });

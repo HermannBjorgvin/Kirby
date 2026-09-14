@@ -56,7 +56,8 @@ export function tmuxHasSession(name: string): boolean {
  *  matched by prefix when no session has it exactly, so with `feature`
  *  and `feature-2` both live, `-t feature` after `feature` is gone
  *  quietly lands on the other one; `=name:` refuses anything but an
- *  exact match. */
+ *  exact match. The `=` form arrived in tmux 2.1, so it — not the
+ *  probe's 2.0 — is the effective floor for options. */
 function exactSession(name: string): string {
   return `=${name}:`;
 }
@@ -72,12 +73,20 @@ export function tmuxSetOption(
   return runTmux(['set-option', '-t', exactSession(name), option, value]);
 }
 
+/** tmux decides from `LANG`/`LC_CTYPE`/`LC_ALL` whether its client is
+ *  UTF-8 and, when it is not, rewrites control characters in what it
+ *  prints — the tab between listing columns, a newline in a value — to
+ *  `_`. `-u` declares the client UTF-8 whatever the locale says, so
+ *  every command whose output is parsed carries it. */
+const UTF8 = '-u';
+
 /** The value of one session option, or `''` when it is unset (`-q`
  *  makes that a silent, zero exit), the session is not there, or
  *  there is no server. Only the line terminator is dropped: the value
  *  is the caller's, spaces and all. */
 export function tmuxShowOption(name: string, option: string): string {
   const { stdout, exitCode } = runTmux([
+    UTF8,
     'show-options',
     '-qv',
     '-t',
@@ -129,6 +138,7 @@ export function tmuxListSessionsDetailed(
     '#{session_path}',
   ];
   const { stdout, exitCode } = runTmux([
+    UTF8,
     'list-sessions',
     '-F',
     columns.join('\t'),

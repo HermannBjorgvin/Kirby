@@ -104,11 +104,16 @@ export function createTmuxBackendFactory(
  */
 class TmuxBackend implements SessionBackend {
   private readonly inner: PtySession;
+  /** The tags to write — the spec's when this backend is about to
+   *  create the session, none when `-A` will attach to one that is
+   *  already there: tags describe a session's creation, and whatever
+   *  its creator wrote stays. Decided before the client is spawned,
+   *  the last moment the answer is unambiguous. */
   private readonly tags: Record<string, string>;
   private killed = false;
 
   constructor(spec: SessionSpec, private readonly tmuxName: string) {
-    this.tags = spec.tags ?? {};
+    this.tags = tmuxHasSession(tmuxName) ? {} : spec.tags ?? {};
     // The client must not think it's nested: when Kirby itself runs
     // inside a tmux window, the inherited TMUX var makes new-session
     // refuse with "sessions should be nested with care".
@@ -142,15 +147,15 @@ class TmuxBackend implements SessionBackend {
 
   /** Session options that have to be set once the session exists —
    *  and it may not yet when the constructor returns, since the client
-   *  creates it — so retry briefly. Idempotent: reattaching to an
-   *  existing session sets the same values again.
+   *  creates it — so retry briefly.
    *
-   *  The status bar goes off because the caller embeds the session
-   *  inside its own chrome: the bar wastes a row and its default green
-   *  background bleeds into renderers that derive a container
-   *  background from the bottom screen row. The spec's tags become
+   *  The status bar goes off on every attach because the caller embeds
+   *  the session inside its own chrome: the bar wastes a row and its
+   *  default green background bleeds into renderers that derive a
+   *  container background from the bottom screen row. The tags become
    *  session user options, where any other client of the server can
-   *  read them. */
+   *  read them — only on the attach that created the session (see
+   *  `tags`). */
   private configureSession(): void {
     const attempt = (remaining: number): void => {
       if (this.killed) return;

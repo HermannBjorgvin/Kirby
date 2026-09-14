@@ -191,8 +191,9 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
   // the same server is meant to read, so the exact `set-option` target
   // form, the `show-options -qv` read and the `#{@option}` format
   // column all have to agree with a real tmux — and survive the
-  // detach-and-reattach that `-A` performs, which re-sets them.
-  it('attaches spec.tags as session user options that a reattach keeps', async () => {
+  // detach-and-reattach that `-A` performs, which must leave what the
+  // session's creator wrote rather than write its own.
+  it('attaches spec.tags as session user options that a reattach leaves alone', async () => {
     const name = uniqueName('tags');
     createdSessions.push(name);
     const factory = createTmuxBackendFactory();
@@ -213,7 +214,12 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
 
     first.dispose();
     await new Promise((r) => setTimeout(r, 200));
-    const second = factory(spec);
+    // A second attach with its own idea of the tags — another program's
+    // view of the same session — changes nothing already recorded.
+    const second = factory({
+      ...spec,
+      tags: { '@livetest-repo': '/somewhere/else', '@livetest-unset': 'x' },
+    });
     await new Promise((r) => setTimeout(r, 500));
 
     const listed = tmuxListSessionsDetailed([
