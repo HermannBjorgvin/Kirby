@@ -281,14 +281,28 @@ describe('listLiveWorktreeSessions', () => {
       expect(describeMock).toHaveBeenCalledWith(ALPHA.path);
     });
 
-    it('leaves out a tagged session whose tags do not compose to its name', () => {
+    // The tag says what the session was spawned under; HEAD says what
+    // the worktree is on now. When they differ the agent checked out
+    // another branch mid-session — the orphan case, and still nobody's
+    // to list here — and git is not needed to know that.
+    it('leaves out a tagged session whose worktree has moved to another branch, without asking git', () => {
+      state.sessions = [TAGGED];
+      headMock.mockReturnValueOnce({ branch: 'other/branch', detached: false });
+      expect(list()).toEqual([]);
+      expect(describeMock).not.toHaveBeenCalled();
+    });
+
+    // The repository *is* the tag's to say, and a name composed from
+    // another repository's key is not this session's.
+    it('leaves out a tagged session whose repository does not compose to its name', () => {
       state.sessions = [
         {
           ...TAGGED,
-          options: { ...TAGGED.options, '@orchestra-branch': 'feat/b' },
+          options: { ...TAGGED.options, '@orchestra-repo': '/repos/beta' },
         },
       ];
       expect(list()).toEqual([]);
+      expect(describeMock).not.toHaveBeenCalled();
     });
 
     it('leaves out a tagged session whose directory is gone', () => {

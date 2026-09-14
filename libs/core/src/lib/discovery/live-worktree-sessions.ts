@@ -34,8 +34,12 @@ export interface LiveWorktreeSession {
   tmuxName: string;
   /** The worktree directory, from tmux. */
   path: string;
-  /** The main checkout the worktree belongs to — real path. */
+  /** The main checkout the worktree belongs to — real path, as `git
+   *  rev-parse --show-toplevel` prints it: from the session's
+   *  `@orchestra-repo` tag, or from git for a session without one. */
   repoRoot: string;
+  /** The branch checked out in the worktree *now*, from its HEAD, not
+   *  the one the session was spawned under. */
   branch: string;
   /** `branch` is the directory's name because no branch is checked
    *  out — see `WorktreeOrigin.detached`. */
@@ -100,23 +104,28 @@ export interface LiveWorktreeSessionDeps {
 }
 
 /**
- * The origin a session's own tags describe, or `null` when they do not
- * describe one and git has to be asked: a session from before the
+ * The origin of a session that carries its provenance, or `null` when
+ * it does not and git has to be asked: a session from before the
  * convention has neither tag, and half a provenance is treated as
- * none. The tags cannot say whether the branch is really a detached
- * HEAD's directory name; the worktree's HEAD file can, and reading it
- * is not a fork. A HEAD that cannot be read is left to git, which
- * answers `null` for a directory that is gone.
+ * none. The tags settle the repository and spare the git forks; the
+ * branch is read from the worktree's HEAD file, which is not a fork.
+ * `@orchestra-branch` says what the session was *spawned* under, and
+ * a worktree that has since checked out another branch is the orphan
+ * case — the name composed from HEAD's answer no longer matches, and
+ * the session is left out exactly as it would be with git. A HEAD that
+ * cannot be read is left to git, which answers `null` for a directory
+ * that is gone.
  */
 function taggedOrigin(
   { path, options }: TmuxSessionInfo,
   deps: Required<LiveWorktreeSessionDeps>
 ): WorktreeOrigin | null {
   const repoRoot = options?.[ORCHESTRA_TAG.repo];
-  const branch = options?.[ORCHESTRA_TAG.branch];
-  if (!repoRoot || !branch || !deps.exists(path)) return null;
+  if (!repoRoot || !options?.[ORCHESTRA_TAG.branch] || !deps.exists(path)) {
+    return null;
+  }
   const head = deps.readHead(path);
-  return head ? { repoRoot, branch, detached: head.detached } : null;
+  return head ? { repoRoot, ...head } : null;
 }
 
 /**
@@ -165,11 +174,13 @@ function orchestraFields(
  * A session counts only when everything agrees: its name is not a
  * terminal tab's, its directory still exists and is a worktree, and the
  * name is exactly what Kirby composes for that worktree's repository
- * and branch — as the session's own tags describe them, or as git does
- * for a session that carries none. A name that no longer matches its
- * directory's branch is an agent that checked out something else
- * mid-session — the orphan case, left to the scanner of its own
- * repository, which surfaces it as a terminal tab there. Never throws.
+ * and the branch its HEAD is on now — the repository from the
+ * session's `@orchestra-repo` tag, or from git for a session that
+ * carries no provenance. A name that no longer matches its directory's
+ * branch is an agent that checked out something else mid-session — the
+ * orphan case, left to the scanner of its own repository, which
+ * surfaces it as a terminal tab there — whichever way the origin was
+ * learned. Never throws.
  */
 export function listLiveWorktreeSessions(
   config: Pick<AppConfig, 'terminalBackend'>,
