@@ -54,6 +54,9 @@ libs/core/                       — Shell-agnostic core. No React, Ink or Elect
   src/lib/agents/                — Agent registry
   src/lib/activity.ts            — Agent activity registry; pty-registry.ts — PTY session lifecycle
   src/lib/session-backend.ts     — Terminal backend factory wiring (PTY/tmux)
+  src/lib/session-provenance.ts  — Tags tmux worktree sessions with their provenance (`@orchestra-*`)
+  src/lib/tmux-namespace.ts      — The `kirby-` prefix and the `@orchestra-*` tag names shared with Orchestra
+  src/lib/discovery/             — Session discovery: scan/diff, live worktree sessions, worktree origin (git or HEAD file)
   src/lib/keybindings/           — Customizable keybinding system
     registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
     resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
@@ -74,7 +77,7 @@ libs/terminal-pty/               — Direct PTY backend (node-pty)
   src/lib/pty-session.ts         — node-pty wrapper (PtySession)
   src/lib/pty-backend.ts         — createPtyBackendFactory()
 libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
-  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands
+  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands (sessions, options, listing with user options)
   src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
   src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint

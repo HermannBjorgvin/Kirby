@@ -17,3 +17,7 @@ supplies the session prefix and the `isQualified` seam.
   above the floor.
 - `sanitize-tmux-session-name.ts`: `.` and `:` become `-`, with a length cap.
   Terminal names (`kirby-term-…`) are shaped to pass it unchanged.
+- `spec.tags` become session user options, set with the status bar once the
+  session exists; `tmuxListSessionsDetailed(names)` reads them back in the one
+  listing fork. The lib treats the names as opaque. Option targets are exact
+  (`=name:`). A non-UTF-8 client locale turns the listing's tabs into `_`.

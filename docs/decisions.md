@@ -45,6 +45,45 @@ fixture HOME, and assert isolation before listing or killing sessions. Never
 use `tmux kill-server`. Fixtures select PTY unless a test explicitly exercises
 tmux or an unset backend. This prevents detached agents leaking after tests.
 
+`list-sessions -F` output is tab-separated. A tmux client whose locale is not
+UTF-8 rewrites control characters in that output to `_`, which folds every
+column into the name; the live tmux suites need a UTF-8 locale (`LANG=C.UTF-8`)
+on a machine that sets none.
+
+## Session tags shared with Orchestra
+
+Kirby and Orchestra create and inspect the same `kirby-<projectKey>-<branch>`
+tmux sessions. Everything either program records about a session is a tmux
+session user option — a tag — on the session itself: `set-option -t '=<name>:'
+@orchestra-x value` to write, `#{@orchestra-x}` in a format string or
+`show-options -qv` to read. Tags die with the session; no file records them.
+A value is a plain string without tabs, and an absent tag is unset, never a
+sentinel. The names live in `libs/core/src/lib/tmux-namespace.ts` next to the
+`kirby-` prefix; `libs/terminal-tmux` carries them as opaque `spec.tags` and
+option-name arguments and knows neither `@orchestra-` nor `kirby-`.
+
+Whichever program creates a session writes its provenance: `@orchestra-spawner`
+(`kirby` or `orchestra`), `@orchestra-repo` (the symlink-resolved main checkout,
+the string `projectKey` hashes) and `@orchestra-branch` (unsanitized; a
+detached-HEAD worktree's directory name). Kirby sets them by wrapping the tmux
+factory in the composition root (`session-provenance.ts`), where the repo root
+is already known, so the PTY path forks nothing; the branch comes from the
+worktree's HEAD file rather than a git fork. A qualified name — a terminal tab
+or an orphaned worktree session being re-attached — is attached to, not created,
+and is left as it is. The backend applies tags on the same retry path that turns
+the status bar off, so a reattach re-applies them.
+
+Discovery (`live-worktree-sessions.ts`) asks for `@orchestra-repo`,
+`@orchestra-branch`, `@orchestra-agent`, `@orchestra-orchestrator` and
+`@orchestra-last-report` in its one `list-sessions` fork and never uses
+`list-sessions -f` (tmux 3.1; the floor is 2.0). A session carrying both repo
+and branch is described from them; one that lacks either — created before the
+convention — falls back to `describeWorktreePath`, through the same origins
+cache. The tags cannot say whether a branch is really a detached HEAD's
+directory name, so that one fact is read from the worktree's HEAD file. The
+Orchestra-only tags are passed along as optional `agent`, `orchestrator` and
+`lastReport` fields; nothing in either shell displays them yet.
+
 ## Discovery and terminal lifecycle
 
 Discovery polls tmux and worktrees, diffs observations with `diffScans`, and

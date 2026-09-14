@@ -16,7 +16,10 @@ The reasoning behind each rule is in `docs/decisions.md`.
   session, because a server keeps its birth env. `dispose()` detaches,
   `kill()` kills; `killAll()` on exit must dispose. `isQualifiedTmuxName`
   stops a complete name being prefixed a second time. `tmux-namespace.ts` is
-  the only home of the `kirby-` literal.
+  the only home of the `kirby-` literal and of the `@orchestra-*` tag names
+  shared with Orchestra; `session-provenance.ts` writes the provenance tags
+  on every tmux worktree session, and discovery reads all of them. See
+  `docs/decisions.md`, "Session tags shared with Orchestra".
 - **Discovery** (`discovery/`): poll with pure `diffScans`; attach through
   `spawnSession` so `-A` resumes rather than duplicates. Polling is
   deliberate: tmux hooks are server-global and a control client resizes
