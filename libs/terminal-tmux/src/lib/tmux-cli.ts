@@ -52,13 +52,39 @@ export function tmuxHasSession(name: string): boolean {
   return runTmux(['has-session', '-t', name]).exitCode === 0;
 }
 
-/** Set a session option (e.g. `status off`). */
+/** The `-t` argument that names exactly this session. A bare name is
+ *  matched by prefix when no session has it exactly, so with `feature`
+ *  and `feature-2` both live, `-t feature` after `feature` is gone
+ *  quietly lands on the other one; `=name:` refuses anything but an
+ *  exact match. */
+function exactSession(name: string): string {
+  return `=${name}:`;
+}
+
+/** Set a session option — a built-in one (`status off`) or a user
+ *  option (`@key value`), which is how a caller attaches metadata to
+ *  the session for other clients of the server to read. */
 export function tmuxSetOption(
   name: string,
   option: string,
   value: string
 ): TmuxRunResult {
-  return runTmux(['set-option', '-t', name, option, value]);
+  return runTmux(['set-option', '-t', exactSession(name), option, value]);
+}
+
+/** The value of one session option, or `''` when it is unset (`-q`
+ *  makes that a silent, zero exit), the session is not there, or
+ *  there is no server. Only the line terminator is dropped: the value
+ *  is the caller's, spaces and all. */
+export function tmuxShowOption(name: string, option: string): string {
+  const { stdout, exitCode } = runTmux([
+    'show-options',
+    '-qv',
+    '-t',
+    exactSession(name),
+    option,
+  ]);
+  return exitCode === 0 ? stdout.replace(/\r?\n$/, '') : '';
 }
 
 /** One live session: its name and the directory it was started in. */
@@ -68,6 +94,12 @@ export interface TmuxSessionInfo {
    *  or the server's cwd when it was not. Empty when tmux reports
    *  nothing. */
   path: string;
+  /** The session user options {@link tmuxListSessionsDetailed} was
+   *  asked for, by name, for those that have a value. An unset option
+   *  expands to nothing in a format string, which is indistinguishable
+   *  from one set to `''`, so both are left out. Absent when no option
+   *  names were asked for. */
+  options?: Record<string, string>;
 }
 
 /** Every session the server currently holds, with the directory each
@@ -80,27 +112,52 @@ export interface TmuxSessionInfo {
  *  this. `#{session_name}` is the oldest of tmux's format variables
  *  and `#{session_path}` predates the 2.0 floor the backend supports.
  *
- *  Tab-separated with the name first: a session name never carries a
- *  tab (the sanitizer only rewrites `.` and `:`, and nothing composes
- *  one with a tab), so the split is at the first tab and everything
- *  after it — tabs included — is the path. */
-export function tmuxListSessionsDetailed(): TmuxSessionInfo[] {
+ *  `options` names session user options (`@key`) to read in the same
+ *  fork; each becomes a `#{@key}` column. Tab-separated with the name
+ *  first, the options next and the path last: a session name never
+ *  carries a tab (the sanitizer only rewrites `.` and `:`, and nothing
+ *  composes one with a tab), an option value is the caller's to keep
+ *  tab-free, and the path may contain anything — so the first columns
+ *  are split off one tab at a time and whatever remains, tabs
+ *  included, is the path. */
+export function tmuxListSessionsDetailed(
+  options: readonly string[] = []
+): TmuxSessionInfo[] {
+  const columns = [
+    '#{session_name}',
+    ...options.map((option) => `#{${option}}`),
+    '#{session_path}',
+  ];
   const { stdout, exitCode } = runTmux([
     'list-sessions',
     '-F',
-    '#{session_name}\t#{session_path}',
+    columns.join('\t'),
   ]);
   if (exitCode !== 0) return [];
   return stdout
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      const tab = line.indexOf('\t');
-      return tab < 0
-        ? { name: line, path: '' }
-        : { name: line.slice(0, tab), path: line.slice(tab + 1) };
-    });
+    .map((line) => parseSessionLine(line, options));
+}
+
+/** One `list-sessions` line back into a session: the leading columns
+ *  are the name and the asked-for options, the remainder is the path. */
+function parseSessionLine(
+  line: string,
+  options: readonly string[]
+): TmuxSessionInfo {
+  const fields = line.split('\t', options.length + 1);
+  const rest = fields.join('\t').length;
+  const name = fields[0] ?? line;
+  const path = fields.length > options.length ? line.slice(rest + 1) : '';
+  if (options.length === 0) return { name, path };
+  const values: Record<string, string> = {};
+  options.forEach((option, i) => {
+    const value = fields[i + 1];
+    if (value) values[option] = value;
+  });
+  return { name, path, options: values };
 }
 
 /** Every session name the server currently holds — see

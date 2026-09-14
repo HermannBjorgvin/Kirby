@@ -10,6 +10,8 @@ import {
   tmuxKillSession,
   tmuxListSessions,
   tmuxListSessionsDetailed,
+  tmuxSetOption,
+  tmuxShowOption,
   tmuxVersion,
 } from './tmux-cli.js';
 
@@ -79,6 +81,60 @@ describe('tmuxHasSession', () => {
     const call = mockedExec.mock.calls[0]!;
     expect(call[0]).toBe('tmux');
     expect(call[1]).toEqual(['has-session', '-t', 'kirby-baz']);
+  });
+});
+
+// Options are set and read against the exact session — `=name:` — and
+// never a prefix match: with `feature` and `feature-2` both live, a bare
+// `-t feature` is ambiguous, and tmux picks for us.
+describe('tmuxSetOption', () => {
+  it('targets the session exactly, by `=name:`', () => {
+    mockedExec.mockReturnValueOnce('' as unknown as Buffer);
+    tmuxSetOption('kirby-abc-feature', '@tag', 'value');
+    expect(mockedExec.mock.calls[0]![1]).toEqual([
+      'set-option',
+      '-t',
+      '=kirby-abc-feature:',
+      '@tag',
+      'value',
+    ]);
+  });
+
+  it('reports a missing session as a non-zero exit rather than throwing', () => {
+    mockedExec.mockImplementationOnce(() => {
+      throw Object.assign(new Error('exit'), { status: 1 });
+    });
+    expect(tmuxSetOption('missing', '@tag', 'v').exitCode).toBe(1);
+  });
+});
+
+describe('tmuxShowOption', () => {
+  it('reads one option value with `show-options -qv` against the exact session', () => {
+    mockedExec.mockReturnValueOnce('/repo/x\n' as unknown as Buffer);
+    expect(tmuxShowOption('kirby-abc-feature', '@tag')).toBe('/repo/x');
+    expect(mockedExec.mock.calls[0]![1]).toEqual([
+      'show-options',
+      '-qv',
+      '-t',
+      '=kirby-abc-feature:',
+      '@tag',
+    ]);
+  });
+
+  // `-q` makes an unset option print nothing and exit zero; a missing
+  // session or server exits non-zero. Both are "no value", not errors.
+  it('is empty for an unset option and for a session that is not there', () => {
+    mockedExec.mockReturnValueOnce('' as unknown as Buffer);
+    expect(tmuxShowOption('kirby-abc-feature', '@unset')).toBe('');
+    mockedExec.mockImplementationOnce(() => {
+      throw Object.assign(new Error('exit'), { status: 1 });
+    });
+    expect(tmuxShowOption('missing', '@tag')).toBe('');
+  });
+
+  it('strips only the line terminator, keeping the value itself intact', () => {
+    mockedExec.mockReturnValueOnce('  spaced  \n' as unknown as Buffer);
+    expect(tmuxShowOption('s', '@tag')).toBe('  spaced  ');
   });
 });
 
@@ -154,5 +210,66 @@ describe('tmuxListSessionsDetailed', () => {
       throw Object.assign(new Error('exit'), { status: 1 });
     });
     expect(tmuxListSessionsDetailed()).toEqual([]);
+  });
+
+  // A caller that wants session user options along with each name pays
+  // the same single fork: the options are added to the format string.
+  // They sit *between* the name and the path — a value never carries a
+  // tab (the caller's contract for what it stores), the path may — so
+  // the path is still everything after the last option column.
+  describe('with session user options', () => {
+    it('asks for each option in the format and reports the set ones by name', () => {
+      mockedExec.mockReturnValueOnce(
+        'kirby-abc-x\t/repo\tfeature/x\t\t/repo/.claude/worktrees/x\n' as unknown as Buffer
+      );
+      expect(
+        tmuxListSessionsDetailed(['@x-repo', '@x-branch', '@x-agent'])
+      ).toEqual([
+        {
+          name: 'kirby-abc-x',
+          path: '/repo/.claude/worktrees/x',
+          options: { '@x-repo': '/repo', '@x-branch': 'feature/x' },
+        },
+      ]);
+      expect(mockedExec.mock.calls[0]![1]).toEqual([
+        'list-sessions',
+        '-F',
+        '#{session_name}\t#{@x-repo}\t#{@x-branch}\t#{@x-agent}\t#{session_path}',
+      ]);
+    });
+
+    // An unset option expands to the empty string in a format; it is
+    // left out rather than reported as ''.
+    it('reports no options at all for a session that has none set', () => {
+      mockedExec.mockReturnValueOnce(
+        'plain\t\t\t/home/dev\n' as unknown as Buffer
+      );
+      expect(tmuxListSessionsDetailed(['@a', '@b'])).toEqual([
+        { name: 'plain', path: '/home/dev', options: {} },
+      ]);
+    });
+
+    it('still keeps a tab inside the path intact', () => {
+      mockedExec.mockReturnValueOnce(
+        'kirby-term-shell-ab12\tv\t/odd\tdir\n' as unknown as Buffer
+      );
+      expect(tmuxListSessionsDetailed(['@a'])).toEqual([
+        {
+          name: 'kirby-term-shell-ab12',
+          path: '/odd\tdir',
+          options: { '@a': 'v' },
+        },
+      ]);
+    });
+
+    it('keeps the two-column format, and no options key, when none are asked for', () => {
+      mockedExec.mockReturnValueOnce('a\t/p\n' as unknown as Buffer);
+      expect(tmuxListSessionsDetailed([])).toEqual([{ name: 'a', path: '/p' }]);
+      expect(mockedExec.mock.calls[0]![1]).toEqual([
+        'list-sessions',
+        '-F',
+        '#{session_name}\t#{session_path}',
+      ]);
+    });
   });
 });

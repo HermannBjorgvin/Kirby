@@ -8,6 +8,8 @@ export {
   tmuxKillSession,
   tmuxListSessions,
   tmuxListSessionsDetailed,
+  tmuxSetOption,
+  tmuxShowOption,
   type TmuxSessionInfo,
 } from './lib/tmux-cli.js';
 export { isTmuxAvailable, type TmuxStatus } from './lib/is-tmux-available.js';

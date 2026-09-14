@@ -19,6 +19,8 @@ import {
   tmuxHasSession,
   tmuxKillSession,
   tmuxListSessions,
+  tmuxListSessionsDetailed,
+  tmuxShowOption,
 } from './tmux-cli.js';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
@@ -185,6 +187,48 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     second.kill();
   });
 
+  // Tags are the one thing about a session that another program on
+  // the same server is meant to read, so the exact `set-option` target
+  // form, the `show-options -qv` read and the `#{@option}` format
+  // column all have to agree with a real tmux — and survive the
+  // detach-and-reattach that `-A` performs, which re-sets them.
+  it('attaches spec.tags as session user options that a reattach keeps', async () => {
+    const name = uniqueName('tags');
+    createdSessions.push(name);
+    const factory = createTmuxBackendFactory();
+    const spec = {
+      name,
+      cmd: '/bin/sh',
+      args: ['-c', 'sleep 30'],
+      cwd: process.cwd(),
+      cols: 80,
+      rows: 24,
+      tags: { '@livetest-repo': '/repo/x', '@livetest-branch': 'feature/x' },
+    };
+
+    const first = factory(spec);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(tmuxShowOption(name, '@livetest-repo')).toBe('/repo/x');
+    expect(tmuxShowOption(name, '@livetest-unset')).toBe('');
+
+    first.dispose();
+    await new Promise((r) => setTimeout(r, 200));
+    const second = factory(spec);
+    await new Promise((r) => setTimeout(r, 500));
+
+    const listed = tmuxListSessionsDetailed([
+      '@livetest-repo',
+      '@livetest-branch',
+      '@livetest-unset',
+    ]).find((s) => s.name === name);
+    expect(listed).toEqual({
+      name,
+      path: process.cwd(),
+      options: { '@livetest-repo': '/repo/x', '@livetest-branch': 'feature/x' },
+    });
+    second.kill();
+  });
+
   it('kill() terminates the tmux session', async () => {
     const name = uniqueName('kill');
     createdSessions.push(name);
@@ -219,7 +263,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
   // call rather than one per candidate. Only a real server proves the
   // `-F` format string and the no-server exit code behave as assumed.
   describe('tmuxListSessions', () => {
-    it('reports a session created behind the backend\'s back', () => {
+    it("reports a session created behind the backend's back", () => {
       const name = uniqueName('listed');
       createdSessions.push(name);
       expect(tmuxListSessions()).not.toContain(name);

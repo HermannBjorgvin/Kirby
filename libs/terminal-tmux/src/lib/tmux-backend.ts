@@ -104,9 +104,11 @@ export function createTmuxBackendFactory(
  */
 class TmuxBackend implements SessionBackend {
   private readonly inner: PtySession;
+  private readonly tags: Record<string, string>;
   private killed = false;
 
   constructor(spec: SessionSpec, private readonly tmuxName: string) {
+    this.tags = spec.tags ?? {};
     // The client must not think it's nested: when Kirby itself runs
     // inside a tmux window, the inherited TMUX var makes new-session
     // refuse with "sessions should be nested with care".
@@ -135,20 +137,28 @@ class TmuxBackend implements SessionBackend {
       ],
       { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: clientEnv }
     );
-    this.hideStatusBar();
+    this.configureSession();
   }
 
-  /** Kirby embeds the session inside its own chrome: the tmux status
-   *  bar wastes a row and its default green background bleeds into
-   *  renderers that derive a container background from the bottom
-   *  screen row. The session may not exist yet when the constructor
-   *  returns (the client creates it), so retry briefly. Idempotent —
-   *  reattaching to an existing session just sets it again. */
-  private hideStatusBar(): void {
+  /** Session options that have to be set once the session exists —
+   *  and it may not yet when the constructor returns, since the client
+   *  creates it — so retry briefly. Idempotent: reattaching to an
+   *  existing session sets the same values again.
+   *
+   *  The status bar goes off because the caller embeds the session
+   *  inside its own chrome: the bar wastes a row and its default green
+   *  background bleeds into renderers that derive a container
+   *  background from the bottom screen row. The spec's tags become
+   *  session user options, where any other client of the server can
+   *  read them. */
+  private configureSession(): void {
     const attempt = (remaining: number): void => {
       if (this.killed) return;
       if (tmuxHasSession(this.tmuxName)) {
         tmuxSetOption(this.tmuxName, 'status', 'off');
+        for (const [key, value] of Object.entries(this.tags)) {
+          tmuxSetOption(this.tmuxName, key, value);
+        }
         return;
       }
       if (remaining > 0) setTimeout(() => attempt(remaining - 1), 200);

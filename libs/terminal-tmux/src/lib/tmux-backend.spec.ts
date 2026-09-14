@@ -118,6 +118,66 @@ describe('createTmuxBackendFactory', () => {
     );
   });
 
+  // Tags ride the same "once the session exists" path as the status
+  // bar: the client creates the session asynchronously, so an option
+  // set before it exists is lost. Set again on reattach, harmlessly —
+  // the values describe the session, not the attach.
+  describe('spec.tags', () => {
+    it('sets each tag as a session option under the tmux name', () => {
+      const factory = createTmuxBackendFactory({
+        sessionPrefix: 'kirby-abc12345-',
+      });
+      factory(spec({ tags: { '@a-repo': '/repo', '@a-branch': 'feature/x' } }));
+      expect(tmuxSetOptionSpy.mock.calls).toEqual([
+        ['kirby-abc12345-feature-foo', 'status', 'off'],
+        ['kirby-abc12345-feature-foo', '@a-repo', '/repo'],
+        ['kirby-abc12345-feature-foo', '@a-branch', 'feature/x'],
+      ]);
+    });
+
+    it('sets nothing beyond the status bar when there are none', () => {
+      createTmuxBackendFactory()(spec());
+      createTmuxBackendFactory()(spec({ tags: {} }));
+      expect(tmuxSetOptionSpy.mock.calls.map((c) => c[1])).toEqual([
+        'status',
+        'status',
+      ]);
+    });
+
+    it('waits for the session to exist, then sets the tags with the status bar', () => {
+      vi.useFakeTimers();
+      try {
+        tmuxHasSessionSpy.mockReturnValueOnce(false).mockReturnValueOnce(false);
+        createTmuxBackendFactory()(spec({ tags: { '@a': 'v' } }));
+        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(200);
+        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(200);
+        expect(tmuxSetOptionSpy.mock.calls).toEqual([
+          ['feature-foo', 'status', 'off'],
+          ['feature-foo', '@a', 'v'],
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('never sets a tag on a session that was killed while it was still starting', () => {
+      vi.useFakeTimers();
+      try {
+        tmuxHasSessionSpy.mockReturnValueOnce(false);
+        const backend = createTmuxBackendFactory()(
+          spec({ tags: { '@a': 'v' } })
+        );
+        backend.kill();
+        vi.advanceTimersByTime(1000);
+        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('spawns `tmux new-session -A` with the prefixed, sanitized name', () => {
     const factory = createTmuxBackendFactory({
       sessionPrefix: 'kirby-abc12345-',
@@ -166,7 +226,7 @@ describe('createTmuxBackendFactory', () => {
   // knows: `new-session` with no command runs its `default-shell`. So an
   // empty `cmd` must end the argv at the flags — appending `--` and an
   // empty string would ask tmux to exec "" and fail on the spot.
-  it('runs tmux\'s default shell when cmd is empty, with no `--` at all', () => {
+  it("runs tmux's default shell when cmd is empty, with no `--` at all", () => {
     const factory = createTmuxBackendFactory();
     factory(spec({ cmd: '', args: [] }));
     const { args } = ptySpawnArgs[0]!;
