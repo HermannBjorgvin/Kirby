@@ -28,7 +28,8 @@ export interface TerminalLaunchRequest {
  * is.
  */
 export interface TerminalSummary {
-  /** Session name, `kirby-term-<kind>-<id>` — also the tmux name. */
+  /** Session name — a label such as `kirby-shell`, also the tmux name;
+   *  the kind is the session's `@orchestra-session-type` tag. */
   name: string;
   kind: TerminalKind;
   cwd: string;

@@ -201,16 +201,16 @@ describe('startDiscoveryForRepo', () => {
   it('attaches a surviving terminal through the terminals service', async () => {
     discovery.startDiscoveryForRepo('/repo-a');
     await opts().adoptTerminal?.({
-      name: 'kirby-term-shell-1a2b3c',
+      name: 'kirby-shell-1a2b3c',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
-      { name: 'kirby-term-shell-1a2b3c', cwd: '/home/dev/notes' },
+      { name: 'kirby-shell-1a2b3c', cwd: '/home/dev/notes' },
     ]);
     const terminals = await import('./terminals.js');
     expect(terminals.listTerminals().map((t) => t.name)).toEqual([
-      'kirby-term-shell-1a2b3c',
+      'kirby-shell-1a2b3c',
     ]);
   });
 

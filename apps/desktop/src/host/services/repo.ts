@@ -62,9 +62,9 @@ export function isGitRepo(cwd: string): boolean {
 /**
  * The identity of a repository directory: its real path.
  *
- * That is the string git answers for the toplevel, which is what the
- * tmux prefix (`projectKey`), a worktree's origin and the strip's
- * repository groups are all computed from. Every path a repository is
+ * That is the string git answers for the toplevel, which is what a
+ * tmux session's `@orchestra-repo` tag, a worktree's origin and the
+ * strip's repository groups are all computed from. Every path a repository is
  * opened by — the picker, the recents list, `KIRBY_START_DIR`, a
  * foreign tab — goes through here once, at this boundary, so a
  * checkout reached through a symlink (or macOS's `/var` against

@@ -46,7 +46,7 @@ vi.mock('./recent-repos.js', () => ({
 let foreign: typeof Module;
 
 const ALPHA_AGENT = {
-  tmuxName: 'kirby-aaaa-feat-a',
+  tmuxName: 'alpha-feat-a',
   path: '/repos/alpha/.claude/worktrees/feat-a',
   repoRoot: '/repos/alpha',
   branch: 'feat-a',
@@ -54,7 +54,7 @@ const ALPHA_AGENT = {
   sessionName: 'feat-a',
 };
 const BETA_AGENT = {
-  tmuxName: 'kirby-bbbb-feat-b',
+  tmuxName: 'beta-feat-b',
   path: '/repos/beta/.claude/worktrees/feat-b',
   repoRoot: '/repos/beta',
   branch: 'feat/b',
@@ -63,7 +63,7 @@ const BETA_AGENT = {
 };
 /** A worktree on a detached HEAD, named after its directory. */
 const BETA_DETACHED = {
-  tmuxName: 'kirby-bbbb-hotfix',
+  tmuxName: 'beta-hotfix',
   path: '/repos/beta/.claude/worktrees/hotfix',
   repoRoot: '/repos/beta',
   branch: 'hotfix',
@@ -107,7 +107,7 @@ describe('listForeignSessions', () => {
     expect(state.recents).toEqual([]);
     state.live = [
       BETA_AGENT,
-      { ...BETA_AGENT, tmuxName: 'kirby-cccc-x', repoRoot: '/repos/gamma' },
+      { ...BETA_AGENT, tmuxName: 'gamma-x', repoRoot: '/repos/gamma' },
     ];
     foreign.listForeignSessions();
     expect(state.recents).toEqual(['/repos/beta', '/repos/gamma']);

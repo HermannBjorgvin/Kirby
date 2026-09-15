@@ -124,7 +124,7 @@ describe('resetRepoScopedCache', () => {
     qc.setQueryData(keys.settings('/repo'), { fields: [] });
     qc.setQueryData(keys.threads('/repo', 7), { threads: [] });
     qc.setQueryData(keys.version, { app: '1', electron: '2' });
-    qc.setQueryData(keys.terminals, [{ name: 'kirby-term-shell-1' }]);
+    qc.setQueryData(keys.terminals, [{ name: 'kirby-shell-1' }]);
     qc.getMutationCache().build(qc, { mutationFn: () => Promise.resolve(1) });
     return qc;
   }
@@ -136,7 +136,7 @@ describe('resetRepoScopedCache', () => {
     const qc = seeded();
     resetRepoScopedCache(qc);
     expect(qc.getQueryData(keys.terminals)).toEqual([
-      { name: 'kirby-term-shell-1' },
+      { name: 'kirby-shell-1' },
     ]);
   });
 

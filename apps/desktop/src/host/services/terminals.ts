@@ -40,9 +40,10 @@ import { displayPath, terminalRepo } from './terminal-home.js';
  * still this user's terminal whatever repository is open. So nothing
  * here goes through `requireRepo`.
  *
- * There is no state file. The name carries the kind, tmux carries the
- * directory (`session_path`), and discovery hands both back after a
- * restart through {@link adoptTerminal}.
+ * There is no state file. The session's `@orchestra-session-type` tag
+ * carries the kind, its name is its key, tmux carries the directory
+ * (`session_path`), and discovery hands all of it back after a restart
+ * through {@link adoptTerminal}.
  */
 
 const DEFAULT_COLS = 120;

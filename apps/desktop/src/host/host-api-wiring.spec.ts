@@ -207,7 +207,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'terminals.launchTerminal',
   ],
   ['listTerminals', [], 'terminals.listTerminals'],
-  ['killTerminal', ['kirby-term-shell-1'], 'terminals.killTerminal'],
+  ['killTerminal', ['kirby-shell-1'], 'terminals.killTerminal'],
 
   ['getDesktopPrefs', [], 'prefs.loadDesktopPrefs'],
 
