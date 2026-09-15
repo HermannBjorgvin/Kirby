@@ -5,7 +5,7 @@ import {
   getSession,
   getSpawnedAt,
   isSessionAlive,
-  isTmuxSessionPersisted,
+  isTmuxSessionNamedPersisted,
   killSession as killSessionEntry,
   launchTerminalSession,
   newTerminalSessionName,
@@ -115,14 +115,16 @@ function start(
 /**
  * Whether tmux still holds a session under `name` now that the client
  * this host had on it has exited — a detach from inside tmux, not the
- * terminal ending. Asked with the backend in force for this process,
- * which is the open repository's config, the same gate discovery
- * reads; with no repository open there is no tmux in force and the
- * answer is no.
+ * terminal ending. Asked by tmux name, not by the open repository: a
+ * terminal tab is process-global and its session — a shell, or an
+ * adopted orphan tagged with the repository it was opened from — stays
+ * this tab's after a repository switch. The backend in force is the
+ * open repository's config, the same gate discovery reads; with no
+ * repository open there is no tmux in force and the answer is no.
  */
 function stillHeldByTmux(name: string): boolean {
   try {
-    return isTmuxSessionPersisted(readConfig(requireRepo()), name);
+    return isTmuxSessionNamedPersisted(readConfig(requireRepo()), name);
   } catch {
     return false;
   }

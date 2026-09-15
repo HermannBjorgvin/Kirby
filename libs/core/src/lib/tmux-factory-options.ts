@@ -4,6 +4,7 @@ import {
   readWorktreeHead,
   type WorktreeHead,
 } from './discovery/worktree-origin.js';
+import { hasSession } from './pty-registry.js';
 import {
   ORCHESTRA_TAG,
   sessionTags,
@@ -28,20 +29,27 @@ import {
  * branch checked out *now*, or the directory's name on a detached
  * HEAD, which is also what the session is tagged with. A terminal's
  * identity is its name, which is also its registry key, matched among
- * our tagged sessions whatever their type: a restored tab is the
+ * our tagged sessions whatever their type or repository — a tab is
+ * process-global and outlives a repository switch: a restored tab is the
  * `shell`/`agent` session discovery listed, and an orphaned worktree
  * session adopted as an agent tab keeps its `worktree` tag but is
  * attached by exactly the name tmux holds it under. For a new tab the
  * label is the capped preferred `<repo>-shell|agent`; the collision
  * suffix `newTerminalSessionName` chose for the registry key is the
  * backend's to append again, after the cap, from its own probe of the
- * same server — so a suffixed name is never capped a second time.
+ * same server — so a suffixed name is never capped a second time. The
+ * registry's own held names travel along as `isTaken`, so both probes
+ * skip the same names and the key and the created name agree.
  */
 export function kirbyTmuxFactoryOptions(
   repoRoot: string,
-  deps: { readHead?: (path: string) => WorktreeHead | null } = {}
+  deps: {
+    readHead?: (path: string) => WorktreeHead | null;
+    hasSession?: (name: string) => boolean;
+  } = {}
 ): TmuxFactoryOptions {
   const readHead = deps.readHead ?? readWorktreeHead;
+  const held = deps.hasSession ?? hasSession;
   const identities = new WeakMap<SessionSpec, SpecIdentity>();
   const identity = (spec: SessionSpec): SpecIdentity => {
     let known = identities.get(spec);
@@ -57,7 +65,7 @@ export function kirbyTmuxFactoryOptions(
       const found =
         id.type === 'worktree'
           ? resolveWorktreeSession(repoRoot, id.branch)
-          : resolveSessionByName(spec.name, repoRoot);
+          : resolveSessionByName(spec.name);
       return found?.name ?? null;
     },
     label: (spec) => {
@@ -67,6 +75,7 @@ export function kirbyTmuxFactoryOptions(
         : terminalSessionLabel(repoRoot, id.type);
     },
     tags: (spec) => sessionTags(repoRoot, identity(spec)),
+    isTaken: (name) => held(name),
   };
 }
 

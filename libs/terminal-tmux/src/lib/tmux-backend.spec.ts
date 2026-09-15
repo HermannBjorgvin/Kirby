@@ -201,6 +201,19 @@ describe('createTmuxBackendFactory', () => {
       ]);
     });
 
+    // The caller may hold names the server no longer does (a registry
+    // entry outliving its session); those are skipped like server-held
+    // ones, so the caller's key and the created name agree.
+    it('skips candidates the caller reports as taken', () => {
+      const backend = factory({ isTaken: (n) => n === 'feature-foo' })(spec());
+      expect(calls.filter((c) => c.startsWith('new-session'))).toEqual([
+        'new-session feature-foo-2 -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
+      ]);
+      expect(calls).not.toContain('has-session feature-foo');
+      backend.kill();
+      expect(calls).toContain('kill-session feature-foo-2');
+    });
+
     it('sanitizes the label to tmux rules before using it', () => {
       factory({ label: () => 'release/v1.0.1' })(spec());
       expect(calls[1]).toMatch(/^new-session release\/v1-0-1 /);

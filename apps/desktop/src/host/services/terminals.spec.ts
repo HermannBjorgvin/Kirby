@@ -101,7 +101,7 @@ vi.mock('@kirby/core', () => ({
       },
     });
   },
-  isTmuxSessionPersisted: (_config: unknown, name: string) =>
+  isTmuxSessionNamedPersisted: (_config: unknown, name: string) =>
     state.tmuxHolds.has(name),
   getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {

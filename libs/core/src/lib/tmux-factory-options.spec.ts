@@ -22,8 +22,8 @@ vi.mock('./session-resolver.js', async (importOriginal) => {
     listOurSessions: () => state.sessions,
     resolveWorktreeSession: (repo: string, branch: string) =>
       actual.resolveWorktreeSession(repo, branch, state.sessions),
-    resolveSessionByName: (name: string, repoRoot: string) =>
-      actual.resolveSessionByName(name, repoRoot, state.sessions),
+    resolveSessionByName: (name: string) =>
+      actual.resolveSessionByName(name, state.sessions),
   };
 });
 
@@ -78,6 +78,19 @@ beforeEach(() => {
 });
 
 describe('kirbyTmuxFactoryOptions', () => {
+  // The registry's idea of "taken" travels to the backend, so the name
+  // core keys a tab by and the name the backend creates are decided
+  // against the same set of held names.
+  it('reports names this process holds as taken', () => {
+    const held = new Set(['repo-shell']);
+    const opts = kirbyTmuxFactoryOptions('/repo', {
+      readHead: onBranch,
+      hasSession: (name) => held.has(name),
+    });
+    expect(opts.isTaken?.('repo-shell')).toBe(true);
+    expect(opts.isTaken?.('repo-shell-2')).toBe(false);
+  });
+
   describe('a worktree session', () => {
     it('resolves by the repo root and the branch in the directory HEAD, not by name', () => {
       state.sessions = [
@@ -148,10 +161,7 @@ describe('kirbyTmuxFactoryOptions', () => {
 
   describe('a terminal tab', () => {
     it('is told apart by the session-type tag its launcher set, and identified by name', () => {
-      state.sessions = [
-        tagged('repo-shell', 'shell', '/elsewhere'),
-        tagged('repo-agent', 'worktree', '/repo', 'repo-agent'),
-      ];
+      state.sessions = [tagged('repo-shell', 'shell', '/elsewhere')];
       const readHead = vi.fn(onBranch);
       const opts = kirbyTmuxFactoryOptions('/repo', { readHead });
       expect(opts.resolve(terminal('shell', 'repo-shell'))).toBe('repo-shell');
@@ -174,12 +184,20 @@ describe('kirbyTmuxFactoryOptions', () => {
       );
     });
 
-    it('never adopts an untagged session, or another repository’s orphan, by name', () => {
-      const opts = kirbyTmuxFactoryOptions('/repo', { readHead: onBranch });
-      expect(opts.resolve(terminal('agent', 'repo-old-branch'))).toBeNull();
+    // Terminal tabs are process-global and outlive a repository switch:
+    // the adopted orphan is still that tab's session when another
+    // repository is open, so a detach inside it reattaches instead of
+    // closing the tab with the agent still running.
+    it('reattaches an adopted orphan by name whatever repository is open', () => {
       state.sessions = [
-        tagged('repo-old-branch', 'worktree', '/other', 'old/branch'),
+        tagged('repo-a-old', 'worktree', '/repo-a', 'old/branch'),
       ];
+      const opts = kirbyTmuxFactoryOptions('/repo-b', { readHead: onBranch });
+      expect(opts.resolve(terminal('agent', 'repo-a-old'))).toBe('repo-a-old');
+    });
+
+    it('never adopts an untagged session by name', () => {
+      const opts = kirbyTmuxFactoryOptions('/repo', { readHead: onBranch });
       expect(opts.resolve(terminal('agent', 'repo-old-branch'))).toBeNull();
     });
 

@@ -72,7 +72,8 @@ import {
   defaultTerminalBackend,
   getRepoRoot,
   hasLiveTmuxSession,
-  isTmuxSessionPersisted,
+  hasLiveTmuxSessionNamed,
+  isTmuxSessionNamedPersisted,
   killPersistedTmuxSession,
   observeTmuxSessions,
   probeTmuxAvailability,
@@ -327,16 +328,23 @@ describe('tmux session existence vs. preference', () => {
   });
 
   // An orphaned worktree session adopted as an agent terminal is keyed
-  // by its tmux name from then on, and keeps its `worktree` tag. The
-  // registry key has to reach it — for the detach check and for the
-  // kill when its tab is closed.
-  it('sees and kills an adopted orphan by its tmux name', () => {
+  // by its tmux name from then on, and keeps its `worktree` tag. A
+  // terminal tab is process-global and outlives a repository switch, so
+  // the name lookup answers whatever repository is open now.
+  it('sees an adopted orphan by its tmux name while another repository is open', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockReturnValue('/repo-b\n');
     tmuxListSessionsMock.mockReturnValue([
-      ours('repo-old-branch', 'worktree', '/repo', 'old/branch', '/wt/dir'),
+      ours('repo-a-old', 'worktree', '/repo-a', 'old/branch', '/wt/dir'),
     ]);
-    expect(hasLiveTmuxSession('repo-old-branch')).toBe(true);
-    killPersistedTmuxSession('repo-old-branch');
-    expect(tmuxKillSessionMock).toHaveBeenCalledWith('repo-old-branch');
+    expect(hasLiveTmuxSessionNamed('repo-a-old')).toBe(true);
+    expect(isTmuxSessionNamedPersisted({}, 'repo-a-old')).toBe(true);
+    expect(hasLiveTmuxSessionNamed('repo-a-old-2')).toBe(false);
+  });
+
+  it('never sees an untagged session by name', () => {
+    tmuxListSessionsMock.mockReturnValue([foreign('repo-shell')]);
+    expect(hasLiveTmuxSessionNamed('repo-shell')).toBe(false);
   });
 
   it('does not see an untagged session that carries the expected name', () => {
@@ -365,14 +373,31 @@ describe('tmux session existence vs. preference', () => {
   // The reattach decision is the one place the preference matters:
   // reattaching under PTY would spawn a second agent in the worktree
   // rather than resuming the one already running there.
-  it('only reports a session as reattachable while tmux is selected', () => {
+  it('only reports a named session as reattachable while tmux is selected', () => {
     tmuxListSessionsMock.mockReturnValue([
-      ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
+      ours('repo-shell', 'shell', '/repo', null, '/repo'),
     ]);
-    expect(isTmuxSessionPersisted({}, 'feature-x')).toBe(true);
+    expect(isTmuxSessionNamedPersisted({}, 'repo-shell')).toBe(true);
     expect(
-      isTmuxSessionPersisted({ terminalBackend: 'pty' }, 'feature-x')
+      isTmuxSessionNamedPersisted({ terminalBackend: 'pty' }, 'repo-shell')
     ).toBe(false);
+  });
+
+  // A registry key derived from a branch is `branchToSessionName(branch)`,
+  // never a tmux name: repository `/w/feature` with an agent on branch
+  // `x` is labelled `feature-x`, and removing the worktree of branch
+  // `feature/x` asks about key `feature-x`. Nothing is on that branch,
+  // and the name fallback must not reach the branch-`x` agent.
+  it('never resolves a branch key to a worktree session by name', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockReturnValue('/w/feature\n');
+    tmuxListSessionsMock.mockReturnValue([
+      ours('feature-x', 'worktree', '/w/feature', 'x', '/w/feature/wt/x'),
+    ]);
+    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    killPersistedTmuxSession('feature-x');
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
+    expect(hasLiveTmuxSession('x')).toBe(true);
   });
 
   // The regression that motivated the split: a session created under
@@ -433,8 +458,10 @@ describe('terminal tabs reach tmux by their own name', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('notes-shell', 'shell', '/elsewhere', null, '/home/dev/notes'),
     ]);
+    expect(hasLiveTmuxSessionNamed('notes-shell')).toBe(true);
+    expect(hasLiveTmuxSessionNamed('notes-shell-2')).toBe(false);
+    // A registry key also reaches a terminal tab by its exact name.
     expect(hasLiveTmuxSession('notes-shell')).toBe(true);
-    expect(hasLiveTmuxSession('notes-shell-2')).toBe(false);
   });
 
   it('kill-session is aimed at the terminal name once its tags are verified', () => {

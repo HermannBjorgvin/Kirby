@@ -19,20 +19,27 @@ export type TerminalKind = 'shell' | 'agent';
 
 /** The name a terminal about to be opened gets — and the registry key
  *  it will be found under — free on both counts: not held by this
- *  process, and (where tmux is installed, so the tmux backend may be
- *  in force) not a session on the server, whoever made it. With no
- *  repository to label after, the kind alone is the label. */
+ *  process, and not a session on the server, whoever made it. The
+ *  server is asked unless the availability probe has said tmux is not
+ *  installed: before it answers, tmux may still be the backend in
+ *  force (an explicit `terminalBackend: 'tmux'`), and a missing tmux
+ *  simply answers "not held". With no repository to label after, the
+ *  kind alone is the label. */
 export function newTerminalSessionName(
   kind: TerminalKind,
   deps: {
     repoRoot?: string | null;
-    tmuxAvailable?: boolean;
+    /** `null` stands for a probe that has not answered. */
+    tmuxAvailable?: boolean | null;
     tmuxHolds?: (name: string) => boolean;
   } = {}
 ): string {
   const root = deps.repoRoot === undefined ? getRepoRoot() : deps.repoRoot;
-  const probeTmux =
-    deps.tmuxAvailable ?? getTmuxAvailability()?.available ?? false;
+  const available =
+    deps.tmuxAvailable === undefined
+      ? getTmuxAvailability()?.available ?? null
+      : deps.tmuxAvailable;
+  const probeTmux = available !== false;
   const tmuxHolds = deps.tmuxHolds ?? tmuxHasSession;
   const preferred = root ? terminalSessionLabel(root, kind) : kind;
   return tmuxFreeSessionName(

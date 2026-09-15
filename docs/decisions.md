@@ -60,7 +60,9 @@ once at creation and never parsed: `<repo>-<branch>` for a worktree session,
 `<repo>-shell` or `<repo>-agent` for a terminal tab, where `<repo>` is the
 basename of the symlink-resolved main checkout and every `/`, `.` and `:`
 becomes `-`; a name over 200 characters keeps its first 195 and gains `-` plus
-four hex digits of the SHA-256 of the unsanitized `<basename>-<branch>`. If any
+four hex digits of the SHA-256 of the unsanitized string the label was built
+from — `<basename>-<branch>` for a worktree session, `<basename>-shell` /
+`<basename>-agent` for a terminal tab. If any
 session on the server already holds the name — foreign, another checkout with
 the same directory name, a second shell tab — `-2`, `-3`, … is appended to the
 preferred label until one is free, after the cap and without capping or
@@ -116,9 +118,18 @@ questions are composed in `tmux-factory-options.ts` from the repo root: a
 worktree spec is identified by the branch in its directory's HEAD file (no git
 fork); a terminal spec is told apart by the session-type tag its launcher
 passes through `spawnSession`, and is identified by the name core chose as a
-free label before spawning, which is also its registry key. Terminal tabs
-belong to their directory, not to the open repository, so a terminal is
-resolved by type and name alone and the repo tag on it is descriptive.
+free label before spawning, which is also its registry key. Two lookups, not
+one: `resolveRegistrySession(repo, key)` answers a registry _key_ — a worktree
+session by (repo, branch), else a terminal tab by exact name, never a worktree
+session by name, because a worktree session's name is not a key and repository
+`feature`'s agent on branch `x` (labelled `feature-x`) must not answer for the
+branch `feature/x`; `resolveSessionByName(name)` answers a tmux _name_ across
+all our tagged sessions, any type, no repository scope, because a name is
+unique on the server and a terminal tab — including an adopted orphan still
+tagged `worktree` and with the repository it came from — is process-global and
+outlives a repository switch. `new-session -d` starts the command before the
+tags are written, so a concurrent scanner treats the session as foreign for
+the poll in which it is still untagged; the next poll sees it.
 
 Discovery (`observeTmuxSessions`) reads the same listing once: a worktree is
 persisted when a session is tagged with the open root and the branch the

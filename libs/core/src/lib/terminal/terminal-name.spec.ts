@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   registry: new Set<string>(),
   server: new Set<string>(),
   probes: [] as string[],
+  /** What the availability probe has said; `null` while unanswered. */
+  tmuxStatus: { available: true } as { available: boolean } | null,
 }));
 
 vi.mock('../pty-registry.js', () => ({
@@ -18,7 +20,7 @@ vi.mock('../pty-registry.js', () => ({
 }));
 vi.mock('../session-backend.js', () => ({
   getRepoRoot: () => '/home/dev/my.repo',
-  getTmuxAvailability: () => ({ available: true, version: '3.4' }),
+  getTmuxAvailability: () => state.tmuxStatus,
 }));
 
 import { newTerminalSessionName } from './terminal-name.js';
@@ -32,6 +34,7 @@ beforeEach(() => {
   state.registry = new Set();
   state.server = new Set();
   state.probes = [];
+  state.tmuxStatus = { available: true };
 });
 
 describe('newTerminalSessionName', () => {
@@ -64,9 +67,21 @@ describe('newTerminalSessionName', () => {
     expect(state.probes).toEqual([]);
   });
 
-  it('does not ask tmux when it is not installed', () => {
+  it('does not ask tmux when the probe said it is not installed', () => {
     newTerminalSessionName('shell', { tmuxHolds, tmuxAvailable: false });
     expect(state.probes).toEqual([]);
+  });
+
+  // Before the availability probe has answered, tmux may still be the
+  // backend in force (an explicit `terminalBackend: 'tmux'`), so the
+  // server is asked; a missing tmux simply answers "not held".
+  it('asks tmux while the probe has not answered', () => {
+    state.tmuxStatus = null;
+    state.server = new Set(['my-repo-shell']);
+    expect(newTerminalSessionName('shell', { tmuxHolds })).toBe(
+      'my-repo-shell-2'
+    );
+    expect(state.probes).toEqual(['my-repo-shell', 'my-repo-shell-2']);
   });
 
   // The cap applies to the preferred label; the collision suffix goes

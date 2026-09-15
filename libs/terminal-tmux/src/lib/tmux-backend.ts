@@ -87,6 +87,11 @@ export interface TmuxFactoryOptions {
    *  creates, before any client attaches to it. Never written on a
    *  session `resolve` found. */
   tags: (spec: SessionSpec) => Record<string, string>;
+  /** Optional. Names the caller holds itself and wants skipped when a
+   *  label is probed for a free candidate — on top of what the server
+   *  holds — so the caller's own choice of name and the one created
+   *  here are decided against the same set. */
+  isTaken?: (name: string) => boolean;
 }
 
 /** Build a SessionBackendFactory over the caller's identity rules.
@@ -194,7 +199,11 @@ class TmuxBackend implements SessionBackend {
  *  name is decided here and never again: the tags, not the name, are
  *  what a later lookup goes by. */
 function createTagged(spec: SessionSpec, opts: TmuxFactoryOptions): string {
-  const name = createDetached(sanitizeTmuxSessionName(opts.label(spec)), spec);
+  const name = createDetached(
+    sanitizeTmuxSessionName(opts.label(spec)),
+    spec,
+    opts.isTaken
+  );
   for (const [key, value] of Object.entries(opts.tags(spec))) {
     tmuxSetOption(name, key, value);
   }
@@ -202,11 +211,16 @@ function createTagged(spec: SessionSpec, opts: TmuxFactoryOptions): string {
 }
 
 /** `new-session -d` under the first free candidate of `label`. A
- *  candidate the server holds is skipped without asking; one that
- *  turns out taken between the probe and the create — another creator
- *  racing this one — is skipped the same way. Any other failure is the
- *  caller's problem, thrown with tmux's own words. */
-function createDetached(label: string, spec: SessionSpec): string {
+ *  candidate the caller or the server holds is skipped without asking
+ *  tmux to create it; one that turns out taken between the probe and
+ *  the create — another creator racing this one — is skipped the same
+ *  way. Any other failure is the caller's problem, thrown with tmux's
+ *  own words. */
+function createDetached(
+  label: string,
+  spec: SessionSpec,
+  isTaken: (name: string) => boolean = () => false
+): string {
   const request = {
     cwd: spec.cwd,
     cols: spec.cols,
@@ -217,7 +231,7 @@ function createDetached(label: string, spec: SessionSpec): string {
   let attempts = 0;
   for (const candidate of sessionNameCandidates(label)) {
     if ((attempts += 1) > MAX_CREATE_ATTEMPTS) break;
-    if (tmuxHasSession(candidate)) continue;
+    if (isTaken(candidate) || tmuxHasSession(candidate)) continue;
     const result = tmuxNewSessionDetached(candidate, request);
     if (result.exitCode === 0) return candidate;
     if (!isDuplicateSession(result)) {

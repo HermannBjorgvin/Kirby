@@ -58,35 +58,32 @@ export function resolveWorktreeSession(
 }
 
 /**
- * One of our sessions with exactly this name, or `null`. This is how a
- * session keyed by its tmux name is reached: a terminal tab, which
- * belongs to its directory rather than to the open repository and so
- * matches from any repository; or an orphaned worktree session that a
- * terminal tab has adopted, which keeps its `worktree` tag and matches
- * only when tagged with this repository — the scanner only ever offers
- * this repository's orphans, and another repository's agent must not
- * be reached through a coincidental name. The tags still decide
- * "ours": an untagged session of that name is not found.
+ * One of our sessions with exactly this name, or `null` — any type, any
+ * repository, because a tmux name is unique on the server. This is how
+ * a caller that holds a tmux name reaches its session: a terminal tab,
+ * which belongs to its directory rather than to the open repository
+ * and outlives a repository switch; or an orphaned worktree session
+ * that a terminal tab has adopted, which keeps its `worktree` tag. The
+ * tags still decide "ours": an untagged session of that name is not
+ * found. A caller holding a registry *key* must not use this — see
+ * {@link resolveRegistrySession}.
  */
 export function resolveSessionByName(
   name: string,
-  repoRoot: string,
   sessions: TaggedSession[] = listOurSessions()
 ): TaggedSession | null {
-  return (
-    sessions.find(
-      (s) => s.name === name && (isTerminalSession(s) || s.repo === repoRoot)
-    ) ?? null
-  );
+  return sessions.find((s) => s.name === name) ?? null;
 }
 
 /**
  * The session a PTY-registry key names in this repository: a worktree
- * session whose branch keys to it, else the session called exactly
- * that (a terminal tab, or an adopted orphan). This is how a caller
- * that holds only the registry key — the merged-branch sweep, the
- * worktree removal, a terminal's detach check — reaches the resolver
- * without composing a name.
+ * session whose branch keys to it, else a terminal tab called exactly
+ * that. This is how a caller that holds only a registry key — the
+ * merged-branch sweep, the worktree removal — reaches the resolver
+ * without composing a name. The fallback is terminal tabs only: a
+ * worktree session's own name is never a registry key, and matching
+ * one by name would let repository `feature`'s agent on branch `x`
+ * (labelled `feature-x`) answer for the branch `feature/x`.
  */
 export function resolveRegistrySession(
   repoRoot: string,
@@ -101,5 +98,9 @@ export function resolveRegistrySession(
         registryNameOf(s) === registryName
     )
   );
-  return worktree ?? resolveSessionByName(registryName, repoRoot, sessions);
+  return (
+    worktree ??
+    sessions.find((s) => isTerminalSession(s) && s.name === registryName) ??
+    null
+  );
 }

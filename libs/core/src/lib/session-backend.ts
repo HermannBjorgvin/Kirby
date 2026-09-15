@@ -31,7 +31,11 @@ import {
   registryNameOf,
   type TaggedSession,
 } from './session-identity.js';
-import { listOurSessions, resolveRegistrySession } from './session-resolver.js';
+import {
+  listOurSessions,
+  resolveRegistrySession,
+  resolveSessionByName,
+} from './session-resolver.js';
 import { kirbyTmuxFactoryOptions } from './tmux-factory-options.js';
 
 /** Resolve the git toplevel of the repo Kirby is running in, or `null`
@@ -326,8 +330,8 @@ function resolveOwn(sessionName: string): TaggedSession | null {
  *  probe that answers differently than it did last run. Asking "should
  *  we be using tmux?" instead of "is there a tmux session?" is how a
  *  live agent becomes invisible — and then gets its worktree swept out
- *  from under it. Callers that need the *preference* want
- *  {@link isTmuxSessionPersisted}.
+ *  from under it. Callers that hold a tmux *name* rather than a
+ *  registry key want {@link hasLiveTmuxSessionNamed}.
  *
  *  Never throws; false when tmux or the repo root is out of the
  *  picture, since without either there is no session to find. */
@@ -336,21 +340,32 @@ export function hasLiveTmuxSession(sessionName: string): boolean {
   return resolveOwn(sessionName) !== null;
 }
 
-/** True when a tmux session for this registry name survived a previous
- *  run (dispose-on-quit leaves tmux sessions running by design) *and*
- *  tmux is the backend in force. Used to decide whether to reattach,
- *  where the preference is the point: reattaching under the PTY
- *  backend would spawn a second, unrelated agent in the same worktree
- *  rather than resuming the one that is running.
- *
- *  For "does a tmux session exist at all" — safety checks, teardown —
- *  use {@link hasLiveTmuxSession}. */
-export function isTmuxSessionPersisted(
+/** True when one of our tmux sessions is called exactly `name` right
+ *  now, whatever its type or repository — the question a caller that
+ *  holds a tmux *name* asks: a terminal tab, or the orphaned worktree
+ *  session a tab adopted. A tab is process-global and outlives a
+ *  repository switch, so the open repository is not consulted: the
+ *  name is unique on the server. Never for a registry key — see
+ *  {@link hasLiveTmuxSession}. Never throws; false when tmux is out of
+ *  the picture. */
+export function hasLiveTmuxSessionNamed(name: string): boolean {
+  if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
+  return resolveSessionByName(name) !== null;
+}
+
+/** {@link hasLiveTmuxSessionNamed} *and* tmux is the backend in force —
+ *  the reattach decision for a terminal tab whose client exited: with
+ *  tmux in force the session is still there and the tab reattaches;
+ *  under PTY there is nothing to reattach to and the tab has ended.
+ *  The preference is the point: reattaching under the PTY backend
+ *  would spawn a second, unrelated process rather than resume the one
+ *  that is running. */
+export function isTmuxSessionNamedPersisted(
   config: Pick<AppConfig, 'terminalBackend'>,
-  sessionName: string
+  name: string
 ): boolean {
   if (resolveTerminalBackend(config) !== 'tmux') return false;
-  return hasLiveTmuxSession(sessionName);
+  return hasLiveTmuxSessionNamed(name);
 }
 
 /** Kill the persisted tmux session for a registry name, whether or not

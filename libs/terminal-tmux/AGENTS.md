@@ -2,9 +2,10 @@
 
 Optional backend over system tmux ≥ 2.0 (`is-tmux-available.ts` probes and
 gives a platform install hint; the `=name:` exact targets need 2.1, so that
-is the effective floor — the probe is unchanged). It knows nothing about
-Kirby: the caller supplies three callbacks (`resolve`, `label`, `tags`) and
-the lib never parses a session name.
+is the effective floor — the probe is unchanged). The code carries no Kirby
+names (comments may mention it): the caller supplies three callbacks
+(`resolve`, `label`, `tags`) plus an optional `isTaken`, and the lib never
+parses a session name.
 
 - `vitest.setup.ts` pins a scratch socket dir (`TMUX_TMPDIR`) and drops
   `$TMUX` before any spec loads; `assertScratchTmuxSocket` fails the run if
@@ -20,7 +21,8 @@ the lib never parses a session name.
   on) is created detached, `tags(spec)` are written as session user options,
   and only then does the client attach. There is no `new-session -A` and no
   post-hoc retry: everything is on the session before a client can see it.
-  `status off` is set on every attach; tags never are.
+  `status off` is set on every attach; tags never are. `isTaken` folds names
+  the caller holds itself into the free-name probe.
 - `-e HOME` / `-e PATH` per session needs tmux ≥ 3.2; a server keeps the env
   it was started with, and a stale server on the default socket otherwise
   kills every agent at launch. `attach-session -f ignore-size` also needs 3.2,
