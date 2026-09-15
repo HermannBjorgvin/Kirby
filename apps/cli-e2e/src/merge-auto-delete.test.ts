@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
+import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
 import {
   closePullRequest,
@@ -23,10 +24,11 @@ const hasGhToken = !!process.env.GH_TOKEN;
 
 const prefix = testBranchPrefix();
 const branchName = `${prefix}/test-merge`;
-const sessionName = branchName.replace(/\//g, '-');
+const worktreeDirName = branchName.replace(/\//g, '-');
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-integ-clone-'));
 registerCleanup(cloneDir);
+const worktreePath = join(cloneDir, '.claude', 'worktrees', worktreeDirName);
 
 if (hasGhToken) {
   const token = process.env.GH_TOKEN;
@@ -61,14 +63,10 @@ if (hasGhToken) {
   execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
 
   // Create worktree so Kirby sees it as an existing session on startup
-  execSync(
-    `git worktree add "${join(
-      '.claude',
-      'worktrees',
-      sessionName
-    )}" "${branchName}"`,
-    { cwd: cloneDir, stdio: 'pipe' }
-  );
+  execSync(`git worktree add "${worktreePath}" "${branchName}"`, {
+    cwd: cloneDir,
+    stdio: 'pipe',
+  });
 }
 
 test.describe('@integration Merge Auto-Delete', () => {
@@ -88,7 +86,9 @@ test.describe('@integration Merge Auto-Delete', () => {
     try {
       // 2. Kirby renders (fixture already waited) + session visible
       await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-      await expect(kirby.term.getByText(sessionName).first()).toBeVisible();
+      await expect(
+        sidebarLocator(kirby.term.page, branchName).any()
+      ).toBeVisible();
 
       // 3. Merge the PR now that we've confirmed the session is visible
       mergePullRequest(TEST_REPO, prNumber);
@@ -104,19 +104,19 @@ test.describe('@integration Merge Auto-Delete', () => {
       await kirby.term.write('g');
 
       try {
-        // 5. Wait for the session row to disappear. In the unified sidebar,
-        //    review PRs remain visible even after sessions are gone, so we
-        //    assert the session name is gone rather than "(no sessions)".
-        await expect(kirby.term.getByText(sessionName).first()).not.toBeVisible(
-          { timeout: 90_000 }
-        );
+        // 5. Wait for actual deletion: a worktree row can change its label
+        //    to the PR title before the worktree has been removed.
+        await expect
+          .poll(() => existsSync(worktreePath), { timeout: 90_000 })
+          .toBe(false);
       } finally {
         clearInterval(syncTimer);
       }
 
-      // 6. Worktree directory was removed
-      const worktreePath = join(cloneDir, '.claude', 'worktrees', sessionName);
-      expect(existsSync(worktreePath)).toBe(false);
+      // 6. The worktree row is gone; review PR rows may remain visible.
+      await expect(
+        sidebarLocator(kirby.term.page, branchName).any()
+      ).toBeHidden();
 
       // 7. Local branch was deleted
       let branchExists = true;

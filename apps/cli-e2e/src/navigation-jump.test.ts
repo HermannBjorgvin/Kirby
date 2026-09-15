@@ -25,8 +25,8 @@ const hasGhToken = !!process.env.GH_TOKEN;
 const prefix = testBranchPrefix();
 const branchA = `${prefix}/nav-a`;
 const branchB = `${prefix}/nav-b`;
-const sessionA = branchA.replace(/\//g, '-');
-const sessionB = branchB.replace(/\//g, '-');
+const worktreeDirA = branchA.replace(/\//g, '-');
+const worktreeDirB = branchB.replace(/\//g, '-');
 
 const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-navjump-clone-'));
 registerCleanup(cloneDir);
@@ -70,11 +70,19 @@ if (hasGhToken) {
 
   // Worktrees for both branches
   execSync(
-    `git worktree add "${join('.claude', 'worktrees', sessionA)}" "${branchA}"`,
+    `git worktree add "${join(
+      '.claude',
+      'worktrees',
+      worktreeDirA
+    )}" "${branchA}"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
   execSync(
-    `git worktree add "${join('.claude', 'worktrees', sessionB)}" "${branchB}"`,
+    `git worktree add "${join(
+      '.claude',
+      'worktrees',
+      worktreeDirB
+    )}" "${branchB}"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
 }
@@ -109,8 +117,12 @@ test.describe('@integration Navigation Jump', () => {
 
       // 2. Both sessions appear under "Worktrees" (no PRs yet).
       //    Order is [A, B] — sessions without PRs preserve input order.
-      await expect(kirby.term.getByText(sessionA).first()).toBeVisible();
-      await expect(kirby.term.getByText(sessionB).first()).toBeVisible();
+      await expect(
+        sidebarLocator(kirby.term.page, branchA).any()
+      ).toBeVisible();
+      await expect(
+        sidebarLocator(kirby.term.page, branchB).any()
+      ).toBeVisible();
 
       // 3. Navigate down once to select session B (index 1 within Worktrees)
       await kirby.term.write('j');
@@ -122,7 +134,7 @@ test.describe('@integration Navigation Jump', () => {
 
       // 4. Session B is selected
       await expect(
-        sidebarLocator(kirby.term.page, sessionB).selected()
+        sidebarLocator(kirby.term.page, branchB).selected()
       ).toBeVisible();
 
       // 5. Create a PR for branch A. A moves from Worktrees into
@@ -154,7 +166,7 @@ test.describe('@integration Navigation Jump', () => {
 
       // 7. Selection is still on session B
       await expect(
-        sidebarLocator(kirby.term.page, sessionB).selected()
+        sidebarLocator(kirby.term.page, branchB).selected()
       ).toBeVisible();
 
       // 8. Selection is NOT on session A's PR row
