@@ -1,18 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppConfig } from '@kirby/vcs-core';
-import type { TmuxStatus } from '@kirby/terminal-tmux';
+import type { TmuxSessionInfo, TmuxStatus } from '@kirby/terminal-tmux';
+import type { DiscoveredWorktree } from './discovery/discovery-model.js';
 
 const {
   ptyFactorySpy,
   tmuxFactorySpy,
   isTmuxAvailableMock,
-  tmuxHasSessionMock,
   tmuxKillSessionMock,
   tmuxListSessionsMock,
   execFileSyncMock,
   readProjectConfigMock,
   liveSessionNamesMock,
-  withProvenanceTagsMock,
   SENTINEL_PTY,
   SENTINEL_TMUX,
 } = vi.hoisted(() => {
@@ -20,21 +19,14 @@ const {
     ptyFactorySpy: vi.fn(),
     tmuxFactorySpy: vi.fn(),
     isTmuxAvailableMock: vi.fn<() => Promise<TmuxStatus>>(),
-    tmuxHasSessionMock: vi.fn<(name: string) => boolean>(),
     tmuxKillSessionMock: vi.fn<(name: string) => void>(),
-    tmuxListSessionsMock:
-      vi.fn<() => (string | { name: string; path: string })[]>(),
+    tmuxListSessionsMock: vi.fn<() => TmuxSessionInfo[]>(),
     execFileSyncMock: vi.fn(),
     readProjectConfigMock: vi.fn<() => { terminalBackend?: string }>(),
     // Stands in for the PTY registry's own bookkeeping: which bare
     // session names this process currently holds alive, independent of
     // whatever the worktree list or tmux happen to report this scan.
     liveSessionNamesMock: vi.fn<() => string[]>(),
-    // Pass-through: the wiring test asserts it was applied and with
-    // what; the tagging itself is session-provenance.spec.ts's.
-    withProvenanceTagsMock: vi.fn<
-      (factory: unknown, repoRoot: string) => unknown
-    >((factory) => factory),
     SENTINEL_PTY: Symbol('pty-factory'),
     SENTINEL_TMUX: Symbol('tmux-factory'),
   };
@@ -51,36 +43,28 @@ vi.mock('@kirby/terminal-pty', () => ({
   },
 }));
 vi.mock('@kirby/terminal-tmux', () => ({
-  createTmuxBackendFactory: (opts: { sessionPrefix?: string }) => {
+  createTmuxBackendFactory: (opts: unknown) => {
     tmuxFactorySpy(opts);
     return SENTINEL_TMUX;
   },
   isTmuxAvailable: () => isTmuxAvailableMock(),
-  // The real sanitizer, near enough: discovery matches a composed name
-  // against what tmux reports, so an identity stub would make the match
-  // trivially true.
-  sanitizeTmuxSessionName: (raw: string) => raw.replace(/[.:]/g, '-'),
-  tmuxHasSession: (name: string) => tmuxHasSessionMock(name),
   tmuxKillSession: (name: string) => tmuxKillSessionMock(name),
-  // The lib reads names and paths in one call; most tests here only
-  // care about names, so a bare string stands for a session with no
-  // recorded path.
-  tmuxListSessionsDetailed: () =>
-    tmuxListSessionsMock().map((s) =>
-      typeof s === 'string' ? { name: s, path: '' } : s
-    ),
+  tmuxListSessionsDetailed: () => tmuxListSessionsMock(),
 }));
 vi.mock('@kirby/vcs-core', () => ({
-  projectKey: (cwd: string) => `hash(${cwd})`,
   readProjectConfig: () => readProjectConfigMock(),
+}));
+vi.mock('@kirby/worktree-manager', () => ({
+  branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
 }));
 vi.mock('./pty-registry.js', () => ({
   setSessionBackendFactory: () => undefined,
   liveSessionNames: () => liveSessionNamesMock(),
 }));
-vi.mock('./session-provenance.js', () => ({
-  withProvenanceTags: (factory: unknown, repoRoot: string) =>
-    withProvenanceTagsMock(factory, repoRoot),
+// The identity rules themselves are tmux-factory-options.spec.ts's;
+// here only that they are composed for the right root.
+vi.mock('./tmux-factory-options.js', () => ({
+  kirbyTmuxFactoryOptions: (repoRoot: string) => ({ identityFor: repoRoot }),
 }));
 
 import {
@@ -90,7 +74,6 @@ import {
   hasLiveTmuxSession,
   isTmuxSessionPersisted,
   killPersistedTmuxSession,
-  listPersistedTmuxSessions,
   observeTmuxSessions,
   probeTmuxAvailability,
   projectTerminalBackendOverride,
@@ -113,18 +96,49 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
+/** One of our sessions as the listing reports it: the name is any
+ *  label, the identity is in the options. */
+function ours(
+  name: string,
+  type: 'worktree' | 'shell' | 'agent',
+  repo: string,
+  branch: string | null,
+  path: string,
+  created = 1
+): TmuxSessionInfo {
+  return {
+    name,
+    created,
+    path,
+    options: {
+      '@orchestra-spawner': 'kirby',
+      '@orchestra-repo': repo,
+      '@orchestra-session-type': type,
+      ...(branch === null ? {} : { '@orchestra-branch': branch }),
+    },
+  };
+}
+
+/** A session nobody tagged — however it is named. */
+function foreign(name: string, path = '/x'): TmuxSessionInfo {
+  return { name, created: 1, path, options: {} };
+}
+
+function wt(name: string, branch: string, dir = name): DiscoveredWorktree {
+  return { name, branch, path: `/repo/.claude/worktrees/${dir}` };
+}
+
 beforeEach(async () => {
   ptyFactorySpy.mockReset();
   tmuxFactorySpy.mockReset();
   isTmuxAvailableMock.mockReset();
-  tmuxHasSessionMock.mockReset();
   tmuxKillSessionMock.mockReset();
   tmuxListSessionsMock.mockReset();
+  tmuxListSessionsMock.mockReturnValue([]);
   readProjectConfigMock.mockReset();
   readProjectConfigMock.mockReturnValue({});
   liveSessionNamesMock.mockReset();
   liveSessionNamesMock.mockReturnValue([]);
-  withProvenanceTagsMock.mockClear();
   // getRepoRoot memoizes for the process, so a test that let it resolve
   // to null would decide every later one. Reset and let it find /repo.
   resetRepoRoot();
@@ -196,8 +210,8 @@ describe('buildSessionBackendFactory', () => {
     expect(tmuxFactorySpy).not.toHaveBeenCalled();
   });
 
-  // No repo root means no stable key to namespace a tmux session by, so
-  // the default degrades exactly like an explicit "tmux" does.
+  // No repo root means nothing to tag a tmux session with, so the
+  // default degrades exactly like an explicit "tmux" does.
   it('returns the PTY factory when the default is tmux but there is no repo root', () => {
     const factory = buildSessionBackendFactory(makeConfig(), null);
     expect(factory).toBe(SENTINEL_PTY);
@@ -213,39 +227,21 @@ describe('buildSessionBackendFactory', () => {
     expect(tmuxFactorySpy).not.toHaveBeenCalled();
   });
 
-  it('returns the tmux factory with the kirby-<hash>- prefix when "tmux"', () => {
+  // The identity rules are keyed to the repo root: that is the string
+  // every session is tagged with and every lookup matches on.
+  it('builds the tmux factory over the identity rules for this repo root', () => {
     const factory = buildSessionBackendFactory(
       makeConfig({ terminalBackend: 'tmux' }),
       '/path/to/repo'
     );
     expect(factory).toBe(SENTINEL_TMUX);
-    expect(tmuxFactorySpy).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionPrefix: 'kirby-hash(/path/to/repo)-' })
-    );
+    expect(tmuxFactorySpy).toHaveBeenCalledWith({
+      identityFor: '/path/to/repo',
+    });
     expect(ptyFactorySpy).not.toHaveBeenCalled();
   });
 
-  // The tags name the repository the prefix was keyed from — the same
-  // string, so a reader can check one against the other — and only a
-  // tmux session has anywhere to keep them.
-  it('tags tmux sessions with their provenance, keyed to the same repo root as the prefix', () => {
-    buildSessionBackendFactory(
-      makeConfig({ terminalBackend: 'tmux' }),
-      '/path/to/repo'
-    );
-    expect(withProvenanceTagsMock).toHaveBeenCalledWith(
-      SENTINEL_TMUX,
-      '/path/to/repo'
-    );
-  });
-
-  it('never wraps the PTY factory', () => {
-    buildSessionBackendFactory(makeConfig({ terminalBackend: 'pty' }), '/repo');
-    buildSessionBackendFactory(makeConfig({ terminalBackend: 'tmux' }), null);
-    expect(withProvenanceTagsMock).not.toHaveBeenCalled();
-  });
-
-  it('different repoRoots produce different prefixes', () => {
+  it('different repoRoots produce different identity rules', () => {
     buildSessionBackendFactory(
       makeConfig({ terminalBackend: 'tmux' }),
       '/repo/a'
@@ -254,20 +250,14 @@ describe('buildSessionBackendFactory', () => {
       makeConfig({ terminalBackend: 'tmux' }),
       '/repo/b'
     );
-    expect(tmuxFactorySpy.mock.calls[0]?.[0]?.sessionPrefix).toBe(
-      'kirby-hash(/repo/a)-'
-    );
-    expect(tmuxFactorySpy.mock.calls[1]?.[0]?.sessionPrefix).toBe(
-      'kirby-hash(/repo/b)-'
-    );
+    expect(tmuxFactorySpy.mock.calls.map(([o]) => o)).toEqual([
+      { identityFor: '/repo/a' },
+      { identityFor: '/repo/b' },
+    ]);
   });
 
   it('falls back to PTY when "tmux" requested but probe says unavailable', async () => {
-    isTmuxAvailableMock.mockResolvedValueOnce({
-      available: false,
-      reason: 'tmux binary not found on PATH',
-      installHint: 'brew install tmux',
-    });
+    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
     await probeTmuxAvailability();
     const factory = buildSessionBackendFactory(
       makeConfig({ terminalBackend: 'tmux' }),
@@ -277,8 +267,8 @@ describe('buildSessionBackendFactory', () => {
     expect(tmuxFactorySpy).not.toHaveBeenCalled();
   });
 
-  // Outside a git working tree there is no stable key to namespace the
-  // tmux session name by. Keying off cwd instead would hash differently
+  // Outside a git working tree there is nothing stable to identify a
+  // tmux session by. Keying off cwd instead would answer differently
   // per subdirectory and strand the previous session, so degrade to PTY.
   it.each([
     ['null', null],
@@ -320,31 +310,53 @@ describe('getRepoRoot', () => {
   });
 });
 
-// A tmux session outlives the preference that created it. Asking "is
-// tmux selected?" where the question is "is a session running?" is how
-// a live agent becomes invisible — and then has its worktree swept out
-// from under it, or its directory deleted while it keeps working.
+/**
+ * A registry name reaches a tmux session through its tags: a worktree
+ * session whose tagged branch keys to the name, or a terminal tab
+ * called exactly that. The name a session happens to carry is never
+ * the answer — and a session that carries the right name with no tags
+ * is somebody else's.
+ */
 describe('tmux session existence vs. preference', () => {
-  it('sees a live session whatever backend is now selected', () => {
-    tmuxHasSessionMock.mockReturnValue(true);
+  it('sees a live session by its tags, whatever it is called, and whatever backend is now selected', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('some-label-2', 'worktree', '/repo', 'feature/x', '/wt/x'),
+    ]);
     expect(hasLiveTmuxSession('feature-x')).toBe(true);
-    expect(tmuxHasSessionMock).toHaveBeenCalledWith(
-      'kirby-hash(/repo)-feature-x'
-    );
+    expect(hasLiveTmuxSession('feature/x')).toBe(false);
+    expect(hasLiveTmuxSession('some-label-2')).toBe(false);
+  });
+
+  it('does not see an untagged session that carries the expected name', () => {
+    tmuxListSessionsMock.mockReturnValue([foreign('repo-feature-x')]);
+    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    expect(hasLiveTmuxSession('repo-feature-x')).toBe(false);
+  });
+
+  it('does not see another repository’s session for the same branch', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('other-feature-x', 'worktree', '/other', 'feature-x', '/wt/x'),
+    ]);
+    expect(hasLiveTmuxSession('feature-x')).toBe(false);
   });
 
   it('reports no live session when tmux is unavailable', async () => {
     isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
     await probeTmuxAvailability();
-    tmuxHasSessionMock.mockReturnValue(true);
+    tmuxListSessionsMock.mockReturnValue([
+      ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
+    ]);
     expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
   });
 
   // The reattach decision is the one place the preference matters:
   // reattaching under PTY would spawn a second agent in the worktree
   // rather than resuming the one already running there.
   it('only reports a session as reattachable while tmux is selected', () => {
-    tmuxHasSessionMock.mockReturnValue(true);
+    tmuxListSessionsMock.mockReturnValue([
+      ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
+    ]);
     expect(isTmuxSessionPersisted({}, 'feature-x')).toBe(true);
     expect(
       isTmuxSessionPersisted({ terminalBackend: 'pty' }, 'feature-x')
@@ -354,19 +366,73 @@ describe('tmux session existence vs. preference', () => {
   // The regression that motivated the split: a session created under
   // the tmux default must stay killable after the user picks PTY, or
   // removing its worktree deletes the directory and leaves the agent
-  // running in it forever.
-  it('kills a session created under a backend that is no longer selected', () => {
+  // running in it forever. And the kill is aimed at the name the
+  // resolver verified, not at a name composed from the branch.
+  it('kills the tagged session for a registry name, by the name tmux holds it under', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('repo-feature-x-3', 'worktree', '/repo', 'feature/x', '/wt/x'),
+    ]);
     killPersistedTmuxSession('feature-x');
-    expect(tmuxKillSessionMock).toHaveBeenCalledWith(
-      'kirby-hash(/repo)-feature-x'
-    );
+    expect(tmuxKillSessionMock).toHaveBeenCalledWith('repo-feature-x-3');
+  });
+
+  it('refuses to kill an untagged session, even one carrying the expected name', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      foreign('repo-feature-x'),
+      foreign('feature-x'),
+    ]);
+    killPersistedTmuxSession('feature-x');
+    killPersistedTmuxSession('repo-feature-x');
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses to kill another repository’s session', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('feature-x', 'worktree', '/other', 'feature-x', '/wt/x'),
+    ]);
+    killPersistedTmuxSession('feature-x');
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
   });
 
   it('does not throw when there is no server or session', () => {
-    tmuxKillSessionMock.mockImplementation(() => {
+    tmuxListSessionsMock.mockImplementation(() => {
       throw new Error('no server running');
     });
     expect(() => killPersistedTmuxSession('feature-x')).not.toThrow();
+    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+  });
+
+  it('is empty outside a git working tree', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error('fatal: not a git repository');
+    });
+    tmuxListSessionsMock.mockReturnValue([
+      ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
+    ]);
+    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    killPersistedTmuxSession('feature-x');
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('terminal tabs reach tmux by their own name', () => {
+  it('sees a terminal tab by name and type, from any repository', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('notes-shell', 'shell', '/elsewhere', null, '/home/dev/notes'),
+    ]);
+    expect(hasLiveTmuxSession('notes-shell')).toBe(true);
+    expect(hasLiveTmuxSession('notes-shell-2')).toBe(false);
+  });
+
+  it('kill-session is aimed at the terminal name once its tags are verified', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('repo-shell', 'shell', '/repo', null, '/repo'),
+      foreign('repo-shell-2'),
+    ]);
+    killPersistedTmuxSession('repo-shell');
+    killPersistedTmuxSession('repo-shell-2');
+    expect(tmuxKillSessionMock.mock.calls).toEqual([['repo-shell']]);
   });
 });
 
@@ -388,177 +454,91 @@ describe('projectTerminalBackendOverride', () => {
   });
 });
 
-describe('listPersistedTmuxSessions', () => {
-  const tmuxConfig = makeConfig({ terminalBackend: 'tmux' });
-
-  beforeEach(() => {
-    resetRepoRoot();
-    execFileSyncMock.mockReturnValue('/repo\n');
-  });
-
-  it('matches candidate names against this repo prefix', () => {
-    tmuxListSessionsMock.mockReturnValue([
-      'kirby-hash(/repo)-feature-a',
-      'kirby-hash(/repo)-feature-b',
-    ]);
-    expect(
-      listPersistedTmuxSessions(tmuxConfig, ['feature-a', 'feature-b', 'gone'])
-    ).toEqual(new Set(['feature-a', 'feature-b']));
-  });
-
-  // The whole safety property: another checkout's agents carry that
-  // checkout's hash, so nothing here may ever match them.
-  it('ignores sessions belonging to another repository prefix', () => {
-    tmuxListSessionsMock.mockReturnValue([
-      'kirby-hash(/other-repo)-feature-a',
-      'kirby-hash(/repo)-feature-b',
-    ]);
-    expect(
-      listPersistedTmuxSessions(tmuxConfig, ['feature-a', 'feature-b'])
-    ).toEqual(new Set(['feature-b']));
-  });
-
-  it('ignores tmux sessions the user runs for their own reasons', () => {
-    tmuxListSessionsMock.mockReturnValue(['main', 'dotfiles', 'feature-a']);
-    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
-      new Set()
-    );
-  });
-
-  // A branch name carrying a tmux-forbidden character reaches the
-  // server rewritten, so the candidate has to be composed through the
-  // same sanitizer or it never matches its own session.
-  it('composes candidates through the tmux name sanitizer', () => {
-    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-release-1-2-x']);
-    expect(listPersistedTmuxSessions(tmuxConfig, ['release-1.2.x'])).toEqual(
-      new Set(['release-1.2.x'])
-    );
-  });
-
-  it('costs one fork regardless of how many names are asked about', () => {
-    tmuxListSessionsMock.mockReturnValue([]);
-    listPersistedTmuxSessions(tmuxConfig, ['a', 'b', 'c', 'd', 'e']);
-    expect(tmuxListSessionsMock).toHaveBeenCalledTimes(1);
-    expect(tmuxHasSessionMock).not.toHaveBeenCalled();
-  });
-
-  it('never forks when the user chose pty', () => {
-    listPersistedTmuxSessions(makeConfig({ terminalBackend: 'pty' }), ['a']);
-    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
-  });
-
-  // The backend in force, not the raw config field: with tmux the
-  // detected default, a user who never chose one is on tmux, and
-  // reading the field would report every session they have as absent.
-  it('answers for a user who never chose a backend', () => {
-    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-feature-a']);
-    expect(listPersistedTmuxSessions(makeConfig(), ['feature-a'])).toEqual(
-      new Set(['feature-a'])
-    );
-  });
-
-  it('is empty when the default resolves to pty because tmux is missing', async () => {
-    isTmuxAvailableMock.mockResolvedValueOnce(TMUX_MISSING);
-    await probeTmuxAvailability();
-    listPersistedTmuxSessions(makeConfig(), ['feature-a']);
-    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
-  });
-
-  it('is empty when tmux has no server at all', () => {
-    tmuxListSessionsMock.mockReturnValue([]);
-    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
-      new Set()
-    );
-  });
-
-  it('is empty, not a throw, when the tmux call blows up', () => {
-    tmuxListSessionsMock.mockImplementation(() => {
-      throw new Error('ENOENT');
-    });
-    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
-      new Set()
-    );
-  });
-
-  it('is empty outside a git working tree', () => {
-    resetRepoRoot();
-    execFileSyncMock.mockImplementation(() => {
-      throw new Error('fatal: not a git repository');
-    });
-    tmuxListSessionsMock.mockReturnValue(['kirby-hash(/repo)-feature-a']);
-    expect(listPersistedTmuxSessions(tmuxConfig, ['feature-a'])).toEqual(
-      new Set()
-    );
-  });
-});
-
 /**
- * Terminal sessions are found by name and identified by the directory
- * tmux itself remembers — nothing is written to disk for them — and
- * they share the one `list-sessions` fork with the worktree check.
+ * One listing, read through the tags: which worktrees have a session,
+ * which terminal tabs exist, and which worktree sessions are orphans.
  */
 describe('observeTmuxSessions', () => {
   const tmuxConfig = makeConfig({ terminalBackend: 'tmux' });
 
-  beforeEach(() => {
-    resetRepoRoot();
-    execFileSyncMock.mockReturnValue('/repo\n');
+  it('reports a worktree as persisted when a session is tagged with its repo and branch', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('whatever', 'worktree', '/repo', 'feat/a', '/wt/feat-a'),
+      ours('repo-feat-b', 'worktree', '/repo', 'feat-b', '/wt/feat-b'),
+    ]);
+    const seen = observeTmuxSessions(tmuxConfig, [
+      wt('feat-a', 'feat/a'),
+      wt('feat-b', 'feat-b'),
+      wt('gone', 'gone'),
+    ]);
+    expect(seen.persisted).toEqual(new Set(['feat-a', 'feat-b']));
+    expect(seen.terminals).toEqual([]);
   });
 
-  it('reports every terminal session with its kind and directory', () => {
+  // A session named exactly what Kirby would have chosen, with no
+  // tags, is foreign: neither a persisted worktree nor a terminal.
+  it('ignores an untagged session whatever it is called', () => {
     tmuxListSessionsMock.mockReturnValue([
-      { name: 'kirby-term-shell-1a2b3c', path: '/home/dev/notes' },
-      { name: 'kirby-term-agent-4d5e6f', path: '/repo' },
-      {
-        name: 'kirby-hash(/repo)-feature-a',
-        path: '/repo/.claude/worktrees/feature-a',
-      },
-      { name: 'dotfiles', path: '/home/dev' },
+      foreign('repo-feat-a', '/wt/feat-a'),
+      foreign('repo-shell', '/repo'),
     ]);
-    const seen = observeTmuxSessions(tmuxConfig, ['feature-a']);
-    expect(seen.terminals).toEqual([
-      {
-        name: 'kirby-term-shell-1a2b3c',
-        kind: 'shell',
-        path: '/home/dev/notes',
-      },
-      { name: 'kirby-term-agent-4d5e6f', kind: 'agent', path: '/repo' },
+    expect(observeTmuxSessions(tmuxConfig, [wt('feat-a', 'feat-a')])).toEqual({
+      persisted: new Set(),
+      terminals: [],
+    });
+  });
+
+  it('ignores another repository’s worktree sessions', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('feat-a', 'worktree', '/other', 'feat-a', '/other/wt/feat-a'),
     ]);
-    expect(seen.persisted).toEqual(new Set(['feature-a']));
+    expect(observeTmuxSessions(tmuxConfig, [wt('feat-a', 'feat-a')])).toEqual({
+      persisted: new Set(),
+      terminals: [],
+    });
+  });
+
+  // A detached-HEAD worktree has no branch; its session is tagged with
+  // the directory's name, which is also its registry name.
+  it('matches a detached worktree by its directory name', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('repo-hotfix-dir', 'worktree', '/repo', 'hotfix-dir', '/wt/x'),
+    ]);
+    const seen = observeTmuxSessions(tmuxConfig, [wt('hotfix-dir', '')]);
+    expect(seen.persisted).toEqual(new Set(['hotfix-dir']));
   });
 
   // Terminals belong to a directory, not to the repository the scan
   // runs for: one started in another checkout, or in no checkout at
-  // all, is still this user's terminal and must reopen.
-  it('reports terminals whatever repository is open', () => {
+  // all, is still this user's terminal and must reopen. The kind is
+  // the tag, not anything about the name.
+  it('reports every terminal session by its session type, with its directory, wherever it runs', () => {
     tmuxListSessionsMock.mockReturnValue([
-      { name: 'kirby-term-shell-1a2b3c', path: '/elsewhere' },
+      ours('notes-shell', 'shell', '/elsewhere', null, '/home/dev/notes'),
+      ours('repo-agent-2', 'agent', '/repo', null, '/repo'),
+      ours('odd-name', 'shell', '/repo', null, '/repo'),
     ]);
-    expect(observeTmuxSessions(tmuxConfig, []).terminals).toHaveLength(1);
+    expect(observeTmuxSessions(tmuxConfig, []).terminals).toEqual([
+      { name: 'notes-shell', kind: 'shell', path: '/home/dev/notes' },
+      { name: 'repo-agent-2', kind: 'agent', path: '/repo' },
+      { name: 'odd-name', kind: 'shell', path: '/repo' },
+    ]);
   });
 
   // An agent that checks out another branch inside its worktree leaves
-  // a tmux session named after the old branch, matching no worktree.
-  // It surfaces as an agent terminal in its directory rather than
+  // a session tagged with the old branch, which no worktree is on any
+  // more. It surfaces as an agent terminal in its directory rather than
   // vanishing — the session is still running.
-  it('surfaces a worktree session no worktree answers to as an agent terminal', () => {
+  it('surfaces a worktree session whose branch no worktree is on as an agent terminal', () => {
     tmuxListSessionsMock.mockReturnValue([
-      {
-        name: 'kirby-hash(/repo)-old-branch',
-        path: '/repo/.claude/worktrees/old-branch',
-      },
-      {
-        name: 'kirby-hash(/repo)-feature-a',
-        path: '/repo/.claude/worktrees/feature-a',
-      },
+      ours('repo-old-branch', 'worktree', '/repo', 'old-branch', '/wt/dir'),
     ]);
-    const seen = observeTmuxSessions(tmuxConfig, ['feature-a']);
+    const seen = observeTmuxSessions(tmuxConfig, [
+      wt('new-branch', 'new-branch', 'dir'),
+    ]);
+    expect(seen.persisted).toEqual(new Set());
     expect(seen.terminals).toEqual([
-      {
-        name: 'kirby-hash(/repo)-old-branch',
-        kind: 'agent',
-        path: '/repo/.claude/worktrees/old-branch',
-      },
+      { name: 'repo-old-branch', kind: 'agent', path: '/wt/dir' },
     ]);
   });
 
@@ -571,96 +551,64 @@ describe('observeTmuxSessions', () => {
   it('never reports a session this process already holds as an orphan terminal', () => {
     liveSessionNamesMock.mockReturnValue(['old-branch']);
     tmuxListSessionsMock.mockReturnValue([
-      {
-        name: 'kirby-hash(/repo)-old-branch',
-        path: '/repo/.claude/worktrees/old-branch',
-      },
-      {
-        name: 'kirby-hash(/repo)-feature-a',
-        path: '/repo/.claude/worktrees/feature-a',
-      },
+      ours('repo-old-branch', 'worktree', '/repo', 'old/branch', '/wt/dir'),
     ]);
-    const seen = observeTmuxSessions(tmuxConfig, ['feature-a']);
+    const seen = observeTmuxSessions(tmuxConfig, [
+      wt('new-branch', 'new-branch', 'dir'),
+    ]);
     expect(seen.terminals).toEqual([]);
   });
 
-  // …but only this repository's: another checkout's sessions carry
-  // that checkout's hash and belong to it, orphaned or not.
-  it('leaves another repository’s orphans alone', () => {
-    tmuxListSessionsMock.mockReturnValue([
-      { name: 'kirby-hash(/other)-old-branch', path: '/other/wt' },
-    ]);
-    expect(observeTmuxSessions(tmuxConfig, []).terminals).toEqual([]);
-  });
-
   it('costs one fork for both answers', () => {
-    tmuxListSessionsMock.mockReturnValue([]);
-    observeTmuxSessions(tmuxConfig, ['a', 'b']);
+    observeTmuxSessions(tmuxConfig, [wt('a', 'a'), wt('b', 'b')]);
     expect(tmuxListSessionsMock).toHaveBeenCalledTimes(1);
   });
 
   // tmux-cli hands back '' for a list-sessions line it could not split
   // on a tab, not a real directory. A terminal tab needs somewhere to
   // run and display, so a pathless line must be dropped rather than
-  // opening a tab onto nothing — for a terminal-shaped name and for an
-  // orphaned worktree session alike.
+  // opening a tab onto nothing — for a terminal and for an orphaned
+  // worktree session alike.
   it('drops a session with no reported path', () => {
     tmuxListSessionsMock.mockReturnValue([
-      { name: 'kirby-term-shell-1a2b3c', path: '' },
-      { name: 'kirby-hash(/repo)-old-branch', path: '' },
+      ours('repo-shell', 'shell', '/repo', null, ''),
+      ours('repo-old', 'worktree', '/repo', 'old', ''),
     ]);
     expect(observeTmuxSessions(tmuxConfig, []).terminals).toEqual([]);
   });
 
-  it('sees nothing on the pty backend', () => {
+  it('sees nothing on the pty backend, without forking', () => {
     tmuxListSessionsMock.mockReturnValue([
-      { name: 'kirby-term-shell-1a2b3c', path: '/x' },
+      ours('repo-shell', 'shell', '/repo', null, '/repo'),
     ]);
     expect(
       observeTmuxSessions(makeConfig({ terminalBackend: 'pty' }), [])
-    ).toEqual({
+    ).toEqual({ persisted: new Set(), terminals: [] });
+    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
+  });
+
+  // The backend in force, not the raw config field: with tmux the
+  // detected default, a user who never chose one is on tmux.
+  it('answers for a user who never chose a backend', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('x', 'worktree', '/repo', 'feat-a', '/wt/feat-a'),
+    ]);
+    expect(observeTmuxSessions(makeConfig(), [wt('feat-a', 'feat-a')])).toEqual(
+      { persisted: new Set(['feat-a']), terminals: [] }
+    );
+  });
+
+  it('is empty outside a git working tree', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error('fatal: not a git repository');
+    });
+    tmuxListSessionsMock.mockReturnValue([
+      ours('x', 'worktree', '/repo', 'feat-a', '/wt/feat-a'),
+    ]);
+    expect(observeTmuxSessions(tmuxConfig, [wt('feat-a', 'feat-a')])).toEqual({
       persisted: new Set(),
       terminals: [],
     });
-    expect(tmuxListSessionsMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('qualified names reach tmux untouched', () => {
-  beforeEach(() => {
-    resetRepoRoot();
-    execFileSyncMock.mockReturnValue('/repo\n');
-  });
-
-  // A terminal name is complete; composing the project prefix in front
-  // of it would ask tmux about a session that never existed.
-  it('has-session is asked about the bare terminal name', () => {
-    tmuxHasSessionMock.mockReturnValue(true);
-    expect(hasLiveTmuxSession('kirby-term-shell-1a2b3c')).toBe(true);
-    expect(tmuxHasSessionMock).toHaveBeenCalledWith('kirby-term-shell-1a2b3c');
-  });
-
-  it('kill-session is aimed at the bare terminal name', () => {
-    killPersistedTmuxSession('kirby-term-shell-1a2b3c');
-    expect(tmuxKillSessionMock).toHaveBeenCalledWith('kirby-term-shell-1a2b3c');
-  });
-
-  it('a worktree session still gets the project prefix', () => {
-    killPersistedTmuxSession('feature-a');
-    expect(tmuxKillSessionMock).toHaveBeenCalledWith(
-      'kirby-hash(/repo)-feature-a'
-    );
-  });
-
-  it('the tmux factory is told which names are already qualified', () => {
-    buildSessionBackendFactory(
-      makeConfig({ terminalBackend: 'tmux' }),
-      '/repo'
-    );
-    const opts = tmuxFactorySpy.mock.calls[0]?.[0] as {
-      isQualified?: (name: string) => boolean;
-    };
-    expect(opts.isQualified?.('kirby-term-shell-1a2b3c')).toBe(true);
-    expect(opts.isQualified?.('feature-a')).toBe(false);
   });
 });

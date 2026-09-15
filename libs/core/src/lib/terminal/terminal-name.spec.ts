@@ -1,77 +1,77 @@
-import { describe, expect, it } from 'vitest';
-import { sanitizeTmuxSessionName } from '@kirby/terminal-tmux';
-import {
-  isQualifiedTmuxName,
-  newTerminalSessionName,
-  parseTerminalSessionName,
-} from './terminal-name.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * A terminal session's identity lives entirely in its tmux name — there
- * is no state file — so the name has to say what kind it is, survive
- * tmux's own rewriting, and never be mistaken for a worktree session.
+ * The name a new terminal tab gets is a label — `<repo>-shell`,
+ * `<repo>-agent` — suffixed until free. Free means free on both
+ * counts: not a registry entry here, and not a session on the tmux
+ * server, whoever made it.
  */
-describe('terminal session names', () => {
-  it('round-trips the kind through the name', () => {
-    for (const kind of ['shell', 'agent'] as const) {
-      const name = newTerminalSessionName(kind);
-      expect(parseTerminalSessionName(name)).toEqual({
-        kind,
-        id: expect.stringMatching(/^[0-9a-f]{6,}$/) as string,
-      });
-    }
-  });
 
-  // Several terminals per directory are allowed, and the directory is
-  // not part of the name — so the id is the only thing telling two
-  // shells in the same folder apart.
-  it('gives every terminal its own name', () => {
-    const names = new Set(
-      Array.from({ length: 50 }, () => newTerminalSessionName('shell'))
-    );
-    expect(names.size).toBe(50);
-  });
+const state = vi.hoisted(() => ({
+  registry: new Set<string>(),
+  server: new Set<string>(),
+  probes: [] as string[],
+}));
 
-  // The backend sanitizes every name before tmux sees it (`.` and `:`
-  // replaced, long names truncated and hashed). A name that came back
-  // different would not parse, and the terminal would vanish on the
-  // next launch.
-  it('survives the tmux sanitizer unchanged', () => {
-    const name = newTerminalSessionName('agent');
-    expect(sanitizeTmuxSessionName(name)).toBe(name);
-  });
+vi.mock('../pty-registry.js', () => ({
+  hasSession: (name: string) => state.registry.has(name),
+}));
+vi.mock('../session-backend.js', () => ({
+  getRepoRoot: () => '/home/dev/my.repo',
+  getTmuxAvailability: () => ({ available: true, version: '3.4' }),
+}));
 
-  it('is not fooled by worktree sessions or the user’s own sessions', () => {
-    expect(parseTerminalSessionName('kirby-0123456789abcdef-main')).toBeNull();
-    expect(parseTerminalSessionName('kirby-term-shell')).toBeNull();
-    expect(parseTerminalSessionName('kirby-term-editor-abc123')).toBeNull();
-    expect(parseTerminalSessionName('dotfiles')).toBeNull();
-    // A worktree branch that happens to be called this is a branch, and
-    // its tmux name carries the project hash in front.
-    expect(parseTerminalSessionName('term-shell-abc123')).toBeNull();
-  });
+import { newTerminalSessionName } from './terminal-name.js';
+
+const tmuxHolds = (name: string) => {
+  state.probes.push(name);
+  return state.server.has(name);
+};
+
+beforeEach(() => {
+  state.registry = new Set();
+  state.server = new Set();
+  state.probes = [];
 });
 
-/**
- * The tmux factory prefixes registry names with the repository's
- * namespace. A terminal name is complete already, and so is a fully
- * composed worktree name being re-attached as an orphan — prefixing
- * either would spawn a second session beside the one meant to be
- * resumed.
- */
-describe('isQualifiedTmuxName', () => {
-  it('accepts terminal names and composed worktree names', () => {
-    expect(isQualifiedTmuxName(newTerminalSessionName('shell'))).toBe(true);
-    expect(isQualifiedTmuxName('kirby-0123456789abcdef-feature-x')).toBe(true);
+describe('newTerminalSessionName', () => {
+  it('labels a terminal after the repository and its kind', () => {
+    expect(newTerminalSessionName('shell', { tmuxHolds })).toBe(
+      'my-repo-shell'
+    );
+    expect(newTerminalSessionName('agent', { tmuxHolds })).toBe(
+      'my-repo-agent'
+    );
   });
 
-  // The registry keys worktree sessions by bare branch name, and a
-  // branch may be called anything — including something that starts
-  // with the namespace. Only the two exact shapes count.
-  it('rejects a branch whose name merely starts with the namespace', () => {
-    expect(isQualifiedTmuxName('kirby-fix')).toBe(false);
-    expect(isQualifiedTmuxName('kirby-term')).toBe(false);
-    expect(isQualifiedTmuxName('kirby-abc-feature')).toBe(false);
-    expect(isQualifiedTmuxName('feature-x')).toBe(false);
+  it('skips a name the tmux server holds, whoever made it', () => {
+    state.server = new Set(['my-repo-shell', 'my-repo-shell-2']);
+    expect(newTerminalSessionName('shell', { tmuxHolds })).toBe(
+      'my-repo-shell-3'
+    );
+    expect(state.probes).toEqual([
+      'my-repo-shell',
+      'my-repo-shell-2',
+      'my-repo-shell-3',
+    ]);
+  });
+
+  it('skips a name this process already holds, even off the tmux backend', () => {
+    state.registry = new Set(['my-repo-agent']);
+    expect(
+      newTerminalSessionName('agent', { tmuxHolds, tmuxAvailable: false })
+    ).toBe('my-repo-agent-2');
+    expect(state.probes).toEqual([]);
+  });
+
+  it('does not ask tmux when it is not installed', () => {
+    newTerminalSessionName('shell', { tmuxHolds, tmuxAvailable: false });
+    expect(state.probes).toEqual([]);
+  });
+
+  it('labels by kind alone outside a repository', () => {
+    expect(newTerminalSessionName('shell', { tmuxHolds, repoRoot: null })).toBe(
+      'shell'
+    );
   });
 });

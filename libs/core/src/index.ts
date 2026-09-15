@@ -37,6 +37,9 @@ export * from './lib/plan/plan-types.js';
 
 // ── Session / PTY infrastructure (Node host side) ────────────────
 export * from './lib/session-backend.js';
+export * from './lib/session-identity.js';
+export * from './lib/session-resolver.js';
+export * from './lib/tmux-factory-options.js';
 export * from './lib/terminal/terminal-name.js';
 export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';

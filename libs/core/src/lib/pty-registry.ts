@@ -50,11 +50,12 @@ export function spawnSession(
   cols: number,
   rows: number,
   cwd: string,
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
+  tags?: Record<string, string>
 ): PtyEntry {
   // Respawn under the same name: dispose (soft) the prior entry. On
-  // tmux this detaches without killing, so the new spawn's `-A` flag
-  // re-attaches to the same tmux session — preserving its scrollback.
+  // tmux this detaches without killing, so the new spawn resolves the
+  // same tmux session and re-attaches — preserving its scrollback.
   // On the direct PTY backend dispose === kill.
   const existing = registry.get(name);
   if (existing) {
@@ -80,6 +81,10 @@ export function spawnSession(
     // them into the session env (the server, not the client, spawns
     // the command).
     envAdditions: env,
+    // What the caller declares about the session — a terminal tab's
+    // kind — for a backend with somewhere to keep it. The composition
+    // root reads it back to decide the session's identity.
+    tags,
   });
   const emu = new TerminalEmulator(cols, rows);
   const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };
@@ -147,14 +152,14 @@ export function hasAnySession(): boolean {
 }
 
 /** Bare registry names — the ones `spawnSession` was called with, not
- *  the tmux names they may compose into — of every still-running
- *  session. Discovery composes each of these through the same tmux
- *  naming this process spawned with, so a live tmux session it already
- *  holds is recognised as owned rather than reported as an orphan to
- *  adopt a second time (worktree sessions are keyed by branch here,
- *  which drifts from the tmux name once the worktree checks out
- *  another branch). Exited entries are excluded for the same reason
- *  {@link hasAnySession} excludes them: a tombstone owns nothing. */
+ *  the tmux names behind them — of every still-running session.
+ *  Discovery keys each live tmux session the same way, so one this
+ *  process already holds is recognised as owned rather than reported
+ *  as an orphan to adopt a second time (worktree sessions are keyed by
+ *  the branch they were spawned under, which is exactly what a
+ *  mid-session checkout leaves stale). Exited entries are excluded for
+ *  the same reason {@link hasAnySession} excludes them: a tombstone
+ *  owns nothing. */
 export function liveSessionNames(): string[] {
   const names: string[] = [];
   for (const [name, entry] of registry.entries()) {

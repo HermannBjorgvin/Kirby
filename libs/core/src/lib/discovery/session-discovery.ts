@@ -3,17 +3,17 @@
  * running.
  *
  * A session can be created without this process being involved: a
- * second Kirby, a script, or someone typing `git worktree add … && tmux
- * new-session -d -s kirby-<projectKey>-<branch> …`. Nothing pushes that
- * fact at us, so this scans for it — and both shells subscribe to the
- * same scanner rather than each growing their own.
+ * second Kirby, an Orchestra spawn, or someone typing `git worktree add
+ * … && tmux new-session -d …` and tagging the result. Nothing pushes
+ * that fact at us, so this scans for it — and both shells subscribe to
+ * the same scanner rather than each growing their own.
  *
  * **Why polling.** Measured on tmux 3.4, warm, 50 iterations: `git
  * worktree list --porcelain -z` is 2.3 ms and `tmux list-sessions -F` is
  * 3.3 ms, so a scan is two forks and ~5.5 ms — about 0.14% of one core
  * at the four-second default, and flat in the number of worktrees
- * because {@link listPersistedTmuxSessions} asks about the whole set at
- * once. The alternatives cost more than they save:
+ * because {@link observeTmuxSessions} answers for the whole set from
+ * one listing. The alternatives cost more than they save:
  *
  * - **tmux hooks** (`set-hook -g session-created`) are per-server global
  *   state, so two Kirby instances — the very case this feature is
@@ -103,8 +103,8 @@ export interface SessionDiscoveryOptions {
   /**
    * Attach to an external session, through whatever launch path the
    * shell normally uses — which must reach `spawnSession`, so the tmux
-   * backend's `new-session -A` attaches to the running agent rather
-   * than starting a second one.
+   * backend resolves the running agent by its tags and attaches to it
+   * rather than starting a second one.
    *
    * Rejecting marks the name as failed and stops it being offered
    * again until its tmux session goes away, so a session that cannot be
@@ -180,10 +180,7 @@ export function startSessionDiscovery(
         path: wt.path,
       })
     );
-    const seen = observeTmuxSessions(
-      getConfig(),
-      worktrees.map((wt) => wt.name)
-    );
+    const seen = observeTmuxSessions(getConfig(), worktrees);
     return {
       worktrees,
       persisted: seen.persisted,

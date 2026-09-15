@@ -18,11 +18,12 @@ export interface DiscoveredWorktree {
 }
 
 /** One terminal-tab session, as a scan saw it. Identified entirely by
- *  what tmux holds: the kind is parsed from the name, the directory is
+ *  what tmux holds: the kind is the session-type tag, the directory is
  *  the session's own `session_path`. */
 export interface DiscoveredTerminal {
-  /** Registry session name — the full tmux name, `kirby-term-<kind>-<id>`
-   *  (or, for an orphaned worktree session, `kirby-<projectKey>-<x>`). */
+  /** Registry session name — the tmux name itself, a label such as
+   *  `kirby-shell` (or, for an orphaned worktree session, whatever
+   *  label it was created under). */
   name: string;
   kind: 'shell' | 'agent';
   /** Absolute directory the session runs in. */

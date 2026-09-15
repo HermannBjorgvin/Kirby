@@ -99,6 +99,9 @@ export interface LaunchSessionParams {
    * leaves it unset and gets the configured default.
    */
   agent?: AgentDefinition;
+  /** Backend-neutral metadata for the session host — see
+   *  `SessionSpec.tags`. A terminal tab declares its kind here. */
+  tags?: Record<string, string>;
 }
 
 /**
@@ -116,7 +119,8 @@ export function launchSession(params: LaunchSessionParams): PtyEntry {
     params.cols,
     params.rows,
     params.cwd,
-    spec.env
+    spec.env,
+    params.tags
   );
 }
 
