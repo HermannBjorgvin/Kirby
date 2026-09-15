@@ -747,14 +747,14 @@ describe('sync-items stamps the title', () => {
  */
 describe('terminal tabs', () => {
   const plain: TerminalEntry = {
-    name: 'kirby-shell-1a2b3c',
+    name: 'kirby-shell',
     kind: 'shell',
     cwd: '/home/dev/notes',
     displayPath: '~/notes',
     repo: null,
   };
   const inAlpha: TerminalEntry = {
-    name: 'kirby-agent-4d5e6f',
+    name: 'kirby-agent',
     kind: 'agent',
     cwd: REPO,
     displayPath: REPO,
@@ -1038,7 +1038,7 @@ describe('terminal tabs', () => {
     it('is a no-op for a name that has no terminal tab', () => {
       const s = open(openTerminal(empty, plain), 'branch:x');
       expect(ended(s, 'feat-x')).toBe(s);
-      expect(ended(s, 'kirby-shell-ffffff')).toBe(s);
+      expect(ended(s, 'kirby-shell-9')).toBe(s);
     });
   });
 

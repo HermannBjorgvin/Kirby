@@ -44,14 +44,14 @@ const REPOS = ['/repos/alpha', '/repos/beta'] as const;
  */
 const TERMINALS: TerminalEntry[] = [
   {
-    name: 'kirby-shell-000001',
+    name: 'notes-shell',
     kind: 'shell',
     cwd: '/home/dev/notes',
     displayPath: '~/notes',
     repo: null,
   },
   {
-    name: 'kirby-agent-000002',
+    name: 'scratch-agent',
     kind: 'agent',
     cwd: '/tmp/scratch',
     displayPath: '/tmp/scratch',
@@ -59,7 +59,7 @@ const TERMINALS: TerminalEntry[] = [
   },
   ...REPOS.map(
     (repo, i): TerminalEntry => ({
-      name: `kirby-shell-00001${i}`,
+      name: i === 0 ? `kirby-shell` : `kirby-shell-${i + 1}`,
       kind: 'shell',
       cwd: repo,
       displayPath: repo,

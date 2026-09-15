@@ -141,17 +141,26 @@ control clients that can resize panes. Recheck session liveness and the selected
 backend after awaits: the user may launch a session or switch backends mid-scan.
 Pass retired names as `suppressed` so they do not trigger a refresh every poll.
 
-Foreign-session discovery accepts names that exactly match the directory's repo
-and branch. Cache origins while their directories exist; a transient git error
-is not evidence that an agent disappeared. Discovery uses the open repo's backend
-configuration, including its per-project override.
+Discovery recognises a session by its tags alone (see "Session identity shared
+with Orchestra"): a worktree is persisted when a session is tagged with the
+open root and the worktree's branch, and attaching goes through `spawnSession`
+so the backend resolves that session and attaches rather than creating a
+second one. There is no name matching, no git fallback and no origin cache: a
+session without tags is foreign, and one with them needs no git to describe.
+Discovery uses the open repo's backend configuration, including its
+per-project override.
 
 Standalone terminal sessions are tagged `@orchestra-session-type` `shell` or
 `agent`, named `<repo>-shell` / `<repo>-agent` (suffixed on collision) and
-located by tmux's `session_path`; no separate state file is needed. An empty
-command means the backend's default shell. Agents use `launchTerminalSession`
-→ `launchSession`. A worktree session whose branch changed can appear as an
-agent terminal instead of disappearing.
+located by tmux's `session_path`; no separate state file is needed.
+`newTerminalSessionName` survives with new semantics: it picks a free label —
+not held by this process, not a session on the server — before the spawn, and
+that label is the tab's registry key. An empty command means the backend's
+default shell. Agents use `launchTerminalSession` → `launchSession`. A worktree
+session whose branch changed appears as an agent terminal instead of
+disappearing; adopting it attaches by exactly the name tmux holds it under,
+resolved among our tagged sessions whatever their type, so the orphan keeps
+its `worktree` tag and no second agent is started beside it.
 
 Terminal grouping is derived from its directory: a repository root belongs to
 that repo; other directories are repo-less. Restoring a terminal must not move

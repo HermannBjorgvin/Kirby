@@ -83,9 +83,10 @@ test.describe('Discovering work created outside the app', () => {
     await expect(sidebarRow(page, new RegExp(branch))).toBeVisible();
   });
 
-  // `new-session -A` attached to the agent that was already there: its
-  // output predates the app knowing the session existed, and is redrawn
-  // on attach. A fresh spawn would have run `aiCommand` instead.
+  // The tag resolver found the agent that was already there and the
+  // backend attached to it: its output predates the app knowing the
+  // session existed, and is redrawn on attach. A fresh spawn would have
+  // run `aiCommand` instead.
   test('opening the session shows the agent that was already running', async ({
     desktop,
   }) => {

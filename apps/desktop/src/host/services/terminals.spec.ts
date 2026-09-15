@@ -65,8 +65,11 @@ vi.mock('@kirby/vcs-core', () => ({
 
 vi.mock('@kirby/core', () => ({
   newTerminalSessionName: (kind: string) => {
+    // The label, suffixed the way a collision on the server would be.
     state.nextId += 1;
-    return `kirby-${kind}-${state.nextId.toString(16).padStart(6, '0')}`;
+    return state.nextId === 1
+      ? `kirby-${kind}`
+      : `kirby-${kind}-${state.nextId}`;
   },
   launchTerminalSession: (spec: {
     name: string;
@@ -238,20 +241,20 @@ describe('adoptTerminal', () => {
   // launch reattaches under exactly that name.
   it('reattaches under the name and in the directory tmux reported', () => {
     terminals.adoptTerminal({
-      name: 'kirby-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
       expect.objectContaining({
-        name: 'kirby-shell-1a2b3c',
+        name: 'kirby-shell',
         kind: 'shell',
         cwd: '/home/dev/notes',
       }),
     ]);
     expect(terminals.listTerminals(HOME)).toEqual([
       expect.objectContaining({
-        name: 'kirby-shell-1a2b3c',
+        name: 'kirby-shell',
         repo: null,
         displayPath: '~/notes',
       }),
@@ -263,7 +266,7 @@ describe('adoptTerminal', () => {
   // tab opens that repository.
   it('puts a restored terminal’s repository back on the repo list', () => {
     terminals.adoptTerminal({
-      name: 'kirby-agent-4d5e6f',
+      name: 'kirby-agent',
       kind: 'agent',
       path: '/home/dev/other',
     });
@@ -360,13 +363,13 @@ describe('a terminal whose process ended', () => {
   // drop the terminal the new client is attached to.
   it('keeps a terminal that was respawned under the same name', () => {
     terminals.adoptTerminal({
-      name: 'kirby-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
-    const oldExits = [...(state.onExit.get('kirby-shell-1a2b3c') ?? [])];
+    const oldExits = [...(state.onExit.get('kirby-shell') ?? [])];
     terminals.adoptTerminal({
-      name: 'kirby-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
@@ -453,7 +456,7 @@ describe('killTerminal', () => {
   });
 
   it('is a no-op for a name it never launched', () => {
-    terminals.killTerminal('kirby-shell-nope');
+    terminals.killTerminal('kirby-shell-9');
     expect(state.killed).toEqual([]);
   });
 });

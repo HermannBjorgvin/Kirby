@@ -7,10 +7,11 @@ import {
 import {
   ORCHESTRA_TAG,
   sessionTags,
+  terminalSessionLabel,
   worktreeSessionLabel,
 } from './session-identity.js';
 import {
-  resolveTerminalSession,
+  resolveSessionByName,
   resolveWorktreeSession,
 } from './session-resolver.js';
 
@@ -26,10 +27,15 @@ import {
  * the spec directory's HEAD file rather than forked from git: the
  * branch checked out *now*, or the directory's name on a detached
  * HEAD, which is also what the session is tagged with. A terminal's
- * identity is its name, which is also its registry key: for a new tab
- * `newTerminalSessionName` chose a free label before spawning, so the
- * label handed to the backend is the name itself and the two agree;
- * for a restored tab discovery hands back the name tmux holds.
+ * identity is its name, which is also its registry key, matched among
+ * our tagged sessions whatever their type: a restored tab is the
+ * `shell`/`agent` session discovery listed, and an orphaned worktree
+ * session adopted as an agent tab keeps its `worktree` tag but is
+ * attached by exactly the name tmux holds it under. For a new tab the
+ * label is the capped preferred `<repo>-shell|agent`; the collision
+ * suffix `newTerminalSessionName` chose for the registry key is the
+ * backend's to append again, after the cap, from its own probe of the
+ * same server — so a suffixed name is never capped a second time.
  */
 export function kirbyTmuxFactoryOptions(
   repoRoot: string,
@@ -51,14 +57,14 @@ export function kirbyTmuxFactoryOptions(
       const found =
         id.type === 'worktree'
           ? resolveWorktreeSession(repoRoot, id.branch)
-          : resolveTerminalSession(spec.name);
+          : resolveSessionByName(spec.name, repoRoot);
       return found?.name ?? null;
     },
     label: (spec) => {
       const id = identity(spec);
       return id.type === 'worktree'
         ? worktreeSessionLabel(repoRoot, id.branch)
-        : spec.name;
+        : terminalSessionLabel(repoRoot, id.type);
     },
     tags: (spec) => sessionTags(repoRoot, identity(spec)),
   };

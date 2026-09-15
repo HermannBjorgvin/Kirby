@@ -40,6 +40,9 @@ describe('session labels', () => {
     // raw `<basename>-<branch>` tells `a/` from `a.` past the cut.
     ['/x/r', 'worktree', 'a/'.repeat(125), `r-${'a-'.repeat(96)}a-6e0f`],
     ['/x/r', 'worktree', 'a.'.repeat(125), `r-${'a-'.repeat(96)}a-b373`],
+    // Terminal labels hash `<basename>-shell` / `<basename>-agent`.
+    [`/x/${'b'.repeat(220)}`, 'shell', '', `${'b'.repeat(195)}-930d`],
+    [`/x/${'b'.repeat(220)}`, 'agent', '', `${'b'.repeat(195)}-9fb6`],
     [
       '/x/agent-plugins',
       'worktree',

@@ -324,7 +324,19 @@ describe('tmux session existence vs. preference', () => {
     ]);
     expect(hasLiveTmuxSession('feature-x')).toBe(true);
     expect(hasLiveTmuxSession('feature/x')).toBe(false);
-    expect(hasLiveTmuxSession('some-label-2')).toBe(false);
+  });
+
+  // An orphaned worktree session adopted as an agent terminal is keyed
+  // by its tmux name from then on, and keeps its `worktree` tag. The
+  // registry key has to reach it — for the detach check and for the
+  // kill when its tab is closed.
+  it('sees and kills an adopted orphan by its tmux name', () => {
+    tmuxListSessionsMock.mockReturnValue([
+      ours('repo-old-branch', 'worktree', '/repo', 'old/branch', '/wt/dir'),
+    ]);
+    expect(hasLiveTmuxSession('repo-old-branch')).toBe(true);
+    killPersistedTmuxSession('repo-old-branch');
+    expect(tmuxKillSessionMock).toHaveBeenCalledWith('repo-old-branch');
   });
 
   it('does not see an untagged session that carries the expected name', () => {

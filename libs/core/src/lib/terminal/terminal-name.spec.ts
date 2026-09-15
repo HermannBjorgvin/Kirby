@@ -69,6 +69,19 @@ describe('newTerminalSessionName', () => {
     expect(state.probes).toEqual([]);
   });
 
+  // The cap applies to the preferred label; the collision suffix goes
+  // on afterwards and the result is never capped or hashed again, so
+  // the registry key is exactly the name the backend will create.
+  it('suffixes a capped label after the cap, without re-capping', () => {
+    const repoRoot = `/x/${'r'.repeat(194)}`;
+    const capped = newTerminalSessionName('shell', { tmuxHolds, repoRoot });
+    expect(capped).toHaveLength(200);
+    state.server = new Set([capped]);
+    const next = newTerminalSessionName('shell', { tmuxHolds, repoRoot });
+    expect(next).toBe(`${capped}-2`);
+    expect(next).toHaveLength(202);
+  });
+
   it('labels by kind alone outside a repository', () => {
     expect(newTerminalSessionName('shell', { tmuxHolds, repoRoot: null })).toBe(
       'shell'

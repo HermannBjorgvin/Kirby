@@ -15,8 +15,9 @@ Every rule below has its reasoning in `docs/decisions.md`.
   backend. `main.ts` **awaits** `probeTmuxAvailability()` before wiring the
   backend; firing it off strands a tmux machine on PTY for the whole run.
 - The host holds one repo (`requireRepo`, memoized root, the
-  `@orchestra-repo` every tmux session it creates is tagged with). The tab strip spans repos: activating a foreign tab opens its
-  repo (`useRepoFollowsTabs`); nothing renders another repo's content in place.
+  `@orchestra-repo` every tmux session it creates is tagged with). The tab
+  strip spans repos: activating a foreign tab opens its repo
+  (`useRepoFollowsTabs`); nothing renders another repo's content in place.
 - Sidebar answers are stamped with the repo they describe
   (`getSidebarSnapshot`) and the renderer drops answers for a repo it is not
   showing (`loadSidebarModel`). A switch is in flight for several awaits.

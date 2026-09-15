@@ -79,8 +79,8 @@ libs/terminal-pty/               — Direct PTY backend (node-pty)
   src/lib/pty-backend.ts         — createPtyBackendFactory()
 libs/terminal-tmux/              — Tmux backend (optional system tmux; probe floor 2.0, `=name:` option targets need 2.1)
   src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands (sessions, options, listing with user options)
-  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
-  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
+  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ resolve, label, tags }): resolve → attach, else create detached, tag, attach
+  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', 200-char cap with hash tail)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
 libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
   src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete

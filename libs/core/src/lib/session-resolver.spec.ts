@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   listOurSessions,
   resolveRegistrySession,
-  resolveTerminalSession,
+  resolveSessionByName,
   resolveWorktreeSession,
 } from './session-resolver.js';
 
@@ -113,7 +113,8 @@ describe.skipIf(SKIP)('session resolver', () => {
     startSession(name('half'), { '@orchestra-spawner': 'kirby' });
     expect(resolveWorktreeSession(REPO, 'feat-a')).toBeNull();
     expect(resolveRegistrySession(REPO, `alpha-${RUN}-feat-a`)).toBeNull();
-    expect(resolveTerminalSession(`alpha-${RUN}-feat-a`)).toBeNull();
+    expect(resolveSessionByName(`alpha-${RUN}-feat-a`, REPO)).toBeNull();
+    expect(resolveSessionByName(name('half'), REPO)).toBeNull();
     expect(listOurSessions().map((s) => s.name)).not.toContain(
       `alpha-${RUN}-feat-a`
     );
@@ -140,18 +141,45 @@ describe.skipIf(SKIP)('session resolver', () => {
     ).toEqual([name('first'), name('second')].sort());
   });
 
-  it('finds a terminal tab by type and exact name, from any repository', () => {
+  // A terminal tab is identified by its name, from any repository; so
+  // is an orphaned worktree session that a terminal tab has adopted,
+  // which keeps its `worktree` tag — but only this repository's: another
+  // repository's agent is never reached through a coincidental name.
+  it('finds a terminal from any repository, and a worktree session of this one, by exact name', () => {
     startSession(name('shell'), tags('shell', '/repos/elsewhere'));
     startSession(name('agent'), tags('agent', REPO));
     startSession(name('wt'), tags('worktree', REPO, 'x'));
-    expect(resolveTerminalSession(name('shell'))).toMatchObject({
+    startSession(name('theirs'), tags('worktree', '/repos/elsewhere', 'x'));
+    expect(resolveSessionByName(name('shell'), REPO)).toMatchObject({
       type: 'shell',
       repo: '/repos/elsewhere',
     });
-    expect(resolveTerminalSession(name('agent'))?.type).toBe('agent');
-    // A worktree session is not a terminal, whatever it is called.
-    expect(resolveTerminalSession(name('wt'))).toBeNull();
-    expect(resolveTerminalSession(name('shell-2'))).toBeNull();
+    expect(resolveSessionByName(name('agent'), REPO)?.type).toBe('agent');
+    expect(resolveSessionByName(name('wt'), REPO)?.type).toBe('worktree');
+    expect(resolveSessionByName(name('theirs'), REPO)).toBeNull();
+    expect(resolveSessionByName(name('shell-2'), REPO)).toBeNull();
+    expect(resolveSessionByName(name('shel'), REPO)).toBeNull();
+  });
+
+  // The listing must never ask for `@orchestra-undelivered` or
+  // `@orchestra-launching`: the first carries newlines, which would split
+  // a session across lines and shift every column after it. Pinned
+  // against a real tmux, with such a value set.
+  it('lists cleanly beside a session carrying a multi-line undelivered tag', () => {
+    startSession(name('noisy'), {
+      ...tags('worktree', REPO, 'noisy'),
+      '@orchestra-launching': '1',
+      '@orchestra-undelivered':
+        '2026-09-14T10:00:00Z first line\n2026-09-14T10:01:00Z second line',
+    });
+    startSession(name('quiet'), tags('worktree', REPO, 'quiet'));
+    const ours = listOurSessions().filter((s) => s.repo === REPO);
+    expect(ours.map((s) => [s.name, s.branch, s.path]).sort()).toEqual(
+      [
+        [name('noisy'), 'noisy', process.cwd()],
+        [name('quiet'), 'quiet', process.cwd()],
+      ].sort()
+    );
   });
 
   // The registry keys a worktree session by `branchToSessionName`, and
@@ -165,16 +193,20 @@ describe.skipIf(SKIP)('session resolver', () => {
     expect(resolveRegistrySession(REPO, 'feat-c')).toBeNull();
   });
 
-  it('resolves a registry key to the terminal tab of that name', () => {
+  it('resolves a registry key to the session of that name — a terminal tab or an adopted orphan', () => {
     startSession(name('term'), tags('agent', REPO));
+    startSession(name('orphan'), tags('worktree', REPO, 'gone/branch'));
     expect(resolveRegistrySession(REPO, name('term'))?.type).toBe('agent');
+    expect(resolveRegistrySession(REPO, name('orphan'))?.branch).toBe(
+      'gone/branch'
+    );
   });
 });
 
 describe('session resolver without a server', () => {
   it('answers nothing rather than throwing', () => {
     expect(resolveWorktreeSession('/nowhere', 'x', [])).toBeNull();
-    expect(resolveTerminalSession('x', [])).toBeNull();
+    expect(resolveSessionByName('x', '/nowhere', [])).toBeNull();
     expect(resolveRegistrySession('/nowhere', 'x', [])).toBeNull();
   });
 });

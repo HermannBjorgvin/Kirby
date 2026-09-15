@@ -57,23 +57,36 @@ export function resolveWorktreeSession(
   );
 }
 
-/** The terminal tab (`shell` or `agent`) with exactly this name, or
- *  `null`. A terminal belongs to its directory, not to the repository
- *  that happens to be open, so the repo tag is not part of the match:
- *  the name alone is unique on the server. */
-export function resolveTerminalSession(
+/**
+ * One of our sessions with exactly this name, or `null`. This is how a
+ * session keyed by its tmux name is reached: a terminal tab, which
+ * belongs to its directory rather than to the open repository and so
+ * matches from any repository; or an orphaned worktree session that a
+ * terminal tab has adopted, which keeps its `worktree` tag and matches
+ * only when tagged with this repository — the scanner only ever offers
+ * this repository's orphans, and another repository's agent must not
+ * be reached through a coincidental name. The tags still decide
+ * "ours": an untagged session of that name is not found.
+ */
+export function resolveSessionByName(
   name: string,
+  repoRoot: string,
   sessions: TaggedSession[] = listOurSessions()
 ): TaggedSession | null {
-  return sessions.find((s) => isTerminalSession(s) && s.name === name) ?? null;
+  return (
+    sessions.find(
+      (s) => s.name === name && (isTerminalSession(s) || s.repo === repoRoot)
+    ) ?? null
+  );
 }
 
 /**
  * The session a PTY-registry key names in this repository: a worktree
- * session whose branch keys to it, else a terminal tab called exactly
- * that. This is how a caller that holds only the registry key — the
- * merged-branch sweep, the worktree removal, a terminal's detach check
- * — reaches the resolver without composing a name.
+ * session whose branch keys to it, else the session called exactly
+ * that (a terminal tab, or an adopted orphan). This is how a caller
+ * that holds only the registry key — the merged-branch sweep, the
+ * worktree removal, a terminal's detach check — reaches the resolver
+ * without composing a name.
  */
 export function resolveRegistrySession(
   repoRoot: string,
@@ -88,5 +101,5 @@ export function resolveRegistrySession(
         registryNameOf(s) === registryName
     )
   );
-  return worktree ?? resolveTerminalSession(registryName, sessions);
+  return worktree ?? resolveSessionByName(registryName, repoRoot, sessions);
 }

@@ -22,8 +22,8 @@ vi.mock('./session-resolver.js', async (importOriginal) => {
     listOurSessions: () => state.sessions,
     resolveWorktreeSession: (repo: string, branch: string) =>
       actual.resolveWorktreeSession(repo, branch, state.sessions),
-    resolveTerminalSession: (name: string) =>
-      actual.resolveTerminalSession(name, state.sessions),
+    resolveSessionByName: (name: string, repoRoot: string) =>
+      actual.resolveSessionByName(name, repoRoot, state.sessions),
   };
 });
 
@@ -155,17 +155,47 @@ describe('kirbyTmuxFactoryOptions', () => {
       const readHead = vi.fn(onBranch);
       const opts = kirbyTmuxFactoryOptions('/repo', { readHead });
       expect(opts.resolve(terminal('shell', 'repo-shell'))).toBe('repo-shell');
-      // The same name held by a worktree session is not this tab.
-      expect(opts.resolve(terminal('agent', 'repo-agent'))).toBeNull();
       expect(opts.resolve(terminal('shell', 'repo-shell-2'))).toBeNull();
       expect(readHead).not.toHaveBeenCalled();
     });
 
-    it('is labelled by the name core chose, and tagged without a branch', () => {
+    // An orphaned worktree session — its agent checked out another
+    // branch — is adopted as an agent terminal under the name tmux
+    // holds it by. It keeps its `worktree` tag, so a lookup that
+    // insisted on a terminal type would miss it and create a second
+    // agent beside the running one.
+    it('adopts an orphaned worktree session by its exact name, whatever its type', () => {
+      state.sessions = [
+        tagged('repo-old-branch', 'worktree', '/repo', 'old/branch'),
+      ];
       const opts = kirbyTmuxFactoryOptions('/repo', { readHead: onBranch });
-      expect(opts.label(terminal('shell', 'repo-shell-3'))).toBe(
-        'repo-shell-3'
+      expect(opts.resolve(terminal('agent', 'repo-old-branch'))).toBe(
+        'repo-old-branch'
       );
+    });
+
+    it('never adopts an untagged session, or another repository’s orphan, by name', () => {
+      const opts = kirbyTmuxFactoryOptions('/repo', { readHead: onBranch });
+      expect(opts.resolve(terminal('agent', 'repo-old-branch'))).toBeNull();
+      state.sessions = [
+        tagged('repo-old-branch', 'worktree', '/other', 'old/branch'),
+      ];
+      expect(opts.resolve(terminal('agent', 'repo-old-branch'))).toBeNull();
+    });
+
+    // The label is the capped preferred name; the suffix a collision
+    // added to the registry key is the backend's to add again, after the
+    // cap, from its own probe — so a suffixed name is never sanitized
+    // and capped a second time.
+    it('is labelled by the capped preferred label, not the suffixed registry key, and tagged without a branch', () => {
+      const opts = kirbyTmuxFactoryOptions('/repo', { readHead: onBranch });
+      expect(opts.label(terminal('shell', 'repo-shell-3'))).toBe('repo-shell');
+      const long = kirbyTmuxFactoryOptions(`/x/${'r'.repeat(194)}`, {
+        readHead: onBranch,
+      });
+      const label = long.label(terminal('agent', `${'r'.repeat(194)}-agent-2`));
+      expect(label).toHaveLength(200);
+      expect(label.startsWith('r'.repeat(194))).toBe(true);
       expect(opts.tags(terminal('agent', 'repo-agent'))).toEqual({
         '@orchestra-spawner': 'kirby',
         '@orchestra-repo': '/repo',

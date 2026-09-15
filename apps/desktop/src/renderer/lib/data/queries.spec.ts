@@ -124,7 +124,7 @@ describe('resetRepoScopedCache', () => {
     qc.setQueryData(keys.settings('/repo'), { fields: [] });
     qc.setQueryData(keys.threads('/repo', 7), { threads: [] });
     qc.setQueryData(keys.version, { app: '1', electron: '2' });
-    qc.setQueryData(keys.terminals, [{ name: 'kirby-shell-1' }]);
+    qc.setQueryData(keys.terminals, [{ name: 'kirby-shell' }]);
     qc.getMutationCache().build(qc, { mutationFn: () => Promise.resolve(1) });
     return qc;
   }
@@ -135,9 +135,7 @@ describe('resetRepoScopedCache', () => {
   it('keeps the terminal listing, which no repository owns', () => {
     const qc = seeded();
     resetRepoScopedCache(qc);
-    expect(qc.getQueryData(keys.terminals)).toEqual([
-      { name: 'kirby-shell-1' },
-    ]);
+    expect(qc.getQueryData(keys.terminals)).toEqual([{ name: 'kirby-shell' }]);
   });
 
   it('keeps the open repository so the gate never blanks', () => {
