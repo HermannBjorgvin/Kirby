@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { join } from 'node:path';
-import { socketEnv } from './tmux.js';
+import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { listTaggedSessions, socketEnv, tagTmuxSession } from './tmux.js';
 
 /**
  * Creating the things Kirby is supposed to notice on its own: a
  * worktree and an agent session made without the app being involved,
- * the way a second Kirby, a script or an operator at a shell would make
- * them.
+ * the way a second Kirby, an Orchestra spawn or an operator at a shell
+ * would make them — under any name, carrying the identity tags.
  *
  * Every call takes the test's `homeDir`, because the fixture launches
  * the app with `TMUX_TMPDIR=<homeDir>`. The env is built by `socketEnv`
@@ -16,8 +17,6 @@ import { socketEnv } from './tmux.js';
  * winning over `TMUX_TMPDIR`, so a session started "for the test" lands
  * on the developer's own server, where the app never sees it.
  */
-
-const KIRBY_PREFIX = 'kirby-';
 
 /** Marker on every branch these helpers create. Cleanup refuses to
  *  touch anything without it. */
@@ -36,19 +35,22 @@ export function uniqueExternalBranch(): string {
   return `${E2E_BRANCH_PREFIX}${randomBytes(3).toString('hex')}`;
 }
 
-/**
- * The tmux session name Kirby composes for a session in this repo:
- * sha256 of the **git toplevel** (not the fixture's `repoPath`, which
- * can differ when tmpdir is a symlink), first 16 hex characters, with
- * tmux's forbidden characters replaced.
- */
-export function kirbyTmuxName(repoPath: string, sessionName: string): string {
-  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    cwd: repoPath,
-    encoding: 'utf8',
-  }).trim();
-  const key = createHash('sha256').update(root).digest('hex').slice(0, 16);
-  return `${KIRBY_PREFIX}${key}-${sessionName}`.replace(/[.:]/g, '-');
+/** The main checkout as Kirby records it in `@orchestra-repo`: the
+ *  symlink-resolved git toplevel, not the fixture's `repoPath`, which
+ *  can differ when tmpdir is a symlink. */
+export function repoRootOf(repoPath: string): string {
+  return realpathSync(
+    execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: repoPath,
+      encoding: 'utf8',
+    }).trim()
+  );
+}
+
+/** The label Kirby would choose — `<repo>-<branch>` with `/`, `.` and
+ *  `:` rewritten. Any name would do; this one keeps `tmux ls` readable. */
+export function kirbyTmuxLabel(repoPath: string, branch: string): string {
+  return `${basename(repoRootOf(repoPath))}-${branch}`.replace(/[/.:]/g, '-');
 }
 
 /** Add a worktree under the directory Kirby's resolver owns, with plain
@@ -63,7 +65,8 @@ export function addExternalWorktree(repoPath: string, branch: string): string {
 }
 
 /**
- * Start a detached tmux session under the name Kirby would use.
+ * Start a detached tmux session tagged the way Kirby tags a worktree
+ * session. Returns its name.
  *
  * `HOME` and `PATH` are pinned per session for the reason the backend
  * pins them: a tmux server keeps the environment it was started with,
@@ -77,7 +80,7 @@ export function startExternalTmuxSession(opts: {
   worktreePath: string;
   command: string;
 }): string {
-  const name = kirbyTmuxName(opts.repoPath, opts.branch);
+  const name = kirbyTmuxLabel(opts.repoPath, opts.branch);
   execFileSync(
     'tmux',
     [
@@ -102,33 +105,48 @@ export function startExternalTmuxSession(opts: {
     ],
     { stdio: 'ignore', env: socketEnv(opts.homeDir) }
   );
+  tagTmuxSession(
+    name,
+    {
+      '@orchestra-spawner': 'kirby',
+      '@orchestra-repo': repoRootOf(opts.repoPath),
+      '@orchestra-session-type': 'worktree',
+      '@orchestra-branch': opts.branch,
+    },
+    opts.homeDir
+  );
   return name;
 }
 
 /**
- * Kill the tmux sessions these helpers created. The app's own exit path
- * detaches rather than kills, so anything left running would outlive
- * the test.
+ * Kill the tmux sessions these helpers created, found by their branch
+ * tag. The app's own exit path detaches rather than kills, so anything
+ * left running would outlive the test.
  */
 export function cleanupExternalSessions(
   repoPath: string,
   branches: string[],
   homeDir: string
 ): void {
+  const root = repoRootOf(repoPath);
   for (const branch of branches) {
     if (!branch.startsWith(E2E_BRANCH_PREFIX)) {
       throw new Error(
         `refusing to clean up tmux sessions for non-e2e branch "${branch}"`
       );
     }
-    try {
-      execFileSync(
-        'tmux',
-        ['kill-session', '-t', kirbyTmuxName(repoPath, branch)],
-        { stdio: 'ignore', env: socketEnv(homeDir) }
-      );
-    } catch {
-      /* already gone — best effort */
+    const found = listTaggedSessions(homeDir).filter(
+      (s) => s.type === 'worktree' && s.repo === root && s.branch === branch
+    );
+    for (const { name } of found) {
+      try {
+        execFileSync('tmux', ['kill-session', '-t', `=${name}:`], {
+          stdio: 'ignore',
+          env: socketEnv(homeDir),
+        });
+      } catch {
+        /* already gone — best effort */
+      }
     }
   }
 }
