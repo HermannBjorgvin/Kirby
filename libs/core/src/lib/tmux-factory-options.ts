@@ -4,6 +4,7 @@ import {
   readWorktreeHead,
   type WorktreeHead,
 } from './discovery/worktree-origin.js';
+import { sessionIdentity, terminalSessionKey } from './session-key.js';
 import { hasSession } from './pty-registry.js';
 import {
   ORCHESTRA_TAG,
@@ -35,9 +36,9 @@ import {
  * session adopted as an agent tab keeps its `worktree` tag but is
  * attached by exactly the name tmux holds it under. For a new tab the
  * label is the capped preferred `<repo>-shell|agent`. The backend
- * allocates the final name and the registry uses that returned name.
+ * allocates the final name and core encodes it in a terminal key.
  * The registry's held names travel as `isTaken` so a new tab cannot
- * displace a local entry. Worktrees keep their branch-derived keys.
+ * displace a local entry. Worktree keys include the repository and exact branch.
  */
 export function kirbyTmuxFactoryOptions(
   repoRoot: string,
@@ -57,23 +58,31 @@ export function kirbyTmuxFactoryOptions(
     }
     return known;
   };
+  const repoOf = (spec: SessionSpec) => {
+    const key = sessionIdentity(spec.name);
+    return key?.kind === 'worktree' ? key.repo : repoRoot;
+  };
   return {
     resolve: (spec) => {
       const id = identity(spec);
+      const key = sessionIdentity(spec.name);
       const found =
         id.type === 'worktree'
-          ? resolveWorktreeSession(repoRoot, id.branch)
-          : resolveSessionByName(spec.name);
+          ? resolveWorktreeSession(repoOf(spec), id.branch)
+          : key?.kind === 'terminal'
+          ? resolveSessionByName(key.id)
+          : null;
       return found?.name ?? null;
     },
     label: (spec) => {
       const id = identity(spec);
       return id.type === 'worktree'
-        ? worktreeSessionLabel(repoRoot, id.branch)
+        ? worktreeSessionLabel(repoOf(spec), id.branch)
         : terminalSessionLabel(repoRoot, id.type);
     },
-    tags: (spec) => sessionTags(repoRoot, identity(spec)),
-    isTaken: (name, spec) => identity(spec).type !== 'worktree' && held(name),
+    tags: (spec) => sessionTags(repoOf(spec), identity(spec)),
+    isTaken: (name, spec) =>
+      identity(spec).type !== 'worktree' && held(terminalSessionKey(name)),
   };
 }
 
@@ -87,8 +96,12 @@ function identify(
 ): SpecIdentity {
   const declared = spec.tags?.[ORCHESTRA_TAG.sessionType];
   if (declared === 'shell' || declared === 'agent') return { type: declared };
-  // A HEAD that cannot be read — the directory is not a checkout — is
-  // named by the registry key, which is the branch with `/` rewritten
-  // and so the branch itself for the common case.
-  return { type: 'worktree', branch: readHead(spec.cwd)?.branch ?? spec.name };
+  // A qualified worktree key retains the exact branch even if HEAD cannot be read.
+  const key = sessionIdentity(spec.name);
+  return {
+    type: 'worktree',
+    branch:
+      readHead(spec.cwd)?.branch ??
+      (key?.kind === 'worktree' ? key.branch : spec.name),
+  };
 }

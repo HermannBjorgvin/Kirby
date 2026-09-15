@@ -38,7 +38,7 @@ export function itemKey(item: SidebarItem): string {
   const pr = item.pr;
   if (pr) return `pr:${pr.id}`;
   if (item.kind === 'session')
-    return `branch:${item.branch ?? item.session.name}`;
+    return `branch:${item.branch ?? item.session.label ?? item.session.name}`;
   return `pr:${item.pr.id}`;
 }
 
@@ -68,12 +68,15 @@ export function itemRunning(item: SidebarItem): boolean {
  */
 export function itemTitle(item: SidebarItem): string {
   if (item.kind !== 'session') return item.pr.title;
-  return item.pr?.title ?? item.branch ?? item.session.name;
+  return (
+    item.pr?.title ?? item.branch ?? item.session.label ?? item.session.name
+  );
 }
 
 /** The git branch an item corresponds to. */
 export function itemBranch(item: SidebarItem): string {
-  if (item.kind === 'session') return item.branch ?? item.session.name;
+  if (item.kind === 'session')
+    return item.branch ?? item.session.label ?? item.session.name;
   return item.pr.sourceBranch;
 }
 

@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import {
@@ -147,7 +148,9 @@ test.describe('Tabs across repositories', () => {
     // alpha comes back.
     await switchRepo(page, repoPath);
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.find((s) => s.name === BRANCH)?.running).toBe(true);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === BRANCH)?.running
+    ).toBe(true);
   });
 
   test('a foreign tab is inert against a same-named branch in the open repo', async ({
@@ -185,7 +188,9 @@ test.describe('Tabs across repositories', () => {
 
     // Beta's agent survived its neighbour's tab closing.
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.find((s) => s.name === SHARED)?.running).toBe(true);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === SHARED)?.running
+    ).toBe(true);
     await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
     expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
       cwd: otherRepo,

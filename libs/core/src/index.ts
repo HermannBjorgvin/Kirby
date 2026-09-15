@@ -116,3 +116,14 @@ export {
   __resetPlanStoreForTest,
 } from './lib/plan/plan-store.js';
 export * from './lib/plan/prompt-composer.js';
+
+export {
+  worktreeSessionKey,
+  keyForWorktree,
+  terminalSessionKey,
+  sessionIdentity,
+  sessionLabel,
+} from './lib/session-key.js';
+export type { SessionIdentity } from './lib/session-key.js';
+
+export { removeWorktreeSession } from './lib/session/remove-worktree.js';

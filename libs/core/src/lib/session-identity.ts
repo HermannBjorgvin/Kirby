@@ -1,7 +1,7 @@
+import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
-import { branchToSessionName } from '@kirby/worktree-manager';
 
 /**
  * What a tmux session *is*, and what it is merely *called*.
@@ -132,14 +132,14 @@ export function isTerminalSession(
 
 /**
  * The PTY-registry key a session answers to in its own repository:
- * a worktree session is keyed by `branchToSessionName(branch)`, the
+ * a worktree session is keyed by `worktreeSessionKey(branch)`, the
  * key both shells spawn it under; a terminal tab by its tmux name,
  * which discovery learns from the listing.
  */
 export function registryNameOf(session: TaggedSession): string {
   return session.type === 'worktree'
-    ? branchToSessionName(session.branch)
-    : session.name;
+    ? worktreeSessionKey(session.branch, session.repo)
+    : terminalSessionKey(session.name);
 }
 
 /** The tags Kirby writes on a session it creates. */

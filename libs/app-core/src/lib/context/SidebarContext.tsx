@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import {
   createContext,
   useCallback,
@@ -7,7 +8,7 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
-import { branchToSessionName } from '@kirby/worktree-manager';
+
 import type { SidebarItem } from '@kirby/core';
 import { getItemKey, getPrFromItem, isItemActive } from '@kirby/core';
 import { buildSidebarItems } from '@kirby/core';
@@ -266,7 +267,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     ? null
     : selectedItem.kind === 'session'
     ? selectedItem.session.name
-    : branchToSessionName(selectedItem.pr.sourceBranch);
+    : worktreeSessionKey(selectedItem.pr.sourceBranch);
 
   // ── Navigation helpers ───────────────────────────────────────────
   const selectByKey = useCallback((key: string) => {

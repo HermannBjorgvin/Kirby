@@ -1,6 +1,8 @@
+import { readWorktreeHead } from './discovery/worktree-origin.js';
 import { TerminalEmulator } from '@kirby/terminal';
 import type { SessionBackend, SessionBackendFactory } from '@kirby/terminal';
 import { createPtyBackendFactory } from '@kirby/terminal-pty';
+import { sessionIdentity, terminalSessionKey } from './session-key.js';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
@@ -22,8 +24,8 @@ export interface NamedPtyEntry extends PtyEntry {
 }
 
 export interface SpawnSessionOptions {
-  /** Key this entry by the backend name when it supplies one. */
-  useBackendName?: boolean;
+  /** Use the terminal namespace; tmux supplies its allocated target, PTY keeps its UUID. */
+  terminalIdentity?: boolean;
   reuse?: boolean;
 }
 
@@ -64,6 +66,15 @@ export function spawnSession(
   tags?: Record<string, string>,
   options: SpawnSessionOptions = {}
 ): NamedPtyEntry {
+  const identity = sessionIdentity(requestedName);
+  if (identity?.kind === 'worktree') {
+    const head = readWorktreeHead(cwd);
+    if (head && !head.detached && head.branch !== identity.branch) {
+      throw new Error(
+        `Worktree is on "${head.branch}", not "${identity.branch}"`
+      );
+    }
+  }
   // Respawn under the same name: dispose (soft) the prior entry. On
   // tmux this detaches without killing, so the new spawn resolves the
   // same tmux session and re-attaches — preserving its scrollback.
@@ -98,8 +109,10 @@ export function spawnSession(
     tags,
     reuse: options.reuse,
   });
-  const name = options.useBackendName
-    ? pty.name ?? requestedName
+  const name = options.terminalIdentity
+    ? pty.name
+      ? terminalSessionKey(pty.name)
+      : requestedName
     : requestedName;
   const emu = new TerminalEmulator(cols, rows);
   const entry: NamedPtyEntry = {

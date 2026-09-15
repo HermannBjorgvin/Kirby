@@ -1,5 +1,7 @@
+import { getRepoRoot } from '../repo-root.js';
+import { worktreeSessionKey } from '../session-key.js';
 import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
-import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import { createWorktree } from '@kirby/worktree-manager';
 import { hasSession } from '../pty-registry.js';
 import { launchSession, deliverToRunningSession } from './launch-session.js';
 
@@ -24,6 +26,7 @@ import { launchSession, deliverToRunningSession } from './launch-session.js';
 export type CheckoutResult = 'injected' | 'spawned' | 'failed';
 
 export interface CheckoutDeps {
+  repo?: string;
   pr: PullRequestInfo;
   /** Composed plan prompt (see composePlanPrompt). */
   prompt: string;
@@ -40,7 +43,8 @@ export async function checkoutPlan(
   deps: CheckoutDeps
 ): Promise<CheckoutResult> {
   const { pr, prompt, paneCols, paneRows, mode, config, flashStatus } = deps;
-  const name = branchToSessionName(pr.sourceBranch);
+  const repo = deps.repo ?? getRepoRoot() ?? process.cwd();
+  const name = worktreeSessionKey(pr.sourceBranch, repo);
 
   const seed = (cwd: string) =>
     launchSession({
@@ -62,7 +66,7 @@ export async function checkoutPlan(
       return 'injected';
     }
     // new-session: reseed. launchSession kills the same-name PTY first.
-    const worktreePath = await createWorktree(pr.sourceBranch);
+    const worktreePath = await createWorktree(pr.sourceBranch, repo);
     if (!worktreePath) {
       flashStatus(`Failed to resolve worktree for ${pr.sourceBranch}`);
       return 'failed';
@@ -72,7 +76,7 @@ export async function checkoutPlan(
   }
 
   // ── States B & C: no running agent — ensure a worktree, then spawn ──
-  const worktreePath = await createWorktree(pr.sourceBranch);
+  const worktreePath = await createWorktree(pr.sourceBranch, repo);
   if (!worktreePath) {
     flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
     return 'failed';

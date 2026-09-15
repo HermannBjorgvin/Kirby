@@ -1,3 +1,5 @@
+import type * as CoreModule from '@kirby/core';
+import { worktreeSessionKey } from '@kirby/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionDiscoveryOptions } from '@kirby/core';
 import type * as DiscoveryModule from './discovery.js';
@@ -55,56 +57,62 @@ vi.mock('@kirby/worktree-manager', () => ({
   },
 }));
 
-vi.mock('@kirby/core', () => ({
-  startSessionDiscovery: (opts: SessionDiscoveryOptions) => {
-    state.opts = opts;
-    return {
-      scanNow: () => Promise.resolve(),
-      stop: () => {
-        state.stops += 1;
-      },
-    };
-  },
-  launchSession: (spec: { name: string; cwd: string }) => {
-    state.alive.add(spec.name);
-    state.spawns.push({ name: spec.name, cwd: spec.cwd });
-    return { name: spec.name };
-  },
-  launchTerminalSession: (spec: { name: string; cwd: string }) => {
-    state.alive.add(spec.name);
-    state.spawns.push({ name: spec.name, cwd: spec.cwd });
-    return { name: spec.name };
-  },
-  getSession: (name: string) =>
-    state.alive.has(name)
-      ? {
-          exited: false,
-          pty: {
-            onData: (cb: (data: string) => void) => state.onData.set(name, cb),
-            onExit: () => undefined,
-            write: () => undefined,
-            resize: () => undefined,
-          },
-        }
-      : undefined,
-  isSessionAlive: (name: string) => state.alive.has(name),
-  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
-    config.terminalBackend ?? 'tmux',
-  killSession: () => undefined,
-  checkoutPlan: () => Promise.resolve('spawned'),
-  buildReviewLaunchRequest: () => ({ intent: 'blank' }),
-  getSpawnedAt: () => 1000,
-  noteInput: () => undefined,
-  noteResize: () => undefined,
-  noteSeen: () => undefined,
-  snapshot: () => ({ active: false, flashing: false }),
-}));
+vi.mock('@kirby/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  return {
+    worktreeSessionKey: actual.worktreeSessionKey,
+    sessionLabel: actual.sessionLabel,
+    startSessionDiscovery: (opts: SessionDiscoveryOptions) => {
+      state.opts = opts;
+      return {
+        scanNow: () => Promise.resolve(),
+        stop: () => {
+          state.stops += 1;
+        },
+      };
+    },
+    launchSession: (spec: { name: string; cwd: string }) => {
+      state.alive.add(spec.name);
+      state.spawns.push({ name: spec.name, cwd: spec.cwd });
+      return { name: spec.name };
+    },
+    launchTerminalSession: (spec: { name: string; cwd: string }) => {
+      state.alive.add(spec.name);
+      state.spawns.push({ name: spec.name, cwd: spec.cwd });
+      return { name: spec.name };
+    },
+    getSession: (name: string) =>
+      state.alive.has(name)
+        ? {
+            exited: false,
+            pty: {
+              onData: (cb: (data: string) => void) =>
+                state.onData.set(name, cb),
+              onExit: () => undefined,
+              write: () => undefined,
+              resize: () => undefined,
+            },
+          }
+        : undefined,
+    isSessionAlive: (name: string) => state.alive.has(name),
+    resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+      config.terminalBackend ?? 'tmux',
+    killSession: () => undefined,
+    checkoutPlan: () => Promise.resolve('spawned'),
+    buildReviewLaunchRequest: () => ({ intent: 'blank' }),
+    getSpawnedAt: () => 1000,
+    noteInput: () => undefined,
+    noteResize: () => undefined,
+    noteSeen: () => undefined,
+    snapshot: () => ({ active: false, flashing: false }),
+  };
+});
 
 let discovery: typeof DiscoveryModule;
 let sessions: typeof SessionsModule;
 
 const worktree = (branch: string) => ({
-  name: branch.replace(/\//g, '-'),
+  name: worktreeSessionKey(branch, state.cwd),
   branch,
   path: `/repo-a/.claude/worktrees/${branch}`,
 });
@@ -138,15 +146,22 @@ describe('startDiscoveryForRepo', () => {
     await opts().adopt(worktree('feature/x'));
 
     expect(state.spawns).toEqual([
-      { name: 'feature-x', cwd: '/repo-a/.claude/worktrees/feature/x' },
+      {
+        name: worktreeSessionKey('feature/x', '/repo-a'),
+        cwd: '/repo-a/.claude/worktrees/feature/x',
+      },
     ]);
     // Adopted by the host, not merely spawned: without the relay the
     // agent runs with nothing forwarding it and the pane stays blank.
-    state.onData.get('feature-x')?.('agent says hello');
-    expect(sessions.getSessionBuffer('feature-x').data).toBe(
+    state.onData.get(worktreeSessionKey('feature/x', '/repo-a'))?.(
       'agent says hello'
     );
-    expect(sessions.listSessions().map((s) => s.name)).toEqual(['feature-x']);
+    expect(
+      sessions.getSessionBuffer(worktreeSessionKey('feature/x', '/repo-a')).data
+    ).toBe('agent says hello');
+    expect(sessions.listSessions().map((s) => s.name)).toEqual([
+      worktreeSessionKey('feature/x', '/repo-a'),
+    ]);
   });
 
   // The desktop is branch-keyed from the worktree it resolves down to
@@ -168,18 +183,21 @@ describe('startDiscoveryForRepo', () => {
   it('attaches in the worktree git reported, not one derived from the branch', async () => {
     discovery.startDiscoveryForRepo('/repo-a');
     await opts().adopt({
-      name: 'my-branch',
+      name: worktreeSessionKey('my/branch', '/repo-a'),
       branch: 'my/branch',
       path: '/repo-a/.claude/worktrees/foo',
     });
 
     expect(state.spawns).toEqual([
-      { name: 'my-branch', cwd: '/repo-a/.claude/worktrees/foo' },
+      {
+        name: worktreeSessionKey('my/branch', '/repo-a'),
+        cwd: '/repo-a/.claude/worktrees/foo',
+      },
     ]);
     expect(state.createWorktreeCalls).toEqual([]);
   });
 
-  it('lets a failed attach reject so the scanner can retire it', async () => {
+  it('adopts the same branch independently in each repository', async () => {
     // A session alive under this name but owned by another repository:
     // the registry is keyed by bare branch name, so attaching would
     // hand this repo's tab the other repo's agent.
@@ -191,9 +209,11 @@ describe('startDiscoveryForRepo', () => {
     state.cwd = '/repo-b';
     discovery.startDiscoveryForRepo('/repo-b');
 
-    await expect(opts().adopt(worktree('shared'))).rejects.toThrow(
-      'already running for another repository'
-    );
+    await opts().adopt(worktree('shared'));
+    expect(state.spawns.map((s) => s.name)).toEqual([
+      worktreeSessionKey('shared', '/repo-a'),
+      worktreeSessionKey('shared', '/repo-b'),
+    ]);
   });
 
   // The other thing the first scan brings back: terminal tabs. They

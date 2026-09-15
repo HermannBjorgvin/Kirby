@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaggedSession } from '../session-identity.js';
 import type { WorktreeHead } from './worktree-origin.js';
@@ -92,7 +93,7 @@ describe('listLiveWorktreeSessions', () => {
         repoRoot: '/repos/alpha',
         branch: 'feat/a',
         detached: false,
-        sessionName: 'feat-a',
+        sessionName: worktreeSessionKey('feat/a', '/repos/alpha'),
       },
       {
         tmuxName: 'beta-feat-b',
@@ -100,7 +101,7 @@ describe('listLiveWorktreeSessions', () => {
         repoRoot: '/repos/beta',
         branch: 'feat-b',
         detached: false,
-        sessionName: 'feat-b',
+        sessionName: worktreeSessionKey('feat-b', '/repos/beta'),
       },
     ]);
   });

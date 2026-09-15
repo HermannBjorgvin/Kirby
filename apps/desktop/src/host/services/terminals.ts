@@ -185,6 +185,9 @@ function noteRepository(cwd: string): string | null {
 function summarize(name: string, entry: KnownTerminal, home: string) {
   return {
     name,
+    ...(getSession(name)?.pty.name
+      ? { tmuxName: getSession(name)?.pty.name }
+      : {}),
     kind: entry.kind,
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
@@ -200,13 +203,7 @@ export function launchTerminal(
   home: string = homedir()
 ): TerminalSummary {
   assertLaunchableCwd(req.cwd);
-  const name = start(
-    newTerminalSessionName(req.kind),
-    req.kind,
-    req.cwd,
-    req,
-    true
-  );
+  const name = start(newTerminalSessionName(), req.kind, req.cwd, req, true);
   noteRepository(req.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);

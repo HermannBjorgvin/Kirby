@@ -1,3 +1,4 @@
+import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
@@ -6,12 +7,10 @@ import {
   tmuxAvailable,
 } from './setup/tmux.js';
 import {
-  agentSpinner,
   createWorktree,
   focusTerminal,
   launchAgentFromRail,
   sidebarRow,
-  startSessionFromMenu,
   tab,
   tabs,
   visibleText,
@@ -106,7 +105,7 @@ test.describe('Two agents at once', () => {
     expect(
       sessions
         .filter((s) => s.running)
-        .map((s) => s.name)
+        .map((s) => sessionBranch(s.name))
         .sort()
     ).toEqual(['alpha', 'beta']);
   });
@@ -130,7 +129,10 @@ test.describe('Two agents at once', () => {
     // The pane asks for the buffer as it re-renders, so this read is
     // queued behind any the switch provoked: once it answers, a second
     // replay would already have been written.
-    await page.evaluate(() => window.kirby.getSessionBuffer('alpha'));
+    await page.evaluate(
+      (name) => window.kirby.getSessionBuffer(name),
+      await sessionKey(page, 'alpha')
+    );
 
     await expect(page.getByText(BANNER).filter({ visible: true })).toHaveCount(
       1
@@ -148,7 +150,7 @@ test.describe('Two agents at once', () => {
       .poll(
         async () => {
           const s = await page.evaluate(() => window.kirby.listSessions());
-          return s.filter((x) => x.running).map((x) => x.name);
+          return s.filter((x) => x.running).map((x) => sessionBranch(x.name));
         },
         { timeout: 20_000 }
       )
@@ -254,6 +256,25 @@ test.describe('Pasting an image', () => {
  * pane that already holds a correctly-sized terminal moves nothing, and
  * the correction never came.
  */
+async function finishAgentClose(page: Page): Promise<void> {
+  const confirmation = page.getByRole('dialog', {
+    name: 'Agent is still working',
+  });
+  const allTabs = page.getByRole('tab', { includeHidden: true });
+  await expect
+    .poll(
+      async () =>
+        (await confirmation.isVisible()) || (await allTabs.count()) === 0
+    )
+    .toBe(true);
+  if (await confirmation.isVisible()) {
+    await confirmation
+      .getByRole('button', { name: 'Stop agent & close' })
+      .click();
+  }
+  await expect(allTabs).toHaveCount(0);
+}
+
 test.describe('Terminal fit', () => {
   test.use({ kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) } });
 
@@ -389,11 +410,11 @@ test.describe('Terminal fit', () => {
     await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
     await expectAgentFillsPane(page);
 
-    // Closing the tab takes the idle agent with it and tears the wterm
-    // instance down; the relaunch mounts a fresh one.
-    await expect(agentSpinner(page)).toHaveCount(0, { timeout: 20_000 });
+    // Size reports can make the agent active again between polls. Complete
+    // either close path; hidden tabs behind a confirmation are still open.
     await tab(page, /refit/).getByLabel('Close tab').click();
-    await expect(tabs(page)).toHaveCount(0);
+    await finishAgentClose(page);
+
     await expect
       .poll(
         async () => {
@@ -404,8 +425,8 @@ test.describe('Terminal fit', () => {
       )
       .toBe(0);
 
-    await sidebarRow(page, /refit/).dblclick();
-    await startSessionFromMenu(page);
+    await sidebarRow(page, /refit/).click();
+    await launchAgentFromRail(page);
     await expect(visibleText(page, BANNER)).toBeVisible({ timeout: 30_000 });
     await expectAgentFillsPane(page);
   });

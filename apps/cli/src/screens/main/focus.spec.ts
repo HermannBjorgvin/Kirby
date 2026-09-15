@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { describe, it, expect } from 'vitest';
 import {
   getMainFocused,
@@ -90,6 +91,14 @@ describe('getSidebarFocused', () => {
 });
 
 describe('getPaneTitle', () => {
+  it('displays the exact branch rather than the qualified registry key', () => {
+    expect(
+      getPaneTitle({
+        ...baseTitle,
+        sessionName: worktreeSessionKey('feature/login', '/repo'),
+      })
+    ).toBe('🤖 Claude — feature/login');
+  });
   // ── Terminal mode (default) — 🤖 AgentName — label ──────────────
 
   it('defaults to "🤖 Claude" when no session, no aiCommand configured', () => {

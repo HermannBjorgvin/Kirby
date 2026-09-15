@@ -10,7 +10,7 @@
 //      that the sidebar is NOT focused in those cases.
 
 import type { Focus, PaneMode } from '@kirby/core';
-import { resolveAgent } from '@kirby/core';
+import { resolveAgent, sessionLabel } from '@kirby/core';
 import type { AgentId, AppConfig } from '@kirby/vcs-core';
 
 export interface FocusState {
@@ -115,7 +115,8 @@ export function getPaneTitle(s: PaneTitleState): string {
     aiCommand: s.aiCommand,
   } as AppConfig);
   const agent = resolved.hidden ? 'Agent' : resolved.name;
-  const label = s.prTitle || s.sessionName;
+  const label =
+    s.prTitle || (s.sessionName ? sessionLabel(s.sessionName) : null);
   const base = label
     ? `\u{1F916} ${agent} \u2014 ${label}`
     : `\u{1F916} ${agent}`;

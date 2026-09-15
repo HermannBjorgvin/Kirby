@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from './session-key.js';
 import { execFileSync } from 'node:child_process';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -188,9 +189,13 @@ describe.skipIf(SKIP)('session resolver', () => {
   it('resolves a registry key to the worktree session whose branch keys to it', () => {
     startSession(name('slashy'), tags('worktree', REPO, 'feat/b'));
     startSession(name('other-repo'), tags('worktree', '/repos/beta', 'feat/c'));
-    expect(resolveRegistrySession(REPO, 'feat-b')?.name).toBe(name('slashy'));
+    expect(
+      resolveRegistrySession(REPO, worktreeSessionKey('feat/b', REPO))?.name
+    ).toBe(name('slashy'));
     expect(resolveRegistrySession(REPO, 'feat/b')).toBeNull();
-    expect(resolveRegistrySession(REPO, 'feat-c')).toBeNull();
+    expect(
+      resolveRegistrySession(REPO, worktreeSessionKey('feat/c', REPO))
+    ).toBeNull();
   });
 
   // A registry key handed here is a branch (rewritten), and a session's
@@ -204,7 +209,9 @@ describe.skipIf(SKIP)('session resolver', () => {
     startSession(name('feature-x'), tags('worktree', REPO, 'x'));
     expect(resolveRegistrySession(REPO, name('term'))).toBeNull();
     expect(resolveRegistrySession(REPO, name('feature-x'))).toBeNull();
-    expect(resolveRegistrySession(REPO, 'x')?.name).toBe(name('feature-x'));
+    expect(
+      resolveRegistrySession(REPO, worktreeSessionKey('x', REPO))?.name
+    ).toBe(name('feature-x'));
   });
 });
 

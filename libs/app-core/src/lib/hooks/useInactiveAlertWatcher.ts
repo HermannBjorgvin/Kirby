@@ -50,7 +50,7 @@ export function useInactiveAlertWatcher(currentlyViewed: string | null): void {
         // or add it to the Escape-jump queue (the registry's onExit also
         // removes any alert that was already queued before it exited).
         if (wasActive && !cur && !snap.exited && s.name !== viewedRef.current) {
-          flash(`${s.name} is idle`, 'info');
+          flash(`${s.label ?? s.name} is idle`, 'info');
           if (jumpEnabledRef.current) enqueueAlert(s.name);
         }
       }

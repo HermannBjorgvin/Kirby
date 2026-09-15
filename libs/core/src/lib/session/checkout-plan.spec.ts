@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
 
@@ -53,7 +54,7 @@ describe('checkoutPlan', () => {
 
     expect(result).toBe('injected');
     expect(deliverToRunningSession).toHaveBeenCalledWith(
-      'sess-feature/x',
+      worktreeSessionKey('feature/x'),
       expect.stringContaining('Resolve these PR review comments')
     );
     expect(launchSession).not.toHaveBeenCalled();
@@ -81,7 +82,7 @@ describe('checkoutPlan', () => {
     expect(createWorktree).toHaveBeenCalledWith('feature/x');
     expect(launchSession).toHaveBeenCalledTimes(1);
     const arg = launchSession.mock.calls[0][0];
-    expect(arg.name).toBe('sess-feature/x');
+    expect(arg.name).toBe(worktreeSessionKey('feature/x'));
     expect(arg.cwd).toBe('/wt/feature-x');
     // Must seed (deliver the plan), never continue.
     expect(arg.request).toEqual({

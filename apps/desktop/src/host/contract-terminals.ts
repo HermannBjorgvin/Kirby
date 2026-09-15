@@ -28,8 +28,9 @@ export interface TerminalLaunchRequest {
  * is.
  */
 export interface TerminalSummary {
-  /** Session name — a label such as `kirby-shell`, also the tmux name;
-   *  the kind is the session's `@orchestra-session-type` tag. */
+  /** Actual tmux target, when attached through tmux. Never a registry key. */
+  tmuxName?: string;
+  /** Opaque core registry key; displayPath supplies the tab label. */
   name: string;
   kind: TerminalKind;
   cwd: string;

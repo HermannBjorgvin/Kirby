@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import { sidebarRow } from './setup/app.js';
 import {
@@ -74,7 +75,10 @@ test.describe('Discovering work created outside the app', () => {
           const sessions = await page.evaluate(() =>
             window.kirby.listSessions()
           );
-          return sessions.find((s) => s.name === branch)?.running ?? false;
+          return (
+            sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
+            false
+          );
         },
         { timeout: 30_000, intervals: [500] }
       )

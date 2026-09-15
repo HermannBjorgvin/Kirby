@@ -1,8 +1,5 @@
-import {
-  branchToSessionName,
-  worktreeSessionName,
-  type WorktreeInfo,
-} from '@kirby/worktree-manager';
+import { worktreeSessionKey, keyForWorktree } from '@kirby/core';
+import { type WorktreeInfo } from '@kirby/worktree-manager';
 import type { SidebarItem } from '@kirby/core';
 
 export interface EditorTargetDeps {
@@ -29,12 +26,10 @@ export async function resolveEditorTarget(
   const sessionName =
     item.kind === 'session'
       ? item.session.name
-      : branchToSessionName(item.pr.sourceBranch);
+      : worktreeSessionKey(item.pr.sourceBranch);
 
   const worktrees = await deps.listWorktrees();
-  const existing = worktrees.find(
-    (w) => worktreeSessionName(w) === sessionName
-  );
+  const existing = worktrees.find((w) => keyForWorktree(w) === sessionName);
   if (existing) return existing.path;
 
   if (item.kind !== 'session') {

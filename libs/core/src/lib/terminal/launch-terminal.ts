@@ -44,7 +44,7 @@ export function launchTerminalSession(
 ): NamedPtyEntry {
   const { name, cwd, cols, rows, config } = params;
   const tags = { [ORCHESTRA_TAG.sessionType]: params.kind };
-  const sessionOptions = { useBackendName: true, reuse: !params.fresh };
+  const sessionOptions = { terminalIdentity: true, reuse: !params.fresh };
   if (params.kind === 'shell') {
     return spawnSession(
       name,

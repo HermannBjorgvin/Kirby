@@ -31,7 +31,7 @@ function tabLabel(
   const digit = tabDigit(tabNumber);
   const body = pr
     ? `#${pr.id}`
-    : middleTruncate(item.session.name, MAX_LABEL_CHARS);
+    : middleTruncate(item.session.label ?? item.session.name, MAX_LABEL_CHARS);
   return `${digit} ${body}`;
 }
 

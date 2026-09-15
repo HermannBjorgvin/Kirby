@@ -1,3 +1,4 @@
+import { keyForWorktree } from '../session-key.js';
 /**
  * Noticing worktrees and agent sessions that appear while Kirby is
  * running.
@@ -36,11 +37,7 @@
 import { watch, type FSWatcher } from 'node:fs';
 import { log, logError } from '@kirby/logger';
 import type { AppConfig } from '@kirby/vcs-core';
-import {
-  listWorktrees,
-  worktreeSessionName,
-  worktreesBasePath,
-} from '@kirby/worktree-manager';
+import { listWorktrees, worktreesBasePath } from '@kirby/worktree-manager';
 import { isSessionAlive } from '../pty-registry.js';
 import {
   observeTmuxSessions,
@@ -175,7 +172,7 @@ export function startSessionDiscovery(
   async function observe(): Promise<DiscoveryScan> {
     const worktrees: DiscoveredWorktree[] = (await listWorktrees()).map(
       (wt) => ({
-        name: worktreeSessionName(wt),
+        name: keyForWorktree(wt),
         branch: wt.branch,
         path: wt.path,
       })

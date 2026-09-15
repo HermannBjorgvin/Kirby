@@ -128,7 +128,7 @@ test.describe('Terminal tabs under tmux', () => {
         },
         { timeout: 15_000 }
       )
-      .toEqual([name, true, true]);
+      .toEqual([before[0].name, true, true]);
     await expect(tabs).toHaveCount(1);
     await expect(tabs).toHaveAttribute('aria-selected', 'true');
     expect(terminalSessions(homeDir)).toEqual([name]);

@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import { openPalette, sidebarRow, tab } from './setup/app.js';
@@ -53,7 +54,10 @@ async function attached(page: Page, branch: string): Promise<void> {
     .poll(
       async () => {
         const sessions = await page.evaluate(() => window.kirby.listSessions());
-        return sessions.find((s) => s.name === branch)?.running ?? false;
+        return (
+          sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
+          false
+        );
       },
       { timeout: 30_000, intervals: [500] }
     )

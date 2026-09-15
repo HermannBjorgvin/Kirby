@@ -11,6 +11,9 @@ The reasoning behind each rule is in `docs/decisions.md`.
   tmux probe on every read and is never persisted. Await
   `probeTmuxAvailability()` before wiring the factory. A per-project value
   overrides the global one.
+- **Registry identity** (`session-key.ts`): worktree keys encode repository and
+  exact branch; terminal keys encode the actual tmux target or a lifetime PTY UUID.
+  Labels and checkout directory names never address registry entries.
 - **tmux identity**: names are labels, tags are identity.
   `session-identity.ts` owns the `@orchestra-*` tag names shared with
   Orchestra, the label builder (`<repo>-<branch>`, `<repo>-shell`,
@@ -34,7 +37,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
   (a session tagged with the open root and a listed worktree's branch), the
   orphan question (tagged with the root, on no listed branch, not held here)
   and the terminal listing (by session type, wherever it runs) in one fork.
-- **Terminal sessions** (`terminal/terminal-name.ts`): a tab is keyed by its
+- **Terminal sessions** (`terminal/terminal-name.ts`): a tab has a qualified terminal key containing its
   actual backend name, allocated from `<repo>-shell`/`<repo>-agent` at spawn;
   `launchTerminalSession` declares the kind as the session-type tag, which
   is how the factory tells a tab from a worktree session. An empty `cmd`
@@ -44,7 +47,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
   whose directory's HEAD is still on the tagged branch; there is no git
   fallback and no origin cache.
 - **Session launch** (`session/`) resolves the worktree via `createWorktree`
-  (directory-name keyed, tolerant of a switched branch), reads config from the
+  (exact branch match, rejecting a derived path occupied by another branch), reads config from the
   repo root, and never respawns a live session. Force-remove is offered only
   for 'uncommitted changes' and 'not pushed to upstream'.
 - **Plan** (`plan/`): items are value snapshots taken at add time.

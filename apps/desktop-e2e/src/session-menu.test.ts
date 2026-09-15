@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import {
   agentPicker,
@@ -61,7 +62,9 @@ test.describe('Session menu', () => {
       timeout: 30_000,
     });
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.find((s) => s.name === 'enter-branch')?.running).toBe(true);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === 'enter-branch')?.running
+    ).toBe(true);
 
     // A running agent has nothing to choose: its row opens the tab
     // only. Wait for the sidebar model to agree the agent is running

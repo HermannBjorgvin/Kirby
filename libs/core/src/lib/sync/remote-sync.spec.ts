@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VcsProvider } from '@kirby/vcs-core';
 
@@ -150,21 +151,21 @@ describe('sweepMergedBranches', () => {
     const result = await sweep();
     expect([...result.merged]).toEqual(['feature/a']);
     expect(env.deleted).toEqual([
-      { session: 'feature-a', branch: 'feature/a' },
+      { session: worktreeSessionKey('feature/a'), branch: 'feature/a' },
     ]);
   });
 
   it('leaves a branch alone when its agent is still running', async () => {
     // The user deliberately left that agent running; deleting the
     // worktree under it destroys whatever it had in memory.
-    env.alive = new Set(['feature-a']);
+    env.alive = new Set([worktreeSessionKey('feature/a')]);
     await sweep();
     expect(env.deleted).toEqual([]);
   });
 
   it('leaves a branch alone when a tmux session for it survived a restart', async () => {
     // Same agent, just not in this process's registry.
-    env.persisted = new Set(['feature-a']);
+    env.persisted = new Set([worktreeSessionKey('feature/a')]);
     await sweep();
     expect(env.deleted).toEqual([]);
   });
@@ -173,7 +174,7 @@ describe('sweepMergedBranches', () => {
   // and deleting its worktree is destructive. A user who switched to
   // PTY after the session was created must not lose it.
   it('leaves it alone even when the config now selects pty', async () => {
-    env.persisted = new Set(['feature-a']);
+    env.persisted = new Set([worktreeSessionKey('feature/a')]);
     await sweep({
       config: { autoDeleteOnMerge: true, terminalBackend: 'pty' } as never,
     });

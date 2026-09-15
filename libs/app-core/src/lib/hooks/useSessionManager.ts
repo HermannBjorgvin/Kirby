@@ -1,10 +1,8 @@
+import { keyForWorktree } from '@kirby/core';
 import { useState, useEffect, useCallback, useEffectEvent } from 'react';
 import {
-  removeWorktree,
-  deleteBranch,
   listAllBranches,
   listWorktrees,
-  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
@@ -12,7 +10,7 @@ import type { AgentSession, DiscoveredWorktree } from '@kirby/core';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
 import {
-  killSession,
+  removeWorktreeSession,
   isSessionAlive,
   launchSession,
   onSessionExit,
@@ -33,9 +31,10 @@ export function useSessionManager(
     const worktrees = await listWorktrees();
     const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
-      const name = worktreeSessionName(wt);
+      const name = keyForWorktree(wt);
       filtered.push({
         name,
+        label: wt.branch || wt.path.split('/').pop(),
         running: isSessionAlive(name),
         ...(wt.state ? { state: wt.state } : {}),
       });
@@ -49,10 +48,8 @@ export function useSessionManager(
   }, []);
 
   const performDelete = useCallback(
-    async (sessionName: string, branch: string) => {
-      killSession(sessionName);
-      await removeWorktree(branch, { force: true });
-      await deleteBranch(branch, true);
+    async (_sessionName: string, branch: string) => {
+      await removeWorktreeSession(branch, true);
       await refreshSessions();
     },
     [refreshSessions]

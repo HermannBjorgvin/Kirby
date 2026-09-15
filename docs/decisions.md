@@ -118,17 +118,19 @@ off` is set on every attach; tags never are. Kirby's answers to the three
 questions are composed in `tmux-factory-options.ts` from the repo root: a
 worktree spec is identified by the branch in its directory's HEAD file (no git
 fork); a terminal spec is told apart by the session-type tag its launcher
-passes through `spawnSession`. New tabs set `reuse: false` and use the actual
-name returned by the backend as their registry key. The preliminary free-name
-probe is a suggestion; allocation can select another suffix if server state
-changes. Restoring a tab resolves its existing exact name. Two lookups, not
-one: `resolveRegistrySession(repo, key)` answers a registry _key_ with a
-worktree session by (repo, branch) and nothing else. A key is a branch with
-`/` rewritten, never a tmux name, and the two namespaces overlap — repository
-`feature`'s agent on branch `x` is labelled `feature-x`, which is the key of
-the branch `feature/x`, and an agent tab is called `<repo>-agent`, which is
-the key of a branch of that name — so answering either by name would have the
-worktree removal kill a session that is on no such branch.
+passes through `spawnSession`. New tabs set `reuse: false`. Core owns registry
+identity in `session-key.ts`, above both transports: JSON tuple keys encode
+`["worktree", repo, exactBranch]` or `["terminal", id]`. Tmux terminal IDs are
+actual allocated session names; PTY terminal IDs are lifetime UUIDs. The
+namespaces cannot overlap, repositories can share branch names, and
+`feature/login` remains distinct from `feature-login`. Display labels travel
+separately. Restoring a terminal decodes its exact tmux target;
+`resolveRegistrySession(repo, key)` matches worktree tags using the key's
+repository and exact branch. Launch validates the checkout's branch before
+replacing any registry entry. Worktree resolution prefers git's exact branch
+location and refuses a derived directory occupied by another branch.
+`removeWorktreeSession` owns the shared stop/remove/delete sequence, passing
+the captured repository through every filesystem operation.
 `resolveSessionByName(name)` answers a tmux _name_ across
 all our tagged sessions, any type, no repository scope, because a name is
 unique on the server and a terminal tab — including an adopted orphan still
@@ -170,10 +172,9 @@ per-project override.
 Standalone terminal sessions are tagged `@orchestra-session-type` `shell` or
 `agent`, named `<repo>-shell` / `<repo>-agent` (suffixed on collision) and
 located by tmux's `session_path`; no separate state file is needed.
-`newTerminalSessionName` survives with new semantics: it picks a free label —
-not held by this process, not a session on the server — before the spawn, and
-that label is the tab's registry key. An empty command means the backend's
-default shell. Agents use `launchTerminalSession` → `launchSession`. A worktree
+`newTerminalSessionName` creates a provisional UUID key. Tmux allocation returns
+its final name, which core encodes as the terminal key; a raw PTY keeps the UUID.
+An empty command means the backend's default shell. Agents use `launchTerminalSession` → `launchSession`. A worktree
 session whose branch changed appears as an agent terminal instead of
 disappearing; adopting it attaches by exactly the name tmux holds it under,
 resolved among our tagged sessions whatever their type, so the orphan keeps

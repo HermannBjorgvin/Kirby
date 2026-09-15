@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { describe, it, expect, vi } from 'vitest';
 import type { PullRequestInfo } from '@kirby/vcs-core';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
@@ -27,7 +28,7 @@ describe('resolveEditorTarget', () => {
   it('returns the existing worktree path for a session row', async () => {
     const item: SidebarItem = {
       kind: 'session',
-      session: { name: 'feature-foo', running: false },
+      session: { name: worktreeSessionKey('feature/foo'), running: false },
       isMerged: false,
     };
     const path = await resolveEditorTarget(item, {
@@ -43,7 +44,7 @@ describe('resolveEditorTarget', () => {
     // worktree under the user.
     const item: SidebarItem = {
       kind: 'session',
-      session: { name: 'feature-foo', running: false },
+      session: { name: worktreeSessionKey('feature/foo'), running: false },
       isMerged: false,
     };
     const createWorktree = vi.fn();

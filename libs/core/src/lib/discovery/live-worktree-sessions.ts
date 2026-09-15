@@ -1,6 +1,7 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { existsSync } from 'node:fs';
 import type { AppConfig } from '@kirby/vcs-core';
-import { branchToSessionName } from '@kirby/worktree-manager';
+
 import { resolveTerminalBackend } from '../session-backend.js';
 import type { TaggedSession } from '../session-identity.js';
 import { listOurSessions } from '../session-resolver.js';
@@ -35,7 +36,7 @@ export interface LiveWorktreeSession {
    *  out — see `WorktreeHead.detached`. */
   detached: boolean;
   /** The registry name the session runs under in its repository
-   *  (`branchToSessionName`), the key its tab's auto-open history uses. */
+   *  (`worktreeSessionKey`), the key its tab's auto-open history uses. */
   sessionName: string;
   /** Orchestra's tags, when the session carries them. The harness
    *  running in the pane. */
@@ -102,7 +103,7 @@ function describeSession(
     repoRoot: session.repo,
     branch: head.branch,
     detached: head.detached,
-    sessionName: branchToSessionName(head.branch),
+    sessionName: worktreeSessionKey(head.branch, session.repo),
     ...orchestraFields(session),
   };
 }

@@ -230,12 +230,13 @@ export async function refExists(ref: string, cwd?: string): Promise<boolean> {
 /** Delete a local git branch. Returns true on success, false on failure. */
 export async function deleteBranch(
   branch: string,
-  force = false
+  force = false,
+  cwd = process.cwd()
 ): Promise<boolean> {
   assertShellSafeRef(branch);
   const flag = force ? '-D' : '-d';
   try {
-    await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
+    await exec(`git branch ${flag} "${branch}"`, gitOptions(cwd));
     return true;
   } catch (e) {
     log('error', 'deleteBranch', `git branch ${flag} failed for ${branch}`, e);

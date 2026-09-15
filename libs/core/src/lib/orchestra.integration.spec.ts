@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from './session-key.js';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -107,14 +108,14 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         '#{pane_pid}'
       );
       const entry = spawnSession(
-        'feature-integration',
+        worktreeSessionKey(branch, fixture.repo),
         'codex',
         [],
         80,
         24,
         player.path
       );
-      expect(getSession('feature-integration')).toBe(entry);
+      expect(getSession(worktreeSessionKey(branch, fixture.repo))).toBe(entry);
       expect(entry.pty.name).toBe(player.name);
       expect(
         fixture.tmux(
@@ -200,7 +201,14 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     });
 
     it('lets Orchestra adopt and stop a Kirby-created player while preserving creator identity', async () => {
-      const entry = spawnSession('main', 'codex', [], 80, 24, fixture.repo);
+      const entry = spawnSession(
+        worktreeSessionKey('main', fixture.repo),
+        'codex',
+        [],
+        80,
+        24,
+        fixture.repo
+      );
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);

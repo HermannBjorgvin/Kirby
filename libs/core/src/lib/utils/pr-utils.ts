@@ -1,4 +1,5 @@
-import { branchToSessionName } from '@kirby/worktree-manager';
+import { worktreeSessionKey } from '../session-key.js';
+
 import {
   isBlockingDecision,
   type BranchPrMap,
@@ -15,14 +16,15 @@ export function findOrphanPrs(
   prMap: BranchPrMap,
   sessionNames: Set<string>,
   config: AppConfig,
-  provider: VcsProvider
+  provider: VcsProvider,
+  repo?: string
 ): PullRequestInfo[] {
   return Object.values(prMap)
     .filter(
       (pr): pr is PullRequestInfo =>
         pr != null &&
         provider.matchesUser(pr.createdByIdentifier, config) &&
-        !sessionNames.has(branchToSessionName(pr.sourceBranch))
+        !sessionNames.has(worktreeSessionKey(pr.sourceBranch, repo))
     )
     .sort((a, b) => b.id - a.id);
 }
@@ -67,14 +69,17 @@ export function categorizeReviews(
 /**
  * Build session-name to branch and session-name to PR lookup maps.
  */
-export function buildSessionLookups(prMap: BranchPrMap): {
+export function buildSessionLookups(
+  prMap: BranchPrMap,
+  repo?: string
+): {
   sessionBranchMap: Map<string, string>;
   sessionPrMap: Map<string, PullRequestInfo>;
 } {
   const sessionBranchMap = new Map<string, string>();
   const sessionPrMap = new Map<string, PullRequestInfo>();
   for (const [branch, pr] of Object.entries(prMap)) {
-    const name = branchToSessionName(branch);
+    const name = worktreeSessionKey(branch, repo);
     sessionBranchMap.set(name, branch);
     if (pr) sessionPrMap.set(name, pr);
   }

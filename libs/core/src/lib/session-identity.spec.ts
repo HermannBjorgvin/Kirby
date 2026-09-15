@@ -1,3 +1,4 @@
+import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { describe, expect, it } from 'vitest';
 import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
 import {
@@ -193,8 +194,10 @@ describe('matching', () => {
   // The registry keys a worktree session by the branch with `/`
   // rewritten, and a terminal by its tmux name.
   it('keys a session the way the PTY registry does', () => {
-    expect(registryNameOf(worktree)).toBe('feat-a');
-    expect(registryNameOf(shell)).toBe('alpha-shell');
+    expect(registryNameOf(worktree)).toBe(
+      worktreeSessionKey('feat/a', '/repos/alpha')
+    );
+    expect(registryNameOf(shell)).toBe(terminalSessionKey('alpha-shell'));
   });
 });
 

@@ -1,3 +1,4 @@
+import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionSpec } from '@kirby/terminal';
 import type { WorktreeHead } from './discovery/worktree-origin.js';
@@ -66,7 +67,7 @@ const onBranch = (path: string): WorktreeHead => ({
 
 const terminal = (kind: 'shell' | 'agent', name: string) =>
   spec({
-    name,
+    name: terminalSessionKey(name),
     cwd: '/repo',
     cmd: '',
     args: [],
@@ -82,7 +83,10 @@ describe('kirbyTmuxFactoryOptions', () => {
   // core keys a tab by and the name the backend creates are decided
   // against the same set of held names.
   it('reports names this process holds as taken, for terminal tabs only', () => {
-    const held = new Set(['repo-shell', 'repo-feature-x']);
+    const held = new Set([
+      terminalSessionKey('repo-shell'),
+      worktreeSessionKey('repo-feature-x', '/repo'),
+    ]);
     const opts = kirbyTmuxFactoryOptions('/repo', {
       readHead: onBranch,
       hasSession: (name) => held.has(name),

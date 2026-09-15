@@ -1,3 +1,4 @@
+import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppConfig } from '@kirby/vcs-core';
 import type { TmuxSessionInfo, TmuxStatus } from '@kirby/terminal-tmux';
@@ -126,7 +127,11 @@ function foreign(name: string, path = '/x'): TmuxSessionInfo {
 }
 
 function wt(name: string, branch: string, dir = name): DiscoveredWorktree {
-  return { name, branch, path: `/repo/.claude/worktrees/${dir}` };
+  return {
+    name: worktreeSessionKey(branch || name),
+    branch,
+    path: `/repo/.claude/worktrees/${dir}`,
+  };
 }
 
 beforeEach(async () => {
@@ -323,8 +328,8 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('some-label-2', 'worktree', '/repo', 'feature/x', '/wt/x'),
     ]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(true);
-    expect(hasLiveTmuxSession('feature/x')).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature/x'))).toBe(true);
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
   });
 
   // An orphaned worktree session adopted as an agent terminal is keyed
@@ -337,27 +342,37 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('repo-a-old', 'worktree', '/repo-a', 'old/branch', '/wt/dir'),
     ]);
-    expect(hasLiveTmuxSessionNamed('repo-a-old')).toBe(true);
-    expect(isTmuxSessionNamedPersisted({}, 'repo-a-old')).toBe(true);
-    expect(hasLiveTmuxSessionNamed('repo-a-old-2')).toBe(false);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('repo-a-old'))).toBe(
+      true
+    );
+    expect(
+      isTmuxSessionNamedPersisted({}, terminalSessionKey('repo-a-old'))
+    ).toBe(true);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('repo-a-old-2'))).toBe(
+      false
+    );
   });
 
   it('never sees an untagged session by name', () => {
     tmuxListSessionsMock.mockReturnValue([foreign('repo-shell')]);
-    expect(hasLiveTmuxSessionNamed('repo-shell')).toBe(false);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('repo-shell'))).toBe(
+      false
+    );
   });
 
   it('does not see an untagged session that carries the expected name', () => {
     tmuxListSessionsMock.mockReturnValue([foreign('repo-feature-x')]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
-    expect(hasLiveTmuxSession('repo-feature-x')).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('repo-feature-x'))).toBe(
+      false
+    );
   });
 
   it('does not see another repository’s session for the same branch', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('other-feature-x', 'worktree', '/other', 'feature-x', '/wt/x'),
     ]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
   });
 
   it('reports no live session when tmux is unavailable', async () => {
@@ -366,7 +381,7 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
     ]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
     expect(tmuxListSessionsMock).not.toHaveBeenCalled();
   });
 
@@ -377,9 +392,14 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('repo-shell', 'shell', '/repo', null, '/repo'),
     ]);
-    expect(isTmuxSessionNamedPersisted({}, 'repo-shell')).toBe(true);
     expect(
-      isTmuxSessionNamedPersisted({ terminalBackend: 'pty' }, 'repo-shell')
+      isTmuxSessionNamedPersisted({}, terminalSessionKey('repo-shell'))
+    ).toBe(true);
+    expect(
+      isTmuxSessionNamedPersisted(
+        { terminalBackend: 'pty' },
+        terminalSessionKey('repo-shell')
+      )
     ).toBe(false);
   });
 
@@ -394,10 +414,10 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('feature-x', 'worktree', '/w/feature', 'x', '/w/feature/wt/x'),
     ]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
-    killPersistedTmuxSession('feature-x');
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
+    killPersistedTmuxSession(worktreeSessionKey('feature-x'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
-    expect(hasLiveTmuxSession('x')).toBe(true);
+    expect(hasLiveTmuxSession(worktreeSessionKey('x'))).toBe(true);
   });
 
   // The regression that motivated the split: a session created under
@@ -409,7 +429,7 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('repo-feature-x-3', 'worktree', '/repo', 'feature/x', '/wt/x'),
     ]);
-    killPersistedTmuxSession('feature-x');
+    killPersistedTmuxSession(worktreeSessionKey('feature/x'));
     expect(tmuxKillSessionMock).toHaveBeenCalledWith('repo-feature-x-3');
   });
 
@@ -418,8 +438,8 @@ describe('tmux session existence vs. preference', () => {
       foreign('repo-feature-x'),
       foreign('feature-x'),
     ]);
-    killPersistedTmuxSession('feature-x');
-    killPersistedTmuxSession('repo-feature-x');
+    killPersistedTmuxSession(worktreeSessionKey('feature-x'));
+    killPersistedTmuxSession(worktreeSessionKey('repo-feature-x'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
   });
 
@@ -427,7 +447,7 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('feature-x', 'worktree', '/other', 'feature-x', '/wt/x'),
     ]);
-    killPersistedTmuxSession('feature-x');
+    killPersistedTmuxSession(worktreeSessionKey('feature-x'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
   });
 
@@ -435,8 +455,10 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockImplementation(() => {
       throw new Error('no server running');
     });
-    expect(() => killPersistedTmuxSession('feature-x')).not.toThrow();
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
+    expect(() =>
+      killPersistedTmuxSession(worktreeSessionKey('feature-x'))
+    ).not.toThrow();
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
   });
 
   it('is empty outside a git working tree', () => {
@@ -447,8 +469,8 @@ describe('tmux session existence vs. preference', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('x', 'worktree', '/repo', 'feature-x', '/wt/x'),
     ]);
-    expect(hasLiveTmuxSession('feature-x')).toBe(false);
-    killPersistedTmuxSession('feature-x');
+    expect(hasLiveTmuxSession(worktreeSessionKey('feature-x'))).toBe(false);
+    killPersistedTmuxSession(worktreeSessionKey('feature-x'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
   });
 });
@@ -458,10 +480,14 @@ describe('terminal tabs reach tmux by their own name', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('notes-shell', 'shell', '/elsewhere', null, '/home/dev/notes'),
     ]);
-    expect(hasLiveTmuxSessionNamed('notes-shell')).toBe(true);
-    expect(hasLiveTmuxSessionNamed('notes-shell-2')).toBe(false);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('notes-shell'))).toBe(
+      true
+    );
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('notes-shell-2'))).toBe(
+      false
+    );
     // A registry *key* never reaches a terminal tab: keys are branches.
-    expect(hasLiveTmuxSession('notes-shell')).toBe(false);
+    expect(hasLiveTmuxSession(worktreeSessionKey('notes-shell'))).toBe(false);
   });
 
   // A branch may be named exactly like a terminal label: branch
@@ -475,11 +501,11 @@ describe('terminal tabs reach tmux by their own name', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('app-agent', 'agent', '/w/app', null, '/w/app'),
     ]);
-    expect(hasLiveTmuxSession('app-agent')).toBe(false);
-    killPersistedTmuxSession('app-agent');
+    expect(hasLiveTmuxSession(worktreeSessionKey('app-agent'))).toBe(false);
+    killPersistedTmuxSession(worktreeSessionKey('app-agent'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
     // The tab itself is still reachable by name.
-    expect(hasLiveTmuxSessionNamed('app-agent')).toBe(true);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('app-agent'))).toBe(true);
   });
 
   // A tab is closed through its own registry entry, whose backend
@@ -490,11 +516,15 @@ describe('terminal tabs reach tmux by their own name', () => {
       ours('repo-shell', 'shell', '/repo', null, '/repo'),
       foreign('repo-shell-2'),
     ]);
-    killPersistedTmuxSession('repo-shell');
-    killPersistedTmuxSession('repo-shell-2');
+    killPersistedTmuxSession(worktreeSessionKey('repo-shell'));
+    killPersistedTmuxSession(worktreeSessionKey('repo-shell-2'));
     expect(tmuxKillSessionMock).not.toHaveBeenCalled();
-    expect(hasLiveTmuxSessionNamed('repo-shell')).toBe(true);
-    expect(hasLiveTmuxSessionNamed('repo-shell-2')).toBe(false);
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('repo-shell'))).toBe(
+      true
+    );
+    expect(hasLiveTmuxSessionNamed(terminalSessionKey('repo-shell-2'))).toBe(
+      false
+    );
   });
 });
 
@@ -533,7 +563,9 @@ describe('observeTmuxSessions', () => {
       wt('feat-b', 'feat-b'),
       wt('gone', 'gone'),
     ]);
-    expect(seen.persisted).toEqual(new Set(['feat-a', 'feat-b']));
+    expect(seen.persisted).toEqual(
+      new Set([worktreeSessionKey('feat/a'), worktreeSessionKey('feat-b')])
+    );
     expect(seen.terminals).toEqual([]);
   });
 
@@ -567,7 +599,7 @@ describe('observeTmuxSessions', () => {
       ours('repo-hotfix-dir', 'worktree', '/repo', 'hotfix-dir', '/wt/x'),
     ]);
     const seen = observeTmuxSessions(tmuxConfig, [wt('hotfix-dir', '')]);
-    expect(seen.persisted).toEqual(new Set(['hotfix-dir']));
+    expect(seen.persisted).toEqual(new Set([worktreeSessionKey('hotfix-dir')]));
   });
 
   // Terminals belong to a directory, not to the repository the scan
@@ -581,9 +613,17 @@ describe('observeTmuxSessions', () => {
       ours('odd-name', 'shell', '/repo', null, '/repo'),
     ]);
     expect(observeTmuxSessions(tmuxConfig, []).terminals).toEqual([
-      { name: 'notes-shell', kind: 'shell', path: '/home/dev/notes' },
-      { name: 'repo-agent-2', kind: 'agent', path: '/repo' },
-      { name: 'odd-name', kind: 'shell', path: '/repo' },
+      {
+        name: terminalSessionKey('notes-shell'),
+        kind: 'shell',
+        path: '/home/dev/notes',
+      },
+      {
+        name: terminalSessionKey('repo-agent-2'),
+        kind: 'agent',
+        path: '/repo',
+      },
+      { name: terminalSessionKey('odd-name'), kind: 'shell', path: '/repo' },
     ]);
   });
 
@@ -600,7 +640,11 @@ describe('observeTmuxSessions', () => {
     ]);
     expect(seen.persisted).toEqual(new Set());
     expect(seen.terminals).toEqual([
-      { name: 'repo-old-branch', kind: 'agent', path: '/wt/dir' },
+      {
+        name: terminalSessionKey('repo-old-branch'),
+        kind: 'agent',
+        path: '/wt/dir',
+      },
     ]);
   });
 
@@ -611,7 +655,7 @@ describe('observeTmuxSessions', () => {
   // attaches a second client to a session already live behind another
   // tab, so it must never be offered while the registry still holds it.
   it('never reports a session this process already holds as an orphan terminal', () => {
-    liveSessionNamesMock.mockReturnValue(['old-branch']);
+    liveSessionNamesMock.mockReturnValue([worktreeSessionKey('old/branch')]);
     tmuxListSessionsMock.mockReturnValue([
       ours('repo-old-branch', 'worktree', '/repo', 'old/branch', '/wt/dir'),
     ]);
@@ -656,7 +700,7 @@ describe('observeTmuxSessions', () => {
       ours('x', 'worktree', '/repo', 'feat-a', '/wt/feat-a'),
     ]);
     expect(observeTmuxSessions(makeConfig(), [wt('feat-a', 'feat-a')])).toEqual(
-      { persisted: new Set(['feat-a']), terminals: [] }
+      { persisted: new Set([worktreeSessionKey('feat-a')]), terminals: [] }
     );
   });
 

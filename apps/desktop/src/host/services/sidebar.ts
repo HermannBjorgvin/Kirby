@@ -1,4 +1,5 @@
-import { listWorktrees, worktreeSessionName } from '@kirby/worktree-manager';
+import { keyForWorktree } from '@kirby/core';
+import { listWorktrees } from '@kirby/worktree-manager';
 import {
   buildSidebarItems,
   buildSessionLookups,
@@ -62,9 +63,10 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
   const worktrees = await listWorktrees();
   const prMap = pullRequests.cached(cwd);
   const sessions: AgentSession[] = worktrees.map((wt) => {
-    const name = worktreeSessionName(wt);
+    const name = keyForWorktree(wt, cwd);
     return {
       name,
+      label: wt.branch || wt.path.split('/').pop(),
       running: isOwnSessionAlive(name),
       ...(wt.state ? { state: wt.state } : {}),
     };
@@ -72,18 +74,18 @@ export async function listSidebarItems(): Promise<SidebarItem[]> {
 
   const sessionNames = new Set(sessions.map((s) => s.name));
   const orphanPrs = provider
-    ? findOrphanPrs(prMap, sessionNames, config, provider)
+    ? findOrphanPrs(prMap, sessionNames, config, provider, cwd)
     : [];
   const categorizedReviews = provider
     ? categorizeReviews(prMap, config, provider)
     : { needsReview: [], waitingForAuthor: [], approvedByYou: [] };
-  const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap);
+  const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap, cwd);
   // buildSessionLookups only knows branches that have a PR; worktrees
   // without one would fall back to the sanitized session name for
   // display. Seed the map with each worktree's real branch so rows
   // show `feat/foo` rather than `feat-foo`.
   for (const wt of worktrees) {
-    const name = worktreeSessionName(wt);
+    const name = keyForWorktree(wt, cwd);
     if (wt.branch && !sessionBranchMap.has(name)) {
       sessionBranchMap.set(name, wt.branch);
     }

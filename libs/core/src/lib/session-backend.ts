@@ -9,7 +9,8 @@
  * libs (`@kirby/terminal-pty`, `@kirby/terminal-tmux`) are deliberately
  * ignorant of all of it.
  */
-import { execFileSync } from 'node:child_process';
+import { terminalSessionKey, sessionIdentity } from './session-key.js';
+import { getRepoRoot } from './repo-root.js';
 import { basename } from 'node:path';
 import type { SessionBackendFactory } from '@kirby/terminal';
 import { createPtyBackendFactory } from '@kirby/terminal-pty';
@@ -38,46 +39,7 @@ import {
 } from './session-resolver.js';
 import { kirbyTmuxFactoryOptions } from './tmux-factory-options.js';
 
-/** Resolve the git toplevel of the repo Kirby is running in, or `null`
- *  when there isn't one (launched outside a working tree, `git` missing
- *  from PATH). Cached on first call — including the `null` — because
- *  the TUI is anchored to one repo for its whole process.
- *
- *  The desktop is not: it can open another repository in place, and
- *  must call {@link resetRepoRoot} when it does. This value is the
- *  `@orchestra-repo` every tmux session is identified by, so a stale
- *  root makes two repos that share a branch name resolve to the *same*
- *  tmux session — attaching to, and killing, the other repo's live
- *  agent.
- *
- *  git's stderr is swallowed rather than inherited: a bare "fatal: not
- *  a git repository" written straight to the terminal would land in the
- *  middle of Ink's frame and corrupt the render. */
-let cachedRepoRoot: string | null = null;
-let repoRootResolved = false;
-
-/** Drop the memoized repo root so the next {@link getRepoRoot} re-runs
- *  `git rev-parse` against the current working directory. Call after
- *  changing which repository the process is pointed at. */
-export function resetRepoRoot(): void {
-  cachedRepoRoot = null;
-  repoRootResolved = false;
-}
-
-export function getRepoRoot(): string | null {
-  if (repoRootResolved) return cachedRepoRoot;
-  repoRootResolved = true;
-  try {
-    cachedRepoRoot =
-      execFileSync('git', ['rev-parse', '--show-toplevel'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim() || null;
-  } catch {
-    cachedRepoRoot = null;
-  }
-  return cachedRepoRoot;
-}
+export { getRepoRoot, resetRepoRoot } from './repo-root.js';
 
 // ── Tmux availability cache ─────────────────────────────────────
 //
@@ -302,7 +264,14 @@ function classifySession(
   const { name, path } = session;
   if (isTerminalSession(session)) {
     return path
-      ? { kind: 'terminal', terminal: { name, kind: session.type, path } }
+      ? {
+          kind: 'terminal',
+          terminal: {
+            name: terminalSessionKey(name),
+            kind: session.type,
+            path,
+          },
+        }
       : null;
   }
   if (session.repo !== ctx.root) return null;
@@ -310,15 +279,20 @@ function classifySession(
   if (registryName !== undefined)
     return { kind: 'persisted', name: registryName };
   if (ctx.owned.has(registryNameOf(session)) || !path) return null;
-  return { kind: 'terminal', terminal: { name, kind: 'agent', path } };
+  return {
+    kind: 'terminal',
+    terminal: { name: terminalSessionKey(name), kind: 'agent', path },
+  };
 }
 
 /** The tmux session a registry name stands for in the open
  *  repository, verified by its tags, or `null` — outside a working
  *  tree there is nothing to tag a session with, so nothing to find. */
 function resolveOwn(sessionName: string): TaggedSession | null {
-  const root = getRepoRoot();
-  return root ? resolveRegistrySession(root, sessionName) : null;
+  const identity = sessionIdentity(sessionName);
+  return identity?.kind === 'worktree'
+    ? resolveRegistrySession(identity.repo, sessionName)
+    : null;
 }
 
 /** True when a tmux session for this registry name exists right now,
@@ -340,17 +314,14 @@ export function hasLiveTmuxSession(sessionName: string): boolean {
   return resolveOwn(sessionName) !== null;
 }
 
-/** True when one of our tmux sessions is called exactly `name` right
- *  now, whatever its type or repository — the question a caller that
- *  holds a tmux *name* asks: a terminal tab, or the orphaned worktree
- *  session a tab adopted. A tab is process-global and outlives a
- *  repository switch, so the open repository is not consulted: the
- *  name is unique on the server. Never for a registry key — see
- *  {@link hasLiveTmuxSession}. Never throws; false when tmux is out of
- *  the picture. */
+/** Resolve a qualified terminal key to its exact tagged tmux target, across
+ *  repositories. Adopted orphan worktrees also use terminal keys. */
 export function hasLiveTmuxSessionNamed(name: string): boolean {
   if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
-  return resolveSessionByName(name) !== null;
+  const identity = sessionIdentity(name);
+  return (
+    identity?.kind === 'terminal' && resolveSessionByName(identity.id) !== null
+  );
 }
 
 /** {@link hasLiveTmuxSessionNamed} *and* tmux is the backend in force —

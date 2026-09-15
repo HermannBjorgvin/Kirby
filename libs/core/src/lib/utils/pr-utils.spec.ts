@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { describe, it, expect } from 'vitest';
 import type {
   BranchPrMap,
@@ -51,8 +52,8 @@ describe('findOrphanPrs', () => {
       'feature/branch-2': makePr({ id: 2 }),
       'feature/branch-3': makePr({ id: 3 }),
     };
-    // branchToSessionName('feature/branch-2') → 'feature-branch-2'
-    const sessionNames = new Set(['feature-branch-2']);
+    // branchToSessionName('feature/branch-2') → worktreeSessionKey('feature/branch-2')
+    const sessionNames = new Set([worktreeSessionKey('feature/branch-2')]);
 
     const result = findOrphanPrs(prMap, sessionNames, mockConfig, mockProvider);
     expect(result.map((p) => p.id)).toEqual([3, 1]); // sorted descending
@@ -273,9 +274,13 @@ describe('buildSessionLookups', () => {
     };
 
     const { sessionBranchMap, sessionPrMap } = buildSessionLookups(prMap);
-    expect(sessionBranchMap.get('feature-foo')).toBe('feature/foo');
-    expect(sessionBranchMap.get('feature-bar')).toBe('feature/bar');
-    expect(sessionPrMap.get('feature-foo')).toBe(pr1);
+    expect(sessionBranchMap.get(worktreeSessionKey('feature/foo'))).toBe(
+      'feature/foo'
+    );
+    expect(sessionBranchMap.get(worktreeSessionKey('feature/bar'))).toBe(
+      'feature/bar'
+    );
+    expect(sessionPrMap.get(worktreeSessionKey('feature/foo'))).toBe(pr1);
     expect(sessionPrMap.has('feature-bar')).toBe(false);
   });
 });
