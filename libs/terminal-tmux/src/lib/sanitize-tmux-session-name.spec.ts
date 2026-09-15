@@ -44,8 +44,8 @@ describe('sanitizeTmuxSessionName', () => {
     });
 
     it('produces different hashes for two long names sharing a prefix', () => {
-      const a = 'kirby-' + 'a'.repeat(250);
-      const b = 'kirby-' + 'a'.repeat(249) + 'b';
+      const a = 'label-' + 'a'.repeat(250);
+      const b = 'label-' + 'a'.repeat(249) + 'b';
       // Both truncate to the same head but the trailing hashes differ.
       const sa = sanitizeTmuxSessionName(a);
       const sb = sanitizeTmuxSessionName(b);
@@ -57,8 +57,8 @@ describe('sanitizeTmuxSessionName', () => {
     it('hashes the original (pre-replacement) input', () => {
       // Two inputs that differ only in their forbidden chars produce
       // different sanitized results — they must hash distinctly.
-      const a = 'kirby-' + 'x'.repeat(250) + '.suffix';
-      const b = 'kirby-' + 'x'.repeat(250) + ':suffix';
+      const a = 'label-' + 'x'.repeat(250) + '.suffix';
+      const b = 'label-' + 'x'.repeat(250) + ':suffix';
       const sa = sanitizeTmuxSessionName(a);
       const sb = sanitizeTmuxSessionName(b);
       expect(sa).not.toBe(sb);

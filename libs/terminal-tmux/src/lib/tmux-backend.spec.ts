@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SessionSpec } from '@kirby/terminal';
+import type * as TmuxCli from './tmux-cli.js';
+import type { TmuxRunResult } from './tmux-cli.js';
+
+/**
+ * The backend at the tmux boundary, with the CLI mocked: every call it
+ * makes is recorded in order, so a test can say not only what was run
+ * but what ran before what — the tags before the client, the probe
+ * before the create — which is the whole contract.
+ */
 
 const {
+  calls,
   ptySpawnArgs,
   disposeSpy,
   writeSpy,
@@ -10,11 +20,12 @@ const {
   onExitSpy,
   offDataSpy,
   offExitSpy,
-  tmuxKillSpy,
-  tmuxHasSessionSpy,
-  tmuxSetOptionSpy,
+  taken,
+  newSessionResults,
   MockPtySession,
 } = vi.hoisted(() => {
+  /** Every tmux call and PTY spawn, in the order it happened. */
+  const calls: string[] = [];
   const ptySpawnArgs: {
     cmd: string;
     args: string[];
@@ -27,14 +38,16 @@ const {
   const onExitSpy = vi.fn();
   const offDataSpy = vi.fn();
   const offExitSpy = vi.fn();
-  const tmuxKillSpy = vi.fn();
-  const tmuxHasSessionSpy = vi.fn<(name: string) => boolean>(() => true);
-  const tmuxSetOptionSpy = vi.fn();
+  /** Names `has-session` answers yes for. */
+  const taken = new Set<string>();
+  /** Scripted `new-session` outcomes by name; unlisted names succeed. */
+  const newSessionResults = new Map<string, TmuxRunResult>();
   class MockPtySession {
     pid = 1234;
     cols: number;
     rows: number;
     constructor(cmd: string, args: string[], opts: Record<string, unknown>) {
+      calls.push(`pty ${cmd} ${args.join(' ')}`);
       ptySpawnArgs.push({ cmd, args, opts });
       this.cols = (opts['cols'] as number) ?? 80;
       this.rows = (opts['rows'] as number) ?? 24;
@@ -49,6 +62,7 @@ const {
     kill = vi.fn();
   }
   return {
+    calls,
     ptySpawnArgs,
     disposeSpy,
     writeSpy,
@@ -57,26 +71,54 @@ const {
     onExitSpy,
     offDataSpy,
     offExitSpy,
-    tmuxKillSpy,
-    tmuxHasSessionSpy,
-    tmuxSetOptionSpy,
+    taken,
+    newSessionResults,
     MockPtySession,
   };
 });
 
 vi.mock('@kirby/terminal-pty', () => ({ PtySession: MockPtySession }));
-vi.mock('./tmux-cli.js', () => ({
-  tmuxKillSession: (name: string) => tmuxKillSpy(name),
-  tmuxHasSession: (name: string) => tmuxHasSessionSpy(name),
-  tmuxSetOption: (name: string, option: string, value: string) =>
-    tmuxSetOptionSpy(name, option, value),
-  // Below 3.2 so the `-e` session-env flags stay off and the exact
-  // argv assertions in this file remain stable. (The -e behavior is
-  // covered by the tmux e2e test against a real tmux.)
-  tmuxVersion: () => 'tmux 3.1',
-}));
+vi.mock('./tmux-cli.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof TmuxCli>();
+  const ok: TmuxRunResult = { stdout: '', stderr: '', exitCode: 0 };
+  return {
+    ...actual,
+    tmuxKillSession: (name: string) => {
+      calls.push(`kill-session ${name}`);
+      return ok;
+    },
+    tmuxHasSession: (name: string) => {
+      calls.push(`has-session ${name}`);
+      return taken.has(name);
+    },
+    tmuxSetOption: (name: string, option: string, value: string) => {
+      calls.push(`set-option ${name} ${option} ${value}`);
+      return ok;
+    },
+    tmuxNewSessionDetached: (
+      name: string,
+      opts: { cwd: string; cols: number; rows: number; command?: string[] }
+    ) => {
+      calls.push(
+        `new-session ${name} -c ${opts.cwd} -x ${opts.cols} -y ${opts.rows}` +
+          (opts.command?.length ? ` ${opts.command.join(' ')}` : '')
+      );
+      const result = newSessionResults.get(name);
+      if (result) return result;
+      taken.add(name);
+      return ok;
+    },
+    // Below 3.2 so the `-e` session-env flags stay off and the exact
+    // argv assertions in this file remain stable. (The -e behavior is
+    // covered by the live spec against a real tmux.)
+    tmuxVersion: () => 'tmux 3.1',
+  };
+});
 
-import { createTmuxBackendFactory } from './tmux-backend.js';
+import {
+  createTmuxBackendFactory,
+  type TmuxFactoryOptions,
+} from './tmux-backend.js';
 
 function spec(overrides: Partial<SessionSpec> = {}): SessionSpec {
   return {
@@ -90,185 +132,162 @@ function spec(overrides: Partial<SessionSpec> = {}): SessionSpec {
   };
 }
 
+/** A factory whose identity rules are the test's: nothing resolves
+ *  unless said so, the label is the spec's name, and the tags are
+ *  whatever the test hands over. */
+function factory(overrides: Partial<TmuxFactoryOptions> = {}) {
+  return createTmuxBackendFactory({
+    resolve: () => null,
+    label: (s) => s.name,
+    tags: () => ({}),
+    ...overrides,
+  });
+}
+
+const DUPLICATE: TmuxRunResult = {
+  stdout: '',
+  stderr: 'duplicate session: feature-foo\n',
+  exitCode: 1,
+};
+
+beforeEach(() => {
+  calls.length = 0;
+  ptySpawnArgs.length = 0;
+  taken.clear();
+  newSessionResults.clear();
+  disposeSpy.mockReset();
+  writeSpy.mockReset();
+  resizeSpy.mockReset();
+  onDataSpy.mockReset();
+  onExitSpy.mockReset();
+  offDataSpy.mockReset();
+  offExitSpy.mockReset();
+});
+
 describe('createTmuxBackendFactory', () => {
-  beforeEach(() => {
-    ptySpawnArgs.length = 0;
-    disposeSpy.mockReset();
-    writeSpy.mockReset();
-    resizeSpy.mockReset();
-    onDataSpy.mockReset();
-    onExitSpy.mockReset();
-    offDataSpy.mockReset();
-    offExitSpy.mockReset();
-    tmuxKillSpy.mockReset();
-    tmuxSetOptionSpy.mockReset();
-    tmuxHasSessionSpy.mockReset();
-    tmuxHasSessionSpy.mockReturnValue(true);
-  });
-
-  it('turns the tmux status bar off once the session exists', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
+  describe('a session the caller resolves', () => {
+    it('attaches to exactly that name and creates nothing', () => {
+      const tags = vi.fn(() => ({ '@a': 'v' }));
+      factory({ resolve: () => 'repo-feature-foo-2', tags })(spec());
+      expect(calls).toEqual([
+        'set-option repo-feature-foo-2 status off',
+        'pty tmux attach-session -t =repo-feature-foo-2:',
+      ]);
+      // Tags describe a session's creation; an attach writes none and
+      // does not even ask for them.
+      expect(tags).not.toHaveBeenCalled();
     });
-    factory(spec());
-    expect(tmuxSetOptionSpy).toHaveBeenCalledWith(
-      'kirby-abc12345-feature-foo',
-      'status',
-      'off'
-    );
+
+    it('kills that name, not the label, on kill()', () => {
+      const backend = factory({ resolve: () => 'other-name' })(spec());
+      backend.kill();
+      expect(calls).toContain('kill-session other-name');
+      expect(calls).not.toContain('kill-session feature-foo');
+    });
   });
 
-  // Tags ride the same "once the session exists" path as the status
-  // bar: the client creates the session asynchronously, so an option
-  // set before it exists is lost. But they describe the session's
-  // creation, so they are written only when this backend created it —
-  // `-A` attaches to a session that is already there, and whatever
-  // that session's creator wrote about it stays.
-  describe('spec.tags', () => {
-    it('sets each tag as a session option under the tmux name when creating it', () => {
-      tmuxHasSessionSpy.mockReturnValueOnce(false);
-      const factory = createTmuxBackendFactory({
-        sessionPrefix: 'kirby-abc12345-',
+  describe('a session the caller does not resolve', () => {
+    it('creates it detached, tags it, and only then attaches a client', () => {
+      factory({ tags: () => ({ '@x-repo': '/repo', '@x-branch': 'f/x' }) })(
+        spec()
+      );
+      expect(calls).toEqual([
+        'has-session feature-foo',
+        'new-session feature-foo -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
+        'set-option feature-foo @x-repo /repo',
+        'set-option feature-foo @x-branch f/x',
+        'set-option feature-foo status off',
+        'pty tmux attach-session -t =feature-foo:',
+      ]);
+    });
+
+    it('sanitizes the label to tmux rules before using it', () => {
+      factory({ label: () => 'release/v1.0.1' })(spec());
+      expect(calls[1]).toMatch(/^new-session release\/v1-0-1 /);
+      expect(calls.at(-1)).toBe('pty tmux attach-session -t =release/v1-0-1:');
+    });
+
+    // The label is a wish, not an identity. A session that holds it and
+    // was not resolved is somebody else's: it is neither attached to
+    // nor touched, and the next free suffix is taken instead.
+    it('leaves a foreign session holding the label alone and takes the next suffix', () => {
+      taken.add('feature-foo');
+      taken.add('feature-foo-2');
+      const backend = factory()(spec());
+      expect(calls.filter((c) => c.startsWith('new-session'))).toEqual([
+        'new-session feature-foo-3 -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
+      ]);
+      expect(calls.at(-1)).toBe('pty tmux attach-session -t =feature-foo-3:');
+      expect(calls).not.toContain('set-option feature-foo status off');
+      backend.kill();
+      expect(calls).toContain('kill-session feature-foo-3');
+      expect(calls).not.toContain('kill-session feature-foo');
+    });
+
+    // Between the probe and the create another creator can take the
+    // name. tmux says so, and the answer is the next candidate — not a
+    // second session under a name that is now someone else's.
+    it('moves to the next suffix when the create loses a race for the name', () => {
+      newSessionResults.set('feature-foo', DUPLICATE);
+      factory()(spec());
+      expect(calls.filter((c) => c.startsWith('new-session'))).toEqual([
+        'new-session feature-foo -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
+        'new-session feature-foo-2 -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
+      ]);
+      expect(calls.at(-1)).toBe('pty tmux attach-session -t =feature-foo-2:');
+    });
+
+    it('throws, and attaches nothing, when tmux refuses to create for any other reason', () => {
+      newSessionResults.set('feature-foo', {
+        stdout: '',
+        stderr: 'error connecting to /tmp/tmux-1000/default\n',
+        exitCode: 1,
       });
-      factory(spec({ tags: { '@a-repo': '/repo', '@a-branch': 'feature/x' } }));
-      expect(tmuxSetOptionSpy.mock.calls).toEqual([
-        ['kirby-abc12345-feature-foo', 'status', 'off'],
-        ['kirby-abc12345-feature-foo', '@a-repo', '/repo'],
-        ['kirby-abc12345-feature-foo', '@a-branch', 'feature/x'],
-      ]);
+      expect(() => factory()(spec())).toThrow(/error connecting/);
+      expect(ptySpawnArgs).toEqual([]);
     });
 
-    it('leaves the tags of a session that already existed alone, but still hides its status bar', () => {
-      createTmuxBackendFactory()(spec({ tags: { '@a-repo': '/repo' } }));
-      expect(tmuxSetOptionSpy.mock.calls).toEqual([
-        ['feature-foo', 'status', 'off'],
-      ]);
+    it('passes cmd and args after the `--` separator', () => {
+      factory()(spec({ cmd: '/bin/sh', args: ['-c', 'claude --continue'] }));
+      expect(calls[1]).toBe(
+        'new-session feature-foo -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude --continue'
+      );
     });
 
-    it('sets nothing beyond the status bar when there are none', () => {
-      tmuxHasSessionSpy.mockReturnValueOnce(false);
-      createTmuxBackendFactory()(spec());
-      tmuxHasSessionSpy.mockReturnValueOnce(false);
-      createTmuxBackendFactory()(spec({ tags: {} }));
-      expect(tmuxSetOptionSpy.mock.calls.map((c) => c[1])).toEqual([
-        'status',
-        'status',
-      ]);
-    });
-
-    it('waits for the session to exist, then sets the tags with the status bar', () => {
-      vi.useFakeTimers();
-      try {
-        // Absent before the client is spawned, absent on the first two
-        // looks after, there on the third.
-        tmuxHasSessionSpy
-          .mockReturnValueOnce(false)
-          .mockReturnValueOnce(false)
-          .mockReturnValueOnce(false);
-        createTmuxBackendFactory()(spec({ tags: { '@a': 'v' } }));
-        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(200);
-        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(200);
-        expect(tmuxSetOptionSpy.mock.calls).toEqual([
-          ['feature-foo', 'status', 'off'],
-          ['feature-foo', '@a', 'v'],
-        ]);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it('never sets a tag on a session that was killed while it was still starting', () => {
-      vi.useFakeTimers();
-      try {
-        tmuxHasSessionSpy.mockReturnValueOnce(false).mockReturnValueOnce(false);
-        const backend = createTmuxBackendFactory()(
-          spec({ tags: { '@a': 'v' } })
-        );
-        backend.kill();
-        vi.advanceTimersByTime(1000);
-        expect(tmuxSetOptionSpy).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
+    // A terminal tab wants whatever the user's shell is, and tmux
+    // already knows: `new-session` with no command runs its
+    // `default-shell`. So an empty `cmd` must end the argv at the flags
+    // — appending `--` and an empty string would ask tmux to exec ""
+    // and fail on the spot.
+    it("runs tmux's default shell when cmd is empty, with no `--` at all", () => {
+      factory()(spec({ cmd: '', args: [] }));
+      expect(calls[1]).toBe(
+        'new-session feature-foo -c /tmp/work -x 100 -y 30'
+      );
     });
   });
 
-  it('spawns `tmux new-session -A` with the prefixed, sanitized name', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
-    });
-    factory(spec({ name: 'release/v1.0.1' }));
-    expect(ptySpawnArgs).toHaveLength(1);
-    const { cmd, args } = ptySpawnArgs[0]!;
+  it('sizes the local PTY from the spec and runs the client in cwd', () => {
+    factory()(spec({ cols: 120, rows: 40 }));
+    const { cmd, args, opts } = ptySpawnArgs[0]!;
     expect(cmd).toBe('tmux');
-    // `release/v1.0.1` has dots and a slash. Slashes are valid in tmux
-    // names; dots are not, so they get replaced.
-    expect(args).toContain('-s');
-    const idx = args.indexOf('-s');
-    expect(args[idx + 1]).toBe('kirby-abc12345-release/v1-0-1');
-  });
-
-  // The prefix namespaces names by repository; a caller that hands over
-  // a name it composed in full (a terminal session, an orphaned worktree
-  // session being resumed under its original name) must not have the
-  // namespace applied a second time, or `-A` creates a new session
-  // instead of attaching to the one it was asked for.
-  it('uses a name the caller marks as qualified without the prefix', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
-      isQualified: (name) => name.startsWith('kirby-term-'),
-    });
-    factory(spec({ name: 'kirby-term-shell-1a2b3c' }));
-    factory(spec({ name: 'feature-x' }));
-    const nameOf = (i: number) => {
-      const { args } = ptySpawnArgs[i]!;
-      return args[args.indexOf('-s') + 1];
-    };
-    expect(nameOf(0)).toBe('kirby-term-shell-1a2b3c');
-    expect(nameOf(1)).toBe('kirby-abc12345-feature-x');
-  });
-
-  it('passes cmd and args after the `--` separator', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cmd: '/bin/sh', args: ['-c', 'claude --continue'] }));
-    const { args } = ptySpawnArgs[0]!;
-    const sep = args.indexOf('--');
-    expect(sep).toBeGreaterThan(0);
-    expect(args.slice(sep + 1)).toEqual(['/bin/sh', '-c', 'claude --continue']);
-  });
-
-  // A terminal tab wants whatever the user's shell is, and tmux already
-  // knows: `new-session` with no command runs its `default-shell`. So an
-  // empty `cmd` must end the argv at the flags — appending `--` and an
-  // empty string would ask tmux to exec "" and fail on the spot.
-  it("runs tmux's default shell when cmd is empty, with no `--` at all", () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cmd: '', args: [] }));
-    const { args } = ptySpawnArgs[0]!;
-    expect(args).not.toContain('--');
-    expect(args).not.toContain('');
-    // The argv ends at the size flags — nothing follows `-y <rows>`.
-    expect(args.slice(-2)).toEqual(['-y', '30']);
-  });
-
-  it('passes cwd, cols, rows to the local PTY for sizing', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cols: 120, rows: 40 }));
-    const { args, opts } = ptySpawnArgs[0]!;
-    expect(args).toContain('-c');
-    expect(args[args.indexOf('-c') + 1]).toBe('/tmp/work');
-    expect(args[args.indexOf('-x') + 1]).toBe('120');
-    expect(args[args.indexOf('-y') + 1]).toBe('40');
+    expect(args).toEqual(['attach-session', '-t', '=feature-foo:']);
     expect(opts['cwd']).toBe('/tmp/work');
     expect(opts['cols']).toBe(120);
     expect(opts['rows']).toBe(40);
   });
 
+  // Kirby itself may run inside tmux; the client must not inherit that
+  // or it refuses to nest.
+  it('starts the client without TMUX in its environment', () => {
+    factory()(spec({ env: { TMUX: '/tmp/tmux-1/default,1,0', PATH: '/bin' } }));
+    const env = ptySpawnArgs[0]!.opts['env'] as Record<string, string>;
+    expect(env).not.toHaveProperty('TMUX');
+    expect(env['PATH']).toBe('/bin');
+  });
+
   it('forwards write/resize/onData/onExit to the inner PtySession', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
+    const backend = factory()(spec());
     backend.write('hello');
     backend.resize(90, 25);
     const dataCb = () => undefined;
@@ -286,35 +305,24 @@ describe('createTmuxBackendFactory', () => {
   });
 
   it('dispose() detaches the local PTY without killing the tmux session', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
+    const backend = factory()(spec());
     backend.dispose();
     expect(disposeSpy).toHaveBeenCalledTimes(1);
-    expect(tmuxKillSpy).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.startsWith('kill-session'))).toBe(false);
   });
 
-  it('kill() runs `tmux kill-session` with the sanitized name AND disposes the local PTY', () => {
-    const factory = createTmuxBackendFactory({ sessionPrefix: 'kirby-' });
-    const backend = factory(spec({ name: 'feature/foo' }));
+  it('kill() runs `tmux kill-session` on the created name AND disposes the local PTY', () => {
+    const backend = factory({ label: () => 'repo-feature/foo' })(spec());
     backend.kill();
-    expect(tmuxKillSpy).toHaveBeenCalledWith('kirby-feature/foo');
+    expect(calls).toContain('kill-session repo-feature/foo');
     expect(disposeSpy).toHaveBeenCalledTimes(1);
   });
 
   it('kill() is idempotent — second call does nothing', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
+    const backend = factory()(spec());
     backend.kill();
     backend.kill();
-    expect(tmuxKillSpy).toHaveBeenCalledTimes(1);
+    expect(calls.filter((c) => c.startsWith('kill-session'))).toHaveLength(1);
     expect(disposeSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('honors an empty sessionPrefix (lib stays caller-agnostic)', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ name: 'plainsession' }));
-    const args = ptySpawnArgs[0]!.args;
-    const idx = args.indexOf('-s');
-    expect(args[idx + 1]).toBe('plainsession');
   });
 });
