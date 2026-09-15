@@ -237,6 +237,32 @@ describe('createTmuxBackendFactory', () => {
       expect(calls.at(-1)).toBe('pty tmux attach-session -t =feature-foo-2:');
     });
 
+    // Two creators racing for the same label: the first loses `label`,
+    // the second loses `label-2`. Probing continues from the original
+    // label, so the answer is `label-3` — never `label-2-2`.
+    it('keeps probing from the original label after losing a second race', () => {
+      newSessionResults.set('feature-foo', DUPLICATE);
+      newSessionResults.set('feature-foo-2', DUPLICATE);
+      factory()(spec());
+      expect(
+        calls
+          .filter((c) => c.startsWith('new-session'))
+          .map((c) => c.split(' ')[1])
+      ).toEqual(['feature-foo', 'feature-foo-2', 'feature-foo-3']);
+      expect(calls.at(-1)).toBe('pty tmux attach-session -t =feature-foo-3:');
+    });
+
+    // The suffix goes on after the 200-character cap, and the result is
+    // not capped or hashed again: a capped label plus `-2` is 202
+    // characters, and that is the name.
+    it('appends the suffix after the cap without re-capping', () => {
+      const capped = `${'x'.repeat(195)}-abcd`;
+      taken.add(capped);
+      factory({ label: () => capped })(spec());
+      expect(calls.at(-1)).toBe(`pty tmux attach-session -t =${capped}-2:`);
+      expect(`${capped}-2`).toHaveLength(202);
+    });
+
     it('throws, and attaches nothing, when tmux refuses to create for any other reason', () => {
       newSessionResults.set('feature-foo', {
         stdout: '',

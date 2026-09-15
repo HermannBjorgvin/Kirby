@@ -63,7 +63,11 @@ becomes `-`; a name over 200 characters keeps its first 195 and gains `-` plus
 four hex digits of the SHA-256 of the unsanitized `<basename>-<branch>`. If any
 session on the server already holds the name — foreign, another checkout with
 the same directory name, a second shell tab — `-2`, `-3`, … is appended to the
-preferred label until one is free, and nothing ever reconstructs that suffix.
+preferred label until one is free, after the cap and without capping or
+hashing again (a capped label plus `-2` is 202 characters), and nothing ever
+reconstructs that suffix. A create that loses the race for a candidate keeps
+probing from the original preferred label, so a second race yields `-3`,
+never `-2-2`.
 The rule is implemented twice, in bash and in TypeScript, so
 `session-identity.spec.ts` and agent-plugins' CLAUDE.md pin one table of
 inputs and outputs that must stay identical.

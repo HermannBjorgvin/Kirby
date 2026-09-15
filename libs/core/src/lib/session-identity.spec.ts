@@ -36,6 +36,10 @@ describe('session labels', () => {
     ['/home/u/Kirby', 'shell', '', 'Kirby-shell'],
     ['/home/u/Kirby', 'agent', '', 'Kirby-agent'],
     ['/x/r', 'worktree', 'a'.repeat(250), `r-${'a'.repeat(193)}-0a22`],
+    // Same first 195 characters, different tails: only a hash over the
+    // raw `<basename>-<branch>` tells `a/` from `a.` past the cut.
+    ['/x/r', 'worktree', 'a/'.repeat(125), `r-${'a-'.repeat(96)}a-6e0f`],
+    ['/x/r', 'worktree', 'a.'.repeat(125), `r-${'a-'.repeat(96)}a-b373`],
     [
       '/x/agent-plugins',
       'worktree',
