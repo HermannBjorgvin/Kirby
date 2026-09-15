@@ -128,7 +128,7 @@ function start(
 }
 
 const shellTerm: DiscoveredTerminal = {
-  name: 'kirby-term-shell-1a2b3c',
+  name: 'kirby-shell-1a2b3c',
   kind: 'shell',
   path: '/home/dev/notes',
 };

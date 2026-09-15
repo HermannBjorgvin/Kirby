@@ -1,8 +1,6 @@
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import {
-  sanitizeTmuxSessionName,
-  type TmuxSessionInfo,
-} from '@kirby/terminal-tmux';
+import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
 import { branchToSessionName } from '@kirby/worktree-manager';
 
 /**
@@ -158,14 +156,20 @@ export function sessionTags(
 
 // ── Labels ────────────────────────────────────────────────────────
 //
-// The rule both programs implement (Orchestra in bash): every `/`, `.`
-// and `:` becomes `-`; the whole name is capped at 200 characters by
-// keeping the first 195 and appending `-` plus the first four hex
-// characters of the SHA-256 of the uncapped, already-replaced name.
+// The rule both programs implement (Orchestra in bash, pinned as a
+// table in agent-plugins' CLAUDE.md and in session-identity.spec.ts):
+// the preferred label is `<basename(repo)>-<branch>` (or `-shell` /
+// `-agent`) with every `/`, `.` and `:` replaced by `-`, capped at 200
+// characters. On overflow the label is the first 195 characters, `-`,
+// and the first four hex digits of the SHA-256 of the *unsanitized*
+// `<basename>-<branch>` string — the same "hash what you were given"
+// rule the tmux lib's own sanitizer follows for the raw names it caps.
 
 /** Every character tmux refuses in a name, plus `/`, which it accepts
  *  but which reads as a target separator to a human. */
 const REPLACED = /[/.:]/g;
+const MAX_LABEL = 200;
+const HASH_TAIL = 4;
 
 /** `sanitize(x)` from the shared convention, without the cap: the cap
  *  applies to the assembled name, not to each part. */
@@ -173,17 +177,21 @@ export function sanitizeLabelPart(part: string): string {
   return part.replace(REPLACED, '-');
 }
 
-/** Join sanitized parts with `-` and cap the whole. The lib's sanitizer
- *  is the cap: on an input with nothing left to replace it only
- *  truncates and hashes, and it hashes the string it was given — the
- *  uncapped, replaced name — which is the rule Orchestra follows. */
-function sessionLabel(...parts: string[]): string {
-  return sanitizeTmuxSessionName(parts.map(sanitizeLabelPart).join('-'));
+/** `<basename>-<rest>`, sanitized and capped. */
+function sessionLabel(repoRoot: string, rest: string): string {
+  const raw = `${basename(repoRoot)}-${rest}`;
+  const replaced = sanitizeLabelPart(raw);
+  if (replaced.length <= MAX_LABEL) return replaced;
+  const hash = createHash('sha256').update(raw).digest('hex');
+  return `${replaced.slice(0, MAX_LABEL - HASH_TAIL - 1)}-${hash.slice(
+    0,
+    HASH_TAIL
+  )}`;
 }
 
 /** `<repo basename>-<branch>` — e.g. `kirby-feature-x`. */
 export function worktreeSessionLabel(repoRoot: string, branch: string): string {
-  return sessionLabel(basename(repoRoot), branch);
+  return sessionLabel(repoRoot, branch);
 }
 
 /** `<repo basename>-shell` or `<repo basename>-agent`. */
@@ -191,5 +199,5 @@ export function terminalSessionLabel(
   repoRoot: string,
   kind: 'shell' | 'agent'
 ): string {
-  return sessionLabel(basename(repoRoot), kind);
+  return sessionLabel(repoRoot, kind);
 }

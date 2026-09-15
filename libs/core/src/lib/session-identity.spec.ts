@@ -19,44 +19,47 @@ import {
  * function under test.
  */
 describe('session labels', () => {
-  // repo basename, branch → label. `/`, `.` and `:` become `-`; the
-  // repo's basename is what the label starts with.
+  // The table pinned in agent-plugins' CLAUDE.md, byte for byte: repo,
+  // type, branch → label. `/`, `.` and `:` become `-`; the repo's
+  // basename keeps its case; on overflow the first 195 characters, `-`
+  // and four hex digits of the SHA-256 of the *unsanitized*
+  // `<basename>-<branch>`.
   it.each([
-    ['/home/dev/kirby', 'feature/x', 'kirby-feature-x'],
-    ['/home/dev/agent-plugins', 'fix-typo', 'agent-plugins-fix-typo'],
-    ['/srv/my.repo', 'release/v1.0:rc1', 'my-repo-release-v1-0-rc1'],
-    ['/srv/a:b', 'main', 'a-b-main'],
-    ['/repo', 'hotfix-dir', 'repo-hotfix-dir'],
-  ])('worktree %s + %s → %s', (repo, branch, label) => {
-    expect(worktreeSessionLabel(repo, branch)).toBe(label);
+    ['/home/u/Kirby', 'worktree', 'feature/x', 'Kirby-feature-x'],
+    [
+      '/srv/agent-plugins',
+      'worktree',
+      'fix/typo.v1.2:rc',
+      'agent-plugins-fix-typo-v1-2-rc',
+    ],
+    ['/x/my.repo', 'worktree', 'main', 'my-repo-main'],
+    ['/home/u/Kirby', 'shell', '', 'Kirby-shell'],
+    ['/home/u/Kirby', 'agent', '', 'Kirby-agent'],
+    ['/x/r', 'worktree', 'a'.repeat(250), `r-${'a'.repeat(193)}-0a22`],
+    [
+      '/x/agent-plugins',
+      'worktree',
+      'a'.repeat(250),
+      `agent-plugins-${'a'.repeat(181)}-1fad`,
+    ],
+  ] as const)('%s %s %s → %s', (repo, type, branch, label) => {
+    const built =
+      type === 'worktree'
+        ? worktreeSessionLabel(repo, branch)
+        : terminalSessionLabel(repo, type);
+    expect(built).toBe(label);
+    expect(built.length).toBeLessThanOrEqual(200);
   });
 
-  it.each([
-    ['/home/dev/kirby', 'shell', 'kirby-shell'],
-    ['/home/dev/kirby', 'agent', 'kirby-agent'],
-    ['/srv/my.repo', 'shell', 'my-repo-shell'],
-  ] as const)('terminal %s + %s → %s', (repo, kind, label) => {
-    expect(terminalSessionLabel(repo, kind)).toBe(label);
-  });
-
-  // The cap applies to the whole name: the first 195 characters, `-`,
-  // and the first four hex characters of the SHA-256 of the uncapped,
-  // already-replaced name. Pinned as a literal so a change to which
-  // string is hashed — the raw branch, say — fails here.
-  it('caps a long name at 200 characters with a hash tail of the replaced name', () => {
-    const label = worktreeSessionLabel(
-      '/home/dev/kirby',
-      `release/${'x'.repeat(300)}`
-    );
-    expect(label).toHaveLength(200);
-    expect(label.startsWith('kirby-release-xxxxx')).toBe(true);
-    expect(label.slice(-10)).toBe('xxxxx-4481');
-    expect(
-      worktreeSessionLabel(
-        '/home/dev/agent-plugins',
-        `feature/${'y'.repeat(190)}`
-      ).slice(-5)
-    ).toBe('-746a');
+  // The hash is over the raw string, before replacement: a branch that
+  // differs only in a `/` versus a `-` past the cut must still get a
+  // different tail, and a rule that hashed the replaced string would
+  // give both the same one.
+  it('hashes the unsanitized name on overflow', () => {
+    const slashed = worktreeSessionLabel('/x/r', `${'a'.repeat(250)}/b`);
+    const dashed = worktreeSessionLabel('/x/r', `${'a'.repeat(250)}-b`);
+    expect(slashed.slice(0, 195)).toBe(dashed.slice(0, 195));
+    expect(slashed).not.toBe(dashed);
   });
 
   it('sanitizes one part without capping it', () => {
