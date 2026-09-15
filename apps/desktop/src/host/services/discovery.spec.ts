@@ -68,10 +68,12 @@ vi.mock('@kirby/core', () => ({
   launchSession: (spec: { name: string; cwd: string }) => {
     state.alive.add(spec.name);
     state.spawns.push({ name: spec.name, cwd: spec.cwd });
+    return { name: spec.name };
   },
   launchTerminalSession: (spec: { name: string; cwd: string }) => {
     state.alive.add(spec.name);
     state.spawns.push({ name: spec.name, cwd: spec.cwd });
+    return { name: spec.name };
   },
   getSession: (name: string) =>
     state.alive.has(name)

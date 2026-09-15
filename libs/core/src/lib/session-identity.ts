@@ -82,13 +82,16 @@ export interface TaggedSession {
 /**
  * Read a listed session's tags, or `null` when it is not one of ours:
  * "ours" is `@orchestra-spawner` set and `@orchestra-session-type` one
- * of the known values. Nothing about the name is consulted.
+ * of the known values; worktrees also require a nonempty repo tag.
+ * Nothing about the name is consulted.
  */
 export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
   const tags = info.options ?? {};
   const spawner = tags[ORCHESTRA_TAG.spawner];
   const type = tags[ORCHESTRA_TAG.sessionType];
+  const repo = tags[ORCHESTRA_TAG.repo];
   if (!spawner || !type || !SESSION_TYPES.has(type)) return null;
+  if (type === 'worktree' && !repo) return null;
   const agent = tags[ORCHESTRA_TAG.agent];
   const orchestrator = tags[ORCHESTRA_TAG.orchestrator];
   const lastReport = tags[ORCHESTRA_TAG.lastReport];
@@ -97,7 +100,7 @@ export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
     created: info.created,
     path: info.path,
     spawner,
-    repo: tags[ORCHESTRA_TAG.repo] ?? '',
+    repo: repo ?? '',
     type: type as SessionType,
     branch: tags[ORCHESTRA_TAG.branch] ?? '',
     ...(agent ? { agent } : {}),

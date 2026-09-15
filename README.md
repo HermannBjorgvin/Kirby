@@ -115,3 +115,7 @@ GitLab, Bitbucket, and other providers are not currently supported.
 Azure DevOps tests use recorded responses, so CI may miss changes to the live service. Bug reports help us catch those gaps.
 
 Providers share an interface in `libs/vcs/`. Contributions adding support for other providers are welcome.
+
+### Pair with Orchestra
+
+Pair Kirby with my [Orchestra plugin](https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in Kirby.

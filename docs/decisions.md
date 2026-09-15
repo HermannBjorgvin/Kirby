@@ -96,7 +96,8 @@ goes through one resolver (`session-resolver.ts`): one `tmux -u list-sessions
 `#{session_path}`, matched client-side, never `list-sessions -f` (tmux 3.1).
 When several sessions claim one identity the oldest by `session_created` is
 the one acted on and the rest are listed, never silently killed. "Ours" is
-spawner set and session type set: a session whose name Kirby would have
+spawner set and a known session type, with a nonempty repo tag required for
+worktree sessions: a session whose name Kirby would have
 chosen but that lacks those tags is foreign, and is never attached to, killed,
 adopted or listed. That is why there is no git fallback for an untagged
 session and why a destructive or attaching command takes a name only after
@@ -117,8 +118,10 @@ off` is set on every attach; tags never are. Kirby's answers to the three
 questions are composed in `tmux-factory-options.ts` from the repo root: a
 worktree spec is identified by the branch in its directory's HEAD file (no git
 fork); a terminal spec is told apart by the session-type tag its launcher
-passes through `spawnSession`, and is identified by the name core chose as a
-free label before spawning, which is also its registry key. Two lookups, not
+passes through `spawnSession`. New tabs set `reuse: false` and use the actual
+name returned by the backend as their registry key. The preliminary free-name
+probe is a suggestion; allocation can select another suffix if server state
+changes. Restoring a tab resolves its existing exact name. Two lookups, not
 one: `resolveRegistrySession(repo, key)` answers a registry _key_ with a
 worktree session by (repo, branch) and nothing else. A key is a branch with
 `/` rewritten, never a tmux name, and the two namespaces overlap — repository

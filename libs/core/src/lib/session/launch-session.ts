@@ -1,5 +1,10 @@
 import type { AppConfig } from '@kirby/vcs-core';
-import { spawnSession, getSession, type PtyEntry } from '../pty-registry.js';
+import {
+  spawnSession,
+  getSession,
+  type NamedPtyEntry,
+  type SpawnSessionOptions,
+} from '../pty-registry.js';
 import { noteInput } from '../activity.js';
 import {
   resolveAgent,
@@ -102,6 +107,7 @@ export interface LaunchSessionParams {
   /** Backend-neutral metadata for the session host — see
    *  `SessionSpec.tags`. A terminal tab declares its kind here. */
   tags?: Record<string, string>;
+  sessionOptions?: SpawnSessionOptions;
 }
 
 /**
@@ -109,7 +115,7 @@ export interface LaunchSessionParams {
  * build its launch spec for the request, and spawn the PTY. Returns
  * the created entry.
  */
-export function launchSession(params: LaunchSessionParams): PtyEntry {
+export function launchSession(params: LaunchSessionParams): NamedPtyEntry {
   const agent = params.agent ?? resolveAgent(params.config);
   const spec = buildLaunchSpec(agent, params.request);
   return spawnSession(
@@ -120,7 +126,8 @@ export function launchSession(params: LaunchSessionParams): PtyEntry {
     params.rows,
     params.cwd,
     spec.env,
-    params.tags
+    params.tags,
+    params.sessionOptions
   );
 }
 

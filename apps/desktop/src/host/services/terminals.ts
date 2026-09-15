@@ -86,22 +86,26 @@ function clampDim(value: number | undefined, fallback: number): number {
 }
 
 function start(
-  name: string,
+  requestedName: string,
   kind: TerminalKind,
   cwd: string,
-  size: { cols?: number; rows?: number }
-): void {
+  size: { cols?: number; rows?: number },
+  fresh = false
+): string {
   // Config for the directory, not for whatever repository is open: an
   // agent at a repository root should be that repository's agent.
-  launchTerminalSession({
-    name,
+  const launched = launchTerminalSession({
+    name: requestedName,
     kind,
     cwd,
     cols: clampDim(size.cols, DEFAULT_COLS),
     rows: clampDim(size.rows, DEFAULT_ROWS),
     config: readConfig(cwd),
+    fresh,
   });
-  const prev = known.get(name);
+  const name = launched.name;
+  const prev = known.get(requestedName);
+  if (name !== requestedName) known.delete(requestedName);
   const entry: KnownTerminal = {
     ...newRelayEntry(prev?.seq ?? 0),
     kind,
@@ -110,6 +114,7 @@ function start(
   known.set(name, entry);
   watchForEnd(name, entry);
   attachRelay(name, entry);
+  return name;
 }
 
 /**
@@ -195,8 +200,13 @@ export function launchTerminal(
   home: string = homedir()
 ): TerminalSummary {
   assertLaunchableCwd(req.cwd);
-  const name = newTerminalSessionName(req.kind);
-  start(name, req.kind, req.cwd, req);
+  const name = start(
+    newTerminalSessionName(req.kind),
+    req.kind,
+    req.cwd,
+    req,
+    true
+  );
   noteRepository(req.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);

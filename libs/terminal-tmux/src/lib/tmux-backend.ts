@@ -89,8 +89,8 @@ export interface TmuxFactoryOptions {
   tags: (spec: SessionSpec) => Record<string, string>;
   /** Optional. Names the caller holds itself and wants skipped when a
    *  label is probed for a free candidate — on top of what the server
-   *  holds — so the caller's own choice of name and the one created
-   *  here are decided against the same set. Asked per spec, because
+   *  holds. The actual allocated name is returned by the backend.
+   *  Asked per spec, because
    *  what the caller holds a name for may depend on the kind of
    *  session it is about to create. */
   isTaken?: (name: string, spec: SessionSpec) => boolean;
@@ -125,16 +125,18 @@ export function createTmuxBackendFactory(
  */
 class TmuxBackend implements SessionBackend {
   private readonly inner: PtySession;
-  private readonly tmuxName: string;
+  readonly name: string;
   private killed = false;
 
   constructor(spec: SessionSpec, opts: TmuxFactoryOptions) {
-    this.tmuxName = opts.resolve(spec) ?? createTagged(spec, opts);
+    this.name =
+      (spec.reuse === false ? null : opts.resolve(spec)) ??
+      createTagged(spec, opts);
     // The status bar goes off on every attach because the caller
     // embeds the session inside its own chrome: the bar wastes a row
     // and its default green background bleeds into renderers that
     // derive a container background from the bottom screen row.
-    tmuxSetOption(this.tmuxName, 'status', 'off');
+    tmuxSetOption(this.name, 'status', 'off');
     // The client must not think it's nested: when Kirby itself runs
     // inside a tmux window, the inherited TMUX var makes the client
     // refuse with "sessions should be nested with care".
@@ -144,7 +146,7 @@ class TmuxBackend implements SessionBackend {
     delete clientEnv.TMUX;
     delete clientEnv.TMUX_PANE;
     // The local PtySession runs the tmux client; tmux owns the shell.
-    this.inner = new PtySession('tmux', tmuxAttachArgs(this.tmuxName), {
+    this.inner = new PtySession('tmux', tmuxAttachArgs(this.name), {
       cols: spec.cols,
       rows: spec.rows,
       cwd: spec.cwd,
@@ -192,7 +194,7 @@ class TmuxBackend implements SessionBackend {
   kill(): void {
     if (this.killed) return;
     this.killed = true;
-    tmuxKillSession(this.tmuxName);
+    tmuxKillSession(this.name);
     this.inner.dispose();
   }
 }

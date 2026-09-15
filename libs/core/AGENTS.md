@@ -19,8 +19,8 @@ The reasoning behind each rule is in `docs/decisions.md`.
   every attach, exists, kill, adopt and listing goes through; and
   `tmux-factory-options.ts` composes the backend's `resolve`/`label`/`tags`
   for the repo root, plus the `isTaken` probe it answers for tabs only.
-  A session with no `@orchestra-spawner` and
-  `@orchestra-session-type` is foreign: never attached, killed, adopted or
+  A session without `@orchestra-spawner` or
+  `@orchestra-session-type` (or `@orchestra-repo` for a worktree) is foreign: never attached, killed, adopted or
   listed, whatever it is called. No tmux code may use `projectKey`. `-e HOME`
   / `-e PATH` plus seed additions per session, because a server keeps its
   birth env. `dispose()` detaches, `kill()` kills; `killAll()` on exit must
@@ -35,7 +35,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
   orphan question (tagged with the root, on no listed branch, not held here)
   and the terminal listing (by session type, wherever it runs) in one fork.
 - **Terminal sessions** (`terminal/terminal-name.ts`): a tab is keyed by its
-  tmux name, a free `<repo>-shell`/`<repo>-agent` label chosen before spawn;
+  actual backend name, allocated from `<repo>-shell`/`<repo>-agent` at spawn;
   `launchTerminalSession` declares the kind as the session-type tag, which
   is how the factory tells a tab from a worktree session. An empty `cmd`
   means the backend's default shell. Agents go through

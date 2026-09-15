@@ -17,6 +17,16 @@ export interface PtyEntry {
   spawnedAt: number;
 }
 
+export interface NamedPtyEntry extends PtyEntry {
+  name: string;
+}
+
+export interface SpawnSessionOptions {
+  /** Key this entry by the backend name when it supplies one. */
+  useBackendName?: boolean;
+  reuse?: boolean;
+}
+
 const registry = new Map<string, PtyEntry>();
 
 // Subscribers notified when an agent PTY exits on its own (Ctrl-D twice
@@ -44,30 +54,31 @@ export function setSessionBackendFactory(factory: SessionBackendFactory): void {
 }
 
 export function spawnSession(
-  name: string,
+  requestedName: string,
   cmd: string,
   args: string[],
   cols: number,
   rows: number,
   cwd: string,
   env?: Record<string, string | undefined>,
-  tags?: Record<string, string>
-): PtyEntry {
+  tags?: Record<string, string>,
+  options: SpawnSessionOptions = {}
+): NamedPtyEntry {
   // Respawn under the same name: dispose (soft) the prior entry. On
   // tmux this detaches without killing, so the new spawn resolves the
   // same tmux session and re-attaches — preserving its scrollback.
   // On the direct PTY backend dispose === kill.
-  const existing = registry.get(name);
+  const existing = registry.get(requestedName);
   if (existing) {
     existing.pty.dispose();
     existing.emu.dispose();
-    activity.detach(name);
-    removeInactiveAlert(name);
-    registry.delete(name);
+    activity.detach(requestedName);
+    removeInactiveAlert(requestedName);
+    registry.delete(requestedName);
   }
 
   const pty = activeFactory({
-    name,
+    name: requestedName,
     cmd,
     args,
     cols,
@@ -85,9 +96,19 @@ export function spawnSession(
     // kind — for a backend with somewhere to keep it. The composition
     // root reads it back to decide the session's identity.
     tags,
+    reuse: options.reuse,
   });
+  const name = options.useBackendName
+    ? pty.name ?? requestedName
+    : requestedName;
   const emu = new TerminalEmulator(cols, rows);
-  const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };
+  const entry: NamedPtyEntry = {
+    name,
+    pty,
+    emu,
+    exited: false,
+    spawnedAt: Date.now(),
+  };
 
   pty.onData((data) => {
     void emu.write(data);

@@ -109,6 +109,23 @@ describe('taggedSession', () => {
     ['no tags', undefined],
     ['empty tags', {}],
     ['spawner only', { '@orchestra-spawner': 'kirby' }],
+    [
+      'worktree without repo',
+      {
+        '@orchestra-spawner': 'orchestra',
+        '@orchestra-session-type': 'worktree',
+        '@orchestra-branch': 'feat/a',
+      },
+    ],
+    [
+      'worktree with empty repo',
+      {
+        '@orchestra-spawner': 'kirby',
+        '@orchestra-session-type': 'worktree',
+        '@orchestra-repo': '',
+        '@orchestra-branch': 'feat/a',
+      },
+    ],
     ['session type only', { '@orchestra-session-type': 'worktree' }],
     [
       'an unknown session type',

@@ -34,15 +34,10 @@ import {
  * `shell`/`agent` session discovery listed, and an orphaned worktree
  * session adopted as an agent tab keeps its `worktree` tag but is
  * attached by exactly the name tmux holds it under. For a new tab the
- * label is the capped preferred `<repo>-shell|agent`; the collision
- * suffix `newTerminalSessionName` chose for the registry key is the
- * backend's to append again, after the cap, from its own probe of the
- * same server — so a suffixed name is never capped a second time. The
- * registry's own held names travel along as `isTaken`, so both probes
- * skip the same names and the key and the created name agree. That
- * applies to tabs only: a worktree session is keyed by its branch, so
- * a registry key equal to some worktree label says nothing about the
- * label being free.
+ * label is the capped preferred `<repo>-shell|agent`. The backend
+ * allocates the final name and the registry uses that returned name.
+ * The registry's held names travel as `isTaken` so a new tab cannot
+ * displace a local entry. Worktrees keep their branch-derived keys.
  */
 export function kirbyTmuxFactoryOptions(
   repoRoot: string,
@@ -78,8 +73,7 @@ export function kirbyTmuxFactoryOptions(
         : terminalSessionLabel(repoRoot, id.type);
     },
     tags: (spec) => sessionTags(repoRoot, identity(spec)),
-    isTaken: (name, spec) =>
-      identity(spec).type !== 'worktree' && held(name),
+    isTaken: (name, spec) => identity(spec).type !== 'worktree' && held(name),
   };
 }
 

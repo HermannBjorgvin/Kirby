@@ -6,11 +6,12 @@
  */
 
 export interface SessionSpec {
-  /** Caller-supplied identifier. Backends use it as a stable session id
-   *  (registry key for the direct-PTY backend; tmux session name for
-   *  the tmux backend, after the lib's own sanitization). The caller is
-   *  responsible for whatever uniqueness/namespacing it needs. */
+  /** Caller-supplied identifier or suggested name. A persistent backend
+   *  can resolve or allocate a different name, exposed as SessionBackend.name.
+   *  The registry decides whether to use that name or keep its own key. */
   name: string;
+  /** False for a new session; never attach to a concurrent creator. */
+  reuse?: boolean;
   /** Command to run. The empty string means the backend's own default
    *  interactive shell: tmux runs its `default-shell`, the direct PTY
    *  backend runs `$SHELL` (falling back to `/bin/sh`). Callers wanting
@@ -45,6 +46,8 @@ export interface SessionSpec {
 }
 
 export interface SessionBackend {
+  /** Actual persistent session name, after allocation or resolution. */
+  readonly name?: string;
   readonly pid: number;
   readonly cols: number;
   readonly rows: number;
