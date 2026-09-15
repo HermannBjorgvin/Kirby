@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import type { KeyPress, PlanItem } from '@kirby/core';
 import {
   hasSession,
@@ -5,7 +6,7 @@ import {
   composePlanPrompt,
   planItemKey,
 } from '@kirby/core';
-import { branchToSessionName } from '@kirby/worktree-manager';
+
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { PlanCheckoutHandlerCtx } from './input-types.js';
 
@@ -95,7 +96,7 @@ function send({ ctx, items }: PlanCheckoutActionCtx): void {
     ctx.sessions.flashStatus('Plan is empty');
     return;
   }
-  if (hasSession(branchToSessionName(selectedPr.sourceBranch))) {
+  if (hasSession(worktreeSessionKey(selectedPr.sourceBranch))) {
     // An agent is running — ask how to deliver. Default to inject
     // (non-destructive).
     ctx.pane.setPlanCheckoutTarget('inject');
@@ -182,7 +183,7 @@ function runCheckout(
 
     plan.clear(prId);
     await ctx.sessions.refreshSessions();
-    const name = branchToSessionName(selectedPr.sourceBranch);
+    const name = worktreeSessionKey(selectedPr.sourceBranch);
     ctx.sidebar.selectByKey(`session:${name}`);
     ctx.sessions.flashStatus(
       result === 'injected' ? 'Plan sent to agent' : 'Agent started with plan'

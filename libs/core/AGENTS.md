@@ -11,28 +11,43 @@ The reasoning behind each rule is in `docs/decisions.md`.
   tmux probe on every read and is never persisted. Await
   `probeTmuxAvailability()` before wiring the factory. A per-project value
   overrides the global one.
-- **tmux persistence**: `new-session -A -s NAME` is the one launch path for
-  first launch and resume. `-e HOME` / `-e PATH` plus seed additions per
-  session, because a server keeps its birth env. `dispose()` detaches,
-  `kill()` kills; `killAll()` on exit must dispose. `isQualifiedTmuxName`
-  stops a complete name being prefixed a second time. `tmux-namespace.ts` is
-  the only home of the `kirby-` literal.
+- **Registry identity** (`session-key.ts`): worktree keys encode repository and
+  exact branch; terminal keys encode the actual tmux target or a lifetime PTY UUID.
+  Labels and checkout directory names never address registry entries.
+- **tmux identity**: names are labels, tags are identity.
+  `session-identity.ts` owns the `@orchestra-*` tag names shared with
+  Orchestra, the label builder (`<repo>-<branch>`, `<repo>-shell`,
+  `<repo>-agent`; `/`, `.`, `:` → `-`, 200-char cap with a hash tail) and
+  the matching rules; `session-resolver.ts` is the one `list-sessions` fork
+  every attach, exists, kill, adopt and listing goes through; and
+  `tmux-factory-options.ts` composes the backend's `resolve`/`label`/`tags`
+  for the repo root, plus the `isTaken` probe it answers for tabs only.
+  A session without `@orchestra-spawner` or
+  `@orchestra-session-type` (or `@orchestra-repo` for a worktree) is foreign: never attached, killed, adopted or
+  listed, whatever it is called. No tmux code may use `projectKey`. `-e HOME`
+  / `-e PATH` plus seed additions per session, because a server keeps its
+  birth env. `dispose()` detaches, `kill()` kills; `killAll()` on exit must
+  dispose. See `docs/decisions.md`, "Session identity shared with Orchestra".
 - **Discovery** (`discovery/`): poll with pure `diffScans`; attach through
-  `spawnSession` so `-A` resumes rather than duplicates. Polling is
-  deliberate: tmux hooks are server-global and a control client resizes
-  panes. Re-read
-  `isSessionAlive` and `resolveTerminalBackend` per attach iteration. Retired
-  names are passed in as `suppressed`. `observeTmuxSessions` answers the
-  persistence question and the terminal listing in one fork, from the open
-  repo's config.
-- **Terminal sessions** (`terminal/terminal-name.ts`):
-  `kirby-term-<shell|agent>-<id>`. An empty `cmd` means the backend's default
-  shell. Agents go through `launchTerminalSession` → `launchSession`, never a
-  second launch path. `discovery/live-worktree-sessions.ts` lists only names
-  that compose exactly from a directory's repo and branch, remembers an origin
-  while the directory exists, and never drops one because git failed to answer.
+  `spawnSession` so the backend resolves the running session by its tags
+  rather than duplicating it. Polling is deliberate: tmux hooks are
+  server-global and a control client resizes panes. Re-read `isSessionAlive`
+  and `resolveTerminalBackend` per attach iteration. Retired names are passed
+  in as `suppressed`. `observeTmuxSessions` answers the persistence question
+  (a session tagged with the open root and a listed worktree's branch), the
+  orphan question (tagged with the root, on no listed branch, not held here)
+  and the terminal listing (by session type, wherever it runs) in one fork.
+- **Terminal sessions** (`terminal/terminal-name.ts`): a tab has a qualified terminal key containing its
+  actual backend name, allocated from `<repo>-shell`/`<repo>-agent` at spawn;
+  `launchTerminalSession` declares the kind as the session-type tag, which
+  is how the factory tells a tab from a worktree session. An empty `cmd`
+  means the backend's default shell. Agents go through
+  `launchTerminalSession` → `launchSession`, never a second launch path.
+  `discovery/live-worktree-sessions.ts` lists tagged `worktree` sessions
+  whose directory's HEAD is still on the tagged branch; there is no git
+  fallback and no origin cache.
 - **Session launch** (`session/`) resolves the worktree via `createWorktree`
-  (directory-name keyed, tolerant of a switched branch), reads config from the
+  (exact branch match, rejecting a derived path occupied by another branch), reads config from the
   repo root, and never respawns a live session. Force-remove is offered only
   for 'uncommitted changes' and 'not pushed to upstream'.
 - **Plan** (`plan/`): items are value snapshots taken at add time.

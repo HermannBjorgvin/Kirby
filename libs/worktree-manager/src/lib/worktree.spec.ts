@@ -93,6 +93,11 @@ function worktreeListPorcelain(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockExec.mockReset();
+  mockExistsSync.mockReset().mockReturnValue(false);
+  mockReadFileSync.mockReset().mockImplementation(() => {
+    throw new Error('ENOENT');
+  });
   resetMainBranchCache();
   resetWorktreeResolver();
 });
@@ -127,7 +132,7 @@ describe('createWorktree', () => {
     expect(result).toMatch(/^\//); // absolute path
     expect(mockExec).toHaveBeenCalledWith(
       'git worktree add ".claude/worktrees/feature-auth" "feature/auth"',
-      { encoding: 'utf8' }
+      { encoding: 'utf8', cwd: process.cwd() }
     );
   });
 
@@ -141,7 +146,7 @@ describe('createWorktree', () => {
     expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).toHaveBeenLastCalledWith(
       'git worktree add -b "new-branch" ".claude/worktrees/new-branch"',
-      { encoding: 'utf8' }
+      { encoding: 'utf8', cwd: process.cwd() }
     );
   });
 
@@ -151,6 +156,15 @@ describe('createWorktree', () => {
       .mockRejectedValueOnce(new Error('fail'))
       .mockRejectedValueOnce(new Error('fail'));
     expect(await createWorktree('bad-branch')).toBeNull();
+  });
+
+  it('rejects a derived directory occupied by a different exact branch', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature-auth' }])
+    );
+    mockExistsSync.mockReturnValue(true);
+    expect(await createWorktree('feature/auth')).toBeNull();
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
   it('reuses a worktree that has the branch checked out under another directory name', async () => {
@@ -173,12 +187,14 @@ describe('createWorktree', () => {
     );
   });
 
-  it('should return existing path without calling git when worktree already exists', async () => {
-    mockExistsSync.mockReturnValueOnce(true);
+  it('reuses only a checkout whose exact branch matches', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature/auth' }])
+    );
     const result = await createWorktree('feature/auth');
     expect(result).toContain('.claude/worktrees/feature-auth');
     expect(result).toMatch(/^\//);
-    expect(mockExec).not.toHaveBeenCalled();
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -266,13 +282,13 @@ describe('checkoutWorktree', () => {
     );
   });
 
-  it('returns the existing directory of the given repository without calling git', async () => {
-    mockExistsSync.mockImplementationOnce(
-      (p) => p === '/repos/one/.claude/worktrees/feature-auth'
+  it('refuses a derived directory occupied by a different branch', async () => {
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'feature-auth' }], repoOne)
     );
-    const result = await checkoutWorktree('feature/auth', '/repos/one');
-    expect(result).toBe('/repos/one/.claude/worktrees/feature-auth');
-    expect(mockExec).not.toHaveBeenCalled();
+    mockExistsSync.mockReturnValue(true);
+    expect(await checkoutWorktree('feature/auth', repoOne)).toBeNull();
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
   it('runs against the process directory when no repository is given', async () => {
@@ -342,7 +358,7 @@ describe('removeWorktree', () => {
     expect(await removeWorktree('feature/auth')).toBe(true);
     expect(mockExec).toHaveBeenCalledWith(
       `git worktree remove "${cwd}/.claude/worktrees/feature-auth"`,
-      { encoding: 'utf8' }
+      { encoding: 'utf8', cwd: process.cwd() }
     );
   });
 
@@ -382,7 +398,7 @@ describe('removeWorktree', () => {
     ).toBe(true);
     expect(mockExec).toHaveBeenCalledWith(
       `git worktree remove --force "${realDir}"`,
-      { encoding: 'utf8' }
+      { encoding: 'utf8', cwd: process.cwd() }
     );
   });
 
@@ -434,22 +450,20 @@ describe('removeWorktree', () => {
     ).toBe(true);
     expect(mockExec).toHaveBeenCalledWith(
       `git worktree remove --force "${realDir}"`,
-      { encoding: 'utf8' }
+      { encoding: 'utf8', cwd: process.cwd() }
     );
   });
 
-  it('should fall back to the resolver dir when git has no such branch', async () => {
+  it('does not remove a guessed directory when git has no such branch', async () => {
     mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
-    mockExec.mockResolvedValueOnce(resolve());
-    expect(await removeWorktree('feature/auth')).toBe(true);
-    expect(mockExec).toHaveBeenLastCalledWith(
-      'git worktree remove ".claude/worktrees/feature-auth"',
-      { encoding: 'utf8' }
-    );
+    expect(await removeWorktree('feature/auth')).toBe(false);
+    expect(mockExec).toHaveBeenCalledTimes(1);
   });
 
   it('should return false on failure', async () => {
-    mockExec.mockResolvedValueOnce(worktreeListPorcelain([]));
+    mockExec.mockResolvedValueOnce(
+      worktreeListPorcelain([{ branch: 'nonexistent' }])
+    );
     mockExec.mockRejectedValueOnce(new Error('not found'));
     expect(await removeWorktree('nonexistent')).toBe(false);
   });
@@ -461,6 +475,7 @@ describe('deleteBranch', () => {
     expect(await deleteBranch('feature/auth')).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git branch -d "feature/auth"', {
       encoding: 'utf8',
+      cwd: process.cwd(),
     });
   });
 
@@ -474,6 +489,7 @@ describe('deleteBranch', () => {
     expect(await deleteBranch('feature/auth', true)).toBe(true);
     expect(mockExec).toHaveBeenCalledWith('git branch -D "feature/auth"', {
       encoding: 'utf8',
+      cwd: process.cwd(),
     });
   });
 
@@ -482,6 +498,7 @@ describe('deleteBranch', () => {
     await deleteBranch('feat/ui/sidebar');
     expect(mockExec).toHaveBeenCalledWith('git branch -d "feat/ui/sidebar"', {
       encoding: 'utf8',
+      cwd: process.cwd(),
     });
   });
 });

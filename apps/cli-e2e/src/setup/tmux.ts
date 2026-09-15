@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
@@ -12,13 +13,12 @@ import { basename, join, resolve } from 'node:path';
  * /tmp/tmux-$UID one. A helper that omitted it would query a different
  * (usually empty) server and report every session as missing.
  *
- * Kirby names its sessions `kirby-<projectKeyHash>-<branch>`. Tests match
- * on the branch suffix rather than recomputing the hash: the hash is over
- * the *git toplevel*, which can differ from the fixture's `repoPath` when
- * tmpdir is a symlink (macOS /tmp → /private/tmp).
+ * A session's name is a label (`<repo>-<branch>`, with a numeric suffix
+ * on collision) and is never parsed. What makes a session Kirby's is
+ * its tags — `@orchestra-spawner`, `@orchestra-session-type`,
+ * `@orchestra-repo`, `@orchestra-branch` — so every helper here lists
+ * with the tags and matches on them, exactly as the app does.
  */
-
-const KIRBY_PREFIX = 'kirby-';
 
 /** Prefix for branches created by tmux e2e tests. Cleanup only ever
  *  touches sessions matching this, so a developer's real Kirby tmux
@@ -64,9 +64,9 @@ export function uniqueTmuxBranch(): string {
  *      agents run — reaches the developer's server no matter what
  *      `TMUX_TMPDIR` says.
  *
- *  These helpers kill sessions by name pattern, and on that server the
- *  `kirby-` names are the user's running agents. So the socket is
- *  proven rather than assumed, and anything unproven throws.
+ *  These helpers kill sessions, and on that server the tagged sessions
+ *  are the user's running agents. So the socket is proven rather than
+ *  assumed, and anything unproven throws.
  */
 function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   if (!tmuxTmpdir) {
@@ -90,9 +90,28 @@ function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Session names on the test's tmux server. Empty list when no server is
- *  running — tmux exits non-zero for that, which is not an error here. */
-export function listTmuxSessions(tmuxTmpdir: string): string[] {
+/** One session on the test's server, with the tags that identify it.
+ *  Unset tags are `''`. */
+export interface TaggedTmuxSession {
+  name: string;
+  spawner: string;
+  type: string;
+  repo: string;
+  branch: string;
+}
+
+const LISTING = [
+  '#{session_name}',
+  '#{@orchestra-spawner}',
+  '#{@orchestra-session-type}',
+  '#{@orchestra-repo}',
+  '#{@orchestra-branch}',
+].join('\t');
+
+/** Every session on the test's tmux server, tags included. Empty when
+ *  no server is running — tmux exits non-zero for that, which is not an
+ *  error here. */
+export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
   // Resolved *before* the try: `socketEnv` throws to stop a run that
   // would reach the wrong tmux server, and swallowing that here would
   // turn it into an empty list — which is exactly what the negative
@@ -100,27 +119,44 @@ export function listTmuxSessions(tmuxTmpdir: string): string[] {
   // while proving nothing, and teardown would silently reap nothing.
   const env = socketEnv(tmuxTmpdir);
   try {
-    return execFileSync('tmux', ['list-sessions', '-F', '#{session_name}'], {
+    return execFileSync('tmux', ['-u', 'list-sessions', '-F', LISTING], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       env,
     })
       .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+      .filter((line) => line.trim())
+      .map((line) => {
+        const [name = '', spawner = '', type = '', repo = '', branch = ''] =
+          line.split('\t');
+        return { name, spawner, type, repo, branch };
+      });
   } catch {
     return [];
   }
 }
 
-/** The Kirby-created tmux session backing `branch`, if it exists. */
+/** Session names on the test's tmux server. */
+export function listTmuxSessions(tmuxTmpdir: string): string[] {
+  return listTaggedSessions(tmuxTmpdir).map((s) => s.name);
+}
+
+/** Names of the sessions on the test's server that carry Kirby's
+ *  identity tags — whatever they are called. */
+export function kirbySessions(tmuxTmpdir: string): string[] {
+  return listTaggedSessions(tmuxTmpdir)
+    .filter((s) => s.spawner && s.type)
+    .map((s) => s.name);
+}
+
+/** The tagged worktree session for `branch`, if it exists. */
 export function findKirbySessionFor(
   branch: string,
   tmuxTmpdir: string
 ): string | undefined {
-  return listTmuxSessions(tmuxTmpdir).find(
-    (name) => name.startsWith(KIRBY_PREFIX) && name.endsWith(`-${branch}`)
-  );
+  return listTaggedSessions(tmuxTmpdir).find(
+    (s) => s.spawner && s.type === 'worktree' && s.branch === branch
+  )?.name;
 }
 
 export function kirbySessionExists(
@@ -152,7 +188,7 @@ export function cleanupTmuxSessions(
     const name = findKirbySessionFor(branch, tmuxTmpdir);
     if (!name) continue;
     try {
-      execFileSync('tmux', ['kill-session', '-t', name], {
+      execFileSync('tmux', ['kill-session', '-t', `=${name}:`], {
         stdio: 'ignore',
         env,
       });
@@ -167,24 +203,25 @@ export function cleanupTmuxSessions(
 // The other direction from the helpers above: instead of asserting on
 // what Kirby made, these *make* the thing Kirby is supposed to notice —
 // a worktree and a tmux session created the way a second Kirby, a
-// script or an operator at a shell would create them.
+// script or an operator at a shell would create them: any name, and
+// the identity tags.
 
-/**
- * The tmux session name Kirby composes for a session in this repo.
- *
- * Unlike the assertions above, creating a session has to get the hash
- * exactly right, so it is derived the way Kirby derives it: sha256 of
- * the **git toplevel** (not the fixture's `repoPath`, which can differ
- * when tmpdir is a symlink), first 16 hex characters, with tmux's
- * forbidden characters replaced.
- */
-export function kirbyTmuxName(repoPath: string, sessionName: string): string {
-  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    cwd: repoPath,
-    encoding: 'utf8',
-  }).trim();
-  const key = createHash('sha256').update(root).digest('hex').slice(0, 16);
-  return `${KIRBY_PREFIX}${key}-${sessionName}`.replace(/[.:]/g, '-');
+/** The main checkout as Kirby records it in `@orchestra-repo`: the
+ *  symlink-resolved git toplevel, not the fixture's `repoPath`, which
+ *  can differ when tmpdir is a symlink (macOS /tmp → /private/tmp). */
+function repoRootOf(repoPath: string): string {
+  return realpathSync(
+    execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: repoPath,
+      encoding: 'utf8',
+    }).trim()
+  );
+}
+
+/** The label Kirby would choose — `<repo>-<branch>` with `/`, `.` and
+ *  `:` rewritten. Any name would do; this one keeps `tmux ls` readable. */
+export function kirbyTmuxLabel(repoPath: string, branch: string): string {
+  return `${basename(repoRootOf(repoPath))}-${branch}`.replace(/[/.:]/g, '-');
 }
 
 /**
@@ -201,8 +238,8 @@ export function addExternalWorktree(repoPath: string, branch: string): string {
 }
 
 /**
- * Start a detached tmux session under the name Kirby would use, on the
- * test's own tmux server.
+ * Start a detached tmux session tagged the way Kirby tags a worktree
+ * session, on the test's own tmux server. Returns its name.
  *
  * `HOME` and `PATH` are pinned per session for the reason the backend
  * pins them: a tmux server keeps the environment it was started with
@@ -217,7 +254,8 @@ export function startExternalTmuxSession(opts: {
   worktreePath: string;
   command: string;
 }): string {
-  const name = kirbyTmuxName(opts.repoPath, opts.branch);
+  const name = kirbyTmuxLabel(opts.repoPath, opts.branch);
+  const env = socketEnv(opts.homeDir);
   execFileSync(
     'tmux',
     [
@@ -240,7 +278,19 @@ export function startExternalTmuxSession(opts: {
       '-c',
       opts.command,
     ],
-    { stdio: 'ignore', env: socketEnv(opts.homeDir) }
+    { stdio: 'ignore', env }
   );
+  const tags: Record<string, string> = {
+    '@orchestra-spawner': 'kirby',
+    '@orchestra-repo': repoRootOf(opts.repoPath),
+    '@orchestra-session-type': 'worktree',
+    '@orchestra-branch': opts.branch,
+  };
+  for (const [key, value] of Object.entries(tags)) {
+    execFileSync('tmux', ['set-option', '-t', `=${name}:`, key, value], {
+      stdio: 'ignore',
+      env,
+    });
+  }
   return name;
 }

@@ -2,7 +2,11 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { displayPath, resolvePickedFolder, terminalRepo } from './terminal-home.js';
+import {
+  displayPath,
+  resolvePickedFolder,
+  terminalRepo,
+} from './terminal-home.js';
 
 /**
  * Where a terminal belongs. A directory that is itself a repository

@@ -1,10 +1,8 @@
+import { keyForWorktree } from '@kirby/core';
 import { useState, useEffect, useCallback, useEffectEvent } from 'react';
 import {
-  removeWorktree,
-  deleteBranch,
   listAllBranches,
   listWorktrees,
-  worktreeSessionName,
   setWorktreeResolver,
   createTemplateResolver,
 } from '@kirby/worktree-manager';
@@ -12,7 +10,7 @@ import type { AgentSession, DiscoveredWorktree } from '@kirby/core';
 import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
 import {
-  killSession,
+  removeWorktreeSession,
   isSessionAlive,
   launchSession,
   onSessionExit,
@@ -33,9 +31,10 @@ export function useSessionManager(
     const worktrees = await listWorktrees();
     const filtered: AgentSession[] = [];
     for (const wt of worktrees) {
-      const name = worktreeSessionName(wt);
+      const name = keyForWorktree(wt);
       filtered.push({
         name,
+        label: wt.branch || wt.path.split('/').pop(),
         running: isSessionAlive(name),
         ...(wt.state ? { state: wt.state } : {}),
       });
@@ -49,21 +48,19 @@ export function useSessionManager(
   }, []);
 
   const performDelete = useCallback(
-    async (sessionName: string, branch: string) => {
-      killSession(sessionName);
-      await removeWorktree(branch, { force: true });
-      await deleteBranch(branch, true);
+    async (_sessionName: string, branch: string) => {
+      await removeWorktreeSession(branch, true);
       await refreshSessions();
     },
     [refreshSessions]
   );
 
   // Attach to an agent session that was started outside this process —
-  // another Kirby, a script, someone running `tmux new-session` by
-  // hand. This is the ordinary launch path: on the tmux backend
-  // `new-session -A` attaches to the running agent rather than starting
-  // a second one, and discovery only ever offers a session the registry
-  // holds no live PTY for.
+  // another Kirby, an Orchestra spawn, someone tagging a `tmux
+  // new-session` by hand. This is the ordinary launch path: on the tmux
+  // backend the factory resolves the running session by its tags and
+  // attaches to it rather than starting a second one, and discovery
+  // only ever offers a session the registry holds no live PTY for.
   //
   // An effect event, so it reads the pane size at the moment it
   // attaches. A plain closure would capture whatever the terminal was

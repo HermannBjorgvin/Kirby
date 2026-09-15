@@ -9,6 +9,7 @@ const { spawns } = vi.hoisted(() => ({
     cwd: string;
     cols: number;
     rows: number;
+    tags?: Record<string, string>;
   }[],
 }));
 
@@ -19,9 +20,11 @@ vi.mock('../pty-registry.js', () => ({
     args: string[],
     cols: number,
     rows: number,
-    cwd: string
+    cwd: string,
+    _env?: unknown,
+    tags?: Record<string, string>
   ) => {
-    spawns.push({ name, cmd, args, cwd, cols, rows });
+    spawns.push({ name, cmd, args, cwd, cols, rows, tags });
     return { spawnedAt: 1 };
   },
   getSession: () => undefined,
@@ -55,7 +58,7 @@ describe('launchTerminalSession', () => {
   // here would pin one across both backends and need a setting.
   it('opens a shell by asking the backend for its default shell', () => {
     launchTerminalSession({
-      name: 'kirby-term-shell-1a2b3c',
+      name: 'notes-shell',
       kind: 'shell',
       cwd: '/home/dev/notes',
       cols: 100,
@@ -64,12 +67,13 @@ describe('launchTerminalSession', () => {
     });
     expect(spawns).toEqual([
       {
-        name: 'kirby-term-shell-1a2b3c',
+        name: 'notes-shell',
         cmd: '',
         args: [],
         cwd: '/home/dev/notes',
         cols: 100,
         rows: 30,
+        tags: { '@orchestra-session-type': 'shell' },
       },
     ]);
   });
@@ -79,7 +83,7 @@ describe('launchTerminalSession', () => {
   // the agent supports it.
   it('opens an agent the way the session menu’s plain entry does', () => {
     launchTerminalSession({
-      name: 'kirby-term-agent-4d5e6f',
+      name: 'repo-agent',
       kind: 'agent',
       cwd: '/repo',
       cols: 80,
@@ -88,10 +92,27 @@ describe('launchTerminalSession', () => {
     });
     expect(spawns).toHaveLength(1);
     expect(spawns[0]).toMatchObject({
-      name: 'kirby-term-agent-4d5e6f',
+      name: 'repo-agent',
       cwd: '/repo',
       cmd: '/bin/sh',
       args: ['-c', 'claude --continue || claude'],
     });
+  });
+
+  // The kind is what tells the tmux composition root this is a
+  // terminal tab — identified by its name — and not a worktree session
+  // to be identified by the directory's branch; and it is what a later
+  // scan finds the tab by. Without it an agent tab would be created,
+  // and looked for, as a worktree session of the repository root.
+  it('declares the kind as the session-type tag on both paths', () => {
+    launchTerminalSession({
+      name: 'repo-agent',
+      kind: 'agent',
+      cwd: '/repo',
+      cols: 80,
+      rows: 24,
+      config,
+    });
+    expect(spawns[0]?.tags).toEqual({ '@orchestra-session-type': 'agent' });
   });
 });

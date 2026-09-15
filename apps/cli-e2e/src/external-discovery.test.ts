@@ -10,10 +10,10 @@ import {
 
 /**
  * Worktrees and agent sessions can be created without this Kirby being
- * involved — a second Kirby, a script, or someone running `git worktree
- * add` and `tmux new-session` at a shell. This file drives that from the
- * outside while the TUI is already running and asserts it catches up on
- * its own.
+ * involved — a second Kirby, an Orchestra spawn, or someone running `git
+ * worktree add` and a tagged `tmux new-session` at a shell. This file
+ * drives that from the outside while the TUI is already running and
+ * asserts it catches up on its own.
  *
  * The unit suites cover the decisions (`libs/core/src/lib/discovery`);
  * what only an e2e can show is that the scan is actually running inside
@@ -84,10 +84,11 @@ test.describe('Discovering sessions created outside Kirby', () => {
     ).toBeVisible({ timeout: 30_000 });
   });
 
-  // The strongest claim in the feature: `new-session -A` attached to the
-  // agent that was already there. Output the external session printed
-  // before Kirby knew it existed is redrawn on attach — a fresh spawn
-  // would run `aiCommand` instead and print the fake agent's banner.
+  // The strongest claim in the feature: the tag resolver found the
+  // agent that was already there and the backend attached to it. Output
+  // the external session printed before Kirby knew it existed is redrawn
+  // on attach — a fresh spawn would run `aiCommand` instead and print
+  // the fake agent's banner.
   test('attaching reaches the running agent rather than starting a new one', async ({
     kirby,
   }) => {

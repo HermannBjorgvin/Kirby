@@ -9,7 +9,7 @@
 
 /** One Kirby-owned worktree, as a scan saw it. */
 export interface DiscoveredWorktree {
-  /** Registry session name — `worktreeSessionName(wt)`. */
+  /** Qualified core key — `keyForWorktree(wt)`. */
   name: string;
   /** Short branch name, or `''` for a detached-HEAD orphan. */
   branch: string;
@@ -18,11 +18,10 @@ export interface DiscoveredWorktree {
 }
 
 /** One terminal-tab session, as a scan saw it. Identified entirely by
- *  what tmux holds: the kind is parsed from the name, the directory is
+ *  what tmux holds: the kind is the session-type tag, the directory is
  *  the session's own `session_path`. */
 export interface DiscoveredTerminal {
-  /** Registry session name — the full tmux name, `kirby-term-<kind>-<id>`
-   *  (or, for an orphaned worktree session, `kirby-<projectKey>-<x>`). */
+  /** Qualified terminal key containing the actual tmux attachment target. */
   name: string;
   kind: 'shell' | 'agent';
   /** Absolute directory the session runs in. */

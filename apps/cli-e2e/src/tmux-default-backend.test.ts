@@ -4,7 +4,7 @@ import {
   UNSET_BACKEND,
   cleanupTmuxSessions,
   kirbySessionExists,
-  listTmuxSessions,
+  kirbySessions,
   tmuxAvailable,
   uniqueTmuxBranch,
 } from './setup/tmux.js';
@@ -91,8 +91,6 @@ test.describe('Terminal backend explicitly set to pty', () => {
     expect(kirbySessionExists(branch, kirby.homeDir)).toBe(false);
     // Nothing of Kirby's at all on this test's tmux socket — not just
     // nothing for this branch.
-    expect(
-      listTmuxSessions(kirby.homeDir).filter((n) => n.startsWith('kirby-'))
-    ).toEqual([]);
+    expect(kirbySessions(kirby.homeDir)).toEqual([]);
   });
 });

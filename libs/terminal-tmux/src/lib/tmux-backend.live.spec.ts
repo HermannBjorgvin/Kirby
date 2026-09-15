@@ -14,11 +14,17 @@
  */
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { createTmuxBackendFactory } from './tmux-backend.js';
 import {
+  createTmuxBackendFactory,
+  type TmuxFactoryOptions,
+} from './tmux-backend.js';
+import {
+  tmuxFreeSessionName,
   tmuxHasSession,
   tmuxKillSession,
   tmuxListSessions,
+  tmuxListSessionsDetailed,
+  tmuxShowOption,
 } from './tmux-cli.js';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
@@ -39,17 +45,32 @@ function tmuxAvailable(): boolean {
 function tmuxPanePid(session: string): string {
   return execFileSync(
     'tmux',
-    ['display-message', '-p', '-t', session, '#{pane_pid}'],
+    ['display-message', '-p', '-t', `=${session}:`, '#{pane_pid}'],
     { encoding: 'utf8' }
   ).trim();
+}
+
+/** A session made by something other than the backend — the scenario
+ *  every "foreign" test is about. */
+function startForeignSession(name: string): void {
+  execFileSync('tmux', [
+    'new-session',
+    '-d',
+    '-s',
+    name,
+    '--',
+    '/bin/sh',
+    '-c',
+    'sleep 30',
+  ]);
 }
 
 const SKIP = !tmuxAvailable();
 
 // This file creates and kills real tmux sessions. `vitest.setup.ts`
 // points them at a throwaway server; if that ever stops taking effect
-// the sessions land on the developer's own — where `kirby-` names are
-// their running agents, not ours. Stop rather than find out.
+// the sessions land on the developer's own, next to their running
+// agents. Stop rather than find out.
 beforeAll(() => {
   assertScratchTmuxSocket();
 });
@@ -64,8 +85,32 @@ function uniqueName(suffix: string): string {
   const stamp = `${process.pid}-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-  return `kirby-livetest-${stamp}-${suffix}`;
+  return `tmuxlib-livetest-${stamp}-${suffix}`;
 }
+
+/** A factory that names sessions after the spec and resolves nothing
+ *  unless told to — the test decides identity, the backend obeys. */
+function factory(overrides: Partial<TmuxFactoryOptions> = {}) {
+  return createTmuxBackendFactory({
+    resolve: () => null,
+    label: (spec) => spec.name,
+    tags: () => ({}),
+    ...overrides,
+  });
+}
+
+function idle(name: string, command = 'sleep 30') {
+  return {
+    name,
+    cmd: '/bin/sh',
+    args: ['-c', command],
+    cwd: process.cwd(),
+    cols: 80,
+    rows: 24,
+  };
+}
+
+const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 afterEach(() => {
   // Best-effort cleanup. If a test's tmux session is already gone
@@ -83,27 +128,15 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     const name = uniqueName('output');
     createdSessions.push(name);
 
-    const factory = createTmuxBackendFactory();
-    const backend = factory({
-      name,
-      // bash -c keeps the session alive long enough for us to read
-      // output before tmux tears the session down.
-      cmd: '/bin/sh',
-      args: ['-c', 'echo hello-from-tmux; sleep 5'],
-      cwd: process.cwd(),
-      cols: 80,
-      rows: 24,
-    });
-
+    const backend = factory()(idle(name, 'echo hello-from-tmux; sleep 5'));
     const chunks: string[] = [];
     backend.onData((chunk) => chunks.push(chunk));
 
-    // Allow time for the session to start, the shell to run, and
-    // the output to flow back through the local tmux client PTY.
-    await new Promise((r) => setTimeout(r, 750));
+    // Allow time for the client to attach, the shell to run, and the
+    // output to flow back through the local tmux client PTY.
+    await settle(750);
 
-    const combined = chunks.join('');
-    expect(combined).toContain('hello-from-tmux');
+    expect(chunks.join('')).toContain('hello-from-tmux');
     expect(tmuxHasSession(name)).toBe(true);
 
     backend.kill();
@@ -113,105 +146,174 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     const name = uniqueName('dispose');
     createdSessions.push(name);
 
-    const factory = createTmuxBackendFactory();
-    const backend = factory({
-      name,
-      cmd: '/bin/sh',
-      args: ['-c', 'sleep 30'],
-      cwd: process.cwd(),
-      cols: 80,
-      rows: 24,
-    });
-
-    // Wait for tmux to create the session.
-    await new Promise((r) => setTimeout(r, 300));
+    const backend = factory()(idle(name));
     expect(tmuxHasSession(name)).toBe(true);
 
     backend.dispose();
 
     // Tmux session should still exist — this is the persistence
     // guarantee that lets sessions survive Kirby restarts.
-    await new Promise((r) => setTimeout(r, 100));
+    await settle(100);
     expect(tmuxHasSession(name)).toBe(true);
-
-    // afterEach will kill it.
   });
 
   // The whole point of the tmux backend: Kirby exits (dispose), the
-  // user relaunches, and the agent is still there with its history. The
-  // unit suite can only assert that `-A` appears in the argv; this is
-  // the only test that proves `-A` actually reattaches to the *existing*
-  // session rather than silently starting a fresh one.
-  it('re-creating the same name reattaches, preserving the running session', async () => {
+  // user relaunches, and the agent is still there with its history.
+  // The unit suite can only assert the attach argv; this proves that
+  // attaching by a resolved name lands on the *existing* session rather
+  // than silently starting a fresh one.
+  it('attaching by a resolved name preserves the running session', async () => {
     const name = uniqueName('reattach');
     createdSessions.push(name);
     const marker = `marker-${Math.random().toString(36).slice(2, 10)}`;
-    const factory = createTmuxBackendFactory();
-    const spec = {
-      name,
-      // Echo a unique marker, then idle. The marker stays on the pane's
-      // screen, so a genuine reattach redraws it; a fresh session would
-      // re-run the command and produce a *new* pane with no history of
-      // the first run's pid.
-      cmd: '/bin/sh',
-      args: ['-c', `echo ${marker}; sleep 30`],
-      cwd: process.cwd(),
-      cols: 80,
-      rows: 24,
-    };
+    // Echo a unique marker, then idle. The marker stays on the pane's
+    // screen, so a genuine reattach redraws it; a fresh session would
+    // re-run the command and produce a *new* pane with no history of
+    // the first run's pid.
+    const spec = idle(name, `echo ${marker}; sleep 30`);
 
-    const first = factory(spec);
-    await new Promise((r) => setTimeout(r, 500));
-    expect(tmuxHasSession(name)).toBe(true);
+    const first = factory()(spec);
+    await settle(500);
     const firstPanePid = tmuxPanePid(name);
 
     // Kirby "exits": detach only, tmux keeps running.
     first.dispose();
-    await new Promise((r) => setTimeout(r, 200));
+    await settle(200);
     expect(tmuxHasSession(name)).toBe(true);
 
-    // Kirby "relaunches" with the same session name.
-    const second = factory(spec);
+    // Kirby "relaunches" and resolves the same session.
+    const second = factory({ resolve: () => name })(spec);
     const chunks: string[] = [];
     second.onData((chunk) => chunks.push(chunk));
-    await new Promise((r) => setTimeout(r, 750));
+    await settle(750);
 
     // Same pane process as before — proof we attached rather than
     // creating a second session that merely shares the name.
     expect(tmuxPanePid(name)).toBe(firstPanePid);
     // And the first run's output is still on screen after the redraw.
     expect(chunks.join('')).toContain(marker);
+    // Nothing was created beside it.
+    expect(tmuxListSessions().filter((n) => n.startsWith(name))).toEqual([
+      name,
+    ]);
 
     second.kill();
+  });
+
+  // Tags are the one thing about a session that another program on
+  // the same server is meant to read, so the exact `set-option` target
+  // form, the `show-options -qv` read and the `#{@option}` format
+  // column all have to agree with a real tmux — and they have to be
+  // there the moment the factory returns, before a client can have
+  // attached: the session was created detached and tagged first.
+  it('writes the tags before the factory returns, and a later attach leaves them alone', async () => {
+    const name = uniqueName('tags');
+    createdSessions.push(name);
+    const spec = idle(name);
+
+    const first = factory({
+      tags: () => ({
+        '@livetest-repo': '/repo/x',
+        '@livetest-branch': 'feature/x',
+      }),
+    })(spec);
+    // Synchronously: no settle. The tags were written on the detached
+    // session before the client process was even spawned.
+    expect(tmuxShowOption(name, '@livetest-repo')).toBe('/repo/x');
+    expect(tmuxShowOption(name, '@livetest-branch')).toBe('feature/x');
+    expect(tmuxShowOption(name, '@livetest-unset')).toBe('');
+
+    first.dispose();
+    await settle(200);
+    // A second attach with its own idea of the tags — another program's
+    // view of the same session — changes nothing already recorded.
+    const second = factory({
+      resolve: () => name,
+      tags: () => ({
+        '@livetest-repo': '/somewhere/else',
+        '@livetest-unset': 'x',
+      }),
+    })(spec);
+    await settle(300);
+
+    const listed = tmuxListSessionsDetailed([
+      '@livetest-repo',
+      '@livetest-branch',
+      '@livetest-unset',
+    ]).find((s) => s.name === name);
+    expect(listed).toEqual({
+      name,
+      created: expect.any(Number),
+      path: process.cwd(),
+      options: { '@livetest-repo': '/repo/x', '@livetest-branch': 'feature/x' },
+    });
+    // `session_created` is tmux's clock in epoch seconds — a real
+    // timestamp, not the `0` an unparseable column would yield.
+    expect(listed?.created).toBeGreaterThan(1_000_000_000);
+    second.kill();
+  });
+
+  // A session that holds the label but was not resolved is somebody
+  // else's — untagged, or another program's. It is neither attached to
+  // nor killed: the backend takes the next free suffix for its own.
+  it('neither attaches to nor kills a foreign session that holds the label', async () => {
+    const name = uniqueName('foreign');
+    createdSessions.push(name, `${name}-2`);
+    startForeignSession(name);
+    const foreignPid = tmuxPanePid(name);
+
+    const backend = factory({ tags: () => ({ '@livetest-mine': '1' }) })(
+      idle(name)
+    );
+    expect(tmuxHasSession(`${name}-2`)).toBe(true);
+    expect(tmuxShowOption(`${name}-2`, '@livetest-mine')).toBe('1');
+    // The foreign one: same pane process, no tag written on it.
+    expect(tmuxPanePid(name)).toBe(foreignPid);
+    expect(tmuxShowOption(name, '@livetest-mine')).toBe('');
+
+    backend.kill();
+    await settle(100);
+    expect(tmuxHasSession(`${name}-2`)).toBe(false);
+    expect(tmuxHasSession(name)).toBe(true);
+    expect(tmuxPanePid(name)).toBe(foreignPid);
   });
 
   it('kill() terminates the tmux session', async () => {
     const name = uniqueName('kill');
     createdSessions.push(name);
 
-    const factory = createTmuxBackendFactory();
-    const backend = factory({
-      name,
-      cmd: '/bin/sh',
-      args: ['-c', 'sleep 30'],
-      cwd: process.cwd(),
-      cols: 80,
-      rows: 24,
-    });
-
-    await new Promise((r) => setTimeout(r, 300));
+    const backend = factory()(idle(name));
     expect(tmuxHasSession(name)).toBe(true);
 
     backend.kill();
 
     // backend.kill() runs `tmux kill-session` synchronously, but the
     // server may take a beat to clean up state. Brief wait to settle.
-    await new Promise((r) => setTimeout(r, 100));
+    await settle(100);
     expect(tmuxHasSession(name)).toBe(false);
+  });
 
-    // Pop from the cleanup list — already gone.
-    const idx = createdSessions.indexOf(name);
-    if (idx >= 0) createdSessions.splice(idx, 1);
+  // A bare `-t name` is a prefix match once `name` itself is gone, so
+  // `has-session` would keep answering yes for `name` on the strength
+  // of `name-2` — and a kill aimed at `name` would take `name-2` out.
+  // Both go through the exact form, and only a real tmux proves that
+  // form is accepted for these commands.
+  it('has-session and kill-session are exact, never prefix matches', () => {
+    const name = uniqueName('exact');
+    createdSessions.push(`${name}-2`);
+    startForeignSession(`${name}-2`);
+    expect(tmuxHasSession(name)).toBe(false);
+    expect(tmuxKillSession(name).exitCode).not.toBe(0);
+    expect(tmuxHasSession(`${name}-2`)).toBe(true);
+  });
+
+  it('tmuxFreeSessionName skips every candidate the server holds', () => {
+    const name = uniqueName('free');
+    createdSessions.push(name, `${name}-2`);
+    expect(tmuxFreeSessionName(name)).toBe(name);
+    startForeignSession(name);
+    startForeignSession(`${name}-2`);
+    expect(tmuxFreeSessionName(name)).toBe(`${name}-3`);
   });
 
   // The signal discovery is built on: a session created without this
@@ -219,46 +321,25 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
   // call rather than one per candidate. Only a real server proves the
   // `-F` format string and the no-server exit code behave as assumed.
   describe('tmuxListSessions', () => {
-    it('reports a session created behind the backend\'s back', () => {
+    it("reports a session created behind the backend's back", () => {
       const name = uniqueName('listed');
       createdSessions.push(name);
       expect(tmuxListSessions()).not.toContain(name);
 
       // Deliberately not through the factory: this is the scenario —
       // something other than Kirby made the session.
-      execFileSync('tmux', [
-        'new-session',
-        '-d',
-        '-s',
-        name,
-        '--',
-        '/bin/sh',
-        '-c',
-        'sleep 30',
-      ]);
+      startForeignSession(name);
 
       expect(tmuxListSessions()).toContain(name);
     });
 
     it('stops reporting one that was killed from outside', () => {
       const name = uniqueName('unlisted');
-      createdSessions.push(name);
-      execFileSync('tmux', [
-        'new-session',
-        '-d',
-        '-s',
-        name,
-        '--',
-        '/bin/sh',
-        '-c',
-        'sleep 30',
-      ]);
+      startForeignSession(name);
       expect(tmuxListSessions()).toContain(name);
 
       tmuxKillSession(name);
       expect(tmuxListSessions()).not.toContain(name);
-      const idx = createdSessions.indexOf(name);
-      if (idx >= 0) createdSessions.splice(idx, 1);
     });
 
     // Every candidate this repo asks about is answered from one call, so
@@ -267,25 +348,10 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
       const a = uniqueName('multi-a');
       const b = uniqueName('multi-b');
       createdSessions.push(a, b);
-      const factory = createTmuxBackendFactory();
-      for (const name of [a, b]) {
-        factory({
-          name,
-          cmd: '/bin/sh',
-          args: ['-c', 'sleep 30'],
-          cwd: process.cwd(),
-          cols: 80,
-          rows: 24,
-        });
-      }
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          const listed = tmuxListSessions();
-          expect(listed).toContain(a);
-          expect(listed).toContain(b);
-          resolve();
-        }, 500);
-      });
+      for (const name of [a, b]) factory()(idle(name));
+      const listed = tmuxListSessions();
+      expect(listed).toContain(a);
+      expect(listed).toContain(b);
     });
   });
 });

@@ -1,20 +1,9 @@
+import type * as CoreModule from '@kirby/core';
+import { worktreeSessionKey } from '@kirby/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SessionsModule from './sessions.js';
 
-/**
- * The PTY registry keys sessions by bare branch name — the same name
- * that names the worktree directory, so it can't be namespaced without
- * moving them. Two repositories with a branch of the same name
- * therefore collide on one key, and the desktop (unlike the TUI) lets
- * you switch repository while agents are running.
- *
- * These tests pin the ownership guards that keep one repo's UI from
- * reading, writing to, reattaching to or killing another repo's agent.
- *
- * Attaching to sessions this process did not start is discovery's job
- * now — see `discovery.spec.ts` for the desktop half and
- * `libs/core/src/lib/discovery` for the decisions behind it.
- */
+/** Sessions from multiple repositories coexist under qualified keys. */
 
 const state = vi.hoisted(() => ({
   cwd: '/repo-a',
@@ -57,89 +46,97 @@ vi.mock('@kirby/worktree-manager', () => ({
   },
 }));
 
-vi.mock('@kirby/core', () => ({
-  // Stands in for the real orchestrator, whose own branching is tested
-  // in libs/core. What matters here is what the *desktop* does with
-  // each outcome: inject changes nothing it tracks, a spawn has to be
-  // adopted so its output reaches the renderer.
-  checkoutPlan: (deps: {
-    pr: { sourceBranch: string };
-    prompt: string;
-    mode: 'inject' | 'new-session';
-    flashStatus: (msg: string) => void;
-  }) => {
-    const name = deps.pr.sourceBranch.replace(/\//g, '-');
-    if (state.checkoutFails.has(deps.pr.sourceBranch)) {
-      deps.flashStatus(`Failed to create worktree for ${deps.pr.sourceBranch}`);
-      return Promise.resolve('failed');
-    }
-    if (state.alive.has(name) && deps.mode === 'inject') {
-      state.injected.push({ name, prompt: deps.prompt });
-      return Promise.resolve('injected');
-    }
-    state.alive.add(name);
-    state.spawns.push({
-      name,
-      cwd: `/wt/${deps.pr.sourceBranch}`,
-      config: null,
-      request: { intent: 'seed', prompt: deps.prompt },
-    });
-    return Promise.resolve('spawned');
-  },
-  buildAgentOptions: (config: { agentId?: string }) => [
-    {
-      name: `${config.agentId ?? 'Custom'} (default)`,
-      agent: { id: config.agentId ?? 'test' },
+vi.mock('@kirby/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  return {
+    worktreeSessionKey: actual.worktreeSessionKey,
+    sessionLabel: actual.sessionLabel,
+    // Stands in for the real orchestrator, whose own branching is tested
+    // in libs/core. What matters here is what the *desktop* does with
+    // each outcome: inject changes nothing it tracks, a spawn has to be
+    // adopted so its output reaches the renderer.
+    checkoutPlan: (deps: {
+      pr: { sourceBranch: string };
+      prompt: string;
+      mode: 'inject' | 'new-session';
+      flashStatus: (msg: string) => void;
+    }) => {
+      const name = actual.worktreeSessionKey(deps.pr.sourceBranch, state.cwd);
+      if (state.checkoutFails.has(deps.pr.sourceBranch)) {
+        deps.flashStatus(
+          `Failed to create worktree for ${deps.pr.sourceBranch}`
+        );
+        return Promise.resolve('failed');
+      }
+      if (state.alive.has(name) && deps.mode === 'inject') {
+        state.injected.push({ name, prompt: deps.prompt });
+        return Promise.resolve('injected');
+      }
+      state.alive.add(name);
+      state.spawns.push({
+        name,
+        cwd: `/wt/${deps.pr.sourceBranch}`,
+        config: null,
+        request: { intent: 'seed', prompt: deps.prompt },
+      });
+      return Promise.resolve('spawned');
     },
-    { name: 'Codex', agent: { id: 'codex' } },
-  ],
-  buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
-    intent: 'review',
-    prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
-    systemGuidance: 'guidance',
-  }),
-  launchSession: (spec: {
-    name: string;
-    cwd: string;
-    config: unknown;
-    request: unknown;
-  }) => {
-    state.alive.add(spec.name);
-    state.spawns.push({
-      name: spec.name,
-      cwd: spec.cwd,
-      config: spec.config,
-      request: spec.request,
-    });
-  },
-  getSession: (name: string) =>
-    state.alive.has(name)
-      ? {
-          exited: false,
-          pty: {
-            onData: (cb: (data: string) => void) => state.onData.set(name, cb),
-            onExit: () => undefined,
-            write: () => undefined,
-            resize: () => undefined,
-          },
-        }
-      : undefined,
-  killSession: (name: string) => {
-    state.killed.push(name);
-    state.alive.delete(name);
-  },
-  isSessionAlive: (name: string) => state.alive.has(name),
-  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
-    config.terminalBackend ?? state.defaultBackend,
-  getSpawnedAt: () => 1000,
-  noteInput: () => undefined,
-  noteResize: () => undefined,
-  noteSeen: () => undefined,
-  snapshot: (name: string) => ({
-    active: state.alive.has(name),
-    flashing: false,
-  }),
-}));
+    buildAgentOptions: (config: { agentId?: string }) => [
+      {
+        name: `${config.agentId ?? 'Custom'} (default)`,
+        agent: { id: config.agentId ?? 'test' },
+      },
+      { name: 'Codex', agent: { id: 'codex' } },
+    ],
+    buildReviewLaunchRequest: (pr: { id: number }, instruction?: string) => ({
+      intent: 'review',
+      prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
+      systemGuidance: 'guidance',
+    }),
+    launchSession: (spec: {
+      name: string;
+      cwd: string;
+      config: unknown;
+      request: unknown;
+    }) => {
+      state.alive.add(spec.name);
+      state.spawns.push({
+        name: spec.name,
+        cwd: spec.cwd,
+        config: spec.config,
+        request: spec.request,
+      });
+    },
+    getSession: (name: string) =>
+      state.alive.has(name)
+        ? {
+            exited: false,
+            pty: {
+              onData: (cb: (data: string) => void) =>
+                state.onData.set(name, cb),
+              onExit: () => undefined,
+              write: () => undefined,
+              resize: () => undefined,
+            },
+          }
+        : undefined,
+    killSession: (name: string) => {
+      state.killed.push(name);
+      state.alive.delete(name);
+    },
+    isSessionAlive: (name: string) => state.alive.has(name),
+    resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
+      config.terminalBackend ?? state.defaultBackend,
+    getSpawnedAt: () => 1000,
+    noteInput: () => undefined,
+    noteResize: () => undefined,
+    noteSeen: () => undefined,
+    snapshot: (name: string) => ({
+      active: state.alive.has(name),
+      flashing: false,
+    }),
+  };
+});
 
 // The service keeps its known-session map in module scope, which is
 // exactly the state these tests are about — so each test gets a fresh
@@ -192,7 +189,9 @@ describe('launchAgent', () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
 
     expect(state.spawns).toHaveLength(1);
-    expect(state.spawns[0].name).toBe('feature-x');
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/x', '/repo-a')
+    );
     expect(state.spawns[0].cwd).toBe('/repo-a/.claude/worktrees/feature/x');
     expect(state.spawns[0].config).toEqual({ marker: 'root-config' });
   });
@@ -233,23 +232,26 @@ describe('another repository owns the name', () => {
   async function launchInAThenSwitch(branch = 'shared') {
     state.cwd = '/repo-a';
     await launchAgent({ branch, intent: 'continue-or-blank' });
-    emit(branch, 'repo-a secrets');
+    emit(worktreeSessionKey(branch, '/repo-a'), 'repo-a secrets');
     state.cwd = '/repo-b';
   }
 
-  it('refuses to reattach, rather than handing over the other repo agent', async () => {
+  it('launches the same branch in another repository without replacing the first agent', async () => {
     await launchInAThenSwitch();
-    await expect(
-      launchAgent({ branch: 'shared', intent: 'continue-or-blank' })
-    ).rejects.toThrow('already running for another repository');
-    // And it did not quietly spawn a second one either.
-    expect(state.spawns).toHaveLength(1);
+    const second = await launchAgent({
+      branch: 'shared',
+      intent: 'continue-or-blank',
+    });
+    expect(second.name).toBe(worktreeSessionKey('shared', '/repo-b'));
+    expect(state.spawns).toHaveLength(2);
+    expect(state.alive.has(worktreeSessionKey('shared', '/repo-a'))).toBe(true);
+    expect(listSessions().map((s) => s.name)).toEqual([second.name]);
   });
 
   it('refuses to kill it', async () => {
     await launchInAThenSwitch();
-    expect(() => killSession('shared')).toThrow(
-      'already running for another repository'
+    expect(() => killSession(worktreeSessionKey('shared', '/repo-a'))).toThrow(
+      'belongs to another repository'
     );
     expect(state.killed).toEqual([]);
   });
@@ -258,7 +260,9 @@ describe('another repository owns the name', () => {
     await launchInAThenSwitch();
     expect(listSessions()).toEqual([]);
     state.cwd = '/repo-a';
-    expect(listSessions().map((s) => s.name)).toEqual(['shared']);
+    expect(listSessions().map((s) => s.name)).toEqual([
+      worktreeSessionKey('shared', '/repo-a'),
+    ]);
   });
 
   it('hides it from the activity map', async () => {
@@ -269,9 +273,13 @@ describe('another repository owns the name', () => {
   it('does not hand over its scrollback', async () => {
     await launchInAThenSwitch();
     // The buffer holds whatever the other repo's agent printed.
-    expect(getSessionBuffer('shared').data).toBe('');
+    expect(getSessionBuffer(worktreeSessionKey('shared', '/repo-a')).data).toBe(
+      ''
+    );
     state.cwd = '/repo-a';
-    expect(getSessionBuffer('shared').data).toBe('repo-a secrets');
+    expect(getSessionBuffer(worktreeSessionKey('shared', '/repo-a')).data).toBe(
+      'repo-a secrets'
+    );
   });
 
   it('reports it as not alive here, so this repo does not show it running', () => {
@@ -281,9 +289,13 @@ describe('another repository owns the name', () => {
     // live — and `sync-items` would auto-open a tab onto an agent this
     // repo cannot reach, kill or relaunch.
     return launchInAThenSwitch().then(() => {
-      expect(sessions.isOwnSessionAlive('shared')).toBe(false);
+      expect(
+        sessions.isOwnSessionAlive(worktreeSessionKey('shared', '/repo-a'))
+      ).toBe(false);
       state.cwd = '/repo-a';
-      expect(sessions.isOwnSessionAlive('shared')).toBe(true);
+      expect(
+        sessions.isOwnSessionAlive(worktreeSessionKey('shared', '/repo-a'))
+      ).toBe(true);
     });
   });
 
@@ -292,11 +304,13 @@ describe('another repository owns the name', () => {
     // Housekeeping inside a legitimate operation: removing this repo's
     // `shared` worktree must not reach the other repo's agent, and must
     // not abort the removal either.
-    expect(() => sessions.killOwnSession('shared')).not.toThrow();
+    expect(() =>
+      sessions.killOwnSession(worktreeSessionKey('shared', '/repo-a'))
+    ).not.toThrow();
     expect(state.killed).toEqual([]);
     state.cwd = '/repo-a';
-    sessions.killOwnSession('shared');
-    expect(state.killed).toEqual(['shared']);
+    sessions.killOwnSession(worktreeSessionKey('shared', '/repo-a'));
+    expect(state.killed).toEqual([worktreeSessionKey('shared', '/repo-a')]);
   });
 
   it('treats a discovered session as the repo that discovered it', async () => {
@@ -311,18 +325,20 @@ describe('another repository owns the name', () => {
       { branch: 'shared', intent: 'continue-or-blank' },
       '/repo-a/elsewhere/shared'
     );
-    expect(sessions.isOwnSessionAlive('shared')).toBe(true);
+    expect(
+      sessions.isOwnSessionAlive(worktreeSessionKey('shared', '/repo-a'))
+    ).toBe(true);
 
     state.cwd = '/repo-b';
-    expect(sessions.isOwnSessionAlive('shared')).toBe(false);
-    // …and discovery over here is refused rather than adopting it.
-    await expect(
-      launchAgent(
-        { branch: 'shared', intent: 'continue-or-blank' },
-        '/repo-b/elsewhere/shared'
-      )
-    ).rejects.toThrow('already running for another repository');
-    sessions.killOwnSession('shared');
+    expect(
+      sessions.isOwnSessionAlive(worktreeSessionKey('shared', '/repo-a'))
+    ).toBe(false);
+    await launchAgent(
+      { branch: 'shared', intent: 'continue-or-blank' },
+      '/repo-b/elsewhere/shared'
+    );
+    expect(state.spawns).toHaveLength(2);
+    sessions.killOwnSession(worktreeSessionKey('shared', '/repo-a'));
     expect(state.killed).toEqual([]);
   });
 
@@ -337,11 +353,14 @@ describe('another repository owns the name', () => {
 describe('session buffer', () => {
   it('accumulates output with a monotonic sequence number', async () => {
     await launchAgent({ branch: 'buf', intent: 'continue-or-blank' });
-    emit('buf', 'one ');
-    emit('buf', 'two');
+    emit(worktreeSessionKey('buf', '/repo-a'), 'one ');
+    emit(worktreeSessionKey('buf', '/repo-a'), 'two');
 
     // The seq lets a late subscriber drop chunks the snapshot covered.
-    expect(getSessionBuffer('buf')).toEqual({ data: 'one two', seq: 2 });
+    expect(getSessionBuffer(worktreeSessionKey('buf', '/repo-a'))).toEqual({
+      data: 'one two',
+      seq: 2,
+    });
   });
 
   it('is empty for a session that was never launched', () => {
@@ -351,13 +370,13 @@ describe('session buffer', () => {
   it('drops the oldest output once the buffer is full', async () => {
     await launchAgent({ branch: 'big', intent: 'continue-or-blank' });
     const chunk = 'x'.repeat(256 * 1024);
-    emit('big', chunk);
-    emit('big', chunk);
-    emit('big', chunk);
+    emit(worktreeSessionKey('big', '/repo-a'), chunk);
+    emit(worktreeSessionKey('big', '/repo-a'), chunk);
+    emit(worktreeSessionKey('big', '/repo-a'), chunk);
 
     // Bounded at 512 KiB: the scrollback stays useful without letting a
     // chatty agent grow the main process without limit.
-    const { data } = getSessionBuffer('big');
+    const { data } = getSessionBuffer(worktreeSessionKey('big', '/repo-a'));
     expect(data.length).toBeLessThanOrEqual(512 * 1024);
     expect(data.length).toBeGreaterThan(0);
   });
@@ -374,7 +393,9 @@ describe('launchReviewAgent', () => {
     } as Parameters<typeof launchReviewAgent>[0]);
 
     expect(state.spawns).toHaveLength(1);
-    expect(state.spawns[0].name).toBe('feature-review');
+    expect(state.spawns[0].name).toBe(
+      worktreeSessionKey('feature/review', '/repo-a')
+    );
     expect(state.spawns[0].request).toMatchObject({
       intent: 'review',
       prompt: 'review #42: focus on error handling',
@@ -406,24 +427,33 @@ describe('checkoutPlan', () => {
     // core does the spawning; without the host adopting it, the PTY
     // runs with nothing relaying it and the terminal pane stays blank.
     await expect(checkoutPlan(req())).resolves.toBe('spawned');
-    emit('feature-x', 'agent says hello');
-    expect(getSessionBuffer('feature-x').data).toBe('agent says hello');
-    expect(listSessions().map((s) => s.name)).toEqual(['feature-x']);
+    emit(worktreeSessionKey('feature/x', '/repo-a'), 'agent says hello');
+    expect(
+      getSessionBuffer(worktreeSessionKey('feature/x', '/repo-a')).data
+    ).toBe('agent says hello');
+    expect(listSessions().map((s) => s.name)).toEqual([
+      worktreeSessionKey('feature/x', '/repo-a'),
+    ]);
   });
 
   it('injecting neither spawns nor disturbs the scrollback', async () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
-    emit('feature-x', 'existing conversation');
+    emit(worktreeSessionKey('feature/x', '/repo-a'), 'existing conversation');
     state.spawns = [];
 
     await expect(checkoutPlan(req('inject'))).resolves.toBe('injected');
 
     expect(state.spawns).toEqual([]);
     expect(state.injected).toEqual([
-      { name: 'feature-x', prompt: req().prompt },
+      {
+        name: worktreeSessionKey('feature/x', '/repo-a'),
+        prompt: req().prompt,
+      },
     ]);
     // The pane is showing this text; a reset would blank it.
-    expect(getSessionBuffer('feature-x').data).toBe('existing conversation');
+    expect(
+      getSessionBuffer(worktreeSessionKey('feature/x', '/repo-a')).data
+    ).toBe('existing conversation');
   });
 
   /**
@@ -435,14 +465,16 @@ describe('checkoutPlan', () => {
    */
   it('keeps chunk numbering monotonic when it restarts a session', async () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
-    emit('feature-x', 'first run');
-    const before = getSessionBuffer('feature-x').seq;
+    emit(worktreeSessionKey('feature/x', '/repo-a'), 'first run');
+    const before = getSessionBuffer(
+      worktreeSessionKey('feature/x', '/repo-a')
+    ).seq;
     expect(before).toBe(1);
 
     await checkoutPlan(req('new-session'));
-    emit('feature-x', 'second run');
+    emit(worktreeSessionKey('feature/x', '/repo-a'), 'second run');
 
-    const after = getSessionBuffer('feature-x');
+    const after = getSessionBuffer(worktreeSessionKey('feature/x', '/repo-a'));
     expect(after.seq).toBeGreaterThan(before);
     // The scrollback itself does start over — it is a new agent.
     expect(after.data).toBe('second run');
@@ -460,8 +492,9 @@ describe('checkoutPlan', () => {
     await launchAgent({ branch: 'feature/x', intent: 'continue-or-blank' });
     state.cwd = '/repo-b';
 
-    expect(() => checkoutPlan(req('inject'))).toThrow(
-      'already running for another repository'
+    await expect(checkoutPlan(req('inject'))).resolves.toBe('spawned');
+    expect(state.spawns.at(-1)?.name).toBe(
+      worktreeSessionKey('feature/x', '/repo-b')
     );
     expect(state.injected).toEqual([]);
   });

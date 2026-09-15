@@ -1,22 +1,16 @@
+import { removeWorktreeSession } from '@kirby/core';
 import {
   listWorktrees as listWts,
   listBranches as listBr,
   listAllBranches as listAllBr,
   createWorktree as createWt,
-  removeWorktree as removeWt,
   canRemoveBranch as canRemoveBr,
-  deleteBranch,
-  branchToSessionName,
-  worktreeSessionName,
 } from '@kirby/worktree-manager';
 import { spawn } from 'node:child_process';
-import { fetchWorktreeDiffText, killPersistedTmuxSession } from '@kirby/core';
+import { fetchWorktreeDiffText } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
 import { requireRepo } from './repo.js';
 import { stopBabysitForBranch } from './babysit.js';
-// Not @kirby/core's killSession: that registry is keyed by the bare
-// branch name, so another repository's agent answers to the same one.
-import { killOwnSession } from './sessions.js';
 
 // All worktree-manager functions resolve paths against process.cwd();
 // openRepo() chdir'd into the active repo, so these are repo-scoped.
@@ -55,26 +49,9 @@ export async function removeWorktree(
   branch: string,
   force: boolean
 ): Promise<boolean> {
-  requireRepo();
-  // A babysitter of this branch would start a fresh agent in a fresh
-  // checkout at its next update, undoing the removal.
+  const repo = requireRepo();
   stopBabysitForBranch(branch);
-  // Mirrors the TUI's performDelete (useSessionManager): kill the
-  // agent, remove the worktree, then delete the branch — removal
-  // without the other two strands a PTY in a deleted directory and
-  // leaves the branch behind.
-  const wt = (await listWts()).find((w) => w.branch === branch);
-  if (wt) killOwnSession(worktreeSessionName(wt));
-  killOwnSession(branchToSessionName(branch));
-  // A tmux session may be running for this branch even when the
-  // registry has never seen it (persisted from a previous run and not
-  // reattached) and whatever backend is selected now. Kill it by name
-  // so the worktree is never deleted out from under a live agent.
-  killPersistedTmuxSession(branchToSessionName(branch));
-  if (wt) killPersistedTmuxSession(worktreeSessionName(wt));
-  const removed = await removeWt(branch, { force });
-  if (removed) await deleteBranch(branch, true);
-  return removed;
+  return removeWorktreeSession(branch, force, repo);
 }
 
 export function canRemoveBranch(branch: string) {

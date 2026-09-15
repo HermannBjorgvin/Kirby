@@ -28,7 +28,9 @@ export interface TerminalLaunchRequest {
  * is.
  */
 export interface TerminalSummary {
-  /** Session name, `kirby-term-<kind>-<id>` — also the tmux name. */
+  /** Actual tmux target, when attached through tmux. Never a registry key. */
+  tmuxName?: string;
+  /** Opaque core registry key; displayPath supplies the tab label. */
   name: string;
   kind: TerminalKind;
   cwd: string;

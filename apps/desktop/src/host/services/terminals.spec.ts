@@ -34,6 +34,8 @@ const state = vi.hoisted(() => ({
   repoRoots: new Set<string>(),
   recents: [] as string[],
   nextId: 0,
+  freshRequests: [] as (boolean | undefined)[],
+  allocatedName: undefined as string | undefined,
   // Every path used across this file is a real directory as far as
   // launchTerminal's cwd check is concerned, unless a test says
   // otherwise — the check itself is exercised by its own describe
@@ -65,8 +67,11 @@ vi.mock('@kirby/vcs-core', () => ({
 
 vi.mock('@kirby/core', () => ({
   newTerminalSessionName: (kind: string) => {
+    // The label, suffixed the way a collision on the server would be.
     state.nextId += 1;
-    return `kirby-term-${kind}-${state.nextId.toString(16).padStart(6, '0')}`;
+    return state.nextId === 1
+      ? `kirby-${kind}`
+      : `kirby-${kind}-${state.nextId}`;
   },
   launchTerminalSession: (spec: {
     name: string;
@@ -75,30 +80,34 @@ vi.mock('@kirby/core', () => ({
     cols: number;
     rows: number;
     config: unknown;
+    fresh?: boolean;
   }) => {
-    state.alive.add(spec.name);
+    state.freshRequests.push(spec.fresh);
+    const actual = { ...spec, name: state.allocatedName ?? spec.name };
+    state.alive.add(actual.name);
     state.spawns.push({
-      name: spec.name,
-      kind: spec.kind,
-      cwd: spec.cwd,
-      cols: spec.cols,
-      rows: spec.rows,
-      config: spec.config,
+      name: actual.name,
+      kind: actual.kind,
+      cwd: actual.cwd,
+      cols: actual.cols,
+      rows: actual.rows,
+      config: actual.config,
     });
-    const name = spec.name;
+    const name = actual.name;
     state.onExit.set(name, []);
     state.sessions.set(name, {
       exited: false,
       pty: {
-        cols: spec.cols,
-        rows: spec.rows,
+        cols: actual.cols,
+        rows: actual.rows,
         onData: (cb: (data: string) => void) => state.onData.set(name, cb),
         onExit: (cb: (code: number) => void) =>
           state.onExit.get(name)?.push(cb),
       },
     });
+    return { name };
   },
-  isTmuxSessionPersisted: (_config: unknown, name: string) =>
+  isTmuxSessionNamedPersisted: (_config: unknown, name: string) =>
     state.tmuxHolds.has(name),
   getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {
@@ -128,6 +137,8 @@ beforeEach(async () => {
   state.repoRoots = new Set(['/home/dev/kirby', '/home/dev/other']);
   state.recents = [];
   state.nextId = 0;
+  state.freshRequests = [];
+  state.allocatedName = undefined;
   state.missingDirs = new Set();
   state.tmuxHolds = new Set();
   state.broadcasts = [];
@@ -238,20 +249,20 @@ describe('adoptTerminal', () => {
   // launch reattaches under exactly that name.
   it('reattaches under the name and in the directory tmux reported', () => {
     terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
       expect.objectContaining({
-        name: 'kirby-term-shell-1a2b3c',
+        name: 'kirby-shell',
         kind: 'shell',
         cwd: '/home/dev/notes',
       }),
     ]);
     expect(terminals.listTerminals(HOME)).toEqual([
       expect.objectContaining({
-        name: 'kirby-term-shell-1a2b3c',
+        name: 'kirby-shell',
         repo: null,
         displayPath: '~/notes',
       }),
@@ -263,7 +274,7 @@ describe('adoptTerminal', () => {
   // tab opens that repository.
   it('puts a restored terminal’s repository back on the repo list', () => {
     terminals.adoptTerminal({
-      name: 'kirby-term-agent-4d5e6f',
+      name: 'kirby-agent',
       kind: 'agent',
       path: '/home/dev/other',
     });
@@ -360,13 +371,13 @@ describe('a terminal whose process ended', () => {
   // drop the terminal the new client is attached to.
   it('keeps a terminal that was respawned under the same name', () => {
     terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
-    const oldExits = [...(state.onExit.get('kirby-term-shell-1a2b3c') ?? [])];
+    const oldExits = [...(state.onExit.get('kirby-shell') ?? [])];
     terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
@@ -393,7 +404,12 @@ describe('a terminal whose tmux client detached', () => {
     endProcess(name);
 
     expect(terminals.listTerminals(HOME)).toEqual([
-      expect.objectContaining({ name, kind: 'shell', cwd: '/x', running: true }),
+      expect.objectContaining({
+        name,
+        kind: 'shell',
+        cwd: '/x',
+        running: true,
+      }),
     ]);
     expect(state.spawns.map((s) => [s.name, s.cols, s.rows])).toEqual([
       [name, 100, 30],
@@ -448,7 +464,7 @@ describe('killTerminal', () => {
   });
 
   it('is a no-op for a name it never launched', () => {
-    terminals.killTerminal('kirby-term-shell-nope');
+    terminals.killTerminal('kirby-shell-9');
     expect(state.killed).toEqual([]);
   });
 });
@@ -474,4 +490,27 @@ describe('agentTerminalNames', () => {
   it('is empty with no terminals at all', () => {
     expect(terminals.agentTerminalNames()).toEqual([]);
   });
+});
+
+it('uses the allocated backend name for the tab and its lifecycle', () => {
+  state.allocatedName = 'kirby-shell-3';
+  const tab = terminals.launchTerminal({
+    kind: 'shell',
+    cwd: '/home/dev/kirby',
+  });
+  expect(state.freshRequests).toEqual([true]);
+  expect(tab.name).toBe('kirby-shell-3');
+  expect(tab.running).toBe(true);
+  expect(state.onExit.has('kirby-shell-3')).toBe(true);
+  // A session can disappear between discovery and reattachment too.
+  state.allocatedName = 'kirby-shell-4';
+  terminals.adoptTerminal({
+    name: tab.name,
+    kind: 'shell',
+    path: '/home/dev/kirby',
+  });
+  expect(state.freshRequests).toEqual([true, false]);
+  expect(
+    terminals.listTerminals(HOME).map((terminal) => terminal.name)
+  ).toEqual(['kirby-shell-4']);
 });

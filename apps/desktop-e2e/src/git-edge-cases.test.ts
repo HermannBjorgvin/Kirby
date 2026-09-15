@@ -135,18 +135,23 @@ test.describe('A worktree whose branch was switched inside it', () => {
     expect(found?.branch).toBe('agent-side-branch');
   });
 
-  test('resolves the existing directory rather than making a second one', async ({
+  test('refuses a mismatched branch and reuses the checkout for its actual branch', async ({
     desktop,
   }) => {
     const { page, repoPath } = desktop;
 
-    // Checking `original` out again must reuse its directory: the
-    // worktree resolver is keyed by directory name precisely so a
-    // branch switched underneath does not strand it.
+    await expect(
+      page.evaluate(
+        (branch) =>
+          window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
+        'original'
+      )
+    ).rejects.toThrow('Failed to resolve a worktree');
+    expect(await page.evaluate(() => window.kirby.listSessions())).toEqual([]);
     await page.evaluate(
       (branch) =>
         window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
-      'original'
+      'agent-side-branch'
     );
 
     expect(existsSync(join(repoPath, '.claude', 'worktrees', 'original'))).toBe(

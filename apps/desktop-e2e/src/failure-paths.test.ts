@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
@@ -47,7 +48,8 @@ test.describe('An agent that exits immediately', () => {
             window.kirby.listSessions()
           );
           return (
-            sessions.find((s) => s.name === 'short-lived')?.running ?? true
+            sessions.find((s) => sessionBranch(s.name) === 'short-lived')
+              ?.running ?? true
           );
         },
         { timeout: 20_000 }
@@ -151,7 +153,8 @@ test.describe('An agent command that does not exist', () => {
             window.kirby.listSessions()
           );
           return (
-            sessions.find((s) => s.name === 'broken-agent')?.running ?? false
+            sessions.find((s) => sessionBranch(s.name) === 'broken-agent')
+              ?.running ?? false
           );
         },
         { timeout: 20_000 }

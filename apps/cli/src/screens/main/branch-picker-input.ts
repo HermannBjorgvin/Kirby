@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import {
   fetchRefs,
   handleTextInput,
@@ -5,11 +6,7 @@ import {
   isSessionAlive,
   requestSessionMenu,
 } from '@kirby/core';
-import {
-  createWorktree,
-  listAllBranches,
-  branchToSessionName,
-} from '@kirby/worktree-manager';
+import { createWorktree, listAllBranches } from '@kirby/worktree-manager';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 /**
@@ -60,7 +57,7 @@ function selectBranch(ctx: BranchPickerHandlerCtx, filtered: string[]): void {
       const worktreePath = await createWorktree(branch);
       if (!worktreePath) return;
       await ctx.sessions.refreshSessions();
-      landInSession(ctx, branchToSessionName(branch));
+      landInSession(ctx, worktreeSessionKey(branch));
     });
   }
   resetPicker(ctx);

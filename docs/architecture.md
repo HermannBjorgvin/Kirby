@@ -54,6 +54,10 @@ libs/core/                       — Shell-agnostic core. No React, Ink or Elect
   src/lib/agents/                — Agent registry
   src/lib/activity.ts            — Agent activity registry; pty-registry.ts — PTY session lifecycle
   src/lib/session-backend.ts     — Terminal backend factory wiring (PTY/tmux)
+  src/lib/session-identity.ts    — `@orchestra-*` tag names, session labels and matching rules shared with Orchestra
+  src/lib/session-resolver.ts    — The one `list-sessions` fork every tmux lookup goes through
+  src/lib/tmux-factory-options.ts — Kirby's resolve/label/tags answers for the tmux backend factory
+  src/lib/discovery/             — Session discovery: scan/diff, live worktree sessions, worktree HEAD reader
   src/lib/keybindings/           — Customizable keybinding system
     registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
     resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
@@ -73,10 +77,10 @@ libs/terminal/                   — Terminal emulator (renderer) + SessionBacke
 libs/terminal-pty/               — Direct PTY backend (node-pty)
   src/lib/pty-session.ts         — node-pty wrapper (PtySession)
   src/lib/pty-backend.ts         — createPtyBackendFactory()
-libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
-  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands
-  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
-  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
+libs/terminal-tmux/              — Tmux backend (optional system tmux; probe floor 2.0, `=name:` option targets need 2.1)
+  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands (sessions, options, listing with user options)
+  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ resolve, label, tags, isTaken }): resolve → attach, else create detached, tag, attach
+  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', 200-char cap with hash tail)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
 libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
   src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete

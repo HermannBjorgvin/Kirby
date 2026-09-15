@@ -1,3 +1,4 @@
+import { worktreeSessionKey, keyForWorktree } from '@kirby/core';
 import { spawn } from 'node:child_process';
 import type { SidebarItem } from '@kirby/core';
 import {
@@ -15,8 +16,6 @@ import {
   createWorktree,
   listAllBranches,
   listWorktrees,
-  branchToSessionName,
-  worktreeSessionName,
   rebaseOntoMaster,
 } from '@kirby/worktree-manager';
 import type { SidebarInputCtx } from './input-types.js';
@@ -76,7 +75,7 @@ function sessionNameForRow(item: SidebarItem | undefined): string | null {
   if (!item) return null;
   if (item.kind === 'session') return item.session.name;
   if (item.kind === 'review-pr' && item.running != null) {
-    return branchToSessionName(item.pr.sourceBranch);
+    return worktreeSessionKey(item.pr.sourceBranch);
   }
   return null;
 }
@@ -209,7 +208,7 @@ const deleteBranch: SidebarAction = (ctx) => {
 
   void ctx.asyncOps.run('check-delete', async () => {
     const worktrees = await listWorktrees();
-    const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
+    const wt = worktrees.find((w) => keyForWorktree(w) === sessionName);
     const branch = wt?.branch;
     if (branch) {
       await confirmOrDelete(ctx, sessionName, branch);
@@ -254,7 +253,7 @@ const rebase: SidebarAction = (ctx) => {
   const sessionName = selectedItem.session.name;
   void ctx.asyncOps.run('rebase', async () => {
     const worktrees = await listWorktrees();
-    const wt = worktrees.find((w) => worktreeSessionName(w) === sessionName);
+    const wt = worktrees.find((w) => keyForWorktree(w) === sessionName);
     if (!wt) {
       ctx.sessions.flashStatus('No worktree found for selected session');
       return;

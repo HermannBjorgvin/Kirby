@@ -1,3 +1,4 @@
+import { sessionLabel } from '@kirby/core';
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
@@ -118,7 +119,11 @@ export const SessionMenuPane = memo(function SessionMenuPane({
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
-      {pr ? <PrHeader pr={pr} /> : <Text bold>{sessionName ?? 'Session'}</Text>}
+      {pr ? (
+        <PrHeader pr={pr} />
+      ) : (
+        <Text bold>{sessionName ? sessionLabel(sessionName) : 'Session'}</Text>
+      )}
 
       <Box marginTop={1} flexDirection="column">
         <Text>What would you like to do?</Text>

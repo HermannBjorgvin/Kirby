@@ -1,5 +1,5 @@
+import { worktreeSessionKey } from '../session-key.js';
 import {
-  branchToSessionName,
   canRemoveBranch,
   fastForwardMainBranch,
 } from '@kirby/worktree-manager';
@@ -92,7 +92,7 @@ async function autoDeleteMerged(args: {
     // once the session is stopped. The tmux check ignores the selected
     // backend on purpose: the agent is running whether or not tmux is
     // still the preference, and deleting its worktree is destructive.
-    const sessionName = branchToSessionName(branch);
+    const sessionName = worktreeSessionKey(branch);
     if (isSessionAlive(sessionName) || hasLiveTmuxSession(sessionName)) {
       logError(
         'sweepMergedBranches',
@@ -103,7 +103,7 @@ async function autoDeleteMerged(args: {
     const check = await canRemoveBranch(branch, true);
     if (isCancelled()) return null;
     if (check.safe) {
-      await onAutoDelete(branchToSessionName(branch), branch);
+      await onAutoDelete(worktreeSessionKey(branch), branch);
     } else {
       if (check.reason === 'rebase in progress') rebasingNow.push(branch);
       logError(

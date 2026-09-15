@@ -5,7 +5,7 @@ import {
   getSession,
   getSpawnedAt,
   isSessionAlive,
-  isTmuxSessionPersisted,
+  isTmuxSessionNamedPersisted,
   killSession as killSessionEntry,
   launchTerminalSession,
   newTerminalSessionName,
@@ -40,9 +40,10 @@ import { displayPath, terminalRepo } from './terminal-home.js';
  * still this user's terminal whatever repository is open. So nothing
  * here goes through `requireRepo`.
  *
- * There is no state file. The name carries the kind, tmux carries the
- * directory (`session_path`), and discovery hands both back after a
- * restart through {@link adoptTerminal}.
+ * There is no state file. The session's `@orchestra-session-type` tag
+ * carries the kind, its name is its key, tmux carries the directory
+ * (`session_path`), and discovery hands all of it back after a restart
+ * through {@link adoptTerminal}.
  */
 
 const DEFAULT_COLS = 120;
@@ -85,22 +86,26 @@ function clampDim(value: number | undefined, fallback: number): number {
 }
 
 function start(
-  name: string,
+  requestedName: string,
   kind: TerminalKind,
   cwd: string,
-  size: { cols?: number; rows?: number }
-): void {
+  size: { cols?: number; rows?: number },
+  fresh = false
+): string {
   // Config for the directory, not for whatever repository is open: an
   // agent at a repository root should be that repository's agent.
-  launchTerminalSession({
-    name,
+  const launched = launchTerminalSession({
+    name: requestedName,
     kind,
     cwd,
     cols: clampDim(size.cols, DEFAULT_COLS),
     rows: clampDim(size.rows, DEFAULT_ROWS),
     config: readConfig(cwd),
+    fresh,
   });
-  const prev = known.get(name);
+  const name = launched.name;
+  const prev = known.get(requestedName);
+  if (name !== requestedName) known.delete(requestedName);
   const entry: KnownTerminal = {
     ...newRelayEntry(prev?.seq ?? 0),
     kind,
@@ -109,19 +114,22 @@ function start(
   known.set(name, entry);
   watchForEnd(name, entry);
   attachRelay(name, entry);
+  return name;
 }
 
 /**
  * Whether tmux still holds a session under `name` now that the client
  * this host had on it has exited — a detach from inside tmux, not the
- * terminal ending. Asked with the backend in force for this process,
- * which is the open repository's config, the same gate discovery
- * reads; with no repository open there is no tmux in force and the
- * answer is no.
+ * terminal ending. Asked by tmux name, not by the open repository: a
+ * terminal tab is process-global and its session — a shell, or an
+ * adopted orphan tagged with the repository it was opened from — stays
+ * this tab's after a repository switch. The backend in force is the
+ * open repository's config, the same gate discovery reads; with no
+ * repository open there is no tmux in force and the answer is no.
  */
 function stillHeldByTmux(name: string): boolean {
   try {
-    return isTmuxSessionPersisted(readConfig(requireRepo()), name);
+    return isTmuxSessionNamedPersisted(readConfig(requireRepo()), name);
   } catch {
     return false;
   }
@@ -177,6 +185,9 @@ function noteRepository(cwd: string): string | null {
 function summarize(name: string, entry: KnownTerminal, home: string) {
   return {
     name,
+    ...(getSession(name)?.pty.name
+      ? { tmuxName: getSession(name)?.pty.name }
+      : {}),
     kind: entry.kind,
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
@@ -192,8 +203,7 @@ export function launchTerminal(
   home: string = homedir()
 ): TerminalSummary {
   assertLaunchableCwd(req.cwd);
-  const name = newTerminalSessionName(req.kind);
-  start(name, req.kind, req.cwd, req);
+  const name = start(newTerminalSessionName(), req.kind, req.cwd, req, true);
   noteRepository(req.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);

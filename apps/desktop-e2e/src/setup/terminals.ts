@@ -1,7 +1,7 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { clickAppMenuItem } from './menu.js';
-import { socketEnv } from './tmux.js';
+import { listTaggedSessions, socketEnv, tagTmuxSession } from './tmux.js';
 
 /**
  * Driving terminal tabs the way a user does — the native menu item, the
@@ -46,20 +46,12 @@ export function terminalTabs(page: Page): Locator {
   return page.locator('[role="tab"][data-face="terminal"]');
 }
 
-/** The tmux session names of terminal tabs on the test's server. */
+/** The tmux session names of terminal tabs on the test's server —
+ *  found by their session-type tag, as the app finds them. */
 export function terminalSessions(tmuxTmpdir: string): string[] {
-  try {
-    return execFileSync('tmux', ['list-sessions', '-F', '#{session_name}'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      env: socketEnv(tmuxTmpdir),
-    })
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((n) => n.startsWith('kirby-term-'));
-  } catch {
-    return [];
-  }
+  return listTaggedSessions(tmuxTmpdir)
+    .filter((s) => s.spawner && (s.type === 'shell' || s.type === 'agent'))
+    .map((s) => s.name);
 }
 
 /** The directory tmux holds for a session — what the app identifies a
@@ -67,22 +59,27 @@ export function terminalSessions(tmuxTmpdir: string): string[] {
 export function tmuxSessionPath(name: string, tmuxTmpdir: string): string {
   return execFileSync(
     'tmux',
-    ['display-message', '-p', '-t', name, '#{session_path}'],
+    ['display-message', '-p', '-t', `=${name}:`, '#{session_path}'],
     { encoding: 'utf8', env: socketEnv(tmuxTmpdir) }
   ).trim();
 }
 
 /**
- * Start a detached tmux session under a terminal-tab name, in `cwd`,
- * running `command` — the state a terminal tab is in after the app that
- * opened it has quit. HOME and PATH are pinned as the backend pins them.
+ * Start a detached tmux session tagged as a terminal tab of `kind`, in
+ * `cwd`, running `command` — the state a terminal tab is in after the
+ * app that opened it has quit. The name is any label; the tags are what
+ * the app finds it by. HOME and PATH are pinned as the backend pins them.
  */
-export function startSurvivingTerminal(opts: {
-  name: string;
+export interface TerminalSeed {
   cwd: string;
-  homeDir: string;
   command: string;
-}): void {
+  /** Shell unless said. */
+  kind?: 'shell' | 'agent';
+}
+
+export function startSurvivingTerminal(
+  opts: TerminalSeed & { name: string; homeDir: string }
+): void {
   execFileSync(
     'tmux',
     [
@@ -106,5 +103,14 @@ export function startSurvivingTerminal(opts: {
       opts.command,
     ],
     { stdio: 'ignore', env: socketEnv(opts.homeDir) }
+  );
+  tagTmuxSession(
+    opts.name,
+    {
+      '@orchestra-spawner': 'kirby',
+      '@orchestra-repo': opts.cwd,
+      '@orchestra-session-type': opts.kind ?? 'shell',
+    },
+    opts.homeDir
   );
 }

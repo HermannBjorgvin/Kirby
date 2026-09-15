@@ -14,9 +14,10 @@ Every rule below has its reasoning in `docs/decisions.md`.
   does: detect project config, set the worktree resolver, apply the session
   backend. `main.ts` **awaits** `probeTmuxAvailability()` before wiring the
   backend; firing it off strands a tmux machine on PTY for the whole run.
-- The host holds one repo (`requireRepo`, memoized root, `projectKey`-scoped
-  tmux names). The tab strip spans repos: activating a foreign tab opens its
-  repo (`useRepoFollowsTabs`); nothing renders another repo's content in place.
+- The host holds one repo (`requireRepo`, memoized root, the
+  `@orchestra-repo` every tmux session it creates is tagged with). The tab
+  strip spans repos: activating a foreign tab opens its repo
+  (`useRepoFollowsTabs`); nothing renders another repo's content in place.
 - Sidebar answers are stamped with the repo they describe
   (`getSidebarSnapshot`) and the renderer drops answers for a repo it is not
   showing (`loadSidebarModel`). A switch is in flight for several awaits.
@@ -28,10 +29,12 @@ Every rule below has its reasoning in `docs/decisions.md`.
   `spawned` and `ended`; everything else rides on the sidebar poll.
 - `services/settings.ts:updateSettingsFromView` refuses a backend switch with
   live sessions and refuses tmux when the probe says unavailable.
-- Terminal tabs have no state file; tmux is the record
-  (`kirby-term-<shell|agent>-<id>`, directory from `#{session_path}`). The tab
-  group is derived at read time (`services/terminal-home.ts`). Closing a
-  terminal tab confirms and kills; quitting only detaches.
+- Terminal tabs have no state file; tmux is the record: the kind is the
+  `@orchestra-session-type` tag (`shell` | `agent`), the name is a label
+  (`<repo>-shell`, suffixed on collision) and the key, the directory is
+  `#{session_path}`. The tab group is derived at read time
+  (`services/terminal-home.ts`). Closing a terminal tab confirms and kills;
+  quitting only detaches.
 - Pasted images are written under the OS temp dir
   (`services/clipboard-image.ts`), suffix from the host's own MIME table, and
   the path is typed into the PTY.

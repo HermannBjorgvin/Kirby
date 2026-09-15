@@ -1,7 +1,7 @@
+import { worktreeSessionKey } from '../session-key.js';
 import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
 import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
 import type { BabysitStatus } from '../babysit/babysit-model.js';
-import { branchToSessionName } from '@kirby/worktree-manager';
 
 /** Babysit statuses by pull request id. */
 export type BabysatMap = ReadonlyMap<number, BabysitStatus>;
@@ -106,7 +106,7 @@ export function buildSidebarItems(
 
   /** The alive worktree session backing a PR's branch, if any. */
   const prSession = (pr: PullRequestInfo): AgentSession | undefined =>
-    sessionByName.get(branchToSessionName(pr.sourceBranch));
+    sessionByName.get(worktreeSessionKey(pr.sourceBranch));
 
   const orphanItem = (pr: PullRequestInfo): SidebarItem => {
     const session = prSession(pr);

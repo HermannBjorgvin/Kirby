@@ -1,6 +1,8 @@
+import { readWorktreeHead } from './discovery/worktree-origin.js';
 import { TerminalEmulator } from '@kirby/terminal';
 import type { SessionBackend, SessionBackendFactory } from '@kirby/terminal';
 import { createPtyBackendFactory } from '@kirby/terminal-pty';
+import { sessionIdentity, terminalSessionKey } from './session-key.js';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
@@ -15,6 +17,16 @@ export interface PtyEntry {
    *  produces a fresh value, so the restarted tab moves to the end of
    *  the bar — matching browser-tab semantics. */
   spawnedAt: number;
+}
+
+export interface NamedPtyEntry extends PtyEntry {
+  name: string;
+}
+
+export interface SpawnSessionOptions {
+  /** Use the terminal namespace; tmux supplies its allocated target, PTY keeps its UUID. */
+  terminalIdentity?: boolean;
+  reuse?: boolean;
 }
 
 const registry = new Map<string, PtyEntry>();
@@ -44,29 +56,40 @@ export function setSessionBackendFactory(factory: SessionBackendFactory): void {
 }
 
 export function spawnSession(
-  name: string,
+  requestedName: string,
   cmd: string,
   args: string[],
   cols: number,
   rows: number,
   cwd: string,
-  env?: Record<string, string | undefined>
-): PtyEntry {
+  env?: Record<string, string | undefined>,
+  tags?: Record<string, string>,
+  options: SpawnSessionOptions = {}
+): NamedPtyEntry {
+  const identity = sessionIdentity(requestedName);
+  if (identity?.kind === 'worktree') {
+    const head = readWorktreeHead(cwd);
+    if (head && !head.detached && head.branch !== identity.branch) {
+      throw new Error(
+        `Worktree is on "${head.branch}", not "${identity.branch}"`
+      );
+    }
+  }
   // Respawn under the same name: dispose (soft) the prior entry. On
-  // tmux this detaches without killing, so the new spawn's `-A` flag
-  // re-attaches to the same tmux session — preserving its scrollback.
+  // tmux this detaches without killing, so the new spawn resolves the
+  // same tmux session and re-attaches — preserving its scrollback.
   // On the direct PTY backend dispose === kill.
-  const existing = registry.get(name);
+  const existing = registry.get(requestedName);
   if (existing) {
     existing.pty.dispose();
     existing.emu.dispose();
-    activity.detach(name);
-    removeInactiveAlert(name);
-    registry.delete(name);
+    activity.detach(requestedName);
+    removeInactiveAlert(requestedName);
+    registry.delete(requestedName);
   }
 
   const pty = activeFactory({
-    name,
+    name: requestedName,
     cmd,
     args,
     cols,
@@ -80,9 +103,25 @@ export function spawnSession(
     // them into the session env (the server, not the client, spawns
     // the command).
     envAdditions: env,
+    // What the caller declares about the session — a terminal tab's
+    // kind — for a backend with somewhere to keep it. The composition
+    // root reads it back to decide the session's identity.
+    tags,
+    reuse: options.reuse,
   });
+  const name = options.terminalIdentity
+    ? pty.name
+      ? terminalSessionKey(pty.name)
+      : requestedName
+    : requestedName;
   const emu = new TerminalEmulator(cols, rows);
-  const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };
+  const entry: NamedPtyEntry = {
+    name,
+    pty,
+    emu,
+    exited: false,
+    spawnedAt: Date.now(),
+  };
 
   pty.onData((data) => {
     void emu.write(data);
@@ -147,14 +186,14 @@ export function hasAnySession(): boolean {
 }
 
 /** Bare registry names — the ones `spawnSession` was called with, not
- *  the tmux names they may compose into — of every still-running
- *  session. Discovery composes each of these through the same tmux
- *  naming this process spawned with, so a live tmux session it already
- *  holds is recognised as owned rather than reported as an orphan to
- *  adopt a second time (worktree sessions are keyed by branch here,
- *  which drifts from the tmux name once the worktree checks out
- *  another branch). Exited entries are excluded for the same reason
- *  {@link hasAnySession} excludes them: a tombstone owns nothing. */
+ *  the tmux names behind them — of every still-running session.
+ *  Discovery keys each live tmux session the same way, so one this
+ *  process already holds is recognised as owned rather than reported
+ *  as an orphan to adopt a second time (worktree sessions are keyed by
+ *  the branch they were spawned under, which is exactly what a
+ *  mid-session checkout leaves stale). Exited entries are excluded for
+ *  the same reason {@link hasAnySession} excludes them: a tombstone
+ *  owns nothing. */
 export function liveSessionNames(): string[] {
   const names: string[] = [];
   for (const [name, entry] of registry.entries()) {

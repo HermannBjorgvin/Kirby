@@ -25,7 +25,8 @@ resolved configuration with `npx nx show project <name> --json`.
 ## Terminal backends and isolation
 
 `SessionBackend` separates terminal transport from Kirby. PTY and tmux backends
-receive session names from core; `tmux-namespace.ts` owns the Kirby prefix.
+receive registry names from core; `session-identity.ts` owns what a tmux
+session is called and how it is recognised.
 `resolveTerminalBackend` honors project then global configuration, otherwise
 uses the tmux probe. Do not persist the detected default: another machine may
 have different capabilities. Await the probe before wiring the backend.
@@ -33,17 +34,123 @@ have different capabilities. Await the probe before wiring the backend.
 A backend switch requires no live sessions; selecting tmux requires a successful
 probe. Both shells enforce this so sessions cannot retain an obsolete factory.
 
-Tmux launch and resume share `new-session -A`. `dispose()` detaches the client;
-`kill()` ends the session. Application shutdown must dispose, including
-`killAll()`. A tmux server retains its original environment, so sessions receive
-explicit HOME, PATH and seed variables. The `-e` options require tmux 3.2;
-check compatibility when changing the older availability-probe floor.
+Tmux launch resolves first and attaches, else creates detached, tags and then
+attaches (see the next section). `dispose()` detaches the client; `kill()` ends
+the session. Application shutdown must dispose, including `killAll()`. A tmux
+server retains its original environment, so sessions receive explicit HOME,
+PATH and seed variables. The `-e` options require tmux 3.2; check
+compatibility when changing the older availability-probe floor.
 
 Tests must isolate the socket and environment. `TMUX` names a socket directly
 and overrides `TMUX_TMPDIR`: unset it, place the socket directory inside the
 fixture HOME, and assert isolation before listing or killing sessions. Never
 use `tmux kill-server`. Fixtures select PTY unless a test explicitly exercises
 tmux or an unset backend. This prevents detached agents leaking after tests.
+
+`list-sessions -F` output is tab-separated. A tmux client whose locale is not
+UTF-8 rewrites control characters in that output to `_`, which folds every
+column into the name, so `tmux-cli.ts` passes `-u` to every command whose
+output it parses (`list-sessions -F`, `show-options`).
+
+## Session identity shared with Orchestra
+
+Names are labels, tags are identity. Kirby and Orchestra create and inspect
+the same tmux sessions, and a session's name is a human-readable label chosen
+once at creation and never parsed: `<repo>-<branch>` for a worktree session,
+`<repo>-shell` or `<repo>-agent` for a terminal tab, where `<repo>` is the
+basename of the symlink-resolved main checkout and every `/`, `.` and `:`
+becomes `-`; a name over 200 characters keeps its first 195 and gains `-` plus
+four hex digits of the SHA-256 of the unsanitized string the label was built
+from — `<basename>-<branch>` for a worktree session, `<basename>-shell` /
+`<basename>-agent` for a terminal tab. If any
+session on the server already holds the name — foreign, another checkout with
+the same directory name, a second shell tab — `-2`, `-3`, … is appended to the
+preferred label until one is free, after the cap and without capping or
+hashing again (a capped label plus `-2` is 202 characters), and nothing ever
+reconstructs that suffix. A create that loses the race for a candidate keeps
+probing from the original preferred label, so a second race yields `-3`,
+never `-2-2`.
+The rule is implemented twice, in bash and in TypeScript, so
+`session-identity.spec.ts` and agent-plugins' CLAUDE.md pin one table of
+inputs and outputs that must stay identical.
+
+Everything that identifies a session is a tmux session user option — a tag —
+on the session itself: `set-option -t '=<name>:' @orchestra-x value` to
+write, `#{@orchestra-x}` in a format string to read. Tags die with the
+session; no file records them. A value is a plain string without tabs, and an
+absent tag is unset, never a sentinel. Whichever program creates a session
+writes `@orchestra-spawner` (`kirby` or `orchestra`), `@orchestra-repo` (the
+symlink-resolved main checkout), `@orchestra-session-type` (`worktree`,
+`shell` or `agent`) and, on a worktree session, `@orchestra-branch`
+(unsanitized; a detached-HEAD worktree's directory name). A later attach never
+rewrites them. The names live in `libs/core/src/lib/session-identity.ts`;
+`libs/terminal-tmux` carries them as opaque `tags` and option-name arguments
+and knows neither `@orchestra-` nor `kirby`. The `=name:` exact target form
+needs tmux 2.1; the availability probe still accepts 2.0.
+
+A worktree session's identity is (`@orchestra-repo`, `@orchestra-branch`),
+string equality on both; a terminal tab's is its name, which is unique on the
+server. Every lookup — attach, exists, kill, adopt, list, orphan detection —
+goes through one resolver (`session-resolver.ts`): one `tmux -u list-sessions
+-F` fork carrying `#{session_name}`, `#{session_created}`, every tag and
+`#{session_path}`, matched client-side, never `list-sessions -f` (tmux 3.1).
+When several sessions claim one identity the oldest by `session_created` is
+the one acted on and the rest are listed, never silently killed. "Ours" is
+spawner set and a known session type, with a nonempty repo tag required for
+worktree sessions: a session whose name Kirby would have
+chosen but that lacks those tags is foreign, and is never attached to, killed,
+adopted or listed. That is why there is no git fallback for an untagged
+session and why a destructive or attaching command takes a name only after
+the resolver verified it — `killPersistedTmuxSession` refuses a session that
+merely carries the expected name. `projectKey` remains config storage's and
+is used by no tmux code.
+
+The backend (`tmux-backend.ts`) therefore no longer runs `new-session -A`. It
+asks the caller's `resolve(spec)` for an existing name and attaches to it
+exactly; otherwise it takes `label(spec)`, probes `has-session` for the first
+free candidate, creates it with `new-session -d`, moves to the next candidate
+if tmux reports a duplicate (another creator won the race), writes `tags(spec)`
+as session options, and only then attaches a client. Creating detached and
+tagging first means the tags exist before anything can observe the session,
+which removed the old post-hoc `set-option` retry loop; and resolving before
+creating means a name that happens to be taken is never attached to. `status
+off` is set on every attach; tags never are. Kirby's answers to the three
+questions are composed in `tmux-factory-options.ts` from the repo root: a
+worktree spec is identified by the branch in its directory's HEAD file (no git
+fork); a terminal spec is told apart by the session-type tag its launcher
+passes through `spawnSession`. New tabs set `reuse: false`. Core owns registry
+identity in `session-key.ts`, above both transports: JSON tuple keys encode
+`["worktree", repo, exactBranch]` or `["terminal", id]`. Tmux terminal IDs are
+actual allocated session names; PTY terminal IDs are lifetime UUIDs. The
+namespaces cannot overlap, repositories can share branch names, and
+`feature/login` remains distinct from `feature-login`. Display labels travel
+separately. Restoring a terminal decodes its exact tmux target;
+`resolveRegistrySession(repo, key)` matches worktree tags using the key's
+repository and exact branch. Launch validates the checkout's branch before
+replacing any registry entry. Worktree resolution prefers git's exact branch
+location and refuses a derived directory occupied by another branch.
+`removeWorktreeSession` owns the shared stop/remove/delete sequence, passing
+the captured repository through every filesystem operation.
+`resolveSessionByName(name)` answers a tmux _name_ across
+all our tagged sessions, any type, no repository scope, because a name is
+unique on the server and a terminal tab — including an adopted orphan still
+tagged `worktree` and with the repository it came from — is process-global and
+outlives a repository switch. `new-session -d` starts the command before the
+tags are written, so a concurrent scanner treats the session as foreign for
+the poll in which it is still untagged; the next poll sees it.
+
+Discovery (`observeTmuxSessions`) reads the same listing once: a worktree is
+persisted when a session is tagged with the open root and the branch the
+worktree list reports (the directory's name for a detached HEAD); a session
+tagged with the open root on a branch no listed worktree is on is an orphan —
+the agent checked out another branch inside its worktree — and surfaces as an
+agent terminal in its `session_path` unless the registry already holds it
+under the branch it was spawned with; terminal tabs are found by session type
+wherever they run. `listLiveWorktreeSessions`, which spans repositories,
+takes the repository from the tag and includes a session only while its
+directory's HEAD is still on the tagged branch. Registry keys are unchanged:
+worktree sessions by `branchToSessionName(branch)`, terminal tabs by their
+tmux name.
 
 ## Discovery and terminal lifecycle
 
@@ -53,16 +160,25 @@ control clients that can resize panes. Recheck session liveness and the selected
 backend after awaits: the user may launch a session or switch backends mid-scan.
 Pass retired names as `suppressed` so they do not trigger a refresh every poll.
 
-Foreign-session discovery accepts names that exactly match the directory's repo
-and branch. Cache origins while their directories exist; a transient git error
-is not evidence that an agent disappeared. Discovery uses the open repo's backend
-configuration, including its per-project override.
+Discovery recognises a session by its tags alone (see "Session identity shared
+with Orchestra"): a worktree is persisted when a session is tagged with the
+open root and the worktree's branch, and attaching goes through `spawnSession`
+so the backend resolves that session and attaches rather than creating a
+second one. There is no name matching, no git fallback and no origin cache: a
+session without tags is foreign, and one with them needs no git to describe.
+Discovery uses the open repo's backend configuration, including its
+per-project override.
 
-Standalone terminal sessions use `kirby-term-<shell|agent>-<id>` and tmux's
-`session_path`; no separate state file is needed. An empty command means the
-backend's default shell. Agents use `launchTerminalSession` → `launchSession`.
-Recognize qualified names to avoid prefixing them again. A worktree session whose
-branch changed can appear as an agent terminal instead of disappearing.
+Standalone terminal sessions are tagged `@orchestra-session-type` `shell` or
+`agent`, named `<repo>-shell` / `<repo>-agent` (suffixed on collision) and
+located by tmux's `session_path`; no separate state file is needed.
+`newTerminalSessionName` creates a provisional UUID key. Tmux allocation returns
+its final name, which core encodes as the terminal key; a raw PTY keeps the UUID.
+An empty command means the backend's default shell. Agents use `launchTerminalSession` → `launchSession`. A worktree
+session whose branch changed appears as an agent terminal instead of
+disappearing; adopting it attaches by exactly the name tmux holds it under,
+resolved among our tagged sessions whatever their type, so the orphan keeps
+its `worktree` tag and no second agent is started beside it.
 
 Terminal grouping is derived from its directory: a repository root belongs to
 that repo; other directories are repo-less. Restoring a terminal must not move

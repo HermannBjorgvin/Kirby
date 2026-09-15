@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import { sidebarRow } from './setup/app.js';
 import {
@@ -74,7 +75,10 @@ test.describe('Discovering work created outside the app', () => {
           const sessions = await page.evaluate(() =>
             window.kirby.listSessions()
           );
-          return sessions.find((s) => s.name === branch)?.running ?? false;
+          return (
+            sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
+            false
+          );
         },
         { timeout: 30_000, intervals: [500] }
       )
@@ -83,9 +87,10 @@ test.describe('Discovering work created outside the app', () => {
     await expect(sidebarRow(page, new RegExp(branch))).toBeVisible();
   });
 
-  // `new-session -A` attached to the agent that was already there: its
-  // output predates the app knowing the session existed, and is redrawn
-  // on attach. A fresh spawn would have run `aiCommand` instead.
+  // The tag resolver found the agent that was already there and the
+  // backend attached to it: its output predates the app knowing the
+  // session existed, and is redrawn on attach. A fresh spawn would have
+  // run `aiCommand` instead.
   test('opening the session shows the agent that was already running', async ({
     desktop,
   }) => {

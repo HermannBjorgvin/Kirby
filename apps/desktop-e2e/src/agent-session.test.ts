@@ -1,3 +1,4 @@
+import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
@@ -8,7 +9,7 @@ import {
 } from './setup/app.js';
 
 const BRANCH = 'agent-work';
-/** Session names are the branch with slashes flattened. */
+/** Branch used by this fixture's worktree agent. */
 const SESSION = BRANCH;
 
 async function launchAgent(page: Page) {
@@ -26,7 +27,9 @@ function closeTabButton(page: Page) {
 
 async function sessionRunning(page: Page): Promise<boolean> {
   const sessions = await page.evaluate(() => window.kirby.listSessions());
-  return sessions.find((s) => s.name === SESSION)?.running ?? false;
+  return (
+    sessions.find((s) => sessionBranch(s.name) === SESSION)?.running ?? false
+  );
 }
 
 test.describe('Agent sessions', () => {
@@ -51,7 +54,10 @@ test.describe('Agent sessions', () => {
 
     // And once one has run, it is a relaunch.
     await launchAgent(page);
-    await page.evaluate(() => window.kirby.killSession('agent-work'));
+    await page.evaluate(
+      (name) => window.kirby.killSession(name),
+      await sessionKey(page, BRANCH)
+    );
     await expect(
       page.getByRole('button', { name: /Relaunch agent/i })
     ).toBeVisible({ timeout: 15_000 });
@@ -65,8 +71,10 @@ test.describe('Agent sessions', () => {
     await launchAgent(page);
 
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.map((s) => s.name)).toContain(SESSION);
-    expect(sessions.find((s) => s.name === SESSION)?.running).toBe(true);
+    expect(sessions.map((s) => sessionBranch(s.name))).toContain(SESSION);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === SESSION)?.running
+    ).toBe(true);
   });
 
   test('closing the tab of an idle agent kills it without asking', async ({

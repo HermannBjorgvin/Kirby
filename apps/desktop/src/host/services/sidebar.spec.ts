@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SidebarModule from './sidebar.js';
 import type * as PullRequestsModule from './pull-requests.js';
@@ -288,7 +289,9 @@ describe('sidebar model', () => {
     settle(0);
     await model;
 
-    expect(env.lastBranchMap.get('feat-foo')).toBe('feat/foo');
+    expect(
+      env.lastBranchMap.get(worktreeSessionKey('feat/foo', '/repo-a'))
+    ).toBe('feat/foo');
   });
 
   it('carries a mid-rebase worktree state through to its session', async () => {
@@ -407,7 +410,9 @@ describe('getSidebarSnapshot', () => {
     const snapshot = await pending;
     expect(snapshot.cwd).toBe('/repo-b');
     expect(snapshot.items).toEqual([
-      expect.objectContaining({ name: 'from-b' }),
+      expect.objectContaining({
+        name: worktreeSessionKey('from-b', '/repo-b'),
+      }),
     ]);
   });
 });

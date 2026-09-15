@@ -1,19 +1,9 @@
+import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import { createWorktree, launchAgentFromRail } from './setup/app.js';
 import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
 
-/**
- * The desktop lets you switch repository with agents still running,
- * which the TUI never had to consider. The PTY registry keys sessions
- * by bare branch name — the same name that names the worktree
- * directory — so two repositories with a branch of the same name land
- * on one key, and without an ownership check the second repo's UI would
- * happily adopt, write to, and kill the first repo's agent.
- *
- * Repository switching runs through the bridge here rather than the UI
- * because picking a folder is a native OS dialog. Everything asserted
- * below still crosses real IPC into the real host.
- */
+/** Repository switches preserve independent agents, even on the same branch. */
 
 const BRANCH = 'shared-name';
 
@@ -41,7 +31,9 @@ test.describe('Switching repository with an agent running', () => {
       timeout: 30_000,
     });
     const before = await page.evaluate(() => window.kirby.listSessions());
-    expect(before.map((s) => s.name)).toContain(BRANCH);
+    expect(before.map((s) => sessionBranch(s.name))).toContain(BRANCH);
+
+    const firstKey = await sessionKey(page, BRANCH);
 
     // Switch to the other repository, which has the same branch name.
     await page.evaluate((cwd) => window.kirby.openRepo(cwd), otherRepo);
@@ -57,23 +49,25 @@ test.describe('Switching repository with an agent running', () => {
     // …its scrollback is not handed over…
     const buffer = await page.evaluate(
       (name) => window.kirby.getSessionBuffer(name),
-      BRANCH
+      firstKey
     );
     expect(buffer.data).toBe('');
 
-    // …launching the same branch name here refuses rather than
-    // silently adopting the other repo's agent…
-    await expect(
-      page.evaluate(
-        (branch) =>
-          window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
-        BRANCH
+    const second = await page.evaluate(
+      (branch) =>
+        window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
+      BRANCH
+    );
+    expect(second.name).not.toBe(firstKey);
+    expect(
+      (await page.evaluate(() => window.kirby.listSessions())).map(
+        (s) => s.name
       )
-    ).rejects.toThrow(/another repository/);
+    ).toEqual([second.name]);
 
     // …and neither does killing it.
     await expect(
-      page.evaluate((name) => window.kirby.killSession(name), BRANCH)
+      page.evaluate((name) => window.kirby.killSession(name), firstKey)
     ).rejects.toThrow(/another repository/);
   });
 
@@ -96,10 +90,12 @@ test.describe('Switching repository with an agent running', () => {
     // The agent kept running the whole time — entries for other repos
     // stay in the map precisely so switching back reattaches.
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.find((s) => s.name === BRANCH)?.running).toBe(true);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === BRANCH)?.running
+    ).toBe(true);
     const buffer = await page.evaluate(
       (name) => window.kirby.getSessionBuffer(name),
-      BRANCH
+      await sessionKey(page, BRANCH)
     );
     expect(buffer.data).toContain('kirby-fake-agent-ready');
   });

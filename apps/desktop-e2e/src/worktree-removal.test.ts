@@ -1,3 +1,4 @@
+import { sessionBranch } from './setup/session-keys.js';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -106,7 +107,10 @@ test.describe('Worktree removal (running agent)', () => {
           const sessions = await page.evaluate(() =>
             window.kirby.listSessions()
           );
-          return sessions.find((s) => s.name === BRANCH)?.running ?? false;
+          return (
+            sessions.find((s) => sessionBranch(s.name) === BRANCH)?.running ??
+            false
+          );
         },
         { timeout: 20_000 }
       )

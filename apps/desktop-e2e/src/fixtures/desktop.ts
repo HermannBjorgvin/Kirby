@@ -26,7 +26,10 @@ import {
   startExternalTmuxSession,
 } from '../setup/external.js';
 import { killKirbySessions } from '../setup/tmux.js';
-import { startSurvivingTerminal } from '../setup/terminals.js';
+import {
+  startSurvivingTerminal,
+  type TerminalSeed,
+} from '../setup/terminals.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** apps/desktop — Electron resolves `main` from its package.json. */
@@ -141,15 +144,16 @@ export interface DesktopOptions {
   /**
    * Terminal tabs already running when the app starts — the state after
    * a previous run that opened them was quit, since quitting only
-   * detaches. Each is a tmux session under a terminal-tab name, in the
-   * given directory, on the test's own socket. Needs `terminalBackend:
+   * detaches. Each is a tmux session tagged as a terminal tab of the
+   * given kind (shell unless said), in the given directory, on the
+   * test's own socket. Needs `terminalBackend:
    * 'tmux'` to be found.
    *
    * Keyed by session name rather than listed: Playwright reads any
    * array whose second element is an object as a `[value, options]`
    * fixture tuple, so a two-entry list arrives as its first entry.
    */
-  liveTerminals?: Record<string, { cwd: string; command: string }>;
+  liveTerminals?: Record<string, TerminalSeed>;
 }
 
 export interface DesktopApp {
@@ -248,12 +252,14 @@ function seedHome(
   return opts.fakeGitHub ? installFakeGh(homeDir, opts.fakeGitHub) : {};
 }
 
-/** Start the agents a test wants already running when the app comes
- *  up — in the test's repository, or in another one a test names. */
-function seedLiveSessions(
+/** Start the agents and terminal tabs a test wants already running when
+ *  the app comes up — agents in the test's repository, or in another one
+ *  a test names; terminals wherever they say. */
+function seedTmux(
   repoPath: string,
   homeDir: string,
-  sessions: { branch: string; command: string; repo?: string }[] | undefined
+  sessions: { branch: string; command: string; repo?: string }[] | undefined,
+  terminals: Record<string, TerminalSeed> | undefined
 ): void {
   for (const { branch, command, repo = repoPath } of sessions ?? []) {
     startExternalTmuxSession({
@@ -264,14 +270,6 @@ function seedLiveSessions(
       command,
     });
   }
-}
-
-/** Start the terminal tabs a test wants already running when the app
- *  comes up. */
-function seedLiveTerminals(
-  homeDir: string,
-  terminals: Record<string, { cwd: string; command: string }> | undefined
-): void {
   for (const [name, t] of Object.entries(terminals ?? {})) {
     startSurvivingTerminal({ name, ...t, homeDir });
   }
@@ -361,8 +359,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // the dev server is gone, a blank window and 30s timeouts.
     delete parentEnv.KIRBY_VITE_URL;
 
-    seedLiveSessions(repoPath, homeDir, liveSessions);
-    seedLiveTerminals(homeDir, liveTerminals);
+    seedTmux(repoPath, homeDir, liveSessions, liveTerminals);
 
     const app = await electron.launch({
       args: [

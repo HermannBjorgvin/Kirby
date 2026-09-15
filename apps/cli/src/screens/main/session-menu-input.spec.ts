@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as CoreModule from '@kirby/core';
 import type * as WorktreeManagerModule from '@kirby/worktree-manager';
@@ -86,7 +87,7 @@ function makePr(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
 function sessionItem(name: string, pr?: PullRequestInfo): SidebarItem {
   return {
     kind: 'session',
-    session: { name, running: false },
+    session: { name: worktreeSessionKey(name), running: false },
     ...(pr ? { pr } : {}),
   } as SidebarItem;
 }
@@ -145,7 +146,9 @@ function makeCtx(opts: {
     config: { config: { vendorAuth: {}, vendorProject: {} } },
     selectedItem: opts.selectedItem,
     sessionNameForTerminal:
-      opts.sessionName === undefined ? 'alpha' : opts.sessionName,
+      opts.sessionName === undefined
+        ? worktreeSessionKey('alpha')
+        : opts.sessionName,
     keybinds: {
       resolve: (input: string, key: KeyPress, context: 'confirm') =>
         resolveAction(input, key, context, preset.bindings, ACTIONS),
@@ -230,7 +233,7 @@ describe('session menu — start', () => {
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
     expect(params).toMatchObject({
-      name: 'alpha',
+      name: worktreeSessionKey('alpha'),
       cols: 80,
       rows: 24,
       cwd: '/wt/alpha',
@@ -240,7 +243,7 @@ describe('session menu — start', () => {
     expect(params.agent?.id).toBe('codex');
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
-      'session:alpha'
+      `session:${worktreeSessionKey('alpha')}`
     );
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
@@ -263,7 +266,7 @@ describe('session menu — start', () => {
   });
 
   it('only focuses a session that is already running', async () => {
-    liveSessions.add('alpha');
+    liveSessions.add(worktreeSessionKey('alpha'));
     const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
 
     press(KEYS.enter(), t.ctx);
@@ -281,8 +284,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 1 },
-      selectedItem: sessionItem('feat-thing', pr),
-      sessionName: 'feat-thing',
+      selectedItem: sessionItem('feat/thing', pr),
+      sessionName: worktreeSessionKey('feat/thing'),
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');
 
@@ -292,7 +295,7 @@ describe('session menu — review', () => {
     expect(createWorktree).toHaveBeenCalledExactlyOnceWith('feat/thing');
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
-    expect(params.name).toBe('feat-thing');
+    expect(params.name).toBe(worktreeSessionKey('feat/thing'));
     expect(params.cwd).toBe('/wt/feat-thing');
     expect(params.request.intent).toBe('continue-or-seed');
     expect(params.request.prompt).toContain('Review PR #7');
@@ -315,8 +318,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 2 },
-      selectedItem: sessionItem('feat-thing', pr),
-      sessionName: 'feat-thing',
+      selectedItem: sessionItem('feat/thing', pr),
+      sessionName: worktreeSessionKey('feat/thing'),
       instruction: 'focus on tests',
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');

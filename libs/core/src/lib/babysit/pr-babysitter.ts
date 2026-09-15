@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 /**
  * Watching a pull request on an agent's behalf.
  *
@@ -27,11 +28,7 @@
  */
 import { logError } from '@kirby/logger';
 import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
-import {
-  branchToSessionName,
-  checkoutWorktree,
-  refExists,
-} from '@kirby/worktree-manager';
+import { checkoutWorktree, refExists } from '@kirby/worktree-manager';
 import { idleFor } from '../activity.js';
 import { isSessionAlive } from '../pty-registry.js';
 import {
@@ -196,7 +193,7 @@ async function deliver(
   prompt: string,
   live: () => boolean
 ): Promise<Delivery> {
-  const name = branchToSessionName(pr.sourceBranch);
+  const name = worktreeSessionKey(pr.sourceBranch, opts.cwd);
   if (opts.isForeignSession?.(name)) {
     return { outcome: 'held', held: 'foreign-session' };
   }

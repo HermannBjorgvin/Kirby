@@ -48,34 +48,25 @@ async function worktreePathForBranch(
  * If the branch exists, checks it out. If not, creates a new branch from HEAD.
  * Returns the worktree path on success, null on failure.
  */
-export async function createWorktree(branch: string): Promise<string | null> {
+export async function createWorktree(
+  branch: string,
+  cwd = process.cwd()
+): Promise<string | null> {
   assertShellSafeRef(branch);
   const relativeDir = worktreeDir(branch);
-  const absoluteDir = resolve(process.cwd(), relativeDir);
+  const absoluteDir = resolve(cwd, relativeDir);
 
-  // Worktree already exists — just return the path
-  if (existsSync(relativeDir)) {
-    return absoluteDir;
-  }
-
-  // Nothing at the derived path, but the branch may still be checked
-  // out somewhere else: a worktree's directory is independent of its
-  // branch name, so the path above only finds the ones Kirby made under
-  // the current template, not one created externally or under a
-  // different `worktreePath`. Without this both `git worktree add`
-  // attempts below fail — the branch is already checked out, and the
-  // branch already exists — and the caller reports a bare
-  // "Failed to resolve a worktree" for a worktree that is right there.
-  const existingPath = await worktreePathForBranch(branch);
-  if (existingPath) {
-    return existingPath;
-  }
+  const existingPath = await worktreePathForBranch(branch, cwd);
+  if (existingPath) return existingPath;
+  // A derived directory may belong to another branch. Never run an agent there.
+  if (existsSync(absoluteDir)) return null;
 
   try {
     // Try existing branch first
-    await exec(`git worktree add "${relativeDir}" "${branch}"`, {
-      encoding: 'utf8',
-    });
+    await exec(
+      `git worktree add "${relativeDir}" "${branch}"`,
+      gitOptions(cwd)
+    );
     return absoluteDir;
   } catch (e) {
     log(
@@ -86,9 +77,10 @@ export async function createWorktree(branch: string): Promise<string | null> {
     );
     try {
       // Branch doesn't exist — create new branch from HEAD
-      await exec(`git worktree add -b "${branch}" "${relativeDir}"`, {
-        encoding: 'utf8',
-      });
+      await exec(
+        `git worktree add -b "${branch}" "${relativeDir}"`,
+        gitOptions(cwd)
+      );
       return absoluteDir;
     } catch (e2) {
       log(
@@ -123,7 +115,6 @@ export async function checkoutWorktree(
   assertShellSafeRef(branch);
   const relativeDir = worktreeDir(branch);
   const absoluteDir = resolve(cwd, relativeDir);
-  if (existsSync(absoluteDir)) return absoluteDir;
 
   // As in `createWorktree`: a worktree's directory is independent of
   // its branch name, so the path above only finds the ones Kirby made
@@ -134,6 +125,7 @@ export async function checkoutWorktree(
   // one", which for a babysitter means silently doing nothing.
   const existingPath = await worktreePathForBranch(branch, cwd);
   if (existingPath) return existingPath;
+  if (existsSync(absoluteDir)) return null;
 
   try {
     await exec(
@@ -153,18 +145,17 @@ export async function checkoutWorktree(
  */
 export async function removeWorktree(
   branch: string,
-  { force = false }: { force?: boolean } = {}
+  { force = false, cwd = process.cwd() }: { force?: boolean; cwd?: string } = {}
 ): Promise<boolean> {
   assertShellSafeRef(branch);
   // Prefer the worktree's real path from git; fall back to the
   // resolver-derived dir only if git doesn't know the branch.
-  const target = (await worktreePathForBranch(branch)) ?? worktreeDir(branch);
+  const target = await worktreePathForBranch(branch, cwd);
+  if (!target) return false;
   assertShellSafeRef(target, 'worktree path');
   try {
     const forceFlag = force ? ' --force' : '';
-    await exec(`git worktree remove${forceFlag} "${target}"`, {
-      encoding: 'utf8',
-    });
+    await exec(`git worktree remove${forceFlag} "${target}"`, gitOptions(cwd));
     return true;
   } catch (e) {
     log(
