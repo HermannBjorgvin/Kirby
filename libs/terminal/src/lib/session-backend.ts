@@ -1,20 +1,11 @@
 /**
- * Universal contract between Kirby's session registry and any backend
- * (direct PTY, tmux, future SSH/Docker). No backend-specific fields,
- * no Kirby-specific fields — backend libs configure themselves through
- * their own factory options at composition time.
+ * Process launch and local terminal connection contracts. Session identity,
+ * metadata and lifecycle intent belong to the caller and transport launch plan.
  */
 
 export interface SessionSpec {
-  /** Caller-supplied identifier or suggested name. A persistent backend
-   *  can resolve or allocate a different name, exposed as SessionBackend.name.
-   *  The registry decides whether to use that name or keep its own key. */
-  name: string;
-  /** False for a new session; never attach to a concurrent creator. */
-  reuse?: boolean;
   /** Command to run. The empty string means the backend's own default
-   *  interactive shell: tmux runs its `default-shell`, the direct PTY
-   *  backend runs `$SHELL` (falling back to `/bin/sh`). Callers wanting
+   *  interactive shell: tmux runs its `default-shell`. Callers wanting
    *  "a terminal" rather than "this program" pass that. */
   cmd: string;
   args: string[];
@@ -34,20 +25,22 @@ export interface SessionSpec {
    *  need additions merge them over `process.env` themselves rather
    *  than passing a partial bag. */
   env?: Record<string, string | undefined>;
-  /** Key/value metadata to attach to the session itself, for backends
-   *  whose session host has somewhere to keep it that other clients of
-   *  that host can read (tmux: session user options). Backends with no
-   *  such place — the direct PTY — ignore it. Keys and values are
-   *  opaque to this contract; the caller owns their naming and their
-   *  meaning. They describe the session's creation: a backend writes
-   *  them when it creates the session and leaves an existing session's
-   *  metadata alone when it merely attaches to it. */
-  tags?: Record<string, string>;
 }
 
 export interface SessionBackend {
   /** Actual persistent session name, after allocation or resolution. */
   readonly name?: string;
+  /** Local client health, independent of the hosted process lifetime. */
+  readonly connectionState?: 'connected' | 'reconnecting' | 'failed';
+  /** Logical process status, independent of the local transport client. */
+  readonly processState?: {
+    running: boolean;
+    exitCode?: number;
+    signal?: number;
+  };
+  /** The local connection ended while the hosted process remained alive. */
+  onDisconnect?(cb: () => void): void;
+  offDisconnect?(cb: () => void): void;
   readonly pid: number;
   readonly cols: number;
   readonly rows: number;
@@ -66,5 +59,3 @@ export interface SessionBackend {
    *  local PTY. */
   kill(signal?: string): void;
 }
-
-export type SessionBackendFactory = (spec: SessionSpec) => SessionBackend;

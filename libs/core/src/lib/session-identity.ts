@@ -67,6 +67,8 @@ export interface TaggedSession {
   /** `#{session_created}`, epoch seconds: orders two sessions that
    *  claim one identity. */
   created: number;
+  paneDead: boolean;
+  exitCode?: number;
   /** `#{session_path}` — the directory the session runs in. */
   path: string;
   spawner: string;
@@ -98,6 +100,8 @@ export function taggedSession(info: TmuxSessionInfo): TaggedSession | null {
   return {
     name: info.name,
     created: info.created,
+    paneDead: info.paneDead,
+    exitCode: info.exitCode,
     path: info.path,
     spawner,
     repo: repo ?? '',

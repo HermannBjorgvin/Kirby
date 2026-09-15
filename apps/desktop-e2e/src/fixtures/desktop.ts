@@ -25,7 +25,7 @@ import {
   addExternalWorktree,
   startExternalTmuxSession,
 } from '../setup/external.js';
-import { killKirbySessions } from '../setup/tmux.js';
+import { killFixtureSessions } from '../setup/tmux.js';
 import {
   startSurvivingTerminal,
   type TerminalSeed,
@@ -71,17 +71,7 @@ export function fakeAgent(
 }
 
 export interface DesktopOptions {
-  /**
-   * Written to `$HOME/.kirby/config.json` before launch, over an
-   * `aiCommand` + `terminalBackend: 'pty'` base.
-   *
-   * The backend base is deliberate: with the key absent the app
-   * resolves to tmux wherever tmux is installed, and closing the app
-   * only *detaches* a tmux session — so every agent-launching test
-   * would leave a live fake agent behind. A test about the default
-   * passes `terminalBackend: undefined`, which drops the key from the
-   * file entirely (see `UNSET_BACKEND` in `setup/tmux.ts`).
-   */
+  /** Config layered over the fake agent in the isolated HOME. */
   kirbyConfig?: Record<string, unknown>;
   /**
    * Per-project config (vendor, org, repo…), written to the cwd-hashed
@@ -127,8 +117,7 @@ export interface DesktopOptions {
    * Agent sessions already running when the app starts — the state
    * after a previous run whose agents were left in tmux. Each is a
    * worktree added with plain git plus a tmux session under the name
-   * Kirby uses, on the test's own socket. Needs `terminalBackend:
-   * 'tmux'` to be found. Data rather than a callback: Playwright
+   * Kirby uses, on the test's own socket. Data rather than a callback: Playwright
    * reads a function-valued option as a fixture definition. `repo`
    * puts the agent in another repository than the test's own — the
    * state after a run that had work open across several.
@@ -146,8 +135,7 @@ export interface DesktopOptions {
    * a previous run that opened them was quit, since quitting only
    * detaches. Each is a tmux session tagged as a terminal tab of the
    * given kind (shell unless said), in the given directory, on the
-   * test's own socket. Needs `terminalBackend:
-   * 'tmux'` to be found.
+   * test's own socket.
    *
    * Keyed by session name rather than listed: Playwright reads any
    * array whose second element is an object as a `[value, options]`
@@ -197,12 +185,9 @@ function seedHome(
   writeFileSync(join(homeDir, '.zshrc'), '', 'utf8');
   writeFileSync(
     join(kirby, 'config.json'),
-    // `undefined` from the test's config drops the key, which is how a
-    // test asks for the unconfigured state — see `DesktopOptions`.
     JSON.stringify(
       {
         aiCommand: fakeAgent(),
-        terminalBackend: 'pty',
         ...opts.kirbyConfig,
       },
       null,
@@ -275,20 +260,19 @@ function seedTmux(
   }
 }
 
-/** The app's exit only detaches from tmux, so sessions seeded before
- *  launch would outlive the test — with their socket dir about to be
- *  deleted from under them. */
-function reapSeededSessions(
-  homeDir: string,
-  sessions: readonly unknown[] | undefined,
-  terminals: Record<string, unknown> | undefined
-): void {
-  if (sessions?.length || Object.keys(terminals ?? {}).length) {
-    killKirbySessions(homeDir);
-  }
-}
-
-export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
+export const test = base.extend<
+  DesktopOptions & { desktop: DesktopApp; fixtureHome: string }
+>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture dependency parameter.
+  fixtureHome: async ({}, provide) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-home-'));
+    try {
+      await provide(homeDir);
+    } finally {
+      killFixtureSessions(homeDir);
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  },
   kirbyConfig: [undefined, { option: true }],
   projectConfig: [undefined, { option: true }],
   desktopPrefs: [undefined, { option: true }],
@@ -316,6 +300,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       liveSessions,
       env,
       liveTerminals,
+      fixtureHome,
     },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
@@ -325,7 +310,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
   ) => {
     const ownsRepo = !repoPathOverride;
     const repoPath = repoPathOverride ?? createTestRepo(repo ?? {});
-    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-home-'));
+    const homeDir = fixtureHome;
     const ghEnv = seedHome(homeDir, repoPath, {
       kirbyConfig,
       projectConfig,
@@ -339,7 +324,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
     // a virtual X server it never looks at, and the window opens on the
     // developer's real desktop anyway. Dropping the variable (and
     // pinning ozone to x11) is what actually makes the run headless.
-    const parentEnv = { ...process.env };
+    const parentEnv = { ...process.env, ...env };
     delete parentEnv.WAYLAND_DISPLAY;
     // The app reads these as fallbacks when no editor is configured, so
     // inheriting whatever the developer happens to export makes the
@@ -373,7 +358,6 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       cwd: WORKSPACE_ROOT,
       env: {
         ...parentEnv,
-        ...env,
         // Isolates config.json, desktop-prefs.json, recents *and*
         // Electron's own userData dir (so the single-instance lock
         // never makes one test's launch quit against another's).
@@ -453,11 +437,7 @@ export const test = base.extend<DesktopOptions & { desktop: DesktopApp }>({
       } catch {
         /* already gone */
       }
-      reapSeededSessions(homeDir, liveSessions, liveTerminals);
       if (ownsRepo) cleanupTestRepo(repoPath);
-      await rm(homeDir, { recursive: true, force: true }).catch(
-        () => undefined
-      );
     }
 
     // An uncaught renderer exception blanks a pane behind the

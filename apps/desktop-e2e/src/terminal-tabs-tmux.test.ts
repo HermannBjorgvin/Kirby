@@ -13,6 +13,7 @@ import {
 } from './setup/terminals.js';
 import {
   detachTmuxClients,
+  tmuxClientPids,
   killKirbySessions,
   killTmuxSession,
   tmuxAvailable,
@@ -27,8 +28,6 @@ import {
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 test.describe('Terminal tabs under tmux', () => {
-  test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
-
   test.afterEach(({ desktop }) => {
     killKirbySessions(desktop.homeDir);
   });
@@ -114,16 +113,23 @@ test.describe('Terminal tabs under tmux', () => {
     const [name] = terminalSessions(homeDir);
     const before = await page.evaluate(() => window.kirby.listTerminals());
 
+    const clientsBefore = tmuxClientPids(name, homeDir);
     detachTmuxClients(name, homeDir);
+    await expect
+      .poll(() =>
+        tmuxClientPids(name, homeDir).some(
+          (pid) => !clientsBefore.includes(pid)
+        )
+      )
+      .toBe(true);
 
-    // The host reattaches under the same name: a new client, so a new
-    // spawn time, and the terminal still listed as running.
+    // Reconnecting the tmux client preserves the logical session entry.
     await expect
       .poll(
         async () => {
           const [t] = await page.evaluate(() => window.kirby.listTerminals());
           return t
-            ? [t.name, t.running, t.spawnedAt !== before[0].spawnedAt]
+            ? [t.name, t.running, t.spawnedAt === before[0].spawnedAt]
             : null;
         },
         { timeout: 15_000 }
@@ -201,8 +207,6 @@ test.describe('Terminal tabs surviving a restart', () => {
       });
     },
   });
-
-  test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
 
   test.afterEach(({ desktop }) => {
     killKirbySessions(desktop.homeDir);

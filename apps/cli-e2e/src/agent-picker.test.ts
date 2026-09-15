@@ -6,7 +6,7 @@ import { dismissSessionMenu } from './setup/sessions.js';
 // polling visibility assertion (not pressUntil — cycling is not
 // idempotent, a re-delivered arrow would land on the wrong agent).
 //
-// No test here presses Enter on "Start/Continue session": the fixture
+// No test here presses Enter on "Open / resume session": the fixture
 // config has no aiCommand, so that would launch a real `claude`.
 
 const MENU_PROMPT = 'What would you like to do?';
@@ -37,19 +37,28 @@ test.describe('Session menu agent selector', () => {
     await createBranchIntoMenu(kirby.term, 'agent-menu');
 
     // No PR on a fresh branch → no review rows, just start + cancel.
-    await expect(kirby.term.getByText('Start/Continue session')).toBeVisible();
+    await expect(kirby.term.getByText('Open / resume session')).toBeVisible();
     await expect(kirby.term.getByText('Start/Continue review')).toBeHidden();
 
-    // No agentId/aiCommand in the fixture config → registry default.
-    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
+    // Automatic selection preserves a recorded agent on later opens.
+    await expect(
+      kirby.term.getByText('Recorded agent (default for a new session)')
+    ).toBeVisible();
 
     // Arrows cycle the agent for this session only.
     await kirby.term.press('ArrowRight');
+    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
+    await expect(kirby.term.getByText('Start new session')).toBeVisible();
+    await kirby.term.press('ArrowRight');
     await expect(kirby.term.getByText('Codex')).toBeVisible();
 
-    // Left twice from Codex wraps past the default to the end of the list.
+    // Left through the named default and automatic choice wraps to the end.
     await kirby.term.press('ArrowLeft');
     await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
+    await kirby.term.press('ArrowLeft');
+    await expect(
+      kirby.term.getByText('Recorded agent (default for a new session)')
+    ).toBeVisible();
     await kirby.term.press('ArrowLeft');
     await expect(kirby.term.getByText('OpenCode')).toBeVisible();
 
@@ -68,6 +77,9 @@ test.describe('Session menu agent selector', () => {
 
     // Cycle away from the default, then dismiss.
     await kirby.term.press('ArrowRight');
+    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
+    await expect(kirby.term.getByText('Start new session')).toBeVisible();
+    await kirby.term.press('ArrowRight');
     await expect(kirby.term.getByText('Codex')).toBeVisible();
     await dismissSessionMenu(kirby.term);
 
@@ -77,6 +89,8 @@ test.describe('Session menu agent selector', () => {
     await expect(kirby.term.getByText(MENU_PROMPT)).toBeVisible({
       timeout: 5_000,
     });
-    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
+    await expect(
+      kirby.term.getByText('Recorded agent (default for a new session)')
+    ).toBeVisible();
   });
 });

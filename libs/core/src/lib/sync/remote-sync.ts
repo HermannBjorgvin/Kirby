@@ -70,7 +70,7 @@ export function diffRebaseWarnings(
  */
 type SweepConfig = Pick<
   AppConfig,
-  'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge' | 'terminalBackend'
+  'vendorAuth' | 'vendorProject' | 'autoDeleteOnMerge'
 >;
 
 /**
@@ -86,12 +86,8 @@ async function autoDeleteMerged(args: {
   const { merged, onAutoDelete, isCancelled } = args;
   const rebasingNow: string[] = [];
   for (const branch of merged) {
-    // A branch with a live agent session — an in-process PTY, or a
-    // tmux session from a previous run — is never auto-deleted: the
-    // user deliberately left that agent running. It becomes eligible
-    // once the session is stopped. The tmux check ignores the selected
-    // backend on purpose: the agent is running whether or not tmux is
-    // still the preference, and deleting its worktree is destructive.
+    // A live agent prevents auto-deletion even when Kirby is detached.
+    // Deleting its working directory would disrupt the running process.
     const sessionName = worktreeSessionKey(branch);
     if (isSessionAlive(sessionName) || hasLiveTmuxSession(sessionName)) {
       logError(

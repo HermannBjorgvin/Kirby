@@ -34,7 +34,7 @@ vi.mock('@kirby/core', async (importOriginal) => ({
   hasSession: (name: string) =>
     liveSessions.has(name) || exitedSessions.has(name),
   isSessionAlive: (name: string) => liveSessions.has(name),
-  killSession: (name: string) => killSessionMock(name),
+  stopSession: (name: string) => killSessionMock(name),
 }));
 
 vi.mock('@kirby/worktree-manager', async (importOriginal) => ({

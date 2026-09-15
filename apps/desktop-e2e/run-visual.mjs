@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 /** Pin to the Playwright version in package.json — the image ships the
  *  browser system dependencies and fonts that version expects. */
-const IMAGE = 'mcr.microsoft.com/playwright:v1.59.1-noble';
+const IMAGE = 'kirby-playwright:1.59.1-noble-tmux';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = resolve(HERE, '..', '..');
@@ -41,6 +41,15 @@ if (spawnSync('docker', ['info'], { stdio: 'ignore' }).status !== 0) {
   );
   process.exit(1);
 }
+
+// tmux is part of the application runtime. Build a small derivative of
+// the pinned Playwright image; Docker caches the package installation.
+const build = spawnSync(
+  'docker',
+  ['build', '-f', resolve(HERE, 'Dockerfile.visual'), '-t', IMAGE, HERE],
+  { stdio: 'inherit' }
+);
+if (build.status !== 0) process.exit(build.status ?? 1);
 
 const inner = [
   'node',

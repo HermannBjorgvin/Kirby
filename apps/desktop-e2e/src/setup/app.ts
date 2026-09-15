@@ -146,7 +146,7 @@ export function agentPicker(page: Page): Locator {
 export async function startSessionFromMenu(page: Page): Promise<void> {
   const menu = sessionMenu(page);
   await menu.waitFor({ state: 'visible', timeout: 15_000 });
-  await menu.getByRole('button', { name: 'Start session' }).click();
+  await menu.getByRole('button', { name: 'Open session' }).click();
   await menu.waitFor({ state: 'hidden' });
 }
 

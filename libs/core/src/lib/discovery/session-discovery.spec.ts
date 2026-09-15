@@ -11,6 +11,7 @@ const {
   listPersistedMock,
   listTerminalsMock,
   isSessionAliveMock,
+  sessionNamesMock,
   watchMock,
   basePathMock,
 } = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const {
   listPersistedMock: vi.fn<() => Set<string>>(),
   listTerminalsMock: vi.fn<() => DiscoveredTerminal[]>(),
   isSessionAliveMock: vi.fn<(name: string) => boolean>(),
+  sessionNamesMock: vi.fn<() => string[]>(),
   watchMock: vi.fn(),
   basePathMock: vi.fn<() => string>(),
 }));
@@ -40,6 +42,8 @@ vi.mock('@kirby/worktree-manager', () => ({
   worktreesBasePath: () => basePathMock(),
 }));
 vi.mock('../pty-registry.js', () => ({
+  sessionNames: () => sessionNamesMock(),
+  hasSessionConnection: (name: string) => isSessionAliveMock(name),
   isSessionAlive: (name: string) => isSessionAliveMock(name),
 }));
 vi.mock('../session-backend.js', () => ({
@@ -47,8 +51,6 @@ vi.mock('../session-backend.js', () => ({
     persisted: listPersistedMock(),
     terminals: listTerminalsMock(),
   }),
-  resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
-    config.terminalBackend ?? 'tmux',
 }));
 
 vi.mock('../repo-root.js', () => ({ getRepoRoot: () => '/repo' }));
@@ -62,8 +64,6 @@ function worktrees(...branches: string[]): WorktreeInfo[] {
     bare: false,
   }));
 }
-
-const getConfig = () => ({ terminalBackend: 'tmux' as const });
 
 /** A watcher stand-in that hands back the change callback so a test can
  *  fire it the way the filesystem would. */
@@ -90,6 +90,7 @@ let alive: Set<string>;
 beforeEach(() => {
   vi.useFakeTimers();
   alive = new Set();
+  sessionNamesMock.mockReset().mockReturnValue([]);
   listWorktreesMock.mockReset().mockResolvedValue([]);
   listPersistedMock.mockReset().mockReturnValue(new Set());
   listTerminalsMock.mockReset().mockReturnValue([]);
@@ -119,7 +120,6 @@ function start(
   );
   const onChanged = vi.fn();
   const discovery = startSessionDiscovery({
-    getConfig,
     adopt,
     adoptTerminal,
     onChanged,
@@ -425,6 +425,16 @@ describe('startSessionDiscovery', () => {
       expect(onChanged).not.toHaveBeenCalled();
     });
 
+    it('reconciles retained terminal tabs on the first scan after a repository switch', async () => {
+      const name = terminalSessionKey('removed-agent');
+      sessionNamesMock.mockReturnValue([name]);
+      const { discovery, onChanged } = start();
+      await discovery.scanNow();
+      expect(onChanged).toHaveBeenCalledWith(
+        expect.objectContaining({ endedTerminals: [name] })
+      );
+    });
+
     it('announces a terminal killed from outside', async () => {
       alive.add(shellTerm.name);
       listTerminalsMock.mockReturnValue([shellTerm]);
@@ -537,33 +547,6 @@ describe('startSessionDiscovery', () => {
           current = false; // the user opens another repo mid-flight
         });
       const { discovery } = start({ adopt, isCurrent: () => current });
-      await discovery.scanNow();
-      expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
-        worktreeSessionKey('first'),
-      ]);
-    });
-
-    // Settings can swap the backend while an attach is awaiting, and
-    // its own guard sees an empty registry because nothing has attached
-    // yet. Spawning a raw PTY agent into a worktree that already has a
-    // live tmux agent is what this prevents.
-    it('stops attaching when the backend is switched away from tmux', async () => {
-      listWorktreesMock.mockResolvedValue(worktrees('first', 'second'));
-      listPersistedMock.mockReturnValue(
-        new Set([worktreeSessionKey('first'), worktreeSessionKey('second')])
-      );
-      let backend: 'pty' | 'tmux' = 'tmux';
-      const adopt = vi
-        .fn<(wt: DiscoveredWorktree) => Promise<void>>()
-        .mockImplementation(async (wt) => {
-          await Promise.resolve();
-          alive.add(wt.name);
-          backend = 'pty'; // the user picks PTY in Settings mid-flight
-        });
-      const { discovery } = start({
-        adopt,
-        getConfig: () => ({ terminalBackend: backend }),
-      });
       await discovery.scanNow();
       expect(adopt.mock.calls.map((c) => c[0].name)).toEqual([
         worktreeSessionKey('first'),

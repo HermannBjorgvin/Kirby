@@ -19,7 +19,6 @@ const state = vi.hoisted(() => ({
   }[],
   realpaths: {} as Record<string, string>,
   recents: [] as string[],
-  configFor: [] as string[],
 }));
 
 vi.mock('node:fs', () => ({
@@ -27,12 +26,6 @@ vi.mock('node:fs', () => ({
 }));
 vi.mock('@kirby/core', () => ({
   listLiveWorktreeSessions: () => state.live,
-}));
-vi.mock('@kirby/vcs-core', () => ({
-  readConfig: (cwd: string) => {
-    state.configFor.push(cwd);
-    return {};
-  },
 }));
 vi.mock('./repo.js', () => ({
   requireRepo: () => state.open,
@@ -76,7 +69,6 @@ beforeEach(async () => {
   state.live = [];
   state.realpaths = {};
   state.recents = [];
-  state.configFor = [];
   vi.resetModules();
   foreign = await import('./foreign-sessions.js');
 });
@@ -131,12 +123,5 @@ describe('listForeignSessions', () => {
     state.realpaths['/home/dev/link-to-alpha'] = '/repos/alpha';
     state.live = [ALPHA_AGENT];
     expect(foreign.listForeignSessions()).toEqual([]);
-  });
-
-  // The backend gate is the open repository's config, as it is for
-  // discovery — documented, and pinned so it cannot drift quietly.
-  it('reads the backend from the open repository’s config', () => {
-    foreign.listForeignSessions();
-    expect(state.configFor).toEqual(['/repos/alpha']);
   });
 });

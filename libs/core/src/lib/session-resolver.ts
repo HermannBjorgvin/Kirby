@@ -10,7 +10,7 @@ import {
 /**
  * The one way a tmux session is found: one `tmux -u list-sessions -F`
  * fork, matched client-side on its tags (never `list-sessions -f`,
- * which is tmux 3.1 and the floor is 2.0; never a composed name).
+ * filtering stays in core; never a composed name).
  * Every attach, exists, kill, adopt and listing in core goes through
  * here, so the rule that an untagged session is foreign is enforced in
  * one place. Never throws: no server, or no tmux, is an empty listing.

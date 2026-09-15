@@ -35,9 +35,9 @@ test.describe('An agent that exits immediately', () => {
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
 
-    // The exit notice is written into the terminal itself, so a session
-    // that died is distinguishable from one that is merely quiet.
-    await expect(page.getByText(/session exited/i).first()).toBeVisible({
+    // tmux retains the final frame and its dead-pane notice, even when
+    // the process exits before the renderer subscribes.
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -55,6 +55,9 @@ test.describe('An agent that exits immediately', () => {
         { timeout: 20_000 }
       )
       .toBe(false);
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
   });
 
   test('closing its tab afterwards needs no confirmation', async ({
@@ -63,12 +66,14 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expect(page.getByText(/session exited/i).first()).toBeVisible({
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
       timeout: 30_000,
     });
-    // The exit notice is pushed the instant the PTY closes, but the
-    // activity map the close path reads is polled once a second — so
-    // wait for the UI to agree the agent is idle rather than racing it.
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
+    // Wait for the application to agree that the retained agent exited.
+    // The activity map used by the close path is polled once a second.
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await page

@@ -1,13 +1,11 @@
 import type { AppConfig } from '@kirby/vcs-core';
-import {
-  spawnSession,
-  getSession,
-  type NamedPtyEntry,
-  type SpawnSessionOptions,
-} from '../pty-registry.js';
+import { getSession, type NamedPtyEntry } from '../pty-registry.js';
+import { openSession } from './open-session.js';
+import { worktreeRequest } from './session-request.js';
 import { noteInput } from '../activity.js';
 import {
   resolveAgent,
+  isKnownAgentId,
   type AgentDefinition,
   type LaunchSpec,
   type SeedOptions,
@@ -104,10 +102,8 @@ export interface LaunchSessionParams {
    * leaves it unset and gets the configured default.
    */
   agent?: AgentDefinition;
-  /** Backend-neutral metadata for the session host — see
-   *  `SessionSpec.tags`. A terminal tab declares its kind here. */
-  tags?: Record<string, string>;
-  sessionOptions?: SpawnSessionOptions;
+  /** Discovery only attaches; a user launch may restart an exited agent. */
+  mode?: 'open' | 'attach';
 }
 
 /**
@@ -115,20 +111,18 @@ export interface LaunchSessionParams {
  * build its launch spec for the request, and spawn the PTY. Returns
  * the created entry.
  */
-export function launchSession(params: LaunchSessionParams): NamedPtyEntry {
-  const agent = params.agent ?? resolveAgent(params.config);
-  const spec = buildLaunchSpec(agent, params.request);
-  return spawnSession(
-    params.name,
-    spec.cmd,
-    spec.args,
-    params.cols,
-    params.rows,
-    params.cwd,
-    spec.env,
-    params.tags,
-    params.sessionOptions
-  );
+export function launchSession(
+  params: LaunchSessionParams
+): Promise<NamedPtyEntry> {
+  return openSession({
+    session: worktreeRequest(params.name),
+    mode: params.mode,
+    cwd: params.cwd,
+    cols: params.cols,
+    rows: params.rows,
+    build: (previous, restarting) =>
+      buildAgentLaunch(params, previous, restarting),
+  });
 }
 
 /**
@@ -138,9 +132,64 @@ export function launchSession(params: LaunchSessionParams): NamedPtyEntry {
  */
 export function deliverToRunningSession(name: string, prompt: string): boolean {
   const entry = getSession(name);
-  if (!entry || entry.exited) return false;
+  if (
+    !entry ||
+    entry.exited ||
+    (entry.pty.connectionState && entry.pty.connectionState !== 'connected')
+  )
+    return false;
   // The terminal echoes what is typed; that is not the agent working.
   noteInput(name);
   entry.pty.write(prompt + '\r');
   return true;
+}
+
+/** Recorded metadata wins over the default when restarting a retained agent. */
+export function buildAgentLaunch(
+  params: Pick<LaunchSessionParams, 'config' | 'agent' | 'request'>,
+  previous?: string,
+  restarting = false
+): { spec: LaunchSpec; agent: string } {
+  const continuing = params.request.intent.startsWith('continue');
+  if (
+    restarting &&
+    continuing &&
+    !params.agent &&
+    !knownRecordedAgent(previous)
+  ) {
+    throw new Error(
+      'This session has no known agent metadata. Choose an agent explicitly to restart it.'
+    );
+  }
+  const agent =
+    params.agent ??
+    resolveAgent(
+      continuing && previous
+        ? { ...params.config, agentId: previous as AppConfig['agentId'] }
+        : params.config
+    );
+  if (restarting && continuing) {
+    return { spec: buildResumeSpec(agent, params.request), agent: agent.id };
+  }
+  return { spec: buildLaunchSpec(agent, params.request), agent: agent.id };
+}
+
+function knownRecordedAgent(agent: string | undefined): boolean {
+  return agent === 'test' || (agent !== undefined && isKnownAgentId(agent));
+}
+
+function buildResumeSpec(
+  agent: AgentDefinition,
+  request: LaunchRequest
+): LaunchSpec {
+  if (!agent.resume)
+    throw new Error(
+      `${agent.name} does not support automatic resume. Start a new session explicitly.`
+    );
+  const { prompt, opts } = foldGuidance(
+    agent,
+    request.prompt ?? '',
+    request.systemGuidance
+  );
+  return agent.resume(prompt || undefined, opts);
 }

@@ -1,8 +1,6 @@
 import { worktreeSessionKey } from '../session-key.js';
 import { existsSync } from 'node:fs';
-import type { AppConfig } from '@kirby/vcs-core';
 
-import { resolveTerminalBackend } from '../session-backend.js';
 import type { TaggedSession } from '../session-identity.js';
 import { listOurSessions } from '../session-resolver.js';
 import { readWorktreeHead, type WorktreeHead } from './worktree-origin.js';
@@ -70,10 +68,8 @@ export interface LiveWorktreeSessionDeps {
  * without tags is foreign, not a question for git. Never throws.
  */
 export function listLiveWorktreeSessions(
-  config: Pick<AppConfig, 'terminalBackend'>,
   deps: LiveWorktreeSessionDeps = {}
 ): LiveWorktreeSession[] {
-  if (resolveTerminalBackend(config) !== 'tmux') return [];
   const resolved = {
     exists: deps.exists ?? existsSync,
     readHead: deps.readHead ?? readWorktreeHead,
@@ -93,7 +89,8 @@ function describeSession(
   session: TaggedSession,
   deps: Required<Omit<LiveWorktreeSessionDeps, 'sessions'>>
 ): LiveWorktreeSession | null {
-  if (session.type !== 'worktree' || !session.path) return null;
+  if (session.paneDead || session.type !== 'worktree' || !session.path)
+    return null;
   if (!deps.exists(session.path)) return null;
   const head = deps.readHead(session.path);
   if (!head || head.branch !== session.branch) return null;

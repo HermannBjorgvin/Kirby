@@ -1,6 +1,9 @@
+export { prepareTmuxSession } from './lib/tmux-launch.js';
 export {
-  createTmuxBackendFactory,
-  type TmuxFactoryOptions,
+  createTmuxBackend,
+  setTmuxSessionPreparer,
+  type TmuxSessionPreparer,
+  type TmuxLaunchPlan,
 } from './lib/tmux-backend.js';
 export { sanitizeTmuxSessionName } from './lib/sanitize-tmux-session-name.js';
 export {
@@ -13,6 +16,7 @@ export {
   tmuxListSessions,
   tmuxListSessionsDetailed,
   tmuxNewSessionDetached,
+  tmuxPaneState,
   tmuxSetOption,
   tmuxShowOption,
   type TmuxNewSessionOptions,

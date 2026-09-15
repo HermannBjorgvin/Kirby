@@ -2,7 +2,9 @@ import { getRepoRoot } from '../repo-root.js';
 import { worktreeSessionKey } from '../session-key.js';
 import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
 import { createWorktree } from '@kirby/worktree-manager';
-import { hasSession } from '../pty-registry.js';
+import { isSessionAlive, hasSessionConnection } from '../pty-registry.js';
+import { hasLiveTmuxSession } from '../session-backend.js';
+import { stopSession } from './stop-session.js';
 import { launchSession, deliverToRunningSession } from './launch-session.js';
 
 // ── Checkout orchestration ───────────────────────────────────────
@@ -57,21 +59,35 @@ export async function checkoutPlan(
     });
 
   // ── State A: an agent is already running in this worktree ──
-  if (hasSession(name)) {
+  if (isSessionAlive(name) || hasLiveTmuxSession(name)) {
     if (mode === 'inject') {
+      if (!isSessionAlive(name) || !hasSessionConnection(name)) {
+        const cwd = await createWorktree(pr.sourceBranch, repo);
+        if (!cwd) return 'failed';
+        await launchSession({
+          name,
+          cwd,
+          cols: paneCols,
+          rows: paneRows,
+          config,
+          mode: 'attach',
+          request: { intent: 'blank' },
+        });
+      }
       if (!deliverToRunningSession(name, prompt)) {
         flashStatus('Agent is no longer running');
         return 'failed';
       }
       return 'injected';
     }
-    // new-session: reseed. launchSession kills the same-name PTY first.
+    // An explicit new session terminates the old agent before seeding a replacement.
     const worktreePath = await createWorktree(pr.sourceBranch, repo);
     if (!worktreePath) {
       flashStatus(`Failed to resolve worktree for ${pr.sourceBranch}`);
       return 'failed';
     }
-    seed(worktreePath);
+    stopSession(name);
+    await seed(worktreePath);
     return 'spawned';
   }
 
@@ -81,6 +97,6 @@ export async function checkoutPlan(
     flashStatus(`Failed to create worktree for ${pr.sourceBranch}`);
     return 'failed';
   }
-  seed(worktreePath);
+  await seed(worktreePath);
   return 'spawned';
 }

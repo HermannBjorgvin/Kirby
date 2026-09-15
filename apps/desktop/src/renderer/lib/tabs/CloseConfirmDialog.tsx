@@ -12,7 +12,7 @@ import {
 export interface PendingClose {
   /** Branches whose agents are actively working right now. */
   activeBranches: string[];
-  /** Terminal tabs closing — every one asks, on both backends, because
+  /** Terminal tabs closing — every one asks because
    *  closing a terminal tab ends its session. */
   terminals: string[];
   /** Kill + close, once the user confirms. */

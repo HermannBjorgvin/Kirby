@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cleanupTestRepo, createTestRepo } from '../setup/git-repo.js';
+import { killFixtureSessions, fixtureSessionScreens } from '../setup/tmux.js';
 
 // ── fakeAgentCommand ───────────────────────────────────────────────
 
@@ -53,18 +54,7 @@ export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
 }
 
 export interface KirbyOptions {
-  /**
-   * Written to `$HOME/.kirby/config.json` before Kirby launches, over a
-   * `terminalBackend: 'pty'` base.
-   *
-   * That base is deliberate: with the key absent Kirby resolves the
-   * backend to tmux wherever tmux is installed, and its own exit path
-   * only *detaches* a tmux session — so every session-creating test
-   * would leave a live agent behind, on CI and on any developer machine
-   * with tmux. A test about the tmux backend asks for it explicitly; a
-   * test about the *default* passes `terminalBackend: undefined`, which
-   * drops the key from the file entirely (see `UNSET_BACKEND`).
-   */
+  /** Config written to the isolated HOME before launching Kirby. */
   kirbyConfig?: Record<string, unknown>;
   kirbyEnv?: Record<string, string>;
   cols: number;
@@ -96,7 +86,19 @@ export interface KirbySession {
   homeDir: string;
 }
 
-export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
+export const test = base.extend<
+  KirbyOptions & { kirby: KirbySession; fixtureHome: string }
+>({
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture dependency parameter.
+  fixtureHome: async ({}, provide) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
+    try {
+      await provide(homeDir);
+    } finally {
+      killFixtureSessions(homeDir);
+      await rm(homeDir, { recursive: true, force: true });
+    }
+  },
   kirbyConfig: [undefined, { option: true }],
   kirbyEnv: [undefined, { option: true }],
   cols: [100, { option: true }],
@@ -104,22 +106,30 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
   kirbyRepoPath: [undefined, { option: true }],
 
   kirby: async (
-    { page, baseURL, kirbyConfig, kirbyEnv, cols, rows, kirbyRepoPath },
+    {
+      page,
+      baseURL,
+      kirbyConfig,
+      kirbyEnv,
+      cols,
+      rows,
+      kirbyRepoPath,
+      fixtureHome,
+    },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
     // the react-hooks rules, which run over this workspace.
-    provide
+    provide,
+    testInfo
   ) => {
     const host = baseURL ?? 'http://localhost:5174';
     const ownsRepo = !kirbyRepoPath;
     const repoPath = kirbyRepoPath ?? createTestRepo();
-    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
+    const homeDir = fixtureHome;
     await mkdir(join(homeDir, '.kirby'), { recursive: true });
     await writeFile(
       join(homeDir, '.kirby', 'config.json'),
-      // `undefined` from the test's config drops the key, which is how a
-      // test asks for the unconfigured state — see `KirbyOptions`.
-      JSON.stringify({ terminalBackend: 'pty', ...kirbyConfig }, null, 2)
+      JSON.stringify(kirbyConfig ?? {}, null, 2)
     );
 
     const spawnRes = await fetch(`${host}/spawn`, {
@@ -211,17 +221,18 @@ export const test = base.extend<KirbyOptions & { kirby: KirbySession }>({
       }
       throw err;
     } finally {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach('tmux-state', {
+          body: JSON.stringify(fixtureSessionScreens(homeDir), null, 2),
+          contentType: 'application/json',
+        });
+      }
       try {
         await fetch(`${host}/kill`, { method: 'POST' });
       } catch {
         /* best effort */
       }
       if (ownsRepo) cleanupTestRepo(repoPath);
-      try {
-        await rm(homeDir, { recursive: true, force: true });
-      } catch {
-        /* best effort */
-      }
     }
   },
 });

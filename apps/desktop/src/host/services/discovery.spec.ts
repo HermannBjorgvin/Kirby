@@ -30,6 +30,7 @@ const state = vi.hoisted(() => ({
   /** Options the most recent startSessionDiscovery call was given. */
   opts: null as SessionDiscoveryOptions | null,
   stops: 0,
+  detached: [] as string[],
 }));
 
 vi.mock('./repo.js', () => ({
@@ -71,12 +72,14 @@ vi.mock('@kirby/core', async (importOriginal) => {
         },
       };
     },
-    launchSession: (spec: { name: string; cwd: string }) => {
+    launchSession: async (spec: { name: string; cwd: string }) => {
+      await Promise.resolve();
       state.alive.add(spec.name);
       state.spawns.push({ name: spec.name, cwd: spec.cwd });
       return { name: spec.name };
     },
-    launchTerminalSession: (spec: { name: string; cwd: string }) => {
+    launchTerminalSession: async (spec: { name: string; cwd: string }) => {
+      await Promise.resolve();
       state.alive.add(spec.name);
       state.spawns.push({ name: spec.name, cwd: spec.cwd });
       return { name: spec.name };
@@ -95,9 +98,13 @@ vi.mock('@kirby/core', async (importOriginal) => {
           }
         : undefined,
     isSessionAlive: (name: string) => state.alive.has(name),
-    resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
-      config.terminalBackend ?? 'tmux',
+    hasSessionConnection: (name: string) => state.alive.has(name),
+    hasPersistedTerminalSession: (name: string) => state.alive.has(name),
     killSession: () => undefined,
+    detachSession: (name: string) => {
+      state.detached.push(name);
+      state.alive.delete(name);
+    },
     checkoutPlan: () => Promise.resolve('spawned'),
     buildReviewLaunchRequest: () => ({ intent: 'blank' }),
     getSpawnedAt: () => 1000,
@@ -133,6 +140,7 @@ beforeEach(async () => {
   state.createWorktreeCalls = [];
   state.opts = null;
   state.stops = 0;
+  state.detached = [];
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -236,12 +244,6 @@ describe('startDiscoveryForRepo', () => {
     ]);
   });
 
-  it('reads config from the repo it was started for', () => {
-    state.configByCwd['/repo-a'] = { terminalBackend: 'tmux' };
-    discovery.startDiscoveryForRepo('/repo-a');
-    expect(opts().getConfig()).toEqual({ terminalBackend: 'tmux' });
-  });
-
   // A scan that began before a repo switch must not finish against the
   // new one: launchAgent would take this repo's branch names and create
   // them over there — phantom branches, worktrees and agents.
@@ -277,6 +279,22 @@ describe('the change notification', () => {
     discovery.startDiscoveryForRepo('/repo-a');
     opts().onChanged(delta);
     expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets a retained agent tab when its tmux session is deleted externally', async () => {
+    discovery.startDiscoveryForRepo('/repo-a');
+    await opts().adoptTerminal?.({
+      name: 'retained-agent',
+      kind: 'agent',
+      path: '/repo-a',
+      running: false,
+    });
+    state.alive.delete('retained-agent');
+    const terminals = await import('./terminals.js');
+    expect(terminals.listTerminals()).toHaveLength(1);
+    opts().onChanged({ ...delta, endedTerminals: ['retained-agent'] });
+    expect(terminals.listTerminals()).toEqual([]);
+    expect(state.detached).toEqual(['retained-agent']);
   });
 
   it('is harmless before main.ts has installed a notifier', () => {

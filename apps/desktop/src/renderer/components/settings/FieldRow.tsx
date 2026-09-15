@@ -59,7 +59,7 @@ export function FieldRow({
     );
   };
 
-  // A host-side gate (e.g. "no backend switch with live sessions")
+  // A host-side availability gate
   // grays the control out and explains itself in the description.
   const locked = Boolean(field.disabled);
   const shown: typeof field = locked

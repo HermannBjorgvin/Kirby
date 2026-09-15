@@ -35,10 +35,10 @@ test.describe('Session menu', () => {
 
     const menu = sessionMenu(page);
     await expect(menu).toBeVisible({ timeout: 30_000 });
-    await expect(menu.getByText('Start / continue session')).toBeVisible();
+    await expect(menu.getByText('Open / resume session')).toBeVisible();
     // No pull request → no review rows.
     await expect(menu.getByText('Start / continue review')).toHaveCount(0);
-    await expect(agentPicker(page)).toHaveText(/Custom \(default\)/);
+    await expect(agentPicker(page)).toHaveText(/Recorded agent/);
 
     await page.keyboard.press('Escape');
     await expect(menu).toBeHidden();
@@ -89,12 +89,13 @@ test.describe('Session menu', () => {
     await agentPicker(page).click();
     const options = page.getByRole('listbox').getByRole('option');
     await expect(options).toHaveText([
-      'Custom (default)',
-      'Claude',
-      'Codex',
-      'Gemini',
-      'Copilot',
-      'OpenCode',
+      'Recorded agent / default',
+      'Start new: Custom (default)',
+      'Start new: Claude',
+      'Start new: Codex',
+      'Start new: Gemini',
+      'Start new: Copilot',
+      'Start new: OpenCode',
     ]);
     await options.filter({ hasText: 'Codex' }).click();
     await expect(agentPicker(page)).toHaveText(/Codex/);
@@ -104,6 +105,6 @@ test.describe('Session menu', () => {
     await menu.getByRole('button', { name: 'Cancel' }).click();
     await expect(menu).toBeHidden();
     await sidebarRow(page, /pick-branch/).dblclick();
-    await expect(agentPicker(page)).toHaveText(/Custom \(default\)/);
+    await expect(agentPicker(page)).toHaveText(/Recorded agent/);
   });
 });

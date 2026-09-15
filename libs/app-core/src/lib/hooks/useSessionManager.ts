@@ -65,16 +65,19 @@ export function useSessionManager(
   // An effect event, so it reads the pane size at the moment it
   // attaches. A plain closure would capture whatever the terminal was
   // when discovery started and size every later agent to that.
-  const adoptExternalSession = useEffectEvent((wt: DiscoveredWorktree) => {
-    launchSession({
-      name: wt.name,
-      cwd: wt.path,
-      cols: terminal.paneCols,
-      rows: terminal.paneRows,
-      config: readConfig(),
-      request: { intent: 'continue-or-blank' },
-    });
-  });
+  const adoptExternalSession = useEffectEvent(
+    async (wt: DiscoveredWorktree) => {
+      await launchSession({
+        name: wt.name,
+        mode: 'attach',
+        cwd: wt.path,
+        cols: terminal.paneCols,
+        rows: terminal.paneRows,
+        config: readConfig(),
+        request: { intent: 'continue-or-blank' },
+      });
+    }
+  );
 
   // Something outside this process changed the worktrees or the live
   // sessions. Both are read from disk by refreshSessions, so re-reading
@@ -111,7 +114,6 @@ export function useSessionManager(
     }
 
     const discovery = startSessionDiscovery({
-      getConfig: () => readConfig(),
       isCurrent: () => !cancelled,
       adopt: (wt) => adoptExternalSession(wt),
       onChanged: () => onDiscovered(),

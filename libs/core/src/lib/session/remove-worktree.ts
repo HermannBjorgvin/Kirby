@@ -1,6 +1,5 @@
 import { removeWorktree, deleteBranch } from '@kirby/worktree-manager';
-import { killSession } from '../pty-registry.js';
-import { killPersistedTmuxSession } from '../session-backend.js';
+import { stopSession } from './stop-session.js';
 import { getRepoRoot } from '../repo-root.js';
 import { worktreeSessionKey } from '../session-key.js';
 
@@ -12,8 +11,7 @@ export async function removeWorktreeSession(
 ): Promise<boolean> {
   const cwd = repo ?? getRepoRoot() ?? process.cwd();
   const key = worktreeSessionKey(branch, cwd);
-  killSession(key);
-  killPersistedTmuxSession(key);
+  stopSession(key);
   const removed = await removeWorktree(branch, { force, cwd });
   if (removed) await deleteBranch(branch, true, cwd);
   return removed;

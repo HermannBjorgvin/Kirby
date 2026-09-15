@@ -176,7 +176,7 @@ describe('sweepMergedBranches', () => {
   it('leaves it alone even when the config now selects pty', async () => {
     env.persisted = new Set([worktreeSessionKey('feature/a')]);
     await sweep({
-      config: { autoDeleteOnMerge: true, terminalBackend: 'pty' } as never,
+      config: { autoDeleteOnMerge: true } as never,
     });
     expect(env.deleted).toEqual([]);
   });

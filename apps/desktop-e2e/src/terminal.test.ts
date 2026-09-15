@@ -1,11 +1,7 @@
 import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import {
-  UNSET_BACKEND,
-  killKirbySessions,
-  tmuxAvailable,
-} from './setup/tmux.js';
+import { killKirbySessions, tmuxAvailable } from './setup/tmux.js';
 import {
   createWorktree,
   focusTerminal,
@@ -482,7 +478,6 @@ test.describe('Terminal fit', () => {
     test.skip(!tmuxAvailable(), 'tmux is not installed');
     test.use({
       kirbyConfig: {
-        ...UNSET_BACKEND,
         aiCommand: fakeAgent({ printSize: true }),
       },
     });

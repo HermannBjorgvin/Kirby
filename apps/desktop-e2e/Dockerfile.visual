@@ -1,0 +1,4 @@
+# Keep the browser, system libraries and fonts aligned with Playwright.
+FROM mcr.microsoft.com/playwright:v1.59.1-noble
+RUN apt-get update && apt-get install -y --no-install-recommends tmux \
+    && rm -rf /var/lib/apt/lists/*

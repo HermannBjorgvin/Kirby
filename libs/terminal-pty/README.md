@@ -1,11 +1,7 @@
 # terminal-pty
 
-This library was generated with [Nx](https://nx.dev).
+Low-level `node-pty` connection used to embed a tmux client. This package does
+not launch Kirby agents directly or decide session identity and persistence.
 
-## Building
-
-Run `nx build terminal-pty` to build the library.
-
-## Running unit tests
-
-Run `nx test terminal-pty` to execute the unit tests via [Vitest](https://vitest.dev/).
+- Build: `npx nx build @kirby/terminal-pty`
+- Tests: `npx nx test @kirby/terminal-pty`

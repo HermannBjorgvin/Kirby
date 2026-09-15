@@ -36,12 +36,14 @@ export function orchestraFixture() {
     '-C',
     pluginDir,
   ]);
-  writeFileSync(
-    join(bin, 'codex'),
-    `#!${process.execPath}\n` +
-      readFileSync(join(fixtures, 'fake-orchestra-agent.mjs')),
-    { mode: 0o755 }
-  );
+  for (const agent of ['codex', 'claude']) {
+    writeFileSync(
+      join(bin, agent),
+      `#!${process.execPath}\n` +
+        readFileSync(join(fixtures, 'fake-orchestra-agent.mjs')),
+      { mode: 0o755 }
+    );
+  }
   writeFileSync(join(bin, 'package.json'), JSON.stringify({ type: 'module' }));
   writeFileSync(
     join(home, '.tmux.conf'),

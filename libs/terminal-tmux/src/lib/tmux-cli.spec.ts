@@ -15,6 +15,7 @@ import {
   tmuxListSessions,
   tmuxListSessionsDetailed,
   tmuxNewSessionDetached,
+  tmuxPaneState,
   tmuxSetOption,
   tmuxShowOption,
   tmuxVersion,
@@ -264,7 +265,7 @@ describe('tmuxShowOption', () => {
 describe('tmuxListSessions', () => {
   it('returns one name per line of `list-sessions -F`', () => {
     mockedExec.mockReturnValueOnce(
-      'repo-feature-x\t1\t/wt/x\nrepo-feature-y\t2\t/wt/y\nunrelated\t3\t/home\n' as unknown as Buffer
+      'repo-feature-x\t1\t0\t\t\t/wt/x\nrepo-feature-y\t2\t0\t\t\t/wt/y\nunrelated\t3\t0\t\t\t/home\n' as unknown as Buffer
     );
     expect(tmuxListSessions()).toEqual([
       'repo-feature-x',
@@ -277,7 +278,7 @@ describe('tmuxListSessions', () => {
       '-u',
       'list-sessions',
       '-F',
-      '#{session_name}\t#{session_created}\t#{session_path}',
+      '#{session_name}\t#{session_created}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}\t#{session_path}',
     ]);
   });
 
@@ -293,7 +294,7 @@ describe('tmuxListSessions', () => {
 
   it('drops blank lines rather than yielding empty names', () => {
     mockedExec.mockReturnValueOnce(
-      'one\t1\t/a\n\n  \ntwo\t2\t/b\n' as unknown as Buffer
+      'one\t1\t0\t\t\t/a\n\n  \ntwo\t2\t0\t\t\t/b\n' as unknown as Buffer
     );
     expect(tmuxListSessions()).toEqual(['one', 'two']);
   });
@@ -305,13 +306,19 @@ describe('tmuxListSessionsDetailed', () => {
   // with the name from the one `list-sessions` fork a scan makes.
   it('pairs every name with its creation time and the directory it was started in', () => {
     mockedExec.mockReturnValueOnce(
-      'proj-shell\t1757900000\t/home/dev/proj\nrepo-x\t1757900100\t/repo/.claude/worktrees/x\n' as unknown as Buffer
+      'proj-shell\t1757900000\t0\t\t\t/home/dev/proj\nrepo-x\t1757900100\t0\t\t\t/repo/.claude/worktrees/x\n' as unknown as Buffer
     );
     expect(tmuxListSessionsDetailed()).toEqual([
-      { name: 'proj-shell', created: 1757900000, path: '/home/dev/proj' },
+      {
+        name: 'proj-shell',
+        created: 1757900000,
+        paneDead: false,
+        path: '/home/dev/proj',
+      },
       {
         name: 'repo-x',
         created: 1757900100,
+        paneDead: false,
         path: '/repo/.claude/worktrees/x',
       },
     ]);
@@ -323,17 +330,17 @@ describe('tmuxListSessionsDetailed', () => {
   // at the first tab and the rest is the path.
   it('keeps a path that itself contains a tab intact', () => {
     mockedExec.mockReturnValueOnce(
-      'proj-shell\t5\t/odd\tdir\n' as unknown as Buffer
+      'proj-shell\t5\t0\t\t\t/odd\tdir\n' as unknown as Buffer
     );
     expect(tmuxListSessionsDetailed()).toEqual([
-      { name: 'proj-shell', created: 5, path: '/odd\tdir' },
+      { name: 'proj-shell', created: 5, paneDead: false, path: '/odd\tdir' },
     ]);
   });
 
   it('reports a session with no path as an empty one rather than dropping it', () => {
     mockedExec.mockReturnValueOnce('bare\n' as unknown as Buffer);
     expect(tmuxListSessionsDetailed()).toEqual([
-      { name: 'bare', created: 0, path: '' },
+      { name: 'bare', created: 0, paneDead: false, path: '' },
     ]);
   });
 
@@ -352,7 +359,7 @@ describe('tmuxListSessionsDetailed', () => {
   describe('with session user options', () => {
     it('asks for each option in the format and reports the set ones by name', () => {
       mockedExec.mockReturnValueOnce(
-        'repo-x\t7\t/repo\tfeature/x\t\t/repo/.claude/worktrees/x\n' as unknown as Buffer
+        'repo-x\t7\t0\t\t\t/repo\tfeature/x\t\t/repo/.claude/worktrees/x\n' as unknown as Buffer
       );
       expect(
         tmuxListSessionsDetailed(['@x-repo', '@x-branch', '@x-agent'])
@@ -360,6 +367,7 @@ describe('tmuxListSessionsDetailed', () => {
         {
           name: 'repo-x',
           created: 7,
+          paneDead: false,
           path: '/repo/.claude/worktrees/x',
           options: { '@x-repo': '/repo', '@x-branch': 'feature/x' },
         },
@@ -368,7 +376,7 @@ describe('tmuxListSessionsDetailed', () => {
         '-u',
         'list-sessions',
         '-F',
-        '#{session_name}\t#{session_created}\t#{@x-repo}\t#{@x-branch}\t#{@x-agent}\t#{session_path}',
+        '#{session_name}\t#{session_created}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}\t#{@x-repo}\t#{@x-branch}\t#{@x-agent}\t#{session_path}',
       ]);
     });
 
@@ -376,21 +384,28 @@ describe('tmuxListSessionsDetailed', () => {
     // left out rather than reported as ''.
     it('reports no options at all for a session that has none set', () => {
       mockedExec.mockReturnValueOnce(
-        'plain\t9\t\t\t/home/dev\n' as unknown as Buffer
+        'plain\t9\t0\t\t\t\t\t/home/dev\n' as unknown as Buffer
       );
       expect(tmuxListSessionsDetailed(['@a', '@b'])).toEqual([
-        { name: 'plain', created: 9, path: '/home/dev', options: {} },
+        {
+          name: 'plain',
+          created: 9,
+          paneDead: false,
+          path: '/home/dev',
+          options: {},
+        },
       ]);
     });
 
     it('still keeps a tab inside the path intact', () => {
       mockedExec.mockReturnValueOnce(
-        'proj-shell\t9\tv\t/odd\tdir\n' as unknown as Buffer
+        'proj-shell\t9\t0\t\t\tv\t/odd\tdir\n' as unknown as Buffer
       );
       expect(tmuxListSessionsDetailed(['@a'])).toEqual([
         {
           name: 'proj-shell',
           created: 9,
+          paneDead: false,
           path: '/odd\tdir',
           options: { '@a': 'v' },
         },
@@ -398,15 +413,15 @@ describe('tmuxListSessionsDetailed', () => {
     });
 
     it('keeps the two-column format, and no options key, when none are asked for', () => {
-      mockedExec.mockReturnValueOnce('a\t3\t/p\n' as unknown as Buffer);
+      mockedExec.mockReturnValueOnce('a\t3\t0\t\t\t/p\n' as unknown as Buffer);
       expect(tmuxListSessionsDetailed([])).toEqual([
-        { name: 'a', created: 3, path: '/p' },
+        { name: 'a', created: 3, paneDead: false, path: '/p' },
       ]);
       expect(mockedExec.mock.calls[0]![1]).toEqual([
         '-u',
         'list-sessions',
         '-F',
-        '#{session_name}\t#{session_created}\t#{session_path}',
+        '#{session_name}\t#{session_created}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}\t#{session_path}',
       ]);
     });
   });
@@ -416,8 +431,21 @@ describe('tmuxListSessionsDetailed', () => {
   // folds every column into the name. `-u` declares the client UTF-8
   // whatever the locale says.
   it('asks for UTF-8 output so a non-UTF-8 locale cannot rewrite the tabs', () => {
-    mockedExec.mockReturnValueOnce('a\t3\t/p\n' as unknown as Buffer);
+    mockedExec.mockReturnValueOnce('a\t3\t0\t\t\t/p\n' as unknown as Buffer);
     tmuxListSessionsDetailed();
     expect(mockedExec.mock.calls[0]![1]?.[0]).toBe('-u');
+  });
+});
+
+describe('tmuxPaneState', () => {
+  it('recognizes a missing target even when display-message exits successfully', () => {
+    mockedExec.mockReturnValueOnce('\t\t\t\n' as unknown as Buffer);
+    expect(tmuxPaneState('missing')).toBeNull();
+  });
+  it('requires an actual pane ID and explicit state', () => {
+    mockedExec.mockReturnValueOnce('%7\t0\t\t\n' as unknown as Buffer);
+    expect(tmuxPaneState('running')).toEqual({ paneDead: false });
+    mockedExec.mockReturnValueOnce('%7\t1\t3\t\n' as unknown as Buffer);
+    expect(tmuxPaneState('exited')).toEqual({ paneDead: true, exitCode: 3 });
   });
 });

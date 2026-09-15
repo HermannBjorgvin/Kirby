@@ -92,9 +92,9 @@ export interface SessionLaunchRequest {
   branch: string;
   intent: LaunchIntent;
   /**
-   * Launch this agent instead of the configured one — the session
-   * menu's per-launch pick. Unset means the configured default, which
-   * also covers a custom `aiCommand` (the hidden test runner).
+   * Explicit agent for this launch. With a blank intent, an unset agent
+   * uses the configured default (including custom commands). Continuation
+   * without an override uses the agent recorded on a retained session.
    */
   agentId?: AgentId;
   prompt?: string;

@@ -24,7 +24,7 @@ import {
 import { Textarea } from '../ui/textarea.js';
 
 export type LaunchChoice =
-  | { kind: 'session'; agentId?: AgentId }
+  | { kind: 'session'; agentId?: AgentId; fresh?: boolean }
   | { kind: 'review'; instruction?: string };
 
 type Mode = 'session' | 'review' | 'instruct';
@@ -38,8 +38,8 @@ function insidePicker(target: EventTarget | null): boolean {
 }
 
 /**
- * The TUI's "What would you like to do?" session menu: start or
- * continue a session with an agent chosen for this launch, and — for
+ * The session menu: resume the recorded agent, start a fresh conversation
+ * with a chosen agent, and — for
  * a row backed by a pull request — review, or review with
  * instructions.
  */
@@ -61,10 +61,8 @@ export function LaunchDialog({
 }) {
   const [mode, setMode] = useState<Mode>('session');
   const [instruction, setInstruction] = useState('');
-  // The first row is the configured default: launching without
-  // touching the picker reproduces the configured behaviour, custom
-  // `aiCommand` included, so only a non-default pick carries an id.
-  const [agentIdx, setAgentIdx] = useState(0);
+  // Automatic resume is distinct from every explicit fresh-agent choice.
+  const [agentIdx, setAgentIdx] = useState(-1);
 
   const trimmed = instruction.trim();
   const go = () => {
@@ -72,6 +70,7 @@ export function LaunchDialog({
       onChoose({
         kind: 'session',
         agentId: agentIdForLaunch(agents, agentIdx),
+        fresh: agentIdx >= 0,
       });
     } else if (mode === 'review') onChoose({ kind: 'review' });
     // Same gate as the footer button: ⌘/Ctrl+Enter on an empty box
@@ -114,8 +113,8 @@ export function LaunchDialog({
             go={go}
             value="session"
             icon={PlayIcon}
-            title="Start / continue session"
-            description="Open the agent in this worktree with no task. Resumes a prior conversation when the agent supports it."
+            title="Open / resume session"
+            description="Resume the recorded agent, or choose an agent below to start a new conversation."
           />
           {mode === 'session' && (
             <AgentPicker
@@ -163,7 +162,11 @@ export function LaunchDialog({
           </Button>
           <Button onClick={go} disabled={mode === 'instruct' && !trimmed}>
             <PlayIcon />
-            {mode === 'session' ? 'Start session' : 'Start review'}
+            {mode === 'session'
+              ? agentIdx < 0
+                ? 'Open session'
+                : 'Start new session'
+              : 'Start review'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -182,17 +185,8 @@ function PrTitle({ pr }: { pr: PullRequestInfo }) {
 
 const AGENT_PICKER_ID = 'launch-agent';
 
-/**
- * Which agent this launch uses. Indexed rather than by id because the
- * default row and a registry row can share an id (Claude configured →
- * "Claude (default)" is row 0 and there is no second Claude row, but a
- * custom command shows as "Custom (default)" with id `test`).
- *
- * Laid out as one more row of the option list — same left and right
- * edges as the cards above it and the footer buttons below — so it
- * reads as configuration for the option it sits under rather than as
- * something floating between the two.
- */
+/** Automatic resume (-1) is separate from every explicit fresh-launch choice.
+ * The custom default has no public agent ID and is resolved by the host. */
 function AgentPicker({
   agents,
   index,
@@ -220,9 +214,10 @@ function AgentPicker({
           <SelectValue placeholder="Loading…" />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="-1">Recorded agent / default</SelectItem>
           {agents.map((a, i) => (
             <SelectItem key={a.id} value={String(i)}>
-              {a.name}
+              Start new: {a.name}
             </SelectItem>
           ))}
         </SelectContent>

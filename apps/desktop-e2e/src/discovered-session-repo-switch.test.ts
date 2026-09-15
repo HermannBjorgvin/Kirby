@@ -30,7 +30,6 @@ function agentCommand(banner: string): string {
 }
 
 test.use({
-  kirbyConfig: { terminalBackend: 'tmux' },
   liveSessions: [
     { branch: ALPHA_BRANCH, command: agentCommand('alpha-agent-here') },
   ],

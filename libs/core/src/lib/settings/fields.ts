@@ -1,6 +1,5 @@
 import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
 import { AGENTS } from '../agents/registry.js';
-import { defaultTerminalBackend } from '../session-backend.js';
 
 export interface SettingsField {
   label: string;
@@ -56,27 +55,6 @@ export const KEYBIND_PRESETS: { name: string; value: string | null }[] = [
   { name: 'Normie defaults', value: 'normie' },
   { name: 'Vim Losers', value: 'vim' },
 ];
-
-/** Build the terminal backend presets, retagging the tmux option with
- *  "(not installed)" if the startup probe found tmux missing. The
- *  underlying value stays `'tmux'` so the displayed label is purely
- *  informational — the input handler still gates the actual selection
- *  via canApplyFieldChange.
- *
- *  Neither name carries a "(default)" marker: which one is the default
- *  is `defaultValue`'s job, and duplicating it here would let the two
- *  disagree the moment tmux appears or disappears. */
-function terminalBackendPresets(): {
-  name: string;
-  value: string | null;
-}[] {
-  const tmuxLabel =
-    defaultTerminalBackend() === 'tmux' ? 'Tmux' : 'Tmux (not installed)';
-  return [
-    { name: 'PTY', value: 'pty' },
-    { name: tmuxLabel, value: 'tmux' },
-  ];
-}
 
 /** Build the settings field list dynamically from the active provider */
 export function buildSettingsFields(
@@ -140,15 +118,6 @@ export function buildSettingsFields(
       key: 'diffFileListTree',
       description: 'Group PR files by directory in the diff file list',
       presets: BOOL_PRESETS_ON_FIRST,
-      configBag: 'global',
-    },
-    {
-      label: 'Terminal Backend',
-      key: 'terminalBackend',
-      description:
-        'Persists sessions across Kirby restarts. Defaults to tmux when tmux is installed. Cannot be changed while sessions are active.',
-      presets: terminalBackendPresets(),
-      defaultValue: defaultTerminalBackend(),
       configBag: 'global',
     },
   ];

@@ -246,7 +246,6 @@ export function buildScenario() {
         // tmux is installed, and closing the app only detaches — so
         // every recording would strand a demo agent on a tmux server
         // whose socket dir the teardown then deletes.
-        terminalBackend: 'pty',
       },
       null,
       2

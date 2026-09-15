@@ -1,20 +1,20 @@
+import * as repoRoot from '../repo-root.js';
 import { spawnSync } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '@kirby/vcs-core';
-import { createTmuxBackendFactory, tmuxSetOption } from '@kirby/terminal-tmux';
+import { tmuxSetOption } from '@kirby/terminal-tmux';
 import { orchestraFixture } from '../../../tests/orchestra-fixture.js';
 import { diffScans } from '../discovery/discovery-model.js';
 import {
   getSession,
   isSessionAlive,
   liveSessionNames,
-  setSessionBackendFactory,
 } from '../pty-registry.js';
 import { resolveSessionByName } from '../session-resolver.js';
-import { newTerminalSessionName } from './terminal-name.js';
 import { terminalSessionKey } from '../session-key.js';
 import { sessionTags } from '../session-identity.js';
-import { kirbyTmuxFactoryOptions } from '../tmux-factory-options.js';
 import { launchTerminalSession } from './launch-terminal.js';
 
 describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
@@ -23,18 +23,59 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     let fixture: ReturnType<typeof orchestraFixture>;
     beforeEach(() => {
       fixture = orchestraFixture();
-      setSessionBackendFactory(
-        createTmuxBackendFactory(kirbyTmuxFactoryOptions(fixture.repo))
-      );
+      vi.spyOn(repoRoot, 'getRepoRoot').mockReturnValue(fixture.repo);
     });
-    afterEach(() => fixture?.close());
+    afterEach(() => {
+      fixture?.close();
+      vi.restoreAllMocks();
+    });
+
+    it('retains an exited agent terminal and resumes it with the same identity', async () => {
+      const params = {
+        kind: 'agent' as const,
+        cwd: fixture.repo,
+        cols: 80,
+        rows: 24,
+        config: {
+          agentId: 'codex' as const,
+          vendorAuth: {},
+          vendorProject: {},
+        },
+      };
+      const entry = await launchTerminalSession(params);
+      await expect
+        .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
+        .toBe(true);
+      const first = JSON.parse(fixture.read('agent-start.json')) as {
+        pid: number;
+      };
+      process.kill(first.pid, 'SIGTERM');
+      await expect
+        .poll(() => resolveSessionByName(entry.pty.name!)?.paneDead)
+        .toBe(true);
+      await expect.poll(() => entry.exited).toBe(true);
+      rmSync(join(fixture.home, 'agent-start.json'));
+      const resumed = await launchTerminalSession({
+        ...params,
+        name: entry.name,
+        config: { ...params.config, agentId: 'claude' },
+      });
+      await expect
+        .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
+        .toBe(true);
+      const next = JSON.parse(fixture.read('agent-start.json'));
+      expect(next.args).toEqual(['resume', '--last']);
+      expect(next.pid).not.toBe(first.pid);
+      expect(resumed.name).toBe(entry.name);
+      expect(resumed.agent).toBe('codex');
+      expect(resolveSessionByName(entry.pty.name!)?.paneDead).toBe(false);
+    });
 
     it.each(['disappears', 'appears'] as const)(
       'uses the allocated name when another session %s before creation',
-      (change) => {
+      async (change) => {
         if (change === 'disappears')
           fixture.tmux('new-session', '-d', '-s', 'shop-shell', 'sleep', '300');
-        const suggested = newTerminalSessionName();
         if (change === 'disappears')
           fixture.tmux('kill-session', '-t', '=shop-shell:');
         else {
@@ -47,19 +88,16 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         }
         const expected =
           change === 'disappears' ? 'shop-shell' : 'shop-shell-2';
-        const entry = launchTerminalSession({
-          name: suggested,
-          fresh: true,
+        const entry = await launchTerminalSession({
           kind: 'shell',
           cwd: fixture.repo,
           cols: 80,
           rows: 24,
-          config: { terminalBackend: 'tmux' } as AppConfig,
+          config: {} as AppConfig,
         });
         expect(entry.name).toBe(terminalSessionKey(expected));
         expect(entry.pty.name).toBe(expected);
         expect(getSession(terminalSessionKey(expected))).toBe(entry);
-        expect(getSession(suggested)).toBeUndefined();
         expect(liveSessionNames()).toEqual([terminalSessionKey(expected)]);
         expect(resolveSessionByName(expected)).not.toBeNull();
         const delta = diffScans(

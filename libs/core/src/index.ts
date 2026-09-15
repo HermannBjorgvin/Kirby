@@ -39,8 +39,9 @@ export * from './lib/plan/plan-types.js';
 export * from './lib/session-backend.js';
 export * from './lib/session-identity.js';
 export * from './lib/session-resolver.js';
-export * from './lib/tmux-factory-options.js';
-export * from './lib/terminal/terminal-name.js';
+export * from './lib/session/session-request.js';
+export * from './lib/session/open-session.js';
+export type * from './lib/terminal/terminal-name.js';
 export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';
 export {
@@ -126,4 +127,5 @@ export {
 } from './lib/session-key.js';
 export type { SessionIdentity } from './lib/session-key.js';
 
+export { stopSession } from './lib/session/stop-session.js';
 export { removeWorktreeSession } from './lib/session/remove-worktree.js';

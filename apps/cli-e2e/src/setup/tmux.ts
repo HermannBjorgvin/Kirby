@@ -29,13 +29,6 @@ const E2E_BRANCH_PREFIX = 'e2e-tmux-';
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
 const HOME_PREFIX = 'kirby-e2e-web-home-';
 
-/** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
- *  the config file altogether — the state the tmux-when-detected default
- *  applies to. The fixture writes `'pty'` otherwise. */
-export const UNSET_BACKEND: Record<string, unknown> = {
-  terminalBackend: undefined,
-};
-
 export function tmuxAvailable(): boolean {
   try {
     execFileSync('tmux', ['-V'], { stdio: 'ignore' });
@@ -98,6 +91,8 @@ export interface TaggedTmuxSession {
   type: string;
   repo: string;
   branch: string;
+  paneDead: boolean;
+  panePid: number;
 }
 
 const LISTING = [
@@ -106,6 +101,8 @@ const LISTING = [
   '#{@orchestra-session-type}',
   '#{@orchestra-repo}',
   '#{@orchestra-branch}',
+  '#{pane_dead}',
+  '#{pane_pid}',
 ].join('\t');
 
 /** Every session on the test's tmux server, tags included. Empty when
@@ -127,9 +124,24 @@ export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
       .split('\n')
       .filter((line) => line.trim())
       .map((line) => {
-        const [name = '', spawner = '', type = '', repo = '', branch = ''] =
-          line.split('\t');
-        return { name, spawner, type, repo, branch };
+        const [
+          name = '',
+          spawner = '',
+          type = '',
+          repo = '',
+          branch = '',
+          dead,
+          pid,
+        ] = line.split('\t');
+        return {
+          name,
+          spawner,
+          type,
+          repo,
+          branch,
+          paneDead: dead === '1',
+          panePid: Number(pid),
+        };
       });
   } catch {
     return [];
@@ -194,6 +206,22 @@ export function cleanupTmuxSessions(
       });
     } catch {
       /* already gone — best effort */
+    }
+  }
+}
+
+/** Clean up every session on the proven, per-test socket before its HOME
+ * is deleted. Untagged sessions can exist after an interrupted launch. */
+export function killFixtureSessions(homeDir: string): void {
+  const env = socketEnv(homeDir);
+  for (const name of listTmuxSessions(homeDir)) {
+    try {
+      execFileSync('tmux', ['kill-session', '-t', `=${name}:`], {
+        stdio: 'ignore',
+        env,
+      });
+    } catch {
+      // Another teardown may already have stopped it.
     }
   }
 }
@@ -293,4 +321,24 @@ export function startExternalTmuxSession(opts: {
     });
   }
   return name;
+}
+
+/** Failure diagnostics from the private server before fixture teardown. */
+export function fixtureSessionScreens(homeDir: string): unknown[] {
+  const env = socketEnv(homeDir);
+  return listTaggedSessions(homeDir).map((session) => {
+    try {
+      const screen = execFileSync(
+        'tmux',
+        ['capture-pane', '-p', '-t', `=${session.name}:`],
+        {
+          env,
+          encoding: 'utf8',
+        }
+      );
+      return { ...session, screen };
+    } catch {
+      return session;
+    }
+  });
 }

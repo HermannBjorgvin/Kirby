@@ -226,51 +226,23 @@ describe('readConfig', () => {
     expect(config.worktreePath).toBeUndefined();
   });
 
-  // readConfig builds AppConfig field-by-field, so a key added to
-  // AppConfig but not mapped here is silently dropped on every read —
-  // the setting appears to save, then reverts on restart. terminalBackend
-  // hit exactly that.
-  it('should include terminalBackend when set in global config', () => {
-    mockReadFileSync.mockReturnValueOnce(
-      JSON.stringify({ terminalBackend: 'tmux' })
-    );
-    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
+  it.each(['pty', 'tmux'])(
+    'ignores legacy %s backend settings without rewriting files',
+    (backend) => {
+      mockReadFileSync.mockReturnValueOnce(
+        JSON.stringify({ terminalBackend: backend, editor: 'code' })
+      );
+      mockReadFileSync.mockReturnValueOnce(
+        JSON.stringify({ terminalBackend: backend, email: 'dev@example.com' })
+      );
 
-    const config = readConfig('/tmp/test');
-    expect(config.terminalBackend).toBe('tmux');
-  });
-
-  // Undefined is load-bearing: it is what tells the app nobody chose,
-  // which is the only state the tmux-when-detected default applies to.
-  it('should have undefined terminalBackend when neither config sets it', () => {
-    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
-    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
-
-    const config = readConfig('/tmp/test');
-    expect(config.terminalBackend).toBeUndefined();
-  });
-
-  it('should let the project config override the global terminalBackend', () => {
-    mockReadFileSync.mockReturnValueOnce(
-      JSON.stringify({ terminalBackend: 'tmux' })
-    );
-    mockReadFileSync.mockReturnValueOnce(
-      JSON.stringify({ terminalBackend: 'pty' })
-    );
-
-    const config = readConfig('/tmp/test');
-    expect(config.terminalBackend).toBe('pty');
-  });
-
-  it('should take terminalBackend from the project config alone', () => {
-    mockReadFileSync.mockReturnValueOnce(JSON.stringify({}));
-    mockReadFileSync.mockReturnValueOnce(
-      JSON.stringify({ terminalBackend: 'tmux' })
-    );
-
-    const config = readConfig('/tmp/test');
-    expect(config.terminalBackend).toBe('tmux');
-  });
+      const config = readConfig('/tmp/test');
+      expect(config).not.toHaveProperty('terminalBackend');
+      expect(config.editor).toBe('code');
+      expect(config.email).toBe('dev@example.com');
+      expect(mockWriteFileSync).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('isVcsConfigured', () => {

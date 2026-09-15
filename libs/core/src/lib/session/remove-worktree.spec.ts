@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { worktreeSessionKey } from '../session-key.js';
 const state = vi.hoisted(() => ({ calls: [] as unknown[], removed: true }));
 vi.mock('../pty-registry.js', () => ({
+  hasSession: () => true,
   killSession: (key: string) => state.calls.push(['kill', key]),
 }));
 vi.mock('../session-backend.js', () => ({
@@ -28,7 +29,6 @@ it('stops only the qualified agent before removing its checkout and branch in th
   const key = worktreeSessionKey('feature/login', '/repo-a');
   expect(state.calls).toEqual([
     ['kill', key],
-    ['persisted', key],
     ['remove', 'feature/login', { force: true, cwd: '/repo-a' }],
     ['delete', 'feature/login', true, '/repo-a'],
   ]);

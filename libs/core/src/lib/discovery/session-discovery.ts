@@ -1,4 +1,4 @@
-import { keyForWorktree } from '../session-key.js';
+import { keyForWorktree, sessionIdentity } from '../session-key.js';
 /**
  * Noticing worktrees and agent sessions that appear while Kirby is
  * running.
@@ -25,8 +25,7 @@ import { keyForWorktree } from '../session-key.js';
  *   nothing to connect to until the first one exists, and an attached
  *   control client *participates in window sizing*: it would resize the
  *   user's agent panes to its own dimensions. `attach-session -f
- *   ignore-size` fixes that and arrived in tmux 3.2, well above the 2.0
- *   floor the backend supports.
+ *   ignore-size` avoids that, but still needs an existing session.
  *
  * The filesystem watch below is a latency shortcut on top of the poll,
  * not a replacement for it: it makes a new worktree show up as fast as
@@ -36,13 +35,13 @@ import { keyForWorktree } from '../session-key.js';
  */
 import { watch, type FSWatcher } from 'node:fs';
 import { log, logError } from '@kirby/logger';
-import type { AppConfig } from '@kirby/vcs-core';
 import { listWorktrees, worktreesBasePath } from '@kirby/worktree-manager';
-import { isSessionAlive } from '../pty-registry.js';
 import {
-  observeTmuxSessions,
-  resolveTerminalBackend,
-} from '../session-backend.js';
+  hasSessionConnection,
+  isSessionAlive,
+  sessionNames,
+} from '../pty-registry.js';
+import { observeTmuxSessions } from '../session-backend.js';
 import {
   diffScans,
   type DiscoveredTerminal,
@@ -94,9 +93,6 @@ function worthAnnouncing(delta: DiscoveryDelta, adopted: number): boolean {
 export interface SessionDiscoveryOptions {
   /** Scan cadence in ms. */
   intervalMs?: number;
-  /** Read the config a scan should use. Called per scan, so switching
-   *  the terminal backend in Settings takes effect without a restart. */
-  getConfig: () => Pick<AppConfig, 'terminalBackend'>;
   /**
    * Attach to an external session, through whatever launch path the
    * shell normally uses — which must reach `spawnSession`, so the tmux
@@ -142,13 +138,7 @@ export interface SessionDiscovery {
 export function startSessionDiscovery(
   opts: SessionDiscoveryOptions
 ): SessionDiscovery {
-  const {
-    getConfig,
-    adopt,
-    adoptTerminal,
-    onChanged,
-    isCurrent = () => true,
-  } = opts;
+  const { adopt, adoptTerminal, onChanged, isCurrent = () => true } = opts;
   const intervalMs = opts.intervalMs ?? DISCOVERY_INTERVAL_MS;
 
   let previous: DiscoveryScan | null = null;
@@ -177,7 +167,7 @@ export function startSessionDiscovery(
         path: wt.path,
       })
     );
-    const seen = observeTmuxSessions(getConfig(), worktrees);
+    const seen = observeTmuxSessions(worktrees);
     return {
       worktrees,
       persisted: seen.persisted,
@@ -194,7 +184,8 @@ export function startSessionDiscovery(
     // the same loop can take long enough for the user to launch this
     // session themselves, and handing a live one to `spawnSession`
     // disposes the PTY and emulator behind the pane they are looking at.
-    if (isSessionAlive(item.name)) return false;
+    if (isSessionAlive(item.name) && hasSessionConnection(item.name))
+      return false;
     try {
       await attach(item);
       failures.delete(item.name);
@@ -222,13 +213,6 @@ export function startSessionDiscovery(
     let adopted = 0;
     for (const offer of offers) {
       if (stopped || !isCurrent()) return adopted;
-      // Every offer came from a live tmux session, and Settings can
-      // swap the backend while this loop awaits — its own guard sees an
-      // empty registry, because nothing has attached yet. Carrying on
-      // would spawn a raw PTY agent into a worktree that already has a
-      // live tmux agent in it, so the preference is re-read rather than
-      // taken from the config this scan opened with.
-      if (resolveTerminalBackend(getConfig()) !== 'tmux') return adopted;
       if (await offer()) adopted += 1;
     }
     return adopted;
@@ -252,7 +236,27 @@ export function startSessionDiscovery(
     const next = await observe();
     if (stopped || !isCurrent()) return;
     forgetFailuresFor(next);
-    const delta = diffScans(previous, next, isSessionAlive, retired);
+    const delta = diffScans(
+      previous,
+      next,
+      (name) => isSessionAlive(name) && hasSessionConnection(name),
+      retired,
+      hasSessionConnection
+    );
+    // A repo switch starts a fresh scanner, but terminal tabs are process-global.
+    // Reconcile held terminal keys too, including final frames from an earlier scan.
+    if (adoptTerminal) {
+      const present = new Set(next.terminals.map((terminal) => terminal.name));
+      delta.endedTerminals = [
+        ...new Set([
+          ...delta.endedTerminals,
+          ...sessionNames().filter(
+            (name) =>
+              sessionIdentity(name)?.kind === 'terminal' && !present.has(name)
+          ),
+        ]),
+      ];
+    }
     previous = next;
     // Attach first, announce second: the shell answers `changed` by
     // re-reading the registry, and it must see the sessions this scan

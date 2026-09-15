@@ -16,8 +16,6 @@ import type { SettingsField } from './fields.js';
  * calls its hooks.
  */
 export type SettingsEffect =
-  /** Rebuild the session backend factory. */
-  | 'apply-session-backend'
   /** Restart the merged-branch / conflict sync loop. */
   | 'restart-sync-loop'
   /** Drop everything the provider cached under the old credentials. */
@@ -39,10 +37,6 @@ const CREDENTIAL_EFFECTS: SettingsEffect[] = [
 ];
 
 const BY_KEY: Record<string, SettingsEffect[]> = {
-  // The one field whose write must rebuild the PTY backend factory —
-  // and only ever at the moment the guards have established there is
-  // no live session.
-  terminalBackend: ['apply-session-backend'],
   // Both cadences: a new interval should take effect now, not after
   // the timer the old one armed finally fires.
   mergePollInterval: ['restart-sync-loop'],

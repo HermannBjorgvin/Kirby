@@ -22,13 +22,6 @@ import { basename, resolve } from 'node:path';
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
 const HOME_PREFIX = 'kirby-desktop-e2e-home-';
 
-/** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
- *  the config file altogether — the state the tmux-when-detected
- *  default applies to. The fixture writes `'pty'` otherwise. */
-export const UNSET_BACKEND: Record<string, unknown> = {
-  terminalBackend: undefined,
-};
-
 export function tmuxAvailable(): boolean {
   try {
     execFileSync('tmux', ['-V'], { stdio: 'ignore' });
@@ -201,4 +194,27 @@ export function killKirbySessions(tmuxTmpdir: string): void {
   for (const name of kirbySessions(tmuxTmpdir)) {
     killTmuxSession(name, tmuxTmpdir);
   }
+}
+
+/** Clean up all sessions on this fixture's private socket, including an
+ * untagged session left by an interrupted launch. */
+export function killFixtureSessions(homeDir: string): void {
+  for (const name of listTmuxSessions(homeDir)) {
+    killTmuxSession(name, homeDir);
+  }
+}
+
+/** Connected client processes, for waiting on transport reconnection. */
+export function tmuxClientPids(name: string, homeDir: string): string[] {
+  return execFileSync(
+    'tmux',
+    ['list-clients', '-t', `=${name}:`, '-F', '#{client_pid}'],
+    {
+      env: socketEnv(homeDir),
+      encoding: 'utf8',
+    }
+  )
+    .trim()
+    .split('\n')
+    .filter(Boolean);
 }

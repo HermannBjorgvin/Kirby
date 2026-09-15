@@ -3,16 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createTmuxBackendFactory } from '@kirby/terminal-tmux';
 import { orchestraFixture } from '../../tests/orchestra-fixture.js';
 import { listLiveWorktreeSessions } from './discovery/live-worktree-sessions.js';
-import {
-  getSession,
-  setSessionBackendFactory,
-  spawnSession,
-} from './pty-registry.js';
+import { getSession, killAll } from './pty-registry.js';
+import { launchSession } from './session/launch-session.js';
+import { openSession } from './session/open-session.js';
 import { listOurSessions, resolveWorktreeSession } from './session-resolver.js';
-import { kirbyTmuxFactoryOptions } from './tmux-factory-options.js';
 
 const target = 'codex:11111111-2222-4333-8444-555555555555';
 const branch = 'feature/integration';
@@ -23,9 +19,6 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
     let fixture: ReturnType<typeof orchestraFixture>;
     beforeEach(() => {
       fixture = orchestraFixture();
-      setSessionBackendFactory(
-        createTmuxBackendFactory(kirbyTmuxFactoryOptions(fixture.repo))
-      );
     });
     afterEach(() => fixture?.close());
 
@@ -91,7 +84,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       expect(started.args.at(-1)).toBe(`$player ${prompt}`);
       expect(started.tmux).toBeNull();
       expect(existsSync(join(player.path, 'SHOULD_NOT_EXIST'))).toBe(false);
-      expect(listLiveWorktreeSessions({ terminalBackend: 'tmux' })).toEqual([
+      expect(listLiveWorktreeSessions()).toEqual([
         expect.objectContaining({
           tmuxName: player.name,
           repoRoot: fixture.repo,
@@ -107,14 +100,17 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         `=${player.name}:`,
         '#{pane_pid}'
       );
-      const entry = spawnSession(
-        worktreeSessionKey(branch, fixture.repo),
-        'codex',
-        [],
-        80,
-        24,
-        player.path
-      );
+      const entry = await openSession({
+        session: { type: 'worktree', repo: fixture.repo, branch },
+        mode: 'attach',
+        cwd: player.path,
+        cols: 80,
+        rows: 24,
+        build: () => {
+          throw new Error('Attaching must not launch another agent');
+        },
+      });
+      expect(entry.agent).toBe('codex');
       expect(getSession(worktreeSessionKey(branch, fixture.repo))).toBe(entry);
       expect(entry.pty.name).toBe(player.name);
       expect(
@@ -200,15 +196,61 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       );
     });
 
+    it('retains an exited Orchestra player and resumes its recorded agent after reconnecting', async () => {
+      const player = await spawnPlayer();
+      const first = JSON.parse(fixture.read('agent-start.json')) as {
+        pid: number;
+      };
+      process.kill(first.pid, 'SIGTERM');
+      await expect
+        .poll(() => resolveWorktreeSession(fixture.repo, branch)?.paneDead)
+        .toBe(true);
+      expect(listLiveWorktreeSessions()).toEqual([]);
+      killAll();
+      const attached = await openSession({
+        session: { type: 'worktree', repo: fixture.repo, branch },
+        mode: 'attach',
+        cwd: player.path,
+        cols: 80,
+        rows: 24,
+        build: () => {
+          throw new Error('Discovery must not restart a stopped agent');
+        },
+      });
+      await expect.poll(() => attached.exited).toBe(true);
+      rmSync(join(fixture.home, 'agent-start.json'));
+      const resumed = await launchSession({
+        name: worktreeSessionKey(branch, fixture.repo),
+        cwd: player.path,
+        cols: 80,
+        rows: 24,
+        config: { agentId: 'claude', vendorAuth: {}, vendorProject: {} },
+        request: { intent: 'continue-or-blank' },
+      });
+      await expect
+        .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
+        .toBe(true);
+      const next = JSON.parse(fixture.read('agent-start.json'));
+      expect(next.pid).not.toBe(first.pid);
+      expect(next.args).toEqual(['resume', '--last']);
+      expect(resumed.pty.name).toBe(player.name);
+      expect(resumed.agent).toBe('codex');
+      expect(resolveWorktreeSession(fixture.repo, branch)).toMatchObject({
+        paneDead: false,
+        agent: 'codex',
+        spawner: 'orchestra',
+        orchestrator: target,
+      });
+    });
+
     it('lets Orchestra adopt and stop a Kirby-created player while preserving creator identity', async () => {
-      const entry = spawnSession(
-        worktreeSessionKey('main', fixture.repo),
-        'codex',
-        [],
-        80,
-        24,
-        fixture.repo
-      );
+      const entry = await openSession({
+        session: { type: 'worktree', repo: fixture.repo, branch: 'main' },
+        cwd: fixture.repo,
+        cols: 80,
+        rows: 24,
+        build: () => ({ spec: { cmd: 'codex', args: [] }, agent: 'codex' }),
+      });
       await expect
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);

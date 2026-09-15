@@ -1,251 +1,228 @@
-import type {
-  SessionBackend,
-  SessionBackendFactory,
-  SessionSpec,
-} from '@kirby/terminal';
+import type { SessionBackend, SessionSpec } from '@kirby/terminal';
 import { PtySession } from '@kirby/terminal-pty';
-import { isTmuxAvailable } from './is-tmux-available.js';
-import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
 import {
-  isDuplicateSession,
-  sessionNameCandidates,
   tmuxAttachArgs,
-  tmuxHasSession,
+  tmuxCapturePane,
   tmuxKillSession,
-  tmuxNewSessionDetached,
-  tmuxSetOption,
-  tmuxVersion,
+  tmuxPaneState,
 } from './tmux-cli.js';
+import { prepareTmuxSession, type TmuxLaunchPlan } from './tmux-launch.js';
+export type { TmuxLaunchPlan } from './tmux-launch.js';
 
-// `new-session -e VAR=value` exists from tmux 3.2. Probed once.
-let envFlagSupport: boolean | null = null;
-function supportsSessionEnvFlag(): boolean {
-  if (envFlagSupport == null) {
-    try {
-      const m = /(\d+)\.(\d+)/.exec(tmuxVersion());
-      envFlagSupport = m
-        ? Number(m[1]) > 3 || (Number(m[1]) === 3 && Number(m[2]) >= 2)
-        : false;
-    } catch {
-      envFlagSupport = false;
-    }
-  }
-  return envFlagSupport;
+type ExitCallback = (code: number, signal?: number) => void;
+
+export type TmuxSessionPreparer = (
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan
+) => string | Promise<string>;
+let prepare: TmuxSessionPreparer = prepareTmuxSession;
+
+/** Desktop supplies an isolated process for server creation; Node callers use native tmux. */
+export function setTmuxSessionPreparer(
+  preparer: TmuxSessionPreparer = prepareTmuxSession
+): void {
+  prepare = preparer;
 }
 
-/**
- * Environment to inject into the tmux *session* (not just the client).
- * A tmux server keeps the environment it was started with and uses it
- * for every command it spawns — so a stale server (started by an old
- * process, a test run, a different context) silently poisons new
- * sessions with its HOME/PATH, and the caller's seed additions never
- * reach the command at all. `-e` pins the essentials per session.
- */
-function sessionEnvFlags(spec: SessionSpec): string[] {
-  if (!supportsSessionEnvFlag()) return [];
-  const vars = new Map<string, string>();
-  for (const key of ['PATH', 'HOME']) {
-    const value = spec.env?.[key] ?? process.env[key];
-    if (value) vars.set(key, value);
-  }
-  for (const [key, value] of Object.entries(spec.envAdditions ?? {})) {
-    if (value != null) vars.set(key, value);
-  }
-  return [...vars].flatMap(([key, value]) => ['-e', `${key}=${value}`]);
+/** Explicit create, attach or restart; no identity interpretation in the transport. */
+export async function createTmuxBackend(
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan
+): Promise<SessionBackend> {
+  const name = await prepare(spec, plan);
+  return new TmuxBackend(spec, name, plan.mode === 'create');
 }
 
-/** The command half of `new-session`'s argv. An empty `cmd` is the
- *  SessionSpec contract for "the backend's default shell": tmux does
- *  that by itself when no command follows the flags, so nothing is
- *  appended — a trailing `--` with an empty word would ask it to exec
- *  "" and fail instead. */
-function sessionCommand(spec: SessionSpec): string[] {
-  if (spec.cmd === '') return [];
-  return ['--', spec.cmd, ...spec.args];
-}
-
-/** How many candidate names a create tries before giving up: bounds a
- *  server that answers "duplicate session" to everything. */
-const MAX_CREATE_ATTEMPTS = 10_000;
-
-/**
- * What the caller knows about a session's identity and how to name it.
- * The lib never sees a branch, repo path or product name: it asks
- * these three questions and does exactly what the answers say.
- */
-export interface TmuxFactoryOptions {
-  /** The tmux name of a session that already *is* this spec — however
-   *  the caller decides that — or `null` when there is none. A name
-   *  returned here is attached to as it stands; nothing is created and
-   *  nothing about the session is rewritten. */
-  resolve: (spec: SessionSpec) => string | null;
-  /** The name the caller would like a new session for this spec to
-   *  have. Sanitized to tmux's rules here, and suffixed `-2`, `-3`, …
-   *  while the server already holds it. */
-  label: (spec: SessionSpec) => string;
-  /** The session user options to write on a session this factory
-   *  creates, before any client attaches to it. Never written on a
-   *  session `resolve` found. */
-  tags: (spec: SessionSpec) => Record<string, string>;
-  /** Optional. Names the caller holds itself and wants skipped when a
-   *  label is probed for a free candidate — on top of what the server
-   *  holds. The actual allocated name is returned by the backend.
-   *  Asked per spec, because
-   *  what the caller holds a name for may depend on the kind of
-   *  session it is about to create. */
-  isTaken?: (name: string, spec: SessionSpec) => boolean;
-}
-
-/** Build a SessionBackendFactory over the caller's identity rules.
- *  The lib only enforces tmux's own validity rules on the label. */
-export function createTmuxBackendFactory(
-  opts: TmuxFactoryOptions
-): SessionBackendFactory {
-  return (spec: SessionSpec): SessionBackend => new TmuxBackend(spec, opts);
-}
-
-/**
- * Tmux-backed session: persists across Kirby restarts.
- *
- * Resolve, else create: the caller's `resolve` names an existing
- * session to attach to; otherwise a session is created *detached*
- * under a free name, its tags are written, and only then does a client
- * attach. That order is the point — everything another program can
- * learn about the session is on it before the session can be observed
- * with a client on it, and a name that happens to be taken by a
- * session the caller does not recognise is left alone rather than
- * attached to. `new-session -A` could do neither: it attaches to
- * whatever holds the name and creates before anything can be written.
- *
- * Lifecycle:
- * - dispose() detaches the local PTY but leaves the tmux session
- *   running so it can be reattached.
- * - kill() runs `tmux kill-session` first, then disposes the local
- *   PTY — the tmux session is gone for good.
- */
 class TmuxBackend implements SessionBackend {
-  private readonly inner: PtySession;
-  readonly name: string;
+  private inner: PtySession;
+  private readonly data = new Set<(data: string) => void>();
+  private finalFrame: string | null = null;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private stableTimer?: ReturnType<typeof setTimeout>;
+  private reconnectAttempts = 0;
+  private connection: NonNullable<SessionBackend['connectionState']> =
+    'connected';
+  private readonly spec: SessionSpec;
+  private width: number;
+  private height: number;
+  private readonly exits = new Set<ExitCallback>();
+  private readonly disconnects = new Set<() => void>();
+  private timer?: ReturnType<typeof setInterval>;
+  private disposed = false;
   private killed = false;
+  private state = {
+    running: true,
+    exitCode: undefined as number | undefined,
+    signal: undefined as number | undefined,
+  };
+  readonly name: string;
 
-  constructor(spec: SessionSpec, opts: TmuxFactoryOptions) {
-    this.name =
-      (spec.reuse === false ? null : opts.resolve(spec)) ??
-      createTagged(spec, opts);
-    // The status bar goes off on every attach because the caller
-    // embeds the session inside its own chrome: the bar wastes a row
-    // and its default green background bleeds into renderers that
-    // derive a container background from the bottom screen row.
-    tmuxSetOption(this.name, 'status', 'off');
-    // The client must not think it's nested: when Kirby itself runs
-    // inside a tmux window, the inherited TMUX var makes the client
-    // refuse with "sessions should be nested with care".
-    const clientEnv: Record<string, string | undefined> = {
-      ...(spec.env ?? process.env),
-    };
-    delete clientEnv.TMUX;
-    delete clientEnv.TMUX_PANE;
-    // The local PtySession runs the tmux client; tmux owns the shell.
-    this.inner = new PtySession('tmux', tmuxAttachArgs(this.name), {
-      cols: spec.cols,
-      rows: spec.rows,
-      cwd: spec.cwd,
-      env: clientEnv,
-    });
+  constructor(spec: SessionSpec, name: string, created: boolean) {
+    this.name = name;
+    this.spec = spec;
+    this.width = spec.cols;
+    this.height = spec.rows;
+    try {
+      this.inner = this.attach();
+    } catch (error) {
+      if (created) tmuxKillSession(this.name);
+      throw error;
+    }
+    // Retained panes do not terminate the client when their process exits.
+    // Polling is local, bounded per command and stopped at dispose or exit.
+    this.timer = setInterval(() => this.inspect(), 500);
+    this.timer.unref();
+    // Callers await creation before subscribing. Let those subscriptions bind
+    // before inspecting an already-exited process and replaying its final frame.
+    setTimeout(() => this.inspect(), 0).unref();
   }
 
+  private attach(): PtySession {
+    const env = { ...(this.spec.env ?? process.env) };
+    delete env.TMUX;
+    delete env.TMUX_PANE;
+    const client = new PtySession('tmux', tmuxAttachArgs(this.name), {
+      cols: this.width,
+      rows: this.height,
+      cwd: this.spec.cwd,
+      env,
+    });
+    for (const cb of this.data) client.onData(cb);
+    client.onExit(() => {
+      if (this.disposed || this.inner !== client) return;
+      clearTimeout(this.stableTimer);
+      this.inspect();
+      if (!this.state.running) return;
+      this.connection = 'reconnecting';
+      for (const cb of [...this.disconnects]) cb();
+      this.reconnect();
+    });
+    return client;
+  }
+
+  private reconnect(): void {
+    if (this.disposed || !this.state.running) return;
+    if (this.reconnectAttempts >= 3) {
+      this.connection = 'failed';
+      return;
+    }
+    const delay = 500 * 2 ** this.reconnectAttempts++;
+    this.reconnectTimer = setTimeout(() => {
+      if (this.disposed || !this.state.running) return;
+      this.inner.dispose();
+      try {
+        this.inner = this.attach();
+        this.connection = 'connected';
+        // A client that survives two seconds is a successful reconnection.
+        this.stableTimer = setTimeout(() => {
+          this.reconnectAttempts = 0;
+        }, 2000);
+        this.stableTimer.unref();
+      } catch {
+        this.reconnect();
+      }
+    }, delay);
+    this.reconnectTimer.unref();
+  }
+
+  private inspect(): void {
+    if (!this.state.running || this.disposed) return;
+    const pane = tmuxPaneState(this.name);
+    if (pane && !pane.paneDead) return;
+    if (pane?.paneDead) this.replayFinalFrame();
+    this.state = {
+      running: false,
+      exitCode: pane?.exitCode,
+      signal: pane?.exitSignal,
+    };
+    clearInterval(this.timer);
+    clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
+    for (const cb of [...this.exits])
+      cb(this.state.exitCode ?? 0, this.state.signal);
+  }
+
+  private replayFinalFrame(): void {
+    const frame = tmuxCapturePane(this.name);
+    if (frame == null) return;
+    // A process may exit before its client's first redraw. Replay the
+    // retained frame, including history, before any listener handles exit.
+    const output =
+      '\x1b[?1049l\x1b[3J\x1b[2J\x1b[H' + frame.replace(/\r?\n/g, '\r\n');
+    this.finalFrame = output;
+    for (const cb of [...this.data]) cb(output);
+  }
+
+  get connectionState() {
+    return this.connection;
+  }
+  get processState() {
+    return this.state;
+  }
   get pid(): number {
     return this.inner.pid;
   }
   get cols(): number {
-    return this.inner.cols;
+    return this.width;
   }
   get rows(): number {
-    return this.inner.rows;
+    return this.height;
   }
   write(data: string): void {
     this.inner.write(data);
   }
   resize(cols: number, rows: number): void {
+    this.width = cols;
+    this.height = rows;
     this.inner.resize(cols, rows);
   }
   onData(cb: (data: string) => void): void {
+    this.data.add(cb);
     this.inner.onData(cb);
+    if (this.finalFrame !== null && !this.disposed) cb(this.finalFrame);
   }
   offData(cb: (data: string) => void): void {
+    this.data.delete(cb);
     this.inner.offData(cb);
   }
-  onExit(cb: (code: number, signal?: number) => void): void {
-    this.inner.onExit(cb);
+  onExit(cb: ExitCallback): void {
+    this.exits.add(cb);
+    if (!this.state.running)
+      queueMicrotask(() => {
+        if (!this.disposed && this.exits.has(cb))
+          cb(this.state.exitCode ?? 0, this.state.signal);
+      });
   }
-  offExit(cb: (code: number, signal?: number) => void): void {
-    this.inner.offExit(cb);
+  offExit(cb: ExitCallback): void {
+    this.exits.delete(cb);
+  }
+  onDisconnect(cb: () => void): void {
+    this.disconnects.add(cb);
+  }
+  offDisconnect(cb: () => void): void {
+    this.disconnects.delete(cb);
   }
 
-  /** Soft cleanup — detach only. Tmux session keeps running so the
-   *  next Kirby launch can reattach. */
+  /** Detach the local client without terminating the hosted process. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.connection = 'failed';
+    clearInterval(this.timer);
+    clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
+    this.data.clear();
+    this.exits.clear();
+    this.disconnects.clear();
     this.inner.dispose();
   }
 
-  /** Hard teardown — kill the tmux session, then detach. The signal
-   *  argument from the interface is ignored (tmux kill-session does
-   *  not accept one); we always do a full session kill. */
   kill(): void {
     if (this.killed) return;
     this.killed = true;
     tmuxKillSession(this.name);
-    this.inner.dispose();
+    this.dispose();
   }
 }
 
-/** Create the session for a spec under a free name and tag it. The
- *  name is decided here and never again: the tags, not the name, are
- *  what a later lookup goes by. */
-function createTagged(spec: SessionSpec, opts: TmuxFactoryOptions): string {
-  const name = createDetached(
-    sanitizeTmuxSessionName(opts.label(spec)),
-    spec,
-    opts.isTaken
-  );
-  for (const [key, value] of Object.entries(opts.tags(spec))) {
-    tmuxSetOption(name, key, value);
-  }
-  return name;
-}
-
-/** `new-session -d` under the first free candidate of `label`. A
- *  candidate the caller or the server holds is skipped without asking
- *  tmux to create it; one that turns out taken between the probe and
- *  the create — another creator racing this one — is skipped the same
- *  way. Any other failure is the caller's problem, thrown with tmux's
- *  own words. */
-function createDetached(
-  label: string,
-  spec: SessionSpec,
-  isTaken: (name: string, spec: SessionSpec) => boolean = () => false
-): string {
-  const request = {
-    cwd: spec.cwd,
-    cols: spec.cols,
-    rows: spec.rows,
-    flags: sessionEnvFlags(spec),
-    command: sessionCommand(spec),
-  };
-  let attempts = 0;
-  for (const candidate of sessionNameCandidates(label)) {
-    if ((attempts += 1) > MAX_CREATE_ATTEMPTS) break;
-    if (isTaken(candidate, spec) || tmuxHasSession(candidate)) continue;
-    const result = tmuxNewSessionDetached(candidate, request);
-    if (result.exitCode === 0) return candidate;
-    if (!isDuplicateSession(result)) {
-      throw new Error(
-        `tmux new-session -s ${candidate} failed: ${result.stderr.trim()}`
-      );
-    }
-  }
-  throw new Error(`no free tmux session name for ${label}`);
-}
-
-// Re-export availability probe so callers don't need a separate import.
-export { isTmuxAvailable };
+export { isTmuxAvailable } from './is-tmux-available.js';

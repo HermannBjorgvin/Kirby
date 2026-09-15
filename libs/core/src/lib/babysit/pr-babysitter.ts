@@ -173,7 +173,7 @@ async function spawnForUpdate(
   // `seed`, never `continue-or-seed`: continuing a prior conversation
   // takes the prompt only when there is nothing to continue, and an
   // agent that already worked on this pull request is the normal case.
-  launchSession({
+  await launchSession({
     name,
     cwd: worktree,
     cols,

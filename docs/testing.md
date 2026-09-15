@@ -23,8 +23,9 @@ The `desktop-e2e` targets build Electron before testing. Directly invoking
 
 `src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional git
 states, supplies a scriptable fake agent and fails on renderer exceptions.
-It selects PTY by default; pass `terminalBackend: undefined` for the unconfigured
-state. It drops `KIRBY_VITE_URL` to ensure tests use the built app.
+Every test uses a private tmux socket inside its fixture HOME and kills only
+that fixture's sessions at teardown. It drops `KIRBY_VITE_URL` to ensure tests
+use the built app.
 
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
 a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for
@@ -69,8 +70,9 @@ buffered output after reconnect. A WebSocket disconnect does not end the PTY.
 Strip CI variables from the spawned TUI's environment so Ink renders interactively.
 
 Both suites' tmux helpers must assert that their socket directory belongs to a
-fixture HOME and unset TMUX before any operation. Fixtures choose PTY unless
-a test specifically needs tmux. See `libs/terminal-tmux/AGENTS.md`.
+fixture HOME and unset TMUX before any operation. All terminal tests require
+tmux 3.2 or newer. Never kill the default server or use `kill-server`.
+See `libs/terminal-tmux/AGENTS.md`.
 
 Failures retain traces, screenshots and video in `test-output/`.
 `error-context.md` is useful for text inspection. Open a trace with

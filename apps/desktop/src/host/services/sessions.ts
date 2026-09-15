@@ -5,9 +5,11 @@ import {
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
-  killSession as killSessionEntry,
+  stopSession,
+  sessionIdentity,
   isSessionAlive,
-  resolveTerminalBackend,
+  hasSessionConnection,
+  resolveAgent,
   getSpawnedAt,
   noteInput,
   noteResize,
@@ -130,7 +132,10 @@ export function isOwnSessionAlive(name: string): boolean {
  */
 export function killOwnSession(name: string): void {
   if (known.has(name) && !ownSession(name)) return;
-  killSessionEntry(name);
+  const identity = sessionIdentity(name);
+  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
+    stopSession(name);
+  }
 }
 
 /** Whether a session under `name` is another repository's — known to
@@ -189,7 +194,7 @@ async function doLaunchAgent(
   // TUI semantics: a live agent is never silently respawned — every
   // TUI launch site checks the registry first. Launching on a branch
   // with a running session just reattaches to it.
-  if (isSessionAlive(name)) {
+  if (isSessionAlive(name) && hasSessionConnection(name)) {
     // A stale UI request must not read another repository's relay.
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
@@ -207,17 +212,15 @@ async function doLaunchAgent(
   // configured one; the resolver still owns the id → agent mapping.
   const stored = readConfig(repoCwd);
   const config = req.agentId ? { ...stored, agentId: req.agentId } : stored;
-  console.log(
-    `[desktop] launching session ${name} in ${wtPath} (backend: ${resolveTerminalBackend(
-      config
-    )})`
-  );
-  launchSession({
+  await launchSession({
     name,
     cwd: wtPath,
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
+    agent:
+      req.agentId || req.intent === 'blank' ? resolveAgent(config) : undefined,
+    mode: knownWorktreePath ? 'attach' : 'open',
     request: {
       intent: req.intent,
       prompt: req.prompt,
@@ -314,6 +317,7 @@ async function doCheckoutPlan(
   // and the host does not. Capture the message and reject with it: the
   // renderer toasts it and leaves the plan intact for a retry.
   let failure: string | null = null;
+  const before = getSession(name);
   const result = await checkoutPlanCore({
     repo: repoCwd,
     pr: req.pr,
@@ -329,7 +333,12 @@ async function doCheckoutPlan(
   if (result === 'failed') {
     throw new Error(failure ?? 'Could not send the plan to the agent');
   }
-  if (result === 'spawned') adoptSession(name, req.pr.sourceBranch, repoCwd);
+  if (
+    result === 'spawned' ||
+    (getSession(name) && getSession(name) !== before)
+  ) {
+    adoptSession(name, req.pr.sourceBranch, repoCwd);
+  }
   return result;
 }
 
@@ -349,6 +358,11 @@ export function listSessions(): SessionSummary[] {
 export function writeSession(name: string, data: string): void {
   const entry = getSession(name);
   if (!entry || entry.exited) throw new Error(`Session ${name} is not running`);
+  if (entry.pty.connectionState && entry.pty.connectionState !== 'connected') {
+    throw new Error(
+      'The terminal is reconnecting. Try again when it reconnects.'
+    );
+  }
   // Same as the TUI's input forwarder: without this, the terminal
   // echoing keystrokes back would count as agent activity.
   noteInput(name);
@@ -357,7 +371,7 @@ export function writeSession(name: string, data: string): void {
 
 export function resizeSession(name: string, cols: number, rows: number): void {
   const entry = getSession(name);
-  if (!entry || entry.exited) return;
+  if (!entry) return;
   // SIGWINCH redraws aren't agent activity either.
   noteResize(name);
   entry.pty.resize(cols, rows);
@@ -385,8 +399,10 @@ export function markSessionSeen(name: string): void {
 
 export function killSession(name: string): void {
   // Never reach into another repository's agent (see KnownSession.repoCwd).
-  // A name this host has never launched is left to the registry, which
-  // no-ops when it doesn't know it either.
+  // Qualified identity also protects entries this host did not launch.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
-  killSessionEntry(name);
+  const identity = sessionIdentity(name);
+  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
+    stopSession(name);
+  }
 }

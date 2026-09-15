@@ -76,15 +76,6 @@ export function SessionTerminal({
         term.write(data);
       }
     });
-    const offExit = window.kirby.onSessionExit(({ name: n, code }) => {
-      if (n === name) {
-        term.write(
-          `\r\n\x1b[2m[session exited${
-            code ? ` with code ${code}` : ''
-          }]\x1b[0m\r\n`
-        );
-      }
-    });
 
     // The replay must not land after this effect is torn down: React
     // StrictMode mounts twice in development, so a second replay would
@@ -112,7 +103,6 @@ export function SessionTerminal({
     return () => {
       cancelled = true;
       offData();
-      offExit();
     };
   }, [name, ready]);
 

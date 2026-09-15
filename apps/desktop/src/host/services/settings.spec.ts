@@ -4,25 +4,18 @@ import { SECRET_PLACEHOLDER } from '../contract.js';
 
 /**
  * The settings write path is the desktop's only "the renderer asks the
- * host to change persistent state" surface, and three of its rules are
+ * host to change persistent state" surface, and two of its rules are
  * load-bearing:
  *
  *   • the client names a field, it does not name a config bag — a
  *     lookup miss must refuse rather than write somewhere;
- *   • swapping the terminal backend under live sessions strands them on
- *     a stale factory, so it is refused (the TUI refuses it too);
  *   • a secret the renderer never saw must survive being "saved".
  */
 
 const state = vi.hoisted(() => ({
   config: {} as Record<string, unknown>,
   fields: [] as SettingsField[],
-  hasSession: false,
-  tmux: null as { available: boolean; installHint?: string } | null,
-  /** What this project's own config pins the backend to, if anything. */
-  projectBackend: undefined as 'pty' | 'tmux' | undefined,
   persisted: [] as { key: string; value: string | undefined }[],
-  backendApplied: 0,
   syncRestarts: 0,
   cacheResets: 0,
   otherCacheResets: 0,
@@ -72,14 +65,8 @@ vi.mock('@kirby/vcs-core', () => ({
 
 vi.mock('@kirby/core', () => ({
   buildSettingsFields: () => state.fields,
-  hasAnySession: () => state.hasSession,
-  getTmuxAvailability: () => state.tmux,
-  projectTerminalBackendOverride: () => state.projectBackend,
   resolveValue: (_config: unknown, field: SettingsField) =>
     state.resolved[field.key] ?? '',
-  applySessionBackend: () => {
-    state.backendApplied += 1;
-  },
   // Which effects a field has is decided in @kirby/core and asserted
   // there (settings/effects.spec.ts). What matters here is that the
   // host asks, and then does what it is told.
@@ -115,23 +102,10 @@ function field(over: Partial<SettingsField> = {}): SettingsField {
   } as SettingsField;
 }
 
-const backendField = field({
-  label: 'Terminal backend',
-  key: 'terminalBackend',
-  presets: [
-    { name: 'PTY', value: 'pty' },
-    { name: 'Tmux', value: 'tmux' },
-  ],
-});
-
 beforeEach(() => {
   state.config = { vendor: 'azure-devops' };
-  state.fields = [field(), backendField];
-  state.hasSession = false;
-  state.tmux = { available: true };
-  state.projectBackend = undefined;
+  state.fields = [field()];
   state.persisted = [];
-  state.backendApplied = 0;
   state.syncRestarts = 0;
   state.cacheResets = 0;
   state.otherCacheResets = 0;
@@ -152,7 +126,7 @@ describe('updateSettingsFromView', () => {
   it('requires the label and key to match the same field', () => {
     // Half-matching a real field must not be enough to reach its bag.
     expect(() =>
-      updateSettingsFromView({ label: 'Editor', key: 'terminalBackend' }, 'x')
+      updateSettingsFromView({ label: 'Editor', key: 'agentId' }, 'x')
     ).toThrow('Unknown settings field');
     expect(state.persisted).toEqual([]);
   });
@@ -191,71 +165,6 @@ describe('updateSettingsFromView', () => {
         'new-token'
       );
       expect(state.persisted).toEqual([{ key: 'pat', value: 'new-token' }]);
-    });
-  });
-
-  describe('terminal backend guard', () => {
-    it('refuses to switch while any session is alive', () => {
-      state.hasSession = true;
-      expect(() =>
-        updateSettingsFromView(
-          { label: 'Terminal backend', key: 'terminalBackend' },
-          'tmux'
-        )
-      ).toThrow('Close all sessions');
-      // Nothing persisted and no factory swapped: a live session must
-      // not be left pointing at a backend that no longer runs it.
-      expect(state.persisted).toEqual([]);
-      expect(state.backendApplied).toBe(0);
-    });
-
-    it('refuses tmux when tmux is not installed, with the install hint', () => {
-      state.tmux = { available: false, installHint: 'apt install tmux' };
-      expect(() =>
-        updateSettingsFromView(
-          { label: 'Terminal backend', key: 'terminalBackend' },
-          'tmux'
-        )
-      ).toThrow('tmux not installed — try `apt install tmux`');
-      expect(state.persisted).toEqual([]);
-    });
-
-    it('allows tmux when the probe has not answered yet', () => {
-      // An unfinished probe is "unknown", not "unavailable" — the TUI
-      // treats it the same way rather than blocking on startup timing.
-      state.tmux = null;
-      updateSettingsFromView(
-        { label: 'Terminal backend', key: 'terminalBackend' },
-        'tmux'
-      );
-      expect(state.persisted).toEqual([
-        { key: 'terminalBackend', value: 'tmux' },
-      ]);
-    });
-
-    it('still allows switching back to pty when tmux is missing', () => {
-      state.tmux = { available: false };
-      updateSettingsFromView(
-        { label: 'Terminal backend', key: 'terminalBackend' },
-        'pty'
-      );
-      expect(state.persisted).toEqual([
-        { key: 'terminalBackend', value: 'pty' },
-      ]);
-    });
-
-    it('rebinds the session factory after a successful switch', () => {
-      state.effects = ['apply-session-backend'];
-      updateSettingsFromView(
-        { label: 'Terminal backend', key: 'terminalBackend' },
-        'tmux'
-      );
-      expect(state.backendApplied).toBe(1);
-    });
-
-    it('leaves the factory alone for unrelated fields', () => {
-      updateSettingsFromView({ label: 'Editor', key: 'editor' }, 'vim');
-      expect(state.backendApplied).toBe(0);
     });
   });
 
@@ -334,18 +243,6 @@ describe('updateSettingsFromView', () => {
       expect(state.cacheResets).toBe(0);
       expect(state.remoteRefreshes).toBe(0);
     });
-
-    it('runs nothing after a refused backend switch', () => {
-      state.effects = ['apply-session-backend'];
-      state.hasSession = true;
-      expect(() =>
-        updateSettingsFromView(
-          { label: 'Terminal backend', key: 'terminalBackend' },
-          'tmux'
-        )
-      ).toThrow('Close all sessions');
-      expect(state.backendApplied).toBe(0);
-    });
   });
 });
 
@@ -377,28 +274,16 @@ describe('getSettingsView', () => {
     expect(getSettingsView().map((f) => f.key)).toEqual(['editor']);
   });
 
-  // The page renders the default marker off this, and picks which
-  // preset to show while nothing is stored. Dropping it would show the
-  // first preset — PTY — on a machine that is actually running tmux.
+  // The page renders the host-supplied default marker.
   it('passes the resolved default through, leaving the value empty', () => {
-    state.fields = [field({ ...backendField, defaultValue: 'tmux' })];
+    state.fields = [field({ defaultValue: 'code' })];
     const view = getSettingsView();
-    expect(view[0].defaultValue).toBe('tmux');
+    expect(view[0].defaultValue).toBe('code');
     expect(view[0].value).toBe('');
   });
 
   it('carries no default for a field that has none', () => {
     expect(getSettingsView()[0].defaultValue).toBeUndefined();
-  });
-
-  it('grays out the backend switch while a session is alive', () => {
-    state.hasSession = true;
-    const view = getSettingsView();
-    const backend = view.find((f) => f.key === 'terminalBackend');
-    // Surfacing the same gate the write path enforces, so the control
-    // is disabled rather than erroring after the click.
-    expect(backend?.disabled).toMatch(/close all sessions/i);
-    expect(view.find((f) => f.key === 'editor')?.disabled).toBeUndefined();
   });
 
   it('reads a two-value true/false preset as a boolean control', () => {
@@ -426,30 +311,5 @@ describe('getSettingsView', () => {
       'provider',
       'general',
     ]);
-  });
-});
-
-// readConfig gives the per-project value precedence, but this row
-// writes the global key — so an edit here would appear to save and then
-// revert on the next read, while this run used the value the user
-// picked and the next used the project's.
-describe('per-project backend override', () => {
-  beforeEach(() => {
-    state.fields = [backendField];
-    state.projectBackend = 'pty';
-  });
-
-  it('grays the control out and names the reason', () => {
-    expect(getSettingsView()[0].disabled).toMatch(/pins the terminal backend/i);
-  });
-
-  it('refuses the write rather than saving somewhere that loses it', () => {
-    expect(() =>
-      updateSettingsFromView(
-        { label: 'Terminal backend', key: 'terminalBackend' },
-        'tmux'
-      )
-    ).toThrow(/pins terminalBackend/i);
-    expect(state.persisted).toEqual([]);
   });
 });

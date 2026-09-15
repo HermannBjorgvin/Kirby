@@ -56,8 +56,6 @@ const test = base.extend<{ other: string; alphaLink: string }>({
 
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
-test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
-
 test.afterEach(({ desktop, other }) => {
   cleanupExternalSessions(desktop.repoPath, [ALPHA], desktop.homeDir);
   cleanupExternalSessions(other, [BETA], desktop.homeDir);

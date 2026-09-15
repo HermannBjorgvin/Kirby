@@ -1,32 +1,17 @@
-/**
- * Composition root for the session backend.
- *
- * This is the only place that knows about both backends and the repo
- * root the tmux identity rules are keyed to. Every Kirby-specific
- * decision about a tmux session — what it is, what it is called, what
- * it is tagged with — is composed here from `session-identity.ts`,
- * `session-resolver.ts` and `tmux-factory-options.ts`; the backend
- * libs (`@kirby/terminal-pty`, `@kirby/terminal-tmux`) are deliberately
- * ignorant of all of it.
- */
+/** tmux availability and discovery policy shared by both applications. */
 import { terminalSessionKey, sessionIdentity } from './session-key.js';
 import { getRepoRoot } from './repo-root.js';
 import { basename } from 'node:path';
-import type { SessionBackendFactory } from '@kirby/terminal';
-import { createPtyBackendFactory } from '@kirby/terminal-pty';
 import {
-  createTmuxBackendFactory,
   isTmuxAvailable,
   tmuxKillSession,
   type TmuxStatus,
 } from '@kirby/terminal-tmux';
-import type { AppConfig } from '@kirby/vcs-core';
-import { readProjectConfig } from '@kirby/vcs-core';
 import type {
   DiscoveredTerminal,
   DiscoveredWorktree,
 } from './discovery/discovery-model.js';
-import { liveSessionNames, setSessionBackendFactory } from './pty-registry.js';
+import { liveSessionNames } from './pty-registry.js';
 import {
   isTerminalSession,
   registryNameOf,
@@ -37,7 +22,6 @@ import {
   resolveRegistrySession,
   resolveSessionByName,
 } from './session-resolver.js';
-import { kirbyTmuxFactoryOptions } from './tmux-factory-options.js';
 
 export { getRepoRoot, resetRepoRoot } from './repo-root.js';
 
@@ -63,103 +47,15 @@ export function getTmuxAvailability(): TmuxStatus | null {
   return cachedTmuxStatus;
 }
 
-/** The backend a config that says nothing lands on: tmux wherever the
- *  probe found a usable tmux, PTY otherwise.
- *
- *  Deliberately *not* written back to `~/.kirby/config.json`. The
- *  choice is re-derived every launch, so installing tmux starts
- *  persisting sessions and removing it stops — and a config file synced
- *  between machines cannot pin one machine's tmux onto another that
- *  hasn't got it. A probe that hasn't answered yet reads as "no tmux",
- *  which is the safe direction: PTY works everywhere. */
-export function defaultTerminalBackend(
-  status: TmuxStatus | null = cachedTmuxStatus
-): 'pty' | 'tmux' {
-  return status?.available ? 'tmux' : 'pty';
-}
-
-/** The backend actually in force: what the user stored, or
- *  {@link defaultTerminalBackend} when they never said.
- *
- *  An explicit value always wins, in both directions — `'pty'` is
- *  honoured forever on a machine that has tmux, and `'tmux'` behaves
- *  exactly as it always has (with the availability and repo-root
- *  degradations in {@link buildSessionBackendFactory} still applying). */
-export function resolveTerminalBackend(
-  config: Pick<AppConfig, 'terminalBackend'>,
-  status: TmuxStatus | null = cachedTmuxStatus
-): 'pty' | 'tmux' {
-  return config.terminalBackend ?? defaultTerminalBackend(status);
-}
-
-/** The backend this project pins by hand, if any.
- *
- *  `readConfig` gives the per-project value precedence over the global
- *  one, but the Settings row writes the *global* key — so with an
- *  override in place a change would appear to save and then revert on
- *  the next read, and in the meantime this run would use the value the
- *  user picked while the next run used the project's. Both shells ask
- *  this and refuse the edit instead, naming the reason. Never throws:
- *  an unreadable project config is simply no override. */
-export function projectTerminalBackendOverride(
-  cwd: string
-): 'pty' | 'tmux' | undefined {
-  try {
-    return readProjectConfig(cwd).terminalBackend;
-  } catch {
-    return undefined;
+/** Startup requires tmux; an old backend preference never selects a fallback. */
+export function applySessionBackend(): void {
+  if (!cachedTmuxStatus?.available) {
+    throw new Error(
+      `Kirby requires tmux 3.2 or newer. ${
+        cachedTmuxStatus?.reason ?? 'Availability has not been checked.'
+      } ${cachedTmuxStatus?.installHint ?? 'Install tmux and restart Kirby.'}`
+    );
   }
-}
-
-/** Application policy: build a SessionBackendFactory configured for
- *  the backend {@link resolveTerminalBackend} lands on — the user's
- *  choice, or tmux-when-detected. The tmux identity rules
- *  ({@link kirbyTmuxFactoryOptions}) are keyed to the repo root here;
- *  neither backend lib knows about them.
- *
- *  Two fallbacks keep tmux from becoming a hard failure:
- *
- *  - Probe says tmux is unavailable → PTY. Without this, a config saved
- *    on a machine that has since lost tmux would explode at first
- *    session-spawn with ENOENT. The Settings UI already shows
- *    "Tmux (not installed)" so the user can re-pick. (An unset config
- *    never reaches here asking for tmux, since the default is derived
- *    from the same probe — this covers the explicit `"tmux"` case.)
- *  - No `repoRoot` → PTY. A tmux session is identified by its
- *    repository, so without one there is nothing to tag it with or
- *    find it by, and cwd is the wrong substitute — launching from a
- *    subdirectory would answer differently and strand the previous
- *    session. */
-export function buildSessionBackendFactory(
-  config: AppConfig,
-  repoRoot: string | null
-): SessionBackendFactory {
-  if (resolveTerminalBackend(config) === 'tmux') {
-    if (!repoRoot) {
-      return createPtyBackendFactory();
-    }
-    if (cachedTmuxStatus && !cachedTmuxStatus.available) {
-      return createPtyBackendFactory();
-    }
-    return createTmuxBackendFactory(kirbyTmuxFactoryOptions(repoRoot));
-  }
-  return createPtyBackendFactory();
-}
-
-/** Apply the resolved factory to the registry. Call this on startup
- *  and from the settings write path whenever `config.terminalBackend`
- *  changes (which both shells gate to empty-registry).
- *
- *  Resolves `repoRoot` only when the resolved backend is tmux, so a PTY
- *  machine doesn't pay a `git rev-parse` fork on every boot. Callers sit
- *  on paths where a throw would take startup or an input handler down,
- *  so the lookup never throws — outside a working tree it yields `null`
- *  and tmux degrades to PTY. */
-export function applySessionBackend(config: AppConfig): void {
-  const repoRoot =
-    resolveTerminalBackend(config) === 'tmux' ? getRepoRoot() : null;
-  const factory = buildSessionBackendFactory(config, repoRoot);
-  setSessionBackendFactory(factory);
 }
 
 /** What one `tmux list-sessions` fork says about the sessions Kirby
@@ -215,10 +111,8 @@ function worktreeBranch(wt: DiscoveredWorktree): string {
  * absent tmux server yields nothing, same as no sessions.
  */
 export function observeTmuxSessions(
-  config: Pick<AppConfig, 'terminalBackend'>,
   worktrees: readonly DiscoveredWorktree[]
 ): TmuxObservation {
-  if (resolveTerminalBackend(config) !== 'tmux') return NOTHING;
   const root = getRepoRoot();
   if (!root) return NOTHING;
   const ctx: ClassifyContext = {
@@ -270,6 +164,8 @@ function classifySession(
             name: terminalSessionKey(name),
             kind: session.type,
             path,
+            running: !session.paneDead,
+            agent: session.agent,
           },
         }
       : null;
@@ -277,11 +173,17 @@ function classifySession(
   if (session.repo !== ctx.root) return null;
   const registryName = ctx.byBranch.get(session.branch);
   if (registryName !== undefined)
-    return { kind: 'persisted', name: registryName };
+    return session.paneDead ? null : { kind: 'persisted', name: registryName };
   if (ctx.owned.has(registryNameOf(session)) || !path) return null;
   return {
     kind: 'terminal',
-    terminal: { name: terminalSessionKey(name), kind: 'agent', path },
+    terminal: {
+      name: terminalSessionKey(name),
+      kind: 'agent',
+      path,
+      running: !session.paneDead,
+      agent: session.agent,
+    },
   };
 }
 
@@ -295,28 +197,16 @@ function resolveOwn(sessionName: string): TaggedSession | null {
     : null;
 }
 
-/** True when a tmux session for this registry name exists right now,
- *  *whatever backend is currently selected*.
- *
- *  A tmux session outlives the preference that created it: quitting
- *  only detaches, so one created under the tmux default is still there
- *  after the user picks PTY, after tmux drops off `PATH`, and after a
- *  probe that answers differently than it did last run. Asking "should
- *  we be using tmux?" instead of "is there a tmux session?" is how a
- *  live agent becomes invisible — and then gets its worktree swept out
- *  from under it. Callers that hold a tmux *name* rather than a
- *  registry key want {@link hasLiveTmuxSessionNamed}.
- *
- *  Never throws; false when tmux or the repo root is out of the
- *  picture, since without either there is no session to find. */
+/** Whether the tagged worktree session has a live hosted process. */
 export function hasLiveTmuxSession(sessionName: string): boolean {
   if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
-  return resolveOwn(sessionName) !== null;
+  const session = resolveOwn(sessionName);
+  return session !== null && !session.paneDead;
 }
 
 /** Resolve a qualified terminal key to its exact tagged tmux target, across
  *  repositories. Adopted orphan worktrees also use terminal keys. */
-export function hasLiveTmuxSessionNamed(name: string): boolean {
+export function hasPersistedTerminalSession(name: string): boolean {
   if (cachedTmuxStatus && !cachedTmuxStatus.available) return false;
   const identity = sessionIdentity(name);
   return (
@@ -324,34 +214,8 @@ export function hasLiveTmuxSessionNamed(name: string): boolean {
   );
 }
 
-/** {@link hasLiveTmuxSessionNamed} *and* tmux is the backend in force —
- *  the reattach decision for a terminal tab whose client exited: with
- *  tmux in force the session is still there and the tab reattaches;
- *  under PTY there is nothing to reattach to and the tab has ended.
- *  The preference is the point: reattaching under the PTY backend
- *  would spawn a second, unrelated process rather than resume the one
- *  that is running. */
-export function isTmuxSessionNamedPersisted(
-  config: Pick<AppConfig, 'terminalBackend'>,
-  name: string
-): boolean {
-  if (resolveTerminalBackend(config) !== 'tmux') return false;
-  return hasLiveTmuxSessionNamed(name);
-}
-
-/** Kill the persisted tmux session for a registry name, whether or not
- *  the registry knows about it — an explicit worktree removal must not
- *  leave a live tmux session working in a deleted directory.
- *
- *  Deliberately not gated on the selected backend. The session's
- *  existence is what matters, and gating on the preference is how a
- *  session created under the tmux default becomes unkillable the moment
- *  the user picks PTY: removing its worktree would then delete the
- *  directory and leave the agent running in it forever. The session is
- *  found through the resolver, so its tags are verified before
- *  `kill-session`: a session that merely carries the name Kirby would
- *  have chosen, without the tags, is someone else's and is not
- *  touched. Nothing to kill is a no-op. */
+/** Stop the tagged worktree session even when no local connection exists.
+ * Names alone never authorize cleanup: the resolver verifies identity first. */
 export function killPersistedTmuxSession(sessionName: string): void {
   const session = resolveOwn(sessionName);
   if (!session) return;

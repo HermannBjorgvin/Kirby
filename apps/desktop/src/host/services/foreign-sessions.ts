@@ -1,6 +1,5 @@
 import { realpathSync } from 'node:fs';
 import { listLiveWorktreeSessions } from '@kirby/core';
-import { readConfig } from '@kirby/vcs-core';
 import type { ForeignSessionSummary } from '../contract.js';
 import { ensureRecent } from './recent-repos.js';
 import { requireRepo } from './repo.js';
@@ -40,7 +39,7 @@ export function listForeignSessions(): ForeignSessionSummary[] {
     openRoot = open;
   }
   const out: ForeignSessionSummary[] = [];
-  for (const live of listLiveWorktreeSessions(readConfig(open))) {
+  for (const live of listLiveWorktreeSessions()) {
     if (live.repoRoot === openRoot || live.detached) continue;
     out.push({
       repo: live.repoRoot,

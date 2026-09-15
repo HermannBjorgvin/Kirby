@@ -5,7 +5,7 @@ import {
   getSpawnedAt,
   hasSession,
   isSessionAlive,
-  killSession,
+  stopSession,
   getItemKey,
   getPrFromItem,
   orderRunningTabs,
@@ -214,7 +214,7 @@ const deleteBranch: SidebarAction = (ctx) => {
       await confirmOrDelete(ctx, sessionName, branch);
       return;
     }
-    killSession(sessionName);
+    stopSession(sessionName);
     ctx.pane.setReconnectKey((k) => k + 1);
     await ctx.sessions.refreshSessions();
   });
@@ -225,7 +225,7 @@ const killAgent: SidebarAction = (ctx) => {
   if (!sessionName) return;
 
   void ctx.asyncOps.run('delete', async () => {
-    killSession(sessionName);
+    stopSession(sessionName);
     await ctx.sessions.refreshSessions();
   });
   ctx.pane.setReconnectKey((k) => k + 1);

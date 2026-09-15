@@ -11,15 +11,11 @@ import type { WorktreeHead } from './worktree-origin.js';
  */
 
 const state = vi.hoisted(() => ({
-  backend: 'tmux' as string,
   sessions: [] as TaggedSession[],
 }));
 
 vi.mock('@kirby/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
-}));
-vi.mock('../session-backend.js', () => ({
-  resolveTerminalBackend: () => state.backend,
 }));
 vi.mock('../session-resolver.js', () => ({
   listOurSessions: () => state.sessions,
@@ -42,7 +38,7 @@ const headMock = vi.fn((path: string): WorktreeHead | null =>
   existsMock(path) ? HEADS[path]! : null
 );
 const list = () =>
-  listLiveWorktreeSessions({}, { exists: existsMock, readHead: headMock });
+  listLiveWorktreeSessions({ exists: existsMock, readHead: headMock });
 
 function session(
   name: string,
@@ -54,6 +50,7 @@ function session(
   return {
     name,
     created: 1,
+    paneDead: false,
     path,
     spawner: 'kirby',
     repo,
@@ -77,7 +74,6 @@ const BETA = session(
 );
 
 beforeEach(() => {
-  state.backend = 'tmux';
   state.sessions = [];
   headMock.mockClear();
   gone.clear();
@@ -191,9 +187,8 @@ describe('listLiveWorktreeSessions', () => {
     expect(list()[0]).not.toHaveProperty('agent');
   });
 
-  it('is empty off the tmux backend', () => {
-    state.sessions = [ALPHA];
-    state.backend = 'pty';
+  it('leaves out a retained pane whose agent exited', () => {
+    state.sessions = [{ ...ALPHA, paneDead: true }];
     expect(list()).toEqual([]);
   });
 });

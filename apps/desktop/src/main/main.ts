@@ -14,7 +14,11 @@ import {
   setFolderPicker,
   setShellGlue,
 } from '../host/register-handlers.js';
-import { killAll, probeTmuxAvailability } from '@kirby/core';
+import {
+  applySessionBackend,
+  killAll,
+  probeTmuxAvailability,
+} from '@kirby/core';
 import {
   MENU_EVENTS,
   type ContextMenuItem,
@@ -27,6 +31,7 @@ import { stopDiscovery } from '../host/services/discovery.js';
 import { stopAllBabysitters } from '../host/services/babysit.js';
 import { loadDesktopPrefs } from '../host/services/desktop-prefs.js';
 import { installHostEventBridge } from './host-events.js';
+import { installDesktopTmuxPreparer } from './tmux-session-preparer.js';
 import { MAIN_MARKS, mark } from './boot-marks.js';
 import { buildMenuTemplate } from './menu.js';
 import {
@@ -296,13 +301,9 @@ if (!app.requestSingleInstanceLock()) {
       mark(MAIN_MARKS.ready);
       nativeTheme.themeSource = prefs.theme;
       installAppMenu();
-      // Cache tmux availability, same as the TUI's startup probe. It is
-      // awaited rather than fired off because opening the repo below
-      // wires up the session backend, and an unset `terminalBackend`
-      // resolves to tmux only if the probe has already answered — a
-      // racing probe would silently strand a tmux machine on PTY for
-      // the whole run. The probe is one `tmux -V` fork.
+      installDesktopTmuxPreparer();
       await probeTmuxAvailability();
+      applySessionBackend();
       const opened = openStartupRepo();
       mark(MAIN_MARKS.repo);
       console.log(`[desktop] startup repo: ${opened ? opened.cwd : 'none'}`);
@@ -320,6 +321,11 @@ if (!app.requestSingleInstanceLock()) {
     })
     .catch((err: unknown) => {
       console.error('[desktop] startup failed', err);
+      dialog.showErrorBox(
+        'Kirby could not start',
+        err instanceof Error ? err.message : String(err)
+      );
+      app.quit();
     });
 }
 
@@ -331,7 +337,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Agent PTYs must never outlive the app (same guarantee as the TUI).
+// Release local terminal clients; the tmux-hosted processes survive app exit.
 app.on('will-quit', () => {
   stopRemoteSyncLoop();
   stopDiscovery();

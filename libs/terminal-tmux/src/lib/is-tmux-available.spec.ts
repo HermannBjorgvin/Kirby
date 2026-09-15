@@ -29,6 +29,14 @@ describe('isTmuxAvailable', () => {
     expect(status.version).toBe('3.5');
   });
 
+  it.each(['tmux 3.0', 'tmux 3.1', 'tmux 2.9'])(
+    'rejects %s because per-session environments need 3.2',
+    async (version) => {
+      tmuxVersionMock.mockReturnValue(version);
+      expect((await isTmuxAvailable()).available).toBe(false);
+    }
+  );
+
   it('rejects too-old tmux releases with reason and install hint', async () => {
     tmuxVersionMock.mockReturnValue('tmux 1.8');
     const status = await isTmuxAvailable();

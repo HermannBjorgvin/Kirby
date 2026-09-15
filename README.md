@@ -20,13 +20,13 @@ Kirby works with Claude, Codex, Gemini, Copilot, and OpenCode. You can choose a 
 
 You'll need:
 
-- Git, Node.js, and npm.
+- Git, Node.js, npm, and tmux 3.2 or newer.
 - An agent CLI on your `PATH`: `claude`, `codex`, `gemini`, `copilot`, or `opencode`.
 - For GitHub, the `gh` CLI, signed in to your account.
 - For Azure DevOps, a personal access token with repository and pull request access.
 - On Linux, `build-essential` and `python3` to compile `node-pty` when installing the desktop app.
 
-Optionally, install `tmux` to keep agent sessions running after you quit Kirby and reconnect to them on the next launch. Kirby uses it by default when available. To use PTY instead, select it under **Settings → Terminal Backend**.
+Kirby runs agents and terminal tabs in tmux. Quitting Kirby detaches from them; reopening Kirby reconnects to surviving sessions. Exited agents keep their final output so you can resume the recorded agent or explicitly start a new conversation. Closing a terminal tab or stopping an agent ends its tmux session.
 
 ### Installation
 

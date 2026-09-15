@@ -36,7 +36,7 @@ export function useItemLaunch(
   const create = useCreateWorktree(cwd);
   const { branch, hasWorktree, pr, sessionName } = target;
 
-  const startSession = async (agentId?: AgentId) => {
+  const startSession = async (agentId?: AgentId, fresh = false) => {
     if (!hasWorktree) {
       const id = toast.loading(`Checking out ${branch}…`);
       try {
@@ -48,7 +48,12 @@ export function useItemLaunch(
       }
     }
     launch.mutate(
-      { branch, intent: 'continue-or-blank', agentId, ...estimateGrid() },
+      {
+        branch,
+        intent: fresh ? 'blank' : 'continue-or-blank',
+        agentId,
+        ...estimateGrid(),
+      },
       { onError: (e) => toast.error(errorMessage(e)) }
     );
   };
@@ -70,7 +75,8 @@ export function useItemLaunch(
   };
 
   const choose = (choice: LaunchChoice) => {
-    if (choice.kind === 'session') void startSession(choice.agentId);
+    if (choice.kind === 'session')
+      void startSession(choice.agentId, choice.fresh);
     else startReview(choice.instruction);
   };
 

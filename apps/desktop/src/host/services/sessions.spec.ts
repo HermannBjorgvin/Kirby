@@ -15,6 +15,9 @@ const state = vi.hoisted(() => ({
     request: unknown;
   }[],
   killed: [] as string[],
+  persistedKilled: [] as string[],
+  persisted: new Set<string>(),
+  entries: new Map<string, object>(),
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
   createFails: new Set<string>(),
@@ -22,9 +25,6 @@ const state = vi.hoisted(() => ({
   injected: [] as { name: string; prompt: string }[],
   /** Branch names whose checkout core should report as failed. */
   checkoutFails: new Set<string>(),
-  /** What core resolves an unset `terminalBackend` to — i.e. whether
-   *  this machine was found to have tmux. */
-  defaultBackend: 'pty' as 'pty' | 'tmux',
 }));
 
 vi.mock('./repo.js', () => ({
@@ -51,6 +51,8 @@ vi.mock('@kirby/core', async (importOriginal) => {
   return {
     worktreeSessionKey: actual.worktreeSessionKey,
     sessionLabel: actual.sessionLabel,
+    sessionIdentity: actual.sessionIdentity,
+    resolveAgent: actual.resolveAgent,
     // Stands in for the real orchestrator, whose own branching is tested
     // in libs/core. What matters here is what the *desktop* does with
     // each outcome: inject changes nothing it tracks, a spawn has to be
@@ -68,7 +70,11 @@ vi.mock('@kirby/core', async (importOriginal) => {
         );
         return Promise.resolve('failed');
       }
-      if (state.alive.has(name) && deps.mode === 'inject') {
+      if (
+        (state.alive.has(name) || state.persisted.has(name)) &&
+        deps.mode === 'inject'
+      ) {
+        state.alive.add(name);
         state.injected.push({ name, prompt: deps.prompt });
         return Promise.resolve('injected');
       }
@@ -93,12 +99,13 @@ vi.mock('@kirby/core', async (importOriginal) => {
       prompt: `review #${pr.id}${instruction ? `: ${instruction}` : ''}`,
       systemGuidance: 'guidance',
     }),
-    launchSession: (spec: {
+    launchSession: async (spec: {
       name: string;
       cwd: string;
       config: unknown;
       request: unknown;
     }) => {
+      await Promise.resolve();
       state.alive.add(spec.name);
       state.spawns.push({
         name: spec.name,
@@ -107,26 +114,31 @@ vi.mock('@kirby/core', async (importOriginal) => {
         request: spec.request,
       });
     },
-    getSession: (name: string) =>
-      state.alive.has(name)
-        ? {
-            exited: false,
-            pty: {
-              onData: (cb: (data: string) => void) =>
-                state.onData.set(name, cb),
-              onExit: () => undefined,
-              write: () => undefined,
-              resize: () => undefined,
-            },
-          }
-        : undefined,
-    killSession: (name: string) => {
+    getSession: (name: string) => {
+      if (!state.alive.has(name)) return undefined;
+      if (!state.entries.has(name))
+        state.entries.set(name, {
+          exited: false,
+          pty: {
+            onData: (cb: (data: string) => void) => state.onData.set(name, cb),
+            onExit: () => undefined,
+            write: () => undefined,
+            resize: () => undefined,
+          },
+        });
+      return state.entries.get(name);
+    },
+    stopSession: (name: string) => {
+      if (!state.alive.has(name) && !state.entries.has(name)) {
+        state.persistedKilled.push(name);
+        return;
+      }
       state.killed.push(name);
       state.alive.delete(name);
+      state.entries.delete(name);
     },
     isSessionAlive: (name: string) => state.alive.has(name),
-    resolveTerminalBackend: (config: { terminalBackend?: 'pty' | 'tmux' }) =>
-      config.terminalBackend ?? state.defaultBackend,
+    hasSessionConnection: (name: string) => state.alive.has(name),
     getSpawnedAt: () => 1000,
     noteInput: () => undefined,
     noteResize: () => undefined,
@@ -155,12 +167,14 @@ beforeEach(async () => {
   state.alive = new Set();
   state.spawns = [];
   state.killed = [];
+  state.persistedKilled = [];
+  state.persisted = new Set();
+  state.entries = new Map();
   state.onData = new Map();
   state.configByCwd = {};
   state.createFails = new Set();
   state.injected = [];
   state.checkoutFails = new Set();
-  state.defaultBackend = 'pty';
 
   vi.resetModules();
   sessions = await import('./sessions.js');
@@ -342,11 +356,12 @@ describe('another repository owns the name', () => {
     expect(state.killed).toEqual([]);
   });
 
-  it('leaves a name this host never launched to the registry', () => {
+  it('ignores names without a worktree identity', () => {
     // No entry means no ownership claim — killing is a no-op there
     // rather than an error, matching the registry's own behaviour.
     expect(() => killSession('never-seen')).not.toThrow();
-    expect(state.killed).toEqual(['never-seen']);
+    expect(state.killed).toEqual([]);
+    expect(state.persistedKilled).toEqual([]);
   });
 });
 
@@ -434,6 +449,16 @@ describe('checkoutPlan', () => {
     expect(listSessions().map((s) => s.name)).toEqual([
       worktreeSessionKey('feature/x', '/repo-a'),
     ]);
+  });
+
+  it('relays output when injection attaches a persisted agent for the first time', async () => {
+    const name = worktreeSessionKey('feature/x', '/repo-a');
+    state.persisted.add(name);
+    const request = req('inject');
+    await expect(checkoutPlan(request)).resolves.toBe('injected');
+    emit(name, 'persisted agent output');
+    expect(getSessionBuffer(name).data).toBe('persisted agent output');
+    expect(listSessions().map((session) => session.name)).toContain(name);
   });
 
   it('injecting neither spawns nor disturbs the scrollback', async () => {
@@ -524,5 +549,29 @@ describe('listAgentOptions', () => {
       id: 'test',
       name: 'Custom (default)',
     });
+  });
+});
+
+describe('stopping persisted sessions', () => {
+  it('stops a retained worktree session with no local connection', () => {
+    const name = worktreeSessionKey('retained', '/repo-a');
+    killSession(name);
+    expect(state.persistedKilled).toEqual([name]);
+  });
+
+  it('does not stop an unregistered session from another repository', () => {
+    killSession(worktreeSessionKey('retained', '/repo-b'));
+    expect(state.persistedKilled).toEqual([]);
+    expect(state.killed).toEqual([]);
+  });
+
+  it('does not stop a foreign registry entry that was never adopted by this host', () => {
+    const name = worktreeSessionKey('retained', '/repo-b');
+    state.alive.add(name);
+    killSession(name);
+    sessions.killOwnSession(name);
+    expect(state.alive.has(name)).toBe(true);
+    expect(state.killed).toEqual([]);
+    expect(state.persistedKilled).toEqual([]);
   });
 });

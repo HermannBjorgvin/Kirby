@@ -14,10 +14,7 @@
  */
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import {
-  createTmuxBackendFactory,
-  type TmuxFactoryOptions,
-} from './tmux-backend.js';
+import { createTmuxBackend } from './tmux-backend.js';
 import {
   tmuxFreeSessionName,
   tmuxHasSession,
@@ -26,6 +23,7 @@ import {
   tmuxListSessionsDetailed,
   tmuxShowOption,
 } from './tmux-cli.js';
+import type { SessionSpec } from '@kirby/terminal';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
 function tmuxAvailable(): boolean {
@@ -90,13 +88,16 @@ function uniqueName(suffix: string): string {
 
 /** A factory that names sessions after the spec and resolves nothing
  *  unless told to — the test decides identity, the backend obeys. */
-function factory(overrides: Partial<TmuxFactoryOptions> = {}) {
-  return createTmuxBackendFactory({
-    resolve: () => null,
-    label: (spec) => spec.name,
-    tags: () => ({}),
-    ...overrides,
-  });
+function factory(
+  options: { resolve?: () => string; tags?: () => Record<string, string> } = {}
+) {
+  return (spec: SessionSpec & { name: string }) =>
+    createTmuxBackend(
+      spec,
+      options.resolve
+        ? { mode: 'attach', target: options.resolve() }
+        : { mode: 'create', label: spec.name, tags: options.tags?.() ?? {} }
+    );
 }
 
 function idle(name: string, command = 'sleep 30') {
@@ -128,7 +129,9 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     const name = uniqueName('output');
     createdSessions.push(name);
 
-    const backend = factory()(idle(name, 'echo hello-from-tmux; sleep 5'));
+    const backend = await factory()(
+      idle(name, 'echo hello-from-tmux; sleep 5')
+    );
     const chunks: string[] = [];
     backend.onData((chunk) => chunks.push(chunk));
 
@@ -146,7 +149,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     const name = uniqueName('dispose');
     createdSessions.push(name);
 
-    const backend = factory()(idle(name));
+    const backend = await factory()(idle(name));
     expect(tmuxHasSession(name)).toBe(true);
 
     backend.dispose();
@@ -172,7 +175,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     // the first run's pid.
     const spec = idle(name, `echo ${marker}; sleep 30`);
 
-    const first = factory()(spec);
+    const first = await factory()(spec);
     await settle(500);
     const firstPanePid = tmuxPanePid(name);
 
@@ -182,7 +185,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     expect(tmuxHasSession(name)).toBe(true);
 
     // Kirby "relaunches" and resolves the same session.
-    const second = factory({ resolve: () => name })(spec);
+    const second = await factory({ resolve: () => name })(spec);
     const chunks: string[] = [];
     second.onData((chunk) => chunks.push(chunk));
     await settle(750);
@@ -211,7 +214,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     createdSessions.push(name);
     const spec = idle(name);
 
-    const first = factory({
+    const first = await factory({
       tags: () => ({
         '@livetest-repo': '/repo/x',
         '@livetest-branch': 'feature/x',
@@ -227,7 +230,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     await settle(200);
     // A second attach with its own idea of the tags — another program's
     // view of the same session — changes nothing already recorded.
-    const second = factory({
+    const second = await factory({
       resolve: () => name,
       tags: () => ({
         '@livetest-repo': '/somewhere/else',
@@ -244,6 +247,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     expect(listed).toEqual({
       name,
       created: expect.any(Number),
+      paneDead: false,
       path: process.cwd(),
       options: { '@livetest-repo': '/repo/x', '@livetest-branch': 'feature/x' },
     });
@@ -262,7 +266,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     startForeignSession(name);
     const foreignPid = tmuxPanePid(name);
 
-    const backend = factory({ tags: () => ({ '@livetest-mine': '1' }) })(
+    const backend = await factory({ tags: () => ({ '@livetest-mine': '1' }) })(
       idle(name)
     );
     expect(tmuxHasSession(`${name}-2`)).toBe(true);
@@ -282,7 +286,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     const name = uniqueName('kill');
     createdSessions.push(name);
 
-    const backend = factory()(idle(name));
+    const backend = await factory()(idle(name));
     expect(tmuxHasSession(name)).toBe(true);
 
     backend.kill();
@@ -298,7 +302,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
   // of `name-2` — and a kill aimed at `name` would take `name-2` out.
   // Both go through the exact form, and only a real tmux proves that
   // form is accepted for these commands.
-  it('has-session and kill-session are exact, never prefix matches', () => {
+  it('has-session and kill-session are exact, never prefix matches', async () => {
     const name = uniqueName('exact');
     createdSessions.push(`${name}-2`);
     startForeignSession(`${name}-2`);
@@ -307,7 +311,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     expect(tmuxHasSession(`${name}-2`)).toBe(true);
   });
 
-  it('tmuxFreeSessionName skips every candidate the server holds', () => {
+  it('tmuxFreeSessionName skips every candidate the server holds', async () => {
     const name = uniqueName('free');
     createdSessions.push(name, `${name}-2`);
     expect(tmuxFreeSessionName(name)).toBe(name);
@@ -321,7 +325,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
   // call rather than one per candidate. Only a real server proves the
   // `-F` format string and the no-server exit code behave as assumed.
   describe('tmuxListSessions', () => {
-    it("reports a session created behind the backend's back", () => {
+    it("reports a session created behind the backend's back", async () => {
       const name = uniqueName('listed');
       createdSessions.push(name);
       expect(tmuxListSessions()).not.toContain(name);
@@ -333,7 +337,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
       expect(tmuxListSessions()).toContain(name);
     });
 
-    it('stops reporting one that was killed from outside', () => {
+    it('stops reporting one that was killed from outside', async () => {
       const name = uniqueName('unlisted');
       startForeignSession(name);
       expect(tmuxListSessions()).toContain(name);
@@ -344,11 +348,11 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
 
     // Every candidate this repo asks about is answered from one call, so
     // the listing has to include sessions the caller never created.
-    it('reports every live session in one call', () => {
+    it('reports every live session in one call', async () => {
       const a = uniqueName('multi-a');
       const b = uniqueName('multi-b');
       createdSessions.push(a, b);
-      for (const name of [a, b]) factory()(idle(name));
+      for (const name of [a, b]) await factory()(idle(name));
       const listed = tmuxListSessions();
       expect(listed).toContain(a);
       expect(listed).toContain(b);

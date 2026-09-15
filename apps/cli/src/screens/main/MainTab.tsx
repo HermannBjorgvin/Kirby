@@ -24,7 +24,7 @@ import {
   useSidebar,
   usePaneReducer,
 } from '@kirby/app-core';
-import { dequeueOldest, getItemKey } from '@kirby/core';
+import { dequeueOldest, getItemKey, getSession } from '@kirby/core';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { handleSessionMenuInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';
@@ -79,6 +79,10 @@ function getAnyModalOpen(
   settingsOpen: boolean
 ): boolean {
   return branchPickerCreating || deleteConfirmOpen || settingsOpen;
+}
+
+function attachedSession(name: string | null) {
+  return name ? getSession(name) : undefined;
 }
 
 // MainTabBody owns the pane state + the real input router. React
@@ -199,7 +203,10 @@ function MainTabBody({
   const mainFocused = getMainFocused(focusState);
   const sidebarFocused = getSidebarFocused(focusState);
 
+  const attached = attachedSession(sidebar.sessionNameForTerminal);
   const paneTitle = getPaneTitle({
+    sessionAgent: attached?.agent,
+    hasAttachedSession: !!attached,
     paneMode: pane.paneMode,
     branchPickerCreating: branchPicker.creating,
     settingsOpen: settings.settingsOpen,

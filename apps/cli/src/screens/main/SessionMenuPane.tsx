@@ -107,11 +107,11 @@ export const SessionMenuPane = memo(function SessionMenuPane({
     () => buildAgentOptions(config.config),
     [config.config]
   );
-  const safeAgentIdx = Math.min(
-    Math.max(agentIndex, 0),
-    agentOptions.length - 1
-  );
-  const agentName = agentOptions[safeAgentIdx]?.name ?? 'Agent';
+  const safeAgentIdx = Math.min(Math.max(agentIndex, 0), agentOptions.length);
+  const fresh = safeAgentIdx > 0;
+  const agentName = fresh
+    ? agentOptions[safeAgentIdx - 1]!.name
+    : 'Recorded agent / default';
 
   const options = sessionMenuOptions(pr != null);
   const optKey = options[Math.min(selectedOption, options.length - 1)]!;
@@ -133,7 +133,9 @@ export const SessionMenuPane = memo(function SessionMenuPane({
             <Text color={startSelected ? 'cyan' : undefined}>
               {startSelected ? '› ' : '  '}
             </Text>
-            <Text bold={startSelected}>Start/Continue session</Text>
+            <Text bold={startSelected}>
+              {fresh ? 'Start new session' : 'Open / resume session'}
+            </Text>
             <Text dimColor> · agent: </Text>
             <Text color="cyan">{agentName}</Text>
           </Text>

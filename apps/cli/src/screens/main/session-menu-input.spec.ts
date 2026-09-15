@@ -194,8 +194,8 @@ describe('session menu — agent picker', () => {
     expect(t.state.menu?.agentIndex).toBe(1);
     press(KEYS.left(), t.ctx);
     press(KEYS.left(), t.ctx);
-    // Five registry agents → wraps from the default to the last one.
-    expect(t.state.menu?.agentIndex).toBe(4);
+    // Automatic plus five registry agents → wraps to the last one.
+    expect(t.state.menu?.agentIndex).toBe(5);
   });
 
   it('applies bunched arrow presses one step each (updater form)', () => {
@@ -219,7 +219,7 @@ describe('session menu — agent picker', () => {
 describe('session menu — start', () => {
   it('launches the chosen agent in the row worktree and focuses it', async () => {
     const t = makeCtx({
-      menu: { ...openMenu(), agentIndex: 1 },
+      menu: { ...openMenu(), agentIndex: 2 },
       selectedItem: sessionItem('alpha'),
     });
     vi.mocked(listWorktrees).mockResolvedValue([
@@ -237,9 +237,9 @@ describe('session menu — start', () => {
       cols: 80,
       rows: 24,
       cwd: '/wt/alpha',
-      request: { intent: 'continue-or-blank' },
+      request: { intent: 'blank' },
     });
-    // Index 1 is the first non-default registry agent.
+    // Index 2 is the first non-default registry agent, after automatic and default.
     expect(params.agent?.id).toBe('codex');
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
@@ -248,6 +248,50 @@ describe('session menu — start', () => {
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.state.menu).toBeNull();
+  });
+
+  it.each([
+    [0, 'continue-or-blank', undefined],
+    [1, 'blank', 'claude'],
+  ] as const)(
+    'distinguishes automatic resume from explicit default at index %s',
+    async (agentIndex, intent, agent) => {
+      const t = makeCtx({
+        menu: { ...openMenu(), agentIndex },
+        selectedItem: sessionItem('alpha'),
+      });
+      vi.mocked(listWorktrees).mockResolvedValue([
+        { path: '/wt/alpha', branch: 'alpha', bare: false },
+      ]);
+      press(KEYS.enter(), t.ctx);
+      await t.settle();
+      const params = vi.mocked(launchSession).mock.calls[0]![0];
+      expect(params.request.intent).toBe(intent);
+      expect(params.agent?.id).toBe(agent);
+    }
+  );
+
+  it('waits for session registration before refreshing and focusing the terminal', async () => {
+    let ready!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    vi.mocked(launchSession).mockImplementationOnce(async () => {
+      await gate;
+      return {} as Awaited<ReturnType<typeof launchSession>>;
+    });
+    const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
+    vi.mocked(listWorktrees).mockResolvedValue([
+      { path: '/wt/alpha', branch: 'alpha', bare: false },
+    ]);
+    press(KEYS.enter(), t.ctx);
+    await vi.waitFor(() => expect(launchSession).toHaveBeenCalledOnce());
+    expect(t.sessions.refreshSessions).not.toHaveBeenCalled();
+    expect(t.nav.setFocus).not.toHaveBeenCalled();
+    ready();
+    await t.settle();
+    expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
+    expect(t.nav.setFocus).toHaveBeenCalledWith('terminal');
   });
 
   it('stays in the menu when no worktree can be resolved', async () => {

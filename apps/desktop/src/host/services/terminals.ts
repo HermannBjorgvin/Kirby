@@ -3,12 +3,12 @@ import { homedir } from 'node:os';
 import { isAbsolute } from 'node:path';
 import {
   getSession,
+  detachSession,
   getSpawnedAt,
   isSessionAlive,
-  isTmuxSessionNamedPersisted,
+  hasPersistedTerminalSession,
   killSession as killSessionEntry,
   launchTerminalSession,
-  newTerminalSessionName,
   releaseExitedSession,
   type DiscoveredTerminal,
 } from '@kirby/core';
@@ -20,7 +20,7 @@ import type {
   TerminalSummary,
 } from '../contract.js';
 import { ensureRecent } from './recent-repos.js';
-import { isGitRepo, requireRepo } from './repo.js';
+import { isGitRepo } from './repo.js';
 import {
   attachRelay,
   newRelayEntry,
@@ -58,7 +58,7 @@ const known = new Map<string, KnownTerminal>();
 
 /**
  * Reject a directory a terminal cannot actually launch into, before it
- * reaches either backend. Without this an invalid `cwd` (a relative
+ * reaches tmux. Without this an invalid `cwd` (a relative
  * path — the chooser only ever hands over absolute ones, but the host
  * is the boundary that must not trust that — or one that does not
  * exist) surfaces as an opaque `posix_spawnp failed` from node-pty or a
@@ -85,27 +85,52 @@ function clampDim(value: number | undefined, fallback: number): number {
   return Math.min(500, Math.floor(value));
 }
 
+interface TerminalSize {
+  cols?: number;
+  rows?: number;
+  fresh?: boolean;
+}
+const starting = new Map<string, Promise<string>>();
+
 function start(
-  requestedName: string,
+  requestedName: string | undefined,
   kind: TerminalKind,
   cwd: string,
-  size: { cols?: number; rows?: number },
-  fresh = false
-): string {
+  size: TerminalSize,
+  mode?: 'open' | 'attach'
+): Promise<string> {
+  if (!requestedName) return performStart(requestedName, kind, cwd, size, mode);
+  const pending = starting.get(requestedName);
+  if (pending) return pending;
+  const operation = performStart(requestedName, kind, cwd, size, mode).finally(
+    () => starting.delete(requestedName)
+  );
+  starting.set(requestedName, operation);
+  return operation;
+}
+
+async function performStart(
+  requestedName: string | undefined,
+  kind: TerminalKind,
+  cwd: string,
+  size: TerminalSize,
+  mode?: 'open' | 'attach'
+): Promise<string> {
   // Config for the directory, not for whatever repository is open: an
   // agent at a repository root should be that repository's agent.
-  const launched = launchTerminalSession({
+  const launched = await launchTerminalSession({
     name: requestedName,
     kind,
     cwd,
     cols: clampDim(size.cols, DEFAULT_COLS),
     rows: clampDim(size.rows, DEFAULT_ROWS),
     config: readConfig(cwd),
-    fresh,
+    mode,
+    fresh: size.fresh,
   });
   const name = launched.name;
-  const prev = known.get(requestedName);
-  if (name !== requestedName) known.delete(requestedName);
+  const prev = requestedName ? known.get(requestedName) : undefined;
+  if (requestedName && name !== requestedName) known.delete(requestedName);
   const entry: KnownTerminal = {
     ...newRelayEntry(prev?.seq ?? 0),
     kind,
@@ -117,58 +142,13 @@ function start(
   return name;
 }
 
-/**
- * Whether tmux still holds a session under `name` now that the client
- * this host had on it has exited — a detach from inside tmux, not the
- * terminal ending. Asked by tmux name, not by the open repository: a
- * terminal tab is process-global and its session — a shell, or an
- * adopted orphan tagged with the repository it was opened from — stays
- * this tab's after a repository switch. The backend in force is the
- * open repository's config, the same gate discovery reads; with no
- * repository open there is no tmux in force and the answer is no.
- */
-function stillHeldByTmux(name: string): boolean {
-  try {
-    return isTmuxSessionNamedPersisted(readConfig(requireRepo()), name);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * A terminal is over when its process ends — `exit` typed into the
- * shell, the agent quitting, or on tmux the session ending under the
- * client, whether its last process exited or someone killed it from
- * outside. The terminal is then dropped from the listing, which is what
- * closes its tab, and everything held for it is released.
- *
- * A tmux client can also exit while its session lives on: the user
- * pressed the detach key inside the terminal. That is not an end — the
- * shell is still running — so the terminal is reattached under the same
- * name, at the grid the client had and with its output sequence
- * carried, rather than dropped and left for discovery to bring back,
- * unfocused, a scan later. The relay sees the replacement before the
- * old client's exit reaches it and reports nothing.
- *
- * Subscribed before the relay so the listing is already without the
- * terminal when the renderer hears the exit and asks. Identity guards
- * both ends: a kill or a respawn under the same name deletes or
- * replaces the registry entry before the old client's exit lands, and
- * that exit must not drop what replaced it — nor, on quit, does the
- * client that `killAll` detached find anything left to drop.
- */
+/** Exited agents retain their pane and tab; shells close when their process ends. */
 function watchForEnd(name: string, entry: KnownTerminal): void {
   const session = getSession(name);
   if (!session) throw new Error(`Terminal ${name} vanished after launch`);
   session.pty.onExit(() => {
     if (getSession(name) !== session || known.get(name) !== entry) return;
-    if (stillHeldByTmux(name)) {
-      start(name, entry.kind, entry.cwd, {
-        cols: session.pty.cols,
-        rows: session.pty.rows,
-      });
-      return;
-    }
+    if (entry.kind === 'agent' && hasPersistedTerminalSession(name)) return;
     known.delete(name);
     releaseExitedSession(name);
   });
@@ -189,6 +169,7 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
       ? { tmuxName: getSession(name)?.pty.name }
       : {}),
     kind: entry.kind,
+    agent: getSession(name)?.agent,
     cwd: entry.cwd,
     displayPath: displayPath(entry.cwd, home),
     repo: terminalRepo(entry.cwd, isGitRepo),
@@ -198,12 +179,19 @@ function summarize(name: string, entry: KnownTerminal, home: string) {
 }
 
 /** Open a new terminal. `home` is injectable for tests. */
-export function launchTerminal(
+export async function launchTerminal(
   req: TerminalLaunchRequest,
   home: string = homedir()
-): TerminalSummary {
+): Promise<TerminalSummary> {
   assertLaunchableCwd(req.cwd);
-  const name = start(newTerminalSessionName(), req.kind, req.cwd, req, true);
+  const existing = req.sessionName ? known.get(req.sessionName) : undefined;
+  if (req.sessionName && !existing) throw new Error('Unknown terminal session');
+  const name = await start(
+    req.sessionName,
+    existing?.kind ?? req.kind,
+    existing?.cwd ?? req.cwd,
+    req
+  );
   noteRepository(req.cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);
@@ -212,8 +200,10 @@ export function launchTerminal(
 
 /** Reattach to a terminal discovery found in tmux — the restore path,
  *  and the mid-run one. The name and directory are tmux's. */
-export function adoptTerminal(terminal: DiscoveredTerminal): void {
-  start(terminal.name, terminal.kind, terminal.path, {});
+export async function adoptTerminal(
+  terminal: DiscoveredTerminal
+): Promise<void> {
+  await start(terminal.name, terminal.kind, terminal.path, {}, 'attach');
   noteRepository(terminal.path);
 }
 
@@ -223,12 +213,18 @@ export function listTerminals(home: string = homedir()): TerminalSummary[] {
   );
 }
 
-/** Kill the session — on tmux, `kill-session`; on PTY, the process —
+/** Kill the tmux session
  *  and forget the terminal. A name never launched here is nothing. */
 export function killTerminal(name: string): void {
   if (!known.has(name)) return;
   killSessionEntry(name);
   known.delete(name);
+}
+
+/** Forget a target removed outside Kirby, without touching a replacement session. */
+export function forgetTerminal(name: string): void {
+  if (hasPersistedTerminalSession(name) || !known.delete(name)) return;
+  detachSession(name);
 }
 
 export function isTerminal(name: string): boolean {

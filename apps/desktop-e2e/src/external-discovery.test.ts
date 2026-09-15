@@ -24,8 +24,6 @@ test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 const BANNER = 'external-agent-was-already-running';
 
-test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
-
 test.describe('Discovering work created outside the app', () => {
   let branches: string[] = [];
 

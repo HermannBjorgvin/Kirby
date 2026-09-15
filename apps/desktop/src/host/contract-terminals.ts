@@ -9,6 +9,10 @@
 export type TerminalKind = 'shell' | 'agent';
 
 export interface TerminalLaunchRequest {
+  /** Restart this retained terminal instead of creating a tab. */
+  sessionName?: string;
+  /** Use the directory's configured agent for a fresh conversation. */
+  fresh?: boolean;
   kind: TerminalKind;
   /** Absolute directory to open the terminal in. Any directory. */
   cwd: string;
@@ -28,6 +32,7 @@ export interface TerminalLaunchRequest {
  * is.
  */
 export interface TerminalSummary {
+  agent?: string;
   /** Actual tmux target, when attached through tmux. Never a registry key. */
   tmuxName?: string;
   /** Opaque core registry key; displayPath supplies the tab label. */

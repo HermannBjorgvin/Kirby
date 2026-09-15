@@ -31,7 +31,6 @@ const BANNER = 'external-agent-was-already-running';
 
 test.use({
   kirbyConfig: {
-    terminalBackend: 'tmux',
     aiCommand: fakeAgentCommand({ banner: 'kirby-fake-agent-ready' }),
     keybindPreset: 'vim',
   },

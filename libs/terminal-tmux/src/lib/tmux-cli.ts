@@ -1,4 +1,10 @@
 import { execFileSync } from 'node:child_process';
+import { tmuxListSessionsDetailed } from './tmux-state.js';
+export {
+  tmuxListSessionsDetailed,
+  tmuxPaneState,
+  type TmuxSessionInfo,
+} from './tmux-state.js';
 
 /** Result of running a tmux subcommand. */
 export interface TmuxRunResult {
@@ -13,10 +19,22 @@ export interface TmuxRunResult {
  *  the pattern used elsewhere in the workspace
  *  (libs/vcs/core/src/lib/config-store.ts) which keeps mocking
  *  straightforward. */
-function runTmux(args: string[]): TmuxRunResult {
+export function runTmux(
+  args: string[],
+  following: string[][] = []
+): TmuxRunResult {
+  // tmux interprets a trailing semicolon as a command boundary even when
+  // invoked without a shell. Escape literal data before inserting boundaries.
+  const commands = [args, ...following].map((command) =>
+    command.map((argument) => argument.replace(/;$/, '\\;'))
+  );
+  const argv = commands.flatMap((command, index) =>
+    index === 0 ? command : [';', ...command]
+  );
   try {
-    const stdout = execFileSync('tmux', args, {
+    const stdout = execFileSync('tmux', argv, {
       encoding: 'utf8',
+      timeout: 5000,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     return { stdout, stderr: '', exitCode: 0 };
@@ -142,8 +160,7 @@ export function tmuxFreeSessionName(
  *  matched by prefix when no session has it exactly, so with `feature`
  *  and `feature-2` both live, `-t feature` after `feature` is gone
  *  quietly lands on the other one; `=name:` refuses anything but an
- *  exact match. The `=` form arrived in tmux 2.1, so it — not the
- *  probe's 2.0 — is the effective floor for options. */
+ *  exact match. The `=` form is supported by all tmux versions this backend accepts. */
 function exactSession(name: string): string {
   return `=${name}:`;
 }
@@ -182,95 +199,23 @@ export function tmuxShowOption(name: string, option: string): string {
   return exitCode === 0 ? stdout.replace(/\r?\n$/, '') : '';
 }
 
-/** One live session: its name and the directory it was started in. */
-export interface TmuxSessionInfo {
-  name: string;
-  /** `#{session_created}` — seconds since the epoch, tmux's own clock.
-   *  Orders two sessions that claim the same identity: the older one
-   *  is the one that was there first. `0` when tmux reports nothing
-   *  parseable. */
-  created: number;
-  /** `#{session_path}` — the `-c` directory `new-session` was given,
-   *  or the server's cwd when it was not. Empty when tmux reports
-   *  nothing. */
-  path: string;
-  /** The session user options {@link tmuxListSessionsDetailed} was
-   *  asked for, by name, for those that have a value. An unset option
-   *  expands to nothing in a format string, which is indistinguishable
-   *  from one set to `''`, so both are left out. Absent when no option
-   *  names were asked for. */
-  options?: Record<string, string>;
-}
-
-/** Every session the server currently holds, with the directory each
- *  was started in, or `[]` when there is no server at all
- *  (`list-sessions` exits non-zero with "no server running").
- *
- *  One fork regardless of how many sessions exist, which is the whole
- *  reason it exists next to {@link tmuxHasSession}: a caller checking
- *  N candidates pays N forks through `has-session` and one through
- *  this. `#{session_name}` is the oldest of tmux's format variables
- *  and `#{session_path}` predates the 2.0 floor the backend supports.
- *
- *  `options` names session user options (`@key`) to read in the same
- *  fork; each becomes a `#{@key}` column. Tab-separated with the name
- *  first, the creation time second, the options next and the path
- *  last: a session name never carries a tab (the sanitizer only
- *  rewrites `.` and `:`, and nothing composes one with a tab), an
- *  option value is the caller's to keep tab-free, and the path may
- *  contain anything — so the first columns are split off one tab at a
- *  time and whatever remains, tabs included, is the path. */
-export function tmuxListSessionsDetailed(
-  options: readonly string[] = []
-): TmuxSessionInfo[] {
-  const columns = [
-    '#{session_name}',
-    '#{session_created}',
-    ...options.map((option) => `#{${option}}`),
-    '#{session_path}',
-  ];
-  const { stdout, exitCode } = runTmux([
-    UTF8,
-    'list-sessions',
-    '-F',
-    columns.join('\t'),
-  ]);
-  if (exitCode !== 0) return [];
-  return stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => parseSessionLine(line, options));
-}
-
-/** The columns before the path: name, creation time, one per option. */
-const FIXED_COLUMNS = 2;
-
-/** One `list-sessions` line back into a session: the leading columns
- *  are the name, the creation time and the asked-for options; the
- *  remainder is the path. */
-function parseSessionLine(
-  line: string,
-  options: readonly string[]
-): TmuxSessionInfo {
-  const leading = FIXED_COLUMNS + options.length;
-  const fields = line.split('\t', leading);
-  const rest = fields.join('\t').length;
-  const name = fields[0] ?? line;
-  const created = Number.parseInt(fields[1] ?? '', 10) || 0;
-  const path = fields.length >= leading ? line.slice(rest + 1) : '';
-  if (options.length === 0) return { name, created, path };
-  const values: Record<string, string> = {};
-  options.forEach((option, i) => {
-    const value = fields[i + FIXED_COLUMNS];
-    if (value) values[option] = value;
-  });
-  return { name, created, path, options: values };
-}
-
 /** Every session name the server currently holds — see
  *  {@link tmuxListSessionsDetailed}, which this reads through so a
  *  caller wanting only names pays the same single fork. */
 export function tmuxListSessions(): string[] {
   return tmuxListSessionsDetailed().map((s) => s.name);
+}
+
+/** Capture the retained screen and scrollback when no client saw the process exit. */
+export function tmuxCapturePane(name: string): string | null {
+  const result = runTmux([
+    'capture-pane',
+    '-p',
+    '-e',
+    '-S',
+    '-',
+    '-t',
+    exactSession(name),
+  ]);
+  return result.exitCode === 0 ? result.stdout : null;
 }

@@ -93,7 +93,7 @@ export function createHostApi(): KirbyHostApi {
     killSession: (name) => Promise.resolve(sessions.killSession(name)),
     saveClipboardImage: (data, mimeType) =>
       Promise.resolve(clipboardImage.saveClipboardImage(data, mimeType)),
-    launchTerminal: (req) => Promise.resolve(terminals.launchTerminal(req)),
+    launchTerminal: (req) => terminals.launchTerminal(req),
     listTerminals: () => Promise.resolve(terminals.listTerminals()),
     killTerminal: (name) => Promise.resolve(terminals.killTerminal(name)),
     onSessionData: () => {

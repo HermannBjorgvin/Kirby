@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { PtyEntry } from '../pty-registry.js';
+import { getSession } from '../pty-registry.js';
 
 // buildLaunchSpec is pure, but the module imports pty-registry (→ node-pty).
 // Mock it so these stay fast, dependency-free unit tests.
@@ -7,7 +9,12 @@ vi.mock('../pty-registry.js', () => ({
   getSession: vi.fn(),
 }));
 
-import { buildLaunchSpec } from './launch-session.js';
+import type { AppConfig } from '@kirby/vcs-core';
+import {
+  buildAgentLaunch,
+  buildLaunchSpec,
+  deliverToRunningSession,
+} from './launch-session.js';
 import type { AgentDefinition } from '../agents/registry.js';
 
 const claude: AgentDefinition = {
@@ -145,4 +152,85 @@ describe('buildLaunchSpec', () => {
       });
     });
   });
+});
+
+describe('fresh launches of retained agents', () => {
+  const config = { agentId: 'gemini' } as AppConfig;
+  it.each([undefined, 'unknown-agent', 'codex'])(
+    'starts the chosen default fresh despite previous metadata %s',
+    (previous) => {
+      const launch = buildAgentLaunch(
+        { config, request: { intent: 'blank' } },
+        previous,
+        true
+      );
+      expect(launch).toEqual({
+        agent: 'gemini',
+        spec: { cmd: 'gemini', args: [] },
+      });
+    }
+  );
+  it('still refuses automatic resume without a supported adapter', () => {
+    expect(() =>
+      buildAgentLaunch(
+        { config, request: { intent: 'continue-or-blank' } },
+        'gemini',
+        true
+      )
+    ).toThrow('does not support automatic resume');
+  });
+});
+
+describe('retained review guidance', () => {
+  const request = {
+    intent: 'continue-or-seed' as const,
+    prompt: 'Review the change',
+    systemGuidance: 'Use kirby util add-comment',
+  };
+  it('passes Claude system guidance through its resume adapter', () => {
+    const result = buildAgentLaunch(
+      { config: {} as AppConfig, request },
+      'claude',
+      true
+    );
+    expect(result.spec).toEqual({
+      cmd: 'claude',
+      args: [
+        '--continue',
+        '--append-system-prompt',
+        request.systemGuidance,
+        request.prompt,
+      ],
+    });
+  });
+  it('folds review guidance into the resumed Codex prompt', () => {
+    const result = buildAgentLaunch(
+      { config: {} as AppConfig, request },
+      'codex',
+      true
+    );
+    expect(result.spec).toEqual({
+      cmd: 'codex',
+      args: [
+        'resume',
+        '--last',
+        `${request.systemGuidance}\n\n${request.prompt}`,
+      ],
+    });
+  });
+});
+
+describe('delivery connection state', () => {
+  it.each(['reconnecting', 'failed'] as const)(
+    'refuses delivery while the tmux client is %s',
+    (connectionState) => {
+      const write = vi.fn();
+      vi.mocked(getSession).mockReturnValue({
+        exited: false,
+        pty: { connectionState, write },
+      } as unknown as PtyEntry);
+      expect(deliverToRunningSession('session', 'briefing')).toBe(false);
+      expect(write).not.toHaveBeenCalled();
+    }
+  );
 });

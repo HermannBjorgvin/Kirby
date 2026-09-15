@@ -16,7 +16,7 @@ import { chromium } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from '@playwright/test';
 import { buildScenario } from './scenario.mjs';
@@ -140,6 +140,27 @@ function toGif(
   return gif;
 }
 
+/** Every capture uses its own socket; reap sessions before deleting HOME. */
+function cleanupSessions(home) {
+  if (!basename(home).startsWith('kirby-demo-home-')) {
+    throw new Error(`Refusing tmux cleanup outside a demo home: ${home}`);
+  }
+  const env = { ...process.env, TMUX_TMPDIR: home };
+  delete env.TMUX;
+  delete env.TMUX_PANE;
+  const sessions = spawnSync(
+    'tmux',
+    ['list-sessions', '-F', '#{session_name}'],
+    {
+      env,
+      encoding: 'utf8',
+    }
+  );
+  for (const name of (sessions.stdout ?? '').split('\n').filter(Boolean)) {
+    spawnSync('tmux', ['kill-session', '-t', `=${name}:`], { env });
+  }
+}
+
 // ── App ──────────────────────────────────────────────────────────
 
 async function launchApp(
@@ -157,8 +178,7 @@ async function launchApp(
   // `$TMUX` names a socket outright and beats the TMUX_TMPDIR set
   // below, so a capture run from inside a tmux session would put its
   // demo agents on the developer's own tmux server, beside their real
-  // ones. (The scenario also pins the pty backend, so there should be
-  // no tmux here at all — this is the belt to that's braces.)
+  // ones.
   delete parentEnv.TMUX;
   delete parentEnv.TMUX_PANE;
   // Theme is a desktop pref, not config — write it before launch.
@@ -922,8 +942,10 @@ try {
       grabDisplay(join(RAW, `${name}-failed.png`));
       await currentRec?.stop();
       throw err;
+    } finally {
+      cleanupSessions(scenario.home);
+      rmSync(scenario.home, { recursive: true, force: true });
     }
-    rmSync(scenario.home, { recursive: true, force: true });
     console.log(`✓ ${name}`);
   }
 } finally {

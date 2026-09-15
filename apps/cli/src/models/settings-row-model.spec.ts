@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest';
 import type { SettingsField } from '@kirby/core';
 import { displayValueFor } from './settings-row-model.js';
 
-const BACKEND: SettingsField = {
-  label: 'Terminal Backend',
-  key: 'terminalBackend',
+const CHOICE: SettingsField = {
+  label: 'Editor',
+  key: 'editor',
   configBag: 'global',
   presets: [
-    { name: 'PTY', value: 'pty' },
-    { name: 'Tmux', value: 'tmux' },
+    { name: 'VS Code', value: 'code' },
+    { name: 'Vim', value: 'vim' },
   ],
-  defaultValue: 'tmux',
+  defaultValue: 'vim',
 };
 
 const EDITOR: SettingsField = {
@@ -25,16 +25,14 @@ const EDITOR: SettingsField = {
 
 describe('displayValueFor', () => {
   it('names the stored preset without a default marker', () => {
-    expect(displayValueFor(BACKEND, 'pty')).toBe('PTY');
-    expect(displayValueFor(BACKEND, 'tmux')).toBe('Tmux');
+    expect(displayValueFor(CHOICE, 'code')).toBe('VS Code');
+    expect(displayValueFor(CHOICE, 'vim')).toBe('Vim');
   });
 
-  // The whole point of the row: an unset backend shows what will
-  // actually run, and says it was decided for the user.
   it('names the resolved default when nothing is stored', () => {
-    expect(displayValueFor(BACKEND, '')).toBe('Tmux (default)');
-    expect(displayValueFor({ ...BACKEND, defaultValue: 'pty' }, '')).toBe(
-      'PTY (default)'
+    expect(displayValueFor(CHOICE, '')).toBe('Vim (default)');
+    expect(displayValueFor({ ...CHOICE, defaultValue: 'code' }, '')).toBe(
+      'VS Code (default)'
     );
   });
 
@@ -44,8 +42,8 @@ describe('displayValueFor', () => {
 
   // A defaultValue that matches no preset must not blank the row.
   it('falls back to the first preset when the default is unknown', () => {
-    expect(displayValueFor({ ...BACKEND, defaultValue: 'ssh' }, '')).toBe(
-      'PTY (default)'
+    expect(displayValueFor({ ...CHOICE, defaultValue: 'ssh' }, '')).toBe(
+      'VS Code (default)'
     );
   });
 

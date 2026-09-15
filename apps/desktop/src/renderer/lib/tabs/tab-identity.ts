@@ -32,7 +32,7 @@ export type Tab =
   | {
       id: string;
       kind: 'terminal';
-      /** Session name — the terminal's identity, on both backends. */
+      /** Qualified session key — the terminal's identity. */
       name: string;
       terminalKind: TerminalKind;
       cwd: string;

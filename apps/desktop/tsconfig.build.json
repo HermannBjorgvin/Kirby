@@ -14,6 +14,12 @@
       "path": "../../libs/diff/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/terminal/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/terminal-tmux/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/vcs/azure-devops/tsconfig.lib.json"
     },
     {
@@ -26,10 +32,10 @@
       "path": "../../libs/review-comments/tsconfig.lib.json"
     },
     {
-      "path": "../../libs/core/tsconfig.lib.json"
+      "path": "../../libs/vcs/core/tsconfig.lib.json"
     },
     {
-      "path": "../../libs/vcs/core/tsconfig.lib.json"
+      "path": "../../libs/core/tsconfig.lib.json"
     },
     {
       "path": "../../libs/app-core/tsconfig.lib.json"

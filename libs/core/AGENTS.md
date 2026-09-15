@@ -6,46 +6,34 @@ electron or `@kirby/app-core` (lint-enforced). `src/plan.ts` is the
 browser-safe entry (`@kirby/core/plan`); nothing under it may touch `node:`.
 The reasoning behind each rule is in `docs/decisions.md`.
 
-- **Terminal backend** (`session-backend.ts`): `resolveTerminalBackend` is the
-  single answer. A stored `terminalBackend` wins; an absent key consults the
-  tmux probe on every read and is never persisted. Await
-  `probeTmuxAvailability()` before wiring the factory. A per-project value
-  overrides the global one.
-- **Registry identity** (`session-key.ts`): worktree keys encode repository and
-  exact branch; terminal keys encode the actual tmux target or a lifetime PTY UUID.
-  Labels and checkout directory names never address registry entries.
-- **tmux identity**: names are labels, tags are identity.
-  `session-identity.ts` owns the `@orchestra-*` tag names shared with
-  Orchestra, the label builder (`<repo>-<branch>`, `<repo>-shell`,
-  `<repo>-agent`; `/`, `.`, `:` → `-`, 200-char cap with a hash tail) and
-  the matching rules; `session-resolver.ts` is the one `list-sessions` fork
-  every attach, exists, kill, adopt and listing goes through; and
-  `tmux-factory-options.ts` composes the backend's `resolve`/`label`/`tags`
-  for the repo root, plus the `isTaken` probe it answers for tabs only.
-  A session without `@orchestra-spawner` or
-  `@orchestra-session-type` (or `@orchestra-repo` for a worktree) is foreign: never attached, killed, adopted or
-  listed, whatever it is called. No tmux code may use `projectKey`. `-e HOME`
-  / `-e PATH` plus seed additions per session, because a server keeps its
-  birth env. `dispose()` detaches, `kill()` kills; `killAll()` on exit must
-  dispose. See `docs/decisions.md`, "Session identity shared with Orchestra".
-- **Discovery** (`discovery/`): poll with pure `diffScans`; attach through
-  `spawnSession` so the backend resolves the running session by its tags
-  rather than duplicating it. Polling is deliberate: tmux hooks are
-  server-global and a control client resizes panes. Re-read `isSessionAlive`
-  and `resolveTerminalBackend` per attach iteration. Retired names are passed
-  in as `suppressed`. `observeTmuxSessions` answers the persistence question
-  (a session tagged with the open root and a listed worktree's branch), the
-  orphan question (tagged with the root, on no listed branch, not held here)
-  and the terminal listing (by session type, wherever it runs) in one fork.
-- **Terminal sessions** (`terminal/terminal-name.ts`): a tab has a qualified terminal key containing its
-  actual backend name, allocated from `<repo>-shell`/`<repo>-agent` at spawn;
-  `launchTerminalSession` declares the kind as the session-type tag, which
-  is how the factory tells a tab from a worktree session. An empty `cmd`
-  means the backend's default shell. Agents go through
-  `launchTerminalSession` → `launchSession`, never a second launch path.
-  `discovery/live-worktree-sessions.ts` lists tagged `worktree` sessions
-  whose directory's HEAD is still on the tagged branch; there is no git
-  fallback and no origin cache.
+- **Tmux requirement** (`session-backend.ts`): await `probeTmuxAvailability()`
+  before startup validation. Require tmux 3.2+. Legacy backend preferences are
+  ignored; no direct-agent PTY fallback exists.
+- **Launch boundary** (`session/open-session.ts`): receive explicit worktree or
+  terminal identity, validate the worktree HEAD, resolve tags, then choose
+  create/attach/restart. Build agent argv only for create or restart. The tmux
+  package receives opaque launch plans; it must not infer Kirby identities.
+- **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
+  branch; terminal keys encode the allocated tmux target. Labels never address
+  entries. The registry owns connections, rendering and activity, not launch
+  policy. `dispose()` detaches; `kill()` terminates; shutdown must dispose.
+- **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
+  labels, `@orchestra-*` tags are identity. Preserve creator/reporting tags on
+  attach and restart. Record the selected agent only when launching a process.
+  Untagged sessions are foreign. Never use config `projectKey` for tmux identity.
+- **Agent restart** (`session/launch-session.ts`): continuation selects the
+  recorded agent and its explicit resume adapter. Fresh launch selects the
+  user's choice or configured default. Missing metadata must not silently
+  redirect a continuation to a different agent.
+- **Discovery** (`discovery/`): poll and use pure `diffScans`; attach through the
+  shared launcher, rechecking connection state between awaits. Retired names
+  are suppressed. Observe worktree processes, orphaned sessions and standalone
+  terminals in one listing. Retained agent panes are not running processes.
+- **Terminal sessions** (`terminal/launch-terminal.ts`): explicit shell/agent
+  requests use the same launcher as worktrees. Allocate the final tmux name
+  before creating the registry key. Agent panes retain final output; shell
+  exits close their tabs. Native pane state controls exit, not client disconnect.
+
 - **Session launch** (`session/`) resolves the worktree via `createWorktree`
   (exact branch match, rejecting a derived path occupied by another branch), reads config from the
   repo root, and never respawns a live session. Force-remove is offered only

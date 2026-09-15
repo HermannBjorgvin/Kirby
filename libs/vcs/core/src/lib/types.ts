@@ -275,11 +275,6 @@ export interface AppConfig {
   worktreePath?: string;
   keybindPreset?: string;
   keybindOverrides?: Record<string, KeyDescriptorConfig[]>;
-  /** Which session backend to use. 'pty' (default) spawns the AI
-   *  command directly under node-pty. 'tmux' wraps the session in a
-   *  tmux session that survives Kirby restarts. Cannot be changed
-   *  while sessions are active. */
-  terminalBackend?: 'pty' | 'tmux';
   /** Recently opened repositories, newest first. Shared naming so any
    *  Kirby shell (TUI, desktop) reads and writes the same list. */
   recentRepos?: RecentRepo[];

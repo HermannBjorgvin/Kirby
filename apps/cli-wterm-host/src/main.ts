@@ -68,13 +68,11 @@ function spawnKirby(req: SpawnRequest): void {
   // CI=true). Strip them for the spawned PTY so Kirby paints normally.
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
-    HOME: req.homeDir,
     TERM: 'xterm-256color',
     ...req.env,
+    HOME: req.homeDir,
     // A tmux server keeps the environment it was started with, and an
-    // unconfigured Kirby resolves to the tmux backend wherever tmux is
-    // installed — so every spawn needs a socket of its own, not just
-    // the ones a caller remembered to ask for. Inside the spawn's own
+    // every Kirby spawn uses tmux, so it needs a socket inside its own
     // HOME, which its owner deletes on teardown.
     //
     // Last, and not negotiable: the host also auto-spawns a dev-default

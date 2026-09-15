@@ -81,7 +81,7 @@ function listed(
   options: Record<string, string> | undefined,
   extra: Partial<TmuxSessionInfo> = {}
 ): TmuxSessionInfo {
-  return { name, created: 10, path: '/p', options, ...extra };
+  return { name, created: 10, path: '/p', paneDead: false, options, ...extra };
 }
 
 const OURS = {
@@ -96,6 +96,7 @@ describe('taggedSession', () => {
     expect(taggedSession(listed('anything-at-all', OURS))).toEqual({
       name: 'anything-at-all',
       created: 10,
+      paneDead: false,
       path: '/p',
       spawner: 'kirby',
       repo: '/repos/alpha',

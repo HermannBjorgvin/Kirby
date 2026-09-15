@@ -7,8 +7,7 @@ you are testing the previous bundle. Full notes: `docs/testing.md`.
 - Fixture `src/fixtures/desktop.ts`: per-test repo (optionally seeded with
   branches, worktrees, mid-rebase / detached-HEAD / deleted-directory states),
   its own `~/.kirby`, a scriptable fake agent for `aiCommand`, and **any
-  renderer throw fails the test**. It writes `terminalBackend: 'pty'` (pass
-  `terminalBackend: undefined` for the unconfigured state), drops
+  renderer throw fails the test**. It isolates tmux in its scratch HOME and reaps each session on teardown, drops
   `KIRBY_VITE_URL` and `WAYLAND_DISPLAY`, and pins `--ozone-platform=x11`.
 - Seeded branches must be slash-free: `git-repo.ts` seeds
   `.claude/worktrees/<branch>` verbatim while the app sanitizes the name.
