@@ -54,9 +54,10 @@ libs/core/                       — Shell-agnostic core. No React, Ink or Elect
   src/lib/agents/                — Agent registry
   src/lib/activity.ts            — Agent activity registry; pty-registry.ts — PTY session lifecycle
   src/lib/session-backend.ts     — Terminal backend factory wiring (PTY/tmux)
-  src/lib/session-provenance.ts  — Tags tmux worktree sessions with their provenance (`@orchestra-*`)
-  src/lib/tmux-namespace.ts      — The `kirby-` prefix and the `@orchestra-*` tag names shared with Orchestra
-  src/lib/discovery/             — Session discovery: scan/diff, live worktree sessions, worktree origin (git or HEAD file)
+  src/lib/session-identity.ts    — `@orchestra-*` tag names, session labels and matching rules shared with Orchestra
+  src/lib/session-resolver.ts    — The one `list-sessions` fork every tmux lookup goes through
+  src/lib/tmux-factory-options.ts — Kirby's resolve/label/tags answers for the tmux backend factory
+  src/lib/discovery/             — Session discovery: scan/diff, live worktree sessions, worktree HEAD reader
   src/lib/keybindings/           — Customizable keybinding system
     registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
     resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
