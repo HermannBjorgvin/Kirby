@@ -460,18 +460,41 @@ describe('terminal tabs reach tmux by their own name', () => {
     ]);
     expect(hasLiveTmuxSessionNamed('notes-shell')).toBe(true);
     expect(hasLiveTmuxSessionNamed('notes-shell-2')).toBe(false);
-    // A registry key also reaches a terminal tab by its exact name.
-    expect(hasLiveTmuxSession('notes-shell')).toBe(true);
+    // A registry *key* never reaches a terminal tab: keys are branches.
+    expect(hasLiveTmuxSession('notes-shell')).toBe(false);
   });
 
-  it('kill-session is aimed at the terminal name once its tags are verified', () => {
+  // A branch may be named exactly like a terminal label: branch
+  // `app-agent` in repository `/w/app` has key `app-agent`, which is
+  // also the user's agent tab. Removing that branch's worktree asks the
+  // key path about `app-agent`; nothing is on that branch, and the tab
+  // must not answer for it — and must not be killed in its place.
+  it('never kills an agent tab whose name equals a branch key', () => {
+    resetRepoRoot();
+    execFileSyncMock.mockReturnValue('/w/app\n');
+    tmuxListSessionsMock.mockReturnValue([
+      ours('app-agent', 'agent', '/w/app', null, '/w/app'),
+    ]);
+    expect(hasLiveTmuxSession('app-agent')).toBe(false);
+    killPersistedTmuxSession('app-agent');
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
+    // The tab itself is still reachable by name.
+    expect(hasLiveTmuxSessionNamed('app-agent')).toBe(true);
+  });
+
+  // A tab is closed through its own registry entry, whose backend
+  // holds the name tmux created. The key path reaches neither it nor a
+  // stranger of that name, so nothing here is killed by either route.
+  it('a registry key kills neither a terminal tab nor a foreign session of that name', () => {
     tmuxListSessionsMock.mockReturnValue([
       ours('repo-shell', 'shell', '/repo', null, '/repo'),
       foreign('repo-shell-2'),
     ]);
     killPersistedTmuxSession('repo-shell');
     killPersistedTmuxSession('repo-shell-2');
-    expect(tmuxKillSessionMock.mock.calls).toEqual([['repo-shell']]);
+    expect(tmuxKillSessionMock).not.toHaveBeenCalled();
+    expect(hasLiveTmuxSessionNamed('repo-shell')).toBe(true);
+    expect(hasLiveTmuxSessionNamed('repo-shell-2')).toBe(false);
   });
 });
 

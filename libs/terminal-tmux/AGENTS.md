@@ -21,8 +21,11 @@ parses a session name.
   on) is created detached, `tags(spec)` are written as session user options,
   and only then does the client attach. There is no `new-session -A` and no
   post-hoc retry: everything is on the session before a client can see it.
-  `status off` is set on every attach; tags never are. `isTaken` folds names
-  the caller holds itself into the free-name probe.
+  `status off` is set on every attach; tags never are. `isTaken(name, spec)`
+  folds names the caller holds itself into the free-name probe; it is asked
+  per spec because what a held name means depends on the kind of session
+  being created (Kirby answers for terminal tabs only, whose registry key is
+  their tmux name).
 - `-e HOME` / `-e PATH` per session needs tmux ≥ 3.2; a server keeps the env
   it was started with, and a stale server on the default socket otherwise
   kills every agent at launch. `attach-session -f ignore-size` also needs 3.2,

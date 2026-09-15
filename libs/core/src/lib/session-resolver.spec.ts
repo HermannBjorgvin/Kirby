@@ -193,15 +193,16 @@ describe.skipIf(SKIP)('session resolver', () => {
     expect(resolveRegistrySession(REPO, 'feat-c')).toBeNull();
   });
 
-  // A registry key is a branch (rewritten) or a terminal tab's name;
-  // a worktree session's own name is never a key, so the fallback
-  // reaches terminal tabs only — otherwise repository `feature` with an
-  // agent on branch `x`, labelled `feature-x`, would answer for the
-  // branch `feature/x` and be killed in its place.
-  it('resolves a registry key to a terminal tab of that name, never to a worktree session', () => {
+  // A registry key handed here is a branch (rewritten), and a session's
+  // own name is never one: repository `feature` with an agent on branch
+  // `x`, labelled `feature-x`, must not answer for the branch
+  // `feature/x`; and an agent tab named like a branch (`app-agent`) must
+  // not answer for that branch either. Terminal tabs are reached by
+  // `resolveSessionByName`, never through a key.
+  it('resolves a registry key by branch only, never to any session by name', () => {
     startSession(name('term'), tags('agent', REPO));
     startSession(name('feature-x'), tags('worktree', REPO, 'x'));
-    expect(resolveRegistrySession(REPO, name('term'))?.type).toBe('agent');
+    expect(resolveRegistrySession(REPO, name('term'))).toBeNull();
     expect(resolveRegistrySession(REPO, name('feature-x'))).toBeNull();
     expect(resolveRegistrySession(REPO, 'x')?.name).toBe(name('feature-x'));
   });

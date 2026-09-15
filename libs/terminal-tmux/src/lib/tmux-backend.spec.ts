@@ -204,8 +204,12 @@ describe('createTmuxBackendFactory', () => {
     // The caller may hold names the server no longer does (a registry
     // entry outliving its session); those are skipped like server-held
     // ones, so the caller's key and the created name agree.
-    it('skips candidates the caller reports as taken', () => {
-      const backend = factory({ isTaken: (n) => n === 'feature-foo' })(spec());
+    it('skips candidates the caller reports as taken for this spec', () => {
+      const isTaken = vi.fn(
+        (n: string, s: SessionSpec) => n === 'feature-foo' && s.name === 'feature-foo'
+      );
+      const backend = factory({ isTaken })(spec());
+      expect(isTaken).toHaveBeenCalledWith('feature-foo', expect.objectContaining({ name: 'feature-foo' }));
       expect(calls.filter((c) => c.startsWith('new-session'))).toEqual([
         'new-session feature-foo-2 -c /tmp/work -x 100 -y 30 -- /bin/sh -c claude',
       ]);

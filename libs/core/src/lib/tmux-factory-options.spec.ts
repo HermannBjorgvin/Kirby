@@ -81,14 +81,19 @@ describe('kirbyTmuxFactoryOptions', () => {
   // The registry's idea of "taken" travels to the backend, so the name
   // core keys a tab by and the name the backend creates are decided
   // against the same set of held names.
-  it('reports names this process holds as taken', () => {
-    const held = new Set(['repo-shell']);
+  it('reports names this process holds as taken, for terminal tabs only', () => {
+    const held = new Set(['repo-shell', 'repo-feature-x']);
     const opts = kirbyTmuxFactoryOptions('/repo', {
       readHead: onBranch,
       hasSession: (name) => held.has(name),
     });
-    expect(opts.isTaken?.('repo-shell')).toBe(true);
-    expect(opts.isTaken?.('repo-shell-2')).toBe(false);
+    const tab = terminal('shell', 'repo-shell');
+    expect(opts.isTaken?.('repo-shell', tab)).toBe(true);
+    expect(opts.isTaken?.('repo-shell-2', tab)).toBe(false);
+    // A worktree label equal to some registry key (a branch called
+    // `repo-feature-x`) is not a collision: worktree sessions are keyed
+    // by branch, not by name, so the label is free to use.
+    expect(opts.isTaken?.('repo-feature-x', spec())).toBe(false);
   });
 
   describe('a worktree session', () => {

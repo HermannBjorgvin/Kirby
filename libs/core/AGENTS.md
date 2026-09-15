@@ -18,7 +18,8 @@ The reasoning behind each rule is in `docs/decisions.md`.
   the matching rules; `session-resolver.ts` is the one `list-sessions` fork
   every attach, exists, kill, adopt and listing goes through; and
   `tmux-factory-options.ts` composes the backend's `resolve`/`label`/`tags`
-  for the repo root. A session with no `@orchestra-spawner` and
+  for the repo root, plus the `isTaken` probe it answers for tabs only.
+  A session with no `@orchestra-spawner` and
   `@orchestra-session-type` is foreign: never attached, killed, adopted or
   listed, whatever it is called. No tmux code may use `projectKey`. `-e HOME`
   / `-e PATH` plus seed additions per session, because a server keeps its

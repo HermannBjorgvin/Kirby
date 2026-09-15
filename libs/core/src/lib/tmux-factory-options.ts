@@ -39,7 +39,10 @@ import {
  * backend's to append again, after the cap, from its own probe of the
  * same server — so a suffixed name is never capped a second time. The
  * registry's own held names travel along as `isTaken`, so both probes
- * skip the same names and the key and the created name agree.
+ * skip the same names and the key and the created name agree. That
+ * applies to tabs only: a worktree session is keyed by its branch, so
+ * a registry key equal to some worktree label says nothing about the
+ * label being free.
  */
 export function kirbyTmuxFactoryOptions(
   repoRoot: string,
@@ -75,7 +78,8 @@ export function kirbyTmuxFactoryOptions(
         : terminalSessionLabel(repoRoot, id.type);
     },
     tags: (spec) => sessionTags(repoRoot, identity(spec)),
-    isTaken: (name) => held(name),
+    isTaken: (name, spec) =>
+      identity(spec).type !== 'worktree' && held(name),
   };
 }
 

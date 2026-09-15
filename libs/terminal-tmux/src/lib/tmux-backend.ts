@@ -90,8 +90,10 @@ export interface TmuxFactoryOptions {
   /** Optional. Names the caller holds itself and wants skipped when a
    *  label is probed for a free candidate — on top of what the server
    *  holds — so the caller's own choice of name and the one created
-   *  here are decided against the same set. */
-  isTaken?: (name: string) => boolean;
+   *  here are decided against the same set. Asked per spec, because
+   *  what the caller holds a name for may depend on the kind of
+   *  session it is about to create. */
+  isTaken?: (name: string, spec: SessionSpec) => boolean;
 }
 
 /** Build a SessionBackendFactory over the caller's identity rules.
@@ -219,7 +221,7 @@ function createTagged(spec: SessionSpec, opts: TmuxFactoryOptions): string {
 function createDetached(
   label: string,
   spec: SessionSpec,
-  isTaken: (name: string) => boolean = () => false
+  isTaken: (name: string, spec: SessionSpec) => boolean = () => false
 ): string {
   const request = {
     cwd: spec.cwd,
@@ -231,7 +233,7 @@ function createDetached(
   let attempts = 0;
   for (const candidate of sessionNameCandidates(label)) {
     if ((attempts += 1) > MAX_CREATE_ATTEMPTS) break;
-    if (isTaken(candidate) || tmuxHasSession(candidate)) continue;
+    if (isTaken(candidate, spec) || tmuxHasSession(candidate)) continue;
     const result = tmuxNewSessionDetached(candidate, request);
     if (result.exitCode === 0) return candidate;
     if (!isDuplicateSession(result)) {

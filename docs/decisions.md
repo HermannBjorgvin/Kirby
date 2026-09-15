@@ -119,11 +119,14 @@ worktree spec is identified by the branch in its directory's HEAD file (no git
 fork); a terminal spec is told apart by the session-type tag its launcher
 passes through `spawnSession`, and is identified by the name core chose as a
 free label before spawning, which is also its registry key. Two lookups, not
-one: `resolveRegistrySession(repo, key)` answers a registry _key_ — a worktree
-session by (repo, branch), else a terminal tab by exact name, never a worktree
-session by name, because a worktree session's name is not a key and repository
-`feature`'s agent on branch `x` (labelled `feature-x`) must not answer for the
-branch `feature/x`; `resolveSessionByName(name)` answers a tmux _name_ across
+one: `resolveRegistrySession(repo, key)` answers a registry _key_ with a
+worktree session by (repo, branch) and nothing else. A key is a branch with
+`/` rewritten, never a tmux name, and the two namespaces overlap — repository
+`feature`'s agent on branch `x` is labelled `feature-x`, which is the key of
+the branch `feature/x`, and an agent tab is called `<repo>-agent`, which is
+the key of a branch of that name — so answering either by name would have the
+worktree removal kill a session that is on no such branch.
+`resolveSessionByName(name)` answers a tmux _name_ across
 all our tagged sessions, any type, no repository scope, because a name is
 unique on the server and a terminal tab — including an adopted orphan still
 tagged `worktree` and with the repository it came from — is process-global and

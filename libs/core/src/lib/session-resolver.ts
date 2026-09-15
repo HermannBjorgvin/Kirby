@@ -1,6 +1,5 @@
 import { tmuxListSessionsDetailed } from '@kirby/terminal-tmux';
 import {
-  isTerminalSession,
   isWorktreeSessionFor,
   LISTED_TAGS,
   registryNameOf,
@@ -76,31 +75,32 @@ export function resolveSessionByName(
 }
 
 /**
- * The session a PTY-registry key names in this repository: a worktree
- * session whose branch keys to it, else a terminal tab called exactly
- * that. This is how a caller that holds only a registry key — the
- * merged-branch sweep, the worktree removal — reaches the resolver
- * without composing a name. The fallback is terminal tabs only: a
- * worktree session's own name is never a registry key, and matching
- * one by name would let repository `feature`'s agent on branch `x`
- * (labelled `feature-x`) answer for the branch `feature/x`.
+ * The worktree session a PTY-registry key names in this repository:
+ * the one whose branch keys to it. This is how a caller that holds
+ * only a registry key — the merged-branch sweep, the worktree removal
+ * — reaches the resolver without composing a name.
+ *
+ * Nothing is matched by name here. A key is a branch with `/`
+ * rewritten, never a tmux name, and the two namespaces overlap: an
+ * agent tab is called `<repo>-agent`, which is also the key of a
+ * branch named `<repo>-agent`, and repository `feature`'s agent on
+ * branch `x` is labelled `feature-x`, which is the key of the branch
+ * `feature/x`. Answering either by name would have the worktree
+ * removal kill a session that is on no such branch. Callers holding a
+ * tmux name — a terminal tab, whose key *is* its name — use
+ * {@link resolveSessionByName} instead.
  */
 export function resolveRegistrySession(
   repoRoot: string,
   registryName: string,
   sessions: TaggedSession[] = listOurSessions()
 ): TaggedSession | null {
-  const worktree = oldest(
+  return oldest(
     sessions.filter(
       (s) =>
         s.type === 'worktree' &&
         s.repo === repoRoot &&
         registryNameOf(s) === registryName
     )
-  );
-  return (
-    worktree ??
-    sessions.find((s) => isTerminalSession(s) && s.name === registryName) ??
-    null
   );
 }
