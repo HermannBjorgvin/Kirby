@@ -122,13 +122,20 @@ export function orchestraFixture() {
         // session shuts it down. Never kill-server, even on a scratch
         // socket. `list-sessions` throws (execFileSync) when the server
         // is already gone — nothing left to kill, not a fixture failure.
-        for (const name of tmux('list-sessions', '-F', '#{session_name}').split(
-          '\n'
-        )) {
-          tmux('kill-session', '-t', `=${name}:`);
+        // That is the only failure this scopes to: assertIsolated()
+        // (inside every `tmux(...)` call, including this one) must keep
+        // throwing through, or a lost isolation guarantee — $TMUX
+        // reappearing, HOME/TMUX_TMPDIR drifting — would be swallowed
+        // and this fixture's own sessions left running unnoticed.
+        let names: string[] = [];
+        try {
+          names = tmux('list-sessions', '-F', '#{session_name}')
+            .split('\n')
+            .filter(Boolean);
+        } catch (error) {
+          if (!/no server running/.test(String(error))) throw error;
         }
-      } catch {
-        // No server running: already clean.
+        for (const name of names) tmux('kill-session', '-t', `=${name}:`);
       } finally {
         vi.unstubAllEnvs();
         rmSync(home, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { orchestraFixture } from './orchestra-fixture.js';
 
 // close() lists and kills every session on the fixture's scratch tmux
@@ -22,6 +22,18 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
 
       expect(existsSync(fixture.home)).toBe(false);
       expect(process.env.HOME).not.toBe(fixture.home);
+    });
+
+    // Every tmux(...) call runs assertIsolated() first, which throws if
+    // $TMUX reappeared — a sign the fixture is no longer safely isolated
+    // from the developer's own server. close() must surface that rather
+    // than swallow it as if cleanup had succeeded; the fixture's own
+    // `sleep 300` anchor session would otherwise be silently left behind.
+    it('does not swallow a lost isolation guarantee', () => {
+      const fixture = orchestraFixture();
+      vi.stubEnv('TMUX', '/tmp/not-the-scratch-socket,1,0');
+
+      expect(() => fixture.close()).toThrow('Unsafe tmux fixture environment');
     });
   }
 );
