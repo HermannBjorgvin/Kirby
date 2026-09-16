@@ -276,13 +276,18 @@ export function orderDraftsForReview(
   drafts: readonly ReviewComment[],
   fileOrder: ReadonlyMap<string, number>
 ): ReviewComment[] {
+  // A whole-PR draft comes before every file at its severity, as the
+  // conversation sits above the diff; a whole-file draft leads its
+  // file's line drafts.
+  const rank = (d: ReviewComment) =>
+    d.file == null ? -1 : fileOrder.get(d.file) ?? Number.MAX_SAFE_INTEGER;
   return [...drafts].sort((a, b) => {
     const s = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
     if (s !== 0) return s;
-    const fa = fileOrder.get(a.file) ?? Number.MAX_SAFE_INTEGER;
-    const fb = fileOrder.get(b.file) ?? Number.MAX_SAFE_INTEGER;
+    const fa = rank(a);
+    const fb = rank(b);
     if (fa !== fb) return fa - fb;
-    return a.lineStart - b.lineStart;
+    return (a.lineStart ?? 0) - (b.lineStart ?? 0);
   });
 }
 

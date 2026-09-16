@@ -45,6 +45,7 @@ export function DiffPane({
   threadsByFile,
   draftsByFile,
   generalThreads,
+  generalDrafts,
   commentsLoading,
   diffLoading,
   diffError,
@@ -64,6 +65,7 @@ export function DiffPane({
   threadsByFile: Map<string, RemoteCommentThread[]>;
   draftsByFile: Map<string, ReviewComment[]>;
   generalThreads: RemoteCommentThread[];
+  generalDrafts: ReviewComment[];
   commentsLoading: boolean;
   diffLoading: boolean;
   diffError: string | null;
@@ -126,6 +128,7 @@ export function DiffPane({
             threadsByFile={threadsByFile}
             draftsByFile={draftsByFile}
             generalThreads={generalThreads}
+            generalDrafts={generalDrafts}
             commentsLoading={commentsLoading}
             prId={prId}
             headSha={headSha}

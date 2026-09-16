@@ -72,13 +72,24 @@ export function unpostedDrafts(
   return drafts.filter((d) => d.status !== 'posted');
 }
 
+/** Drafts keyed by file; whole-PR (file-less) drafts drop out. */
 export function groupDraftsByFile(
   drafts: readonly ReviewComment[]
 ): Map<string, ReviewComment[]> {
   const map = new Map<string, ReviewComment[]>();
-  for (const d of drafts)
+  for (const d of drafts) {
+    if (d.file == null) continue;
     (map.get(d.file) ?? map.set(d.file, []).get(d.file)!).push(d);
+  }
   return map;
+}
+
+/** The drafts about the pull request itself, listed with the
+ *  conversation rather than under a file. */
+export function generalDrafts(
+  drafts: readonly ReviewComment[]
+): ReviewComment[] {
+  return drafts.filter((d) => d.file == null);
 }
 
 /** Inline threads keyed by file; general (file-less) threads drop out. */
@@ -224,18 +235,30 @@ function inlineRow(
   };
 }
 
+/** The rail's one-word location, in the inline rows' own format: the
+ *  basename and the first line, the basename alone for a whole-file
+ *  draft, the conversation for a whole-PR one. */
+function draftWhere(d: ReviewComment): string {
+  if (d.file == null) return 'Conversation';
+  const name = d.file.split('/').pop() ?? d.file;
+  return d.lineStart == null ? name : `${name}:${d.lineStart}`;
+}
+
+/** A draft row: on a line, on a file, or — file-less — ahead of every
+ *  inline row with the general threads. */
 function draftRow(d: ReviewComment, order: Map<string, number>): CommentRow {
   return {
     id: d.id,
     kind: 'draft',
     author: 'Draft',
-    where: `${d.file.split('/').pop()}:${d.lineStart}`,
+    where: draftWhere(d),
     preview: commentPreview(d.body),
     resolved: false,
     severity: d.severity,
     file: d.file,
-    line: d.lineStart,
-    fileRank: order.get(d.file) ?? Number.MAX_SAFE_INTEGER,
+    line: d.lineStart ?? 0,
+    fileRank:
+      d.file == null ? -1 : order.get(d.file) ?? Number.MAX_SAFE_INTEGER,
   };
 }
 

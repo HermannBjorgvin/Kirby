@@ -1,12 +1,15 @@
 import type { DiffLine } from '@n10/diff';
 import type { PullRequestInfo } from '@n10/vcs-core';
-import type { ReactNode, Ref, RefObject } from 'react';
+import { useMemo, type ReactNode, type Ref, type RefObject } from 'react';
 import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
 import type { PlanItem } from '@n10/core/plan';
-import { type Mode } from '../../lib/review/review-model.js';
+import {
+  generalDrafts as pickGeneralDrafts,
+  type Mode,
+} from '../../lib/review/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
 import { DiffPane } from './diff/DiffPane.js';
@@ -120,6 +123,7 @@ export function ContentPane({
   const generalThreads = hideResolved
     ? general.filter((t) => !t.isResolved)
     : general;
+  const generalDrafts = useMemo(() => pickGeneralDrafts(drafts), [drafts]);
   return (
     <div data-terminal-pane className="relative h-full min-h-0">
       {sessionName && (
@@ -178,6 +182,7 @@ export function ContentPane({
           threadsByFile={threadsByFile}
           draftsByFile={draftsByFile}
           generalThreads={generalThreads}
+          generalDrafts={generalDrafts}
           commentsLoading={commentsLoading}
           diffLoading={diffPending}
           diffError={diffError ? String(diffError.message) : null}

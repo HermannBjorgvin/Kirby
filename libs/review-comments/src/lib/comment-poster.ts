@@ -6,6 +6,7 @@ import {
   withAgentFooter,
 } from './conventional.js';
 import { updateComment } from './comment-store.js';
+import { commentAnchor } from './comment-anchor.js';
 
 /**
  * What a failed `gh` call gets reported as.
@@ -115,36 +116,103 @@ export async function postReviewComments(
   }
 }
 
+type ReviewEvent = 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES';
+
+/** The body of a review that exists only to carry line comments or a
+ *  verdict; the comments say the rest. */
+const REVIEW_BODY = 'Review comments from an agent.';
+
+function ghPost(path: string, payload: unknown): Promise<string> {
+  return execWithStdin(
+    'gh',
+    ['api', path, '--input', '-'],
+    JSON.stringify(payload)
+  );
+}
+
+function lineCommentPayload(c: ReviewComment) {
+  return {
+    path: c.file,
+    line: c.lineEnd,
+    ...(c.lineStart !== c.lineEnd ? { start_line: c.lineStart } : {}),
+    side: c.side,
+    body: renderCommentBody(c),
+  };
+}
+
+/**
+ * GitHub takes the three anchors through two endpoints. Line comments
+ * ride one review together; a whole-PR remark is a review of its own
+ * whose body is the comment; a whole-file remark goes through the
+ * single-comment endpoint, the only one that accepts `subject_type`.
+ *
+ * A verdict (approve / request changes) is filed on exactly one review
+ * — repeating it would approve the pull request N times — and when
+ * nothing else filed a review to carry it, a bare one does.
+ */
 async function postGitHub(
   comments: ReviewComment[],
   ctx: PostContext,
-  event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES'
+  event: ReviewEvent
 ): Promise<void> {
   if (!ctx.headSha) {
     throw new Error('headSha is required for GitHub reviews');
   }
-  const owner = ctx.vendorProject.owner;
-  const repo = ctx.vendorProject.repo;
-
-  const reviewBody = {
-    commit_id: ctx.headSha,
-    body: 'Review comments from an agent.',
-    event,
-    comments: comments.map((c) => ({
-      path: c.file,
-      line: c.lineEnd,
-      ...(c.lineStart !== c.lineEnd ? { start_line: c.lineStart } : {}),
-      side: c.side,
-      body: renderCommentBody(c),
-    })),
+  const { owner, repo } = ctx.vendorProject;
+  const pulls = `repos/${owner}/${repo}/pulls/${ctx.prId}`;
+  const commit_id = ctx.headSha;
+  let verdict: ReviewEvent = event;
+  const takeVerdict = (): ReviewEvent => {
+    const e = verdict;
+    verdict = 'COMMENT';
+    return e;
   };
 
-  const jsonInput = JSON.stringify(reviewBody);
-  await execWithStdin(
-    'gh',
-    ['api', `repos/${owner}/${repo}/pulls/${ctx.prId}/reviews`, '--input', '-'],
-    jsonInput
-  );
+  for (const c of comments.filter((x) => commentAnchor(x) === 'pr')) {
+    await ghPost(`${pulls}/reviews`, {
+      commit_id,
+      body: renderCommentBody(c),
+      event: takeVerdict(),
+    });
+  }
+  const lines = comments.filter((x) => commentAnchor(x) === 'line');
+  if (lines.length > 0) {
+    await ghPost(`${pulls}/reviews`, {
+      commit_id,
+      body: REVIEW_BODY,
+      event: takeVerdict(),
+      comments: lines.map(lineCommentPayload),
+    });
+  }
+  for (const c of comments.filter((x) => commentAnchor(x) === 'file')) {
+    await ghPost(`${pulls}/comments`, {
+      commit_id,
+      path: c.file,
+      subject_type: 'file',
+      body: renderCommentBody(c),
+    });
+  }
+  if (verdict !== 'COMMENT') {
+    await ghPost(`${pulls}/reviews`, {
+      commit_id,
+      body: REVIEW_BODY,
+      event: takeVerdict(),
+    });
+  }
+}
+
+function azureThreadContext(comment: ReviewComment) {
+  const anchor = commentAnchor(comment);
+  if (anchor === 'pr') return {};
+  const filePath = `/${comment.file}`;
+  if (anchor === 'file') return { threadContext: { filePath } };
+  return {
+    threadContext: {
+      filePath,
+      rightFileStart: { line: comment.lineStart, offset: 1 },
+      rightFileEnd: { line: comment.lineEnd, offset: 1 },
+    },
+  };
 }
 
 async function postAzureDevOps(
@@ -165,17 +233,9 @@ async function postAzureDevOps(
           commentType: 1,
         },
       ],
-      threadContext: {
-        filePath: `/${comment.file}`,
-        rightFileStart: {
-          line: comment.lineStart,
-          offset: 1,
-        },
-        rightFileEnd: {
-          line: comment.lineEnd,
-          offset: 1,
-        },
-      },
+      // A thread with no context is a comment on the pull request;
+      // one with only a path is a comment on that file.
+      ...azureThreadContext(comment),
       status: 1, // active
     };
 

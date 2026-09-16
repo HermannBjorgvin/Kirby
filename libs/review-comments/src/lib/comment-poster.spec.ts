@@ -257,6 +257,75 @@ describe('posting to GitHub', () => {
     expect(c).toMatchObject({ start_line: 4, line: 9 });
   });
 
+  /** A remark about the pull request as a whole has no line to sit
+   *  on: it is filed as a review whose body is the comment. */
+  it('files a whole-PR draft as a review whose body is the comment', async () => {
+    await postReviewComments(
+      [comment({ file: null, lineStart: null, lineEnd: null })],
+      github
+    );
+    expect(env.ghInputs).toHaveLength(1);
+    expect(env.ghInputs[0].args).toContain(
+      'repos/acme/widgets/pulls/7/reviews'
+    );
+    const body = env.ghInputs[0].body as { body: string; comments?: unknown };
+    expect(body.body).toContain('issue (non-blocking): This leaks a handle.');
+    expect(body.comments).toBeUndefined();
+  });
+
+  /** The reviews endpoint has no file-level shape; the single-comment
+   *  endpoint's `subject_type` is the only way to say "this file". */
+  it('files a whole-file draft through the single-comment endpoint', async () => {
+    await postReviewComments(
+      [comment({ lineStart: null, lineEnd: null })],
+      github
+    );
+    expect(env.ghInputs).toHaveLength(1);
+    expect(env.ghInputs[0].args).toContain(
+      'repos/acme/widgets/pulls/7/comments'
+    );
+    expect(env.ghInputs[0].body).toMatchObject({
+      commit_id: 'abc123',
+      path: 'src/a.ts',
+      subject_type: 'file',
+    });
+    const body = env.ghInputs[0].body as Record<string, unknown>;
+    expect('line' in body).toBe(false);
+  });
+
+  /** One verdict per batch, whatever mix of anchors carries it: a
+   *  second review with APPROVE would approve the pull request twice. */
+  it('puts the verdict on exactly one review across mixed anchors', async () => {
+    await postReviewComments(
+      [
+        comment({ id: 'pr', file: null, lineStart: null, lineEnd: null }),
+        comment({ id: 'line' }),
+        comment({ id: 'file', lineStart: null, lineEnd: null }),
+      ],
+      github,
+      'APPROVE'
+    );
+    const events = env.ghInputs.map(
+      (i) => (i.body as { event?: string }).event
+    );
+    expect(events).toEqual(['APPROVE', 'COMMENT', undefined]);
+  });
+
+  /** A batch of only whole-file drafts files no review of its own, so
+   *  the verdict needs a bare one to ride on. */
+  it('files a bare review for a verdict nothing else carried', async () => {
+    await postReviewComments(
+      [comment({ lineStart: null, lineEnd: null })],
+      github,
+      'REQUEST_CHANGES'
+    );
+    expect(env.ghInputs).toHaveLength(2);
+    expect(env.ghInputs[1].args).toContain(
+      'repos/acme/widgets/pulls/7/reviews'
+    );
+    expect(env.ghInputs[1].body).toMatchObject({ event: 'REQUEST_CHANGES' });
+  });
+
   it('carries the head commit and the review verdict', async () => {
     await postReviewComments([comment()], github, 'REQUEST_CHANGES');
     expect(env.ghInputs[0].body).toMatchObject({
@@ -312,6 +381,31 @@ describe('posting to Azure DevOps', () => {
     expect(body.threadContext.rightFileEnd.line).toBe(5);
     expect(body.comments[0].content).toContain('issue (non-blocking):');
     expect(body.comments[0].content).toContain('by an agent_');
+  });
+
+  it('opens a whole-file thread with a path and no lines', async () => {
+    await postReviewComments(
+      [comment({ lineStart: null, lineEnd: null })],
+      azure
+    );
+    const body = JSON.parse(String(env.fetches[0].init.body)) as {
+      threadContext: Record<string, unknown>;
+    };
+    expect(body.threadContext).toEqual({ filePath: '/src/a.ts' });
+  });
+
+  /** Azure reads a thread with no context as a comment on the pull
+   *  request itself. */
+  it('opens a whole-PR thread with no thread context', async () => {
+    await postReviewComments(
+      [comment({ file: null, lineStart: null, lineEnd: null })],
+      azure
+    );
+    const body = JSON.parse(String(env.fetches[0].init.body)) as Record<
+      string,
+      unknown
+    >;
+    expect('threadContext' in body).toBe(false);
   });
 
   it('sends the PAT as basic auth', async () => {

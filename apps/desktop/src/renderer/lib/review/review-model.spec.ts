@@ -8,6 +8,7 @@ import {
   buildCommentRows,
   buildFileEntries,
   diffIsPending,
+  generalDrafts,
   groupDraftsByFile,
   groupThreadsByFile,
   navIndexOf,
@@ -222,6 +223,17 @@ describe('groupDraftsByFile', () => {
     ]);
     expect(map.get('a')!.map((d) => d.id)).toEqual(['1', '3']);
     expect(map.get('b')!.map((d) => d.id)).toEqual(['2']);
+  });
+
+  /** A whole-PR draft has no file to sit under; it belongs to the
+   *  conversation, which `generalDrafts` hands out. */
+  it('leaves file-less drafts to generalDrafts', () => {
+    const drafts = [
+      draft({ id: 'pr', file: null, lineStart: null, lineEnd: null }),
+      draft({ id: 'f', file: 'a', lineStart: null, lineEnd: null }),
+    ];
+    expect([...groupDraftsByFile(drafts).keys()]).toEqual(['a']);
+    expect(generalDrafts(drafts).map((d) => d.id)).toEqual(['pr']);
   });
 });
 
@@ -523,6 +535,28 @@ describe('buildCommentRows row contents', () => {
       severity: 'critical',
       resolved: false,
     });
+  });
+
+  /** The rail's location follows the anchor: the basename alone for a
+   *  whole-file draft, the conversation for a whole-PR one — which
+   *  also sorts ahead of every inline row, as general threads do. */
+  it('locates whole-file and whole-PR drafts by what they anchor to', () => {
+    const rows = buildCommentRows(
+      files('src/a.ts'),
+      [],
+      [],
+      [
+        draft({ id: 'line', lineStart: 3, lineEnd: 3 }),
+        draft({ id: 'file', lineStart: null, lineEnd: null }),
+        draft({ id: 'pr', file: null, lineStart: null, lineEnd: null }),
+      ]
+    );
+    expect(rows.map((r) => [r.id, r.where])).toEqual([
+      ['pr', 'Conversation'],
+      ['file', 'a.ts'],
+      ['line', 'a.ts:3'],
+    ]);
+    expect(rows[0].file).toBeNull();
   });
 
   it('reports a thread’s resolved state', () => {

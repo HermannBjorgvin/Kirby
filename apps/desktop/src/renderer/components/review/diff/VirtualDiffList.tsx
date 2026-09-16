@@ -51,6 +51,7 @@ export function VirtualDiffList({
   threadsByFile,
   draftsByFile,
   generalThreads,
+  generalDrafts,
   commentsLoading,
   prId,
   headSha,
@@ -62,6 +63,7 @@ export function VirtualDiffList({
   threadsByFile: Map<string, RemoteCommentThread[]>;
   draftsByFile: Map<string, ReviewComment[]>;
   generalThreads: RemoteCommentThread[];
+  generalDrafts: ReviewComment[];
   commentsLoading: boolean;
   prId: number;
   headSha?: string;
@@ -82,8 +84,12 @@ export function VirtualDiffList({
       buildFlatDiff(files, {
         view: options.view,
         hideResolved: options.hideResolved,
-        hasConversation: generalThreads.length > 0 || commentsLoading,
+        hasConversation:
+          generalThreads.length > 0 ||
+          generalDrafts.length > 0 ||
+          commentsLoading,
         generalThreads,
+        generalDrafts,
         threadsByFile,
         draftsByFile,
         fileState,
@@ -93,6 +99,7 @@ export function VirtualDiffList({
       options.view,
       options.hideResolved,
       generalThreads,
+      generalDrafts,
       commentsLoading,
       threadsByFile,
       draftsByFile,
@@ -180,8 +187,10 @@ export function VirtualDiffList({
         return (
           <ConversationPanel
             threads={generalThreads}
+            drafts={generalDrafts}
             loading={commentsLoading}
             prId={prId}
+            headSha={headSha}
             focusThreadId={focusThreadId}
           />
         );

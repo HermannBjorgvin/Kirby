@@ -12,6 +12,12 @@ export {
   removeComment,
 } from './lib/comment-store.js';
 export {
+  commentAnchor,
+  describeAnchor,
+  type AnchorFields,
+  type CommentAnchor,
+} from './lib/comment-anchor.js';
+export {
   postReviewComments,
   renderCommentBody,
   type PostContext,

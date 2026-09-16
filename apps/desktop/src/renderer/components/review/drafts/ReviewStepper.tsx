@@ -76,12 +76,18 @@ export function ReviewStepper({
       pos={clamped + 1}
       total={ordered.length}
       counts={severityCounts(ordered)}
-      snippet={snippetAround(
-        filesByName.get(current.file) ?? [],
-        current.side,
-        current.lineStart,
-        current.lineEnd
-      )}
+      snippet={
+        current.file != null &&
+        current.lineStart != null &&
+        current.lineEnd != null
+          ? snippetAround(
+              filesByName.get(current.file) ?? [],
+              current.side,
+              current.lineStart,
+              current.lineEnd
+            )
+          : []
+      }
       active={active}
       busy={post.isPending || update.isPending || remove.isPending}
       atStart={clamped === 0}
@@ -89,7 +95,9 @@ export function ReviewStepper({
       onPrev={() => setIndex((i) => Math.max(0, i - 1))}
       onNext={() => setIndex((i) => Math.min(ordered.length - 1, i + 1))}
       onExit={onExit}
-      onOpenInDiff={() => onOpenInDiff(current.file)}
+      onOpenInDiff={
+        current.file != null ? () => onOpenInDiff(current.file!) : undefined
+      }
       onPost={() =>
         post.mutate(
           { prId, ids: [current.id], headSha },

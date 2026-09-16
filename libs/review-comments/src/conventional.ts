@@ -37,4 +37,11 @@ export {
   type ResolvedComment,
 } from './lib/conventional.js';
 
+export {
+  commentAnchor,
+  describeAnchor,
+  type AnchorFields,
+  type CommentAnchor,
+} from './lib/comment-anchor.js';
+
 export type { CommentSeverity } from './lib/types.js';

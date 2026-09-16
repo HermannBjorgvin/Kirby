@@ -19,6 +19,7 @@ import type {
   ReviewComment,
 } from '../../../../host/contract.js';
 import { snapshotLocal } from '@n10/core/plan';
+import { describeAnchor } from '@n10/review-comments/conventional';
 import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
 import {
@@ -234,9 +235,7 @@ export function DraftCard({
       { onError: (e) => toast.error(errorMessage(e)) }
     );
 
-  const location = `${draft.file}:${draft.lineStart}${
-    draft.lineEnd !== draft.lineStart ? `-${draft.lineEnd}` : ''
-  }`;
+  const location = describeAnchor(draft);
 
   return (
     <div
