@@ -46,12 +46,6 @@ describe('settingsEffects', () => {
     ).toContain('reset-provider-cache');
   });
 
-  it('rebuilds the session backend, and nothing else, for the backend switch', () => {
-    expect(settingsEffects(field({ key: 'terminalBackend' }))).toEqual([
-      'apply-session-backend',
-    ]);
-  });
-
   it('restarts the loop when its cadence changes', () => {
     expect(settingsEffects(field({ key: 'mergePollInterval' }))).toEqual([
       'restart-sync-loop',

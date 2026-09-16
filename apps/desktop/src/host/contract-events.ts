@@ -25,6 +25,7 @@ export interface SessionDataEvent {
 }
 
 export interface SessionExitEvent {
+  retained?: boolean;
   name: string;
   code: number;
 }

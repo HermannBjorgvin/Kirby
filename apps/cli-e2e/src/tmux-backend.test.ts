@@ -29,7 +29,6 @@ test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 test.use({
   kirbyConfig: {
-    terminalBackend: 'tmux',
     aiCommand: fakeAgentCommand({
       banner: 'kirby-fake-agent-ready',
       bursts: 'inf',
@@ -159,18 +158,13 @@ test.describe('Tmux backend (e2e)', () => {
     expect(kirbySessionExists(branch, kirby.homeDir)).toBe(true);
   });
 
-  test('Settings reports the active backend as Tmux', async ({ kirby }) => {
+  test('Settings does not offer a terminal backend selector', async ({
+    kirby,
+  }) => {
     await kirby.term.press('s');
     await expect(kirby.term.getByText('Settings').first()).toBeVisible({
       timeout: 10_000,
     });
-    await expect(kirby.term.getByText('Terminal Backend').first()).toBeVisible({
-      timeout: 10_000,
-    });
-    // Rendered from config — proves the config value reached the UI rather
-    // than the panel defaulting to the first preset.
-    await expect(kirby.term.getByText(/\bTmux\b/).first()).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(kirby.term.getByText('Terminal Backend')).toHaveCount(0);
   });
 });

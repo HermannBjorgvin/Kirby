@@ -1,11 +1,24 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
 
 // Mock the launcher + registry so the orchestrator's branching is
 // observable without spawning real processes.
 const hasSession = vi.fn();
+const hasLiveTmuxSession = vi.fn();
+const hasSessionConnection = vi.fn();
+const killPersistedTmuxSession = vi.fn();
+const killSession = vi.fn();
 vi.mock('../pty-registry.js', () => ({
   hasSession: (n: string) => hasSession(n),
+  isSessionAlive: (n: string) => hasSession(n),
+  hasSessionConnection: (n: string) => hasSessionConnection(n),
+  killSession: (name: string) => killSession(name),
+}));
+
+vi.mock('../session-backend.js', () => ({
+  hasLiveTmuxSession: (name: string) => hasLiveTmuxSession(name),
+  killPersistedTmuxSession: (name: string) => killPersistedTmuxSession(name),
 }));
 
 const launchSession = vi.fn();
@@ -42,6 +55,8 @@ function deps(mode: 'inject' | 'new-session', flashStatus = vi.fn()) {
 describe('checkoutPlan', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    hasLiveTmuxSession.mockReturnValue(false);
+    hasSessionConnection.mockImplementation((name: string) => hasSession(name));
     createWorktree.mockResolvedValue('/wt/feature-x');
   });
 
@@ -53,11 +68,47 @@ describe('checkoutPlan', () => {
 
     expect(result).toBe('injected');
     expect(deliverToRunningSession).toHaveBeenCalledWith(
-      'sess-feature/x',
+      worktreeSessionKey('feature/x'),
       expect.stringContaining('Resolve these PR review comments')
     );
     expect(launchSession).not.toHaveBeenCalled();
     expect(createWorktree).not.toHaveBeenCalled();
+  });
+
+  it('attaches a persisted live agent before injecting without starting another process', async () => {
+    hasSession.mockReturnValue(false);
+    hasLiveTmuxSession.mockReturnValue(true);
+    deliverToRunningSession.mockReturnValue(true);
+    await expect(checkoutPlan(deps('inject'))).resolves.toBe('injected');
+    expect(launchSession).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'attach' })
+    );
+    expect(deliverToRunningSession).toHaveBeenCalledOnce();
+    expect(killSession).not.toHaveBeenCalled();
+    expect(killPersistedTmuxSession).not.toHaveBeenCalled();
+  });
+
+  it('refreshes an exited local entry when Orchestra has already restarted its process', async () => {
+    hasSession.mockReturnValue(false);
+    hasSessionConnection.mockReturnValue(true);
+    hasLiveTmuxSession.mockReturnValue(true);
+    deliverToRunningSession.mockReturnValue(true);
+    await expect(checkoutPlan(deps('inject'))).resolves.toBe('injected');
+    expect(launchSession).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'attach' })
+    );
+  });
+
+  it('stops a persisted live agent before starting a requested fresh plan session', async () => {
+    hasSession.mockReturnValue(false);
+    hasLiveTmuxSession.mockReturnValue(true);
+    await expect(checkoutPlan(deps('new-session'))).resolves.toBe('spawned');
+    expect(killPersistedTmuxSession).toHaveBeenCalledWith(
+      worktreeSessionKey('feature/x')
+    );
+    expect(killPersistedTmuxSession.mock.invocationCallOrder[0]).toBeLessThan(
+      launchSession.mock.invocationCallOrder[0]
+    );
   });
 
   it('State A / inject: fails when the session is no longer alive', async () => {
@@ -81,7 +132,7 @@ describe('checkoutPlan', () => {
     expect(createWorktree).toHaveBeenCalledWith('feature/x');
     expect(launchSession).toHaveBeenCalledTimes(1);
     const arg = launchSession.mock.calls[0][0];
-    expect(arg.name).toBe('sess-feature/x');
+    expect(arg.name).toBe(worktreeSessionKey('feature/x'));
     expect(arg.cwd).toBe('/wt/feature-x');
     // Must seed (deliver the plan), never continue.
     expect(arg.request).toEqual({

@@ -32,14 +32,17 @@ const REQUIRE_BANNER =
   'const require = __kirbyCreateRequire(import.meta.url);';
 
 const mainOptions = {
-  entryPoints: [join(appRoot, 'src/main/main.ts')],
+  entryPoints: [
+    join(appRoot, 'src/main/main.ts'),
+    join(appRoot, 'src/main/tmux-session-worker.ts'),
+  ],
   bundle: true,
   platform: 'node',
   format: 'esm',
   target: 'node20',
   external: ['electron', 'node-pty'],
   banner: { js: REQUIRE_BANNER },
-  outfile: join(appRoot, 'dist/main/main.js'),
+  outdir: join(appRoot, 'dist/main'),
 };
 
 const preloadOptions = {

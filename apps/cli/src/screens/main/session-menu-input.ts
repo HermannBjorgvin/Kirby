@@ -72,18 +72,17 @@ async function launchSelectedAgent(
   }
   const options = buildAgentOptions(ctx.config.config);
   const wanted = ctx.pane.sessionMenu?.agentIndex ?? 0;
-  const idx = Math.min(Math.max(wanted, 0), options.length - 1);
-  // Resume a prior conversation in this worktree if there is one, else
-  // start blank. The chosen agent decides whether continue is even
-  // possible (only Claude, currently) — everyone else starts blank.
-  launchSession({
+  const idx = Math.min(Math.max(wanted, 0), options.length);
+  // Automatic uses the recorded agent; every named choice starts fresh.
+  await launchSession({
     name: ctx.sessionNameForTerminal!,
     cwd: worktreePath,
     cols: ctx.terminal.paneCols,
     rows: ctx.terminal.paneRows,
     config: ctx.config.config,
-    agent: options[idx]!.agent,
-    request: { intent: 'continue-or-blank' },
+    agent: idx === 0 ? undefined : options[idx - 1]!.agent,
+    request: { intent: idx === 0 ? 'continue-or-blank' : 'blank' },
+    fresh: idx !== 0,
   });
   return true;
 }
@@ -106,7 +105,7 @@ async function launchReview(
     );
     return false;
   }
-  launchSession({
+  await launchSession({
     name: ctx.sessionNameForTerminal!,
     cwd: worktreePath,
     cols: ctx.terminal.paneCols,
@@ -139,7 +138,7 @@ function moveSelection(
 }
 
 function cycleAgent(ctx: SessionMenuHandlerCtx, step: 1 | -1): void {
-  const count = buildAgentOptions(ctx.config.config).length;
+  const count = buildAgentOptions(ctx.config.config).length + 1;
   ctx.pane.setSessionMenu(
     (prev) =>
       prev && {

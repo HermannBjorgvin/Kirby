@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { render, Box, useApp } from 'ink';
-import { readConfig } from '@kirby/vcs-core';
 import type { VcsProvider } from '@kirby/vcs-core';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import { githubProvider } from '@kirby/vcs-github';
@@ -144,19 +143,14 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Resolve the tmux probe before render so applySessionBackend's
-// startup fallback (tmux requested but unavailable → PTY) sees a
-// populated cache. Probe is memoized; ~ms cost on `tmux -V`.
+// Resolve the requirement before rendering so missing tmux is actionable.
 await probeTmuxAvailability();
-
-// Wire the selected terminal backend factory into pty-registry, from
-// the same on-disk config ConfigProvider is about to read (this runs
-// after the optional chdir, so per-project config resolves against the
-// target repo). From here the Settings write path re-applies it on
-// change — see `writeFieldChange` in input-handlers.ts. Doing it there
-// rather than in a render effect keeps the factory swap on the code
-// path that has already checked no session is live.
-applySessionBackend(readConfig());
+try {
+  applySessionBackend();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 
 render(
   <ConfigProvider providers={providers}>

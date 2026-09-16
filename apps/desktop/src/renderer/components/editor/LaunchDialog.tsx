@@ -1,9 +1,17 @@
-import { MessageSquareTextIcon, PlayIcon, SearchCodeIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { PlayIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AgentId, AgentOptionView } from '../../../host/contract.js';
+import type {
+  AgentId,
+  SessionIncarnation,
+  SessionLaunchView,
+} from '../../../host/contract.js';
+import { useAgentOptions } from '../../lib/data/queries.js';
 import { agentIdForLaunch } from '../../lib/agent-pick.js';
-import { cn } from '../../lib/utils.js';
+import { ContinueContext } from './LaunchSessionContext.js';
+import { LaunchAgentPicker } from './LaunchAgentPicker.js';
+import { errorMessage } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
 import {
   Dialog,
@@ -13,157 +21,139 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog.js';
-import { Label } from '../ui/label.js';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select.js';
-import { Textarea } from '../ui/textarea.js';
+import { ReviewInstructions, ReplacementNotice } from './LaunchInstructions.js';
+import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group.js';
 
 export type LaunchChoice =
-  | { kind: 'session'; agentId?: AgentId }
-  | { kind: 'review'; instruction?: string };
+  | {
+      kind: 'session';
+      fresh: boolean;
+      agentId?: AgentId;
+      expected?: SessionIncarnation;
+    }
+  | {
+      kind: 'review';
+      instruction?: string;
+      agentId?: AgentId;
+      expected?: SessionIncarnation;
+    };
+type Mode = 'continue' | 'new' | 'review';
 
-type Mode = 'session' | 'review' | 'instruct';
-
-/** Enter inside the agent picker opens or picks — never submits the dialog. */
-function insidePicker(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest('[role="combobox"], [role="listbox"]') !== null
-  );
-}
-
-/**
- * The TUI's "What would you like to do?" session menu: start or
- * continue a session with an agent chosen for this launch, and — for
- * a row backed by a pull request — review, or review with
- * instructions.
- */
+/** Session choices are based on a native snapshot, also used to guard replacement. */
 export function LaunchDialog({
   pr,
   branch,
+  cwd,
   hasWorktree,
-  agents,
   onChoose,
   onClose,
 }: {
   pr?: PullRequestInfo;
   branch: string;
+  cwd: string;
   hasWorktree: boolean;
-  /** Picker rows, configured default first (`useAgentOptions`). */
-  agents: AgentOptionView[];
   onChoose: (choice: LaunchChoice) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<Mode>('session');
+  const context = useQuery({
+    queryKey: ['session-launch-context', cwd, branch],
+    queryFn: () => window.kirby.getSessionLaunchContext(branch),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const [selected, setSelected] = useState<Mode | null>(null);
   const [instruction, setInstruction] = useState('');
-  // The first row is the configured default: launching without
-  // touching the picker reproduces the configured behaviour, custom
-  // `aiCommand` included, so only a non-default pick carries an id.
-  const [agentIdx, setAgentIdx] = useState(0);
-
-  const trimmed = instruction.trim();
+  const options = useAgentOptions(cwd);
+  const agents = options.data ?? [];
+  const [agentIndex, setAgentIndex] = useState(0);
+  const info = context.data;
+  const canContinue = canContinueSession(info);
+  const mode = selectedMode(selected, canContinue);
+  const replacing = isReplacing(mode, info);
+  const disabled = launchDisabled(
+    info,
+    context.isFetching,
+    context.isError,
+    mode,
+    agents.length
+  );
   const go = () => {
-    if (mode === 'session') {
-      onChoose({
-        kind: 'session',
-        agentId: agentIdForLaunch(agents, agentIdx),
-      });
-    } else if (mode === 'review') onChoose({ kind: 'review' });
-    // Same gate as the footer button: ⌘/Ctrl+Enter on an empty box
-    // would otherwise start a plain review.
-    else if (trimmed) onChoose({ kind: 'review', instruction: trimmed });
+    if (!info || disabled) return;
+    onChoose(
+      launchChoice(
+        mode,
+        info,
+        instruction,
+        agentIdForLaunch(agents, agentIndex)
+      )
+    );
   };
+  const action = actionLabel(mode, info, replacing);
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
-        className="sm:max-w-lg"
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' || insidePicker(e.target)) return;
-          if (mode === 'instruct' && !(e.metaKey || e.ctrlKey)) return;
-          e.preventDefault();
-          go();
-        }}
+        data-launch-dialog
+        className="flex max-h-[calc(100dvh-2rem)] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
       >
-        <DialogHeader>
-          {pr ? <PrTitle pr={pr} /> : <DialogTitle>{branch}</DialogTitle>}
-          <DialogDescription>
-            {pr ? (
-              <>
-                <span className="font-mono">{pr.sourceBranch}</span> →{' '}
-                <span className="font-mono">{pr.targetBranch}</span> by{' '}
-                {pr.createdByDisplayName}
-              </>
-            ) : (
-              'Worktree'
+        <div className="min-h-0 min-w-0 overflow-y-auto">
+          <LaunchHeader pr={pr} branch={branch} hasWorktree={hasWorktree} />
+          <ToggleGroup
+            type="single"
+            value={mode}
+            onValueChange={(value) => value && setSelected(value as Mode)}
+            aria-label="Session action"
+            className="gap-1 border-b px-5 pb-4"
+          >
+            {canContinue && <Action value="continue">Continue</Action>}
+            <Action value="new">New session</Action>
+            {pr && <Action value="review">Review</Action>}
+          </ToggleGroup>
+          <div className="min-w-0 space-y-5 p-5 [overflow-wrap:anywhere]">
+            <LaunchStatus
+              fetching={context.isFetching}
+              error={context.error}
+              agentError={mode === 'continue' ? null : options.error}
+            />
+            {mode !== 'continue' && (
+              <LaunchAgentPicker
+                agents={agents}
+                index={agentIndex}
+                onChange={setAgentIndex}
+              />
             )}
-            {!hasWorktree && ' · a worktree will be created first'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <p className="text-base">What would you like to do?</p>
-        <div className="space-y-2">
-          <LaunchOption
-            mode={mode}
-            setMode={setMode}
-            go={go}
-            value="session"
-            icon={PlayIcon}
-            title="Start / continue session"
-            description="Open the agent in this worktree with no task. Resumes a prior conversation when the agent supports it."
-          />
-          {mode === 'session' && (
-            <AgentPicker
-              agents={agents}
-              index={agentIdx}
-              onChange={setAgentIdx}
-            />
-          )}
-          {pr && (
-            <>
-              <LaunchOption
-                mode={mode}
-                setMode={setMode}
-                go={go}
-                value="review"
-                icon={SearchCodeIcon}
-                title="Start / continue review"
-                description="Ask the agent to review the pull request. Its comments appear as drafts in the diff for you to edit and post."
+            {info && mode === 'continue' && <ContinueContext info={info} />}
+            {mode === 'new' && (
+              <p className="text-muted-foreground">
+                Start a fresh conversation in this worktree.
+              </p>
+            )}
+            {mode === 'review' && (
+              <ReviewInstructions
+                value={instruction}
+                onChange={setInstruction}
+                onSubmit={go}
               />
-              <LaunchOption
-                mode={mode}
-                setMode={setMode}
-                go={go}
-                value="instruct"
-                icon={MessageSquareTextIcon}
-                title="Review with instructions…"
-                description="Same as a review, with extra guidance for the agent."
-              />
-            </>
-          )}
-          {mode === 'instruct' && (
-            <Textarea
-              autoFocus
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              placeholder="e.g. Focus on error handling and the public API surface. ⌘/Ctrl+Enter to start."
-              className="min-h-20"
-            />
-          )}
+            )}
+            {replacing && <ReplacementNotice info={info} mode={mode} />}
+          </div>
         </div>
-
-        <DialogFooter>
+        <DialogFooter className="shrink-0 flex-wrap border-t px-5 py-4">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={go} disabled={mode === 'instruct' && !trimmed}>
-            <PlayIcon />
-            {mode === 'session' ? 'Start session' : 'Start review'}
+          <Button
+            onClick={go}
+            disabled={disabled}
+            className="h-auto min-h-8 whitespace-normal text-left"
+          >
+            <PlayIcon className="shrink-0" />
+            {action}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -171,112 +161,108 @@ export function LaunchDialog({
   );
 }
 
-function PrTitle({ pr }: { pr: PullRequestInfo }) {
+function Action({ value, children }: { value: Mode; children: string }) {
   return (
-    <DialogTitle className="flex items-center gap-2">
-      <span className="text-muted-foreground">#{pr.id}</span>
-      <span className="truncate">{pr.title || pr.sourceBranch}</span>
-    </DialogTitle>
-  );
-}
-
-const AGENT_PICKER_ID = 'launch-agent';
-
-/**
- * Which agent this launch uses. Indexed rather than by id because the
- * default row and a registry row can share an id (Claude configured →
- * "Claude (default)" is row 0 and there is no second Claude row, but a
- * custom command shows as "Custom (default)" with id `test`).
- *
- * Laid out as one more row of the option list — same left and right
- * edges as the cards above it and the footer buttons below — so it
- * reads as configuration for the option it sits under rather than as
- * something floating between the two.
- */
-function AgentPicker({
-  agents,
-  index,
-  onChange,
-}: {
-  agents: AgentOptionView[];
-  index: number;
-  onChange: (index: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2">
-      <Label htmlFor={AGENT_PICKER_ID} className="text-muted-foreground">
-        Agent
-      </Label>
-      <Select
-        value={agents.length > 0 ? String(index) : ''}
-        onValueChange={(v) => onChange(Number(v))}
-        disabled={agents.length === 0}
-      >
-        <SelectTrigger
-          id={AGENT_PICKER_ID}
-          className="w-56 shrink-0"
-          aria-label="Agent"
-        >
-          <SelectValue placeholder="Loading…" />
-        </SelectTrigger>
-        <SelectContent>
-          {agents.map((a, i) => (
-            <SelectItem key={a.id} value={String(i)}>
-              {a.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function LaunchOption({
-  mode,
-  setMode,
-  go,
-  value,
-  icon: Icon,
-  title,
-  description,
-}: {
-  mode: Mode;
-  setMode: (m: Mode) => void;
-  go: () => void;
-  value: Mode;
-  icon: typeof PlayIcon;
-  title: string;
-  description: string;
-}) {
-  const selected = mode === value;
-  return (
-    <button
-      type="button"
-      onClick={() => setMode(value)}
-      onDoubleClick={() => {
-        setMode(value);
-        if (value !== 'instruct') go();
-      }}
-      className={cn(
-        'flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left transition-colors',
-        selected
-          ? 'border-primary bg-primary/10'
-          : 'border-border hover:bg-accent'
-      )}
-      aria-pressed={selected}
+    <ToggleGroupItem
+      value={value}
+      className="min-w-0 flex-1 rounded-md border border-transparent px-2 py-2 text-sm data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
     >
-      <Icon
-        className={cn(
-          'mt-0.5 size-4 shrink-0',
-          selected ? 'text-primary' : 'text-muted-foreground'
-        )}
-      />
-      <span className="min-w-0">
-        <span className="block font-medium">{title}</span>
-        <span className="block text-sm text-muted-foreground">
-          {description}
-        </span>
-      </span>
-    </button>
+      {children}
+    </ToggleGroupItem>
+  );
+}
+
+function canContinueSession(info?: SessionLaunchView) {
+  return Boolean(info?.exists && (info.running || info.canResume));
+}
+function selectedMode(selected: Mode | null, canContinue: boolean): Mode {
+  if (selected === 'continue' && !canContinue) return 'new';
+  return selected ?? (canContinue ? 'continue' : 'new');
+}
+function launchDisabled(
+  info: SessionLaunchView | undefined,
+  fetching: boolean,
+  error: boolean,
+  mode: Mode,
+  agents: number
+) {
+  return !info || fetching || error || (mode !== 'continue' && agents === 0);
+}
+function launchChoice(
+  mode: Mode,
+  info: SessionLaunchView,
+  instruction: string,
+  agentId?: AgentId
+): LaunchChoice {
+  if (mode === 'review')
+    return {
+      kind: 'review',
+      agentId,
+      instruction: instruction.trim() || undefined,
+      expected: info.incarnation,
+    };
+  return {
+    kind: 'session',
+    agentId: mode === 'new' ? agentId : undefined,
+    fresh: mode === 'new',
+    expected: info.incarnation,
+  };
+}
+function actionLabel(
+  mode: Mode,
+  info: SessionLaunchView | undefined,
+  replacing: boolean
+) {
+  if (mode === 'continue')
+    return `${info?.running ? 'Open' : 'Continue with'} ${
+      info?.recordedAgentName ?? 'session'
+    }`;
+  const subject = mode === 'review' ? 'review' : 'new session';
+  return `${replacing ? 'Stop and start' : 'Start'} ${subject}`;
+}
+
+function LaunchStatus({
+  fetching,
+  error,
+  agentError,
+}: {
+  fetching: boolean;
+  error: Error | null;
+  agentError: Error | null;
+}) {
+  return (
+    <>
+      {fetching && <p className="text-muted-foreground">Reading session…</p>}
+      {error && <p role="alert">{errorMessage(error)}</p>}
+      {agentError && <p role="alert">{errorMessage(agentError)}</p>}
+    </>
+  );
+}
+
+function isReplacing(mode: Mode, info?: SessionLaunchView) {
+  return mode !== 'continue' && Boolean(info?.running);
+}
+function LaunchHeader({
+  pr,
+  branch,
+  hasWorktree,
+}: {
+  pr?: PullRequestInfo;
+  branch: string;
+  hasWorktree: boolean;
+}) {
+  return (
+    <DialogHeader className="min-w-0 px-5 pt-5 pr-10 pb-4">
+      {pr && (
+        <p className="text-sm text-muted-foreground">Pull request #{pr.id}</p>
+      )}
+      <DialogTitle className="min-w-0 leading-snug [overflow-wrap:anywhere]">
+        {pr?.title || branch}
+      </DialogTitle>
+      <DialogDescription className="min-w-0 [overflow-wrap:anywhere]">
+        {pr ? `${pr.sourceBranch} → ${pr.targetBranch}` : 'Worktree'}
+        {!hasWorktree && ' · a worktree will be created first'}
+      </DialogDescription>
+    </DialogHeader>
   );
 }

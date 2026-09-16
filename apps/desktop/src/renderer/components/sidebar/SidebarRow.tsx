@@ -112,11 +112,10 @@ export function SidebarRow({
     (item.kind === 'session' ? item.conflictCount : undefined) ?? 0;
   const pullRequest = usePullRequestRow(pr, repo.cwd);
 
-  // Launching goes through the tab's session menu, where the agent for
-  // this launch is chosen: open (and pin) the tab, and ask it for the
-  // menu. A live agent has nothing to choose — its tab just opens.
+  // Open the tab and its session menu for attach, continuation or an
+  // explicitly confirmed fresh conversation.
   const onLaunch = () => {
-    if (!running) requestLaunchMenu(branch);
+    requestLaunchMenu(branch);
     onOpen(false);
   };
   const onKill = () =>

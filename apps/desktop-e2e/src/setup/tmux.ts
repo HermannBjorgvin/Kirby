@@ -10,24 +10,17 @@ import { basename, resolve } from 'node:path';
  * listens on a socket inside its own temp home rather than the shared
  * /tmp/tmux-$UID one.
  *
- * Kirby names its sessions `kirby-<projectKeyHash>-<branch>`. Tests
- * match on the branch suffix rather than recomputing the hash: the hash
- * is over the *git toplevel*, which can differ from the fixture's
- * `repoPath` when tmpdir is a symlink.
+ * A session's name is a label (`<repo>-<branch>`, `<repo>-shell`, with
+ * a numeric suffix on collision) and is never parsed. What makes a
+ * session Kirby's is its tags — `@orchestra-spawner`,
+ * `@orchestra-session-type`, `@orchestra-repo`, `@orchestra-branch` —
+ * so every helper here lists with the tags and matches on them,
+ * exactly as the app does.
  */
-
-const KIRBY_PREFIX = 'kirby-';
 
 /** Basename prefix of the temp homes the fixture creates. The tmux
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
 const HOME_PREFIX = 'kirby-desktop-e2e-home-';
-
-/** Spread into a test's `kirbyConfig` to leave `terminalBackend` out of
- *  the config file altogether — the state the tmux-when-detected
- *  default applies to. The fixture writes `'pty'` otherwise. */
-export const UNSET_BACKEND: Record<string, unknown> = {
-  terminalBackend: undefined,
-};
 
 export function tmuxAvailable(): boolean {
   try {
@@ -52,9 +45,9 @@ export function tmuxAvailable(): boolean {
  *      agents run — reaches the developer's server no matter what
  *      `TMUX_TMPDIR` says.
  *
- *  These helpers kill sessions by name pattern, and on that server the
- *  `kirby-` names are the user's running agents. So the socket is
- *  proven rather than assumed, and anything unproven throws.
+ *  These helpers kill sessions, and on that server the tagged sessions
+ *  are the user's running agents. So the socket is proven rather than
+ *  assumed, and anything unproven throws.
  */
 export function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   if (!tmuxTmpdir) {
@@ -78,9 +71,28 @@ export function socketEnv(tmuxTmpdir: string): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Session names on the test's tmux server. Empty when no server is
- *  running — tmux exits non-zero for that, which is not an error here. */
-export function listTmuxSessions(tmuxTmpdir: string): string[] {
+/** One session on the test's server, with the tags that identify it.
+ *  Unset tags are `''`. */
+export interface TaggedTmuxSession {
+  name: string;
+  spawner: string;
+  type: string;
+  repo: string;
+  branch: string;
+}
+
+const LISTING = [
+  '#{session_name}',
+  '#{@orchestra-spawner}',
+  '#{@orchestra-session-type}',
+  '#{@orchestra-repo}',
+  '#{@orchestra-branch}',
+].join('\t');
+
+/** Every session on the test's tmux server, tags included. Empty when
+ *  no server is running — tmux exits non-zero for that, which is not
+ *  an error here. */
+export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
   // Resolved *before* the try: `socketEnv` throws to stop a run that
   // would reach the wrong tmux server, and swallowing that here would
   // turn it into an empty list — which is exactly what the negative
@@ -88,36 +100,73 @@ export function listTmuxSessions(tmuxTmpdir: string): string[] {
   // while proving nothing, and teardown would silently reap nothing.
   const env = socketEnv(tmuxTmpdir);
   try {
-    return execFileSync('tmux', ['list-sessions', '-F', '#{session_name}'], {
+    return execFileSync('tmux', ['-u', 'list-sessions', '-F', LISTING], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       env,
     })
       .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+      .filter((line) => line.trim())
+      .map((line) => {
+        const [name = '', spawner = '', type = '', repo = '', branch = ''] =
+          line.split('\t');
+        return { name, spawner, type, repo, branch };
+      });
   } catch {
     return [];
   }
 }
 
-/** Kirby-created tmux session names on the test's server. */
+/** Session names on the test's tmux server. */
+export function listTmuxSessions(tmuxTmpdir: string): string[] {
+  return listTaggedSessions(tmuxTmpdir).map((s) => s.name);
+}
+
+/** Names of the sessions on the test's server that carry Kirby's
+ *  identity tags — whatever they are called. */
 export function kirbySessions(tmuxTmpdir: string): string[] {
-  return listTmuxSessions(tmuxTmpdir).filter((n) => n.startsWith(KIRBY_PREFIX));
+  return listTaggedSessions(tmuxTmpdir)
+    .filter((s) => s.spawner && s.type)
+    .map((s) => s.name);
+}
+
+/** The tagged worktree session for `branch`, if it exists. */
+export function findKirbySessionFor(
+  branch: string,
+  tmuxTmpdir: string
+): string | undefined {
+  return listTaggedSessions(tmuxTmpdir).find(
+    (s) => s.spawner && s.type === 'worktree' && s.branch === branch
+  )?.name;
 }
 
 export function kirbySessionExists(
   branch: string,
   tmuxTmpdir: string
 ): boolean {
-  return kirbySessions(tmuxTmpdir).some((n) => n.endsWith(`-${branch}`));
+  return findKirbySessionFor(branch, tmuxTmpdir) !== undefined;
+}
+
+/** Write Kirby's identity tags on a session the test created itself. */
+export function tagTmuxSession(
+  name: string,
+  tags: Record<string, string>,
+  tmuxTmpdir: string
+): void {
+  const env = socketEnv(tmuxTmpdir);
+  for (const [key, value] of Object.entries(tags)) {
+    execFileSync('tmux', ['set-option', '-t', `=${name}:`, key, value], {
+      stdio: 'ignore',
+      env,
+    });
+  }
 }
 
 /** End one session on the test's server from outside the app — what
  *  an operator's `tmux kill-session` looks like to a terminal tab. */
 export function killTmuxSession(name: string, tmuxTmpdir: string): void {
   try {
-    execFileSync('tmux', ['kill-session', '-t', name], {
+    execFileSync('tmux', ['kill-session', '-t', `=${name}:`], {
       stdio: 'ignore',
       env: socketEnv(tmuxTmpdir),
     });
@@ -129,7 +178,7 @@ export function killTmuxSession(name: string, tmuxTmpdir: string): void {
 /** Detach every client from one session on the test's server, leaving
  *  the session running — what the detach key inside tmux does. */
 export function detachTmuxClients(name: string, tmuxTmpdir: string): void {
-  execFileSync('tmux', ['detach-client', '-s', name], {
+  execFileSync('tmux', ['detach-client', '-s', `=${name}:`], {
     stdio: 'ignore',
     env: socketEnv(tmuxTmpdir),
   });
@@ -145,4 +194,27 @@ export function killKirbySessions(tmuxTmpdir: string): void {
   for (const name of kirbySessions(tmuxTmpdir)) {
     killTmuxSession(name, tmuxTmpdir);
   }
+}
+
+/** Clean up all sessions on this fixture's private socket, including an
+ * untagged session left by an interrupted launch. */
+export function killFixtureSessions(homeDir: string): void {
+  for (const name of listTmuxSessions(homeDir)) {
+    killTmuxSession(name, homeDir);
+  }
+}
+
+/** Connected client processes, for waiting on transport reconnection. */
+export function tmuxClientPids(name: string, homeDir: string): string[] {
+  return execFileSync(
+    'tmux',
+    ['list-clients', '-t', `=${name}:`, '-F', '#{client_pid}'],
+    {
+      env: socketEnv(homeDir),
+      encoding: 'utf8',
+    }
+  )
+    .trim()
+    .split('\n')
+    .filter(Boolean);
 }

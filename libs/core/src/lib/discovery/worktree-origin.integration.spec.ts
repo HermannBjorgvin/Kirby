@@ -1,15 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { describeWorktreePath } from './worktree-origin.js';
+import { readWorktreeHead } from './worktree-origin.js';
 
 /**
- * A worktree path back to its repository and branch, against real git:
- * the answer has to agree with what git says at the main checkout,
- * since that is what the tmux prefix and the desktop's repo identity
- * are computed from.
+ * A worktree's branch, read from its own HEAD file against a real git
+ * checkout: what tags a session at spawn time, what a listed session's
+ * worktree is checked against, and what tells a detached HEAD apart.
  */
 
 function git(cwd: string, args: string[]): string {
@@ -39,49 +38,47 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-describe('describeWorktreePath', () => {
-  it('names the main checkout and the branch of a linked worktree', () => {
-    expect(describeWorktreePath(worktree)).toEqual({
-      repoRoot: git(repo, ['rev-parse', '--show-toplevel']),
+/**
+ * A linked worktree's `.git` is a file pointing at its git dir; the
+ * main checkout's is the directory itself; both have to resolve, and
+ * the branch has to be the exact string `git worktree list` reports.
+ */
+describe('readWorktreeHead', () => {
+  it('reads the branch of a linked worktree', () => {
+    expect(readWorktreeHead(worktree)).toEqual({
       branch: 'feat/x',
       detached: false,
     });
   });
 
-  it('describes the main checkout as its own repository', () => {
-    expect(describeWorktreePath(repo)).toEqual({
-      repoRoot: git(repo, ['rev-parse', '--show-toplevel']),
-      branch: 'main',
-      detached: false,
-    });
-  });
-
-  // The tmux prefix is a hash of the toplevel as git reports it, so a
-  // path that reaches the worktree through a symlink must still answer
-  // with the real root, or the session would be filed under a
-  // repository that does not exist.
-  it('answers with the real path when reached through a symlink', () => {
-    const link = join(scratch, 'link');
-    symlinkSync(repo, link);
-    expect(
-      describeWorktreePath(join(link, '.claude', 'worktrees', 'feat-x'))
-    ).toEqual({
-      repoRoot: realpathSync(repo),
-      branch: 'feat/x',
-      detached: false,
-    });
+  it('reads the branch of the main checkout', () => {
+    expect(readWorktreeHead(repo)).toEqual({ branch: 'main', detached: false });
   });
 
   it('falls back to the directory name on a detached HEAD', () => {
-    const detached = join(repo, '.claude', 'worktrees', 'detached-here');
+    const detached = join(repo, '.claude', 'worktrees', 'detached-too');
     git(repo, ['worktree', 'add', '-q', '--detach', detached]);
-    expect(describeWorktreePath(detached)).toMatchObject({
+    expect(readWorktreeHead(detached)).toEqual({
       branch: basename(detached),
+      detached: true,
     });
   });
 
-  it('is null for a directory that is gone or not a worktree', () => {
-    expect(describeWorktreePath(join(scratch, 'nope'))).toBeNull();
-    expect(describeWorktreePath(scratch)).toBeNull();
+  it('agrees with git after the worktree checks out another branch', () => {
+    const moved = join(repo, '.claude', 'worktrees', 'moved');
+    git(repo, ['worktree', 'add', '-q', '-b', 'before/move', moved]);
+    git(moved, ['checkout', '-q', '-b', 'after/move']);
+    expect(readWorktreeHead(moved)).toEqual({
+      branch: 'after/move',
+      detached: false,
+    });
+    expect(git(moved, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+      'after/move'
+    );
+  });
+
+  it('is null for a directory that is gone or not a checkout', () => {
+    expect(readWorktreeHead(join(scratch, 'nope'))).toBeNull();
+    expect(readWorktreeHead(scratch)).toBeNull();
   });
 });

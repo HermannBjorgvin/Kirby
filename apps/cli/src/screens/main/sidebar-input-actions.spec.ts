@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as WorktreeManagerModule from '@kirby/worktree-manager';
 import type { WorktreeInfo } from '@kirby/worktree-manager';
@@ -33,7 +34,7 @@ vi.mock('@kirby/core', async (importOriginal) => ({
   hasSession: (name: string) =>
     liveSessions.has(name) || exitedSessions.has(name),
   isSessionAlive: (name: string) => liveSessions.has(name),
-  killSession: (name: string) => killSessionMock(name),
+  stopSession: (name: string) => killSessionMock(name),
 }));
 
 vi.mock('@kirby/worktree-manager', async (importOriginal) => ({
@@ -130,7 +131,7 @@ function sessionItem(
 ): SidebarItem {
   return {
     kind: 'session',
-    session: { name, running: extra.running ?? true },
+    session: { name: worktreeSessionKey(name), running: extra.running ?? true },
     isMerged: false,
     ...(extra.pr ? { pr: extra.pr } : {}),
   } as SidebarItem;
@@ -396,10 +397,10 @@ describe('sidebar handler — checkout-branch', () => {
 
 describe('sidebar handler — focus-terminal', () => {
   it('focuses a live terminal for the selected session', () => {
-    liveSessions.add('alpha');
+    liveSessions.add(worktreeSessionKey('alpha'));
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -413,7 +414,7 @@ describe('sidebar handler — focus-terminal', () => {
   it('opens the session menu for a session row with no live PTY', () => {
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -434,7 +435,7 @@ describe('sidebar handler — focus-terminal', () => {
     exitedSessions.add('alpha');
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -448,7 +449,7 @@ describe('sidebar handler — focus-terminal', () => {
     const pr = makePr();
     const t = makeCtx({
       selectedItem: reviewPrItem(pr, true),
-      sessionNameForTerminal: 'feat-thing',
+      sessionNameForTerminal: worktreeSessionKey('feat/thing'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -465,7 +466,7 @@ describe('sidebar handler — focus-terminal', () => {
   it('refuses to open the menu while a start is already in flight', () => {
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
     t.asyncOps.isRunning.mockReturnValue(true);
 
@@ -479,7 +480,7 @@ describe('sidebar handler — focus-terminal', () => {
   });
 
   it('does nothing when there is no selected item', () => {
-    const t = makeCtx({ sessionNameForTerminal: 'alpha' });
+    const t = makeCtx({ sessionNameForTerminal: worktreeSessionKey('alpha') });
 
     press(KEYS.focusTerminal(), t.ctx);
 
@@ -503,7 +504,7 @@ describe('sidebar handler — focus-terminal', () => {
     const t = makeCtx({
       focus: 'terminal',
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.focusTerminal(), t.ctx);
@@ -527,14 +528,14 @@ describe('sidebar handler — delete-branch', () => {
 
     expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('check-delete');
     expect(t.sessions.performDelete).toHaveBeenCalledExactlyOnceWith(
-      'alpha',
+      worktreeSessionKey('alpha'),
       'alpha'
     );
     expect(t.deleteConfirm.setConfirmDelete).not.toHaveBeenCalled();
   });
 
   it('asks yes/no before killing a still-running agent', async () => {
-    liveSessions.add('alpha');
+    liveSessions.add(worktreeSessionKey('alpha'));
     const t = makeCtx({ selectedItem: sessionItem('alpha') });
     vi.mocked(listWorktrees).mockResolvedValue([
       worktree('/wt/alpha', 'alpha'),
@@ -545,7 +546,7 @@ describe('sidebar handler — delete-branch', () => {
 
     expect(t.deleteConfirm.setConfirmDelete).toHaveBeenCalledExactlyOnceWith({
       branch: 'alpha',
-      sessionName: 'alpha',
+      sessionName: worktreeSessionKey('alpha'),
       reason: 'session is active — agent process will be killed',
       mode: 'yes-no',
     });
@@ -567,7 +568,7 @@ describe('sidebar handler — delete-branch', () => {
 
       expect(t.deleteConfirm.setConfirmDelete).toHaveBeenCalledExactlyOnceWith({
         branch: 'alpha',
-        sessionName: 'alpha',
+        sessionName: worktreeSessionKey('alpha'),
         reason,
         mode: 'type-branch',
       });
@@ -606,7 +607,9 @@ describe('sidebar handler — delete-branch', () => {
     press(KEYS.deleteBranch(), t.ctx);
     await t.settle();
 
-    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith('alpha');
+    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
+      worktreeSessionKey('alpha')
+    );
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(canRemoveBranch).not.toHaveBeenCalled();
@@ -624,7 +627,7 @@ describe('sidebar handler — delete-branch', () => {
     await t.settle();
 
     expect(t.sessions.performDelete).toHaveBeenCalledExactlyOnceWith(
-      'feat-thing',
+      worktreeSessionKey('feat/thing'),
       'feat/thing'
     );
   });
@@ -664,7 +667,9 @@ describe('sidebar handler — kill-agent', () => {
     await t.settle();
 
     expect(t.asyncOps.run.mock.calls[0]?.[0]).toBe('delete');
-    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith('alpha');
+    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
+      worktreeSessionKey('alpha')
+    );
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.pane.setReconnectKey).toHaveBeenCalledOnce();
   });
@@ -677,7 +682,9 @@ describe('sidebar handler — kill-agent', () => {
     press(KEYS.killAgent(), t.ctx);
     await t.settle();
 
-    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith('feat-thing');
+    expect(killSessionMock).toHaveBeenCalledExactlyOnceWith(
+      worktreeSessionKey('feat/thing')
+    );
   });
 
   it('ignores a review PR that has never had a session', () => {
@@ -907,10 +914,10 @@ describe('sidebar handler — view-comments', () => {
 
 describe('sidebar handler — start-session', () => {
   it('focuses the terminal when the selected session is live', () => {
-    liveSessions.add('alpha');
+    liveSessions.add(worktreeSessionKey('alpha'));
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.startSession(), t.ctx);
@@ -943,7 +950,7 @@ describe('sidebar handler — start-session', () => {
     // against.
     const t = makeCtx({
       selectedItem: sessionItem('alpha'),
-      sessionNameForTerminal: 'alpha',
+      sessionNameForTerminal: worktreeSessionKey('alpha'),
     });
 
     press(KEYS.startSession(), t.ctx);
@@ -981,10 +988,10 @@ describe('sidebar handler — start-session', () => {
   });
 
   it('focuses the live terminal instead of the menu for a PR row with a session', () => {
-    liveSessions.add('feat-thing');
+    liveSessions.add(worktreeSessionKey('feat/thing'));
     const t = makeCtx({
       selectedItem: orphanPrItem(makePr({ sourceBranch: 'feat/thing' })),
-      sessionNameForTerminal: 'feat-thing',
+      sessionNameForTerminal: worktreeSessionKey('feat/thing'),
     });
 
     press(KEYS.startSession(), t.ctx);

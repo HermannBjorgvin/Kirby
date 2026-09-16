@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '@kirby/core';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as CoreModule from '@kirby/core';
 import type * as WorktreeManagerModule from '@kirby/worktree-manager';
@@ -86,7 +87,7 @@ function makePr(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
 function sessionItem(name: string, pr?: PullRequestInfo): SidebarItem {
   return {
     kind: 'session',
-    session: { name, running: false },
+    session: { name: worktreeSessionKey(name), running: false },
     ...(pr ? { pr } : {}),
   } as SidebarItem;
 }
@@ -145,7 +146,9 @@ function makeCtx(opts: {
     config: { config: { vendorAuth: {}, vendorProject: {} } },
     selectedItem: opts.selectedItem,
     sessionNameForTerminal:
-      opts.sessionName === undefined ? 'alpha' : opts.sessionName,
+      opts.sessionName === undefined
+        ? worktreeSessionKey('alpha')
+        : opts.sessionName,
     keybinds: {
       resolve: (input: string, key: KeyPress, context: 'confirm') =>
         resolveAction(input, key, context, preset.bindings, ACTIONS),
@@ -191,8 +194,8 @@ describe('session menu — agent picker', () => {
     expect(t.state.menu?.agentIndex).toBe(1);
     press(KEYS.left(), t.ctx);
     press(KEYS.left(), t.ctx);
-    // Five registry agents → wraps from the default to the last one.
-    expect(t.state.menu?.agentIndex).toBe(4);
+    // Automatic plus five registry agents → wraps to the last one.
+    expect(t.state.menu?.agentIndex).toBe(5);
   });
 
   it('applies bunched arrow presses one step each (updater form)', () => {
@@ -216,7 +219,7 @@ describe('session menu — agent picker', () => {
 describe('session menu — start', () => {
   it('launches the chosen agent in the row worktree and focuses it', async () => {
     const t = makeCtx({
-      menu: { ...openMenu(), agentIndex: 1 },
+      menu: { ...openMenu(), agentIndex: 2 },
       selectedItem: sessionItem('alpha'),
     });
     vi.mocked(listWorktrees).mockResolvedValue([
@@ -230,21 +233,68 @@ describe('session menu — start', () => {
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
     expect(params).toMatchObject({
-      name: 'alpha',
+      name: worktreeSessionKey('alpha'),
       cols: 80,
       rows: 24,
       cwd: '/wt/alpha',
-      request: { intent: 'continue-or-blank' },
+      request: { intent: 'blank' },
     });
-    // Index 1 is the first non-default registry agent.
+    // Index 2 is the first non-default registry agent, after automatic and default.
     expect(params.agent?.id).toBe('codex');
     expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
     expect(t.sidebar.selectByKey).toHaveBeenCalledExactlyOnceWith(
-      'session:alpha'
+      `session:${worktreeSessionKey('alpha')}`
     );
     expect(t.pane.setPaneMode).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.nav.setFocus).toHaveBeenCalledExactlyOnceWith('terminal');
     expect(t.state.menu).toBeNull();
+  });
+
+  it.each([
+    [0, 'continue-or-blank', undefined, false],
+    [1, 'blank', 'claude', true],
+  ] as const)(
+    'distinguishes automatic resume from explicit default at index %s',
+    async (agentIndex, intent, agent, fresh) => {
+      const t = makeCtx({
+        menu: { ...openMenu(), agentIndex },
+        selectedItem: sessionItem('alpha'),
+      });
+      vi.mocked(listWorktrees).mockResolvedValue([
+        { path: '/wt/alpha', branch: 'alpha', bare: false },
+      ]);
+      press(KEYS.enter(), t.ctx);
+      await t.settle();
+      const params = vi.mocked(launchSession).mock.calls[0]![0];
+      expect(params.request.intent).toBe(intent);
+      expect(params.agent?.id).toBe(agent);
+      // A named agent pick must start fresh, so a live tmux session with
+      // no local registry entry is confirmed rather than silently attached.
+      expect(params.fresh).toBe(fresh);
+    }
+  );
+
+  it('waits for session registration before refreshing and focusing the terminal', async () => {
+    let ready!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    vi.mocked(launchSession).mockImplementationOnce(async () => {
+      await gate;
+      return {} as Awaited<ReturnType<typeof launchSession>>;
+    });
+    const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
+    vi.mocked(listWorktrees).mockResolvedValue([
+      { path: '/wt/alpha', branch: 'alpha', bare: false },
+    ]);
+    press(KEYS.enter(), t.ctx);
+    await vi.waitFor(() => expect(launchSession).toHaveBeenCalledOnce());
+    expect(t.sessions.refreshSessions).not.toHaveBeenCalled();
+    expect(t.nav.setFocus).not.toHaveBeenCalled();
+    ready();
+    await t.settle();
+    expect(t.sessions.refreshSessions).toHaveBeenCalledOnce();
+    expect(t.nav.setFocus).toHaveBeenCalledWith('terminal');
   });
 
   it('stays in the menu when no worktree can be resolved', async () => {
@@ -263,7 +313,7 @@ describe('session menu — start', () => {
   });
 
   it('only focuses a session that is already running', async () => {
-    liveSessions.add('alpha');
+    liveSessions.add(worktreeSessionKey('alpha'));
     const t = makeCtx({ menu: openMenu(), selectedItem: sessionItem('alpha') });
 
     press(KEYS.enter(), t.ctx);
@@ -281,8 +331,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 1 },
-      selectedItem: sessionItem('feat-thing', pr),
-      sessionName: 'feat-thing',
+      selectedItem: sessionItem('feat/thing', pr),
+      sessionName: worktreeSessionKey('feat/thing'),
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');
 
@@ -292,7 +342,7 @@ describe('session menu — review', () => {
     expect(createWorktree).toHaveBeenCalledExactlyOnceWith('feat/thing');
     expect(launchSession).toHaveBeenCalledOnce();
     const params = vi.mocked(launchSession).mock.calls[0]![0];
-    expect(params.name).toBe('feat-thing');
+    expect(params.name).toBe(worktreeSessionKey('feat/thing'));
     expect(params.cwd).toBe('/wt/feat-thing');
     expect(params.request.intent).toBe('continue-or-seed');
     expect(params.request.prompt).toContain('Review PR #7');
@@ -315,8 +365,8 @@ describe('session menu — review', () => {
     const pr = makePr();
     const t = makeCtx({
       menu: { ...openMenu(pr), selectedOption: 2 },
-      selectedItem: sessionItem('feat-thing', pr),
-      sessionName: 'feat-thing',
+      selectedItem: sessionItem('feat/thing', pr),
+      sessionName: worktreeSessionKey('feat/thing'),
       instruction: 'focus on tests',
     });
     vi.mocked(createWorktree).mockResolvedValue('/wt/feat-thing');

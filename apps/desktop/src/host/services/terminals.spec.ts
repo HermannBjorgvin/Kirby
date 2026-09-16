@@ -34,6 +34,8 @@ const state = vi.hoisted(() => ({
   repoRoots: new Set<string>(),
   recents: [] as string[],
   nextId: 0,
+  modes: [] as ('open' | 'attach' | undefined)[],
+  allocatedName: undefined as string | undefined,
   // Every path used across this file is a real directory as far as
   // launchTerminal's cwd check is concerned, unless a test says
   // otherwise — the check itself is exercised by its own describe
@@ -64,42 +66,50 @@ vi.mock('@kirby/vcs-core', () => ({
 }));
 
 vi.mock('@kirby/core', () => ({
-  newTerminalSessionName: (kind: string) => {
-    state.nextId += 1;
-    return `kirby-term-${kind}-${state.nextId.toString(16).padStart(6, '0')}`;
-  },
-  launchTerminalSession: (spec: {
-    name: string;
+  launchTerminalSession: async (spec: {
+    name?: string;
     kind: string;
     cwd: string;
     cols: number;
     rows: number;
     config: unknown;
+    mode?: 'open' | 'attach';
   }) => {
-    state.alive.add(spec.name);
+    await Promise.resolve();
+    state.modes.push(spec.mode);
+    if (!spec.name) state.nextId += 1;
+    const allocated =
+      state.nextId === 1
+        ? `kirby-${spec.kind}`
+        : `kirby-${spec.kind}-${state.nextId}`;
+    const actual = {
+      ...spec,
+      name: spec.name ?? state.allocatedName ?? allocated,
+    };
+    state.alive.add(actual.name);
     state.spawns.push({
-      name: spec.name,
-      kind: spec.kind,
-      cwd: spec.cwd,
-      cols: spec.cols,
-      rows: spec.rows,
-      config: spec.config,
+      name: actual.name,
+      kind: actual.kind,
+      cwd: actual.cwd,
+      cols: actual.cols,
+      rows: actual.rows,
+      config: actual.config,
     });
-    const name = spec.name;
+    const name = actual.name;
     state.onExit.set(name, []);
     state.sessions.set(name, {
       exited: false,
       pty: {
-        cols: spec.cols,
-        rows: spec.rows,
+        cols: actual.cols,
+        rows: actual.rows,
         onData: (cb: (data: string) => void) => state.onData.set(name, cb),
         onExit: (cb: (code: number) => void) =>
           state.onExit.get(name)?.push(cb),
       },
     });
+    return { name };
   },
-  isTmuxSessionPersisted: (_config: unknown, name: string) =>
-    state.tmuxHolds.has(name),
+  hasPersistedTerminalSession: (name: string) => state.tmuxHolds.has(name),
   getSession: (name: string) => state.sessions.get(name),
   killSession: (name: string) => {
     state.killed.push(name);
@@ -128,6 +138,8 @@ beforeEach(async () => {
   state.repoRoots = new Set(['/home/dev/kirby', '/home/dev/other']);
   state.recents = [];
   state.nextId = 0;
+  state.modes = [];
+  state.allocatedName = undefined;
   state.missingDirs = new Set();
   state.tmuxHolds = new Set();
   state.broadcasts = [];
@@ -142,8 +154,8 @@ beforeEach(async () => {
 const HOME = '/home/dev';
 
 describe('launchTerminal', () => {
-  it('opens a shell in a plain folder, belonging to no repository', () => {
-    const summary = terminals.launchTerminal(
+  it('opens a shell in a plain folder, belonging to no repository', async () => {
+    const summary = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/home/dev/notes' },
       HOME
     );
@@ -162,8 +174,8 @@ describe('launchTerminal', () => {
 
   // A repository root joins that repository's group, and is put on the
   // repo list so the workspace can switch to it like any other repo.
-  it('binds a terminal at a repository root to that repository', () => {
-    const summary = terminals.launchTerminal(
+  it('binds a terminal at a repository root to that repository', async () => {
+    const summary = await terminals.launchTerminal(
       { kind: 'agent', cwd: '/home/dev/other' },
       HOME
     );
@@ -171,8 +183,8 @@ describe('launchTerminal', () => {
     expect(state.recents).toEqual(['/home/dev/other']);
   });
 
-  it('treats a subfolder of a repository as a plain folder', () => {
-    const summary = terminals.launchTerminal(
+  it('treats a subfolder of a repository as a plain folder', async () => {
+    const summary = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/home/dev/kirby/apps' },
       HOME
     );
@@ -180,9 +192,15 @@ describe('launchTerminal', () => {
     expect(state.recents).toEqual([]);
   });
 
-  it('gives each terminal in the same directory its own session', () => {
-    const a = terminals.launchTerminal({ kind: 'shell', cwd: '/x' }, HOME);
-    const b = terminals.launchTerminal({ kind: 'shell', cwd: '/x' }, HOME);
+  it('gives each terminal in the same directory its own session', async () => {
+    const a = await terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
+    const b = await terminals.launchTerminal(
+      { kind: 'shell', cwd: '/x' },
+      HOME
+    );
     expect(a.name).not.toBe(b.name);
     expect(terminals.listTerminals(HOME).map((t) => t.name)).toEqual([
       a.name,
@@ -192,14 +210,17 @@ describe('launchTerminal', () => {
 
   // An agent at a repository root should be that repository's agent —
   // per-project config is keyed by the directory it is read for.
-  it('reads config for the directory the terminal opens in', () => {
+  it('reads config for the directory the terminal opens in', async () => {
     state.configByCwd['/home/dev/other'] = { marker: 'other-config' };
-    terminals.launchTerminal({ kind: 'agent', cwd: '/home/dev/other' }, HOME);
+    await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/other' },
+      HOME
+    );
     expect(state.spawns[0].config).toEqual({ marker: 'other-config' });
   });
 
-  it('relays the session’s output into a buffer the renderer can replay', () => {
-    const { name } = terminals.launchTerminal(
+  it('relays the session’s output into a buffer the renderer can replay', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },
       HOME
     );
@@ -216,18 +237,18 @@ describe('launchTerminal', () => {
   // client that exits the instant it starts — naming neither the
   // problem nor which of the two backends hit it.
   describe('rejects a directory it cannot actually launch into', () => {
-    it('refuses a relative path', () => {
-      expect(() =>
+    it('refuses a relative path', async () => {
+      await expect(
         terminals.launchTerminal({ kind: 'shell', cwd: 'relative/dir' }, HOME)
-      ).toThrow(/absolute path/);
+      ).rejects.toThrow(/absolute path/);
       expect(state.spawns).toEqual([]);
     });
 
-    it('refuses a path that does not exist', () => {
+    it('refuses a path that does not exist', async () => {
       state.missingDirs.add('/home/dev/gone');
-      expect(() =>
+      await expect(
         terminals.launchTerminal({ kind: 'shell', cwd: '/home/dev/gone' }, HOME)
-      ).toThrow(/does not exist/);
+      ).rejects.toThrow(/does not exist/);
       expect(state.spawns).toEqual([]);
     });
   });
@@ -236,34 +257,52 @@ describe('launchTerminal', () => {
 describe('adoptTerminal', () => {
   // The restore path: the name and directory come from tmux, and the
   // launch reattaches under exactly that name.
-  it('reattaches under the name and in the directory tmux reported', () => {
-    terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+  it('reattaches under the name and in the directory tmux reported', async () => {
+    await terminals.adoptTerminal({
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
       expect.objectContaining({
-        name: 'kirby-term-shell-1a2b3c',
+        name: 'kirby-shell',
         kind: 'shell',
         cwd: '/home/dev/notes',
       }),
     ]);
     expect(terminals.listTerminals(HOME)).toEqual([
       expect.objectContaining({
-        name: 'kirby-term-shell-1a2b3c',
+        name: 'kirby-shell',
         repo: null,
         displayPath: '~/notes',
       }),
     ]);
   });
 
+  it('coalesces concurrent attachment before installing one output relay', async () => {
+    const terminal = {
+      name: 'kirby-shell',
+      kind: 'shell' as const,
+      path: '/x',
+    };
+    await Promise.all([
+      terminals.adoptTerminal(terminal),
+      terminals.adoptTerminal(terminal),
+    ]);
+    expect(state.spawns).toHaveLength(1);
+    state.onData.get(terminal.name)?.('one output');
+    expect(terminals.terminalBuffer(terminal.name)).toEqual({
+      data: 'one output',
+      seq: 1,
+    });
+  });
+
   // A terminal restored at a repository root the user has since
   // forgotten still needs its repository on the list: activating its
   // tab opens that repository.
-  it('puts a restored terminal’s repository back on the repo list', () => {
-    terminals.adoptTerminal({
-      name: 'kirby-term-agent-4d5e6f',
+  it('puts a restored terminal’s repository back on the repo list', async () => {
+    await terminals.adoptTerminal({
+      name: 'kirby-agent',
       kind: 'agent',
       path: '/home/dev/other',
     });
@@ -273,12 +312,15 @@ describe('adoptTerminal', () => {
 });
 
 describe('listTerminals', () => {
-  it('reports every terminal, running or not, whatever repository is open', () => {
-    const a = terminals.launchTerminal(
+  it('reports every terminal, running or not, whatever repository is open', async () => {
+    const a = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/home/dev/kirby' },
       HOME
     );
-    const b = terminals.launchTerminal({ kind: 'shell', cwd: '/tmp' }, HOME);
+    const b = await terminals.launchTerminal(
+      { kind: 'shell', cwd: '/tmp' },
+      HOME
+    );
     state.alive.delete(b.name); // the shell exited on its own
     expect(terminals.listTerminals(HOME)).toEqual([
       expect.objectContaining({ name: a.name, running: true }),
@@ -303,8 +345,8 @@ function endProcess(name: string): void {
 // process that is gone. Everything held for it goes with it: the
 // relay buffer, and the registry tombstone nothing can view any more.
 describe('a terminal whose process ended', () => {
-  it('is no longer listed, and its buffer and registry entry are released', () => {
-    const { name } = terminals.launchTerminal(
+  it('is no longer listed, and its buffer and registry entry are released', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },
       HOME
     );
@@ -319,19 +361,22 @@ describe('a terminal whose process ended', () => {
     expect(state.killed).toEqual([]);
   });
 
-  it('tells the renderer, so the tab closes at once rather than on the next poll', () => {
-    const { name } = terminals.launchTerminal(
+  it('tells the renderer, so the tab closes at once rather than on the next poll', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },
       HOME
     );
     endProcess(name);
     expect(state.broadcasts).toEqual([
-      { channel: 'kirby/session/exit', payload: { name, code: 0 } },
+      {
+        channel: 'kirby/session/exit',
+        payload: { name, code: 0, retained: false },
+      },
     ]);
   });
 
-  it('applies to an agent terminal as much as a shell', () => {
-    const { name } = terminals.launchTerminal(
+  it('applies to an agent terminal as much as a shell', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'agent', cwd: '/home/dev/other' },
       HOME
     );
@@ -343,8 +388,8 @@ describe('a terminal whose process ended', () => {
   // A terminal the user closed was killed and forgotten already; the
   // exit that follows the kill must not release anything twice, or
   // touch a terminal that has since been opened under the same name.
-  it('does nothing for a terminal that was already killed', () => {
-    const { name } = terminals.launchTerminal(
+  it('does nothing for a terminal that was already killed', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },
       HOME
     );
@@ -358,15 +403,15 @@ describe('a terminal whose process ended', () => {
   // discovery found the session still running) respawns under the same
   // name. The old client's exit lands after the respawn, and must not
   // drop the terminal the new client is attached to.
-  it('keeps a terminal that was respawned under the same name', () => {
-    terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+  it('keeps a terminal that was respawned under the same name', async () => {
+    await terminals.adoptTerminal({
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
-    const oldExits = [...(state.onExit.get('kirby-term-shell-1a2b3c') ?? [])];
-    terminals.adoptTerminal({
-      name: 'kirby-term-shell-1a2b3c',
+    const oldExits = [...(state.onExit.get('kirby-shell') ?? [])];
+    await terminals.adoptTerminal({
+      name: 'kirby-shell',
       kind: 'shell',
       path: '/x',
     });
@@ -376,68 +421,127 @@ describe('a terminal whose process ended', () => {
   });
 });
 
-// On tmux the client the host holds can exit while the session lives
-// on: the user pressed the detach key inside the terminal. That is not
-// the terminal ending — the shell is still running, in tmux — so the
-// host reattaches under the same name rather than dropping the
-// terminal, which closed the tab and then had discovery reopen it,
-// unfocused, up to a scan later.
-describe('a terminal whose tmux client detached', () => {
-  it('is reattached at the grid the client had, and stays listed', () => {
-    const { name } = terminals.launchTerminal(
-      { kind: 'shell', cwd: '/x', cols: 100, rows: 30 },
+describe('a retained agent pane', () => {
+  it('keeps the stopped agent tab and its output without relaunching', async () => {
+    const { name } = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
       HOME
     );
     state.tmuxHolds.add(name);
-    state.onData.get(name)?.('$ ');
+    state.onData.get(name)?.('Finished');
     endProcess(name);
-
     expect(terminals.listTerminals(HOME)).toEqual([
-      expect.objectContaining({ name, kind: 'shell', cwd: '/x', running: true }),
+      expect.objectContaining({ name, kind: 'agent', running: false }),
     ]);
-    expect(state.spawns.map((s) => [s.name, s.cols, s.rows])).toEqual([
-      [name, 100, 30],
-      [name, 100, 30],
-    ]);
-    // Never dropped, never killed — the session is the user's, still
-    // running — and the output sequence carries on, so the mounted
-    // pane keeps reading the new client's bytes.
+    expect(terminals.terminalBuffer(name)?.data).toBe('Finished');
+    expect(state.spawns).toHaveLength(1);
     expect(state.released).toEqual([]);
-    expect(state.killed).toEqual([]);
-    state.onData.get(name)?.('again');
-    expect(terminals.terminalBuffer(name)?.seq).toBe(2);
+    expect(
+      state.broadcasts.filter((event) => event.channel === 'kirby/session/exit')
+    ).toEqual([
+      {
+        channel: 'kirby/session/exit',
+        payload: { name, code: 0, retained: true },
+      },
+    ]);
   });
 
-  // The renderer closes a terminal tab on the exit event by name; a
-  // detach must not reach it as one, or the tab closes and comes back.
-  it('is not reported to the renderer as an exit', () => {
-    const { name } = terminals.launchTerminal(
-      { kind: 'shell', cwd: '/x' },
+  it('restarts the selected terminal under its existing identity', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
       HOME
     );
-    state.tmuxHolds.add(name);
-    endProcess(name);
-    expect(state.broadcasts).toEqual([]);
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    const restarted = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x', sessionName: tab.name },
+      HOME
+    );
+    expect(restarted.name).toBe(tab.name);
+    expect(restarted.running).toBe(true);
+    expect(terminals.listTerminals(HOME)).toHaveLength(1);
   });
 
-  it('is dropped like any other end once the session itself is gone', () => {
-    const { name } = terminals.launchTerminal(
-      { kind: 'shell', cwd: '/x' },
+  it('validates the retained tab’s own directory, not the cwd the restart request carries', async () => {
+    // The renderer's restart request shouldn't need to carry a real cwd
+    // at all — the tab already knows where it lives.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
       HOME
     );
-    state.tmuxHolds.add(name);
-    endProcess(name);
-    state.tmuxHolds.delete(name);
-    endProcess(name);
-    expect(terminals.listTerminals(HOME)).toEqual([]);
-    expect(state.released).toEqual([name]);
-    expect(state.killed).toEqual([]);
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    const restarted = await terminals.launchTerminal(
+      { kind: 'agent', cwd: 'not/a/real/path', sessionName: tab.name },
+      HOME
+    );
+    expect(restarted.name).toBe(tab.name);
+    expect(restarted.cwd).toBe('/x');
+    expect(state.spawns.at(-1)?.cwd).toBe('/x');
+  });
+
+  it('notes the retained tab’s own repository on restart, not the request cwd', async () => {
+    // The renderer's restart request shouldn't need to carry a real
+    // repository at all — the tab already knows where it lives.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/other' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/kirby', sessionName: tab.name },
+      HOME
+    );
+    expect(state.recents).toEqual(['/home/dev/other']);
+  });
+
+  it('rejects a concurrent restart with different parameters instead of joining it', async () => {
+    // Resume then Start-new within one launch window must not silently
+    // resolve the second (Start-new) request to the first (Resume)'s
+    // in-flight result.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+
+    const resume = terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x', sessionName: tab.name },
+      HOME
+    );
+    await expect(
+      terminals.launchTerminal(
+        { kind: 'agent', cwd: '/x', sessionName: tab.name, fresh: true },
+        HOME
+      )
+    ).rejects.toThrow(/in progress/);
+    const resumed = await resume;
+    expect(resumed.name).toBe(tab.name);
+    expect(state.spawns).toHaveLength(2);
+  });
+
+  it('still refuses a restart when the retained tab’s own directory is gone', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/gone-now' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    state.missingDirs.add('/gone-now');
+    await expect(
+      terminals.launchTerminal(
+        { kind: 'agent', cwd: '/gone-now', sessionName: tab.name },
+        HOME
+      )
+    ).rejects.toThrow(/does not exist/);
   });
 });
 
 describe('killTerminal', () => {
-  it('kills the session and forgets the terminal', () => {
-    const { name } = terminals.launchTerminal(
+  it('kills the session and forgets the terminal', async () => {
+    const { name } = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/x' },
       HOME
     );
@@ -448,7 +552,7 @@ describe('killTerminal', () => {
   });
 
   it('is a no-op for a name it never launched', () => {
-    terminals.killTerminal('kirby-term-shell-nope');
+    terminals.killTerminal('kirby-shell-9');
     expect(state.killed).toEqual([]);
   });
 });
@@ -458,12 +562,12 @@ describe('killTerminal', () => {
 // `ls`, a build — with no agent behind it, so only the `agent` kind may
 // reach that spinner.
 describe('agentTerminalNames', () => {
-  it('reports agent terminals and leaves shells out', () => {
-    const shell = terminals.launchTerminal(
+  it('reports agent terminals and leaves shells out', async () => {
+    const shell = await terminals.launchTerminal(
       { kind: 'shell', cwd: '/home/dev/notes' },
       HOME
     );
-    const agent = terminals.launchTerminal(
+    const agent = await terminals.launchTerminal(
       { kind: 'agent', cwd: '/home/dev/other' },
       HOME
     );
@@ -474,4 +578,26 @@ describe('agentTerminalNames', () => {
   it('is empty with no terminals at all', () => {
     expect(terminals.agentTerminalNames()).toEqual([]);
   });
+});
+
+it('uses the allocated backend name for the tab and its lifecycle', async () => {
+  state.allocatedName = 'kirby-shell-3';
+  const tab = await terminals.launchTerminal({
+    kind: 'shell',
+    cwd: '/home/dev/kirby',
+  });
+  expect(state.modes).toEqual([undefined]);
+  expect(tab.name).toBe('kirby-shell-3');
+  expect(tab.running).toBe(true);
+  expect(state.onExit.has('kirby-shell-3')).toBe(true);
+  // Restoring names a target explicitly rather than allocating another.
+  await terminals.adoptTerminal({
+    name: tab.name,
+    kind: 'shell',
+    path: '/home/dev/kirby',
+  });
+  expect(state.modes).toEqual([undefined, 'attach']);
+  expect(
+    terminals.listTerminals(HOME).map((terminal) => terminal.name)
+  ).toEqual(['kirby-shell-3']);
 });

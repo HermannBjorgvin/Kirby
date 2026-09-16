@@ -12,7 +12,8 @@ export interface TmuxStatus {
   installHint?: string;
 }
 
-const MIN_MAJOR = 2;
+const MIN_MAJOR = 3;
+const MIN_MINOR = 2;
 
 let memoized: Promise<TmuxStatus> | null = null;
 
@@ -28,13 +29,15 @@ function installHintForPlatform(): string {
 }
 
 /** Parse "tmux 3.4" or "tmux next-3.5" → "3.4" / "3.5". */
-function parseVersion(raw: string): { full: string; major: number } | null {
+function parseVersion(
+  raw: string
+): { full: string; major: number; minor: number } | null {
   const match = /tmux(?:\s+next-)?\s*([0-9]+(?:\.[0-9]+)?)/.exec(raw);
   if (!match) return null;
   const full = match[1]!;
   const major = Number.parseInt(full.split('.')[0]!, 10);
   if (Number.isNaN(major)) return null;
-  return { full, major };
+  return { full, major, minor: Number.parseInt(full.split('.')[1] ?? '0', 10) };
 }
 
 async function probe(): Promise<TmuxStatus> {
@@ -56,11 +59,14 @@ async function probe(): Promise<TmuxStatus> {
       installHint: installHintForPlatform(),
     };
   }
-  if (parsed.major < MIN_MAJOR) {
+  if (
+    parsed.major < MIN_MAJOR ||
+    (parsed.major === MIN_MAJOR && parsed.minor < MIN_MINOR)
+  ) {
     return {
       available: false,
       version: parsed.full,
-      reason: `tmux ${parsed.full} is too old; need ≥ ${MIN_MAJOR}.0`,
+      reason: `tmux ${parsed.full} is too old; need ≥ ${MIN_MAJOR}.${MIN_MINOR}`,
       installHint: installHintForPlatform(),
     };
   }

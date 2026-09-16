@@ -8,100 +8,28 @@ import type {
   NavValue as NavContextValue,
 } from '@kirby/app-core';
 import type { KeyPress, SettingsField } from '@kirby/core';
-import { updateConfigField } from '@kirby/app-core';
 import {
   ACTIONS,
   PRESETS,
-  applySessionBackend,
   buildControlsRows,
   buildSettingsFields,
   descriptorFromKeypress,
   findConflict,
   getBindingRows,
   handleTextInput,
-  hasAnySession,
-  getTmuxAvailability,
-  projectTerminalBackendOverride,
   resolveValue,
   settingsEffects,
 } from '@kirby/core';
 import { autoDetectProjectConfig } from '@kirby/vcs-core';
 
-/** Guard for `terminalBackend` field changes. Returns true if the
- *  caller should proceed with the write; returns false (and flashes
- *  a status) if the change is blocked. Both gates live here so the
- *  cycle-left/cycle-right and edit-toggle paths share the same
- *  policy.
- *
- *  Gates:
- *  - Active sessions: switching backend mid-session would strand
- *    existing sessions on a stale factory.
- *  - Tmux availability: refusing a switch to tmux when the binary
- *    is missing surfaces the install hint instead of failing later
- *    at session-spawn time. */
-function canApplyFieldChange(
-  field: SettingsField,
-  value: string | undefined,
-  ctx: SettingsHandlerCtx
-): boolean {
-  if (field.key !== 'terminalBackend') return true;
-  if (hasAnySession()) {
-    ctx.sessions.flashStatus(
-      'Close all sessions before switching terminal backend.'
-    );
-    return false;
-  }
-  // The Settings row writes the global key, which a per-project
-  // override would silently win over on the next read — the edit would
-  // appear to save and then revert.
-  if (projectTerminalBackendOverride(process.cwd())) {
-    ctx.sessions.flashStatus(
-      'This project pins terminalBackend in its own config — edit that instead.'
-    );
-    return false;
-  }
-  if (value === 'tmux') {
-    const status = getTmuxAvailability();
-    if (status && !status.available) {
-      const hint = status.installHint ? ` — try \`${status.installHint}\`` : '';
-      ctx.sessions.flashStatus(`tmux not installed${hint}`);
-      return false;
-    }
-  }
-  return true;
-}
-
-/** Write a settings field, honouring its guard and running whatever
- *  side effect the write owns.
- *
- *  `terminalBackend` is the only field with such an effect: the pty
- *  registry's backend factory has to be rebuilt to match the new
- *  selection. It belongs on the write path rather than in a render
- *  effect keyed on the config value, because this is the point where
- *  {@link canApplyFieldChange} has just established there is no live
- *  session — the only moment the swap is safe. A blocked change
- *  therefore never reaches `applySessionBackend`.
- *
- *  `updateField` routes the new config through React state, so the
- *  value to apply is recomputed here with the same `updateConfigField`
- *  the context uses.
- *
- *  Which effects a field has is `@kirby/core`'s call and is shared
- *  with the desktop, so a rule cannot exist in one shell and quietly
- *  not the other. */
 function writeFieldChange(
   field: SettingsField,
   value: string | undefined,
   ctx: SettingsHandlerCtx
 ): void {
-  if (!canApplyFieldChange(field, value, ctx)) return;
   ctx.config.updateField(field, value);
-  const updated = updateConfigField(ctx.config.config, field, value);
   for (const effect of settingsEffects(field)) {
     switch (effect) {
-      case 'apply-session-backend':
-        applySessionBackend(updated);
-        break;
       case 'reset-provider-cache':
         // Every provider, not just the selected one. Everything cached
         // was fetched as somebody else, and on a `vendor` change the

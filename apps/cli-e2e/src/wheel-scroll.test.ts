@@ -6,6 +6,7 @@ import { test, expect } from './fixtures/kirby.js';
 import type { KirbyTerm } from './fixtures/kirby.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
+import { pressUntil } from './setup/sessions.js';
 import { TEST_REPO, wtermHost } from './setup/constants.js';
 
 // Per-press `waitFor` so each keystroke's re-render settles before the
@@ -88,10 +89,21 @@ test.describe('@integration Wheel scrolling', () => {
       kirby.term.getByText('Add color support for tile values').first()
     ).toBeVisible({ timeout: 30_000 });
     const pr37 = sidebarLocator(kirby.term.page, 'Add color support');
-    while ((await pr37.selected().count()) === 0) {
-      await kirby.term.press('j');
-    }
-    await kirby.term.press('d');
+    expect(await pressUntilSelected(kirby.term, pr37.selected(), 20)).toBe(
+      true
+    );
+    // Input can arrive before Ink's new selection handler is committed.
+    // Opening the diff is idempotent; retry until its file list confirms it.
+    await pressUntil(
+      kirby.term,
+      'd',
+      () =>
+        kirby.term.page
+          .locator('.term-row', { hasText: /render\.c/ })
+          .first()
+          .isVisible(),
+      { timeout: 40_000 }
+    );
 
     // PR #37 touches two files: colors.h (a 24-line new file) and
     // render.c (52 lines, shown with full-file context). Only render.c

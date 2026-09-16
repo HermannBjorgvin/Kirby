@@ -32,10 +32,7 @@ jobs:
 
       # xvfb: desktop-e2e drives the real Electron app, which has no
       # headless mode of its own and needs an X server on the runner.
-      # tmux: the terminal backend defaults to tmux wherever it is
-      # installed, and the suites that cover that default skip
-      # themselves without it — installed explicitly rather than relying
-      # on the runner image happening to ship it.
+      # tmux is required by both application e2e suites.
       - name: Install xvfb and tmux
         run: sudo apt-get update && sudo apt-get install -y xvfb tmux
 

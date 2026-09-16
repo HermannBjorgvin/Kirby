@@ -1,7 +1,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures/desktop.js';
 import {
-  agentPicker,
   createWorktree,
   openPalette,
   sessionMenu,
@@ -99,10 +98,9 @@ test.describe('Visual @visual', () => {
     await sidebarRow(page, /visual-branch/).dblclick();
     const menu = sessionMenu(page);
     await expect(menu).toBeVisible();
-    // The picker fills in from a host query; capturing before it
-    // answers would freeze the "Loading…" placeholder into the
-    // baseline.
-    await expect(agentPicker(page)).toHaveText(/\(default\)/);
+    await expect(
+      menu.getByRole('button', { name: 'Start new session', exact: true })
+    ).toBeEnabled();
     await expect(menu).toHaveScreenshot('dialog-session-menu.png', shot);
   });
 

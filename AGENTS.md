@@ -70,7 +70,8 @@ GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
   renderer uses the browser-safe `@kirby/core/plan`, never core's Node entry.
   Keep the core and app-core barrels separate.
 - Terminal backends implement `SessionBackend` without Kirby-specific names.
-  `libs/core/src/lib/tmux-namespace.ts` owns the `kirby-` prefix.
+  tmux session names are labels; `libs/core/src/lib/session-identity.ts`
+  owns the `@orchestra-*` tags that identify a session and the label rules.
 
 ## Working conventions
 

@@ -35,6 +35,28 @@ export function SessionTerminal({
   const [ready, setReady] = useState(false);
   const { resolved } = useTheme();
 
+  // Terminal responses and user input can race a session ending. Keep
+  // the host's refusal visible without throwing an unhandled rejection
+  // for every keystroke or automatic terminal-protocol response.
+  const reportError = useCallback(
+    (error: unknown) => {
+      toast.error(errorMessage(error), { id: `terminal-io:${name}` });
+    },
+    [name]
+  );
+  const write = useCallback(
+    (data: string) => {
+      void window.kirby.writeSession(name, data).catch(reportError);
+    },
+    [name, reportError]
+  );
+  const resize = useCallback(
+    (cols: number, rows: number) => {
+      void window.kirby.resizeSession(name, cols, rows).catch(reportError);
+    },
+    [name, reportError]
+  );
+
   // Seen-tracking: while the user is looking at this terminal, keep
   // the host's "last seen" fresh so the tab's attention blink never
   // fires for output they watched happen. Throttled — data can arrive
@@ -44,8 +66,8 @@ export function SessionTerminal({
     const t = Date.now();
     if (t - lastSeenMarkRef.current < 1000) return;
     lastSeenMarkRef.current = t;
-    void window.kirby.markSessionSeen(name);
-  }, [name]);
+    void window.kirby.markSessionSeen(name).catch(reportError);
+  }, [name, reportError]);
 
   // Its own subscription, deliberately. The replay effect below must
   // not depend on `active`: re-running it re-reads the host's ring
@@ -76,15 +98,6 @@ export function SessionTerminal({
         term.write(data);
       }
     });
-    const offExit = window.kirby.onSessionExit(({ name: n, code }) => {
-      if (n === name) {
-        term.write(
-          `\r\n\x1b[2m[session exited${
-            code ? ` with code ${code}` : ''
-          }]\x1b[0m\r\n`
-        );
-      }
-    });
 
     // The replay must not land after this effect is torn down: React
     // StrictMode mounts twice in development, so a second replay would
@@ -112,7 +125,6 @@ export function SessionTerminal({
     return () => {
       cancelled = true;
       offData();
-      offExit();
     };
   }, [name, ready]);
 
@@ -210,7 +222,7 @@ export function SessionTerminal({
           term.resize(grid.cols, grid.rows);
           return;
         }
-        void window.kirby.resizeSession(name, grid.cols, grid.rows);
+        resize(grid.cols, grid.rows);
         if (forceRepaint) {
           term.resize(grid.cols, grid.rows - 1);
           raf = requestAnimationFrame(() => term.resize(grid.cols, grid.rows));
@@ -224,7 +236,7 @@ export function SessionTerminal({
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [ready, active, name, epoch]);
+  }, [ready, active, resize, epoch]);
 
   return (
     <div ref={wrapRef} className="absolute inset-0">
@@ -239,10 +251,8 @@ export function SessionTerminal({
           setReady(true);
           if (active) wt.focus();
         }}
-        onData={(data) => void window.kirby.writeSession(name, data)}
-        onResize={(cols, rows) =>
-          void window.kirby.resizeSession(name, cols, rows)
-        }
+        onData={write}
+        onResize={resize}
       />
     </div>
   );

@@ -24,6 +24,6 @@ export interface ForeignSessionSummary {
   /** The repository it runs in — the real path of the main checkout. */
   repo: string;
   branch: string;
-  /** Its registry name in that repository (`branchToSessionName`). */
+  /** Its qualified core registry key (repository plus exact branch). */
   sessionName: string;
 }

@@ -1,243 +1,466 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SessionSpec } from '@kirby/terminal';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { SessionBackend, SessionSpec } from '@kirby/terminal';
+import type * as TmuxCli from './tmux-cli.js';
 
-const {
-  ptySpawnArgs,
-  disposeSpy,
-  writeSpy,
-  resizeSpy,
-  onDataSpy,
-  onExitSpy,
-  offDataSpy,
-  offExitSpy,
-  tmuxKillSpy,
-  tmuxHasSessionSpy,
-  tmuxSetOptionSpy,
-  MockPtySession,
-} = vi.hoisted(() => {
-  const ptySpawnArgs: {
-    cmd: string;
-    args: string[];
-    opts: Record<string, unknown>;
-  }[] = [];
-  const disposeSpy = vi.fn();
-  const writeSpy = vi.fn();
-  const resizeSpy = vi.fn();
-  const onDataSpy = vi.fn();
-  const onExitSpy = vi.fn();
-  const offDataSpy = vi.fn();
-  const offExitSpy = vi.fn();
-  const tmuxKillSpy = vi.fn();
-  const tmuxHasSessionSpy = vi.fn<(name: string) => boolean>(() => true);
-  const tmuxSetOptionSpy = vi.fn();
-  class MockPtySession {
-    pid = 1234;
-    cols: number;
-    rows: number;
-    constructor(cmd: string, args: string[], opts: Record<string, unknown>) {
-      ptySpawnArgs.push({ cmd, args, opts });
-      this.cols = (opts['cols'] as number) ?? 80;
-      this.rows = (opts['rows'] as number) ?? 24;
+const mock = vi.hoisted(() => ({
+  calls: [] as string[],
+  taken: new Set<string>(),
+  duplicate: new Set<string>(),
+  state: { paneDead: false } as { paneDead: boolean; exitCode?: number } | null,
+  optionError: '',
+  createError: '',
+  respawnError: '',
+  clientExit: undefined as (() => void) | undefined,
+  paneStateCalls: 0,
+  /** When true, tmuxPaneStateAsync only resolves once a resolver queued
+   *  here is invoked, so a test can hold a poll "in flight". */
+  paneStateGated: false,
+  paneStateResolvers: [] as (() => void)[],
+  /** When true, tmuxPaneStateAsync answers `{ status: 'failed' }` —
+   *  Kirby could not talk to tmux this tick — regardless of `state`. */
+  readFailed: false,
+  data: vi.fn(),
+  spawn: vi.fn(),
+  dispose: vi.fn(),
+  write: vi.fn(),
+  resize: vi.fn(),
+}));
+vi.mock('@kirby/terminal-pty', () => ({
+  PtySession: class {
+    pid = 123;
+    cols = 80;
+    rows = 24;
+    constructor(...args: unknown[]) {
+      mock.calls.push('attach');
+      mock.spawn(...args);
     }
-    write = writeSpy;
-    resize = resizeSpy;
-    onData = onDataSpy;
-    offData = offDataSpy;
-    onExit = onExitSpy;
-    offExit = offExitSpy;
-    dispose = disposeSpy;
-    kill = vi.fn();
-  }
+    onExit(cb: () => void) {
+      mock.clientExit = cb;
+    }
+    onData = mock.data;
+    offData = vi.fn();
+    dispose = mock.dispose;
+    write = mock.write;
+    resize = mock.resize;
+  },
+}));
+vi.mock('./tmux-cli.js', async (original) => {
+  const actual = await original<typeof TmuxCli>();
+  const result = (error = '') => ({
+    stdout: '',
+    stderr: error,
+    exitCode: error ? 1 : 0,
+  });
   return {
-    ptySpawnArgs,
-    disposeSpy,
-    writeSpy,
-    resizeSpy,
-    onDataSpy,
-    onExitSpy,
-    offDataSpy,
-    offExitSpy,
-    tmuxKillSpy,
-    tmuxHasSessionSpy,
-    tmuxSetOptionSpy,
-    MockPtySession,
+    ...actual,
+    tmuxHasSession: (name: string) => mock.taken.has(name),
+    tmuxNewSessionDetached: (
+      name: string,
+      options: TmuxCli.TmuxNewSessionOptions
+    ) => {
+      mock.calls.push(`create ${name} ${options.command?.join(' ')}`);
+      return result(
+        mock.duplicate.has(name) ? 'duplicate session' : mock.createError
+      );
+    },
+    tmuxSetOption: (name: string, key: string, value: string) => {
+      mock.calls.push(`option ${name} ${key} ${value}`);
+      return result(mock.optionError);
+    },
+    tmuxShowOption: () => '/bin/zsh',
+    tmuxKillSession: (name: string) => {
+      mock.calls.push(`kill ${name}`);
+      return result();
+    },
+    tmuxPaneState: () => mock.state,
+    tmuxPaneStateAsync: () => {
+      mock.paneStateCalls += 1;
+      const respond = () => {
+        if (mock.readFailed) return { status: 'failed' as const };
+        if (mock.state == null) return { status: 'gone' as const };
+        return { status: 'ok' as const, state: mock.state };
+      };
+      if (!mock.paneStateGated) return Promise.resolve(respond());
+      return new Promise((resolve) => {
+        mock.paneStateResolvers.push(() => resolve(respond()));
+      });
+    },
+    tmuxCapturePane: () => 'final output\n',
+    runTmux: (args: string[], following: string[][] = []) => {
+      mock.calls.push(
+        [args, ...following].map((command) => command.join(' ')).join(' ; ')
+      );
+      return result(mock.optionError || mock.respawnError);
+    },
   };
 });
+import {
+  createTmuxBackend,
+  setTmuxSessionPreparer,
+  type TmuxLaunchPlan,
+} from './tmux-backend.js';
 
-vi.mock('@kirby/terminal-pty', () => ({ PtySession: MockPtySession }));
-vi.mock('./tmux-cli.js', () => ({
-  tmuxKillSession: (name: string) => tmuxKillSpy(name),
-  tmuxHasSession: (name: string) => tmuxHasSessionSpy(name),
-  tmuxSetOption: (name: string, option: string, value: string) =>
-    tmuxSetOptionSpy(name, option, value),
-  // Below 3.2 so the `-e` session-env flags stay off and the exact
-  // argv assertions in this file remain stable. (The -e behavior is
-  // covered by the tmux e2e test against a real tmux.)
-  tmuxVersion: () => 'tmux 3.1',
-}));
-
-import { createTmuxBackendFactory } from './tmux-backend.js';
-
-function spec(overrides: Partial<SessionSpec> = {}): SessionSpec {
-  return {
-    name: 'feature-foo',
-    cmd: '/bin/sh',
-    args: ['-c', 'claude'],
-    cwd: '/tmp/work',
-    cols: 100,
-    rows: 30,
-    ...overrides,
-  };
+const spec: SessionSpec = {
+  cmd: '/bin/sh',
+  args: ['-c', 'agent'],
+  cwd: '/tmp',
+  cols: 80,
+  rows: 24,
+};
+const backends: SessionBackend[] = [];
+async function launch(
+  plan: TmuxLaunchPlan = { mode: 'create', label: 'test', tags: {} },
+  overrides: Partial<SessionSpec> = {}
+) {
+  const backend = await createTmuxBackend({ ...spec, ...overrides }, plan);
+  backends.push(backend);
+  return backend;
 }
+beforeEach(() => {
+  setTmuxSessionPreparer();
+  vi.useFakeTimers();
+  mock.calls.length = 0;
+  mock.taken.clear();
+  mock.duplicate.clear();
+  mock.state = { paneDead: false };
+  mock.optionError = '';
+  mock.createError = '';
+  mock.respawnError = '';
+  mock.paneStateCalls = 0;
+  mock.paneStateGated = false;
+  mock.paneStateResolvers.length = 0;
+  mock.readFailed = false;
+  mock.spawn.mockReset();
+  mock.dispose.mockReset();
+  mock.data.mockReset();
+});
+afterEach(() => {
+  for (const backend of backends.splice(0)) backend.dispose();
+  vi.useRealTimers();
+});
 
-describe('createTmuxBackendFactory', () => {
-  beforeEach(() => {
-    ptySpawnArgs.length = 0;
-    disposeSpy.mockReset();
-    writeSpy.mockReset();
-    resizeSpy.mockReset();
-    onDataSpy.mockReset();
-    onExitSpy.mockReset();
-    offDataSpy.mockReset();
-    offExitSpy.mockReset();
-    tmuxKillSpy.mockReset();
-    tmuxSetOptionSpy.mockReset();
-    tmuxHasSessionSpy.mockReset();
-    tmuxHasSessionSpy.mockReturnValue(true);
-  });
-
-  it('turns the tmux status bar off once the session exists', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
+describe('explicit tmux launch plans', () => {
+  it('installs tags and retention before the real process can exit', async () => {
+    await launch({
+      mode: 'create',
+      label: 'test',
+      tags: { '@agent': 'example' },
+      retainOnExit: true,
     });
-    factory(spec());
-    expect(tmuxSetOptionSpy).toHaveBeenCalledWith(
-      'kirby-abc12345-feature-foo',
-      'status',
-      'off'
+    expect(mock.calls[0]).toBe('create test -- /bin/sh -c exec sleep 86400');
+    expect(mock.calls[1]).toMatch(
+      /^set-option -t =test: @agent example ; set-option -t =test: remain-on-exit on ; set-option -t =test: status off ; respawn-pane -k -t =test:/
+    );
+    expect(mock.calls[1]).toContain('-- /bin/sh -c agent');
+    expect(mock.calls[2]).toBe('attach');
+  });
+  it('awaits isolated preparation and attaches to its returned name without rewriting metadata', async () => {
+    let prepared!: (name: string) => void;
+    setTmuxSessionPreparer(
+      () =>
+        new Promise((resolve) => {
+          prepared = resolve;
+        })
+    );
+    const pending = launch();
+    expect(mock.spawn).not.toHaveBeenCalled();
+    prepared('isolated-result');
+    const backend = await pending;
+    expect(backend.name).toBe('isolated-result');
+    expect(mock.calls).toEqual(['attach']);
+  });
+  it('attaches without changing metadata or restarting the process', async () => {
+    await launch({ mode: 'attach', target: 'existing' });
+    expect(mock.calls).toEqual(['option existing status off', 'attach']);
+    expect(mock.spawn.mock.calls[0]?.[1]).toEqual([
+      'attach-session',
+      '-t',
+      '=existing:',
+    ]);
+  });
+  it('leaves occupied names alone and retries concurrent name claims', async () => {
+    mock.taken.add('test');
+    mock.duplicate.add('test-2');
+    const backend = await launch();
+    expect(backend.name).toBe('test-3');
+    expect(mock.calls.some((call) => call.startsWith('option test '))).toBe(
+      false
     );
   });
-
-  it('spawns `tmux new-session -A` with the prefixed, sanitized name', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
+  it('skips caller-held names and sanitizes labels', async () => {
+    const backend = await launch({
+      mode: 'create',
+      label: 'a.b',
+      tags: {},
+      excludedNames: ['a-b'],
     });
-    factory(spec({ name: 'release/v1.0.1' }));
-    expect(ptySpawnArgs).toHaveLength(1);
-    const { cmd, args } = ptySpawnArgs[0]!;
-    expect(cmd).toBe('tmux');
-    // `release/v1.0.1` has dots and a slash. Slashes are valid in tmux
-    // names; dots are not, so they get replaced.
-    expect(args).toContain('-s');
-    const idx = args.indexOf('-s');
-    expect(args[idx + 1]).toBe('kirby-abc12345-release/v1-0-1');
+    expect(backend.name).toBe('a-b-2');
   });
-
-  // The prefix namespaces names by repository; a caller that hands over
-  // a name it composed in full (a terminal session, an orphaned worktree
-  // session being resumed under its original name) must not have the
-  // namespace applied a second time, or `-A` creates a new session
-  // instead of attaching to the one it was asked for.
-  it('uses a name the caller marks as qualified without the prefix', () => {
-    const factory = createTmuxBackendFactory({
-      sessionPrefix: 'kirby-abc12345-',
-      isQualified: (name) => name.startsWith('kirby-term-'),
+  it('does not clean up someone else’s session when allocation fails', async () => {
+    mock.createError = 'permission denied';
+    await expect(launch()).rejects.toThrow('permission denied');
+    expect(mock.calls.some((call) => call.startsWith('kill'))).toBe(false);
+  });
+  it.each(['optionError', 'respawnError'] as const)(
+    'cleans up its own placeholder on %s',
+    async (field) => {
+      mock[field] = 'failed';
+      await expect(launch()).rejects.toThrow('failed');
+      expect(mock.calls.at(-1)).toBe('kill test');
+      expect(mock.spawn).not.toHaveBeenCalled();
+    }
+  );
+  it('cleans up a created session if local attachment cannot start', async () => {
+    mock.spawn.mockImplementation(() => {
+      throw new Error('pty failed');
     });
-    factory(spec({ name: 'kirby-term-shell-1a2b3c' }));
-    factory(spec({ name: 'feature-x' }));
-    const nameOf = (i: number) => {
-      const { args } = ptySpawnArgs[i]!;
-      return args[args.indexOf('-s') + 1];
-    };
-    expect(nameOf(0)).toBe('kirby-term-shell-1a2b3c');
-    expect(nameOf(1)).toBe('kirby-abc12345-feature-x');
+    await expect(launch()).rejects.toThrow('pty failed');
+    expect(mock.calls.at(-1)).toBe('kill test');
   });
-
-  it('passes cmd and args after the `--` separator', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cmd: '/bin/sh', args: ['-c', 'claude --continue'] }));
-    const { args } = ptySpawnArgs[0]!;
-    const sep = args.indexOf('--');
-    expect(sep).toBeGreaterThan(0);
-    expect(args.slice(sep + 1)).toEqual(['/bin/sh', '-c', 'claude --continue']);
+  it('preserves existing sessions when local attachment fails', async () => {
+    mock.spawn.mockImplementation(() => {
+      throw new Error('pty failed');
+    });
+    await expect(launch({ mode: 'attach', target: 'other' })).rejects.toThrow(
+      'pty failed'
+    );
+    expect(mock.calls.some((call) => call.startsWith('kill'))).toBe(false);
   });
-
-  // A terminal tab wants whatever the user's shell is, and tmux already
-  // knows: `new-session` with no command runs its `default-shell`. So an
-  // empty `cmd` must end the argv at the flags — appending `--` and an
-  // empty string would ask tmux to exec "" and fail on the spot.
-  it('runs tmux\'s default shell when cmd is empty, with no `--` at all', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cmd: '', args: [] }));
-    const { args } = ptySpawnArgs[0]!;
-    expect(args).not.toContain('--');
-    expect(args).not.toContain('');
-    // The argv ends at the size flags — nothing follows `-y <rows>`.
-    expect(args.slice(-2)).toEqual(['-y', '30']);
+  it('runs the configured login shell when no command is requested', async () => {
+    await launch(undefined, { cmd: '', args: [] });
+    expect(mock.calls.find((call) => call.includes('respawn-pane'))).toContain(
+      '-- /bin/zsh -l'
+    );
   });
-
-  it('passes cwd, cols, rows to the local PTY for sizing', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ cols: 120, rows: 40 }));
-    const { args, opts } = ptySpawnArgs[0]!;
-    expect(args).toContain('-c');
-    expect(args[args.indexOf('-c') + 1]).toBe('/tmp/work');
-    expect(args[args.indexOf('-x') + 1]).toBe('120');
-    expect(args[args.indexOf('-y') + 1]).toBe('40');
-    expect(opts['cwd']).toBe('/tmp/work');
-    expect(opts['cols']).toBe(120);
-    expect(opts['rows']).toBe(40);
+  it('passes per-launch environment additions to the agent and strips nesting from client env', async () => {
+    await launch(undefined, {
+      env: { HOME: '/home/example', PATH: '/bin', TMUX: 'nested' },
+      envAdditions: { SEED: 'seed' },
+    });
+    expect(mock.calls.find((call) => call.includes('respawn-pane'))).toContain(
+      '-e HOME=/home/example -e SEED=seed'
+    );
+    expect(mock.spawn.mock.calls[0]?.[2].env).not.toHaveProperty('TMUX');
   });
-
-  it('forwards write/resize/onData/onExit to the inner PtySession', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
-    backend.write('hello');
-    backend.resize(90, 25);
-    const dataCb = () => undefined;
-    const exitCb = () => undefined;
-    backend.onData(dataCb);
-    backend.onExit(exitCb);
-    backend.offData(dataCb);
-    backend.offExit(exitCb);
-    expect(writeSpy).toHaveBeenCalledWith('hello');
-    expect(resizeSpy).toHaveBeenCalledWith(90, 25);
-    expect(onDataSpy).toHaveBeenCalledWith(dataCb);
-    expect(onExitSpy).toHaveBeenCalledWith(exitCb);
-    expect(offDataSpy).toHaveBeenCalledWith(dataCb);
-    expect(offExitSpy).toHaveBeenCalledWith(exitCb);
+  it('refuses to restart a live process without touching its metadata', async () => {
+    await expect(
+      launch({ mode: 'restart', target: 'live', tags: { '@agent': 'new' } })
+    ).rejects.toThrow('running or missing');
+    expect(mock.calls).toEqual([]);
   });
+  it('restarts a dead pane without -k, retaining its identity', async () => {
+    mock.state = { paneDead: true, exitCode: 12 };
+    await launch({
+      mode: 'restart',
+      target: 'dead',
+      tags: { '@agent': 'new' },
+      retainOnExit: true,
+    });
+    const respawn = mock.calls.find((call) => call.includes('respawn-pane'));
+    expect(respawn).toMatch(/^respawn-pane -t =dead:/);
+    expect(respawn).not.toContain(' -k ');
+  });
+});
 
-  it('dispose() detaches the local PTY without killing the tmux session', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
+describe('hosted process lifecycle', () => {
+  it('reports retained process exit once, independently of its client', async () => {
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    await vi.advanceTimersByTimeAsync(500);
+    mock.state = { paneDead: true, exitCode: 7 };
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(7, undefined);
+    expect(backend.processState).toMatchObject({ running: false, exitCode: 7 });
+  });
+  it('reports dead panes even when attaching after the process exited', async () => {
+    mock.state = { paneDead: true, exitCode: 9 };
+    const backend = await launch({ mode: 'attach', target: 'dead' });
+    const exit = vi.fn();
+    backend.onExit(exit);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(9, undefined);
+  });
+  it('replays retained final output to a late data subscriber before its exit notification', async () => {
+    const backend = await launch();
+    mock.state = { paneDead: true, exitCode: 4 };
+    await vi.advanceTimersByTimeAsync(500);
+    const events: string[] = [];
+    backend.onData((data) => events.push(data));
+    backend.onExit(() => events.push('exit'));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(events[0]).toContain('final output');
+    expect(events[1]).toBe('exit');
+  });
+  it('notifies remaining exit listeners when the first listener disposes the backend', async () => {
+    const backend = await launch();
+    const relayExit = vi.fn();
+    backend.onExit(() => backend.dispose());
+    backend.onExit(relayExit);
+    mock.state = { paneDead: true, exitCode: 7 };
+    await vi.advanceTimersByTimeAsync(500);
+    expect(relayExit).toHaveBeenCalledExactlyOnceWith(7, undefined);
+  });
+  it('notifies remaining disconnect listeners when the first listener disposes the backend', async () => {
+    const backend = await launch();
+    const observer = vi.fn();
+    backend.onDisconnect?.(() => backend.dispose());
+    backend.onDisconnect?.(observer);
+    mock.clientExit?.();
+    // The client-exit handler awaits an async pane-state read before
+    // deciding whether this was a disconnect or an agent exit.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observer).toHaveBeenCalledOnce();
+  });
+  it('distinguishes client disconnect from an agent exit', async () => {
+    const backend = await launch();
+    const exit = vi.fn();
+    const disconnect = vi.fn();
+    backend.onExit(exit);
+    backend.onDisconnect?.(disconnect);
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(backend.processState?.running).toBe(true);
+  });
+  it('forces a fresh read after client exit rather than reusing a stale in-flight result', async () => {
+    mock.paneStateGated = true;
+    const backend = await launch();
+    // The initial setTimeout(0) inspect starts a read that stays in
+    // flight until resolved below — dispatched while the hosted process
+    // is still alive, before the client exits.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.paneStateCalls).toBe(1);
+    const exit = vi.fn();
+    const disconnect = vi.fn();
+    backend.onExit(exit);
+    backend.onDisconnect?.(disconnect);
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
+    // onExit must wait for the stale read rather than starting a
+    // second one right away.
+    expect(mock.paneStateCalls).toBe(1);
+    // The stale read resolves with the state as of when it was issued
+    // — still alive — which must not be trusted for this decision.
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mock.paneStateCalls).toBe(2);
+    expect(exit).not.toHaveBeenCalled();
+    expect(disconnect).not.toHaveBeenCalled();
+    // The hosted process has since exited; the fresh read reflects that.
+    mock.state = { paneDead: true, exitCode: 9 };
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(9, undefined);
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+  it('reconnects locally with the same size and data subscribers', async () => {
+    const backend = await launch();
+    const data = vi.fn();
+    backend.onData(data);
+    backend.resize(100, 40);
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(backend.connectionState).toBe('reconnecting');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(backend.connectionState).toBe('connected');
+    expect(mock.spawn).toHaveBeenCalledTimes(2);
+    expect(mock.spawn.mock.calls[1]?.[2]).toMatchObject({
+      cols: 100,
+      rows: 40,
+    });
+    expect(mock.data).toHaveBeenCalledTimes(2);
+    expect(mock.data).toHaveBeenLastCalledWith(data);
+    expect(backend.processState?.running).toBe(true);
+  });
+  it('bounds failed client reconnection attempts and cancels them on disposal', async () => {
+    const backend = await launch();
+    mock.spawn.mockImplementation(() => {
+      throw new Error('unavailable');
+    });
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mock.spawn).toHaveBeenCalledTimes(4);
+    expect(backend.connectionState).toBe('failed');
+    expect(backend.processState?.running).toBe(true);
     backend.dispose();
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
-    expect(tmuxKillSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(mock.spawn).toHaveBeenCalledTimes(4);
   });
-
-  it('kill() runs `tmux kill-session` with the sanitized name AND disposes the local PTY', () => {
-    const factory = createTmuxBackendFactory({ sessionPrefix: 'kirby-' });
-    const backend = factory(spec({ name: 'feature/foo' }));
-    backend.kill();
-    expect(tmuxKillSpy).toHaveBeenCalledWith('kirby-feature/foo');
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  it('cancels an upcoming reconnect when disposed', async () => {
+    const backend = await launch();
+    mock.clientExit?.();
+    backend.dispose();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mock.spawn).toHaveBeenCalledOnce();
   });
-
-  it('kill() is idempotent — second call does nothing', () => {
-    const factory = createTmuxBackendFactory();
-    const backend = factory(spec());
-    backend.kill();
-    backend.kill();
-    expect(tmuxKillSpy).toHaveBeenCalledTimes(1);
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  it('stops polling and emitting after disposal without killing the process', async () => {
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    backend.dispose();
+    mock.state = { paneDead: true };
+    await vi.advanceTimersByTimeAsync(1500);
+    mock.clientExit?.();
+    expect(exit).not.toHaveBeenCalled();
+    expect(mock.calls.some((call) => call.startsWith('kill'))).toBe(false);
+    expect(mock.dispose).toHaveBeenCalledOnce();
   });
-
-  it('honors an empty sessionPrefix (lib stays caller-agnostic)', () => {
-    const factory = createTmuxBackendFactory();
-    factory(spec({ name: 'plainsession' }));
-    const args = ptySpawnArgs[0]!.args;
-    const idx = args.indexOf('-s');
-    expect(args[idx + 1]).toBe('plainsession');
+  it('does not stack a poll while the previous pane-state read is still in flight', async () => {
+    mock.paneStateGated = true;
+    await launch();
+    // The initial setTimeout(0) inspect starts a read that never resolves
+    // until we let it.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.paneStateCalls).toBe(1);
+    // Two more 500ms ticks land while that read is still pending; neither
+    // should start a second, overlapping tmux read.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mock.paneStateCalls).toBe(1);
+    // Resolving it clears the in-flight guard, so the next tick reads again.
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mock.paneStateCalls).toBe(2);
+  });
+  it('does not conclude exit on a failed pane-state read, and recovers on the next healthy tick', async () => {
+    // A non-zero exit or spawn error (EAGAIN/EMFILE on fork, ENOENT, the
+    // 5s timeout kill) says nothing about the pane; it must not be
+    // reported as the hosted process exiting.
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    await vi.advanceTimersByTimeAsync(1);
+    mock.readFailed = true;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(exit).not.toHaveBeenCalled();
+    expect(backend.processState?.running).toBe(true);
+    mock.readFailed = false;
+    mock.state = { paneDead: true, exitCode: 3 };
+    await vi.advanceTimersByTimeAsync(500);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(3, undefined);
+  });
+  it('drops a pane-state read that resolves after dispose, firing no callbacks', async () => {
+    mock.paneStateGated = true;
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    // The initial setTimeout(0) inspect starts a read that stays in
+    // flight until we resolve it below.
+    await vi.advanceTimersByTimeAsync(1);
+    backend.dispose();
+    mock.state = { paneDead: true, exitCode: 5 };
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).not.toHaveBeenCalled();
+  });
+  it('kills only the resolved target, once', async () => {
+    const backend = await launch({ mode: 'attach', target: 'actual' });
+    backend.kill();
+    backend.kill();
+    expect(mock.calls.filter((call) => call.startsWith('kill'))).toEqual([
+      'kill actual',
+    ]);
+    expect(mock.dispose).toHaveBeenCalledOnce();
   });
 });

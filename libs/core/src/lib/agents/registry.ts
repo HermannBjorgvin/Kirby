@@ -17,12 +17,10 @@ import type { AgentId, AppConfig } from '@kirby/vcs-core';
 //   • Only Claude supports appending a system prompt (`--append-system-prompt`).
 //     For every other agent, guidance is folded into the user prompt by the
 //     launcher instead.
-//   • `continue` is Claude-only for now. Copilot's `--continue` resumes the
-//     most-recently-closed session GLOBALLY (not scoped to the folder/worktree),
-//     so it is unsafe for us; OpenCode's scoping is undocumented. Codex and
-//     Gemini have worktree-safe resume we may adopt later, but we keep the
-//     first cut simple and cautious: non-Claude agents decline continue and
-//     the launcher degrades to blank/seed.
+//   • Retained Claude and Codex agents have explicit resume adapters. Other
+//     agents reject automatic resume rather than silently starting over.
+//   • New launches may use the existing continue-or-fresh capability;
+//     attaching a tmux session never invokes an agent adapter.
 
 /** Extends the public {@link AgentId} with the internal, UI-hidden test runner. */
 export type ResolvedAgentId = AgentId | 'test';
@@ -59,6 +57,8 @@ export interface AgentDefinition {
   supportsAppendSystemPrompt: boolean;
   /** Start a blank interactive session. */
   blank(): LaunchSpec;
+  /** Resume an exited agent without silently starting a new conversation. */
+  resume?(prompt?: string, opts?: SeedOptions): LaunchSpec;
   /**
    * Start a fresh interactive session pre-seeded with a prompt.
    * `undefined` ⇒ the agent cannot seed an interactive session; the
@@ -83,34 +83,36 @@ export const SEED_PROMPT_ENV = 'KIRBY_SEED_PROMPT';
 export const SEED_SYSTEM_ENV = 'KIRBY_SEED_SYSTEM';
 
 /**
- * Run `script` through the platform shell.
- *
- * The `continue || fallback` paths need a shell for the `||`, but
- * `/bin/sh` does not exist on Windows — node-pty fails to spawn it with
- * a bare "File not found:", which carries no hint about the cause.
- * `cmd.exe` implements `||` with the same short-circuit semantics.
+ * Run `script` through `/bin/sh`, for the `continue || fallback` paths
+ * that need a shell for the `||`. Every launch goes through tmux, which
+ * has no native Windows build — see `docs/decisions.md`.
  */
-const shellInvoke = (script: string): Pick<LaunchSpec, 'cmd' | 'args'> =>
-  process.platform === 'win32'
-    ? {
-        cmd: process.env.ComSpec || 'cmd.exe',
-        args: ['/d', '/s', '/c', script],
-      }
-    : { cmd: '/bin/sh', args: ['-c', script] };
+const shellInvoke = (script: string): Pick<LaunchSpec, 'cmd' | 'args'> => ({
+  cmd: '/bin/sh',
+  args: ['-c', script],
+});
 
 /**
  * Reference an environment variable in a shell script, in the syntax
- * the shell chosen by {@link shellInvoke} expands: `%NAME%` for
- * `cmd.exe`, `$NAME` for POSIX `sh`.
+ * `/bin/sh` expands: `$NAME`.
  */
-const shellEnvRef = (name: string): string =>
-  process.platform === 'win32' ? `%${name}%` : `$${name}`;
+const shellEnvRef = (name: string): string => `$${name}`;
 
 const CLAUDE: AgentDefinition = {
   id: 'claude',
   name: 'Claude',
   supportsAppendSystemPrompt: true,
   blank: () => ({ cmd: 'claude', args: [] }),
+  resume: (prompt, opts) => ({
+    cmd: 'claude',
+    args: [
+      '--continue',
+      ...(opts?.appendSystemPrompt
+        ? ['--append-system-prompt', opts.appendSystemPrompt]
+        : []),
+      ...(prompt ? [prompt] : []),
+    ],
+  }),
   seed: (prompt, opts) =>
     opts?.appendSystemPrompt
       ? {
@@ -154,6 +156,10 @@ const CODEX: AgentDefinition = {
   name: 'Codex',
   supportsAppendSystemPrompt: false,
   blank: () => ({ cmd: 'codex', args: [] }),
+  resume: (prompt) => ({
+    cmd: 'codex',
+    args: ['resume', '--last', ...(prompt ? [prompt] : [])],
+  }),
   seed: (prompt) => ({ cmd: 'codex', args: [prompt] }),
 };
 
@@ -198,6 +204,7 @@ export function makeTestAgent(rawCommand: string): AgentDefinition {
     hidden: true,
     supportsAppendSystemPrompt: false,
     blank: () => shellInvoke(rawCommand),
+    resume: () => shellInvoke(rawCommand),
     // Seeding a fake is best-effort: run the raw command and expose the
     // prompt via env for fakes that choose to read it.
     seed: (prompt) => ({

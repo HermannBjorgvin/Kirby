@@ -1,4 +1,4 @@
-import { getSession } from '@kirby/core';
+import { getSession, hasPersistedTerminalSession } from '@kirby/core';
 import type { SessionBuffer } from '../contract.js';
 
 /**
@@ -65,7 +65,11 @@ export function attachRelay(name: string, entry: RelayEntry): void {
     const current = getSession(name);
     if (current && current !== session) return;
     console.log(`[desktop] session ${name} exited with code ${code}`);
-    broadcast?.('kirby/session/exit', { name, code });
+    broadcast?.('kirby/session/exit', {
+      name,
+      code,
+      retained: !!current && hasPersistedTerminalSession(name),
+    });
   });
 }
 

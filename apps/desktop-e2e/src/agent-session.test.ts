@@ -1,3 +1,4 @@
+import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
@@ -8,7 +9,7 @@ import {
 } from './setup/app.js';
 
 const BRANCH = 'agent-work';
-/** Session names are the branch with slashes flattened. */
+/** Branch used by this fixture's worktree agent. */
 const SESSION = BRANCH;
 
 async function launchAgent(page: Page) {
@@ -26,7 +27,9 @@ function closeTabButton(page: Page) {
 
 async function sessionRunning(page: Page): Promise<boolean> {
   const sessions = await page.evaluate(() => window.kirby.listSessions());
-  return sessions.find((s) => s.name === SESSION)?.running ?? false;
+  return (
+    sessions.find((s) => sessionBranch(s.name) === SESSION)?.running ?? false
+  );
 }
 
 test.describe('Agent sessions', () => {
@@ -51,7 +54,10 @@ test.describe('Agent sessions', () => {
 
     // And once one has run, it is a relaunch.
     await launchAgent(page);
-    await page.evaluate(() => window.kirby.killSession('agent-work'));
+    await page.evaluate(
+      (name) => window.kirby.killSession(name),
+      await sessionKey(page, BRANCH)
+    );
     await expect(
       page.getByRole('button', { name: /Relaunch agent/i })
     ).toBeVisible({ timeout: 15_000 });
@@ -65,8 +71,10 @@ test.describe('Agent sessions', () => {
     await launchAgent(page);
 
     const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.map((s) => s.name)).toContain(SESSION);
-    expect(sessions.find((s) => s.name === SESSION)?.running).toBe(true);
+    expect(sessions.map((s) => sessionBranch(s.name))).toContain(SESSION);
+    expect(
+      sessions.find((s) => sessionBranch(s.name) === SESSION)?.running
+    ).toBe(true);
   });
 
   test('closing the tab of an idle agent kills it without asking', async ({
@@ -76,15 +84,19 @@ test.describe('Agent sessions', () => {
     await createWorktree(page, BRANCH);
     await launchAgent(page);
 
-    // `useCloseTabs` branches on the renderer's polled activity query,
-    // and the banner makes the agent read as active for a moment after
-    // launch. Both edges have to be observed: waiting only for the
-    // spinner to be *absent* is satisfied before it has ever rendered,
-    // so the close could land on a query that had not yet reported the
-    // banner — and then did. Wait for the UI to consider the agent busy,
-    // the same state the sibling test asserts on, and only then for it
-    // to settle.
-    await expect(agentSpinner(page).first()).toBeVisible({ timeout: 15_000 });
+    // The banner may be suppressed as resize echo, so an idle agent need
+    // never show a busy spinner. Wait for its real hosted process and an
+    // explicit idle snapshot, then let the renderer's poll catch up.
+    await expect.poll(() => sessionRunning(page)).toBe(true);
+    const name = await sessionKey(page, BRANCH);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async (key) => (await window.kirby.getSessionActivity())[key],
+          name
+        )
+      )
+      .toMatchObject({ active: false });
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await closeTabButton(page).click();

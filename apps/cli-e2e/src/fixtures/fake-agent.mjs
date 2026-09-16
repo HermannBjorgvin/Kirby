@@ -131,7 +131,10 @@ function parseBursts(v) {
 }
 
 function runBursts() {
-  if (bursts === 0) return;
+  if (bursts === 0) {
+    if (!echo && !exitOnInput && exitAfterMs == null) keepAlive();
+    return;
+  }
   let remaining = bursts;
   const chunk = '.'.repeat(burstBytes);
   const startBurst = () => {

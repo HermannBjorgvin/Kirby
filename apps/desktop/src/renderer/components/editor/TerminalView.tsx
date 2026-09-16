@@ -1,3 +1,6 @@
+import { Button } from '../ui/button.js';
+import { useLaunchTerminal } from '../../lib/data/mutations-terminals.js';
+import { errorMessage } from '../../lib/utils.js';
 import type { TerminalTab } from '../../lib/tabs/tabs.js';
 import { useTerminals } from '../../lib/data/queries.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';
@@ -17,11 +20,50 @@ export function TerminalView({
   active: boolean;
 }) {
   const terminals = useTerminals();
-  const epoch =
-    terminals.data?.find((t) => t.name === tab.name)?.spawnedAt ?? 0;
+  const session = terminals.data?.find((t) => t.name === tab.name);
+  const launch = useLaunchTerminal();
+  const epoch = session?.spawnedAt ?? 0;
   return (
-    <div className="relative min-h-0 flex-1" data-terminal-pane>
-      <SessionTerminal name={tab.name} epoch={epoch} active={active} />
+    <div className="relative flex min-h-0 flex-1 flex-col" data-terminal-pane>
+      {session?.kind === 'agent' && !session.running && (
+        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm">
+          <span>{session.agent ?? 'Agent'} exited</span>
+          <Button
+            size="sm"
+            disabled={launch.isPending}
+            onClick={() =>
+              launch.mutate({
+                sessionName: session.name,
+                kind: session.kind,
+                cwd: session.cwd,
+              })
+            }
+          >
+            Resume agent
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={launch.isPending}
+            onClick={() =>
+              launch.mutate({
+                sessionName: session.name,
+                kind: session.kind,
+                cwd: session.cwd,
+                fresh: true,
+              })
+            }
+          >
+            Start new (directory default)
+          </Button>
+          {launch.error && (
+            <span role="alert">{errorMessage(launch.error)}</span>
+          )}
+        </div>
+      )}
+      <div className="relative min-h-0 flex-1">
+        <SessionTerminal name={tab.name} epoch={epoch} active={active} />
+      </div>
     </div>
   );
 }

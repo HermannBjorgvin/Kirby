@@ -14,7 +14,7 @@ function term(
   id: string,
   kind: 'shell' | 'agent' = 'shell'
 ): DiscoveredTerminal {
-  return { name: `kirby-term-${kind}-${id}`, kind, path: `/dir/${id}` };
+  return { name: `kirby-${kind}-${id}`, kind, path: `/dir/${id}` };
 }
 
 function scan(
@@ -169,10 +169,7 @@ describe('diffScans', () => {
       expect(delta.disappeared).toEqual(['feature-a']);
     });
 
-    // On the PTY backend `persisted` is always empty. Deriving `ended`
-    // from the registry instead would report every live session as
-    // ended, every scan.
-    it('stays empty on a backend with no persisted sessions', () => {
+    it('stays empty when neither scan reports persisted sessions', () => {
       const delta = diffScans(
         scan([wt('feature-a')]),
         scan([wt('feature-a')]),
@@ -206,6 +203,20 @@ describe('diffScans', () => {
       const delta = diffScans(
         scan([], [], [term('aa')]),
         scan([], [], [term('aa')]),
+        allAlive
+      );
+      expect(delta.adoptableTerminals).toEqual([]);
+      expect(delta.changed).toBe(false);
+    });
+
+    it('does not repeatedly adopt an exited terminal already held for viewing', () => {
+      const stopped = { ...term('done', 'agent'), running: false };
+      const current = scan([], [], [stopped]);
+      const delta = diffScans(
+        current,
+        current,
+        nothingAlive,
+        new Set(),
         allAlive
       );
       expect(delta.adoptableTerminals).toEqual([]);

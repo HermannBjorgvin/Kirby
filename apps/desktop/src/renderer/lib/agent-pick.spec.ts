@@ -8,11 +8,12 @@ const agents = [
 ];
 
 describe('agentIdForLaunch', () => {
-  it('sends nothing for the default row, whatever agent it is', () => {
+  it('supports automatic resume and explicit configured-default picks', () => {
+    expect(agentIdForLaunch(agents, -1)).toBeUndefined();
     expect(agentIdForLaunch(agents, 0)).toBeUndefined();
     expect(
       agentIdForLaunch([{ id: 'claude', name: 'Claude (default)' }], 0)
-    ).toBeUndefined();
+    ).toBe('claude');
   });
 
   it('names a non-default pick', () => {

@@ -1,19 +1,11 @@
 /**
- * Universal contract between Kirby's session registry and any backend
- * (direct PTY, tmux, future SSH/Docker). No backend-specific fields,
- * no Kirby-specific fields — backend libs configure themselves through
- * their own factory options at composition time.
+ * Process launch and local terminal connection contracts. Session identity,
+ * metadata and lifecycle intent belong to the caller and transport launch plan.
  */
 
 export interface SessionSpec {
-  /** Caller-supplied identifier. Backends use it as a stable session id
-   *  (registry key for the direct-PTY backend; tmux session name for
-   *  the tmux backend, after the lib's own sanitization). The caller is
-   *  responsible for whatever uniqueness/namespacing it needs. */
-  name: string;
   /** Command to run. The empty string means the backend's own default
-   *  interactive shell: tmux runs its `default-shell`, the direct PTY
-   *  backend runs `$SHELL` (falling back to `/bin/sh`). Callers wanting
+   *  interactive shell: tmux runs its `default-shell`. Callers wanting
    *  "a terminal" rather than "this program" pass that. */
   cmd: string;
   args: string[];
@@ -36,6 +28,19 @@ export interface SessionSpec {
 }
 
 export interface SessionBackend {
+  /** Actual persistent session name, after allocation or resolution. */
+  readonly name?: string;
+  /** Local client health, independent of the hosted process lifetime. */
+  readonly connectionState?: 'connected' | 'reconnecting' | 'failed';
+  /** Logical process status, independent of the local transport client. */
+  readonly processState?: {
+    running: boolean;
+    exitCode?: number;
+    signal?: number;
+  };
+  /** The local connection ended while the hosted process remained alive. */
+  onDisconnect?(cb: () => void): void;
+  offDisconnect?(cb: () => void): void;
   readonly pid: number;
   readonly cols: number;
   readonly rows: number;
@@ -54,5 +59,3 @@ export interface SessionBackend {
    *  local PTY. */
   kill(signal?: string): void;
 }
-
-export type SessionBackendFactory = (spec: SessionSpec) => SessionBackend;

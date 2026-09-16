@@ -1,3 +1,4 @@
+import { worktreeSessionKey } from '../session-key.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type {
   AppConfig,
@@ -318,7 +319,7 @@ describe('startPrBabysitter', () => {
     clock = 10 * MIN;
     await sitter.pollNow();
     expect(mocks.deliverToRunningSession).toHaveBeenCalledWith(
-      'feat-thing',
+      worktreeSessionKey('feat/thing', '/repo'),
       expect.stringContaining('CI: failed')
     );
     expect(statuses.at(-1)).toMatchObject({
@@ -363,7 +364,8 @@ describe('startPrBabysitter', () => {
 
   it('never types into a session that belongs to another repository', async () => {
     const sitter = start({
-      isForeignSession: (name) => name === 'feat-thing',
+      isForeignSession: (name) =>
+        name === worktreeSessionKey('feat/thing', '/repo'),
     });
     await pollPastDebounce(sitter);
     expect(mocks.deliverToRunningSession).not.toHaveBeenCalled();
@@ -381,7 +383,7 @@ describe('startPrBabysitter', () => {
     await pollPastDebounce(sitter);
     expect(mocks.launchSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'feat-thing',
+        name: worktreeSessionKey('feat/thing', '/repo'),
         cwd: '/wt/feat-thing',
         cols: 100,
         rows: 30,
@@ -391,7 +393,9 @@ describe('startPrBabysitter', () => {
         },
       })
     );
-    expect(spawned).toEqual(['feat-thing@/wt/feat-thing']);
+    expect(spawned).toEqual([
+      `${worktreeSessionKey('feat/thing', '/repo')}@/wt/feat-thing`,
+    ]);
     expect(statuses.at(-1)?.deliveries).toBe(1);
     sitter.stop();
   });

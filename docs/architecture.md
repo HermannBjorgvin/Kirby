@@ -10,6 +10,7 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
 apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
+  src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
   src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), KIRBY_QA_STEPS hook
   src/preload/preload.ts         — Typed contextBridge → window.kirby
   src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names (incl. MenuCommand, ContextMenuItem, DesktopPrefs)
@@ -53,7 +54,11 @@ libs/core/                       — Shell-agnostic core. No React, Ink or Elect
   src/lib/sync/                  — Remote sync passes (sweepMergedBranches, conflict counts)
   src/lib/agents/                — Agent registry
   src/lib/activity.ts            — Agent activity registry; pty-registry.ts — PTY session lifecycle
-  src/lib/session-backend.ts     — Terminal backend factory wiring (PTY/tmux)
+  src/lib/session-backend.ts     — Required tmux availability, tagged-session observations and cleanup
+  src/lib/session-identity.ts    — `@orchestra-*` tag names, session labels and matching rules shared with Orchestra
+  src/lib/session-resolver.ts    — The one `list-sessions` fork every tmux lookup goes through
+  src/lib/session/open-session.ts — Explicit session requests → create, attach or restart plans
+  src/lib/discovery/             — Session discovery: scan/diff, live worktree sessions, worktree HEAD reader
   src/lib/keybindings/           — Customizable keybinding system
     registry.ts                  — Action catalog, presets (Normie/Vim), ActionId type
     resolver.ts                  — matchesKey, resolveAction, findConflict, descriptorFromKeypress
@@ -69,14 +74,13 @@ libs/worktree-manager/           — Git worktree and branch operations
   src/lib/worktree.ts            — Worktree CRUD, branch utils, conflict checks
 libs/terminal/                   — Terminal emulator (renderer) + SessionBackend interface
   src/lib/terminal-emulator.ts   — @xterm/headless wrapper with ANSI rendering
-  src/lib/session-backend.ts     — SessionSpec, SessionBackend, SessionBackendFactory contract
-libs/terminal-pty/               — Direct PTY backend (node-pty)
+  src/lib/session-backend.ts     — SessionSpec and terminal connection/process lifecycle contract
+libs/terminal-pty/               — Low-level node-pty transport used to embed the tmux client
   src/lib/pty-session.ts         — node-pty wrapper (PtySession)
-  src/lib/pty-backend.ts         — createPtyBackendFactory()
-libs/terminal-tmux/              — Tmux backend (optional system tmux ≥ 2.0)
-  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands
-  src/lib/tmux-backend.ts        — createTmuxBackendFactory({ sessionPrefix })
-  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', length cap)
+libs/terminal-tmux/              — Required tmux backend (system tmux 3.2+)
+  src/lib/tmux-cli.ts            — execFileSync wrappers for tmux subcommands (sessions, options, listing with user options)
+  src/lib/tmux-backend.ts        — createTmuxBackend(spec, plan): tmux client connection and hosted-process observation
+  src/lib/sanitize-tmux-session-name.ts — pure name sanitizer ('.',':' → '-', 200-char cap with hash tail)
   src/lib/is-tmux-available.ts   — version probe + platform-aware install hint
 libs/kitty-graphics/             — Kitty terminal graphics protocol (Unicode placeholders)
   src/lib/kitty-graphics.ts      — detect, transmit (PNG f=100 / RGBA f=32+zlib), placeholderText, animation frames, delete

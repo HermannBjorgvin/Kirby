@@ -49,7 +49,10 @@
             "banner": {
               "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
             }
-          }
+          },
+          "additionalEntryPoints": [
+            "apps/desktop/src/main/tmux-session-worker.ts"
+          ]
         },
         "configurations": {
           "development": {

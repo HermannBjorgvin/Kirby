@@ -6,16 +6,13 @@ import { join } from 'node:path';
  * Put any tmux command this project's tests run onto a throwaway
  * server, before a single spec is imported.
  *
- * `libs/core` is where the real tmux calls live now —
- * `hasLiveTmuxSession` and `killPersistedTmuxSession` shell out through
- * `@kirby/terminal-tmux` — and they run whenever the resolved backend
- * is tmux, which an unset config now makes the default. Today no spec
- * reaches them with a probe that says "available", so nothing here has
- * ever touched a socket; that is an accident of the current tests
- * rather than a property of the code. One spec that stubs the probe as
- * available and exercises the kill path would otherwise run
- * `tmux kill-session -t kirby-<hash>-<branch>` against
- * `/tmp/tmux-$UID/default` — the developer's own agents.
+ * `libs/core` is where the real tmux calls live — the resolver lists
+ * sessions, `killPersistedTmuxSession` kills one — and
+ * `session-resolver.spec.ts` deliberately creates and kills real
+ * sessions to prove the tag rules against a server. Without this it
+ * would do that on `/tmp/tmux-$UID/default`, next to the developer's
+ * own agents; the spec refuses to run unless the directory below is
+ * in force.
  *
  * `TMUX_TMPDIR` picks the socket directory; `TMUX` names a socket path
  * outright and **wins**, so the second is removed rather than

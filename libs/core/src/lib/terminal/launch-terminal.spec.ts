@@ -1,97 +1,76 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '@kirby/vcs-core';
-
-const { spawns } = vi.hoisted(() => ({
-  spawns: [] as {
-    name: string;
-    cmd: string;
-    args: string[];
-    cwd: string;
-    cols: number;
-    rows: number;
-  }[],
-}));
-
-vi.mock('../pty-registry.js', () => ({
-  spawnSession: (
-    name: string,
-    cmd: string,
-    args: string[],
-    cols: number,
-    rows: number,
-    cwd: string
-  ) => {
-    spawns.push({ name, cmd, args, cwd, cols, rows });
-    return { spawnedAt: 1 };
+import type { OpenSessionParams } from '../session/open-session.js';
+import { terminalSessionKey } from '../session-key.js';
+const state = vi.hoisted(() => ({ calls: [] as OpenSessionParams[] }));
+vi.mock('../repo-root.js', () => ({ getRepoRoot: () => '/repo' }));
+vi.mock('../session/open-session.js', () => ({
+  openSession: (p: OpenSessionParams) => {
+    state.calls.push(p);
+    return { name: 'allocated' };
   },
-  getSession: () => undefined,
 }));
-
-vi.mock('../agents/registry.js', () => ({
-  resolveAgent: (config: { agentId?: string }) => ({
-    id: config.agentId ?? 'claude',
-    name: 'Agent',
-    supportsAppendSystemPrompt: true,
-    blank: () => ({ cmd: config.agentId ?? 'claude', args: [] }),
-    seed: (p: string) => ({ cmd: 'claude', args: [p] }),
-    continueOrBlank: () => ({
-      cmd: '/bin/sh',
-      args: ['-c', 'claude --continue || claude'],
-    }),
-  }),
-}));
-
 import { launchTerminalSession } from './launch-terminal.js';
-
-const config = { vendorAuth: {}, vendorProject: {} } as AppConfig;
-
+const config = {
+  vendorAuth: {},
+  vendorProject: {},
+  agentId: 'codex',
+} as AppConfig;
+const base = { cwd: '/repo', cols: 80, rows: 24, config };
 beforeEach(() => {
-  spawns.length = 0;
+  state.calls.length = 0;
 });
-
-describe('launchTerminalSession', () => {
-  // The shell case hands the backend an empty command: tmux then runs
-  // its default-shell and the PTY backend runs $SHELL. Naming any shell
-  // here would pin one across both backends and need a setting.
-  it('opens a shell by asking the backend for its default shell', () => {
-    launchTerminalSession({
-      name: 'kirby-term-shell-1a2b3c',
-      kind: 'shell',
-      cwd: '/home/dev/notes',
-      cols: 100,
-      rows: 30,
-      config,
+describe('terminal requests', () => {
+  it('creates a shell with no provisional ID or Orchestra tag signalling', async () => {
+    await launchTerminalSession({ ...base, kind: 'shell' });
+    expect(state.calls[0]).toMatchObject({
+      session: { type: 'terminal', kind: 'shell', repo: '/repo' },
+      mode: 'create',
     });
-    expect(spawns).toEqual([
-      {
-        name: 'kirby-term-shell-1a2b3c',
-        cmd: '',
-        args: [],
-        cwd: '/home/dev/notes',
-        cols: 100,
-        rows: 30,
-      },
-    ]);
+    expect(state.calls[0].build()).toEqual({ spec: { cmd: '', args: [] } });
   });
-
-  // The agent case is exactly the session menu's plain "session" entry:
-  // the configured agent, no prompt, no review guidance — resumed where
-  // the agent supports it.
-  it('opens an agent the way the session menu’s plain entry does', () => {
-    launchTerminalSession({
-      name: 'kirby-term-agent-4d5e6f',
-      kind: 'agent',
-      cwd: '/repo',
-      cols: 80,
-      rows: 24,
-      config: { ...config, agentId: 'codex' },
+  it('uses the agent adapter for a fresh agent terminal', async () => {
+    await launchTerminalSession({ ...base, kind: 'agent' });
+    expect(state.calls[0].build()).toEqual({
+      spec: { cmd: 'codex', args: [] },
+      agent: 'codex',
     });
-    expect(spawns).toHaveLength(1);
-    expect(spawns[0]).toMatchObject({
-      name: 'kirby-term-agent-4d5e6f',
-      cwd: '/repo',
-      cmd: '/bin/sh',
-      args: ['-c', 'claude --continue || claude'],
+  });
+  it('starts a retained agent fresh with the directory default when requested', async () => {
+    await launchTerminalSession({
+      ...base,
+      kind: 'agent',
+      name: terminalSessionKey('saved'),
+      fresh: true,
+    });
+    expect(state.calls[0].fresh).toBe(true);
+    expect(state.calls[0].build('unknown-agent', true)).toEqual({
+      spec: { cmd: 'codex', args: [] },
+      agent: 'codex',
+      fresh: true,
+    });
+  });
+  it('restores the exact tmux target independently of its display kind', async () => {
+    await launchTerminalSession({
+      ...base,
+      kind: 'agent',
+      name: terminalSessionKey('orphan'),
+      mode: 'attach',
+    });
+    expect(state.calls[0]).toMatchObject({
+      session: { target: 'orphan', kind: 'agent' },
+      mode: 'attach',
+    });
+  });
+  it('uses the recorded agent when restarting despite a changed default', async () => {
+    await launchTerminalSession({
+      ...base,
+      kind: 'agent',
+      name: terminalSessionKey('saved'),
+    });
+    expect(state.calls[0].build('claude', true)).toEqual({
+      spec: { cmd: 'claude', args: ['--continue'] },
+      agent: 'claude',
     });
   });
 });

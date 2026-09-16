@@ -37,7 +37,11 @@ export * from './lib/plan/plan-types.js';
 
 // ── Session / PTY infrastructure (Node host side) ────────────────
 export * from './lib/session-backend.js';
-export * from './lib/terminal/terminal-name.js';
+export * from './lib/session-identity.js';
+export * from './lib/session-resolver.js';
+export * from './lib/session/session-request.js';
+export * from './lib/session/open-session.js';
+export type * from './lib/terminal/terminal-name.js';
 export * from './lib/terminal/launch-terminal.js';
 export * from './lib/pty-registry.js';
 export {
@@ -62,6 +66,7 @@ export {
 export * from './lib/agents/registry.js';
 export * from './lib/agents/agent-options.js';
 export * from './lib/session/launch-session.js';
+export * from './lib/session/session-launch-context.js';
 export * from './lib/session/session-menu.js';
 export * from './lib/session/session-menu-request.js';
 export * from './lib/session/review-prompt.js';
@@ -113,3 +118,15 @@ export {
   __resetPlanStoreForTest,
 } from './lib/plan/plan-store.js';
 export * from './lib/plan/prompt-composer.js';
+
+export {
+  worktreeSessionKey,
+  keyForWorktree,
+  terminalSessionKey,
+  sessionIdentity,
+  sessionLabel,
+} from './lib/session-key.js';
+export type { SessionIdentity } from './lib/session-key.js';
+
+export { stopSession } from './lib/session/stop-session.js';
+export { removeWorktreeSession } from './lib/session/remove-worktree.js';

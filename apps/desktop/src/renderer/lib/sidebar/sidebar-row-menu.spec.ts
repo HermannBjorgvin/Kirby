@@ -45,7 +45,7 @@ describe('sidebarRowMenuItems', () => {
     expect(none).not.toContain('stop-babysit');
   });
 
-  it('offers launch on an idle worktree and stop on a busy one, never both', () => {
+  it('offers session choices for every worktree and stop for a busy one', () => {
     const idle = ids({ hasWorktree: true, running: false, hasPr: false });
     expect(idle).toContain('launch');
     expect(idle).not.toContain('kill');
@@ -54,7 +54,7 @@ describe('sidebarRowMenuItems', () => {
 
     const busy = ids({ hasWorktree: true, running: true, hasPr: false });
     expect(busy).toContain('kill');
-    expect(busy).not.toContain('launch');
+    expect(busy).toContain('launch');
   });
 
   it('offers neither on a row with no checkout, however it is flagged', () => {

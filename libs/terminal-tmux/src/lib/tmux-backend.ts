@@ -1,205 +1,275 @@
-import type {
-  SessionBackend,
-  SessionBackendFactory,
-  SessionSpec,
-} from '@kirby/terminal';
+import type { SessionBackend, SessionSpec } from '@kirby/terminal';
 import { PtySession } from '@kirby/terminal-pty';
-import { isTmuxAvailable } from './is-tmux-available.js';
-import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
 import {
-  tmuxHasSession,
+  tmuxAttachArgs,
+  tmuxCapturePane,
   tmuxKillSession,
-  tmuxSetOption,
-  tmuxVersion,
+  tmuxPaneStateAsync,
+  type TmuxPaneRead,
 } from './tmux-cli.js';
+import { prepareTmuxSession, type TmuxLaunchPlan } from './tmux-launch.js';
+export type { TmuxLaunchPlan } from './tmux-launch.js';
 
-// `new-session -e VAR=value` exists from tmux 3.2. Probed once.
-let envFlagSupport: boolean | null = null;
-function supportsSessionEnvFlag(): boolean {
-  if (envFlagSupport == null) {
-    try {
-      const m = /(\d+)\.(\d+)/.exec(tmuxVersion());
-      envFlagSupport = m
-        ? Number(m[1]) > 3 || (Number(m[1]) === 3 && Number(m[2]) >= 2)
-        : false;
-    } catch {
-      envFlagSupport = false;
-    }
-  }
-  return envFlagSupport;
+type ExitCallback = (code: number, signal?: number) => void;
+
+export type TmuxSessionPreparer = (
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan
+) => string | Promise<string>;
+let prepare: TmuxSessionPreparer = prepareTmuxSession;
+
+/** Desktop supplies an isolated process for server creation; Node callers use native tmux. */
+export function setTmuxSessionPreparer(
+  preparer: TmuxSessionPreparer = prepareTmuxSession
+): void {
+  prepare = preparer;
 }
 
-/**
- * Environment to inject into the tmux *session* (not just the client).
- * A tmux server keeps the environment it was started with and uses it
- * for every command it spawns — so a stale server (started by an old
- * process, a test run, a different context) silently poisons new
- * sessions with its HOME/PATH, and the caller's seed additions never
- * reach the command at all. `-e` pins the essentials per session.
- */
-function sessionEnvFlags(spec: SessionSpec): string[] {
-  if (!supportsSessionEnvFlag()) return [];
-  const vars = new Map<string, string>();
-  for (const key of ['PATH', 'HOME']) {
-    const value = spec.env?.[key] ?? process.env[key];
-    if (value) vars.set(key, value);
-  }
-  for (const [key, value] of Object.entries(spec.envAdditions ?? {})) {
-    if (value != null) vars.set(key, value);
-  }
-  return [...vars].flatMap(([key, value]) => ['-e', `${key}=${value}`]);
+/** Explicit create, attach or restart; no identity interpretation in the transport. */
+export async function createTmuxBackend(
+  spec: SessionSpec,
+  plan: TmuxLaunchPlan
+): Promise<SessionBackend> {
+  const name = await prepare(spec, plan);
+  return new TmuxBackend(spec, name, plan.mode === 'create');
 }
 
-/** The command half of `new-session`'s argv. An empty `cmd` is the
- *  SessionSpec contract for "the backend's default shell": tmux does
- *  that by itself when no command follows the flags, so nothing is
- *  appended — a trailing `--` with an empty word would ask it to exec
- *  "" and fail instead. */
-function sessionCommand(spec: SessionSpec): string[] {
-  if (spec.cmd === '') return [];
-  return ['--', spec.cmd, ...spec.args];
-}
-
-export interface TmuxFactoryOptions {
-  /** Optional. Prepended to spec.name (with no separator) before tmux
-   *  sanitization. Use this for any caller-side namespacing — the lib
-   *  treats it as opaque. */
-  sessionPrefix?: string;
-  /** Optional. Names this answers true for are used as-is (sanitized,
-   *  not prefixed): the caller composed them in full already, and
-   *  prefixing again would make `-A` create a second session beside
-   *  the one it meant to attach to. */
-  isQualified?: (name: string) => boolean;
-}
-
-/** Build a SessionBackendFactory configured with the caller's prefix.
- *  The lib never sees a branch, repo path, or product name — the
- *  caller is responsible for whatever uniqueness/namespacing it
- *  wants. The lib only enforces tmux's own validity rules on the
- *  assembled string. */
-export function createTmuxBackendFactory(
-  opts?: TmuxFactoryOptions
-): SessionBackendFactory {
-  const prefix = opts?.sessionPrefix ?? '';
-  const isQualified = opts?.isQualified ?? (() => false);
-  return (spec: SessionSpec): SessionBackend => {
-    const tmuxName = sanitizeTmuxSessionName(
-      isQualified(spec.name) ? spec.name : prefix + spec.name
-    );
-    return new TmuxBackend(spec, tmuxName);
-  };
-}
-
-/**
- * Tmux-backed session: persists across Kirby restarts. Implementation
- * spawns `tmux new-session -A` via a local PTY — `-A` makes the call
- * idempotent (attach if the session exists, create if it doesn't), so
- * resume-after-restart and first-launch share one code path.
- *
- * Lifecycle:
- * - dispose() detaches the local PTY but leaves the tmux session
- *   running so it can be reattached.
- * - kill() runs `tmux kill-session` first, then disposes the local
- *   PTY — the tmux session is gone for good.
- */
 class TmuxBackend implements SessionBackend {
-  private readonly inner: PtySession;
+  private inner: PtySession;
+  private readonly data = new Set<(data: string) => void>();
+  private finalFrame: string | null = null;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private stableTimer?: ReturnType<typeof setTimeout>;
+  private reconnectAttempts = 0;
+  private connection: NonNullable<SessionBackend['connectionState']> =
+    'connected';
+  private readonly spec: SessionSpec;
+  private width: number;
+  private height: number;
+  private readonly exits = new Set<ExitCallback>();
+  private readonly disconnects = new Set<() => void>();
+  private timer?: ReturnType<typeof setInterval>;
+  private disposed = false;
   private killed = false;
+  /** Guards against overlapping polls: the async pane-state read can still
+   *  be in flight when the next 500ms tick fires. The client's own
+   *  `onExit` waits for whatever is here to settle rather than joining
+   *  it — a read already in flight when the client exits may have been
+   *  dispatched before the hosted process was, and so answer stale. */
+  private inspecting: Promise<void> | null = null;
+  private state = {
+    running: true,
+    exitCode: undefined as number | undefined,
+    signal: undefined as number | undefined,
+  };
+  readonly name: string;
 
-  constructor(spec: SessionSpec, private readonly tmuxName: string) {
-    // The client must not think it's nested: when Kirby itself runs
-    // inside a tmux window, the inherited TMUX var makes new-session
-    // refuse with "sessions should be nested with care".
-    const clientEnv: Record<string, string | undefined> = {
-      ...(spec.env ?? process.env),
-    };
-    delete clientEnv.TMUX;
-    delete clientEnv.TMUX_PANE;
-    // tmux new-session -A: create-or-attach atomically. The local
-    // PtySession runs the tmux client; tmux owns the actual shell.
-    this.inner = new PtySession(
-      'tmux',
-      [
-        'new-session',
-        '-A',
-        '-s',
-        tmuxName,
-        '-c',
-        spec.cwd,
-        '-x',
-        String(spec.cols),
-        '-y',
-        String(spec.rows),
-        ...sessionEnvFlags(spec),
-        ...sessionCommand(spec),
-      ],
-      { cols: spec.cols, rows: spec.rows, cwd: spec.cwd, env: clientEnv }
-    );
-    this.hideStatusBar();
+  constructor(spec: SessionSpec, name: string, created: boolean) {
+    this.name = name;
+    this.spec = spec;
+    this.width = spec.cols;
+    this.height = spec.rows;
+    try {
+      this.inner = this.attach();
+    } catch (error) {
+      if (created) tmuxKillSession(this.name);
+      throw error;
+    }
+    // Retained panes do not terminate the client when their process exits.
+    // Polling is local, bounded per command and stopped at dispose or exit.
+    this.timer = setInterval(() => this.inspect(), 500);
+    this.timer.unref();
+    // Callers await creation before subscribing. Let those subscriptions bind
+    // before inspecting an already-exited process and replaying its final frame.
+    setTimeout(() => this.inspect(), 0).unref();
   }
 
-  /** Kirby embeds the session inside its own chrome: the tmux status
-   *  bar wastes a row and its default green background bleeds into
-   *  renderers that derive a container background from the bottom
-   *  screen row. The session may not exist yet when the constructor
-   *  returns (the client creates it), so retry briefly. Idempotent —
-   *  reattaching to an existing session just sets it again. */
-  private hideStatusBar(): void {
-    const attempt = (remaining: number): void => {
-      if (this.killed) return;
-      if (tmuxHasSession(this.tmuxName)) {
-        tmuxSetOption(this.tmuxName, 'status', 'off');
-        return;
+  private attach(): PtySession {
+    const env = { ...(this.spec.env ?? process.env) };
+    delete env.TMUX;
+    delete env.TMUX_PANE;
+    const client = new PtySession('tmux', tmuxAttachArgs(this.name), {
+      cols: this.width,
+      rows: this.height,
+      cwd: this.spec.cwd,
+      env,
+    });
+    for (const cb of this.data) client.onData(cb);
+    client.onExit(() => {
+      if (this.disposed || this.inner !== client) return;
+      clearTimeout(this.stableTimer);
+      // A read already in flight when the client exits may have been
+      // dispatched before the hosted process did and so resolve with a
+      // stale "alive" result. Let it settle — its own handlePaneState
+      // still runs and may already conclude the exit — then issue a
+      // fresh read of our own (never the stale one) before deciding
+      // this is a mere client disconnect rather than a real exit.
+      const stale = this.inspecting ?? Promise.resolve();
+      void stale
+        .then(() => this.runInspect())
+        .then(() => {
+          // Two tmux forks have passed; re-check identity as well as state.
+          if (this.disposed || !this.state.running || this.inner !== client)
+            return;
+          this.connection = 'reconnecting';
+          for (const cb of [...this.disconnects]) cb();
+          this.reconnect();
+        });
+    });
+    return client;
+  }
+
+  private reconnect(): void {
+    if (this.disposed || !this.state.running) return;
+    if (this.reconnectAttempts >= 3) {
+      this.connection = 'failed';
+      return;
+    }
+    const delay = 500 * 2 ** this.reconnectAttempts++;
+    this.reconnectTimer = setTimeout(() => {
+      if (this.disposed || !this.state.running) return;
+      this.inner.dispose();
+      try {
+        this.inner = this.attach();
+        this.connection = 'connected';
+        // A client that survives two seconds is a successful reconnection.
+        this.stableTimer = setTimeout(() => {
+          this.reconnectAttempts = 0;
+        }, 2000);
+        this.stableTimer.unref();
+      } catch {
+        this.reconnect();
       }
-      if (remaining > 0) setTimeout(() => attempt(remaining - 1), 200);
-    };
-    attempt(25);
+    }, delay);
+    this.reconnectTimer.unref();
   }
 
+  /** Fire-and-forget entry point for the timer and the initial
+   *  `setTimeout(0)`; overlapping ticks just join the read already
+   *  in flight rather than starting a second one. */
+  private inspect(): void {
+    if (!this.state.running || this.disposed) return;
+    void this.runInspect();
+  }
+
+  /** Async so the periodic poll never blocks the caller's event loop
+   *  (Ink's render loop, Electron's main process). Returns the shared
+   *  in-flight read so an overlapping timer tick joins it rather than
+   *  starting a redundant one. */
+  private runInspect(): Promise<void> {
+    if (this.inspecting) return this.inspecting;
+    const promise = tmuxPaneStateAsync(this.name)
+      .then((pane) => this.handlePaneState(pane))
+      .finally(() => {
+        this.inspecting = null;
+      });
+    this.inspecting = promise;
+    return promise;
+  }
+
+  private handlePaneState(read: TmuxPaneRead): void {
+    // Disposal (or the process having already been marked exited by an
+    // earlier poll) can land between the read starting and resolving.
+    if (this.disposed || !this.state.running) return;
+    // A failed read (non-zero exit, spawn error) says nothing about the
+    // pane — Kirby simply could not talk to tmux this tick. Leave
+    // `state.running` and the timer untouched; the next tick tries again.
+    if (read.status === 'failed') return;
+    if (read.status === 'ok' && !read.state.paneDead) return;
+    if (read.status === 'ok') this.replayFinalFrame();
+    this.state = {
+      running: false,
+      exitCode: read.status === 'ok' ? read.state.exitCode : undefined,
+      signal: read.status === 'ok' ? read.state.exitSignal : undefined,
+    };
+    clearInterval(this.timer);
+    clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
+    for (const cb of [...this.exits])
+      cb(this.state.exitCode ?? 0, this.state.signal);
+  }
+
+  private replayFinalFrame(): void {
+    const frame = tmuxCapturePane(this.name);
+    if (frame == null) return;
+    // A process may exit before its client's first redraw. Replay the
+    // retained frame, including history, before any listener handles exit.
+    const output =
+      '\x1b[?1049l\x1b[3J\x1b[2J\x1b[H' + frame.replace(/\r?\n/g, '\r\n');
+    this.finalFrame = output;
+    for (const cb of [...this.data]) cb(output);
+  }
+
+  get connectionState() {
+    return this.connection;
+  }
+  get processState() {
+    return this.state;
+  }
   get pid(): number {
     return this.inner.pid;
   }
   get cols(): number {
-    return this.inner.cols;
+    return this.width;
   }
   get rows(): number {
-    return this.inner.rows;
+    return this.height;
   }
   write(data: string): void {
     this.inner.write(data);
   }
   resize(cols: number, rows: number): void {
+    this.width = cols;
+    this.height = rows;
     this.inner.resize(cols, rows);
   }
   onData(cb: (data: string) => void): void {
+    this.data.add(cb);
     this.inner.onData(cb);
+    if (this.finalFrame !== null && !this.disposed) cb(this.finalFrame);
   }
   offData(cb: (data: string) => void): void {
+    this.data.delete(cb);
     this.inner.offData(cb);
   }
-  onExit(cb: (code: number, signal?: number) => void): void {
-    this.inner.onExit(cb);
+  onExit(cb: ExitCallback): void {
+    this.exits.add(cb);
+    if (!this.state.running)
+      queueMicrotask(() => {
+        if (!this.disposed && this.exits.has(cb))
+          cb(this.state.exitCode ?? 0, this.state.signal);
+      });
   }
-  offExit(cb: (code: number, signal?: number) => void): void {
-    this.inner.offExit(cb);
+  offExit(cb: ExitCallback): void {
+    this.exits.delete(cb);
+  }
+  onDisconnect(cb: () => void): void {
+    this.disconnects.add(cb);
+  }
+  offDisconnect(cb: () => void): void {
+    this.disconnects.delete(cb);
   }
 
-  /** Soft cleanup — detach only. Tmux session keeps running so the
-   *  next Kirby launch can reattach. */
+  /** Detach the local client without terminating the hosted process. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.connection = 'failed';
+    clearInterval(this.timer);
+    clearTimeout(this.reconnectTimer);
+    clearTimeout(this.stableTimer);
+    this.data.clear();
+    this.exits.clear();
+    this.disconnects.clear();
     this.inner.dispose();
   }
 
-  /** Hard teardown — kill the tmux session, then detach. The signal
-   *  argument from the interface is ignored (tmux kill-session does
-   *  not accept one); we always do a full session kill. */
   kill(): void {
     if (this.killed) return;
     this.killed = true;
-    tmuxKillSession(this.tmuxName);
-    this.inner.dispose();
+    tmuxKillSession(this.name);
+    this.dispose();
   }
 }
 
-// Re-export availability probe so callers don't need a separate import.
-export { isTmuxAvailable };
+export { isTmuxAvailable } from './is-tmux-available.js';

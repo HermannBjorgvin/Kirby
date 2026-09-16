@@ -12,8 +12,7 @@ Keep that entry browser-safe and the core/app-core barrels separate.
 
 When changing shared behavior, compare both shells. Worktree removal is
 implemented in the TUI's `performDelete` and desktop's `services/worktrees.ts`;
-only the latter kills persisted tmux sessions. Consolidate that sequence in core
-when changing it. Draft posting uses one comment per `postReviewComments` call,
+both use core's removal sequence to stop persisted tmux sessions. Draft posting uses one comment per `postReviewComments` call,
 so a partial failure cannot reset already-posted comments to drafts.
 
 A fresh worktree needs its own `npm ci`: workspace links and nested dependencies
@@ -22,63 +21,139 @@ must resolve to that checkout. Copying only another checkout's root
 Nx targets may be inline in package manifests or inferred by plugins; inspect
 resolved configuration with `npx nx show project <name> --json`.
 
-## Terminal backends and isolation
+## Tmux sessions and transport
 
-`SessionBackend` separates terminal transport from Kirby. PTY and tmux backends
-receive session names from core; `tmux-namespace.ts` owns the Kirby prefix.
-`resolveTerminalBackend` honors project then global configuration, otherwise
-uses the tmux probe. Do not persist the detected default: another machine may
-have different capabilities. Await the probe before wiring the backend.
+Kirby requires tmux 3.2 or newer. Startup probes it and reports an installation
+hint when unavailable; a stored `terminalBackend` field has no effect. Every
+worktree agent and terminal tab runs in tmux. `node-pty` remains the low-level
+connection used to embed a tmux client in the CLI or desktop terminal.
 
-A backend switch requires no live sessions; selecting tmux requires a successful
-probe. Both shells enforce this so sessions cannot retain an obsolete factory.
+Core owns identity and agent policy. `session/open-session.ts` receives an
+explicit worktree or terminal request, resolves tagged sessions, and chooses a
+create, attach or restart plan. It validates a worktree's HEAD before touching
+an existing connection. Only create/restart calls the agent command builder.
+`terminal-tmux` executes that plan, allocates collision-free names, carries
+opaque tags and observes native pane state; it knows no repositories or agents.
+The registry owns local terminal rendering and activity. Launch preparation is
+asynchronous; callers await registration before installing relays or focusing
+terminals. Concurrent requests for one identity share preparation.
 
-Tmux launch and resume share `new-session -A`. `dispose()` detaches the client;
-`kill()` ends the session. Application shutdown must dispose, including
-`killAll()`. A tmux server retains its original environment, so sessions receive
-explicit HOME, PATH and seed variables. The `-e` options require tmux 3.2;
-check compatibility when changing the older availability-probe floor.
+Desktop creation runs `prepareTmuxSession` in an Electron utility process.
+Spawning a persistent tmux server directly from Electron on Linux leaks Chromium
+file descriptors into it, including profile locks. The supported utility-process
+boundary isolates those resources; attach and restart can run locally against
+an existing server. Build and development entry points include the worker.
 
-Tests must isolate the socket and environment. `TMUX` names a socket directly
-and overrides `TMUX_TMPDIR`: unset it, place the socket directory inside the
-fixture HOME, and assert isolation before listing or killing sessions. Never
-use `tmux kill-server`. Fixtures select PTY unless a test explicitly exercises
-tmux or an unset backend. This prevents detached agents leaking after tests.
+```mermaid
+flowchart TD
+  UI[CLI or desktop action] --> Core[Core: explicit session request]
+  Core --> Resolve[Resolve identity from tmux tags]
+  Resolve --> Live[Live session: attach]
+  Resolve --> Exited[Exited agent: resume or start new]
+  Resolve --> Missing[No session: create]
+  Exited --> Agent[Agent adapter builds argv]
+  Missing --> Agent
+  Live --> Transport[tmux transport]
+  Agent --> Transport
+  Transport --> Server[tmux session and hosted process]
+  Transport --> Client[node-pty: embedded tmux client]
+```
 
-## Discovery and terminal lifecycle
+Creation uses a detached placeholder while tags and `remain-on-exit` are set,
+then replaces only that placeholder with the agent or shell. Restart refuses a
+live pane: `respawn-pane` without `-k` and subsequent metadata writes share one
+server command queue, so a losing concurrent restart cannot overwrite the
+winner's agent tag. Attaching never builds argv or rewrites identity tags.
 
-Discovery polls tmux and worktrees, diffs observations with `diffScans`, and
-attaches through `spawnSession`. Polling avoids server-global tmux hooks and
-control clients that can resize panes. Recheck session liveness and the selected
-backend after awaits: the user may launch a session or switch backends mid-scan.
-Pass retired names as `suppressed` so they do not trigger a refresh every poll.
+Tmux retains its server environment. Each launch explicitly supplies HOME,
+PATH and the agent adapter's environment additions; do not copy the entire
+process environment into command-line `-e` flags. `list-sessions -F` output is
+tab-separated; `tmux -u` preserves separators under non-UTF-8 locales.
 
-Foreign-session discovery accepts names that exactly match the directory's repo
-and branch. Cache origins while their directories exist; a transient git error
-is not evidence that an agent disappeared. Discovery uses the open repo's backend
-configuration, including its per-project override.
+Tests isolate HOME and the tmux socket, unset inherited TMUX, and validate that
+the socket belongs to the fixture before cleanup. Kill fixture sessions
+individually; never use `tmux kill-server` or the user's default server.
 
-Standalone terminal sessions use `kirby-term-<shell|agent>-<id>` and tmux's
-`session_path`; no separate state file is needed. An empty command means the
-backend's default shell. Agents use `launchTerminalSession` → `launchSession`.
-Recognize qualified names to avoid prefixing them again. A worktree session whose
-branch changed can appear as an agent terminal instead of disappearing.
+macOS and Linux are the supported platforms. Every launch goes through tmux,
+which has no native Windows build, so there is no native Windows path; the old
+`cmd.exe` branches in the agent registry (`shellInvoke`, `shellEnvRef`) and
+their `/bin/sh`-does-not-exist-on-Windows rationale predate the tmux-only
+launcher and are gone. WSL is untested and secondary — its tmux runs under
+Linux, so it may work, but nothing here specifically supports it.
 
-Terminal grouping is derived from its directory: a repository root belongs to
-that repo; other directories are repo-less. Restoring a terminal must not move
-focus. Closing its tab kills the session; quitting Kirby detaches it.
+## Session identity shared with Orchestra
 
-Process exit closes a tab by session name immediately, even before the first
-listing. A defined listing can remove missing terminals; `undefined` means no
-answer yet. Iterate a snapshot of exit listeners because a listener can remove
-another listener during notification. If only the tmux client detached and the
-server session lives, reattach without reporting the terminal as ended.
+Names are labels; tags carry identity. Kirby and the Orchestra skill's bash
+scripts create ordinary tmux sessions using the same user options:
 
-Carry output sequence numbers across reattachment and respawn: a mounted
-terminal ignores chunks older than its replay. Resize on every fit and whenever
-`spawnedAt` changes, even if the session name and pane dimensions are unchanged.
-`paneTerminalGrid` measures the actual terminal font and padding for launch size;
-the first fit corrects any estimate made before the pane exists.
+| Session user option       | Meaning                                 |
+| ------------------------- | --------------------------------------- |
+| `@orchestra-spawner`      | Creator, such as `kirby` or `orchestra` |
+| `@orchestra-repo`         | Canonical main checkout path            |
+| `@orchestra-session-type` | `worktree`, `shell` or `agent`          |
+| `@orchestra-branch`       | Exact branch for a worktree session     |
+| `@orchestra-agent`        | Agent used for the most recent launch   |
+
+The shared names live in `session-identity.ts`. Creator/reporting metadata
+survives attachment and restart; a successful new process updates its agent
+metadata. Tags contain data, never arbitrary commands to execute. They live
+only as long as the tmux session, and do not provide persistence after reboot.
+
+Worktree lookup matches canonical repository plus exact branch. A terminal
+lookup uses its actual allocated tmux target. `session-resolver.ts` obtains one
+listing and applies those rules for attach, discovery, liveness and cleanup.
+A session lacking a spawner or recognized type is foreign; worktree sessions
+also require a repo tag. A familiar name alone never authorizes attachment or
+termination. Duplicate worktree identities resolve to the oldest session;
+extras are listed, never silently killed.
+
+Labels are `<repo>-<branch>`, `<repo>-shell` or `<repo>-agent`. The repo is the
+canonical main checkout's basename; `/`, `.` and `:` become `-`. A label longer
+than 200 characters keeps its first 195 plus a four-digit hash suffix. Name
+collisions add `-2`, `-3`, and so on, always from the original preferred label.
+A duplicate-name race retries allocation without adopting the other session.
+Core registry keys are JSON tuples: `["worktree", repo, exactBranch]` or
+`["terminal", actualTmuxName]`. Display labels never address registry entries.
+
+## Discovery, restart and terminal lifecycle
+
+Discovery polls worktrees and tmux, diffs observations with `diffScans`, and
+attaches through the shared launcher. Recheck local connection state between
+awaits so concurrent user actions cannot create duplicate connections. Failed
+attaches have bounded retries. Failed local clients become eligible for
+rediscovery without pretending their hosted agents exited.
+
+A tagged worktree process is running only while its pane is alive. Standalone
+terminal tabs are found globally by their session type and tmux `session_path`.
+An orphaned worktree session appears as an agent terminal when its tagged branch
+no longer matches a listed worktree; attachment preserves its original tags.
+Terminal grouping is derived from its directory. Restoring tabs does not move
+focus. Discovery also removes retained tabs whose sessions were deleted outside
+Kirby.
+
+Agent panes use `remain-on-exit` and retain final output. Resume uses the
+recorded agent, regardless of the current project default: Claude and Codex
+have explicit resume adapters. Their native continuation selects a conversation
+in the working directory; the agent tag is not a conversation ID. Missing or
+unsupported resume metadata produces an actionable error. Start-new choices
+explicitly select an agent and a fresh conversation, including the configured
+default. Shell panes close normally when their process exits.
+
+Hosted-process exit and tmux-client disconnect are different events. Native
+`pane_dead` drives exit state. Client disconnect retries attachment in the
+transport while preserving the local registry identity and subscriptions.
+Notify snapshots of listeners, because cleanup during one callback must not
+prevent later callbacks from receiving the event.
+
+Quitting Kirby disposes local clients; tmux sessions keep running. Explicit
+Stop, terminal close and worktree removal terminate the matching session,
+including when no local connection exists. `removeWorktreeSession` owns shared
+stop/remove/delete operations with the captured repository.
+
+Carry output sequence numbers across reattachment and restart so mounted
+terminals accept subsequent chunks. Resize on fit and when `spawnedAt` changes,
+even if the session name and dimensions are unchanged. `paneTerminalGrid`
+measures the actual font and padding; the first fit corrects startup estimates.
 
 ## Desktop repositories and tabs
 

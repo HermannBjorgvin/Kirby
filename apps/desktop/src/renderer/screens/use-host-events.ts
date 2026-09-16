@@ -49,8 +49,8 @@ export function useHostEvents(
   // stamp. A worktree agent's exit rides the same event and names no
   // terminal tab, so it closes nothing.
   useEffect(() => {
-    const off = window.kirby.onSessionExit(({ name }) => {
-      terminalEnded(name);
+    const off = window.kirby.onSessionExit(({ name, retained }) => {
+      if (!retained) terminalEnded(name);
       void qc.invalidateQueries({ queryKey: keys.terminals });
     });
     return off;

@@ -77,6 +77,7 @@ vi.mock('./services/sessions.js', () =>
     'launchAgent',
     'launchReviewAgent',
     'listAgentOptions',
+    'getSessionLaunchContext',
     'checkoutPlan',
     'listSessions',
     'getSessionActivity',
@@ -187,6 +188,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
   ['launchAgent', [{ branch: 'b' }], 'sessions.launchAgent'],
   ['launchReviewAgent', [{ pr: {} }], 'sessions.launchReviewAgent'],
   ['listAgentOptions', [], 'sessions.listAgentOptions'],
+  ['getSessionLaunchContext', ['feature'], 'sessions.getSessionLaunchContext'],
   [
     'checkoutPlan',
     [{ pr: {}, prompt: 'p', mode: 'inject' }],
@@ -207,7 +209,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'terminals.launchTerminal',
   ],
   ['listTerminals', [], 'terminals.listTerminals'],
-  ['killTerminal', ['kirby-term-shell-1'], 'terminals.killTerminal'],
+  ['killTerminal', ['kirby-shell'], 'terminals.killTerminal'],
 
   ['getDesktopPrefs', [], 'prefs.loadDesktopPrefs'],
 

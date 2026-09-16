@@ -6,34 +6,40 @@ electron or `@kirby/app-core` (lint-enforced). `src/plan.ts` is the
 browser-safe entry (`@kirby/core/plan`); nothing under it may touch `node:`.
 The reasoning behind each rule is in `docs/decisions.md`.
 
-- **Terminal backend** (`session-backend.ts`): `resolveTerminalBackend` is the
-  single answer. A stored `terminalBackend` wins; an absent key consults the
-  tmux probe on every read and is never persisted. Await
-  `probeTmuxAvailability()` before wiring the factory. A per-project value
-  overrides the global one.
-- **tmux persistence**: `new-session -A -s NAME` is the one launch path for
-  first launch and resume. `-e HOME` / `-e PATH` plus seed additions per
-  session, because a server keeps its birth env. `dispose()` detaches,
-  `kill()` kills; `killAll()` on exit must dispose. `isQualifiedTmuxName`
-  stops a complete name being prefixed a second time. `tmux-namespace.ts` is
-  the only home of the `kirby-` literal.
-- **Discovery** (`discovery/`): poll with pure `diffScans`; attach through
-  `spawnSession` so `-A` resumes rather than duplicates. Polling is
-  deliberate: tmux hooks are server-global and a control client resizes
-  panes. Re-read
-  `isSessionAlive` and `resolveTerminalBackend` per attach iteration. Retired
-  names are passed in as `suppressed`. `observeTmuxSessions` answers the
-  persistence question and the terminal listing in one fork, from the open
-  repo's config.
-- **Terminal sessions** (`terminal/terminal-name.ts`):
-  `kirby-term-<shell|agent>-<id>`. An empty `cmd` means the backend's default
-  shell. Agents go through `launchTerminalSession` → `launchSession`, never a
-  second launch path. `discovery/live-worktree-sessions.ts` lists only names
-  that compose exactly from a directory's repo and branch, remembers an origin
-  while the directory exists, and never drops one because git failed to answer.
+- **Tmux requirement** (`session-backend.ts`): await `probeTmuxAvailability()`
+  before startup validation. Require tmux 3.2+. Legacy backend preferences are
+  ignored; no direct-agent PTY fallback exists.
+- **Launch boundary** (`session/open-session.ts`): receive explicit worktree or
+  terminal identity, validate the worktree HEAD, resolve tags, then choose
+  create/attach/restart. Build agent argv only for create or restart. The tmux
+  package receives opaque launch plans; it must not infer Kirby identities.
+- **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
+  branch; terminal keys encode the allocated tmux target. Labels never address
+  entries. The registry owns connections, rendering and activity, not launch
+  policy. `dispose()` detaches; `kill()` terminates; shutdown must dispose.
+- **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
+  labels, `@orchestra-*` tags are identity. Attach and continuation preserve
+  creator/reporting tags. Fresh conversations preserve creator/repo/branch but
+  clear supervisor and last-report tags; record the actual launched agent.
+  Replacing a live process requires its captured native incarnation and an
+  atomic tmux guard. Unconfirmed restarts never interrupt a live winner.
+  Untagged sessions are foreign. Never use config `projectKey` for tmux identity.
+- **Agent restart** (`session/launch-session.ts`): continuation selects the
+  recorded agent and its explicit resume adapter. Fresh launch selects the
+  user's choice or configured default. Missing metadata must not silently
+  redirect a continuation to a different agent.
+- **Discovery** (`discovery/`): poll and use pure `diffScans`; attach through the
+  shared launcher, rechecking connection state between awaits. Retired names
+  are suppressed. Observe worktree processes, orphaned sessions and standalone
+  terminals in one listing. Retained agent panes are not running processes.
+- **Terminal sessions** (`terminal/launch-terminal.ts`): explicit shell/agent
+  requests use the same launcher as worktrees. Allocate the final tmux name
+  before creating the registry key. Agent panes retain final output; shell
+  exits close their tabs. Native pane state controls exit, not client disconnect.
+
 - **Session launch** (`session/`) resolves the worktree via `createWorktree`
-  (directory-name keyed, tolerant of a switched branch), reads config from the
-  repo root, and never respawns a live session. Force-remove is offered only
+  (exact branch match, rejecting a derived path occupied by another branch), reads config from the
+  repo root, and only replaces a live session with explicit incarnation approval. Force-remove is offered only
   for 'uncommitted changes' and 'not pushed to upstream'.
 - **Plan** (`plan/`): items are value snapshots taken at add time.
   `composePlanPrompt` numbers items in `planRows` order. Checkout is

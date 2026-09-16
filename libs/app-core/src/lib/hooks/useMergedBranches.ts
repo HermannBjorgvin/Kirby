@@ -13,8 +13,7 @@ export function useMergedBranches(
   // Depend on the three fields the sweep uses, not the whole config
   // object — otherwise every unrelated settings edit re-runs the
   // merged fetch + auto-delete pass.
-  const { vendorAuth, vendorProject, autoDeleteOnMerge, terminalBackend } =
-    config;
+  const { vendorAuth, vendorProject, autoDeleteOnMerge } = config;
   const [mergedBranches, setMergedBranches] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   // Effect events: the sweep must see the latest callbacks without the
@@ -49,7 +48,6 @@ export function useMergedBranches(
           vendorAuth,
           vendorProject,
           autoDeleteOnMerge,
-          terminalBackend,
         },
         branches,
         warnedRebase: warnedRebaseRef.current,
@@ -79,7 +77,6 @@ export function useMergedBranches(
     vendorAuth,
     vendorProject,
     autoDeleteOnMerge,
-    terminalBackend,
     branches,
   ]);
 

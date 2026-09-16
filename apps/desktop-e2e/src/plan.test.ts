@@ -282,8 +282,10 @@ test.describe('Sending the plan', () => {
       .filter({ visible: true })
       .first()
       .click();
-    await page.getByText('Start / continue session').click();
-    await page.getByRole('button', { name: 'Start session' }).click();
+    await page.getByRole('radio', { name: 'New session', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Start new session', exact: true })
+      .click();
     await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });

@@ -8,14 +8,14 @@ import {
 
 function view(over: Partial<SettingsFieldView> = {}): SettingsFieldView {
   return {
-    label: 'Terminal Backend',
-    key: 'terminalBackend',
+    label: 'Editor',
+    key: 'editor',
     value: '',
-    group: 'terminal',
+    group: 'general',
     kind: 'select',
     presets: [
-      { name: 'PTY', value: 'pty' },
-      { name: 'Tmux', value: 'tmux' },
+      { name: 'VS Code', value: 'code' },
+      { name: 'Vim', value: 'vim' },
     ],
     ...over,
   };
@@ -23,22 +23,20 @@ function view(over: Partial<SettingsFieldView> = {}): SettingsFieldView {
 
 describe('selectedPreset', () => {
   it('shows the stored value when it names a preset', () => {
-    expect(selectedPreset(view({ value: 'pty' }))).toBe('pty');
+    expect(selectedPreset(view({ value: 'code' }))).toBe('code');
   });
 
-  // The terminal backend's reason for existing: nothing is stored, and
-  // the host has said this machine will run tmux.
   it('shows the host-supplied default while nothing is stored', () => {
-    expect(selectedPreset(view({ defaultValue: 'tmux' }))).toBe('tmux');
-    expect(selectedPreset(view({ defaultValue: 'pty' }))).toBe('pty');
+    expect(selectedPreset(view({ defaultValue: 'vim' }))).toBe('vim');
+    expect(selectedPreset(view({ defaultValue: 'code' }))).toBe('code');
   });
 
   it('falls back to the first concrete preset with no default', () => {
-    expect(selectedPreset(view())).toBe('pty');
+    expect(selectedPreset(view())).toBe('code');
   });
 
   it('falls back to the first concrete preset when the default is unknown', () => {
-    expect(selectedPreset(view({ defaultValue: 'ssh' }))).toBe('pty');
+    expect(selectedPreset(view({ defaultValue: 'ssh' }))).toBe('code');
   });
 
   it('skips the custom escape hatch when picking the fallback', () => {
@@ -61,18 +59,16 @@ describe('selectedPreset', () => {
 });
 
 describe('isDefaultedPreset', () => {
-  // The terminal backend: nothing stored, and the host resolved tmux
-  // from the probe. That is the row that has to say so.
   it('marks the host-supplied default while nothing is stored', () => {
-    const field = view({ defaultValue: 'tmux' });
-    expect(isDefaultedPreset(field, 'tmux')).toBe(true);
-    expect(isDefaultedPreset(field, 'pty')).toBe(false);
+    const field = view({ defaultValue: 'vim' });
+    expect(isDefaultedPreset(field, 'vim')).toBe(true);
+    expect(isDefaultedPreset(field, 'code')).toBe(false);
   });
 
   it('marks nothing once a value is stored', () => {
-    const field = view({ value: 'pty', defaultValue: 'tmux' });
-    expect(isDefaultedPreset(field, 'tmux')).toBe(false);
-    expect(isDefaultedPreset(field, 'pty')).toBe(false);
+    const field = view({ value: 'code', defaultValue: 'vim' });
+    expect(isDefaultedPreset(field, 'vim')).toBe(false);
+    expect(isDefaultedPreset(field, 'code')).toBe(false);
   });
 
   // The first preset is a rendering fallback, not a resolved default.
@@ -91,6 +87,8 @@ describe('isDefaultedPreset', () => {
   });
 
   it('marks nothing when the default names no preset', () => {
-    expect(isDefaultedPreset(view({ defaultValue: 'ssh' }), 'pty')).toBe(false);
+    expect(isDefaultedPreset(view({ defaultValue: 'ssh' }), 'code')).toBe(
+      false
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,7 +26,10 @@ import { join } from 'node:path';
  * is never killed: it exits by itself once its last session is gone,
  * and `kill-server` cannot be aimed safely enough to be worth using.
  */
-const SCRATCH_SOCKET_DIR = mkdtempSync(join(tmpdir(), 'kirby-tmux-tests-'));
+const FIXTURE_HOME = mkdtempSync(join(tmpdir(), 'kirby-tmux-tests-'));
+const SCRATCH_SOCKET_DIR = join(FIXTURE_HOME, 'sockets');
+mkdirSync(SCRATCH_SOCKET_DIR);
+process.env.HOME = FIXTURE_HOME;
 
 process.env.TMUX_TMPDIR = SCRATCH_SOCKET_DIR;
 delete process.env.TMUX;

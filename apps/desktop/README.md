@@ -29,7 +29,7 @@ Launching from a repository opens it directly; launching from anywhere else brin
 - **A build toolchain on Linux.** `node-pty` ships prebuilt binaries for macOS and Windows, but not Linux, so npm compiles it during install. On Debian/Ubuntu: `sudo apt install build-essential python3`. macOS needs the Xcode command line tools (`xcode-select --install`); most machines already have them.
 - **An agent CLI** on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`. Configurable in Settings.
 - **`kirby` on your `PATH`, for agent-written reviews.** A review agent records its comments by running `kirby util add-comment`, which ships in the [terminal UI package](https://www.npmjs.com/package/@hermannbjorgvin/kirby). Without it the agent reviews the diff and has nowhere to put what it found. Everything else here works without it.
-- **`tmux` (optional, recommended).** Installed, it is the default backend: agent sessions keep running when you quit and are reattached next launch. Settings → Terminal Backend to pin PTY instead — an explicit choice is kept, so installing or removing tmux later only moves the default.
+- **`tmux` 3.2 or newer.** Agents and terminal tabs run in tmux, survive quitting Kirby, and reattach on the next launch.
 - **`gh` or `az` (optional)** for pull-request features, on GitHub and Azure DevOps respectively.
 
 Installing pulls Electron's binary (~100–200 MB) on first install.
@@ -47,7 +47,7 @@ Run it under WSL 2, which gives you the unix environment the agent and tmux back
 
 ## Configuration
 
-Settings live in the app (⌘, / Ctrl+,) and are stored in `~/.kirby/`. Provider credentials, the agent command, keybinding preset (Normie or Vim), terminal backend and poll intervals are all configurable there.
+Settings live in the app (⌘, / Ctrl+,) and are stored in `~/.kirby/`. Provider credentials, the agent command, keybinding preset (Normie or Vim) and poll intervals are all configurable there.
 
 ## Links
 

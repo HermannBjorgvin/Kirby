@@ -18,7 +18,7 @@ import {
 } from './setup/terminals.js';
 
 /**
- * Terminal tabs on the PTY backend: opened from the native menu through
+ * Terminal tabs: opened from the native menu through
  * the where-then-what dialog, shown as a terminal and nothing else,
  * grouped by what their directory is, and ended when their tab closes.
  */
@@ -308,14 +308,8 @@ test.describe('Agent terminals', () => {
       expect.objectContaining({ kind: 'agent', cwd: repoPath, running: true }),
     ]);
 
-    // The session menu's plain launch: the agent reports its seed line,
-    // and there is nothing on it. Read from the host's buffer, which is
-    // the bytes rather than a rendering of them.
-    const { data } = await page.evaluate(
-      (name) => window.kirby.getSessionBuffer(name),
-      listed[0].name
-    );
-    expect(data).toMatch(/seed:/);
-    expect(data).not.toMatch(/seed:[^\r\n]*\S/);
+    // tmux emits terminal control sequences around its repaint. Assert
+    // the agent's displayed seed line rather than matching raw ANSI bytes.
+    await expect(visibleText(page, /^seed:\s*$/)).toBeVisible();
   });
 });

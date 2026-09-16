@@ -4,7 +4,7 @@
 // only calls attach/detach at the lifecycle boundary; everything else
 // (the React hook, the input forwarder) talks to this module by name.
 
-import type { SessionBackend } from '@kirby/terminal';
+import type { SessionBackend, TerminalEmulator } from '@kirby/terminal';
 import {
   ACTIVITY_IDLE_MS,
   INPUT_ECHO_MS,
@@ -32,7 +32,11 @@ interface SessionActivity {
 
 const sessions = new Map<string, SessionActivity>();
 
-export function attach(name: string, pty: SessionBackend): void {
+export function attach(
+  name: string,
+  pty: SessionBackend,
+  emulator?: TerminalEmulator
+): void {
   detach(name);
 
   const state: SessionActivity = {
@@ -51,9 +55,8 @@ export function attach(name: string, pty: SessionBackend): void {
     dispose: () => undefined,
   };
 
-  const onData = (data: string) => {
-    if (data.length < MIN_DATA_BYTES) return;
-    const t = Date.now();
+  const onOutput = (bytes: number, t: number) => {
+    if (bytes < MIN_DATA_BYTES) return;
     // Suppress data that arrived within the echo window of an input we
     // sent — that's the terminal echoing the keystroke back, not the
     // agent doing work.
@@ -80,14 +83,50 @@ export function attach(name: string, pty: SessionBackend): void {
     state.exited = true;
   };
 
-  pty.onData(onData);
+  const disposeOutput = observeOutput(pty, emulator, onOutput);
   pty.onExit(onExit);
   state.dispose = () => {
-    pty.offData(onData);
+    disposeOutput();
     pty.offExit(onExit);
   };
 
   sessions.set(name, state);
+}
+
+/** Compare the already-parsed screen, including scrollback growth. tmux
+ * repaints existing content when clients negotiate or another session opens. */
+function observeOutput(
+  pty: SessionBackend,
+  emulator: TerminalEmulator | undefined,
+  output: (bytes: number, at: number) => void
+): () => void {
+  if (!emulator) {
+    const onData = (data: string) => output(data.length, Date.now());
+    pty.onData(onData);
+    return () => pty.offData(onData);
+  }
+  const frame = () => `${emulator.maxScrollback}\0${emulator.render()}`;
+  let previous = frame();
+  let pending: { bytes: number; at: number } | undefined;
+  const onData = (data: string) => {
+    if (data.length >= MIN_DATA_BYTES)
+      pending = { bytes: data.length, at: Date.now() };
+  };
+  const onParsed = () => {
+    const current = frame();
+    const candidate = pending;
+    pending = undefined;
+    const changed = current !== previous;
+    // Even suppressed echoes/resizes establish the next comparison frame.
+    previous = current;
+    if (changed && candidate) output(candidate.bytes, candidate.at);
+  };
+  pty.onData(onData);
+  emulator.onRender(onParsed);
+  return () => {
+    pty.offData(onData);
+    emulator.offRender(onParsed);
+  };
 }
 
 export function detach(name: string): void {

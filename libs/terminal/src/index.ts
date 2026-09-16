@@ -5,5 +5,4 @@ export {
 export {
   type SessionSpec,
   type SessionBackend,
-  type SessionBackendFactory,
 } from './lib/session-backend.js';

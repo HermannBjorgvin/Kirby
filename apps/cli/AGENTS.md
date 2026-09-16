@@ -23,12 +23,8 @@ under `src/screens/main` (sidebar, diff, branch picker) and
   without it every file needs `import React`.
 - Ink paints nothing when `CI`, `CONTINUOUS_INTEGRATION` or `GITHUB_ACTIONS`
   is set. Strip them from any env that spawns Kirby.
-- `input-handlers.ts:canApplyFieldChange` gates the `terminalBackend` toggle:
-  refused while any session exists, refused toward tmux when the probe reports
-  it unavailable. The desktop enforces the same host-side.
-- Worktree removal here (`performDelete`: kill session → remove worktree →
-  delete branch) does not call `killPersistedTmuxSession`; the desktop's does.
-  Move the sequence to core rather than patching one side.
+- Worktree removal uses core's shared stop → remove → delete sequence.
+  `stopSession` terminates one held target or one persisted target, never both.
 - `usePrData` polls the provider itself; it is the only reader in this process.
   The desktop reads a shared cache instead.
 - Rows are named by branch here; the desktop names a PR row by its title.

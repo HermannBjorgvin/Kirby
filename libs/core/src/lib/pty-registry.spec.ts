@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { SessionBackend } from '@kirby/terminal';
 import { MIN_ACTIVE_MS } from './activity-config.js';
 
 // Capture every session backend / TerminalEmulator the registry constructs
@@ -9,6 +10,7 @@ const { ptys, emus } = vi.hoisted(() => ({
 }));
 
 class MockPty {
+  connectionState: 'connected' | 'reconnecting' | 'failed' = 'connected';
   dataCbs: ((s: string) => void)[] = [];
   exitCbs: ((c: number) => void)[] = [];
   write = vi.fn();
@@ -34,11 +36,17 @@ class MockPty {
 class MockEmu {
   mouseTrackingMode = 'none';
   maxScrollback = 0;
-  write = vi.fn();
-  render = vi.fn(() => '');
+  frame = '';
+  renders = new Set<() => void>();
+  write = vi.fn(async (data: string) => {
+    await Promise.resolve();
+    this.frame += data;
+    for (const callback of this.renders) callback();
+  });
+  render = vi.fn(() => this.frame);
   resize = vi.fn();
-  onRender = vi.fn();
-  offRender = vi.fn();
+  onRender = vi.fn((callback: () => void) => this.renders.add(callback));
+  offRender = vi.fn((callback: () => void) => this.renders.delete(callback));
   dispose = vi.fn();
 }
 
@@ -50,28 +58,27 @@ vi.mock('@kirby/terminal', () => ({
   },
 }));
 
-vi.mock('@kirby/terminal-pty', () => ({
-  createPtyBackendFactory: () => () => {
-    const m = new MockPty();
-    ptys.push(m);
-    return m as unknown as object;
-  },
-}));
-
 // Import after the mock is registered.
 import * as activity from './activity.js';
 import {
-  spawnSession,
+  spawnSession as registerSession,
   getSession,
   hasSession,
+  hasSessionConnection,
   hasAnySession,
   isSessionAlive,
   killAll,
   killSession,
   releaseExitedSession,
+  detachSession,
 } from './pty-registry.js';
 
 const NAMES = ['s1', 's2'];
+function spawnSession(name: string) {
+  const pty = new MockPty();
+  ptys.push(pty);
+  return registerSession(name, pty as unknown as SessionBackend, 80, 24);
+}
 
 describe('pty-registry — self-exit', () => {
   beforeEach(() => {
@@ -90,7 +97,7 @@ describe('pty-registry — self-exit', () => {
   });
 
   it('keeps the entry reachable (present but not alive) after self-exit', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
     ptys[0].triggerExit(3);
 
     // Present, so its final output frame + exit code stay viewable...
@@ -101,8 +108,25 @@ describe('pty-registry — self-exit', () => {
     expect(isSessionAlive('s1')).toBe(false);
   });
 
+  it('allows rediscovery after connection retries fail without claiming the agent exited', () => {
+    spawnSession('s1');
+    ptys[0].connectionState = 'failed';
+    expect(isSessionAlive('s1')).toBe(true);
+    expect(hasSessionConnection('s1')).toBe(false);
+    expect(getSession('s1')?.exited).toBe(false);
+    expect(hasSession('s1')).toBe(true);
+  });
+
+  it('detaches a missing target without killing any replacement session', () => {
+    spawnSession('s1');
+    detachSession('s1');
+    expect(ptys[0].dispose).toHaveBeenCalledOnce();
+    expect(ptys[0].kill).not.toHaveBeenCalled();
+    expect(hasSession('s1')).toBe(false);
+  });
+
   it('does not dispose the emulator on exit, but killSession still can', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
     const emu = emus[0];
 
     ptys[0].triggerExit(0);
@@ -113,15 +137,17 @@ describe('pty-registry — self-exit', () => {
     expect(emu.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves activity tracking intact so the row can still flash', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+  it('leaves activity tracking intact so the row can still flash', async () => {
+    spawnSession('s1');
 
     // Qualifying active streak, never seen by the user.
     ptys[0].emit('xxxx');
+    await Promise.resolve();
     const ticks = Math.ceil(MIN_ACTIVE_MS / 200) + 1;
     for (let i = 0; i < ticks; i++) {
       vi.advanceTimersByTime(200);
       ptys[0].emit('xxxx');
+      await Promise.resolve();
     }
 
     ptys[0].triggerExit(0);
@@ -136,7 +162,7 @@ describe('pty-registry — self-exit', () => {
 
 // The backend interface splits teardown in two: dispose() releases local
 // resources only, kill() terminates the underlying session. For the
-// direct-PTY backend both collapse to the same thing, so these tests are
+// low-level PTY transport these can coincide, so these tests are
 // the only thing standing between a wrong call here and a *silent*
 // regression for persistent backends — under tmux, dispose() leaves the
 // session running and kill() destroys it. Swapping either call would
@@ -155,7 +181,7 @@ describe('pty-registry — teardown contract', () => {
   });
 
   it('killSession calls kill(), so a tmux session is destroyed not orphaned', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
     const pty = ptys[0]!;
 
     killSession('s1');
@@ -166,8 +192,8 @@ describe('pty-registry — teardown contract', () => {
   });
 
   it('killAll calls dispose(), so tmux sessions survive a Kirby restart', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
-    spawnSession('s2', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
+    spawnSession('s2');
     const spawned = [...ptys];
     expect(spawned).toHaveLength(2);
 
@@ -187,7 +213,7 @@ describe('pty-registry — teardown contract', () => {
   // inside tmux), which must not become a kill-session.
   describe('releaseExitedSession', () => {
     it('drops an exited entry and its emulator without calling kill()', () => {
-      spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+      spawnSession('s1');
       const pty = ptys[0]!;
       const emu = emus[0]!;
       pty.triggerExit(0);
@@ -200,7 +226,7 @@ describe('pty-registry — teardown contract', () => {
     });
 
     it('leaves a live session untouched', () => {
-      spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+      spawnSession('s1');
       const emu = emus[0]!;
 
       releaseExitedSession('s1');
@@ -211,10 +237,10 @@ describe('pty-registry — teardown contract', () => {
   });
 
   it('respawning the same name disposes the old entry rather than killing it', () => {
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
     const first = ptys[0]!;
 
-    spawnSession('s1', 'cmd', [], 80, 24, '/tmp');
+    spawnSession('s1');
 
     // dispose, not kill: on tmux the `-A` flag then reattaches to the
     // still-live session instead of starting a fresh one.

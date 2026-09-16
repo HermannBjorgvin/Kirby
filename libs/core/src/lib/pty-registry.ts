@@ -1,11 +1,11 @@
 import { TerminalEmulator } from '@kirby/terminal';
-import type { SessionBackend, SessionBackendFactory } from '@kirby/terminal';
-import { createPtyBackendFactory } from '@kirby/terminal-pty';
+import type { SessionBackend } from '@kirby/terminal';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
 export interface PtyEntry {
   pty: SessionBackend;
+  agent?: string;
   emu: TerminalEmulator;
   exited: boolean;
   exitCode?: number;
@@ -15,6 +15,10 @@ export interface PtyEntry {
    *  produces a fresh value, so the restarted tab moves to the end of
    *  the bar — matching browser-tab semantics. */
   spawnedAt: number;
+}
+
+export interface NamedPtyEntry extends PtyEntry {
+  name: string;
 }
 
 const registry = new Map<string, PtyEntry>();
@@ -32,30 +36,18 @@ export function onSessionExit(cb: (name: string) => void): () => void {
   return () => exitSubscribers.delete(cb);
 }
 
-let activeFactory: SessionBackendFactory = createPtyBackendFactory();
-
-/** Swap the backend factory used by future spawnSession() calls. The
- *  composition root (apps/cli/src/session-backend.ts in Phase 4) calls
- *  this when the user picks a different terminal backend. Existing
- *  sessions in the registry are unaffected — switching is gated to
- *  empty-registry by the Settings UI guard. */
-export function setSessionBackendFactory(factory: SessionBackendFactory): void {
-  activeFactory = factory;
-}
-
+/** Register one local connection. Identity and process creation belong to
+ * the session launcher; this registry owns terminal rendering and activity. */
 export function spawnSession(
   name: string,
-  cmd: string,
-  args: string[],
+  pty: SessionBackend,
   cols: number,
   rows: number,
-  cwd: string,
-  env?: Record<string, string | undefined>
-): PtyEntry {
+  agent?: string
+): NamedPtyEntry {
   // Respawn under the same name: dispose (soft) the prior entry. On
-  // tmux this detaches without killing, so the new spawn's `-A` flag
-  // re-attaches to the same tmux session — preserving its scrollback.
-  // On the direct PTY backend dispose === kill.
+  // tmux this detaches without killing, so the new spawn resolves the
+  // same tmux session and re-attaches — preserving its scrollback.
   const existing = registry.get(name);
   if (existing) {
     existing.pty.dispose();
@@ -65,24 +57,16 @@ export function spawnSession(
     registry.delete(name);
   }
 
-  const pty = activeFactory({
-    name,
-    cmd,
-    args,
-    cols,
-    rows,
-    cwd,
-    // Merge over the current environment — never replace it, or the
-    // child loses PATH/HOME/etc. `env` carries only seed additions
-    // (e.g. KIRBY_SEED_PROMPT for the `continue || seed` path).
-    env: env ? { ...process.env, ...env } : undefined,
-    // The raw additions travel separately: the tmux backend must push
-    // them into the session env (the server, not the client, spawns
-    // the command).
-    envAdditions: env,
-  });
   const emu = new TerminalEmulator(cols, rows);
-  const entry: PtyEntry = { pty, emu, exited: false, spawnedAt: Date.now() };
+  const entry: NamedPtyEntry = {
+    name,
+    pty,
+    emu,
+    agent,
+    exited: pty.processState?.running === false,
+    exitCode: pty.processState?.exitCode,
+    spawnedAt: Date.now(),
+  };
 
   pty.onData((data) => {
     void emu.write(data);
@@ -110,13 +94,18 @@ export function spawnSession(
     }
   });
 
-  activity.attach(name, pty);
+  activity.attach(name, pty, emu);
   registry.set(name, entry);
   return entry;
 }
 
 export function getSession(name: string): PtyEntry | undefined {
   return registry.get(name);
+}
+
+/** Keys held locally, including retained final frames. */
+export function sessionNames(): string[] {
+  return [...registry.keys()];
 }
 
 export function hasSession(name: string): boolean {
@@ -135,11 +124,14 @@ export function isSessionAlive(name: string): boolean {
   return entry !== undefined && !entry.exited;
 }
 
+/** Whether the local connection can still recover or deliver data. */
+export function hasSessionConnection(name: string): boolean {
+  const entry = registry.get(name);
+  return !!entry && entry.pty.connectionState !== 'failed';
+}
+
 export function hasAnySession(): boolean {
-  // Exited entries linger in the registry until the user removes the
-  // worktree (or hits the kill-agent shortcut). Treat them as absent
-  // here so the Settings backend-switch guard doesn't refuse a switch
-  // just because a long-dead `claude /quit` left a tombstone behind.
+  // Retained final frames are not running processes.
   for (const entry of registry.values()) {
     if (!entry.exited) return true;
   }
@@ -147,14 +139,14 @@ export function hasAnySession(): boolean {
 }
 
 /** Bare registry names — the ones `spawnSession` was called with, not
- *  the tmux names they may compose into — of every still-running
- *  session. Discovery composes each of these through the same tmux
- *  naming this process spawned with, so a live tmux session it already
- *  holds is recognised as owned rather than reported as an orphan to
- *  adopt a second time (worktree sessions are keyed by branch here,
- *  which drifts from the tmux name once the worktree checks out
- *  another branch). Exited entries are excluded for the same reason
- *  {@link hasAnySession} excludes them: a tombstone owns nothing. */
+ *  the tmux names behind them — of every still-running session.
+ *  Discovery keys each live tmux session the same way, so one this
+ *  process already holds is recognised as owned rather than reported
+ *  as an orphan to adopt a second time (worktree sessions are keyed by
+ *  the branch they were spawned under, which is exactly what a
+ *  mid-session checkout leaves stale). Exited entries are excluded for
+ *  the same reason {@link hasAnySession} excludes them: a tombstone
+ *  owns nothing. */
 export function liveSessionNames(): string[] {
   const names: string[] = [];
   for (const [name, entry] of registry.entries()) {
@@ -184,17 +176,10 @@ export function killSession(name: string): void {
   }
 }
 
-/** Drop the tombstone of a session that has already exited, without
- *  touching the backend. A terminal tab closes itself when its process
- *  ends, so nothing is left to view the final frame through and the
- *  entry would only accumulate. Deliberately not `killSession`: on tmux
- *  `kill()` reaches the tmux session, and the client this entry holds
- *  can exit while that session lives on (the user detached from inside
- *  tmux), which must not turn into a kill-session. A live entry is left
- *  alone. */
-export function releaseExitedSession(name: string): void {
+/** Release a local connection without killing the hosted tmux session. */
+export function detachSession(name: string): void {
   const entry = registry.get(name);
-  if (!entry || !entry.exited) return;
+  if (!entry) return;
   entry.pty.dispose();
   entry.emu.dispose();
   activity.detach(name);
@@ -202,9 +187,14 @@ export function releaseExitedSession(name: string): void {
   registry.delete(name);
 }
 
+/** Release a final frame when its terminal tab has closed. */
+export function releaseExitedSession(name: string): void {
+  if (registry.get(name)?.exited) detachSession(name);
+}
+
 /** Soft cleanup — used on Kirby process exit. Calls the backend's
  *  `dispose()` so tmux sessions survive and can be reattached on the
- *  next launch. For the direct PTY backend this is the same as kill().
+ *  next launch.
  */
 export function killAll(): void {
   for (const [name, entry] of registry.entries()) {

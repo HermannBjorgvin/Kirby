@@ -52,8 +52,7 @@ export function useLaunchMenuRequested(branch: string): boolean {
 
 /**
  * Whether a tab shows its session menu: opened from the tab itself, or
- * requested from outside — honored once the item exists and only while
- * its agent is not running (a live agent has nothing to choose).
+ * requested from outside — honored once the item exists including a running agent that can be opened or explicitly replaced.
  */
 export function launchMenuOpen(s: {
   own: boolean;
@@ -61,7 +60,7 @@ export function launchMenuOpen(s: {
   hasItem: boolean;
   running: boolean;
 }): boolean {
-  return s.own || (s.requested && s.hasItem && !s.running);
+  return s.own || (s.requested && s.hasItem);
 }
 
 export function __resetLaunchMenuRequestForTests(): void {

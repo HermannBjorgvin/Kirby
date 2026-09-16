@@ -1,11 +1,7 @@
-import { readConfig, type AppConfig } from '@kirby/vcs-core';
+import { readConfig } from '@kirby/vcs-core';
 import { persistConfigField, updateConfigField } from '@kirby/app-core';
 import {
-  applySessionBackend,
   buildSettingsFields,
-  getTmuxAvailability,
-  hasAnySession,
-  projectTerminalBackendOverride,
   resolveValue,
   settingsEffects,
   type SettingsEffect,
@@ -34,7 +30,6 @@ const GROUP_BY_KEY: Record<string, SettingsGroup> = {
   editor: 'general',
   email: 'general',
   worktreePath: 'general',
-  terminalBackend: 'terminal',
   autoDeleteOnMerge: 'sync',
   autoRebase: 'sync',
   mergePollInterval: 'sync',
@@ -98,49 +93,7 @@ export function getSettingsView(): SettingsFieldView[] {
       : resolveValue(config, field),
     group: groupFor(field),
     kind: kindFor(field),
-    // Same gate updateSettingsFromView enforces — surfacing it here
-    // grays the control out instead of erroring after the attempt.
-    disabled:
-      field.key === 'terminalBackend' ? backendDisabledReason() : undefined,
   }));
-}
-
-/** Why the terminal backend control is not editable right now, or
- *  undefined when it is. Surfaced on the field so the control is grayed
- *  out with a reason rather than erroring after the click. */
-function backendDisabledReason(): string | undefined {
-  if (hasAnySession()) {
-    return 'close all sessions to switch the terminal backend';
-  }
-  if (projectTerminalBackendOverride(requireRepo())) {
-    return 'this project pins the terminal backend in its own config';
-  }
-  return undefined;
-}
-
-/**
- * The same guards as the TUI's `canApplyFieldChange`: never swap the
- * terminal backend out from under live sessions, and refuse tmux when
- * the binary is missing — surfacing the install hint now rather than a
- * spawn failure at the next launch.
- */
-function assertBackendSwitchAllowed(value: string): void {
-  if (hasAnySession()) {
-    throw new Error('Close all sessions before switching terminal backend.');
-  }
-  // Writing the global key while the project config overrides it would
-  // save, then revert on the next read.
-  if (projectTerminalBackendOverride(requireRepo())) {
-    throw new Error(
-      'This project pins terminalBackend in its own config — edit that instead.'
-    );
-  }
-  if (value !== 'tmux') return;
-  const status = getTmuxAvailability();
-  if (status && !status.available) {
-    const hint = status.installHint ? ` — try \`${status.installHint}\`` : '';
-    throw new Error(`tmux not installed${hint}`);
-  }
 }
 
 /**
@@ -160,14 +113,13 @@ export function updateSettingsFromView(
   // getting it back means the field wasn't edited — writing it would
   // overwrite the real credential with dots.
   if (field.masked && value === SECRET_PLACEHOLDER) return;
-  if (field.key === 'terminalBackend') assertBackendSwitchAllowed(value);
   // The TUI persists a cleared field as undefined (`editBuffer ||
   // undefined`) so project-level values fall back to global instead
   // of shadowing it with '' (or 0 for numeric keys).
   const normalized = value === '' ? undefined : value;
   const updated = updateConfigField(config, field, normalized);
   persistConfigField(field, normalized, updated);
-  runSettingsEffects(settingsEffects(field), updated);
+  runSettingsEffects(settingsEffects(field));
 }
 
 /**
@@ -175,15 +127,9 @@ export function updateSettingsFromView(
  * `@kirby/core`'s call (settings/effects.ts) and is shared with the
  * TUI; only the doing is the host's.
  */
-function runSettingsEffects(
-  effects: SettingsEffect[],
-  updated: AppConfig
-): void {
+function runSettingsEffects(effects: SettingsEffect[]): void {
   for (const effect of effects) {
     switch (effect) {
-      case 'apply-session-backend':
-        applySessionBackend(updated);
-        break;
       case 'reset-provider-cache':
         // Every provider, not just the selected one: on a `vendor`
         // change the stale entries belong to the provider being left,

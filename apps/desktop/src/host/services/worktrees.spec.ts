@@ -29,16 +29,10 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('@kirby/core', () => ({
-  // Kept, and asserted never to be reached: this is the registry keyed
-  // by the bare branch name, so it answers for whichever repository
-  // launched the agent — including one that is not open.
-  killSession: (name: string) => calls.log.push(`unguarded-kill:${name}`),
-  killPersistedTmuxSession: (name: string) =>
-    calls.log.push(`kill-tmux:${name}`),
-}));
-
-vi.mock('./sessions.js', () => ({
-  killOwnSession: (name: string) => calls.log.push(`kill:${name}`),
+  removeWorktreeSession: (branch: string, force: boolean, repo: string) => {
+    calls.log.push(`remove-session:${repo}:${branch}:${force}`);
+    return Promise.resolve(calls.removed);
+  },
 }));
 
 vi.mock('./babysit.js', () => ({
@@ -84,69 +78,16 @@ beforeEach(() => {
 });
 
 describe('removeWorktree', () => {
-  it('kills the agent before touching the directory', async () => {
-    await removeWorktree('feature/x', false);
-
-    const removeAt = calls.log.indexOf('remove:feature/x:safe');
-    const killAt = calls.log.indexOf('kill:feature-x');
-    expect(killAt).toBeGreaterThanOrEqual(0);
-    // Removing first would delete the directory the agent is running in.
-    expect(killAt).toBeLessThan(removeAt);
+  it('stops babysitting then delegates removal with the captured repository', async () => {
+    expect(await removeWorktree('feature/x', true)).toBe(true);
+    expect(calls.log).toEqual([
+      'stop-babysit:feature/x',
+      'remove-session:/repo:feature/x:true',
+    ]);
   });
-
-  it('stops the branch’s babysitter before the agent, so no update restarts one', async () => {
-    await removeWorktree('feature/x', false);
-    const stopAt = calls.log.indexOf('stop-babysit:feature/x');
-    expect(stopAt).toBeGreaterThanOrEqual(0);
-    // A watcher still running would answer its next update by checking
-    // the branch out again and starting an agent in it.
-    expect(stopAt).toBeLessThan(calls.log.indexOf('kill:feature-x'));
-  });
-
-  it('kills both the branch-derived and worktree-derived session names', async () => {
-    // They differ when a worktree directory was reused for another
-    // branch; missing either leaves a PTY pointed at a deleted path.
-    await removeWorktree('feature/x', false);
-    expect(calls.log).toContain('kill:feature-x');
-    expect(calls.log).toContain('kill:wt-feature-x');
-  });
-
-  it('kills a persisted tmux session the registry never saw', async () => {
-    // A tmux agent from a previous run is alive without being in the
-    // registry, so registry-only kills would leave it running in a
-    // directory about to be deleted.
-    await removeWorktree('feature/x', false);
-    expect(calls.log).toContain('kill-tmux:feature-x');
-    expect(calls.log).toContain('kill-tmux:wt-feature-x');
-  });
-
-  it('deletes the branch once the worktree is gone', async () => {
-    await removeWorktree('feature/x', false);
-    const removeAt = calls.log.indexOf('remove:feature/x:safe');
-    const deleteAt = calls.log.indexOf('delete-branch:feature/x');
-    expect(deleteAt).toBeGreaterThan(removeAt);
-  });
-
-  it('keeps the branch when the worktree could not be removed', async () => {
+  it('returns a failed removal to the caller', async () => {
     calls.removed = false;
     expect(await removeWorktree('feature/x', false)).toBe(false);
-    // Deleting the branch here would orphan a worktree that still
-    // exists on disk.
-    expect(calls.log).not.toContain('delete-branch:feature/x');
-  });
-
-  it('passes force through to git', async () => {
-    await removeWorktree('feature/x', true);
-    expect(calls.log).toContain('remove:feature/x:force');
-  });
-
-  it('still kills and removes when the branch has no listed worktree', async () => {
-    // A branch whose directory git no longer lists must still be
-    // cleaned up rather than skipped.
-    calls.worktrees = [];
-    expect(await removeWorktree('gone', false)).toBe(true);
-    expect(calls.log).toContain('kill:gone');
-    expect(calls.log).toContain('remove:gone:safe');
   });
 });
 

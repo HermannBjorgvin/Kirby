@@ -22,9 +22,9 @@ export interface SessionMenuState {
   /** Highlighted row, an index into {@link sessionMenuOptions}. */
   selectedOption: number;
   /**
-   * Index into `buildAgentOptions(config)` — the agent this launch will
-   * use. 0 is the configured default, so a menu opened and confirmed
-   * without touching the picker reproduces the configured behavior.
+   * 0 opens/resumes the recorded agent, falling back to the configured
+   * default for a new session. Positive values select a fresh launch with
+   * `buildAgentOptions(config)[agentIndex - 1]`, including the default.
    */
   agentIndex: number;
 }
@@ -32,7 +32,7 @@ export interface SessionMenuState {
 /**
  * The rows the session menu offers, in display order. Review options
  * only exist when the item has a PR. "start" is always first — Enter
- * straight through the menu launches the default agent.
+ * opens the recorded agent or uses the default for a new session.
  */
 export function sessionMenuOptions(hasPr: boolean): SessionMenuOptionKey[] {
   return hasPr
@@ -40,7 +40,7 @@ export function sessionMenuOptions(hasPr: boolean): SessionMenuOptionKey[] {
     : ['start', 'cancel'];
 }
 
-/** A fresh menu for a row: first option, default agent. */
+/** A fresh menu for a row: first option, automatic agent selection. */
 export function openSessionMenuState(
   pr: PullRequestInfo | null | undefined
 ): SessionMenuState {

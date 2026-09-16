@@ -13,6 +13,7 @@ import {
 } from './setup/terminals.js';
 import {
   detachTmuxClients,
+  tmuxClientPids,
   killKirbySessions,
   killTmuxSession,
   tmuxAvailable,
@@ -20,20 +21,18 @@ import {
 
 /**
  * Terminal tabs under tmux: the session is identified by nothing but
- * its name and the directory tmux holds for it — no state file — so a
- * terminal outlives the app and comes back as a tab, in its group,
- * whatever repository the app opens on.
+ * its tags, its name and the directory tmux holds for it — no state
+ * file — so a terminal outlives the app and comes back as a tab, in its
+ * group, whatever repository the app opens on.
  */
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 test.describe('Terminal tabs under tmux', () => {
-  test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
-
   test.afterEach(({ desktop }) => {
     killKirbySessions(desktop.homeDir);
   });
 
-  test('a shell is a kirby-term session started in its directory, killed on close', async ({
+  test('a shell is a tagged <repo>-shell session started in its directory, killed on close', async ({
     desktop,
   }) => {
     const { app, page, repoPath, homeDir } = desktop;
@@ -45,10 +44,12 @@ test.describe('Terminal tabs under tmux', () => {
       .poll(() => terminalSessions(homeDir), { timeout: 15_000 })
       .toHaveLength(1);
     const [name] = terminalSessions(homeDir);
-    expect(name).toMatch(/^kirby-term-shell-[0-9a-f]+$/);
+    // The name is a label after the repository; the kind is the tag
+    // `terminalSessions` found it by.
+    expect(name).toBe(`${basename(repoPath)}-shell`);
     // The directory is tmux's own record, which is all a later launch
     // has to go on.
-    expect(tmuxSessionPath(name, homeDir)).toBe(repoPath);
+    expect(tmuxSessionPath(name!, homeDir)).toBe(repoPath);
 
     // Closing the tab kills the session — a terminal is not detached
     // from the way an agent is on quit.
@@ -112,21 +113,28 @@ test.describe('Terminal tabs under tmux', () => {
     const [name] = terminalSessions(homeDir);
     const before = await page.evaluate(() => window.kirby.listTerminals());
 
+    const clientsBefore = tmuxClientPids(name, homeDir);
     detachTmuxClients(name, homeDir);
+    await expect
+      .poll(() =>
+        tmuxClientPids(name, homeDir).some(
+          (pid) => !clientsBefore.includes(pid)
+        )
+      )
+      .toBe(true);
 
-    // The host reattaches under the same name: a new client, so a new
-    // spawn time, and the terminal still listed as running.
+    // Reconnecting the tmux client preserves the logical session entry.
     await expect
       .poll(
         async () => {
           const [t] = await page.evaluate(() => window.kirby.listTerminals());
           return t
-            ? [t.name, t.running, t.spawnedAt !== before[0].spawnedAt]
+            ? [t.name, t.running, t.spawnedAt === before[0].spawnedAt]
             : null;
         },
         { timeout: 15_000 }
       )
-      .toEqual([name, true, true]);
+      .toEqual([before[0].name, true, true]);
     await expect(tabs).toHaveCount(1);
     await expect(tabs).toHaveAttribute('aria-selected', 'true');
     expect(terminalSessions(homeDir)).toEqual([name]);
@@ -141,8 +149,8 @@ test.describe('Terminal tabs under tmux', () => {
 });
 
 test.describe('Terminal tabs surviving a restart', () => {
-  const PLAIN = 'kirby-term-shell-0a0a0a';
-  const IN_REPO = 'kirby-term-agent-0b0b0b';
+  const PLAIN = 'plain-shell';
+  const IN_REPO = 'survivor-repo-agent';
 
   /**
    * The plain folder and the other repository this test restores a
@@ -187,18 +195,18 @@ test.describe('Terminal tabs surviving a restart', () => {
     liveTerminals: async ({ folder, other }, provide) => {
       await provide({
         [PLAIN]: {
+          kind: 'shell',
           cwd: folder,
           command: `printf '%s\\n' plain-shell-was-here; sleep 300`,
         },
         [IN_REPO]: {
+          kind: 'agent',
           cwd: other,
           command: `printf '%s\\n' repo-agent-was-here; sleep 300`,
         },
       });
     },
   });
-
-  test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
 
   test.afterEach(({ desktop }) => {
     killKirbySessions(desktop.homeDir);

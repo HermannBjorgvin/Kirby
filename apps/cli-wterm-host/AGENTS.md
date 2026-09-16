@@ -3,10 +3,12 @@
 Node HTTP + WS server plus a `@wterm/dom` browser client. `build.mjs` builds
 both in one esbuild script to avoid competing output-directory cleanup.
 
-- `POST /spawn` kills any existing PTY, clears the buffer and spawns Kirby.
-  `POST /kill` kills it. `WS /pty` replays a ~2 MB ring buffer on connect,
-  then streams. A client that connects with no prior `/spawn` gets a
-  dev-default tempdir, so `npx nx serve cli-wterm-host` plus a browser works.
+- `POST /spawn` waits for the existing PTY to exit, clears the buffer and
+  spawns Kirby. `POST /kill` acknowledges only after the PTY exit event.
+  Lifecycle operations are serialized, and WS reconnects never auto-spawn
+  another process after a managed session has started. `WS /pty` replays a ~2 MB ring buffer on connect,
+  then streams. The first client connecting before any session has started
+  gets a dev-default tempdir, so `npx nx serve cli-wterm-host` plus a browser works.
 - PTY lifetime is **not** coupled to WS lifetime: automated browsers close a
   socket with 1001 within ~100 ms of opening it. The client reconnects after
   200 ms and the replay restores the screen.

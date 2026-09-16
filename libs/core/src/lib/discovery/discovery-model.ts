@@ -9,7 +9,7 @@
 
 /** One Kirby-owned worktree, as a scan saw it. */
 export interface DiscoveredWorktree {
-  /** Registry session name — `worktreeSessionName(wt)`. */
+  /** Qualified core key — `keyForWorktree(wt)`. */
   name: string;
   /** Short branch name, or `''` for a detached-HEAD orphan. */
   branch: string;
@@ -18,13 +18,14 @@ export interface DiscoveredWorktree {
 }
 
 /** One terminal-tab session, as a scan saw it. Identified entirely by
- *  what tmux holds: the kind is parsed from the name, the directory is
+ *  what tmux holds: the kind is the session-type tag, the directory is
  *  the session's own `session_path`. */
 export interface DiscoveredTerminal {
-  /** Registry session name — the full tmux name, `kirby-term-<kind>-<id>`
-   *  (or, for an orphaned worktree session, `kirby-<projectKey>-<x>`). */
+  /** Qualified terminal key containing the actual tmux attachment target. */
   name: string;
   kind: 'shell' | 'agent';
+  running?: boolean;
+  agent?: string;
   /** Absolute directory the session runs in. */
   path: string;
 }
@@ -34,12 +35,10 @@ export interface DiscoveryScan {
   /** Every worktree git reports under the resolver's directory. */
   worktrees: DiscoveredWorktree[];
   /** The subset of those names that have a live tmux session belonging
-   *  to this repository. Always empty on the PTY backend, which has no
-   *  session that outlives the process. */
+   *  to this repository. */
   persisted: ReadonlySet<string>;
-  /** Every live terminal-tab session, wherever it runs. Empty on the
-   *  PTY backend, and for a shell that has no terminal tabs to attach
-   *  them to. */
+  /** Every surviving terminal-tab session, wherever it runs. Empty for
+   *  a shell that has no terminal tabs to attach them to. */
   terminals: DiscoveredTerminal[];
 }
 
@@ -91,14 +90,14 @@ const EMPTY_SCAN: DiscoveryScan = {
  * unattachable session refreshed both shells on every tick, forever.
  *
  * `ended` is a set difference over `persisted` rather than a test
- * against the registry, so it stays empty on the PTY backend instead of
- * reporting every live session as ended.
+ * against the local registry: detaching a client does not end its session.
  */
 export function diffScans(
   previous: DiscoveryScan | null,
   next: DiscoveryScan,
   isAlive: (name: string) => boolean,
-  suppressed: ReadonlySet<string> = new Set()
+  suppressed: ReadonlySet<string> = new Set(),
+  isHeld: (name: string) => boolean = isAlive
 ): DiscoveryDelta {
   const base = previous ?? EMPTY_SCAN;
   const before = new Set(base.worktrees.map((wt) => wt.name));
@@ -120,7 +119,9 @@ export function diffScans(
   // Terminals have no worktree to appear through, so they only ever
   // read as absolute state: offered until attached, ended when gone.
   const adoptableTerminals = next.terminals.filter(
-    (t) => !isAlive(t.name) && !suppressed.has(t.name)
+    (t) =>
+      !(t.running === false ? isHeld(t.name) : isAlive(t.name)) &&
+      !suppressed.has(t.name)
   );
   const liveTerminals = new Set(next.terminals.map((t) => t.name));
   const endedTerminals = base.terminals

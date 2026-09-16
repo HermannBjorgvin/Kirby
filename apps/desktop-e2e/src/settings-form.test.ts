@@ -164,7 +164,7 @@ test.describe('Settings form', () => {
 
     // The rail scrolls one long page rather than swapping panes, so a
     // group whose heading is missing is a rail entry that goes nowhere.
-    for (const group of ['Appearance', 'General', 'Agent', 'Terminal']) {
+    for (const group of ['Appearance', 'General', 'Agent']) {
       await page.getByRole('button', { name: group, exact: true }).click();
       await expect(
         page.getByRole('heading', { name: group, exact: true })

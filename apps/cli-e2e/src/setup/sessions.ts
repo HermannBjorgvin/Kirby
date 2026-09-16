@@ -5,7 +5,7 @@ import { settleFor } from './waits.js';
  * Create a session via the branch picker. Creating a worktree lands the
  * user in the new session's menu.
  *
- * With `start: true`, Enter takes the menu's default "Start/Continue
+ * With `start: true`, Enter takes the menu's default "Open / resume
  * session" row, so the helper returns with the PTY spawning and the
  * terminal focused — follow with an assertion on the agent's output.
  *
@@ -59,7 +59,7 @@ const MENU_PROMPT = 'What would you like to do?';
 /**
  * Wait for the session menu (it opens once worktree creation finishes,
  * so it doubles as the "creation done" signal) and take its default
- * "Start/Continue session" row. Returns with the menu gone and the
+ * "Open / resume session" row. Returns with the menu gone and the
  * PTY spawning — follow with an assertion on the agent's output.
  */
 export async function startFromSessionMenu(term: KirbyTerm): Promise<void> {
@@ -81,7 +81,7 @@ export async function dismissSessionMenu(term: KirbyTerm): Promise<void> {
 
 /**
  * Start the selected (non-running) session: Tab opens the session menu,
- * Enter takes the default "Start/Continue session" row with the default
+ * Enter takes the default "Open / resume session" row with the default
  * agent. After this returns the menu is gone and the PTY is spawning —
  * follow with an assertion on the agent's output to confirm it's up.
  *

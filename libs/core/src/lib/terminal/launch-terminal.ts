@@ -1,48 +1,54 @@
 import type { AppConfig } from '@kirby/vcs-core';
-import { spawnSession, type PtyEntry } from '../pty-registry.js';
-import { launchSession } from '../session/launch-session.js';
+import type { NamedPtyEntry } from '../pty-registry.js';
+import { buildAgentLaunch } from '../session/launch-session.js';
+import { openSession } from '../session/open-session.js';
+import { sessionIdentity } from '../session-key.js';
+import { getRepoRoot } from '../repo-root.js';
 import type { TerminalKind } from './terminal-name.js';
 
 export interface TerminalLaunchParams {
-  /** A name from `newTerminalSessionName`, or the one a scan found. */
-  name: string;
+  /** Existing qualified terminal key. Omit to create a new terminal. */
+  name?: string;
+  mode?: 'open' | 'attach';
+  /** Start a fresh conversation with the directory's configured agent. */
+  fresh?: boolean;
   kind: TerminalKind;
-  /** The directory the terminal runs in. Any directory: a repository
-   *  root, a folder inside one, or nothing to do with git at all. */
   cwd: string;
   cols: number;
   rows: number;
-  /** Read for the directory the terminal opens in, so a repository's
-   *  own agent choice applies to an agent started at its root. */
   config: AppConfig;
 }
 
-/**
- * Start a terminal-tab session in a directory.
- *
- * A shell is the backend's own default shell — an empty command, which
- * `SessionSpec` defines as exactly that — so tmux picks its
- * `default-shell` and the PTY backend picks `$SHELL`, and no setting
- * has to name one. An agent is the session menu's plain "session"
- * launch and nothing more: the configured agent, no prompt, no review
- * guidance, resumed where the agent can. It goes through
- * {@link launchSession} rather than composing a command of its own, so
- * a change to how agents start reaches terminals for free.
- *
- * Re-running with a name tmux already holds reattaches (the backend's
- * `-A`), which is how a terminal that survived a restart comes back.
- */
-export function launchTerminalSession(params: TerminalLaunchParams): PtyEntry {
-  const { name, cwd, cols, rows, config } = params;
-  if (params.kind === 'shell') {
-    return spawnSession(name, '', [], cols, rows, cwd);
-  }
-  return launchSession({
-    name,
-    cwd,
-    cols,
-    rows,
-    config,
-    request: { intent: 'continue-or-blank' },
+/** Terminal intent is explicit in core; no tags are used as internal flags. */
+export async function launchTerminalSession(
+  params: TerminalLaunchParams
+): Promise<NamedPtyEntry> {
+  const key = params.name ? sessionIdentity(params.name) : null;
+  if (params.name && key?.kind !== 'terminal')
+    throw new Error('Expected a qualified terminal key');
+  return openSession({
+    session: {
+      type: 'terminal',
+      kind: params.kind,
+      repo: getRepoRoot() ?? params.cwd,
+      target: key?.kind === 'terminal' ? key.id : undefined,
+    },
+    mode: params.name ? params.mode : 'create',
+    fresh: params.kind === 'agent' && params.fresh,
+    intent: params.kind === 'agent' && params.fresh ? 'fresh' : 'continue',
+    cwd: params.cwd,
+    cols: params.cols,
+    rows: params.rows,
+    build: (previous, restarting) =>
+      params.kind === 'shell'
+        ? { spec: { cmd: '', args: [] } }
+        : buildAgentLaunch(
+            {
+              config: params.config,
+              request: { intent: params.fresh ? 'blank' : 'continue-or-blank' },
+            },
+            previous,
+            restarting
+          ),
   });
 }

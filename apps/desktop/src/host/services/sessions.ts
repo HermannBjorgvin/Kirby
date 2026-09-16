@@ -1,12 +1,14 @@
+import { worktreeSessionKey, sessionLabel } from '@kirby/core';
 import {
-  buildAgentOptions,
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
   getSession,
-  killSession as killSessionEntry,
+  stopSession,
+  sessionIdentity,
   isSessionAlive,
-  resolveTerminalBackend,
+  hasSessionConnection,
+  resolveAgent,
   getSpawnedAt,
   noteInput,
   noteResize,
@@ -14,7 +16,8 @@ import {
   snapshot as activitySnapshot,
 } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
-import { branchToSessionName, createWorktree } from '@kirby/worktree-manager';
+import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@kirby/terminal-tmux';
+import { createWorktree } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import {
   attachRelay,
@@ -25,7 +28,6 @@ import {
 } from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
-  AgentOptionView,
   PlanCheckoutRequest,
   PlanCheckoutResult,
   ReviewLaunchRequest,
@@ -35,6 +37,11 @@ import type {
 } from '../contract.js';
 
 export type { SessionLaunchRequest, SessionSummary };
+
+/** What launching or reattaching an agent hands back to the caller. */
+interface LaunchResult {
+  name: string;
+}
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 40;
@@ -46,12 +53,7 @@ export { setSessionBroadcaster };
 
 interface KnownSession extends RelayEntry {
   branch: string;
-  /** Repository this session was launched for. The PTY registry is
-   *  keyed by branch name alone (it also names worktree directories, so
-   *  it can't be namespaced without moving them), which means two repos
-   *  sharing a branch name collide on one key. Recording the owner lets
-   *  every desktop-side lookup ignore, and refuse to act on, a session
-   *  belonging to a repository other than the open one. */
+  /** Repository displayed by this relay. Qualified keys let other repos stay live. */
   repoCwd: string;
 }
 
@@ -116,14 +118,7 @@ function ownSessionNames(): string[] {
     .map(([name]) => name);
 }
 
-/**
- * Whether a live session under `name` belongs to the open repository.
- *
- * The PTY registry is keyed by the bare branch name, so "is anything
- * running called `main`?" is the wrong question for anything user
- * facing — two repos with a `main` share the answer. Callers deciding
- * what to show, or what to stop, have to ask this instead.
- */
+/** Whether this host holds a live session for the open repository. */
 export function isOwnSessionAlive(name: string): boolean {
   return isSessionAlive(name) && ownSession(name) !== undefined;
 }
@@ -141,7 +136,16 @@ export function isOwnSessionAlive(name: string): boolean {
  */
 export function killOwnSession(name: string): void {
   if (known.has(name) && !ownSession(name)) return;
-  killSessionEntry(name);
+  stopOwnWorktreeSession(name);
+}
+
+/** Shared by {@link killOwnSession} and {@link killSession}: stop `name`
+ *  only when it is a worktree session this repository actually owns. */
+function stopOwnWorktreeSession(name: string): void {
+  const identity = sessionIdentity(name);
+  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
+    stopSession(name);
+  }
 }
 
 /** Whether a session under `name` is another repository's — known to
@@ -155,8 +159,8 @@ export function isForeignSession(name: string): boolean {
  *  acting on it would reach into that repo's agent. */
 function foreignSessionError(name: string): Error {
   return new Error(
-    `A session named "${name}" is already running for another repository. ` +
-      `Close it there before using this branch here.`
+    `The session "${sessionLabel(name)}" belongs to another repository. ` +
+      `Open that repository to manage it.`
   );
 }
 
@@ -165,7 +169,10 @@ function foreignSessionError(name: string): Error {
 // Overlapping launch calls for the same session (double-click racing
 // the renderer's isPending flag) must not double-spawn: the second
 // spawn would dispose the first PTY and attach a duplicate data relay.
-const inflightLaunches = new Map<string, Promise<{ name: string }>>();
+const inflightLaunches = new Map<
+  string,
+  { signature: string; promise: Promise<{ name: string }> }
+>();
 
 /**
  * `knownWorktreePath` is for callers that have already been told where
@@ -177,17 +184,32 @@ const inflightLaunches = new Map<string, Promise<{ name: string }>>();
 export function launchAgent(
   req: SessionLaunchRequest,
   knownWorktreePath?: string
-): Promise<{
-  name: string;
-}> {
-  requireRepo();
-  const name = branchToSessionName(req.branch);
+): Promise<LaunchResult> {
+  const repo = requireRepo();
+  const name = worktreeSessionKey(req.branch, repo);
+  const signature = JSON.stringify([
+    req.intent,
+    req.agentId,
+    req.prompt,
+    req.systemGuidance,
+    req.fresh,
+    req.expected,
+    knownWorktreePath,
+  ]);
   const existing = inflightLaunches.get(name);
-  if (existing) return existing;
+  if (existing) {
+    return existing.signature === signature
+      ? existing.promise
+      : Promise.reject(
+          new Error(
+            'Another launch is in progress for this worktree. Try again when it finishes.'
+          )
+        );
+  }
   const promise = doLaunchAgent(req, name, knownWorktreePath).finally(() =>
     inflightLaunches.delete(name)
   );
-  inflightLaunches.set(name, promise);
+  inflightLaunches.set(name, { signature, promise });
   return promise;
 }
 
@@ -197,30 +219,14 @@ async function doLaunchAgent(
   knownWorktreePath?: string
 ): Promise<{ name: string }> {
   const repoCwd = requireRepo();
-  // TUI semantics: a live agent is never silently respawned — every
-  // TUI launch site checks the registry first. Launching on a branch
-  // with a running session just reattaches to it.
-  if (isSessionAlive(name)) {
-    // …but only if it is *this* repo's session. The registry key is the
-    // bare branch name, so reattaching blindly would hand this repo's
-    // tab the other repo's agent, and write keystrokes into it.
+  if (canReuseConnection(req, name)) {
+    // A stale UI request must not read another repository's relay.
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
   }
-  // Resolve-or-create through the same primitive as every TUI launch
-  // path. The worktree directory is keyed by the branch *name*, and an
-  // existing directory wins even if a different branch has since been
-  // checked out inside it — resolving via listWorktrees (actual
-  // checked-out branches) instead made the desktop reject worktrees
-  // the TUI happily launched in.
-  // `createWorktree` resolves the directory from the branch *name*, so
-  // it cannot find a worktree someone put somewhere else —
-  // `git worktree add .claude/worktrees/foo -b my/branch` is exactly
-  // what the operator-at-a-shell case looks like, and resolving it by
-  // name would try to add a second checkout of a branch that is already
-  // out and fail. A caller that was handed the real path skips the
-  // guess.
-  const wtPath = knownWorktreePath ?? (await createWorktree(req.branch));
+  // Use the actual checkout path reported by discovery, or resolve this exact branch.
+  const wtPath =
+    knownWorktreePath ?? (await createWorktree(req.branch, repoCwd));
   if (!wtPath) {
     throw new Error(`Failed to resolve a worktree for "${req.branch}"`);
   }
@@ -231,47 +237,32 @@ async function doLaunchAgent(
   // configured one; the resolver still owns the id → agent mapping.
   const stored = readConfig(repoCwd);
   const config = req.agentId ? { ...stored, agentId: req.agentId } : stored;
-  console.log(
-    `[desktop] launching session ${name} in ${wtPath} (backend: ${resolveTerminalBackend(
-      config
-    )})`
-  );
-  launchSession({
+  const before = getSession(name);
+  const entry = await launchSession({
     name,
     cwd: wtPath,
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
+    agent: needsSelectedAgent(req) ? resolveAgent(config) : undefined,
+    mode: knownWorktreePath ? 'attach' : 'open',
+    fresh: req.fresh,
+    expected: req.expected,
     request: {
       intent: req.intent,
       prompt: req.prompt,
       systemGuidance: req.systemGuidance,
     },
   });
-  adoptSession(name, req.branch, repoCwd);
+  if (entry !== before || !ownSession(name))
+    adoptSession(name, req.branch, repoCwd);
   return { name };
 }
 
-/**
- * The session menu's agent picker: the configured agent first (the
- * launch you get without touching the picker), then the rest of the
- * registry. Same list, same order, same labels as the TUI.
- */
-export function listAgentOptions(): AgentOptionView[] {
-  const config = readConfig(requireRepo());
-  return buildAgentOptions(config).map((o) => ({
-    id: o.agent.id,
-    name: o.name,
-  }));
-}
-
-export function getSessionBuffer(name: string): SessionBuffer {
-  const entry = ownSession(name);
-  if (entry) return relayBuffer(entry);
-  // A terminal tab belongs to a directory, not to the open repository,
-  // so its scrollback is answered whatever repository that is.
-  return terminalBuffer(name) ?? { data: '', seq: 0 };
-}
+export {
+  listAgentOptions,
+  getSessionLaunchContext,
+} from './session-launch-options.js';
 
 /**
  * Start (or resume) an AI review of `req.pr` with the shared review
@@ -286,7 +277,10 @@ export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
   const request = buildReviewLaunchRequest(req.pr, req.instruction);
   return launchAgent({
     branch,
-    intent: request.intent,
+    intent: 'seed',
+    fresh: true,
+    expected: req.expected,
+    agentId: req.agentId,
     prompt: request.prompt,
     systemGuidance: request.systemGuidance,
     cols: req.cols,
@@ -316,10 +310,8 @@ export function checkoutPlan(
   req: PlanCheckoutRequest
 ): Promise<PlanCheckoutResult> {
   const repoCwd = requireRepo();
-  const name = branchToSessionName(req.pr.sourceBranch);
-  // Never inject into, or restart, an agent belonging to a repository
-  // other than the open one — the registry is keyed by bare branch
-  // name, so the names collide (see KnownSession.repoCwd).
+  const name = worktreeSessionKey(req.pr.sourceBranch, repoCwd);
+  // Reject a stale request aimed at another repository's relay.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
   const existing = inflightCheckouts.get(name);
   if (existing) return existing;
@@ -340,7 +332,9 @@ async function doCheckoutPlan(
   // and the host does not. Capture the message and reject with it: the
   // renderer toasts it and leaves the plan intact for a retry.
   let failure: string | null = null;
+  const before = getSession(name);
   const result = await checkoutPlanCore({
+    repo: repoCwd,
     pr: req.pr,
     prompt: req.prompt,
     paneCols: clampDim(req.cols, DEFAULT_COLS),
@@ -354,7 +348,12 @@ async function doCheckoutPlan(
   if (result === 'failed') {
     throw new Error(failure ?? 'Could not send the plan to the agent');
   }
-  if (result === 'spawned') adoptSession(name, req.pr.sourceBranch, repoCwd);
+  if (
+    result === 'spawned' ||
+    (getSession(name) && getSession(name) !== before)
+  ) {
+    adoptSession(name, req.pr.sourceBranch, repoCwd);
+  }
   return result;
 }
 
@@ -374,6 +373,11 @@ export function listSessions(): SessionSummary[] {
 export function writeSession(name: string, data: string): void {
   const entry = getSession(name);
   if (!entry || entry.exited) throw new Error(`Session ${name} is not running`);
+  if (entry.pty.connectionState && entry.pty.connectionState !== 'connected') {
+    throw new Error(
+      'The terminal is reconnecting. Try again when it reconnects.'
+    );
+  }
   // Same as the TUI's input forwarder: without this, the terminal
   // echoing keystrokes back would count as agent activity.
   noteInput(name);
@@ -382,7 +386,7 @@ export function writeSession(name: string, data: string): void {
 
 export function resizeSession(name: string, cols: number, rows: number): void {
   const entry = getSession(name);
-  if (!entry || entry.exited) return;
+  if (!entry) return;
   // SIGWINCH redraws aren't agent activity either.
   noteResize(name);
   entry.pty.resize(cols, rows);
@@ -410,8 +414,34 @@ export function markSessionSeen(name: string): void {
 
 export function killSession(name: string): void {
   // Never reach into another repository's agent (see KnownSession.repoCwd).
-  // A name this host has never launched is left to the registry, which
-  // no-ops when it doesn't know it either.
+  // Qualified identity also protects entries this host did not launch.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
-  killSessionEntry(name);
+  stopOwnWorktreeSession(name);
+}
+
+// `name` is only a tmux label — tmux-launch.ts's create path reuses one
+// once its holder is killed — so a matching `expected` is verified
+// against a fresh snapshot's native incarnation, not the cached
+// `pty.name`, which cannot tell a live reuse from a same-named
+// replacement underneath it. A mismatch or unreadable snapshot falls
+// through to the full launch path's own guarded compare-and-swap.
+function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
+  if (req.fresh || !isSessionAlive(name) || !hasSessionConnection(name))
+    return false;
+  if (!req.expected) return true;
+  const nativeName = getSession(name)?.pty.name;
+  const live = nativeName && tmuxSessionSnapshot(nativeName)?.incarnation;
+  return !!live && sameTmuxIncarnation(live, req.expected);
+}
+
+function needsSelectedAgent(req: SessionLaunchRequest): boolean {
+  return Boolean(req.fresh || req.agentId || req.intent === 'blank');
+}
+
+export function getSessionBuffer(name: string): SessionBuffer {
+  const entry = ownSession(name);
+  if (entry) return relayBuffer(entry);
+  // A terminal tab belongs to a directory, not to the open repository,
+  // so its scrollback is answered whatever repository that is.
+  return terminalBuffer(name) ?? { data: '', seq: 0 };
 }

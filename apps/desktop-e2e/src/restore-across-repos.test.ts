@@ -56,8 +56,6 @@ const test = base.extend<{ other: string; alphaLink: string }>({
 
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
-test.use({ kirbyConfig: { terminalBackend: 'tmux' } });
-
 test.afterEach(({ desktop, other }) => {
   cleanupExternalSessions(desktop.repoPath, [ALPHA], desktop.homeDir);
   cleanupExternalSessions(other, [BETA], desktop.homeDir);
@@ -105,10 +103,9 @@ test.describe('Agents restored across repositories', () => {
     // what a repository identified by the path it was opened through
     // gets the moment its agents are described by the real one.
     await expect
-      .poll(
-        () => page.evaluate(() => window.kirby.listForeignSessions()),
-        { timeout: 30_000 }
-      )
+      .poll(() => page.evaluate(() => window.kirby.listForeignSessions()), {
+        timeout: 30_000,
+      })
       .toEqual([expect.objectContaining({ repo: alphaRoot, branch: ALPHA })]);
     await expect(tab(page, new RegExp(ALPHA))).toHaveCount(1);
     await expect(groups).toHaveCount(1);

@@ -11,13 +11,7 @@ import {
   resetWorktreeResolver,
   setWorktreeResolver,
 } from '@kirby/worktree-manager';
-import {
-  applySessionBackend,
-  getRepoRoot,
-  getTmuxAvailability,
-  resetRepoRoot,
-  resolveTerminalBackend,
-} from '@kirby/core';
+import { resetRepoRoot } from '@kirby/core';
 import { githubProvider } from '@kirby/vcs-github';
 import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
 import type { VcsProvider } from '@kirby/vcs-core';
@@ -62,9 +56,9 @@ export function isGitRepo(cwd: string): boolean {
 /**
  * The identity of a repository directory: its real path.
  *
- * That is the string git answers for the toplevel, which is what the
- * tmux prefix (`projectKey`), a worktree's origin and the strip's
- * repository groups are all computed from. Every path a repository is
+ * That is the string git answers for the toplevel, which is what a
+ * tmux session's `@orchestra-repo` tag, a worktree's origin and the
+ * strip's repository groups are all computed from. Every path a repository is
  * opened by — the picker, the recents list, `KIRBY_START_DIR`, a
  * foreign tab — goes through here once, at this boundary, so a
  * checkout reached through a symlink (or macOS's `/var` against
@@ -106,34 +100,6 @@ export function activeRepoIs(cwd: string): boolean {
   return activeCwd === cwd;
 }
 
-/**
- * Say which backend the session registry ended up on. The tmux factory
- * degrades to PTY silently in two cases, so both are named here — that
- * way a "why isn't this tmux?" report is diagnosable from the console
- * alone.
- */
-function logSessionBackend(config: ReturnType<typeof readConfig>): void {
-  const resolved = resolveTerminalBackend(config);
-  const chosen = config.terminalBackend ? 'configured' : 'default';
-  if (resolved !== 'tmux') {
-    console.log(`[desktop] session backend: ${resolved} (${chosen})`);
-    return;
-  }
-  const root = getRepoRoot();
-  const tmux = getTmuxAvailability();
-  const probe =
-    tmux == null
-      ? 'pending'
-      : tmux.available
-      ? 'available'
-      : 'UNAVAILABLE — falling back to pty';
-  console.log(
-    `[desktop] session backend: tmux (${chosen}; repo root: ${
-      root ?? 'UNRESOLVED — falling back to pty'
-    }; tmux probe: ${probe})`
-  );
-}
-
 export function openRepo(path: string): RepoInfo {
   const cwd = canonicalRepoPath(path);
   if (!isGitRepo(cwd)) {
@@ -155,8 +121,7 @@ export function openRepo(path: string): RepoInfo {
   // Same startup wiring as the TUI's useSessionManager mount:
   // auto-detect provider fields on first open, honor a custom
   // worktreePath template (without it, listWorktrees would only own
-  // the default .claude/worktrees dir), and point the session
-  // registry at the configured terminal backend.
+  // the default .claude/worktrees dir).
   try {
     autoDetectProjectConfig(cwd, PROVIDERS);
   } catch {
@@ -169,8 +134,6 @@ export function openRepo(path: string): RepoInfo {
   } else {
     resetWorktreeResolver();
   }
-  applySessionBackend(config);
-  logSessionBackend(config);
   repoOpenedListener?.(cwd);
   const provider = PROVIDERS.find((p) => p.id === config.vendor) ?? null;
   return {

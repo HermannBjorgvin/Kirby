@@ -1,3 +1,4 @@
+import { sessionLabel } from '@kirby/core';
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
 import type { PullRequestInfo } from '@kirby/vcs-core';
@@ -106,11 +107,11 @@ export const SessionMenuPane = memo(function SessionMenuPane({
     () => buildAgentOptions(config.config),
     [config.config]
   );
-  const safeAgentIdx = Math.min(
-    Math.max(agentIndex, 0),
-    agentOptions.length - 1
-  );
-  const agentName = agentOptions[safeAgentIdx]?.name ?? 'Agent';
+  const safeAgentIdx = Math.min(Math.max(agentIndex, 0), agentOptions.length);
+  const fresh = safeAgentIdx > 0;
+  const agentName = fresh
+    ? agentOptions[safeAgentIdx - 1]!.name
+    : 'Recorded agent / default';
 
   const options = sessionMenuOptions(pr != null);
   const optKey = options[Math.min(selectedOption, options.length - 1)]!;
@@ -118,7 +119,11 @@ export const SessionMenuPane = memo(function SessionMenuPane({
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
-      {pr ? <PrHeader pr={pr} /> : <Text bold>{sessionName ?? 'Session'}</Text>}
+      {pr ? (
+        <PrHeader pr={pr} />
+      ) : (
+        <Text bold>{sessionName ? sessionLabel(sessionName) : 'Session'}</Text>
+      )}
 
       <Box marginTop={1} flexDirection="column">
         <Text>What would you like to do?</Text>
@@ -128,7 +133,9 @@ export const SessionMenuPane = memo(function SessionMenuPane({
             <Text color={startSelected ? 'cyan' : undefined}>
               {startSelected ? '› ' : '  '}
             </Text>
-            <Text bold={startSelected}>Start/Continue session</Text>
+            <Text bold={startSelected}>
+              {fresh ? 'Start new session' : 'Open / resume session'}
+            </Text>
             <Text dimColor> · agent: </Text>
             <Text color="cyan">{agentName}</Text>
           </Text>

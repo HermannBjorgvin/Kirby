@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { findKirbySessionFor, socketEnv } from './setup/tmux.js';
+import { sessionBranch } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import {
-  agentPicker,
   createWorktree,
   openPalette,
   sessionMenu,
@@ -9,21 +11,11 @@ import {
   visibleText,
 } from './setup/app.js';
 
-// The session menu: what a row offers when its agent is not running,
-// and the per-launch agent picker on its session row.
-//
-// The fixture's fake agent is a custom `aiCommand`, so the picker's
-// default row reads "Custom (default)"; the registry agents follow.
-// Only the default is ever launched here — the others are real
-// binaries this machine need not have.
-
 test.describe('Session menu', () => {
-  test('checking out a branch lands in its session menu', async ({
+  test('a new ordinary worktree offers a fresh session without resume or supervision', async ({
     desktop,
   }) => {
     const { page } = desktop;
-    // The shared helper dismisses the menu; drive the palette by hand
-    // to see it open.
     const input = await openPalette(page);
     await input.fill('menu-branch');
     await page
@@ -31,76 +23,101 @@ test.describe('Session menu', () => {
         name: /Create branch\s*menu-branch\s*and open a worktree/,
       })
       .click();
-
-    const menu = sessionMenu(page);
-    await expect(menu).toBeVisible({ timeout: 30_000 });
-    await expect(menu.getByText('Start / continue session')).toBeVisible();
-    // No pull request → no review rows.
-    await expect(menu.getByText('Start / continue review')).toHaveCount(0);
-    await expect(agentPicker(page)).toHaveText(/Custom \(default\)/);
-
-    await page.keyboard.press('Escape');
-    await expect(menu).toBeHidden();
-    await expect(
-      page.getByRole('button', { name: 'Launch agent', exact: true })
-    ).toBeVisible();
-  });
-
-  test('Enter on an idle row opens the menu, and the default agent starts', async ({
-    desktop,
-  }) => {
-    const { page } = desktop;
-    await createWorktree(page, 'enter-branch');
-
-    await sidebarRow(page, /enter-branch/).focus();
-    await page.keyboard.press('Enter');
-    await expect(sessionMenu(page)).toBeVisible();
-    await startSessionFromMenu(page);
-
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
-      timeout: 30_000,
-    });
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
-    expect(sessions.find((s) => s.name === 'enter-branch')?.running).toBe(true);
-
-    // A running agent has nothing to choose: its row opens the tab
-    // only. Wait for the sidebar model to agree the agent is running
-    // (the rail's Stop appears from the same model) before activating.
-    await expect(
-      page.getByRole('button', { name: 'Stop agent' }).first()
-    ).toBeVisible({ timeout: 15_000 });
-    await sidebarRow(page, /enter-branch/).dblclick();
-    await expect(sessionMenu(page)).toHaveCount(0);
-  });
-
-  test('the picker lists every agent and reopens on the default', async ({
-    desktop,
-  }) => {
-    const { page } = desktop;
-    await createWorktree(page, 'pick-branch');
-
-    await sidebarRow(page, /pick-branch/).dblclick();
     const menu = sessionMenu(page);
     await expect(menu).toBeVisible();
-
-    await agentPicker(page).click();
-    const options = page.getByRole('listbox').getByRole('option');
-    await expect(options).toHaveText([
-      'Custom (default)',
-      'Claude',
-      'Codex',
-      'Gemini',
-      'Copilot',
-      'OpenCode',
-    ]);
-    await options.filter({ hasText: 'Codex' }).click();
-    await expect(agentPicker(page)).toHaveText(/Codex/);
-
-    // The pick is per launch: cancelling and reopening is back on the
-    // default.
-    await menu.getByRole('button', { name: 'Cancel' }).click();
+    await expect(
+      menu.getByRole('button', { name: 'Start new session', exact: true })
+    ).toBeEnabled();
+    await expect(
+      menu.getByRole('radio', { name: 'Continue', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      menu.getByRole('radio', { name: 'Review', exact: true })
+    ).toHaveCount(0);
+    await expect(menu.getByText('Orchestra', { exact: true })).toHaveCount(0);
+    await expect(menu.getByRole('combobox', { name: 'Agent' })).toHaveText(
+      'Custom (default)'
+    );
+    await expect(
+      menu.getByRole('combobox', { name: /Effort|Model/ })
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await expect(menu).toBeHidden();
-    await sidebarRow(page, /pick-branch/).dblclick();
-    await expect(agentPicker(page)).toHaveText(/Custom \(default\)/);
+  });
+
+  test('Enter opens the menu and a live session can be reopened without replacement', async ({
+    desktop,
+  }) => {
+    const { page, homeDir } = desktop;
+    await createWorktree(page, 'enter-branch');
+    await sidebarRow(page, /enter-branch/).focus();
+    await page.keyboard.press('Enter');
+    await startSessionFromMenu(page);
+    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
+    const before = (
+      await page.evaluate(() => window.kirby.listSessions())
+    ).find((s) => sessionBranch(s.name) === 'enter-branch');
+    expect(before?.running).toBe(true);
+    const native = findKirbySessionFor('enter-branch', homeDir)!;
+    const processIdentity = () =>
+      execFileSync(
+        'tmux',
+        [
+          'display-message',
+          '-p',
+          '-t',
+          `=${native}:`,
+          '#{session_id}:#{pane_id}:#{pane_pid}',
+        ],
+        { env: socketEnv(homeDir), encoding: 'utf8' }
+      ).trim();
+    const beforeProcess = processIdentity();
+    await sidebarRow(page, /enter-branch/).dblclick();
+    const menu = sessionMenu(page);
+    await expect(
+      menu.getByRole('button', { name: 'Open Custom', exact: true })
+    ).toBeEnabled();
+    await expect(menu.getByText('Orchestra', { exact: true })).toHaveCount(0);
+    await menu
+      .getByRole('button', { name: 'Open Custom', exact: true })
+      .click();
+    await expect(menu).toBeHidden();
+    const after = (await page.evaluate(() => window.kirby.listSessions())).find(
+      (s) => s.name === before?.name
+    );
+    expect(after?.running).toBe(true);
+    expect(processIdentity()).toBe(beforeProcess);
+  });
+
+  test('starting fresh explicitly replaces a running agent in the same worktree', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'fresh-branch');
+    await sidebarRow(page, /fresh-branch/).dblclick();
+    await startSessionFromMenu(page);
+    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
+    const [before] = await page.evaluate(() => window.kirby.listSessions());
+    await sidebarRow(page, /fresh-branch/).dblclick();
+    const menu = sessionMenu(page);
+    await menu.getByRole('radio', { name: 'New session', exact: true }).click();
+    await expect(menu.getByRole('note')).toContainText(
+      'stops the running Custom session'
+    );
+    await menu
+      .getByRole('button', { name: 'Stop and start new session', exact: true })
+      .click();
+    await expect(menu).toBeHidden();
+    await expect
+      .poll(
+        async () =>
+          (
+            await page.evaluate(() => window.kirby.listSessions())
+          )[0]?.spawnedAt
+      )
+      .not.toBe(before.spawnedAt);
+    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ name: before.name, running: true });
   });
 });

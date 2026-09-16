@@ -112,7 +112,7 @@ export const SessionItemRow = memo(function SessionItemRow({
   const { icon, color: iconColor } = rowIcon(selected, session.running);
 
   const activity = useActivityStatus(session.name);
-  const title = pr?.title || session.name;
+  const title = pr?.title || session.label || session.name;
 
   // The selected row is what the user is looking at, so ack any output
   // (poll while selected, plus a final ack on deselect) — that way the

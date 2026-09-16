@@ -1,9 +1,11 @@
+import { sessionBranch } from './setup/session-keys.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
   agentSpinner,
   createWorktree,
+  focusTerminal,
   launchAgentFromRail,
   openPalette,
   sidebarRow,
@@ -34,9 +36,9 @@ test.describe('An agent that exits immediately', () => {
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
 
-    // The exit notice is written into the terminal itself, so a session
-    // that died is distinguishable from one that is merely quiet.
-    await expect(page.getByText(/session exited/i).first()).toBeVisible({
+    // tmux retains the final frame and its dead-pane notice, even when
+    // the process exits before the renderer subscribes.
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -47,12 +49,34 @@ test.describe('An agent that exits immediately', () => {
             window.kirby.listSessions()
           );
           return (
-            sessions.find((s) => s.name === 'short-lived')?.running ?? true
+            sessions.find((s) => sessionBranch(s.name) === 'short-lived')
+              ?.running ?? true
           );
         },
         { timeout: 20_000 }
       )
       .toBe(false);
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
+  });
+
+  test('typing into an exited agent reports the failed delivery without a renderer exception', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'short-lived');
+    await launchAgentFromRail(page);
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
+
+    await focusTerminal(page);
+    await page.keyboard.type('hello');
+    expect(desktop.pageErrors).toEqual([]);
+    await expect(page.getByText(/Session .* is not running/)).toBeVisible();
+    await expect(tabs(page)).toHaveCount(1);
   });
 
   test('closing its tab afterwards needs no confirmation', async ({
@@ -61,12 +85,14 @@ test.describe('An agent that exits immediately', () => {
     const { page } = desktop;
     await createWorktree(page, 'short-lived');
     await launchAgentFromRail(page);
-    await expect(page.getByText(/session exited/i).first()).toBeVisible({
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible({
       timeout: 30_000,
     });
-    // The exit notice is pushed the instant the PTY closes, but the
-    // activity map the close path reads is polled once a second — so
-    // wait for the UI to agree the agent is idle rather than racing it.
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
+    // Wait for the application to agree that the retained agent exited.
+    // The activity map used by the close path is polled once a second.
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await page
@@ -151,7 +177,8 @@ test.describe('An agent command that does not exist', () => {
             window.kirby.listSessions()
           );
           return (
-            sessions.find((s) => s.name === 'broken-agent')?.running ?? false
+            sessions.find((s) => sessionBranch(s.name) === 'broken-agent')
+              ?.running ?? false
           );
         },
         { timeout: 20_000 }

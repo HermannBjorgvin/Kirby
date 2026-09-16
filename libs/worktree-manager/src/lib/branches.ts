@@ -53,13 +53,11 @@ export function resetMainBranchCache(): void {
  * rejects a ref name containing a control character, so a branch name
  * can never contain the newline this splits on.
  *
- * The format string is double-quoted, not single-quoted. `exec` goes
- * through the platform shell, and `cmd.exe` does not treat `'` as a
- * quote character: git would receive the quotes as part of the format
- * and echo them back, yielding names like `'main'`. Those then fail
+ * The format string is double-quoted so a shell that does not treat
+ * `'` as quoting cannot hand git the quotes as part of the format and
+ * echo them back as names like `'main'`, which would fail
  * `assertShellSafeRef` and defeat the `origin/` strip in
- * {@link dedupeBranchNames}. Double quotes are honored by both
- * `cmd.exe` and POSIX `sh`. */
+ * {@link dedupeBranchNames}. */
 export async function listBranches(): Promise<string[]> {
   try {
     const { stdout } = await exec('git branch --format="%(refname:short)"', {
@@ -230,12 +228,13 @@ export async function refExists(ref: string, cwd?: string): Promise<boolean> {
 /** Delete a local git branch. Returns true on success, false on failure. */
 export async function deleteBranch(
   branch: string,
-  force = false
+  force = false,
+  cwd = process.cwd()
 ): Promise<boolean> {
   assertShellSafeRef(branch);
   const flag = force ? '-D' : '-d';
   try {
-    await exec(`git branch ${flag} "${branch}"`, { encoding: 'utf8' });
+    await exec(`git branch ${flag} "${branch}"`, gitOptions(cwd));
     return true;
   } catch (e) {
     log('error', 'deleteBranch', `git branch ${flag} failed for ${branch}`, e);

@@ -23,8 +23,9 @@ The `desktop-e2e` targets build Electron before testing. Directly invoking
 
 `src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional git
 states, supplies a scriptable fake agent and fails on renderer exceptions.
-It selects PTY by default; pass `terminalBackend: undefined` for the unconfigured
-state. It drops `KIRBY_VITE_URL` to ensure tests use the built app.
+Every test uses a private tmux socket inside its fixture HOME and kills only
+that fixture's sessions at teardown. It drops `KIRBY_VITE_URL` to ensure tests
+use the built app.
 
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
 a fake executable on PATH. Set a PR's `headRefName` to a real fixture branch for
@@ -69,8 +70,9 @@ buffered output after reconnect. A WebSocket disconnect does not end the PTY.
 Strip CI variables from the spawned TUI's environment so Ink renders interactively.
 
 Both suites' tmux helpers must assert that their socket directory belongs to a
-fixture HOME and unset TMUX before any operation. Fixtures choose PTY unless
-a test specifically needs tmux. See `libs/terminal-tmux/AGENTS.md`.
+fixture HOME and unset TMUX before any operation. All terminal tests require
+tmux 3.2 or newer. Never kill the default server or use `kill-server`.
+See `libs/terminal-tmux/AGENTS.md`.
 
 Failures retain traces, screenshots and video in `test-output/`.
 `error-context.md` is useful for text inspection. Open a trace with
@@ -162,3 +164,18 @@ GH_TOKEN=<integration-pat> gh api \
 
 - **CI** (`.github/workflows/ci.yml`) — runs `nx affected -t lint test build typecheck e2e`. Runs `npx playwright install --with-deps chromium` before `nx affected` (needed for `cli-e2e`). Uploads `apps/cli-e2e/test-output/` as an artifact on failure. Integration tests skipped (no `GH_TOKEN`).
 - **Integration Tests** (`.github/workflows/integration.yml`) — runs `npx nx e2e:integration cli-e2e` with `GH_TOKEN` from the `INTEGRATION_TEST_PAT` secret. Triggers on PRs, pushes to master, and manual dispatch. Uses `concurrency` with `cancel-in-progress: false` because the test repo is shared state.
+
+## Orchestra interoperability
+
+`npx nx test core` includes `orchestra.integration.spec.ts`, which installs the
+pinned Orchestra package under a fixture HOME and runs its real Bash scripts
+against an isolated tmux server. Only the agent CLI and report queue are fake.
+The suite covers large prompts, tagged discovery, Kirby attaching without
+restarting a player, Orchestra adopting and stopping Kirby players, and successful
+and failed report delivery. It does not exercise a model or CLI plugin manager.
+
+The archive, provenance, checksum and update instructions live in
+`libs/core/tests/fixtures/README.md`. Tests require no network or agent login;
+tmux is installed in CI, and the live suites skip locally when it is absent.
+`terminal-allocation.integration.spec.ts` exercises names becoming occupied or
+free between a tab's preliminary name probe and the backend's allocation.

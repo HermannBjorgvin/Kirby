@@ -3,7 +3,9 @@ import {
   createSession,
   waitForSidebarFocused,
   waitForTerminalFocused,
+  tabIntoSession,
 } from './setup/sessions.js';
+import { listTaggedSessions } from './setup/tmux.js';
 
 // Regression for issue #55: when an agent terminated on its own
 // (Ctrl-D Ctrl-D in claude, the process being killed, etc.), the
@@ -32,6 +34,10 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
     await expect(
       kirby.term.getByText('kirby-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
+
+    const session = () =>
+      listTaggedSessions(kirby.homeDir).find((s) => s.branch === branch);
+    const originalPid = session()?.panePid;
 
     // Escape to sidebar so the row icon is visible. Agent is still alive
     // (it only exits on input), so this is a stable ◉.
@@ -68,5 +74,13 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
       await waitForSidebarFocused(kirby.term);
       await expect(stoppedRow).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
+    // A stopped agent keeps its tmux session for an explicit restart.
+    await expect.poll(() => session()?.paneDead).toBe(true);
+    await tabIntoSession(kirby.term);
+    await kirby.term.write('\x00');
+    await waitForSidebarFocused(kirby.term);
+    await expect(runningRow).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => session()?.paneDead).toBe(false);
+    expect(session()?.panePid).not.toBe(originalPid);
   });
 });
