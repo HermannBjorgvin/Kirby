@@ -108,7 +108,9 @@ class TmuxBackend implements SessionBackend {
       void stale
         .then(() => this.runInspect())
         .then(() => {
-          if (this.disposed || !this.state.running) return;
+          // Two tmux forks have passed; re-check identity as well as state.
+          if (this.disposed || !this.state.running || this.inner !== client)
+            return;
           this.connection = 'reconnecting';
           for (const cb of [...this.disconnects]) cb();
           this.reconnect();
