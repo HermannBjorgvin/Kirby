@@ -64,6 +64,16 @@ describe('buildReviewLaunchRequest', () => {
       expect(guidance()).toMatch(/[Dd]o not sign the comment/);
     });
 
+    /** The rejection this prevents came from the provider, after the
+     *  review, with nothing the agent could act on. The rule and the
+     *  two anchors that need no line are both stated up front. */
+    it('says which lines can be anchored, and what to do otherwise', () => {
+      expect(guidance()).toContain('--base=main');
+      expect(guidance()).toMatch(/changed lines and the 3 lines of context/);
+      expect(guidance()).toContain('omit --lineStart/--lineEnd');
+      expect(guidance()).toContain('omit --file too');
+    });
+
     it('says where thread ids come from', () => {
       expect(guidance()).toContain('--thread=<id>');
       expect(guidance()).toContain('(thread <id>)');

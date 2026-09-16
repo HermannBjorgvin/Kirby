@@ -15,6 +15,17 @@ implemented in the TUI's `performDelete` and desktop's `services/worktrees.ts`;
 both use core's removal sequence to stop persisted tmux sessions. Draft posting uses one comment per `postReviewComments` call,
 so a partial failure cannot reset already-posted comments to drafts.
 
+A draft comment anchors to lines, to a whole file, or to the pull request
+(`file`/`lineStart`/`lineEnd` nullable, the shape `RemoteCommentThread` uses).
+Providers reject a line anchor outside the diff, so `n10 util add-comment`
+checks it against the merge-base diff when given `--base` and refuses with the
+commentable ranges; a base it cannot resolve records the draft unchecked. On
+GitHub a whole-file draft goes through the single-comment endpoint
+(`subject_type: file`), a whole-PR draft is a review whose body is the comment,
+and a verdict rides exactly one review per batch. The TUI shows whole-file
+drafts with a file's out-of-diff comments and does not list whole-PR drafts;
+the desktop lists them in the conversation panel.
+
 A fresh worktree needs its own `npm ci`: workspace links and nested dependencies
 must resolve to that checkout. Copying only another checkout's root
 `node_modules` misses per-workspace dependencies. Typecheck before code edits.

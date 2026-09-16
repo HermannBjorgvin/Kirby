@@ -3,8 +3,31 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { ReviewComment } from '@n10/review-comments';
+import type * as Core from '@n10/core';
 import type * as Util from './util.js';
 import { parseArgs } from './util.js';
+
+/** The diff the anchor check sees; set per test. `null` = file not in
+ *  the diff; `'unresolvable'` = the target branch is unknown here. */
+const anchorEnv = vi.hoisted(() => ({
+  lines: { right: [{ start: 7, end: 13 }], left: [] } as
+    | { right: { start: number; end: number }[]; left: never[] }
+    | null
+    | 'unresolvable',
+}));
+
+vi.mock('@n10/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof Core>();
+  return {
+    ...actual,
+    commentableLines: async () => {
+      if (anchorEnv.lines === 'unresolvable') {
+        throw new Error('Cannot resolve ref for branch: main');
+      }
+      return anchorEnv.lines;
+    },
+  };
+});
 
 describe('parseArgs', () => {
   it('parses simple key=value', () => {
@@ -155,5 +178,123 @@ describe('add-comment', () => {
   it('leaves threadId off a draft that answers nothing', async () => {
     await util.handleUtilCommand(['add-comment', ...BASE]);
     expect(stored()[0].threadId).toBeUndefined();
+  });
+
+  /**
+   * The other two anchors. A remark about code the pull request did
+   * not change has no line the provider would take; a remark about
+   * the change as a whole has no file. Both are drafts all the same.
+   */
+  describe('anchors', () => {
+    let exit: ReturnType<typeof vi.spyOn>;
+    let errors: string[];
+
+    beforeEach(() => {
+      errors = [];
+      vi.spyOn(console, 'error').mockImplementation((m: unknown) => {
+        errors.push(String(m));
+      });
+      exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+        throw new Error(`exit ${String(code)}`);
+      });
+      anchorEnv.lines = { right: [{ start: 7, end: 13 }], left: [] };
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const run = (...args: string[]) =>
+      util.handleUtilCommand([
+        'add-comment',
+        `--pr=${PR}`,
+        '--severity=minor',
+        '--body=A remark.',
+        ...args,
+      ]);
+
+    it('writes a whole-file draft when no lines are given', async () => {
+      await run('--file=src/undo.c');
+      expect(stored()[0]).toMatchObject({
+        file: 'src/undo.c',
+        lineStart: null,
+        lineEnd: null,
+      });
+    });
+
+    it('writes a whole-PR draft when no file is given', async () => {
+      await run();
+      expect(stored()[0]).toMatchObject({
+        file: null,
+        lineStart: null,
+        lineEnd: null,
+      });
+    });
+
+    it('refuses half an anchor', async () => {
+      await expect(run('--file=src/undo.c', '--lineStart=3')).rejects.toThrow(
+        'exit 1'
+      );
+      await expect(run('--lineStart=3', '--lineEnd=3')).rejects.toThrow(
+        'exit 1'
+      );
+      expect(errors.join('\n')).toContain('go together');
+      expect(errors.join('\n')).toContain('need --file');
+    });
+
+    /** The 422 this replaces arrived at post time with no line named.
+     *  Refusing here, with the commentable lines in the message, lets
+     *  the agent pick one while it still has the file open. */
+    it('refuses a line outside the diff when the base is known', async () => {
+      await expect(
+        run(
+          '--file=src/undo.c',
+          '--lineStart=93',
+          '--lineEnd=99',
+          '--base=main'
+        )
+      ).rejects.toThrow('exit 1');
+      expect(errors.join('\n')).toContain('src/undo.c:93-99 is not part');
+      expect(errors.join('\n')).toContain('7-13');
+      expect(exit).toHaveBeenCalledWith(1);
+    });
+
+    it('accepts a line inside the diff', async () => {
+      await run(
+        '--file=src/undo.c',
+        '--lineStart=8',
+        '--lineEnd=9',
+        '--base=main'
+      );
+      expect(stored()).toHaveLength(1);
+    });
+
+    it('refuses a file the diff does not touch', async () => {
+      anchorEnv.lines = null;
+      await expect(
+        run('--file=src/other.c', '--lineStart=1', '--lineEnd=1', '--base=main')
+      ).rejects.toThrow('exit 1');
+      expect(errors.join('\n')).toContain('src/other.c is not part');
+    });
+
+    /** A checkout without the target branch fetched cannot verify;
+     *  losing the draft over that would be worse than a later 422. */
+    it('records the draft unchecked when the base cannot be resolved', async () => {
+      anchorEnv.lines = 'unresolvable';
+      await run(
+        '--file=src/undo.c',
+        '--lineStart=93',
+        '--lineEnd=99',
+        '--base=main'
+      );
+      expect(stored()).toHaveLength(1);
+      expect(errors.join('\n')).toContain('warning: could not check');
+    });
+
+    it('does not check without a base', async () => {
+      anchorEnv.lines = null;
+      await run('--file=src/undo.c', '--lineStart=93', '--lineEnd=99');
+      expect(stored()).toHaveLength(1);
+    });
   });
 });

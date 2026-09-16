@@ -24,11 +24,19 @@ export function buildReviewLaunchRequest(
   // that support it, e.g. Claude; folded into the prompt otherwise).
   const systemGuidance =
     `To add review comments, use this command:\n` +
-    `  n10 util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
+    `  n10 util add-comment --pr=${pr.id} --base=${pr.targetBranch} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
     `Rules:\n` +
     `- File paths are relative to the repo root\n` +
     `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +
     `- Use --side=LEFT only when commenting on removed/deleted lines\n` +
+    `- A line comment must anchor to lines in this pull request's diff: ` +
+    `changed lines and the 3 lines of context around them. The provider ` +
+    `rejects anything else, so the command checks the anchor against ` +
+    `--base and refuses one it would reject, naming the lines that work\n` +
+    `- For a remark about code the pull request did not change, give ` +
+    `--file and omit --lineStart/--lineEnd: it is posted on the file as a ` +
+    `whole. For a remark about the change itself, omit --file too: it is ` +
+    `posted on the pull request's conversation\n` +
     `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
     `- Add --thread=<id> to record which existing review thread a comment ` +
     `is about. It is still posted as a new comment at --file/--lineStart, ` +

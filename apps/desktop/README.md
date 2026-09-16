@@ -43,7 +43,7 @@ Run it under WSL 2, which gives you the unix environment the agent and tmux back
 - **Worktree per branch.** Check out any branch as a worktree from the command palette; remove it (branch and session included) when you're done. Merged branches are cleaned up automatically, unless an agent is still working in one.
 - **Agent sessions in tabs.** Launch an agent on a branch, watch it work, and keep its scrollback when you switch tabs. Tabs show when an agent is busy and flag it when it finishes something you haven't looked at.
 - **Pull request review.** Whole-file diffs with folding, split and unified views, and word-level highlighting. Comment threads render inline, including images behind provider auth. Reply, resolve and submit your verdict without leaving the app.
-- **Agent-written reviews.** Launch an agent to review a PR and it writes draft comments anchored to lines, through `n10 util add-comment` (see Requirements). Step through them by severity, edit or discard, and post.
+- **Agent-written reviews.** Launch an agent to review a PR and it writes draft comments through `n10 util add-comment` (see Requirements), anchored to lines, to a whole file, or to the pull request itself. Step through them by severity, edit or discard, and post.
 
 ## Configuration
 
