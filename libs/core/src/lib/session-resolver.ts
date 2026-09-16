@@ -80,14 +80,13 @@ export function resolveSessionByName(
  * only a registry key — the merged-branch sweep, the worktree removal
  * — reaches the resolver without composing a name.
  *
- * Nothing is matched by name here. A key is a branch with `/`
- * rewritten, never a tmux name, and the two namespaces overlap: an
- * agent tab is called `<repo>-agent`, which is also the key of a
- * branch named `<repo>-agent`, and repository `feature`'s agent on
- * branch `x` is labelled `feature-x`, which is the key of the branch
- * `feature/x`. Answering either by name would have the worktree
- * removal kill a session that is on no such branch. Callers holding a
- * tmux name — a terminal tab, whose key *is* its name — use
+ * Nothing is matched by name here, only tags: `registryNameOf` rebuilds
+ * each candidate session's key from its `repo`/`branch` tags (via
+ * {@link worktreeSessionKey}, a JSON tuple — see `session-key.ts`) and
+ * compares that to `registryName`. A registry key is never a tmux
+ * name by construction, so matching on the name directly could answer
+ * with an unrelated session that happens to share a label. Callers
+ * holding a tmux name — a terminal tab, whose key *is* its name — use
  * {@link resolveSessionByName} instead.
  */
 export function resolveRegistrySession(
