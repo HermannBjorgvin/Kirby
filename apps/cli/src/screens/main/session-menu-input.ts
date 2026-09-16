@@ -82,6 +82,7 @@ async function launchSelectedAgent(
     config: ctx.config.config,
     agent: idx === 0 ? undefined : options[idx - 1]!.agent,
     request: { intent: idx === 0 ? 'continue-or-blank' : 'blank' },
+    fresh: idx !== 0,
   });
   return true;
 }

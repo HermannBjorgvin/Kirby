@@ -251,11 +251,11 @@ describe('session menu — start', () => {
   });
 
   it.each([
-    [0, 'continue-or-blank', undefined],
-    [1, 'blank', 'claude'],
+    [0, 'continue-or-blank', undefined, false],
+    [1, 'blank', 'claude', true],
   ] as const)(
     'distinguishes automatic resume from explicit default at index %s',
-    async (agentIndex, intent, agent) => {
+    async (agentIndex, intent, agent, fresh) => {
       const t = makeCtx({
         menu: { ...openMenu(), agentIndex },
         selectedItem: sessionItem('alpha'),
@@ -268,6 +268,9 @@ describe('session menu — start', () => {
       const params = vi.mocked(launchSession).mock.calls[0]![0];
       expect(params.request.intent).toBe(intent);
       expect(params.agent?.id).toBe(agent);
+      // A named agent pick must start fresh, so a live tmux session with
+      // no local registry entry is confirmed rather than silently attached.
+      expect(params.fresh).toBe(fresh);
     }
   );
 
