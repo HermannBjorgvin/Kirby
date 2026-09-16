@@ -16,6 +16,9 @@ const mock = vi.hoisted(() => ({
    *  here is invoked, so a test can hold a poll "in flight". */
   paneStateGated: false,
   paneStateResolvers: [] as (() => void)[],
+  /** When true, tmuxPaneStateAsync answers `{ status: 'failed' }` —
+   *  Kirby could not talk to tmux this tick — regardless of `state`. */
+  readFailed: false,
   data: vi.fn(),
   spawn: vi.fn(),
   dispose: vi.fn(),
@@ -72,9 +75,14 @@ vi.mock('./tmux-cli.js', async (original) => {
     tmuxPaneState: () => mock.state,
     tmuxPaneStateAsync: () => {
       mock.paneStateCalls += 1;
-      if (!mock.paneStateGated) return Promise.resolve(mock.state);
+      const respond = () => {
+        if (mock.readFailed) return { status: 'failed' as const };
+        if (mock.state == null) return { status: 'gone' as const };
+        return { status: 'ok' as const, state: mock.state };
+      };
+      if (!mock.paneStateGated) return Promise.resolve(respond());
       return new Promise((resolve) => {
-        mock.paneStateResolvers.push(() => resolve(mock.state));
+        mock.paneStateResolvers.push(() => resolve(respond()));
       });
     },
     tmuxCapturePane: () => 'final output\n',
@@ -121,6 +129,7 @@ beforeEach(() => {
   mock.paneStateCalls = 0;
   mock.paneStateGated = false;
   mock.paneStateResolvers.length = 0;
+  mock.readFailed = false;
   mock.spawn.mockReset();
   mock.dispose.mockReset();
   mock.data.mockReset();
@@ -382,6 +391,37 @@ describe('hosted process lifecycle', () => {
     mock.paneStateResolvers.shift()?.();
     await vi.advanceTimersByTimeAsync(500);
     expect(mock.paneStateCalls).toBe(2);
+  });
+  it('does not conclude exit on a failed pane-state read, and recovers on the next healthy tick', async () => {
+    // A non-zero exit or spawn error (EAGAIN/EMFILE on fork, ENOENT, the
+    // 5s timeout kill) says nothing about the pane; it must not be
+    // reported as the hosted process exiting.
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    await vi.advanceTimersByTimeAsync(1);
+    mock.readFailed = true;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(exit).not.toHaveBeenCalled();
+    expect(backend.processState?.running).toBe(true);
+    mock.readFailed = false;
+    mock.state = { paneDead: true, exitCode: 3 };
+    await vi.advanceTimersByTimeAsync(500);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(3, undefined);
+  });
+  it('drops a pane-state read that resolves after dispose, firing no callbacks', async () => {
+    mock.paneStateGated = true;
+    const backend = await launch();
+    const exit = vi.fn();
+    backend.onExit(exit);
+    // The initial setTimeout(0) inspect starts a read that stays in
+    // flight until we resolve it below.
+    await vi.advanceTimersByTimeAsync(1);
+    backend.dispose();
+    mock.state = { paneDead: true, exitCode: 5 };
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).not.toHaveBeenCalled();
   });
   it('kills only the resolved target, once', async () => {
     const backend = await launch({ mode: 'attach', target: 'actual' });

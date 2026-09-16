@@ -51,13 +51,48 @@ export function tmuxPaneState(name: string): TmuxPaneState | null {
   return parsePaneStateResult(runTmux(paneStateArgs(name)));
 }
 
+/** Outcome of an async pane-state read, for the backend's poller. A
+ *  non-zero exit or spawn error (`EAGAIN`/`EMFILE` on fork, `ENOENT`, the
+ *  5s timeout kill — see `runTmuxAsync`) means Kirby could not talk to
+ *  tmux at all: `'failed'`. That is distinct from tmux itself answering
+ *  with an empty, unparseable pane for a target that genuinely no longer
+ *  exists: `'gone'`. Only `'gone'` means the hosted process is gone; a
+ *  `'failed'` read says nothing about the pane and must not be treated
+ *  as an exit. */
+export type TmuxPaneRead =
+  | { status: 'ok'; state: TmuxPaneState }
+  | { status: 'gone' }
+  | { status: 'failed' };
+
+/** tmux's own wording for "this server has no sessions left" — the same
+ *  condition {@link tmuxListSessionsDetailed} treats as an empty list, not
+ *  a failure. Killing a session's last sibling on a server tears the
+ *  server down with it, so the target being gone can surface either as
+ *  this non-zero exit or as the exit-0/empty-output case below,
+ *  depending on whether other sessions kept the server alive. */
+const NO_SERVER = /no server running/;
+
+function classifyPaneStateResult(result: TmuxRunResult): TmuxPaneRead {
+  if (result.exitCode !== 0)
+    return NO_SERVER.test(result.stderr)
+      ? { status: 'gone' }
+      : { status: 'failed' };
+  const fields = result.stdout.trimEnd().split('\t');
+  // display-message may succeed with empty output for a vanished target.
+  // Require an actual pane identity and explicit native liveness state.
+  if (!/^%\d+$/.test(fields[0] ?? '') || !['0', '1'].includes(fields[1] ?? ''))
+    return { status: 'gone' };
+  return { status: 'ok', state: parsePaneState(fields.slice(1)) };
+}
+
 /** Async twin of {@link tmuxPaneState}, for the backend's periodic poll: a
  *  synchronous `execFileSync` there blocks Ink's render loop and Electron's
- *  main process every 500ms per session. */
-export async function tmuxPaneStateAsync(
-  name: string
-): Promise<TmuxPaneState | null> {
-  return parsePaneStateResult(await runTmuxAsync(paneStateArgs(name)));
+ *  main process every 500ms per session. Unlike the sync reader, this
+ *  distinguishes a read failure from a genuinely vanished target — see
+ *  {@link TmuxPaneRead} — because the poller must not conclude the hosted
+ *  process exited merely because Kirby momentarily could not fork tmux. */
+export async function tmuxPaneStateAsync(name: string): Promise<TmuxPaneRead> {
+  return classifyPaneStateResult(await runTmuxAsync(paneStateArgs(name)));
 }
 
 const UTF8 = '-u';

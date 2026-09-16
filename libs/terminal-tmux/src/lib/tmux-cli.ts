@@ -5,6 +5,7 @@ export {
   tmuxPaneState,
   tmuxPaneStateAsync,
   type TmuxPaneState,
+  type TmuxPaneRead,
   type TmuxSessionInfo,
 } from './tmux-state.js';
 

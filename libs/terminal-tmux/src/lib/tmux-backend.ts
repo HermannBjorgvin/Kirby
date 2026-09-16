@@ -5,7 +5,7 @@ import {
   tmuxCapturePane,
   tmuxKillSession,
   tmuxPaneStateAsync,
-  type TmuxPaneState,
+  type TmuxPaneRead,
 } from './tmux-cli.js';
 import { prepareTmuxSession, type TmuxLaunchPlan } from './tmux-launch.js';
 export type { TmuxLaunchPlan } from './tmux-launch.js';
@@ -158,16 +158,20 @@ class TmuxBackend implements SessionBackend {
     return promise;
   }
 
-  private handlePaneState(pane: TmuxPaneState | null): void {
+  private handlePaneState(read: TmuxPaneRead): void {
     // Disposal (or the process having already been marked exited by an
     // earlier poll) can land between the read starting and resolving.
     if (this.disposed || !this.state.running) return;
-    if (pane && !pane.paneDead) return;
-    if (pane?.paneDead) this.replayFinalFrame();
+    // A failed read (non-zero exit, spawn error) says nothing about the
+    // pane — Kirby simply could not talk to tmux this tick. Leave
+    // `state.running` and the timer untouched; the next tick tries again.
+    if (read.status === 'failed') return;
+    if (read.status === 'ok' && !read.state.paneDead) return;
+    if (read.status === 'ok') this.replayFinalFrame();
     this.state = {
       running: false,
-      exitCode: pane?.exitCode,
-      signal: pane?.exitSignal,
+      exitCode: read.status === 'ok' ? read.state.exitCode : undefined,
+      signal: read.status === 'ok' ? read.state.exitSignal : undefined,
     };
     clearInterval(this.timer);
     clearTimeout(this.reconnectTimer);
