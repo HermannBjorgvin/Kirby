@@ -34,6 +34,7 @@ export async function launchTerminalSession(
       target: key?.kind === 'terminal' ? key.id : undefined,
     },
     mode: params.name ? params.mode : 'create',
+    fresh: params.kind === 'agent' && params.fresh,
     intent: params.kind === 'agent' && params.fresh ? 'fresh' : 'continue',
     cwd: params.cwd,
     cols: params.cols,

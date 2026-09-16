@@ -43,6 +43,7 @@ describe('terminal requests', () => {
       name: terminalSessionKey('saved'),
       fresh: true,
     });
+    expect(state.calls[0].fresh).toBe(true);
     expect(state.calls[0].build('unknown-agent', true)).toEqual({
       spec: { cmd: 'codex', args: [] },
       agent: 'codex',
