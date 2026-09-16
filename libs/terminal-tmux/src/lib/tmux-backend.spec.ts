@@ -11,6 +11,11 @@ const mock = vi.hoisted(() => ({
   createError: '',
   respawnError: '',
   clientExit: undefined as (() => void) | undefined,
+  paneStateCalls: 0,
+  /** When true, tmuxPaneStateAsync only resolves once a resolver queued
+   *  here is invoked, so a test can hold a poll "in flight". */
+  paneStateGated: false,
+  paneStateResolvers: [] as (() => void)[],
   data: vi.fn(),
   spawn: vi.fn(),
   dispose: vi.fn(),
@@ -65,6 +70,13 @@ vi.mock('./tmux-cli.js', async (original) => {
       return result();
     },
     tmuxPaneState: () => mock.state,
+    tmuxPaneStateAsync: () => {
+      mock.paneStateCalls += 1;
+      if (!mock.paneStateGated) return Promise.resolve(mock.state);
+      return new Promise((resolve) => {
+        mock.paneStateResolvers.push(() => resolve(mock.state));
+      });
+    },
     tmuxCapturePane: () => 'final output\n',
     runTmux: (args: string[], following: string[][] = []) => {
       mock.calls.push(
@@ -106,6 +118,9 @@ beforeEach(() => {
   mock.optionError = '';
   mock.createError = '';
   mock.respawnError = '';
+  mock.paneStateCalls = 0;
+  mock.paneStateGated = false;
+  mock.paneStateResolvers.length = 0;
   mock.spawn.mockReset();
   mock.dispose.mockReset();
   mock.data.mockReset();
@@ -283,6 +298,9 @@ describe('hosted process lifecycle', () => {
     backend.onDisconnect?.(() => backend.dispose());
     backend.onDisconnect?.(observer);
     mock.clientExit?.();
+    // The client-exit handler awaits an async pane-state read before
+    // deciding whether this was a disconnect or an agent exit.
+    await vi.advanceTimersByTimeAsync(0);
     expect(observer).toHaveBeenCalledOnce();
   });
   it('distinguishes client disconnect from an agent exit', async () => {
@@ -292,6 +310,7 @@ describe('hosted process lifecycle', () => {
     backend.onExit(exit);
     backend.onDisconnect?.(disconnect);
     mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
     expect(exit).not.toHaveBeenCalled();
     expect(disconnect).toHaveBeenCalledOnce();
     expect(backend.processState?.running).toBe(true);
@@ -302,6 +321,7 @@ describe('hosted process lifecycle', () => {
     backend.onData(data);
     backend.resize(100, 40);
     mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
     expect(backend.connectionState).toBe('reconnecting');
     await vi.advanceTimersByTimeAsync(500);
     expect(backend.connectionState).toBe('connected');
@@ -346,6 +366,22 @@ describe('hosted process lifecycle', () => {
     expect(exit).not.toHaveBeenCalled();
     expect(mock.calls.some((call) => call.startsWith('kill'))).toBe(false);
     expect(mock.dispose).toHaveBeenCalledOnce();
+  });
+  it('does not stack a poll while the previous pane-state read is still in flight', async () => {
+    mock.paneStateGated = true;
+    await launch();
+    // The initial setTimeout(0) inspect starts a read that never resolves
+    // until we let it.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.paneStateCalls).toBe(1);
+    // Two more 500ms ticks land while that read is still pending; neither
+    // should start a second, overlapping tmux read.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mock.paneStateCalls).toBe(1);
+    // Resolving it clears the in-flight guard, so the next tick reads again.
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mock.paneStateCalls).toBe(2);
   });
   it('kills only the resolved target, once', async () => {
     const backend = await launch({ mode: 'attach', target: 'actual' });

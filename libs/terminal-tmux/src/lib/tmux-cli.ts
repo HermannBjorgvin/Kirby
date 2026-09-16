@@ -1,8 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { tmuxListSessionsDetailed } from './tmux-state.js';
 export {
   tmuxListSessionsDetailed,
   tmuxPaneState,
+  tmuxPaneStateAsync,
+  type TmuxPaneState,
   type TmuxSessionInfo,
 } from './tmux-state.js';
 
@@ -11,6 +13,18 @@ export interface TmuxRunResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+/** tmux interprets a trailing semicolon as a command boundary even when
+ *  invoked without a shell. Escape literal data before inserting the
+ *  boundaries between chained commands, shared by the sync and async runners. */
+function buildTmuxArgv(args: string[], following: string[][]): string[] {
+  const commands = [args, ...following].map((command) =>
+    command.map((argument) => argument.replace(/;$/, '\\;'))
+  );
+  return commands.flatMap((command, index) =>
+    index === 0 ? command : [';', ...command]
+  );
 }
 
 /** Synchronous run of a tmux subcommand. Tmux's control commands
@@ -23,14 +37,7 @@ export function runTmux(
   args: string[],
   following: string[][] = []
 ): TmuxRunResult {
-  // tmux interprets a trailing semicolon as a command boundary even when
-  // invoked without a shell. Escape literal data before inserting boundaries.
-  const commands = [args, ...following].map((command) =>
-    command.map((argument) => argument.replace(/;$/, '\\;'))
-  );
-  const argv = commands.flatMap((command, index) =>
-    index === 0 ? command : [';', ...command]
-  );
+  const argv = buildTmuxArgv(args, following);
   try {
     const stdout = execFileSync('tmux', argv, {
       encoding: 'utf8',
@@ -53,6 +60,36 @@ export function runTmux(
       exitCode: typeof e.status === 'number' ? e.status : 1,
     };
   }
+}
+
+/** Async run of a tmux subcommand via `execFile`, so a poller on a tight
+ *  interval (the backend's pane-state inspect) never blocks the caller's
+ *  event loop — Ink's render loop or Electron's main process. Command
+ *  construction mirrors {@link runTmux} exactly; only the exec call differs. */
+export function runTmuxAsync(
+  args: string[],
+  following: string[][] = []
+): Promise<TmuxRunResult> {
+  const argv = buildTmuxArgv(args, following);
+  return new Promise((resolve) => {
+    execFile(
+      'tmux',
+      argv,
+      { encoding: 'utf8', timeout: 5000 },
+      (err, stdout, stderr) => {
+        if (!err) {
+          resolve({ stdout, stderr: '', exitCode: 0 });
+          return;
+        }
+        const e = err as NodeJS.ErrnoException & { code?: number | string };
+        resolve({
+          stdout: stdout ?? '',
+          stderr: stderr ?? '',
+          exitCode: typeof e.code === 'number' ? e.code : 1,
+        });
+      }
+    );
+  });
 }
 
 /** `tmux -V` → "tmux 3.4". Throws if tmux is unavailable (ENOENT). */

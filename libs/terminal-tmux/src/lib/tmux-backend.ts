@@ -4,7 +4,8 @@ import {
   tmuxAttachArgs,
   tmuxCapturePane,
   tmuxKillSession,
-  tmuxPaneState,
+  tmuxPaneStateAsync,
+  type TmuxPaneState,
 } from './tmux-cli.js';
 import { prepareTmuxSession, type TmuxLaunchPlan } from './tmux-launch.js';
 export type { TmuxLaunchPlan } from './tmux-launch.js';
@@ -50,6 +51,10 @@ class TmuxBackend implements SessionBackend {
   private timer?: ReturnType<typeof setInterval>;
   private disposed = false;
   private killed = false;
+  /** Guards against overlapping polls: the async pane-state read can still
+   *  be in flight when the next 500ms tick fires, or when the client's own
+   *  `onExit` wants to join a read the timer already started. */
+  private inspecting: Promise<void> | null = null;
   private state = {
     running: true,
     exitCode: undefined as number | undefined,
@@ -91,11 +96,16 @@ class TmuxBackend implements SessionBackend {
     client.onExit(() => {
       if (this.disposed || this.inner !== client) return;
       clearTimeout(this.stableTimer);
-      this.inspect();
-      if (!this.state.running) return;
-      this.connection = 'reconnecting';
-      for (const cb of [...this.disconnects]) cb();
-      this.reconnect();
+      // Wait for the (possibly already in-flight) pane-state read before
+      // deciding this is a mere client disconnect rather than the hosted
+      // process itself exiting: `runInspect` resolves `this.state.running`
+      // either way.
+      void this.runInspect().then(() => {
+        if (this.disposed || !this.state.running) return;
+        this.connection = 'reconnecting';
+        for (const cb of [...this.disconnects]) cb();
+        this.reconnect();
+      });
     });
     return client;
   }
@@ -125,9 +135,33 @@ class TmuxBackend implements SessionBackend {
     this.reconnectTimer.unref();
   }
 
+  /** Fire-and-forget entry point for the timer and the initial
+   *  `setTimeout(0)`; overlapping ticks just join the read already
+   *  in flight rather than starting a second one. */
   private inspect(): void {
     if (!this.state.running || this.disposed) return;
-    const pane = tmuxPaneState(this.name);
+    void this.runInspect();
+  }
+
+  /** Async so the periodic poll never blocks the caller's event loop
+   *  (Ink's render loop, Electron's main process). Returns the shared
+   *  in-flight read so `onExit` can await the same result the timer
+   *  kicked off instead of starting a redundant one. */
+  private runInspect(): Promise<void> {
+    if (this.inspecting) return this.inspecting;
+    const promise = tmuxPaneStateAsync(this.name)
+      .then((pane) => this.handlePaneState(pane))
+      .finally(() => {
+        this.inspecting = null;
+      });
+    this.inspecting = promise;
+    return promise;
+  }
+
+  private handlePaneState(pane: TmuxPaneState | null): void {
+    // Disposal (or the process having already been marked exited by an
+    // earlier poll) can land between the read starting and resolving.
+    if (this.disposed || !this.state.running) return;
     if (pane && !pane.paneDead) return;
     if (pane?.paneDead) this.replayFinalFrame();
     this.state = {

@@ -1,4 +1,4 @@
-import { runTmux } from './tmux-cli.js';
+import { runTmux, runTmuxAsync, type TmuxRunResult } from './tmux-cli.js';
 
 export interface TmuxPaneState {
   paneDead: boolean;
@@ -20,16 +20,20 @@ function parsePaneState(fields: string[]): TmuxPaneState {
   };
 }
 
-/** Null means the session/pane no longer exists. */
-export function tmuxPaneState(name: string): TmuxPaneState | null {
-  const result = runTmux([
+/** Shared by the sync and async pane-state readers. */
+function paneStateArgs(name: string): string[] {
+  return [
     '-u',
     'display-message',
     '-p',
     '-t',
     `=${name}:`,
     '#{pane_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}',
-  ]);
+  ];
+}
+
+/** Shared with the async poller: both read the same fixed columns. */
+function parsePaneStateResult(result: TmuxRunResult): TmuxPaneState | null {
   const fields = result.stdout.trimEnd().split('\t');
   // display-message may succeed with empty output for a vanished target.
   // Require an actual pane identity and explicit native liveness state.
@@ -40,6 +44,20 @@ export function tmuxPaneState(name: string): TmuxPaneState | null {
   )
     return null;
   return parsePaneState(fields.slice(1));
+}
+
+/** Null means the session/pane no longer exists. */
+export function tmuxPaneState(name: string): TmuxPaneState | null {
+  return parsePaneStateResult(runTmux(paneStateArgs(name)));
+}
+
+/** Async twin of {@link tmuxPaneState}, for the backend's periodic poll: a
+ *  synchronous `execFileSync` there blocks Ink's render loop and Electron's
+ *  main process every 500ms per session. */
+export async function tmuxPaneStateAsync(
+  name: string
+): Promise<TmuxPaneState | null> {
+  return parsePaneStateResult(await runTmuxAsync(paneStateArgs(name)));
 }
 
 const UTF8 = '-u';
