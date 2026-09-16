@@ -116,16 +116,23 @@ export function orchestraFixture() {
     },
     read: (name: string) => readFileSync(join(home, name), 'utf8'),
     close: () => {
-      killAll();
-      // Only this fixture's server; the last individually killed session
-      // shuts it down. Never kill-server, even on a scratch socket.
-      for (const name of tmux('list-sessions', '-F', '#{session_name}').split(
-        '\n'
-      )) {
-        tmux('kill-session', '-t', `=${name}:`);
+      try {
+        killAll();
+        // Only this fixture's server; the last individually killed
+        // session shuts it down. Never kill-server, even on a scratch
+        // socket. `list-sessions` throws (execFileSync) when the server
+        // is already gone — nothing left to kill, not a fixture failure.
+        for (const name of tmux('list-sessions', '-F', '#{session_name}').split(
+          '\n'
+        )) {
+          tmux('kill-session', '-t', `=${name}:`);
+        }
+      } catch {
+        // No server running: already clean.
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(home, { recursive: true, force: true });
       }
-      vi.unstubAllEnvs();
-      rmSync(home, { recursive: true, force: true });
     },
   };
 }
