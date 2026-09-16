@@ -413,9 +413,15 @@ export function killSession(name: string): void {
 }
 
 function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
+  // LaunchDialog always sends `expected` (the incarnation it read when the
+  // dialog opened), so requiring it to be absent meant "Open Claude" on an
+  // already-attached session always tore down and re-attached the PTY. A
+  // non-fresh request reuses the connection when the caller's expectation
+  // still matches the live session's native incarnation; a mismatch (the
+  // session was replaced under it) still falls through to a fresh open.
   return (
     !req.fresh &&
-    !req.expected &&
+    (!req.expected || req.expected.name === getSession(name)?.pty.name) &&
     isSessionAlive(name) &&
     hasSessionConnection(name)
   );

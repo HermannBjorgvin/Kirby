@@ -21,6 +21,8 @@ const state = vi.hoisted(() => ({
   persistedKilled: [] as string[],
   persisted: new Set<string>(),
   entries: new Map<string, object>(),
+  /** Native tmux incarnation name behind each session's PTY. */
+  ptyNames: new Map<string, string>(),
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
   createFails: new Set<string>(),
@@ -134,6 +136,7 @@ vi.mock('@kirby/core', async (importOriginal) => {
         state.entries.set(name, {
           exited: false,
           pty: {
+            name: state.ptyNames.get(name) ?? name,
             onData: (cb: (data: string) => void) => state.onData.set(name, cb),
             onExit: () => undefined,
             write: () => undefined,
@@ -184,6 +187,7 @@ beforeEach(async () => {
   state.persistedKilled = [];
   state.persisted = new Set();
   state.entries = new Map();
+  state.ptyNames = new Map();
   state.onData = new Map();
   state.configByCwd = {};
   state.createFails = new Set();
@@ -286,6 +290,61 @@ describe('launchAgent', () => {
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     await launchAgent({ branch: 'again', intent: 'continue-or-blank' });
     expect(state.spawns).toHaveLength(1);
+  });
+});
+
+describe('reusing an already-attached connection', () => {
+  // LaunchDialog always sends `expected` (the incarnation it read when it
+  // opened), so "Open Claude" on an already-connected session must still
+  // reuse the connection instead of tearing down and re-attaching the PTY.
+  const name = () => worktreeSessionKey('reuse', '/repo-a');
+  const expectedFor = (nativeName: string) => ({
+    name: nativeName,
+    sessionId: '$1',
+    paneId: '%2',
+    panePid: 123,
+    serverPid: 100,
+  });
+
+  it('reuses the connection when the expected incarnation matches', async () => {
+    await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
+    expect(state.spawns).toHaveLength(1);
+
+    await launchAgent({
+      branch: 'reuse',
+      intent: 'continue-or-blank',
+      expected: expectedFor(name()),
+    });
+    expect(state.spawns).toHaveLength(1);
+  });
+
+  it('does not reuse when the expected incarnation no longer matches', async () => {
+    await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
+    // The live session was replaced under this name; its native
+    // incarnation no longer matches what the dialog captured. The
+    // registry entry already exists, so mutate its pty directly rather
+    // than the ptyNames map, which only seeds a fresh entry.
+    (state.entries.get(name()) as { pty: { name: string } }).pty.name =
+      'swapped-native';
+
+    await launchAgent({
+      branch: 'reuse',
+      intent: 'continue-or-blank',
+      expected: expectedFor(name()),
+    });
+    expect(state.spawns).toHaveLength(2);
+  });
+
+  it('does not reuse a fresh request even when the incarnation matches', async () => {
+    await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
+
+    await launchAgent({
+      branch: 'reuse',
+      intent: 'blank',
+      fresh: true,
+      expected: expectedFor(name()),
+    });
+    expect(state.spawns).toHaveLength(2);
   });
 });
 
