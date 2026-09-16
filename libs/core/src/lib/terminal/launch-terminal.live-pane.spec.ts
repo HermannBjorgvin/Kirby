@@ -36,7 +36,7 @@ const liveAgentPane: TaggedSession = {
   repo: '/repo',
   branch: '',
   path: base.cwd,
-  type: 'terminal',
+  type: 'agent',
   spawner: 'orchestra',
   agent: 'codex',
   created: 1,
