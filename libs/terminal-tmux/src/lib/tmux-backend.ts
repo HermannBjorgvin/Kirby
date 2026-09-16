@@ -52,8 +52,10 @@ class TmuxBackend implements SessionBackend {
   private disposed = false;
   private killed = false;
   /** Guards against overlapping polls: the async pane-state read can still
-   *  be in flight when the next 500ms tick fires, or when the client's own
-   *  `onExit` wants to join a read the timer already started. */
+   *  be in flight when the next 500ms tick fires. The client's own
+   *  `onExit` waits for whatever is here to settle rather than joining
+   *  it — a read already in flight when the client exits may have been
+   *  dispatched before the hosted process was, and so answer stale. */
   private inspecting: Promise<void> | null = null;
   private state = {
     running: true,
@@ -96,16 +98,21 @@ class TmuxBackend implements SessionBackend {
     client.onExit(() => {
       if (this.disposed || this.inner !== client) return;
       clearTimeout(this.stableTimer);
-      // Wait for the (possibly already in-flight) pane-state read before
-      // deciding this is a mere client disconnect rather than the hosted
-      // process itself exiting: `runInspect` resolves `this.state.running`
-      // either way.
-      void this.runInspect().then(() => {
-        if (this.disposed || !this.state.running) return;
-        this.connection = 'reconnecting';
-        for (const cb of [...this.disconnects]) cb();
-        this.reconnect();
-      });
+      // A read already in flight when the client exits may have been
+      // dispatched before the hosted process did and so resolve with a
+      // stale "alive" result. Let it settle — its own handlePaneState
+      // still runs and may already conclude the exit — then issue a
+      // fresh read of our own (never the stale one) before deciding
+      // this is a mere client disconnect rather than a real exit.
+      const stale = this.inspecting ?? Promise.resolve();
+      void stale
+        .then(() => this.runInspect())
+        .then(() => {
+          if (this.disposed || !this.state.running) return;
+          this.connection = 'reconnecting';
+          for (const cb of [...this.disconnects]) cb();
+          this.reconnect();
+        });
     });
     return client;
   }
@@ -145,8 +152,8 @@ class TmuxBackend implements SessionBackend {
 
   /** Async so the periodic poll never blocks the caller's event loop
    *  (Ink's render loop, Electron's main process). Returns the shared
-   *  in-flight read so `onExit` can await the same result the timer
-   *  kicked off instead of starting a redundant one. */
+   *  in-flight read so an overlapping timer tick joins it rather than
+   *  starting a redundant one. */
   private runInspect(): Promise<void> {
     if (this.inspecting) return this.inspecting;
     const promise = tmuxPaneStateAsync(this.name)

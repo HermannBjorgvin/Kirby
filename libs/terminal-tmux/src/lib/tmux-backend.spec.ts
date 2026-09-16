@@ -324,6 +324,37 @@ describe('hosted process lifecycle', () => {
     expect(disconnect).toHaveBeenCalledOnce();
     expect(backend.processState?.running).toBe(true);
   });
+  it('forces a fresh read after client exit rather than reusing a stale in-flight result', async () => {
+    mock.paneStateGated = true;
+    const backend = await launch();
+    // The initial setTimeout(0) inspect starts a read that stays in
+    // flight until resolved below — dispatched while the hosted process
+    // is still alive, before the client exits.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.paneStateCalls).toBe(1);
+    const exit = vi.fn();
+    const disconnect = vi.fn();
+    backend.onExit(exit);
+    backend.onDisconnect?.(disconnect);
+    mock.clientExit?.();
+    await vi.advanceTimersByTimeAsync(0);
+    // onExit must wait for the stale read rather than starting a
+    // second one right away.
+    expect(mock.paneStateCalls).toBe(1);
+    // The stale read resolves with the state as of when it was issued
+    // — still alive — which must not be trusted for this decision.
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mock.paneStateCalls).toBe(2);
+    expect(exit).not.toHaveBeenCalled();
+    expect(disconnect).not.toHaveBeenCalled();
+    // The hosted process has since exited; the fresh read reflects that.
+    mock.state = { paneDead: true, exitCode: 9 };
+    mock.paneStateResolvers.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(9, undefined);
+    expect(disconnect).not.toHaveBeenCalled();
+  });
   it('reconnects locally with the same size and data subscribers', async () => {
     const backend = await launch();
     const data = vi.fn();
