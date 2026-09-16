@@ -461,6 +461,40 @@ describe('a retained agent pane', () => {
     expect(restarted.running).toBe(true);
     expect(terminals.listTerminals(HOME)).toHaveLength(1);
   });
+
+  it('validates the retained tab’s own directory, not the cwd the restart request carries', async () => {
+    // The renderer's restart request shouldn't need to carry a real cwd
+    // at all — the tab already knows where it lives.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    const restarted = await terminals.launchTerminal(
+      { kind: 'agent', cwd: 'not/a/real/path', sessionName: tab.name },
+      HOME
+    );
+    expect(restarted.name).toBe(tab.name);
+    expect(restarted.cwd).toBe('/x');
+    expect(state.spawns.at(-1)?.cwd).toBe('/x');
+  });
+
+  it('still refuses a restart when the retained tab’s own directory is gone', async () => {
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/gone-now' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    state.missingDirs.add('/gone-now');
+    await expect(
+      terminals.launchTerminal(
+        { kind: 'agent', cwd: '/gone-now', sessionName: tab.name },
+        HOME
+      )
+    ).rejects.toThrow(/does not exist/);
+  });
 });
 
 describe('killTerminal', () => {

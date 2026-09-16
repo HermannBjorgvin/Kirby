@@ -183,9 +183,11 @@ export async function launchTerminal(
   req: TerminalLaunchRequest,
   home: string = homedir()
 ): Promise<TerminalSummary> {
-  assertLaunchableCwd(req.cwd);
   const existing = req.sessionName ? known.get(req.sessionName) : undefined;
   if (req.sessionName && !existing) throw new Error('Unknown terminal session');
+  // A retained-tab restart launches in the tab's own directory, not
+  // whatever cwd the request happened to carry.
+  assertLaunchableCwd(existing?.cwd ?? req.cwd);
   const name = await start(
     req.sessionName,
     existing?.kind ?? req.kind,
