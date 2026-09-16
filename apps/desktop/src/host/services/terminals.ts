@@ -187,14 +187,15 @@ export async function launchTerminal(
   if (req.sessionName && !existing) throw new Error('Unknown terminal session');
   // A retained-tab restart launches in the tab's own directory, not
   // whatever cwd the request happened to carry.
-  assertLaunchableCwd(existing?.cwd ?? req.cwd);
+  const cwd = existing?.cwd ?? req.cwd;
+  assertLaunchableCwd(cwd);
   const name = await start(
     req.sessionName,
     existing?.kind ?? req.kind,
-    existing?.cwd ?? req.cwd,
+    cwd,
     req
   );
-  noteRepository(req.cwd);
+  noteRepository(cwd);
   const entry = known.get(name);
   if (!entry) throw new Error(`Terminal ${name} ended during launch`);
   return summarize(name, entry, home);

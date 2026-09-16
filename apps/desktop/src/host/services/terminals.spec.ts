@@ -480,6 +480,22 @@ describe('a retained agent pane', () => {
     expect(state.spawns.at(-1)?.cwd).toBe('/x');
   });
 
+  it('notes the retained tab’s own repository on restart, not the request cwd', async () => {
+    // The renderer's restart request shouldn't need to carry a real
+    // repository at all — the tab already knows where it lives.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/other' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+    await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/home/dev/kirby', sessionName: tab.name },
+      HOME
+    );
+    expect(state.recents).toEqual(['/home/dev/other']);
+  });
+
   it('still refuses a restart when the retained tab’s own directory is gone', async () => {
     const tab = await terminals.launchTerminal(
       { kind: 'agent', cwd: '/gone-now' },
