@@ -84,15 +84,19 @@ test.describe('Agent sessions', () => {
     await createWorktree(page, BRANCH);
     await launchAgent(page);
 
-    // `useCloseTabs` branches on the renderer's polled activity query,
-    // and the banner makes the agent read as active for a moment after
-    // launch. Both edges have to be observed: waiting only for the
-    // spinner to be *absent* is satisfied before it has ever rendered,
-    // so the close could land on a query that had not yet reported the
-    // banner — and then did. Wait for the UI to consider the agent busy,
-    // the same state the sibling test asserts on, and only then for it
-    // to settle.
-    await expect(agentSpinner(page).first()).toBeVisible({ timeout: 15_000 });
+    // The banner may be suppressed as resize echo, so an idle agent need
+    // never show a busy spinner. Wait for its real hosted process and an
+    // explicit idle snapshot, then let the renderer's poll catch up.
+    await expect.poll(() => sessionRunning(page)).toBe(true);
+    const name = await sessionKey(page, BRANCH);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async (key) => (await window.kirby.getSessionActivity())[key],
+          name
+        )
+      )
+      .toMatchObject({ active: false });
     await expect(agentSpinner(page)).toHaveCount(0, { timeout: 15_000 });
 
     await closeTabButton(page).click();

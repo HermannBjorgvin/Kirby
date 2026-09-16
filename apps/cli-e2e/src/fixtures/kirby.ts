@@ -86,15 +86,22 @@ export interface KirbySession {
   homeDir: string;
 }
 
+async function stopHost(host: string): Promise<void> {
+  const stopped = await fetch(`${host}/kill`, { method: 'POST' });
+  if (!stopped.ok) throw new Error(`POST /kill failed: ${stopped.status}`);
+}
+
 export const test = base.extend<
   KirbyOptions & { kirby: KirbySession; fixtureHome: string }
 >({
-  // eslint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture dependency parameter.
-  fixtureHome: async ({}, provide) => {
+  fixtureHome: async ({ baseURL }, provide) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
     try {
       await provide(homeDir);
     } finally {
+      // HOME is safe to delete only after the host confirms process exit.
+      const host = baseURL ?? 'http://localhost:5174';
+      await stopHost(host);
       killFixtureSessions(homeDir);
       await rm(homeDir, { recursive: true, force: true });
     }
@@ -132,84 +139,84 @@ export const test = base.extend<
       JSON.stringify(kirbyConfig ?? {}, null, 2)
     );
 
-    const spawnRes = await fetch(`${host}/spawn`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        repoPath,
-        homeDir,
-        cols,
-        rows,
-        // Isolate any tmux the test spawns onto a socket inside the
-        // test's temp HOME. A tmux *server* keeps the environment it
-        // was started with — a test-spawned server on the user's
-        // default socket would outlive the run and poison every later
-        // real session with this temp HOME (it did, once).
-        //
-        // Last, so a test's own env additions cannot override it. The
-        // host pins the same value again for the same reason.
-        env: { ...kirbyEnv, TMUX_TMPDIR: homeDir },
-      }),
-    });
-    if (!spawnRes.ok) {
-      throw new Error(
-        `POST /spawn failed: ${spawnRes.status} ${await spawnRes.text()}`
-      );
-    }
-
     const consoleMessages: string[] = [];
-    page.on('console', (msg) => {
-      consoleMessages.push(`[browser:${msg.type()}] ${msg.text()}`);
-    });
-    page.on('pageerror', (err) => {
-      consoleMessages.push(`[browser:pageerror] ${err.message}`);
-    });
-
-    await page.goto('/');
-    const root = page.locator('#wterm-root');
-
-    // Wait for Kirby's first render. Cold-start + any WS reconnect cycles
-    // can take several seconds on CI runners.
-    // Using locator.waitFor() (not `expect`) keeps this out of the
-    // `playwright/no-standalone-expect` eslint rule's scope — this is
-    // readiness plumbing, not a test assertion.
-    await page
-      .getByText('Kirby')
-      .first()
-      .waitFor({ state: 'visible', timeout: 30_000 });
-
-    const term: KirbyTerm = {
-      page,
-      root,
-      getByText: page.getByText.bind(page),
-      press: (key) => page.keyboard.press(key),
-      type: (text, opts) =>
-        page.keyboard.type(text, { delay: opts?.delay ?? 80 }),
-      write: async (bytes) => {
-        await page.evaluate(
-          (b) =>
-            (
-              window as unknown as {
-                __wterm: { send(s: string): void };
-              }
-            ).__wterm.send(b),
-          bytes
-        );
-      },
-      resize: async (c, r) => {
-        await page.evaluate(
-          ({ c, r }) =>
-            (
-              window as unknown as {
-                __wterm: { resize(c: number, r: number): void };
-              }
-            ).__wterm.resize(c, r),
-          { c, r }
-        );
-      },
-    };
-
     try {
+      const spawnRes = await fetch(`${host}/spawn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoPath,
+          homeDir,
+          cols,
+          rows,
+          // Isolate any tmux the test spawns onto a socket inside the
+          // test's temp HOME. A tmux *server* keeps the environment it
+          // was started with — a test-spawned server on the user's
+          // default socket would outlive the run and poison every later
+          // real session with this temp HOME (it did, once).
+          //
+          // Last, so a test's own env additions cannot override it. The
+          // host pins the same value again for the same reason.
+          env: { ...kirbyEnv, TMUX_TMPDIR: homeDir },
+        }),
+      });
+      if (!spawnRes.ok) {
+        throw new Error(
+          `POST /spawn failed: ${spawnRes.status} ${await spawnRes.text()}`
+        );
+      }
+
+      page.on('console', (msg) => {
+        consoleMessages.push(`[browser:${msg.type()}] ${msg.text()}`);
+      });
+      page.on('pageerror', (err) => {
+        consoleMessages.push(`[browser:pageerror] ${err.message}`);
+      });
+
+      await page.goto('/');
+      const root = page.locator('#wterm-root');
+
+      // Wait for Kirby's first render. Cold-start + any WS reconnect cycles
+      // can take several seconds on CI runners.
+      // Using locator.waitFor() (not `expect`) keeps this out of the
+      // `playwright/no-standalone-expect` eslint rule's scope — this is
+      // readiness plumbing, not a test assertion.
+      await page
+        .getByText('Kirby')
+        .first()
+        .waitFor({ state: 'visible', timeout: 30_000 });
+
+      const term: KirbyTerm = {
+        page,
+        root,
+        getByText: page.getByText.bind(page),
+        press: (key) => page.keyboard.press(key),
+        type: (text, opts) =>
+          page.keyboard.type(text, { delay: opts?.delay ?? 80 }),
+        write: async (bytes) => {
+          await page.evaluate(
+            (b) =>
+              (
+                window as unknown as {
+                  __wterm: { send(s: string): void };
+                }
+              ).__wterm.send(b),
+            bytes
+          );
+        },
+        resize: async (c, r) => {
+          await page.evaluate(
+            ({ c, r }) =>
+              (
+                window as unknown as {
+                  __wterm: { resize(c: number, r: number): void };
+                }
+              ).__wterm.resize(c, r),
+            { c, r }
+          );
+        },
+      };
+
       await provide({ term, repoPath, homeDir });
     } catch (err) {
       if (consoleMessages.length) {
@@ -228,11 +235,10 @@ export const test = base.extend<
         });
       }
       try {
-        await fetch(`${host}/kill`, { method: 'POST' });
-      } catch {
-        /* best effort */
+        await stopHost(host);
+      } finally {
+        if (ownsRepo) cleanupTestRepo(repoPath);
       }
-      if (ownsRepo) cleanupTestRepo(repoPath);
     }
   },
 });

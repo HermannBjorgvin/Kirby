@@ -399,7 +399,9 @@ export const test = base.extend<
 
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
-    page.on('pageerror', (err) => pageErrors.push(err.stack ?? err.message));
+    page.on('pageerror', (err) =>
+      pageErrors.push(err.stack || err.message || String(err))
+    );
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });

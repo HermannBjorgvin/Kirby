@@ -5,6 +5,7 @@ import { test, expect, fakeAgent } from './fixtures/desktop.js';
 import {
   agentSpinner,
   createWorktree,
+  focusTerminal,
   launchAgentFromRail,
   openPalette,
   sidebarRow,
@@ -58,6 +59,24 @@ test.describe('An agent that exits immediately', () => {
     await expect(
       page.getByRole('button', { name: 'Relaunch agent', exact: true })
     ).toBeVisible();
+  });
+
+  test('typing into an exited agent reports the failed delivery without a renderer exception', async ({
+    desktop,
+  }) => {
+    const { page } = desktop;
+    await createWorktree(page, 'short-lived');
+    await launchAgentFromRail(page);
+    await expect(page.getByText(/Pane is dead/i).first()).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Relaunch agent', exact: true })
+    ).toBeVisible();
+
+    await focusTerminal(page);
+    await page.keyboard.type('hello');
+    expect(desktop.pageErrors).toEqual([]);
+    await expect(page.getByText(/Session .* is not running/)).toBeVisible();
+    await expect(tabs(page)).toHaveCount(1);
   });
 
   test('closing its tab afterwards needs no confirmation', async ({

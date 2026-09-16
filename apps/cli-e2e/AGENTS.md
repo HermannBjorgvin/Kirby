@@ -8,8 +8,9 @@ isolated HOME with an optional `.kirby/config.json` (`test.use({ kirbyConfig })`
 `write` and `resize`. Full infrastructure notes: `docs/testing.md`.
 
 - Every test uses tmux on a private socket inside its scratch HOME. The
-  fixture reaps individual sessions before deleting HOME, including after
-  failures. Both `TMUX` and `TMUX_PANE` are unset.
+  fixture waits for the host PTY to exit, then reaps individual sessions
+  before deleting HOME, including after startup failures. A failed host
+  shutdown preserves HOME rather than deleting files a process may still use. Both `TMUX` and `TMUX_PANE` are unset.
 - Tag live-GitHub suites `@integration`; offline runs exclude them. They need
   `GH_TOKEN`. Fixture-reading tests leave permanent PRs unchanged, but
   `merge-auto-delete.test.ts` creates branches and PRs and merges them in the

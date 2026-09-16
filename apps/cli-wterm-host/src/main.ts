@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { spawn as spawnPty, type IPty } from 'node-pty';
 import type { ControlMessage, SpawnRequest } from './protocol.js';
+import { createPtyQueue, stopPty } from './pty-lifecycle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // dist/main.js → walk up to workspace root (dist → apps/cli-wterm-host → apps → root)
@@ -28,6 +29,8 @@ const MIME: Record<string, string> = {
 // (critical for surviving the browser's 1001 close during cold start).
 const BUFFER_MAX_BYTES = 2 * 1024 * 1024;
 let activePty: IPty | null = null;
+let hasSpawned = false;
+const queuePty = createPtyQueue();
 let outputBuffer: Buffer[] = [];
 let outputBufferSize = 0;
 const clients = new Set<WebSocket>();
@@ -46,18 +49,12 @@ function clearBuffer(): void {
   outputBufferSize = 0;
 }
 
-function killActivePty(): void {
-  if (!activePty) return;
-  try {
-    activePty.kill();
-  } catch {
-    /* ignore */
-  }
-  activePty = null;
+async function killActivePty(): Promise<void> {
+  if (activePty) await stopPty(activePty);
 }
 
-function spawnKirby(req: SpawnRequest): void {
-  killActivePty();
+async function spawnKirby(req: SpawnRequest): Promise<void> {
+  await killActivePty();
   clearBuffer();
 
   console.log(
@@ -126,7 +123,7 @@ function spawnKirby(req: SpawnRequest): void {
   });
 }
 
-function spawnDevDefault(): void {
+async function spawnDevDefault(): Promise<void> {
   const home = execSync(`mktemp -d "${tmpdir()}/kirby-wterm-dev-home.XXXXXX"`)
     .toString()
     .trim();
@@ -144,7 +141,7 @@ function spawnDevDefault(): void {
     stdio: 'pipe',
   });
   execSync(`mkdir -p "${path.join(home, '.kirby')}"`, { stdio: 'pipe' });
-  spawnKirby({ repoPath: repo, homeDir: home });
+  await spawnKirby({ repoPath: repo, homeDir: home });
 }
 
 async function readBody(req: http.IncomingMessage): Promise<string> {
@@ -213,7 +210,8 @@ async function handleRequest(
         res.writeHead(400).end('missing repoPath or homeDir');
         return;
       }
-      spawnKirby(parsed);
+      hasSpawned = true;
+      await queuePty(() => spawnKirby(parsed));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
@@ -223,8 +221,10 @@ async function handleRequest(
   }
 
   if (req.method === 'POST' && url.pathname === '/kill') {
-    killActivePty();
-    clearBuffer();
+    await queuePty(async () => {
+      await killActivePty();
+      clearBuffer();
+    });
     res.writeHead(200).end('ok');
     return;
   }
@@ -278,13 +278,13 @@ function handleWs(ws: WebSocket): void {
   console.log('[ws] connected');
   clients.add(ws);
 
-  // If no PTY is running (manual Chrome browse with no prior /spawn, or
-  // Kirby exited), auto-spawn a dev default so the page shows something.
-  // We don't await here — we want handleWs to stay sync so buffered bytes
-  // (from any prior spawn) start flowing to the client right away.
-  if (!activePty) {
-    console.log('[ws] no active pty, auto-spawning dev default');
-    spawnDevDefault();
+  // Only an initial manual visit gets a dev session. A reconnect after
+  // /kill must not create another process during fixture teardown.
+  if (!hasSpawned) {
+    hasSpawned = true;
+    void queuePty(spawnDevDefault).catch((error) => {
+      console.error('[pty] dev spawn failed', error);
+    });
   }
 
   // Replay buffered output so this client catches up.
@@ -320,14 +320,17 @@ function handleWs(ws: WebSocket): void {
   });
 }
 
-process.on('SIGINT', () => {
-  killActivePty();
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  killActivePty();
-  process.exit(0);
-});
+function shutdown(): void {
+  void queuePty(killActivePty).then(
+    () => process.exit(0),
+    (error) => {
+      console.error('[pty] shutdown failed', error);
+      process.exit(1);
+    }
+  );
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 server.listen(PORT, 'localhost', () => {
   const addr = server.address();

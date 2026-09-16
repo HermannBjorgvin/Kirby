@@ -42,7 +42,7 @@ test.describe('Session menu agent selector', () => {
 
     // Automatic selection preserves a recorded agent on later opens.
     await expect(
-      kirby.term.getByText('Recorded agent (default for a new session)')
+      kirby.term.getByText('Recorded agent / default')
     ).toBeVisible();
 
     // Arrows cycle the agent for this session only.
@@ -57,7 +57,7 @@ test.describe('Session menu agent selector', () => {
     await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
     await kirby.term.press('ArrowLeft');
     await expect(
-      kirby.term.getByText('Recorded agent (default for a new session)')
+      kirby.term.getByText('Recorded agent / default')
     ).toBeVisible();
     await kirby.term.press('ArrowLeft');
     await expect(kirby.term.getByText('OpenCode')).toBeVisible();
@@ -90,7 +90,7 @@ test.describe('Session menu agent selector', () => {
       timeout: 5_000,
     });
     await expect(
-      kirby.term.getByText('Recorded agent (default for a new session)')
+      kirby.term.getByText('Recorded agent / default')
     ).toBeVisible();
   });
 });
