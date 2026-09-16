@@ -74,6 +74,13 @@ Tests isolate HOME and the tmux socket, unset inherited TMUX, and validate that
 the socket belongs to the fixture before cleanup. Kill fixture sessions
 individually; never use `tmux kill-server` or the user's default server.
 
+macOS and Linux are the supported platforms. Every launch goes through tmux,
+which has no native Windows build, so there is no native Windows path; the old
+`cmd.exe` branches in the agent registry (`shellInvoke`, `shellEnvRef`) and
+their `/bin/sh`-does-not-exist-on-Windows rationale predate the tmux-only
+launcher and are gone. WSL is untested and secondary — its tmux runs under
+Linux, so it may work, but nothing here specifically supports it.
+
 ## Session identity shared with Orchestra
 
 Names are labels; tags carry identity. Kirby and the Orchestra skill's bash

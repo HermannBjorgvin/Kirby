@@ -83,28 +83,20 @@ export const SEED_PROMPT_ENV = 'KIRBY_SEED_PROMPT';
 export const SEED_SYSTEM_ENV = 'KIRBY_SEED_SYSTEM';
 
 /**
- * Run `script` through the platform shell.
- *
- * The `continue || fallback` paths need a shell for the `||`, but
- * `/bin/sh` does not exist on Windows — node-pty fails to spawn it with
- * a bare "File not found:", which carries no hint about the cause.
- * `cmd.exe` implements `||` with the same short-circuit semantics.
+ * Run `script` through `/bin/sh`, for the `continue || fallback` paths
+ * that need a shell for the `||`. Every launch goes through tmux, which
+ * has no native Windows build — see `docs/decisions.md`.
  */
-const shellInvoke = (script: string): Pick<LaunchSpec, 'cmd' | 'args'> =>
-  process.platform === 'win32'
-    ? {
-        cmd: process.env.ComSpec || 'cmd.exe',
-        args: ['/d', '/s', '/c', script],
-      }
-    : { cmd: '/bin/sh', args: ['-c', script] };
+const shellInvoke = (script: string): Pick<LaunchSpec, 'cmd' | 'args'> => ({
+  cmd: '/bin/sh',
+  args: ['-c', script],
+});
 
 /**
  * Reference an environment variable in a shell script, in the syntax
- * the shell chosen by {@link shellInvoke} expands: `%NAME%` for
- * `cmd.exe`, `$NAME` for POSIX `sh`.
+ * `/bin/sh` expands: `$NAME`.
  */
-const shellEnvRef = (name: string): string =>
-  process.platform === 'win32' ? `%${name}%` : `$${name}`;
+const shellEnvRef = (name: string): string => `$${name}`;
 
 const CLAUDE: AgentDefinition = {
   id: 'claude',

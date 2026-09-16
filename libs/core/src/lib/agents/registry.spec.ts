@@ -15,16 +15,15 @@ function config(partial: Partial<AppConfig>): AppConfig {
 }
 
 /**
- * The shell a shell-composed launch runs under, per platform. Spelled
- * out rather than imported so these stay assertions about concrete
- * values: `/bin/sh` does not exist on Windows, and launching an agent
- * through it there fails in node-pty with a bare "File not found:".
+ * The shell a shell-composed launch runs under. Spelled out rather
+ * than imported so these stay assertions about concrete values. Every
+ * launch goes through tmux, which has no native Windows build, so
+ * `/bin/sh` is the only shell in play — see `docs/decisions.md`.
  */
-const IS_WIN = process.platform === 'win32';
-const SHELL_CMD = IS_WIN ? process.env.ComSpec || 'cmd.exe' : '/bin/sh';
-const SHELL_FLAGS = IS_WIN ? ['/d', '/s', '/c'] : ['-c'];
+const SHELL_CMD = '/bin/sh';
+const SHELL_FLAGS = ['-c'];
 /** How an env var is referenced in a script that shell will expand. */
-const envRef = (name: string) => (IS_WIN ? `%${name}%` : `$${name}`);
+const envRef = (name: string) => `$${name}`;
 /** A full spec for a one-script launch under that shell. */
 const shellSpec = (script: string) => ({
   cmd: SHELL_CMD,
@@ -159,28 +158,17 @@ describe('agent registry', () => {
       });
     });
 
-    it('runs the continue path through a shell that exists on this platform', () => {
-      // /bin/sh is absent on Windows: node-pty fails to spawn it with a
-      // bare "File not found:" and the launch dies before the agent runs.
+    it('runs the continue path through /bin/sh', () => {
       const script = 'claude --continue || claude';
-      const expected = IS_WIN
-        ? {
-            cmd: process.env.ComSpec || 'cmd.exe',
-            args: ['/d', '/s', '/c', script],
-          }
-        : { cmd: '/bin/sh', args: ['-c', script] };
-      expect(claude.continueOrBlank!()).toEqual(expected);
+      expect(claude.continueOrBlank!()).toEqual({
+        cmd: '/bin/sh',
+        args: ['-c', script],
+      });
     });
 
-    it('references the seed env vars in the syntax that shell expands', () => {
+    it('references the seed env vars in the syntax /bin/sh expands', () => {
       const script = claude.continueOrSeed!('p').args[SCRIPT_ARG];
-      // cmd.exe expands %VAR%, not $VAR: the POSIX form would reach the
-      // agent as a literal and the prompt would be lost.
-      expect(script).toContain(
-        process.platform === 'win32'
-          ? `%${SEED_PROMPT_ENV}%`
-          : `$${SEED_PROMPT_ENV}`
-      );
+      expect(script).toContain(`$${SEED_PROMPT_ENV}`);
     });
 
     it('only claude advertises append-system-prompt support', () => {
