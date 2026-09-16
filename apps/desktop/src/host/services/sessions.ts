@@ -1,6 +1,5 @@
 import { worktreeSessionKey, sessionLabel } from '@kirby/core';
 import {
-  buildAgentOptions,
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
   launchSession,
@@ -28,7 +27,6 @@ import {
 } from './session-relay.js';
 import { agentTerminalNames, terminalBuffer } from './terminals.js';
 import type {
-  AgentOptionView,
   PlanCheckoutRequest,
   PlanCheckoutResult,
   ReviewLaunchRequest,
@@ -159,7 +157,10 @@ function foreignSessionError(name: string): Error {
 // Overlapping launch calls for the same session (double-click racing
 // the renderer's isPending flag) must not double-spawn: the second
 // spawn would dispose the first PTY and attach a duplicate data relay.
-const inflightLaunches = new Map<string, Promise<{ name: string }>>();
+const inflightLaunches = new Map<
+  string,
+  { signature: string; promise: Promise<{ name: string }> }
+>();
 
 /**
  * `knownWorktreePath` is for callers that have already been told where
@@ -176,12 +177,29 @@ export function launchAgent(
 }> {
   const repo = requireRepo();
   const name = worktreeSessionKey(req.branch, repo);
+  const signature = JSON.stringify([
+    req.intent,
+    req.agentId,
+    req.prompt,
+    req.systemGuidance,
+    req.fresh,
+    req.expected,
+    knownWorktreePath,
+  ]);
   const existing = inflightLaunches.get(name);
-  if (existing) return existing;
+  if (existing) {
+    return existing.signature === signature
+      ? existing.promise
+      : Promise.reject(
+          new Error(
+            'Another launch is in progress for this worktree. Try again when it finishes.'
+          )
+        );
+  }
   const promise = doLaunchAgent(req, name, knownWorktreePath).finally(() =>
     inflightLaunches.delete(name)
   );
-  inflightLaunches.set(name, promise);
+  inflightLaunches.set(name, { signature, promise });
   return promise;
 }
 
@@ -191,10 +209,7 @@ async function doLaunchAgent(
   knownWorktreePath?: string
 ): Promise<{ name: string }> {
   const repoCwd = requireRepo();
-  // TUI semantics: a live agent is never silently respawned — every
-  // TUI launch site checks the registry first. Launching on a branch
-  // with a running session just reattaches to it.
-  if (isSessionAlive(name) && hasSessionConnection(name)) {
+  if (canReuseConnection(req, name)) {
     // A stale UI request must not read another repository's relay.
     if (!ownSession(name)) throw foreignSessionError(name);
     return { name };
@@ -212,45 +227,32 @@ async function doLaunchAgent(
   // configured one; the resolver still owns the id → agent mapping.
   const stored = readConfig(repoCwd);
   const config = req.agentId ? { ...stored, agentId: req.agentId } : stored;
-  await launchSession({
+  const before = getSession(name);
+  const entry = await launchSession({
     name,
     cwd: wtPath,
     cols: clampDim(req.cols, DEFAULT_COLS),
     rows: clampDim(req.rows, DEFAULT_ROWS),
     config,
-    agent:
-      req.agentId || req.intent === 'blank' ? resolveAgent(config) : undefined,
+    agent: needsSelectedAgent(req) ? resolveAgent(config) : undefined,
     mode: knownWorktreePath ? 'attach' : 'open',
+    fresh: req.fresh,
+    expected: req.expected,
     request: {
       intent: req.intent,
       prompt: req.prompt,
       systemGuidance: req.systemGuidance,
     },
   });
-  adoptSession(name, req.branch, repoCwd);
+  if (entry !== before || !ownSession(name))
+    adoptSession(name, req.branch, repoCwd);
   return { name };
 }
 
-/**
- * The session menu's agent picker: the configured agent first (the
- * launch you get without touching the picker), then the rest of the
- * registry. Same list, same order, same labels as the TUI.
- */
-export function listAgentOptions(): AgentOptionView[] {
-  const config = readConfig(requireRepo());
-  return buildAgentOptions(config).map((o) => ({
-    id: o.agent.id,
-    name: o.name,
-  }));
-}
-
-export function getSessionBuffer(name: string): SessionBuffer {
-  const entry = ownSession(name);
-  if (entry) return relayBuffer(entry);
-  // A terminal tab belongs to a directory, not to the open repository,
-  // so its scrollback is answered whatever repository that is.
-  return terminalBuffer(name) ?? { data: '', seq: 0 };
-}
+export {
+  listAgentOptions,
+  getSessionLaunchContext,
+} from './session-launch-options.js';
 
 /**
  * Start (or resume) an AI review of `req.pr` with the shared review
@@ -265,7 +267,10 @@ export async function launchReviewAgent(req: ReviewLaunchRequest): Promise<{
   const request = buildReviewLaunchRequest(req.pr, req.instruction);
   return launchAgent({
     branch,
-    intent: request.intent,
+    intent: 'seed',
+    fresh: true,
+    expected: req.expected,
+    agentId: req.agentId,
     prompt: request.prompt,
     systemGuidance: request.systemGuidance,
     cols: req.cols,
@@ -405,4 +410,24 @@ export function killSession(name: string): void {
   if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
     stopSession(name);
   }
+}
+
+function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
+  return (
+    !req.fresh &&
+    !req.expected &&
+    isSessionAlive(name) &&
+    hasSessionConnection(name)
+  );
+}
+function needsSelectedAgent(req: SessionLaunchRequest): boolean {
+  return Boolean(req.fresh || req.agentId || req.intent === 'blank');
+}
+
+export function getSessionBuffer(name: string): SessionBuffer {
+  const entry = ownSession(name);
+  if (entry) return relayBuffer(entry);
+  // A terminal tab belongs to a directory, not to the open repository,
+  // so its scrollback is answered whatever repository that is.
+  return terminalBuffer(name) ?? { data: '', seq: 0 };
 }

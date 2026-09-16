@@ -58,11 +58,11 @@ describe('launchMenuOpen', () => {
     ).toBe(true);
   });
 
-  it('honors a request once the item exists and its agent is idle', () => {
+  it('honors a request once the item exists, including a running agent', () => {
     const base = { own: false, requested: true, hasItem: true, running: false };
     expect(launchMenuOpen(base)).toBe(true);
     expect(launchMenuOpen({ ...base, hasItem: false })).toBe(false);
-    expect(launchMenuOpen({ ...base, running: true })).toBe(false);
+    expect(launchMenuOpen({ ...base, running: true })).toBe(true);
     expect(launchMenuOpen({ ...base, requested: false })).toBe(false);
   });
 });

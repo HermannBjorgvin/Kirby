@@ -1,6 +1,10 @@
 import { toast } from 'sonner';
 import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AgentId, SessionLaunchRequest } from '../../../host/contract.js';
+import type {
+  AgentId,
+  SessionIncarnation,
+  SessionLaunchRequest,
+} from '../../../host/contract.js';
 import {
   useCreateWorktree,
   useKillSession,
@@ -36,7 +40,11 @@ export function useItemLaunch(
   const create = useCreateWorktree(cwd);
   const { branch, hasWorktree, pr, sessionName } = target;
 
-  const startSession = async (agentId?: AgentId, fresh = false) => {
+  const startSession = async (
+    fresh: boolean,
+    expected?: SessionIncarnation,
+    agentId?: AgentId
+  ) => {
     if (!hasWorktree) {
       const id = toast.loading(`Checking out ${branch}…`);
       try {
@@ -51,6 +59,8 @@ export function useItemLaunch(
       {
         branch,
         intent: fresh ? 'blank' : 'continue-or-blank',
+        fresh,
+        expected,
         agentId,
         ...estimateGrid(),
       },
@@ -58,7 +68,11 @@ export function useItemLaunch(
     );
   };
 
-  const startReview = (instruction?: string) => {
+  const startReview = (
+    instruction?: string,
+    expected?: SessionIncarnation,
+    agentId?: AgentId
+  ) => {
     if (!pr) return;
     const id = toast.loading(
       hasWorktree
@@ -66,7 +80,7 @@ export function useItemLaunch(
         : `Checking out ${branch} and starting review…`
     );
     launchReview.mutate(
-      { pr, instruction, ...estimateGrid() },
+      { pr, instruction, expected, agentId, ...estimateGrid() },
       {
         onSuccess: () => toast.success('Review agent started', { id }),
         onError: (e) => toast.error(errorMessage(e), { id }),
@@ -76,8 +90,8 @@ export function useItemLaunch(
 
   const choose = (choice: LaunchChoice) => {
     if (choice.kind === 'session')
-      void startSession(choice.agentId, choice.fresh);
-    else startReview(choice.instruction);
+      void startSession(choice.fresh, choice.expected, choice.agentId);
+    else startReview(choice.instruction, choice.expected, choice.agentId);
   };
 
   const stop = () =>

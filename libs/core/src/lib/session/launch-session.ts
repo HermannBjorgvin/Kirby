@@ -1,5 +1,6 @@
 import type { AppConfig } from '@kirby/vcs-core';
 import { getSession, type NamedPtyEntry } from '../pty-registry.js';
+import type { SessionIncarnation } from './session-launch-context.js';
 import { openSession } from './open-session.js';
 import { worktreeRequest } from './session-request.js';
 import { noteInput } from '../activity.js';
@@ -104,6 +105,8 @@ export interface LaunchSessionParams {
   agent?: AgentDefinition;
   /** Discovery only attaches; a user launch may restart an exited agent. */
   mode?: 'open' | 'attach';
+  fresh?: boolean;
+  expected?: SessionIncarnation;
 }
 
 /**
@@ -117,6 +120,9 @@ export function launchSession(
   return openSession({
     session: worktreeRequest(params.name),
     mode: params.mode,
+    fresh: params.fresh,
+    intent: params.request.intent.startsWith('continue') ? 'continue' : 'fresh',
+    expected: params.expected,
     cwd: params.cwd,
     cols: params.cols,
     rows: params.rows,
@@ -149,7 +155,7 @@ export function buildAgentLaunch(
   params: Pick<LaunchSessionParams, 'config' | 'agent' | 'request'>,
   previous?: string,
   restarting = false
-): { spec: LaunchSpec; agent: string } {
+): { spec: LaunchSpec; agent: string; fresh?: boolean } {
   const continuing = params.request.intent.startsWith('continue');
   if (
     restarting &&
@@ -171,7 +177,11 @@ export function buildAgentLaunch(
   if (restarting && continuing) {
     return { spec: buildResumeSpec(agent, params.request), agent: agent.id };
   }
-  return { spec: buildLaunchSpec(agent, params.request), agent: agent.id };
+  return {
+    spec: buildLaunchSpec(agent, params.request),
+    agent: agent.id,
+    ...(!continuing ? { fresh: true } : {}),
+  };
 }
 
 function knownRecordedAgent(agent: string | undefined): boolean {

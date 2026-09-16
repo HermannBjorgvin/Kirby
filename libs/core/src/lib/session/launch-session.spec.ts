@@ -166,6 +166,7 @@ describe('fresh launches of retained agents', () => {
       );
       expect(launch).toEqual({
         agent: 'gemini',
+        fresh: true,
         spec: { cmd: 'gemini', args: [] },
       });
     }

@@ -88,6 +88,55 @@ describe('session launch boundary', () => {
       retainOnExit: true,
     });
   });
+  it('requires captured approval for a fresh live replacement', async () => {
+    state.existing = found;
+    await expect(openSession({ ...base, fresh: true })).rejects.toThrow(
+      'confirmation'
+    );
+    expect(state.create).not.toHaveBeenCalled();
+  });
+  it('rejects a vanished expected target instead of creating a different conversation', async () => {
+    await expect(
+      openSession({
+        ...base,
+        expected: {
+          name: found.name,
+          sessionId: '$1',
+          paneId: '%2',
+          panePid: 300,
+          serverPid: 100,
+        },
+      })
+    ).rejects.toThrow('Session changed');
+    expect(state.create).not.toHaveBeenCalled();
+    expect(build).not.toHaveBeenCalled();
+  });
+  it('uses non-k restart for unconfirmed dead fresh launches and clears only reporting metadata', async () => {
+    state.existing = { ...found, paneDead: true };
+    await openSession({ ...base, build: () => ({ ...build(), fresh: true }) });
+    expect(state.create.mock.calls[0][1]).toEqual({
+      mode: 'restart',
+      target: found.name,
+      retainOnExit: true,
+      tags: {
+        '@orchestra-agent': 'codex',
+        '@orchestra-orchestrator': null,
+        '@orchestra-last-report': null,
+      },
+    });
+    expect(state.create.mock.calls[0][0]).toMatchObject({
+      envAdditions: { ORCHESTRA_SESSION: '', ORCHESTRA_SOCKET: '' },
+    });
+  });
+  it('does not coalesce a fresh intent into an in-flight discovery attachment', async () => {
+    state.existing = found;
+    const attachment = openSession({ ...base, mode: 'attach' });
+    await expect(openSession({ ...base, intent: 'fresh' })).rejects.toThrow(
+      'in progress'
+    );
+    await attachment;
+    expect(state.create).toHaveBeenCalledOnce();
+  });
   it('records identity and the actual selected agent on creation', async () => {
     await openSession(base);
     expect(state.create.mock.calls[0][1]).toMatchObject({

@@ -1,3 +1,7 @@
+import {
+  runGuardedTmuxCommands,
+  type TmuxSessionIncarnation,
+} from './tmux-snapshot.js';
 import type { SessionSpec } from '@kirby/terminal';
 import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
 import {
@@ -22,11 +26,26 @@ export type TmuxLaunchPlan =
       retainOnExit?: boolean;
       excludedNames?: readonly string[];
     }
-  | { mode: 'attach'; target: string }
+  | {
+      mode: 'attach';
+      target: string;
+      expected?: TmuxSessionIncarnation;
+      expectedTags?: Record<string, string>;
+    }
   | {
       mode: 'restart';
       target: string;
-      tags?: Record<string, string>;
+      expected?: TmuxSessionIncarnation;
+      expectedTags?: Record<string, string>;
+      tags?: Record<string, string | null>;
+      retainOnExit?: boolean;
+    }
+  | {
+      mode: 'replace';
+      target: string;
+      expected: TmuxSessionIncarnation;
+      expectedTags?: Record<string, string>;
+      tags?: Record<string, string | null>;
       retainOnExit?: boolean;
     };
 
@@ -73,7 +92,7 @@ function commandArgs(
 
 function optionCommands(
   name: string,
-  tags: Record<string, string> = {},
+  tags: Record<string, string | null> = {},
   retain = false
 ): string[][] {
   const options = {
@@ -83,10 +102,11 @@ function optionCommands(
   };
   return Object.entries(options).map(([key, value]) => [
     'set-option',
+    ...(value === null ? ['-u'] : []),
     '-t',
     `=${name}:`,
     key,
-    value,
+    ...(value === null ? [] : [value]),
   ]);
 }
 
@@ -136,7 +156,14 @@ export function prepareTmuxSession(
   plan: TmuxLaunchPlan
 ): string {
   if (plan.mode === 'create') return create(spec, plan);
-  if (plan.mode === 'restart') {
+  if (plan.mode === 'replace') {
+    if (plan.target !== plan.expected.name)
+      throw new Error('Replacement target does not match approval');
+    runPlanCommands(plan, [
+      commandArgs(plan.target, spec, true),
+      ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
+    ]);
+  } else if (plan.mode === 'restart') {
     const state = tmuxPaneState(plan.target);
     if (!state?.paneDead)
       throw new Error(
@@ -145,12 +172,26 @@ export function prepareTmuxSession(
     // A single native command queue stops at a failed respawn. Only the
     // winning launcher may update metadata, and options are applied before
     // tmux processes the new command's exit. No -k may kill a concurrent winner.
-    runCommands([
+    runPlanCommands(plan, [
       commandArgs(plan.target, spec, false),
       ...optionCommands(plan.target, plan.tags, plan.retainOnExit),
+    ]);
+  } else if (plan.expected) {
+    runPlanCommands(plan, [
+      ['set-option', '-t', `=${plan.target}:`, 'status', 'off'],
     ]);
   } else {
     checked(tmuxSetOption(plan.target, 'status', 'off'), 'set-option status');
   }
   return plan.target;
+}
+
+function runPlanCommands(
+  plan: Exclude<TmuxLaunchPlan, { mode: 'create' }>,
+  commands: string[][]
+): void {
+  if (!plan.expected) return runCommands(commands);
+  if (plan.target !== plan.expected.name)
+    throw new Error('Launch target does not match approval');
+  runGuardedTmuxCommands(plan.expected, commands, plan.expectedTags);
 }

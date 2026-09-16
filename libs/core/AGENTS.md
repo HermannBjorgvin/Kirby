@@ -18,8 +18,11 @@ The reasoning behind each rule is in `docs/decisions.md`.
   entries. The registry owns connections, rendering and activity, not launch
   policy. `dispose()` detaches; `kill()` terminates; shutdown must dispose.
 - **Shared identity** (`session-identity.ts`, `session-resolver.ts`): names are
-  labels, `@orchestra-*` tags are identity. Preserve creator/reporting tags on
-  attach and restart. Record the selected agent only when launching a process.
+  labels, `@orchestra-*` tags are identity. Attach and continuation preserve
+  creator/reporting tags. Fresh conversations preserve creator/repo/branch but
+  clear supervisor and last-report tags; record the actual launched agent.
+  Replacing a live process requires its captured native incarnation and an
+  atomic tmux guard. Unconfirmed restarts never interrupt a live winner.
   Untagged sessions are foreign. Never use config `projectKey` for tmux identity.
 - **Agent restart** (`session/launch-session.ts`): continuation selects the
   recorded agent and its explicit resume adapter. Fresh launch selects the
@@ -36,7 +39,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
 
 - **Session launch** (`session/`) resolves the worktree via `createWorktree`
   (exact branch match, rejecting a derived path occupied by another branch), reads config from the
-  repo root, and never respawns a live session. Force-remove is offered only
+  repo root, and only replaces a live session with explicit incarnation approval. Force-remove is offered only
   for 'uncommitted changes' and 'not pushed to upstream'.
 - **Plan** (`plan/`): items are value snapshots taken at add time.
   `composePlanPrompt` numbers items in `planRows` order. Checkout is

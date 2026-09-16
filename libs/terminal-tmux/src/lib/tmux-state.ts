@@ -68,6 +68,18 @@ export interface TmuxSessionInfo {
   options?: Record<string, string>;
 }
 
+export function sessionColumns(options: readonly string[]): string[] {
+  return [
+    '#{session_name}',
+    '#{session_created}',
+    '#{pane_dead}',
+    '#{pane_dead_status}',
+    '#{pane_dead_signal}',
+    ...options.map((option) => `#{${option}}`),
+    '#{session_path}',
+  ];
+}
+
 /** Every session the server currently holds, with the directory each
  *  was started in, or `[]` when there is no server at all
  *  (`list-sessions` exits non-zero with "no server running").
@@ -89,15 +101,7 @@ export interface TmuxSessionInfo {
 export function tmuxListSessionsDetailed(
   options: readonly string[] = []
 ): TmuxSessionInfo[] {
-  const columns = [
-    '#{session_name}',
-    '#{session_created}',
-    '#{pane_dead}',
-    '#{pane_dead_status}',
-    '#{pane_dead_signal}',
-    ...options.map((option) => `#{${option}}`),
-    '#{session_path}',
-  ];
+  const columns = sessionColumns(options);
   const { stdout, exitCode } = runTmux([
     UTF8,
     'list-sessions',
@@ -118,7 +122,7 @@ const FIXED_COLUMNS = 5;
 /** One `list-sessions` line back into a session: the leading columns
  *  are the name, the creation time and the asked-for options; the
  *  remainder is the path. */
-function parseSessionLine(
+export function parseSessionLine(
   line: string,
   options: readonly string[]
 ): TmuxSessionInfo {

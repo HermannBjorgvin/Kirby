@@ -7,7 +7,12 @@
  * file is a catalogue already.
  */
 
-import type { PullRequestInfo, RemoteCommentThread } from '@kirby/vcs-core';
+import type { SessionIncarnation } from '@kirby/core';
+import type {
+  AgentId,
+  PullRequestInfo,
+  RemoteCommentThread,
+} from '@kirby/vcs-core';
 
 export interface ReplyRequest {
   prId: number;
@@ -21,8 +26,10 @@ export interface ResolveRequest {
   resolved: boolean;
 }
 
-/** Launch (or resume) an AI review of a PR in its worktree. */
+/** Start a fresh AI review of a PR in its worktree session. */
 export interface ReviewLaunchRequest {
+  agentId?: AgentId;
+  expected?: SessionIncarnation;
   pr: PullRequestInfo;
   /** Extra user instruction appended to the review task prompt. */
   instruction?: string;

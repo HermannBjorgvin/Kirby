@@ -14,7 +14,13 @@
 
 import type { AgentId, ReviewVerdict } from '@kirby/vcs-core';
 export type { AgentId, ReviewVerdict };
-import type { BabysitStatus, LaunchIntent, SidebarItem } from '@kirby/core';
+import type {
+  SessionLaunchContext,
+  SessionIncarnation,
+  BabysitStatus,
+  LaunchIntent,
+  SidebarItem,
+} from '@kirby/core';
 import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
 export type { CommentSeverity, ReviewComment };
 import type { WorktreeInfo } from '@kirby/worktree-manager';
@@ -88,7 +94,14 @@ export interface RepoInfo {
 
 // ── Sessions (agent terminals) ───────────────────────────────────
 
+export type { SessionIncarnation };
+export interface SessionLaunchView extends SessionLaunchContext {
+  defaultAgentName: string;
+}
+
 export interface SessionLaunchRequest {
+  fresh?: boolean;
+  expected?: SessionIncarnation;
   branch: string;
   intent: LaunchIntent;
   /**
@@ -328,6 +341,7 @@ export interface KirbyHostApi {
   launchReviewAgent(req: ReviewLaunchRequest): Promise<{ name: string }>;
   /** The agents the session menu offers, configured default first. */
   listAgentOptions(): Promise<AgentOptionView[]>;
+  getSessionLaunchContext(branch: string): Promise<SessionLaunchView>;
   /** Send a composed plan to the PR's agent, creating the worktree and
    *  starting one when there is none. Rejects with the reason on
    *  failure, leaving the plan intact for a retry. */
@@ -464,6 +478,7 @@ export const IPC = {
   postDraftComments: 'kirby/drafts/post',
   launchReviewAgent: 'kirby/session/launch-review',
   listAgentOptions: 'kirby/session/agent-options',
+  getSessionLaunchContext: 'kirby/session/launch-context',
   checkoutPlan: 'kirby/session/checkout-plan',
   fetchDiffText: 'kirby/diff/text',
   fetchWorktreeDiffText: 'kirby/diff/worktree-text',

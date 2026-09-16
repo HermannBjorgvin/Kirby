@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { orchestraFixture } from '../../tests/orchestra-fixture.js';
 import { listLiveWorktreeSessions } from './discovery/live-worktree-sessions.js';
 import { getSession, killAll } from './pty-registry.js';
+import { getSessionLaunchContext } from './session/session-launch-context.js';
 import { launchSession } from './session/launch-session.js';
 import { openSession } from './session/open-session.js';
 import { listOurSessions, resolveWorktreeSession } from './session-resolver.js';
@@ -241,6 +242,114 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         spawner: 'orchestra',
         orchestrator: target,
       });
+    });
+
+    it('starts a fresh agent with provenance intact and reporting detached, including inherited Orchestra environment', async () => {
+      const player = await spawnPlayer();
+      const name = worktreeSessionKey(branch, fixture.repo);
+      const config = {
+        agentId: 'claude' as const,
+        vendorAuth: {},
+        vendorProject: {},
+      };
+      fixture.tmux(
+        'set-option',
+        '-t',
+        `=${player.name}:`,
+        '@orchestra-last-report',
+        'PROGRESS 2026-01-01T00:00:00Z'
+      );
+      // A stale server/session environment must not point the new conversation
+      // at another player's supervisor after its own tags have been cleared.
+      fixture.tmux(
+        'set-option',
+        '-t',
+        '=fixture-anchor:',
+        '@orchestra-orchestrator',
+        target
+      );
+      fixture.tmux(
+        'set-environment',
+        '-t',
+        `=${player.name}:`,
+        'ORCHESTRA_SESSION',
+        'fixture-anchor'
+      );
+      fixture.tmux(
+        'set-environment',
+        '-t',
+        `=${player.name}:`,
+        'ORCHESTRA_SOCKET',
+        fixture.tmux('display-message', '-p', '#{socket_path}')
+      );
+      const context = getSessionLaunchContext(name, config);
+      expect(context).toMatchObject({
+        running: true,
+        recordedAgent: 'codex',
+        orchestrator: target,
+        lastReport: { kind: 'PROGRESS', timestamp: '2026-01-01T00:00:00Z' },
+      });
+      rmSync(join(fixture.home, 'agent-start.json'));
+      const next = await launchSession({
+        name,
+        cwd: player.path,
+        cols: 80,
+        rows: 24,
+        config,
+        request: { intent: 'blank' },
+        fresh: true,
+        expected: context.incarnation,
+      });
+      await expect
+        .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
+        .toBe(true);
+      expect(next.agent).toBe('claude');
+      const current = resolveWorktreeSession(fixture.repo, branch)!;
+      expect(current).toMatchObject({
+        name: player.name,
+        repo: fixture.repo,
+        branch,
+        spawner: 'orchestra',
+        agent: 'claude',
+      });
+      expect(current.orchestrator).toBeUndefined();
+      expect(current.lastReport).toBeUndefined();
+      expect(
+        fixture.script('send.sh', branch, '--raw', 'orchestrator').status
+      ).toBe(0);
+      await expect
+        .poll(() => existsSync(join(fixture.home, 'report-result.json')))
+        .toBe(true);
+      expect(JSON.parse(fixture.read('report-result.json'))).toMatchObject({
+        status: 0,
+        stdout: '<unset>\n',
+      });
+    });
+
+    it('clears reporting for an implicit fresh same-agent launch on a stopped player', async () => {
+      const player = await spawnPlayer();
+      const first = JSON.parse(fixture.read('agent-start.json')) as {
+        pid: number;
+      };
+      process.kill(first.pid, 'SIGTERM');
+      await expect
+        .poll(() => resolveWorktreeSession(fixture.repo, branch)?.paneDead)
+        .toBe(true);
+      await launchSession({
+        name: worktreeSessionKey(branch, fixture.repo),
+        cwd: player.path,
+        cols: 80,
+        rows: 24,
+        config: { agentId: 'codex', vendorAuth: {}, vendorProject: {} },
+        request: { intent: 'blank' },
+      });
+      expect(resolveWorktreeSession(fixture.repo, branch)).toMatchObject({
+        agent: 'codex',
+        spawner: 'orchestra',
+      });
+      expect(
+        resolveWorktreeSession(fixture.repo, branch)?.orchestrator
+      ).toBeUndefined();
     });
 
     it('lets Orchestra adopt and stop a Kirby-created player while preserving creator identity', async () => {

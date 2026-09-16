@@ -99,8 +99,8 @@ export function sidebarRowMenuItems(
     { id: 'open', label: 'Open' },
     { type: 'separator' },
   ];
-  if (hasWorktree && !running)
-    items.push({ id: 'launch', label: 'Launch agent…' });
+  if (hasWorktree)
+    items.push({ id: 'launch', label: running ? 'Session…' : 'Launch agent…' });
   if (hasWorktree && running) items.push({ id: 'kill', label: 'Stop agent' });
   if (!hasWorktree)
     items.push({ id: 'checkout', label: 'Check out as worktree' });

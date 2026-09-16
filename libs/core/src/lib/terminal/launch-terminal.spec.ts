@@ -46,6 +46,7 @@ describe('terminal requests', () => {
     expect(state.calls[0].build('unknown-agent', true)).toEqual({
       spec: { cmd: 'codex', args: [] },
       agent: 'codex',
+      fresh: true,
     });
   });
   it('restores the exact tmux target independently of its display kind', async () => {

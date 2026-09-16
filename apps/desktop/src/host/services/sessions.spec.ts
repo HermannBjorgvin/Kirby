@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
     cwd: string;
     config: unknown;
     request: unknown;
+    fresh?: boolean;
+    expected?: unknown;
+    agent?: { id: string };
   }[],
   killed: [] as string[],
   persistedKilled: [] as string[],
@@ -53,6 +56,11 @@ vi.mock('@kirby/core', async (importOriginal) => {
     sessionLabel: actual.sessionLabel,
     sessionIdentity: actual.sessionIdentity,
     resolveAgent: actual.resolveAgent,
+    getSessionLaunchContext: () => ({
+      exists: false,
+      running: false,
+      canResume: false,
+    }),
     // Stands in for the real orchestrator, whose own branching is tested
     // in libs/core. What matters here is what the *desktop* does with
     // each outcome: inject changes nothing it tracks, a spawn has to be
@@ -104,6 +112,9 @@ vi.mock('@kirby/core', async (importOriginal) => {
       cwd: string;
       config: unknown;
       request: unknown;
+      fresh?: boolean;
+      expected?: unknown;
+      agent?: { id: string };
     }) => {
       await Promise.resolve();
       state.alive.add(spec.name);
@@ -112,6 +123,9 @@ vi.mock('@kirby/core', async (importOriginal) => {
         cwd: spec.cwd,
         config: spec.config,
         request: spec.request,
+        fresh: spec.fresh,
+        expected: spec.expected,
+        agent: spec.agent,
       });
     },
     getSession: (name: string) => {
@@ -232,6 +246,40 @@ describe('launchAgent', () => {
     ]);
     expect(a).toEqual(b);
     expect(state.spawns).toHaveLength(1);
+  });
+
+  it('does not collapse a fresh request into a pending continuation', async () => {
+    const first = launchAgent({ branch: 'race', intent: 'continue-or-blank' });
+    await expect(
+      launchAgent({ branch: 'race', intent: 'blank', fresh: true })
+    ).rejects.toThrow('Another launch is in progress');
+    await first;
+    expect(state.spawns).toHaveLength(1);
+  });
+
+  it('forwards an explicit fresh replacement and selected agent for a live session', async () => {
+    await launchAgent({ branch: 'fresh', intent: 'continue-or-blank' });
+    const expected = {
+      name: 'native',
+      sessionId: '$1',
+      paneId: '%2',
+      panePid: 123,
+      serverPid: 100,
+    };
+    await launchAgent({
+      branch: 'fresh',
+      intent: 'blank',
+      fresh: true,
+      expected,
+      agentId: 'codex',
+    });
+    expect(state.spawns).toHaveLength(2);
+    expect(state.spawns[1]).toMatchObject({
+      fresh: true,
+      expected,
+      agent: { id: 'codex' },
+      request: { intent: 'blank' },
+    });
   });
 
   it('reattaches to its own live session instead of respawning', async () => {
@@ -412,9 +460,39 @@ describe('launchReviewAgent', () => {
       worktreeSessionKey('feature/review', '/repo-a')
     );
     expect(state.spawns[0].request).toMatchObject({
-      intent: 'review',
+      intent: 'seed',
       prompt: 'review #42: focus on error handling',
       systemGuidance: 'guidance',
+    });
+  });
+
+  it('rejects overlapping reviews with different instructions instead of dropping a prompt', async () => {
+    const pr = { id: 1, sourceBranch: 'dup' } as Parameters<
+      typeof launchReviewAgent
+    >[0]['pr'];
+    const first = launchReviewAgent({ pr, instruction: 'first' });
+    await expect(
+      launchReviewAgent({ pr, instruction: 'second' })
+    ).rejects.toThrow('Another launch is in progress');
+    await first;
+    expect(state.spawns[0].request).toMatchObject({
+      prompt: 'review #1: first',
+    });
+  });
+
+  it('forwards the selected review agent and guarded fresh intent', async () => {
+    const pr = { id: 1, sourceBranch: 'selected' } as Parameters<
+      typeof launchReviewAgent
+    >[0]['pr'];
+    await launchReviewAgent({ pr, agentId: 'codex' });
+    expect(state.spawns[0]).toMatchObject({
+      fresh: true,
+      agent: { id: 'codex' },
+      request: {
+        intent: 'seed',
+        prompt: 'review #1',
+        systemGuidance: 'guidance',
+      },
     });
   });
 

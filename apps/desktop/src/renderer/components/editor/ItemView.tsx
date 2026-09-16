@@ -2,11 +2,7 @@ import { Loader2Icon, PlayIcon, TerminalIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarItem } from '../../../host/contract.js';
 import { useRepo } from '../../lib/repo-context.js';
-import {
-  useAgentOptions,
-  useAllBranches,
-  useSessions,
-} from '../../lib/data/queries.js';
+import { useAllBranches, useSessions } from '../../lib/data/queries.js';
 import {
   itemBranch,
   itemHasWorktree,
@@ -118,9 +114,8 @@ function useBaseBranch(cwd: string): string {
  * Whether the session menu is showing. Two things open it: the tab's
  * own Launch button, and a request from outside the tab — the sidebar
  * (Enter, double-click, "Launch agent…") or the palette after a fresh
- * checkout. A request is honored once the item exists; a running agent
- * has nothing to choose, and a tab the user has left must not pop the
- * menu later, so the request is dropped in both cases.
+ * checkout. A request is honored once the item exists; a tab the user has left must not pop the
+ * menu later, so inactive tabs drop the request.
  */
 function useLaunchMenu(branch: string, active: boolean, state?: ItemState) {
   const [own, setOwn] = useState(false);
@@ -136,8 +131,8 @@ function useLaunchMenu(branch: string, active: boolean, state?: ItemState) {
     if (!active) setOwn(false);
   }
   useEffect(() => {
-    if (requested && (running || !active)) clearLaunchMenuRequest(branch);
-  }, [requested, running, active, branch]);
+    if (requested && !active) clearLaunchMenuRequest(branch);
+  }, [requested, active, branch]);
   // A tab closed before its item arrived (a checkout still in flight)
   // must not leave its request behind for a later visit to the branch.
   useEffect(() => () => clearLaunchMenuRequest(branch), [branch]);
@@ -181,7 +176,6 @@ export function ItemView({
   onPin: () => void;
 }) {
   const { repo } = useRepo();
-  const agents = useAgentOptions(repo.cwd).data ?? [];
   const paneRef = useRef<HTMLDivElement>(null);
   const { branch, state } = useItemState(repo.cwd, item, items);
   const baseBranch = useBaseBranch(repo.cwd);
@@ -229,7 +223,7 @@ export function ItemView({
       pr={pr}
       branch={branch}
       hasWorktree={hasWorktree}
-      agents={agents}
+      cwd={repo.cwd}
       onChoose={onChoose}
       onClose={menu.close}
     />

@@ -27,8 +27,10 @@ const report = join(
 );
 createInterface({ input: process.stdin }).on('line', (line) => {
   appendFileSync(join(home, 'agent-input.jsonl'), JSON.stringify(line) + '\n');
-  if (!line.startsWith('report ')) return;
-  const result = spawnSync('bash', [report, 'PROGRESS', line.slice(7)], {
+  if (!line.startsWith('report ') && line !== 'orchestrator') return;
+  const reportArgs =
+    line === 'orchestrator' ? ['--orchestrator'] : ['PROGRESS', line.slice(7)];
+  const result = spawnSync('bash', [report, ...reportArgs], {
     encoding: 'utf8',
     env: process.env,
   });
