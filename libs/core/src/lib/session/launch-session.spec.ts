@@ -182,6 +182,25 @@ describe('fresh launches of retained agents', () => {
   });
 });
 
+describe('continuing a recorded "test" agent', () => {
+  const request = { intent: 'continue-or-blank' as const };
+  it('resumes verbatim when the config still carries the recorded aiCommand', () => {
+    const config = { aiCommand: 'node fake-agent.mjs' } as AppConfig;
+    const result = buildAgentLaunch({ config, request }, 'test', true);
+    expect(result.agent).toBe('test');
+    expect(result.spec).toEqual({
+      cmd: '/bin/sh',
+      args: ['-c', 'node fake-agent.mjs'],
+    });
+  });
+  it("refuses to resume as `sh -c ''` when aiCommand is missing", () => {
+    const config = {} as AppConfig;
+    expect(() => buildAgentLaunch({ config, request }, 'test', true)).toThrow(
+      'no known agent metadata'
+    );
+  });
+});
+
 describe('retained review guidance', () => {
   const request = {
     intent: 'continue-or-seed' as const,

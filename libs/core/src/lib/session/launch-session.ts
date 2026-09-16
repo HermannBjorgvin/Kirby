@@ -161,7 +161,7 @@ export function buildAgentLaunch(
     restarting &&
     continuing &&
     !params.agent &&
-    !knownRecordedAgent(previous)
+    !knownRecordedAgent(previous, params.config.aiCommand)
   ) {
     throw new Error(
       'This session has no known agent metadata. Choose an agent explicitly to restart it.'
@@ -184,8 +184,22 @@ export function buildAgentLaunch(
   };
 }
 
-function knownRecordedAgent(agent: string | undefined): boolean {
-  return agent === 'test' || (agent !== undefined && isKnownAgentId(agent));
+/**
+ * Whether `agent` (the tag recorded on the session, e.g.
+ * `@orchestra-agent`) can be restarted without asking the user to pick
+ * explicitly. `test` only counts when the config still carries the
+ * `aiCommand` that agent runs verbatim — otherwise a continuation would
+ * resume as `sh -c ''`, or silently redirect to whatever `aiCommand`
+ * happens to be set to now.
+ */
+function knownRecordedAgent(
+  agent: string | undefined,
+  aiCommand: string | undefined
+): boolean {
+  return (
+    (agent === 'test' && !!aiCommand) ||
+    (agent !== undefined && isKnownAgentId(agent))
+  );
 }
 
 function buildResumeSpec(
