@@ -17,6 +17,22 @@ export interface TmuxSessionSnapshot extends TmuxSessionInfo {
   incarnation: TmuxSessionIncarnation;
 }
 
+/** Whether two incarnations name the exact same native process — every
+ *  field must agree, not just the session's tmux label, which is reused
+ *  after a kill (see tmux-launch.ts's free-name probe). */
+export function sameTmuxIncarnation(
+  a: TmuxSessionIncarnation,
+  b: TmuxSessionIncarnation
+): boolean {
+  return (
+    a.name === b.name &&
+    a.sessionId === b.sessionId &&
+    a.paneId === b.paneId &&
+    a.panePid === b.panePid &&
+    a.serverPid === b.serverPid
+  );
+}
+
 /** Metadata and process identity from the same server observation. */
 export function tmuxSessionSnapshot(
   name: string,

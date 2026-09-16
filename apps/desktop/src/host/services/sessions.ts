@@ -16,6 +16,7 @@ import {
   snapshot as activitySnapshot,
 } from '@kirby/core';
 import { readConfig } from '@kirby/vcs-core';
+import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@kirby/terminal-tmux';
 import { createWorktree } from '@kirby/worktree-manager';
 import { requireRepo } from './repo.js';
 import {
@@ -36,6 +37,11 @@ import type {
 } from '../contract.js';
 
 export type { SessionLaunchRequest, SessionSummary };
+
+/** What launching or reattaching an agent hands back to the caller. */
+interface LaunchResult {
+  name: string;
+}
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 40;
@@ -130,6 +136,12 @@ export function isOwnSessionAlive(name: string): boolean {
  */
 export function killOwnSession(name: string): void {
   if (known.has(name) && !ownSession(name)) return;
+  stopOwnWorktreeSession(name);
+}
+
+/** Shared by {@link killOwnSession} and {@link killSession}: stop `name`
+ *  only when it is a worktree session this repository actually owns. */
+function stopOwnWorktreeSession(name: string): void {
   const identity = sessionIdentity(name);
   if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
     stopSession(name);
@@ -172,9 +184,7 @@ const inflightLaunches = new Map<
 export function launchAgent(
   req: SessionLaunchRequest,
   knownWorktreePath?: string
-): Promise<{
-  name: string;
-}> {
+): Promise<LaunchResult> {
   const repo = requireRepo();
   const name = worktreeSessionKey(req.branch, repo);
   const signature = JSON.stringify([
@@ -406,26 +416,24 @@ export function killSession(name: string): void {
   // Never reach into another repository's agent (see KnownSession.repoCwd).
   // Qualified identity also protects entries this host did not launch.
   if (known.has(name) && !ownSession(name)) throw foreignSessionError(name);
-  const identity = sessionIdentity(name);
-  if (identity?.kind === 'worktree' && identity.repo === requireRepo()) {
-    stopSession(name);
-  }
+  stopOwnWorktreeSession(name);
 }
 
+// `name` is only a tmux label — tmux-launch.ts's create path reuses one
+// once its holder is killed — so a matching `expected` is verified
+// against a fresh snapshot's native incarnation, not the cached
+// `pty.name`, which cannot tell a live reuse from a same-named
+// replacement underneath it. A mismatch or unreadable snapshot falls
+// through to the full launch path's own guarded compare-and-swap.
 function canReuseConnection(req: SessionLaunchRequest, name: string): boolean {
-  // LaunchDialog always sends `expected` (the incarnation it read when the
-  // dialog opened), so requiring it to be absent meant "Open Claude" on an
-  // already-attached session always tore down and re-attached the PTY. A
-  // non-fresh request reuses the connection when the caller's expectation
-  // still matches the live session's native incarnation; a mismatch (the
-  // session was replaced under it) still falls through to a fresh open.
-  return (
-    !req.fresh &&
-    (!req.expected || req.expected.name === getSession(name)?.pty.name) &&
-    isSessionAlive(name) &&
-    hasSessionConnection(name)
-  );
+  if (req.fresh || !isSessionAlive(name) || !hasSessionConnection(name))
+    return false;
+  if (!req.expected) return true;
+  const nativeName = getSession(name)?.pty.name;
+  const live = nativeName && tmuxSessionSnapshot(nativeName)?.incarnation;
+  return !!live && sameTmuxIncarnation(live, req.expected);
 }
+
 function needsSelectedAgent(req: SessionLaunchRequest): boolean {
   return Boolean(req.fresh || req.agentId || req.intent === 'blank');
 }

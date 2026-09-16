@@ -23,6 +23,10 @@ const state = vi.hoisted(() => ({
   entries: new Map<string, object>(),
   /** Native tmux incarnation name behind each session's PTY. */
   ptyNames: new Map<string, string>(),
+  /** What a fresh `tmuxSessionSnapshot(pty.name)` answers, keyed by
+   *  native name — absent means the read fails, as it would for a
+   *  vanished target. */
+  tmuxSnapshots: new Map<string, { incarnation: unknown }>(),
   onData: new Map<string, (data: string) => void>(),
   configByCwd: {} as Record<string, unknown>,
   createFails: new Set<string>(),
@@ -39,6 +43,17 @@ vi.mock('./repo.js', () => ({
 
 vi.mock('@kirby/vcs-core', () => ({
   readConfig: (cwd: string) => state.configByCwd[cwd] ?? { fromCwd: cwd },
+}));
+
+vi.mock('@kirby/terminal-tmux', () => ({
+  tmuxSessionSnapshot: (name: string) => state.tmuxSnapshots.get(name) ?? null,
+  sameTmuxIncarnation: (
+    a: Record<string, unknown>,
+    b: Record<string, unknown>
+  ) =>
+    ['name', 'sessionId', 'paneId', 'panePid', 'serverPid'].every(
+      (key) => a[key] === b[key]
+    ),
 }));
 
 vi.mock('@kirby/worktree-manager', () => ({
@@ -188,6 +203,7 @@ beforeEach(async () => {
   state.persisted = new Set();
   state.entries = new Map();
   state.ptyNames = new Map();
+  state.tmuxSnapshots = new Map();
   state.onData = new Map();
   state.configByCwd = {};
   state.createFails = new Set();
@@ -298,7 +314,7 @@ describe('reusing an already-attached connection', () => {
   // opened), so "Open Claude" on an already-connected session must still
   // reuse the connection instead of tearing down and re-attaching the PTY.
   const name = () => worktreeSessionKey('reuse', '/repo-a');
-  const expectedFor = (nativeName: string) => ({
+  const incarnationFor = (nativeName: string) => ({
     name: nativeName,
     sessionId: '$1',
     paneId: '%2',
@@ -306,43 +322,58 @@ describe('reusing an already-attached connection', () => {
     serverPid: 100,
   });
 
-  it('reuses the connection when the expected incarnation matches', async () => {
+  it('reuses the connection when the expected incarnation matches the live snapshot', async () => {
     await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
     expect(state.spawns).toHaveLength(1);
+    state.tmuxSnapshots.set(name(), { incarnation: incarnationFor(name()) });
 
     await launchAgent({
       branch: 'reuse',
       intent: 'continue-or-blank',
-      expected: expectedFor(name()),
+      expected: incarnationFor(name()),
     });
     expect(state.spawns).toHaveLength(1);
   });
 
-  it('does not reuse when the expected incarnation no longer matches', async () => {
+  it('does not reuse when the live snapshot no longer matches the expected incarnation', async () => {
     await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
-    // The live session was replaced under this name; its native
-    // incarnation no longer matches what the dialog captured. The
-    // registry entry already exists, so mutate its pty directly rather
-    // than the ptyNames map, which only seeds a fresh entry.
-    (state.entries.get(name()) as { pty: { name: string } }).pty.name =
-      'swapped-native';
+    // The live session was killed and recreated under this same tmux
+    // label (labels are reused after a kill — see tmux-launch.ts's
+    // free-name probe), so a fresh snapshot's native fields differ from
+    // what the dialog captured even though the label is unchanged.
+    state.tmuxSnapshots.set(name(), {
+      incarnation: { ...incarnationFor(name()), sessionId: '$99' },
+    });
 
     await launchAgent({
       branch: 'reuse',
       intent: 'continue-or-blank',
-      expected: expectedFor(name()),
+      expected: incarnationFor(name()),
+    });
+    expect(state.spawns).toHaveLength(2);
+  });
+
+  it('does not reuse when the live snapshot cannot be read', async () => {
+    await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
+    state.tmuxSnapshots.delete(name());
+
+    await launchAgent({
+      branch: 'reuse',
+      intent: 'continue-or-blank',
+      expected: incarnationFor(name()),
     });
     expect(state.spawns).toHaveLength(2);
   });
 
   it('does not reuse a fresh request even when the incarnation matches', async () => {
     await launchAgent({ branch: 'reuse', intent: 'continue-or-blank' });
+    state.tmuxSnapshots.set(name(), { incarnation: incarnationFor(name()) });
 
     await launchAgent({
       branch: 'reuse',
       intent: 'blank',
       fresh: true,
-      expected: expectedFor(name()),
+      expected: incarnationFor(name()),
     });
     expect(state.spawns).toHaveLength(2);
   });
