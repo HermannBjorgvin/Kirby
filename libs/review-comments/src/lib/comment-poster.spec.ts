@@ -18,6 +18,8 @@ const env = vi.hoisted(() => ({
   /** JSON handed to `gh` on stdin, per invocation. */
   ghInputs: [] as { args: string[]; body: unknown }[],
   ghExitCode: 0,
+  /** Response body `gh api` prints to stdout when the call fails. */
+  ghStdout: '',
   fetches: [] as { url: string; init: RequestInit }[],
   fetchOk: true,
   fetchStatus: 200,
@@ -53,6 +55,7 @@ vi.mock('node:child_process', () => ({
         env.ghInputs.push({ args, body: JSON.parse(input) });
         setImmediate(() => {
           if (env.ghExitCode !== 0) child.stderr.emit('data', 'gh failed');
+          if (env.ghStdout) child.stdout.emit('data', env.ghStdout);
           child.emit('close', env.ghExitCode);
         });
       },
@@ -96,6 +99,7 @@ const azure: PostContext = {
 beforeEach(() => {
   env.ghInputs = [];
   env.ghExitCode = 0;
+  env.ghStdout = '';
   env.fetches = [];
   env.fetchOk = true;
   env.fetchStatus = 200;
@@ -259,6 +263,18 @@ describe('posting to GitHub', () => {
       commit_id: 'abc123',
       event: 'REQUEST_CHANGES',
     });
+  });
+
+  /** `gh api` puts the status line on stderr and the provider's
+   *  explanation on stdout. A reviewer told only "HTTP 422" cannot
+   *  tell a bad line anchor from a bad token. */
+  it('reports the provider response body when gh fails', async () => {
+    env.ghExitCode = 1;
+    env.ghStdout =
+      '{"message":"Unprocessable Entity","errors":["Line could not be resolved"]}';
+    await expect(postReviewComments([comment()], github)).rejects.toThrow(
+      /gh failed.*Line could not be resolved/
+    );
   });
 
   it('refuses without a head commit rather than guessing one', async () => {

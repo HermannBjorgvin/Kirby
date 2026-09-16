@@ -7,6 +7,25 @@ import {
 } from './conventional.js';
 import { updateComment } from './comment-store.js';
 
+/**
+ * What a failed `gh` call gets reported as.
+ *
+ * `gh api` writes only its one-line status to stderr ("gh:
+ * Unprocessable Entity (HTTP 422)"); the provider's own explanation —
+ * `"errors":["Line could not be resolved"]` — comes back on stdout as
+ * the response body. Dropping stdout left the reviewer with a status
+ * code and nothing to act on, so both streams go in the message.
+ */
+function describeFailure(
+  cmd: string,
+  code: number | null,
+  stdout: string,
+  stderr: string
+): string {
+  const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join(' ');
+  return `${cmd} exited ${code}: ${detail}`;
+}
+
 function execWithStdin(
   cmd: string,
   args: string[],
@@ -19,7 +38,8 @@ function execWithStdin(
     child.stdout.on('data', (d) => (stdout += d));
     child.stderr.on('data', (d) => (stderr += d));
     child.on('close', (code) => {
-      if (code !== 0) reject(new Error(`${cmd} exited ${code}: ${stderr}`));
+      if (code !== 0)
+        reject(new Error(describeFailure(cmd, code, stdout, stderr)));
       else resolve(stdout);
     });
     child.stdin.write(input);
