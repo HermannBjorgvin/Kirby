@@ -90,7 +90,22 @@ interface TerminalSize {
   rows?: number;
   fresh?: boolean;
 }
-const starting = new Map<string, Promise<string>>();
+const starting = new Map<
+  string,
+  { signature: string; promise: Promise<string> }
+>();
+
+/** Only the fields that change what gets launched — coalescing must
+ *  never join a concurrent request with a different outcome (a Resume
+ *  then a Start-new within one launch window, say). */
+function startSignature(
+  kind: TerminalKind,
+  cwd: string,
+  size: TerminalSize,
+  mode?: 'open' | 'attach'
+): string {
+  return JSON.stringify([kind, cwd, size.fresh, mode]);
+}
 
 function start(
   requestedName: string | undefined,
@@ -100,13 +115,22 @@ function start(
   mode?: 'open' | 'attach'
 ): Promise<string> {
   if (!requestedName) return performStart(requestedName, kind, cwd, size, mode);
+  const signature = startSignature(kind, cwd, size, mode);
   const pending = starting.get(requestedName);
-  if (pending) return pending;
-  const operation = performStart(requestedName, kind, cwd, size, mode).finally(
+  if (pending) {
+    if (pending.signature !== signature)
+      return Promise.reject(
+        new Error(
+          'Another launch is in progress for this terminal. Try again when it finishes.'
+        )
+      );
+    return pending.promise;
+  }
+  const promise = performStart(requestedName, kind, cwd, size, mode).finally(
     () => starting.delete(requestedName)
   );
-  starting.set(requestedName, operation);
-  return operation;
+  starting.set(requestedName, { signature, promise });
+  return promise;
 }
 
 async function performStart(

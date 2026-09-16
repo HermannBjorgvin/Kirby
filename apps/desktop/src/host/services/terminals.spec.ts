@@ -496,6 +496,32 @@ describe('a retained agent pane', () => {
     expect(state.recents).toEqual(['/home/dev/other']);
   });
 
+  it('rejects a concurrent restart with different parameters instead of joining it', async () => {
+    // Resume then Start-new within one launch window must not silently
+    // resolve the second (Start-new) request to the first (Resume)'s
+    // in-flight result.
+    const tab = await terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x' },
+      HOME
+    );
+    state.tmuxHolds.add(tab.name);
+    endProcess(tab.name);
+
+    const resume = terminals.launchTerminal(
+      { kind: 'agent', cwd: '/x', sessionName: tab.name },
+      HOME
+    );
+    await expect(
+      terminals.launchTerminal(
+        { kind: 'agent', cwd: '/x', sessionName: tab.name, fresh: true },
+        HOME
+      )
+    ).rejects.toThrow(/in progress/);
+    const resumed = await resume;
+    expect(resumed.name).toBe(tab.name);
+    expect(state.spawns).toHaveLength(2);
+  });
+
   it('still refuses a restart when the retained tab’s own directory is gone', async () => {
     const tab = await terminals.launchTerminal(
       { kind: 'agent', cwd: '/gone-now' },
