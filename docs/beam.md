@@ -263,7 +263,7 @@ are line-delimited JSON:
 ```
 {"op":"send","to":"<peerId|label>","topic":"orchestra","payload":"…","encoding":"utf8"}
   → {"status":"queued","to":"<peerId>","label":"workbox","queueDepth":2,"reason":"peer not connected"}
-{"op":"subscribe","topic":"orchestra"}      → one envelope per line; each acked as it is taken
+{"op":"subscribe","topic":"orchestra"}      → one envelope per line (see acknowledgement below)
 {"op":"status"}                             → peers, reachability, queue depths
 ```
 
@@ -271,6 +271,23 @@ One node per `$BEAM_DIR`. A CLI that needs an existing node's connections (`msg 
 script, `msg listen` beside a running node) uses this socket; a one-shot dial (`exec`,
 `connect`) may start its own ephemeral node instead. Because dedup state is shared through
 `$BEAM_DIR`, a second node cannot cause double delivery.
+
+#### Acknowledging a subscription
+
+A subscriber chooses when a message is considered taken, because the two cases are genuinely
+different and getting it wrong loses messages:
+
+- **Ack on take** (the default): the envelope is acknowledged as it is handed over. Right for a
+  consumer that only observes — a status board, a log.
+- **Explicit ack**: the subscriber acknowledges each envelope by id after it has done something
+  durable with it. Right for anything that _delivers_ the message onward. A consumer that fails,
+  crashes or exits without acking leaves the envelope unacknowledged, so it stays in the sender's
+  queue and is redelivered later. In the library this is what a handler returning successfully
+  means; over the socket and in the CLI it is an explicit mode.
+
+Getting this wrong is not a small bug. A relay that acknowledges on receipt and then fails to
+deliver has destroyed a message the sender was already told would arrive — which is worse than the
+`queued` case the mailbox exists to make safe, because the sender has no reason to doubt it.
 
 ### Injected environment
 
