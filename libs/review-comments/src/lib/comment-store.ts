@@ -9,10 +9,10 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { ReviewComment, ReviewCommentsFile } from './types.js';
 
-const KIRBY_DIR = join(homedir(), '.kirby');
+const N10_DIR = join(homedir(), '.n10');
 
 export function commentDirPath(prId: number): string {
-  return join(KIRBY_DIR, 'reviews', `pr-${prId}`);
+  return join(N10_DIR, 'reviews', `pr-${prId}`);
 }
 
 export function commentFilePath(prId: number): string {

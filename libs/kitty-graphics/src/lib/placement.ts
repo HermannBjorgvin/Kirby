@@ -1,6 +1,6 @@
 import type { PlacementSize } from './kitty-graphics.js';
 
-// Cell-size heuristics. Kirby never queries the terminal's pixel cell
+// Cell-size heuristics. n10 never queries the terminal's pixel cell
 // size; ~10px per column and 2:1 cell height:width is close enough for
 // sizing screenshots, and the terminal scales the image to the
 // placement rectangle regardless.

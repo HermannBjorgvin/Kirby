@@ -4,8 +4,8 @@ import {
   prepareTmuxSession,
   setTmuxSessionPreparer,
   type TmuxLaunchPlan,
-} from '@kirby/terminal-tmux';
-import type { SessionSpec } from '@kirby/terminal';
+} from '@n10/terminal-tmux';
+import type { SessionSpec } from '@n10/terminal';
 
 /** Forking directly from Electron leaks Chromium descriptors into the persistent
  * tmux server on Linux. Electron's supported utility-process API isolates them. */
@@ -21,7 +21,7 @@ export function prepareDesktopTmuxSession(
       [],
       {
         stdio: 'ignore',
-        serviceName: 'Kirby tmux session launcher',
+        serviceName: 'n10 tmux session launcher',
       }
     );
     let completed = false;

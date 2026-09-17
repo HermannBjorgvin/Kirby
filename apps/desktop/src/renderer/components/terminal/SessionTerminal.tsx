@@ -46,13 +46,13 @@ export function SessionTerminal({
   );
   const write = useCallback(
     (data: string) => {
-      void window.kirby.writeSession(name, data).catch(reportError);
+      void window.n10.writeSession(name, data).catch(reportError);
     },
     [name, reportError]
   );
   const resize = useCallback(
     (cols: number, rows: number) => {
-      void window.kirby.resizeSession(name, cols, rows).catch(reportError);
+      void window.n10.resizeSession(name, cols, rows).catch(reportError);
     },
     [name, reportError]
   );
@@ -66,7 +66,7 @@ export function SessionTerminal({
     const t = Date.now();
     if (t - lastSeenMarkRef.current < 1000) return;
     lastSeenMarkRef.current = t;
-    void window.kirby.markSessionSeen(name).catch(reportError);
+    void window.n10.markSessionSeen(name).catch(reportError);
   }, [name, reportError]);
 
   // Its own subscription, deliberately. The replay effect below must
@@ -77,7 +77,7 @@ export function SessionTerminal({
   // so this half can come and go with the active tab on its own.
   useEffect(() => {
     if (!active || !ready) return;
-    return window.kirby.onSessionData(({ name: n }) => {
+    return window.n10.onSessionData(({ name: n }) => {
       if (n === name) markSeen();
     });
   }, [active, ready, name, markSeen]);
@@ -90,7 +90,7 @@ export function SessionTerminal({
     let snapshotSeq: number | null = null;
     const pending: { seq: number; data: string }[] = [];
 
-    const offData = window.kirby.onSessionData(({ name: n, data, seq }) => {
+    const offData = window.n10.onSessionData(({ name: n, data, seq }) => {
       if (n !== name) return;
       if (snapshotSeq === null) {
         pending.push({ seq, data });
@@ -104,7 +104,7 @@ export function SessionTerminal({
     // duplicate the whole scrollback, and a pane closing mid-fetch
     // would write into a disposed terminal.
     let cancelled = false;
-    void window.kirby
+    void window.n10
       .getSessionBuffer(name)
       .then(({ data, seq }) => {
         if (cancelled) return;
@@ -153,14 +153,14 @@ export function SessionTerminal({
       void (async () => {
         try {
           const bytes = new Uint8Array(await file.arrayBuffer());
-          const path = await window.kirby.saveClipboardImage(bytes, file.type);
+          const path = await window.n10.saveClipboardImage(bytes, file.type);
           // Trailing space so whatever the user types next does not run
           // into the path, and bracketed when the app asked for it —
           // the same shape wterm gives a text paste.
           const payload = `${path} `;
           const bracketed =
             termRef.current?.instance?.bridge?.bracketedPaste() === true;
-          await window.kirby.writeSession(
+          await window.n10.writeSession(
             name,
             bracketed ? `\x1b[200~${payload}\x1b[201~` : payload
           );

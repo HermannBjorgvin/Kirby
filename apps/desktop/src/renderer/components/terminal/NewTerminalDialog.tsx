@@ -99,7 +99,7 @@ export function NewTerminalDialog({
 
   const pickFolder = async (advance: boolean) => {
     try {
-      const dir = await window.kirby.selectFolder();
+      const dir = await window.n10.selectFolder();
       if (dir) choose({ kind: 'folder', cwd: dir }, advance);
     } catch (err: unknown) {
       toast.error(errorMessage(err));
@@ -122,7 +122,7 @@ export function NewTerminalDialog({
         <DialogHeader>
           <DialogTitle>New terminal</DialogTitle>
           <DialogDescription>
-            A shell or an agent, in any directory — without leaving Kirby.
+            A shell or an agent, in any directory — without leaving n10.
           </DialogDescription>
         </DialogHeader>
 

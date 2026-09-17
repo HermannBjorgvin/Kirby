@@ -1,7 +1,7 @@
 import {
   conventionalSeverity,
   type ConventionalComment,
-} from '@kirby/review-comments/conventional';
+} from '@n10/review-comments/conventional';
 import type { CommentSeverity } from '../../../host/contract.js';
 
 /** Severity values, most→least important (also the edit-select order). */

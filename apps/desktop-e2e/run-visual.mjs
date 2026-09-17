@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 /** Pin to the Playwright version in package.json — the image ships the
  *  browser system dependencies and fonts that version expects. */
-const IMAGE = 'kirby-playwright:1.59.1-noble-tmux';
+const IMAGE = 'n10-playwright:1.59.1-noble-tmux';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = resolve(HERE, '..', '..');

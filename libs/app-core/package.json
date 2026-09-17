@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/app-core",
+  "name": "@n10/app-core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -20,13 +20,13 @@
   },
   "dependencies": {
     "react": "^19.2.4",
-    "@kirby/core": "*"
+    "@n10/core": "*"
   },
   "devDependencies": {
     "@types/react": "^19.2.14"
   },
   "nx": {
-    "name": "@kirby/app-core",
+    "name": "@n10/app-core",
     "tags": [
       "type:lib",
       "scope:app-core"

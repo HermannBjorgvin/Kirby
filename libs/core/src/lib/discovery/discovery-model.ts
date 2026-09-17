@@ -7,7 +7,7 @@
  * away — are testable without git, tmux, timers or a filesystem.
  */
 
-/** One Kirby-owned worktree, as a scan saw it. */
+/** One n10-owned worktree, as a scan saw it. */
 export interface DiscoveredWorktree {
   /** Qualified core key — `keyForWorktree(wt)`. */
   name: string;

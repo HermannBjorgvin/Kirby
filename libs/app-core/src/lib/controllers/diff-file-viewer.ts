@@ -1,13 +1,13 @@
 import { useEffect, useMemo } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import { parseUnifiedDiff } from '@kirby/diff';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import { parseUnifiedDiff } from '@n10/diff';
 import {
   interleaveComments,
   getCommentPositions,
   buildRowMap,
   type CommentImageLayouts,
-} from '@kirby/review-comments';
-import { planItemKey } from '@kirby/core';
+} from '@n10/review-comments';
+import { planItemKey } from '@n10/core';
 import { usePlan } from '../context/PlanContext.js';
 import { useAutoSelectFirstComment } from '../hooks/useAutoSelectFirstComment.js';
 import { usePendingThreadScrollIntoView } from '../hooks/usePendingThreadScrollIntoView.js';

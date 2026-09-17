@@ -2,7 +2,7 @@
 // Rewrites apps/cli/dist/package.json into a minimal, publish-safe package.
 // The build copies the source package.json into dist/ (via the build's
 // `assets` config) for local use (e.g. `npm install -g ./apps/cli/dist`),
-// but that file carries workspace `@kirby/*` deps that don't exist on the
+// but that file carries workspace `@n10/*` deps that don't exist on the
 // npm registry, plus dev deps and nx config bloat. This strips all of it.
 
 import { execFileSync } from 'node:child_process';
@@ -25,7 +25,7 @@ execFileSync(process.execPath, [resolve(__dirname, 'copy-webp-wasm.mjs')], {
 });
 
 // node-pty is the only runtime dep kept external by esbuild (native module).
-// Everything else — ink, react, @kirby/*, @inkjs/ui, @mishieck/ink-titled-box
+// Everything else — ink, react, @n10/*, @inkjs/ui, @mishieck/ink-titled-box
 // — is bundled into dist/main.js.
 const nodePtyVersion = src.dependencies?.['node-pty'];
 if (!nodePtyVersion) {

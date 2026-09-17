@@ -44,14 +44,14 @@ what ships. Three things make it a demo rather than a test:
   ugly — a banner and echo lines, built to be asserted against — and a
   capture needs the opposite. This one paces its output like an agent at
   work and reads back the plan it was seeded with, while staying
-  deterministic and offline. Kirby launches it through the ordinary
+  deterministic and offline. n10 launches it through the ordinary
   `aiCommand` path.
 - **`capture.mjs`** runs a dedicated Xvfb display at 2x device scale,
   records it with `ffmpeg -f x11grab`, and drives the app with a visible
   cursor that glides between targets instead of teleporting.
 - **The TUI demo** has no window to record — it is an Ink app on a PTY.
   It goes through the same bridge `cli-e2e` uses: the wterm host
-  (`apps/cli-wterm-host`) spawns Kirby on a PTY and streams it to a page
+  (`apps/cli-wterm-host`) spawns n10 on a PTY and streams it to a page
   that is nothing but a full-bleed terminal, and Chromium renders that
   page in app mode, so the recording is the terminal with no browser
   around it.

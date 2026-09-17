@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import {
   cellHighlight,
   codeTokensQuery,

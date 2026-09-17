@@ -90,10 +90,10 @@ test('probe: what opening a tab costs', async () => {
         return { ms: performance.now() - t0, length: value.length };
       };
       const cold = await time(() =>
-        window.kirby.fetchWorktreeDiffText(branch, 'main')
+        window.n10.fetchWorktreeDiffText(branch, 'main')
       );
       const warm = await time(() =>
-        window.kirby.fetchWorktreeDiffText(branch, 'main')
+        window.n10.fetchWorktreeDiffText(branch, 'main')
       );
       return {
         hostColdMs: Math.round(cold.ms),

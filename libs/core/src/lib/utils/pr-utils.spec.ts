@@ -5,7 +5,7 @@ import type {
   PullRequestInfo,
   AppConfig,
   VcsProvider,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import {
   findOrphanPrs,
   categorizeReviews,

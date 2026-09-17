@@ -81,7 +81,7 @@ test.describe('Worktree removal', () => {
 });
 
 test.describe('Worktree removal (running agent)', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ stream: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ stream: true }) } });
 
   test('removing a worktree stops the agent running in it', async ({
     desktop,
@@ -90,7 +90,7 @@ test.describe('Worktree removal (running agent)', () => {
     await createWorktree(page, BRANCH);
 
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
     await expect(agentSpinner(page).first()).toBeVisible({ timeout: 15_000 });
@@ -104,9 +104,7 @@ test.describe('Worktree removal (running agent)', () => {
     await expect
       .poll(
         async () => {
-          const sessions = await page.evaluate(() =>
-            window.kirby.listSessions()
-          );
+          const sessions = await page.evaluate(() => window.n10.listSessions());
           return (
             sessions.find((s) => sessionBranch(s.name) === BRANCH)?.running ??
             false

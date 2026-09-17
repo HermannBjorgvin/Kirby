@@ -1,4 +1,4 @@
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type { BabysitStatus } from './babysit/babysit-model.js';
 
 export type Focus = 'sidebar' | 'terminal';
@@ -69,9 +69,9 @@ export interface AgentSession {
   state?: 'rebasing';
 }
 
-export type { DiffFile, FileCategory } from '@kirby/diff';
+export type { DiffFile, FileCategory } from '@n10/diff';
 export type {
   ReviewComment,
   ReviewCommentsFile,
   CommentSeverity,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';

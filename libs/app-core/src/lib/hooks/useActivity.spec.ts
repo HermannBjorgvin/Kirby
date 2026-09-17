@@ -6,13 +6,13 @@
 // reference is stable exactly as long as the rendered state is.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { SessionBackend } from '@kirby/terminal';
+import type { SessionBackend } from '@n10/terminal';
 import {
   attach,
   noteSeen,
   __resetActivityForTests as resetActivity,
-} from '@kirby/core';
-import { ACTIVITY_IDLE_MS } from '@kirby/core';
+} from '@n10/core';
+import { ACTIVITY_IDLE_MS } from '@n10/core';
 import {
   activityStatusSnapshot,
   spinnerTicks,

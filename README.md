@@ -1,18 +1,18 @@
-# 😸 Kirby (working title, name of my cat)
+# 😸 n10 (working title, name of my cat)
 
 Run AI coding agents across git worktrees, track pull requests, and review code from a desktop app or terminal UI.
 
-I built Kirby to help with my daily work in a large monorepo. I usually have several features and reviews going at once, and wanted one place to manage their branches and agent sessions. I also wanted help reviewing pull requests while still understanding the code I was approving.
+I built n10 to help with my daily work in a large monorepo. I usually have several features and reviews going at once, and wanted one place to manage their branches and agent sessions. I also wanted help reviewing pull requests while still understanding the code I was approving.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/media/hero-light.png">
-  <img alt="Kirby Desktop showing worktrees and pull request status beside a code diff with inline review comments" src="docs/media/hero.png">
+  <img alt="n10 Desktop showing worktrees and pull request status beside a code diff with inline review comments" src="docs/media/hero.png">
 </picture>
 
-Kirby works with Claude, Codex, Gemini, Copilot, and OpenCode. You can choose a different agent for each project. It supports GitHub and Azure DevOps, with [different levels of test coverage](#version-control-providers).
+n10 works with Claude, Codex, Gemini, Copilot, and OpenCode. You can choose a different agent for each project. It supports GitHub and Azure DevOps, with [different levels of test coverage](#version-control-providers).
 
-> Kirby is still early in development. We use it every day, but expect rough edges and breaking changes.
+> n10 is still early in development. We use it every day, but expect rough edges and breaking changes.
 
 ## Getting started
 
@@ -26,20 +26,20 @@ You'll need:
 - For Azure DevOps, a personal access token with repository and pull request access.
 - On Linux, `build-essential` and `python3` to compile `node-pty` when installing the desktop app.
 
-Kirby runs agents and terminal tabs in tmux. Quitting Kirby detaches from them; reopening Kirby reconnects to surviving sessions. Exited agents keep their final output so you can resume the recorded agent or explicitly start a new conversation. Closing a terminal tab or stopping an agent ends its tmux session.
+n10 runs agents and terminal tabs in tmux. Quitting n10 detaches from them; reopening n10 reconnects to surviving sessions. Exited agents keep their final output so you can resume the recorded agent or explicitly start a new conversation. Closing a terminal tab or stopping an agent ends its tmux session.
 
 ### Installation
 
 Install the desktop app and CLI:
 
 ```sh
-npm install -g @hermannbjorgvin/kirby-desktop  # Desktop app
-npm install -g @hermannbjorgvin/kirby          # Terminal UI and CLI utilities
+npm install -g @notaharness/n10-desktop  # Desktop app
+npm install -g @notaharness/n10          # Terminal UI and CLI utilities
 ```
 
-The desktop app uses the CLI for agent-drafted reviews: agents save their comments with `kirby util add-comment`, so `kirby` must be on your `PATH`. If you don't use that feature, you can install the desktop app on its own.
+The desktop app uses the CLI for agent-drafted reviews: agents save their comments with `n10 util add-comment`, so `n10` must be on your `PATH`. If you don't use that feature, you can install the desktop app on its own.
 
-Run `kirby-desktop` or `kirby` from your project directory. On the first run, Kirby walks you through connecting your version control provider.
+Run `n10-desktop` or `n10` from your project directory. On the first run, n10 walks you through connecting your version control provider.
 
 ## Features
 
@@ -49,7 +49,7 @@ Each branch gets its own git worktree and agent session. You can keep several fe
 
 The sidebar shows each worktree's pull request state, CI results, review status, and conflict count. The status indicator turns red when a build fails or a reviewer rejects the changes. It turns solid green when CI passes and all reviewers approve.
 
-Kirby also detects merged branches and conflicts with the base branch. You can enable automatic cleanup of merged worktrees and use a shortcut to rebase onto the latest `main` or `master`.
+n10 also detects merged branches and conflicts with the base branch. You can enable automatic cleanup of merged worktrees and use a shortcut to rebase onto the latest `main` or `master`.
 
 ![Creating a branch and worktree from the command palette, then launching an agent](docs/media/worktrees.gif)
 
@@ -57,7 +57,7 @@ Kirby also detects merged branches and conflicts with the base branch. You can e
 
 Ask an agent to review a pull request. It adds draft comments to the relevant lines in the diff, and you work through them in severity order. Edit, discard, skip, or post each comment; published comments are attributed to you.
 
-This feature requires the `kirby` CLI, including when you use the desktop app.
+This feature requires the `n10` CLI, including when you use the desktop app.
 
 ![Working through an agent's draft review comments, posting one and skipping to the next](docs/media/review.gif)
 
@@ -69,13 +69,13 @@ Select the review comments you want an agent to address and add them to a plan. 
 
 ### Babysit a pull request
 
-Right-click a pull request and choose **Babysit** to keep your agent updated on CI results, unresolved review comments, and merge conflicts. Kirby groups updates together and sends them to the agent's session when it's idle.
+Right-click a pull request and choose **Babysit** to keep your agent updated on CI results, unresolved review comments, and merge conflicts. n10 groups updates together and sends them to the agent's session when it's idle.
 
 ![Enabling Babysit on a pull request and sending CI failures and review comments to its agent](docs/media/babysit.gif)
 
-### Review code without leaving Kirby
+### Review code without leaving n10
 
-Read a pull request's description, browse its diff, and submit your review in Kirby. You can reply to comments, resolve or reopen threads, and switch between split and unified diff views.
+Read a pull request's description, browse its diff, and submit your review in n10. You can reply to comments, resolve or reopen threads, and switch between split and unified diff views.
 
 The desktop app also supports whole-file diffs with code folding and word-level highlighting.
 
@@ -89,7 +89,7 @@ The most important feature of any software.
 
 ## The terminal UI
 
-Run `kirby` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
+Run `n10` from your repository root to open the terminal UI. It shares the desktop app's core, configuration, and worktrees, so you can use either interface with the same projects.
 
 You can check pull request status, read diffs and review threads, and send plans to agents from the terminal. Most development now focuses on the desktop app; some features, such as whole-file diffs, are only available there.
 
@@ -101,7 +101,7 @@ Open settings with `s` in the terminal UI or `⌘,` / `Ctrl+,` on the desktop. F
 
 For keyboard shortcuts, open the **Controls** panel. Choose the Normie or Vim preset, or remap individual actions.
 
-Kirby stores its configuration in `~/.kirby/`.
+n10 stores its configuration in `~/.n10/`.
 
 ## Version control providers
 
@@ -118,4 +118,4 @@ Providers share an interface in `libs/vcs/`. Contributions adding support for ot
 
 ### Pair with Orchestra
 
-Pair Kirby with my [Orchestra plugin](https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in Kirby.
+Pair n10 with my [Orchestra plugin](https://github.com/HermannBjorgvin/agent-plugins/tree/main/orchestra) to let your agent launch and coordinate worktree sessions you can follow in n10.

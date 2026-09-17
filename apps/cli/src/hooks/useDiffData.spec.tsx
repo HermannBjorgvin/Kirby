@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import type * as ChildProcess from 'node:child_process';
-import { useDiffData, __resetTargetFetchTtlForTest } from '@kirby/app-core';
+import { useDiffData, __resetTargetFetchTtlForTest } from '@n10/app-core';
 
 // Same shape as libs/app-core's useDiffData.spec.ts: the hook and
 // diff-fetcher both reach for node:child_process, so one mock covers
@@ -18,7 +18,7 @@ const execFileMock = vi.fn();
 vi.mock('node:child_process', async (importOriginal) => {
   const { EventEmitter } = await import('node:events');
   return {
-    // The @kirby/app-core barrel drags in worktree-manager, which
+    // The @n10/app-core barrel drags in worktree-manager, which
     // promisifies `exec` at import time — keep the rest of the module
     // real and swap only what the hook's git surface uses.
     ...(await importOriginal<typeof ChildProcess>()),
@@ -58,7 +58,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
-// `-z`: records are NUL-terminated (see parseNumstat in @kirby/app-core).
+// `-z`: records are NUL-terminated (see parseNumstat in @n10/app-core).
 const NUMSTAT = '5\t2\tsrc/foo.ts\0' + '10\t0\tsrc/bar.ts\0';
 const NAME_STATUS = 'M\0src/foo.ts\0' + 'A\0src/bar.ts\0';
 const FOO_DIFF = 'diff --git a/src/foo.ts b/src/foo.ts\n@@ -1 +1 @@\n-a\n+b\n';

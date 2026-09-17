@@ -10,7 +10,7 @@ import {
   XCircleIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import { useOpenInEditor } from '../../lib/data/mutations.js';
 import { unresolvedCommentsLabel } from '../../lib/sidebar/sidebar-model.js';
 import { cn, errorMessage } from '../../lib/utils.js';
@@ -160,7 +160,7 @@ export function PrHeader({ pr }: { pr: PullRequestInfo }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => void window.kirby.openExternal(pr.url)}
+          onClick={() => void window.n10.openExternal(pr.url)}
         >
           <ExternalLinkIcon /> Open
         </Button>

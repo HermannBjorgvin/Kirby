@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/cli-wterm-host",
+  "name": "@n10/cli-wterm-host",
   "version": "0.0.1",
   "private": true,
   "type": "module",

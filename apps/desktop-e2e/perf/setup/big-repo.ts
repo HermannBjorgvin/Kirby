@@ -83,12 +83,12 @@ export function createBigRepo(opts: BigRepoOptions = {}): BigRepo {
   const fraction = opts.changedFraction ?? 0.12;
   const branch = opts.branch ?? 'perf-big-change';
 
-  const parent = mkdtempSync(join(tmpdir(), 'kirby-perf-repo-'));
-  const dir = join(parent, 'kirby-perf');
+  const parent = mkdtempSync(join(tmpdir(), 'n10-perf-repo-'));
+  const dir = join(parent, 'n10-perf');
   mkdirSync(dir);
   git(dir, ['init', '-q', '-b', 'main']);
-  git(dir, ['config', 'user.email', 'perf@kirby.dev']);
-  git(dir, ['config', 'user.name', 'Kirby Perf']);
+  git(dir, ['config', 'user.email', 'perf@n10.dev']);
+  git(dir, ['config', 'user.name', 'n10 Perf']);
   git(dir, ['config', 'commit.gpgsign', 'false']);
   mkdirSync(join(dir, 'src'));
   writeFileSync(join(dir, 'README.md'), '# perf repo\n', 'utf8');

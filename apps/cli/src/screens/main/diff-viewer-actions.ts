@@ -1,11 +1,11 @@
-import { type ActionId, planItemKey } from '@kirby/core';
+import { type ActionId, planItemKey } from '@n10/core';
 import {
   readComments,
   updateComment,
   postReviewComments,
   type PostContext,
-} from '@kirby/review-comments';
-import { getDisplayFiles } from '@kirby/diff';
+} from '@n10/review-comments';
+import { getDisplayFiles } from '@n10/diff';
 import { openCommentInEditor } from '../../utils/editor-edit.js';
 import {
   type DiffViewerActionCtx,

@@ -27,7 +27,7 @@ import { armContextMenuChoice } from './setup/menu.js';
  */
 
 test.describe('An agent that exits immediately', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ exitAfterMs: 300 }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ exitAfterMs: 300 }) } });
 
   test('says so in the terminal and stops reporting as running', async ({
     desktop,
@@ -45,9 +45,7 @@ test.describe('An agent that exits immediately', () => {
     await expect
       .poll(
         async () => {
-          const sessions = await page.evaluate(() =>
-            window.kirby.listSessions()
-          );
+          const sessions = await page.evaluate(() => window.n10.listSessions());
           return (
             sessions.find((s) => sessionBranch(s.name) === 'short-lived')
               ?.running ?? true
@@ -155,7 +153,7 @@ test.describe('Failures the user can see', () => {
 });
 
 test.describe('An agent command that does not exist', () => {
-  test.use({ kirbyConfig: { aiCommand: '/nonexistent/definitely-not-here' } });
+  test.use({ n10Config: { aiCommand: '/nonexistent/definitely-not-here' } });
 
   test('surfaces the launch failure rather than leaving an empty pane', async ({
     desktop,
@@ -173,9 +171,7 @@ test.describe('An agent command that does not exist', () => {
     await expect
       .poll(
         async () => {
-          const sessions = await page.evaluate(() =>
-            window.kirby.listSessions()
-          );
+          const sessions = await page.evaluate(() => window.n10.listSessions());
           return (
             sessions.find((s) => sessionBranch(s.name) === 'broken-agent')
               ?.running ?? false

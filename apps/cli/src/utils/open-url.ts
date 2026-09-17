@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-// Open a URL in the user's default browser. Needed because Kirby's
+// Open a URL in the user's default browser. Needed because n10's
 // SGR mouse tracking captures plain clicks, so the terminal no longer
 // opens OSC-8 hyperlinks itself — the sidebar click handler routes
 // PR-badge clicks here instead. Fire-and-forget; failures are

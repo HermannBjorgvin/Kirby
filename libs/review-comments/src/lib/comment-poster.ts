@@ -32,7 +32,7 @@ function execWithStdin(
  *
  * The severity and the body's own header are settled against each
  * other first (see `resolveComment`), so what a reviewer reads and what
- * every severity-driven surface in Kirby shows cannot disagree.
+ * every severity-driven surface in n10 shows cannot disagree.
  *
  * The attribution goes at the end, not the front. A comment's opening
  * words are the ones a reviewer sees in a notification and in a

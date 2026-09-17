@@ -35,7 +35,7 @@
 
 ## Layout arithmetic lives in several places — check before adding a copy
 
-- `@kirby/core` `utils/diff-scroll.ts` owns `diffViewportHeight(paneRows)` =
+- `@n10/core` `utils/diff-scroll.ts` owns `diffViewportHeight(paneRows)` =
   `max(1, paneRows - 3)` and says in its docblock that keeping the constant in
   one place is the point. Three hand-rolled copies exist anyway
   (`screens/main/diff-viewer-input.ts`, `screens/main/DiffFileViewerContainer.tsx`,

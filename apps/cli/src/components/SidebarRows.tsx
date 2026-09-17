@@ -1,9 +1,9 @@
 import { memo, useEffect, type ReactNode } from 'react';
 import { Text, Box } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { AgentSession } from '@kirby/core';
-import { useActivityStatus, useFlashPhase } from '@kirby/app-core';
-import { noteSeen, remove as removeInactiveAlert, tabDigit } from '@kirby/core';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import type { AgentSession } from '@n10/core';
+import { useActivityStatus, useFlashPhase } from '@n10/app-core';
+import { noteSeen, remove as removeInactiveAlert, tabDigit } from '@n10/core';
 import { Divider } from './Divider.js';
 import { PrBadge } from './PrBadge.js';
 import { RainbowSpinner } from './RainbowSpinner.js';
@@ -164,7 +164,7 @@ export const SessionItemRow = memo(function SessionItemRow({
 });
 
 /**
- * A pull request with no worktree of its own — either one Kirby knows
+ * A pull request with no worktree of its own — either one n10 knows
  * about but has not checked out, or one queued for review. The review
  * sections name the author under the badge; the plain PR sections do
  * not, which is the only thing that differs between them.

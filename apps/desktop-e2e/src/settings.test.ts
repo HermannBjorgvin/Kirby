@@ -8,7 +8,7 @@ const PAT = 'ado_e2e_super_secret_value';
 const PLACEHOLDER = '••••••••';
 
 function storedPat(homeDir: string): string | undefined {
-  const raw = readFileSync(join(homeDir, '.kirby', 'config.json'), 'utf8');
+  const raw = readFileSync(join(homeDir, '.n10', 'config.json'), 'utf8');
   const parsed = JSON.parse(raw) as {
     vendorAuth?: Record<string, Record<string, string>>;
   };
@@ -17,7 +17,7 @@ function storedPat(homeDir: string): string | undefined {
 
 test.describe('Settings', () => {
   test.use({
-    kirbyConfig: {
+    n10Config: {
       vendorAuth: { 'azure-devops': { pat: PAT } },
       // Long enough that nothing in these tests can be explained by a
       // poll happening to fire: a refetch inside them is one something
@@ -39,7 +39,7 @@ test.describe('Settings', () => {
     const { page, homeDir } = desktop;
     expect(storedPat(homeDir)).toBe(PAT);
 
-    const view = await page.evaluate(() => window.kirby.getSettingsView());
+    const view = await page.evaluate(() => window.n10.getSettingsView());
     const masked = view.filter((f) => f.masked);
     expect(masked.length).toBeGreaterThan(0);
 
@@ -60,10 +60,10 @@ test.describe('Settings', () => {
     // Exactly what the form does when the user saves a field they never
     // edited: it sends back the placeholder it was given.
     await page.evaluate(async (placeholder) => {
-      const view = await window.kirby.getSettingsView();
+      const view = await window.n10.getSettingsView();
       const field = view.find((f) => f.masked);
       if (!field) throw new Error('no masked field in the settings view');
-      await window.kirby.updateSettingsField(
+      await window.n10.updateSettingsField(
         { label: field.label, key: field.key },
         placeholder
       );
@@ -76,10 +76,10 @@ test.describe('Settings', () => {
     const { page, homeDir } = desktop;
 
     await page.evaluate(async () => {
-      const view = await window.kirby.getSettingsView();
+      const view = await window.n10.getSettingsView();
       const field = view.find((f) => f.masked);
       if (!field) throw new Error('no masked field in the settings view');
-      await window.kirby.updateSettingsField(
+      await window.n10.updateSettingsField(
         { label: field.label, key: field.key },
         'ado_rotated'
       );
@@ -102,7 +102,7 @@ test.describe('Settings', () => {
     desktop,
   }) => {
     const { page } = desktop;
-    const syncState = () => page.evaluate(() => window.kirby.getSyncState());
+    const syncState = () => page.evaluate(() => window.n10.getSyncState());
 
     // Let the launch fetch finish and record a failure, so there is a
     // stale error to clear.
@@ -112,10 +112,10 @@ test.describe('Settings', () => {
     const before = (await syncState()).remoteFetches;
 
     const after = await page.evaluate(async () => {
-      const view = await window.kirby.getSettingsView();
+      const view = await window.n10.getSettingsView();
       const field = view.find((f) => f.masked);
       if (!field) throw new Error('no masked field in the settings view');
-      await window.kirby.updateSettingsField(
+      await window.n10.updateSettingsField(
         { label: field.label, key: field.key },
         'ado_rotated'
       );
@@ -124,7 +124,7 @@ test.describe('Settings', () => {
       // unit-level concern (host/services/sidebar.spec.ts), because
       // the new attempt may already have failed again by the time this
       // second round trip lands.
-      return window.kirby.getSyncState();
+      return window.n10.getSyncState();
     });
 
     expect(after.remoteFetches).toBeGreaterThan(before);

@@ -1,11 +1,11 @@
 /**
- * Enumerating the worktrees Kirby owns: the porcelain parser, the
+ * Enumerating the worktrees n10 owns: the porcelain parser, the
  * detached-HEAD recovery it depends on, and the listing that composes
  * the two.
  */
 import { readFileSync } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
-import { log } from '@kirby/logger';
+import { log } from '@n10/logger';
 import { exec, gitOptions } from './exec.js';
 import { branchToSessionName } from './refs.js';
 import { ownsWorktreePath } from './worktree-resolver.js';

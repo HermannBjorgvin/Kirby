@@ -1,12 +1,12 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import {
   fetchRefs,
   handleTextInput,
   type KeyPress,
   isSessionAlive,
   requestSessionMenu,
-} from '@kirby/core';
-import { createWorktree, listAllBranches } from '@kirby/worktree-manager';
+} from '@n10/core';
+import { createWorktree, listAllBranches } from '@n10/worktree-manager';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 /**

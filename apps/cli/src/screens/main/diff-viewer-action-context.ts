@@ -1,7 +1,7 @@
-import type { ReviewComment, PlanItem } from '@kirby/core';
-import { snapshotLocal, snapshotRemote } from '@kirby/core';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { CommentPositionInfo } from '@kirby/review-comments';
+import type { ReviewComment, PlanItem } from '@n10/core';
+import { snapshotLocal, snapshotRemote } from '@n10/core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { CommentPositionInfo } from '@n10/review-comments';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
 // ── Helpers ──────────────────────────────────────────────────────

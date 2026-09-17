@@ -1,10 +1,10 @@
 import { keyForWorktree, sessionIdentity } from '../session-key.js';
 /**
- * Noticing worktrees and agent sessions that appear while Kirby is
+ * Noticing worktrees and agent sessions that appear while n10 is
  * running.
  *
  * A session can be created without this process being involved: a
- * second Kirby, an Orchestra spawn, or someone typing `git worktree add
+ * second n10, an Orchestra spawn, or someone typing `git worktree add
  * … && tmux new-session -d …` and tagging the result. Nothing pushes
  * that fact at us, so this scans for it — and both shells subscribe to
  * the same scanner rather than each growing their own.
@@ -17,7 +17,7 @@ import { keyForWorktree, sessionIdentity } from '../session-key.js';
  * one listing. The alternatives cost more than they save:
  *
  * - **tmux hooks** (`set-hook -g session-created`) are per-server global
- *   state, so two Kirby instances — the very case this feature is
+ *   state, so two n10 instances — the very case this feature is
  *   about — overwrite each other's hook unless they append, and an
  *   appended hook cannot be selectively removed afterwards. They also
  *   still need a file or socket to carry the poke back.
@@ -34,8 +34,8 @@ import { keyForWorktree, sessionIdentity } from '../session-key.js';
  * still covers the same ground.
  */
 import { watch, type FSWatcher } from 'node:fs';
-import { log, logError } from '@kirby/logger';
-import { listWorktrees, worktreesBasePath } from '@kirby/worktree-manager';
+import { log, logError } from '@n10/logger';
+import { listWorktrees, worktreesBasePath } from '@n10/worktree-manager';
 import {
   hasSessionConnection,
   isSessionAlive,

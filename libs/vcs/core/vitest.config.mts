@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../../node_modules/.vite/libs/vcs/core',
   test: {
-    name: '@kirby/vcs-core',
+    name: '@n10/vcs-core',
     watch: false,
     globals: true,
     environment: 'node',

@@ -2,7 +2,7 @@
 //
 // fake-agent.mjs
 //
-// Scriptable stand-in for an AI agent (Claude/Codex/etc.) that Kirby
+// Scriptable stand-in for an AI agent (Claude/Codex/etc.) that n10
 // can spawn through its normal `aiCommand` path. Used by e2e tests so
 // session activity timing — burst → idle → maybe-burst → exit — is
 // deterministic without depending on a real agent or wall-clock luck.
@@ -28,7 +28,7 @@
 //   node apps/cli-e2e/src/fixtures/fake-agent.mjs --silent --exit-after-ms=2000
 //
 // Flags:
-//   --banner=<str>         initial line (default "kirby-fake-agent-ready")
+//   --banner=<str>         initial line (default "n10-fake-agent-ready")
 //   --bursts=<n|inf>       number of bursts before going silent (default 1)
 //   --burst-ms=<n>         duration of each burst (default 500)
 //   --burst-bytes=<n>      bytes emitted per 100ms tick within a burst (default 64)
@@ -42,7 +42,7 @@
 //                          after it has observed the running state)
 
 const args = parseArgs(process.argv.slice(2));
-const banner = args.banner ?? 'kirby-fake-agent-ready';
+const banner = args.banner ?? 'n10-fake-agent-ready';
 const bursts = args.silent ? 0 : parseBursts(args.bursts ?? '1');
 const burstMs = parseInt(args['burst-ms'] ?? '500', 10);
 const burstBytes = parseInt(args['burst-bytes'] ?? '64', 10);

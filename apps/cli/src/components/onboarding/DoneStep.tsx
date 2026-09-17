@@ -1,5 +1,5 @@
 import { Text, Box, useInput } from 'ink';
-import type { VcsProvider } from '@kirby/vcs-core';
+import type { VcsProvider } from '@n10/vcs-core';
 
 interface DoneStepProps {
   provider: VcsProvider;

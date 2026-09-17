@@ -10,7 +10,7 @@ import { homedir } from 'node:os';
 
 /**
  * Desktop-specific state: recently opened repositories. Lives in its
- * own file under ~/.kirby so the CLI's config.json schema (which has
+ * own file under ~/.n10 so the CLI's config.json schema (which has
  * migrations) is never touched by desktop concerns.
  */
 
@@ -22,7 +22,7 @@ export interface RecentRepo {
 const MAX_RECENTS = 10;
 
 export function recentsFilePath(): string {
-  return join(homedir(), '.kirby', 'desktop-recents.json');
+  return join(homedir(), '.n10', 'desktop-recents.json');
 }
 
 export function loadRecents(file = recentsFilePath()): RecentRepo[] {

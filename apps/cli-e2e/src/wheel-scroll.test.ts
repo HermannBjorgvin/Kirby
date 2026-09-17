@@ -2,20 +2,20 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
-import type { KirbyTerm } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
+import type { N10Term } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { pressUntil } from './setup/sessions.js';
 import { TEST_REPO, wtermHost } from './setup/constants.js';
 
 // Per-press `waitFor` so each keystroke's re-render settles before the
-// next press — `page.keyboard.press` returns before Kirby has emitted
+// next press — `page.keyboard.press` returns before n10 has emitted
 // the resulting PTY output. See comments-fixture.test.ts for the same
 // pattern's rationale.
 async function pressUntilSelected(
-  term: KirbyTerm,
-  selectedLocator: ReturnType<KirbyTerm['page']['locator']>,
+  term: N10Term,
+  selectedLocator: ReturnType<N10Term['page']['locator']>,
   maxPresses: number
 ): Promise<boolean> {
   for (let i = 0; i <= maxPresses; i++) {
@@ -34,7 +34,7 @@ async function pressUntilSelected(
 // no mouse reporting, so raw SGR wheel sequences are injected into
 // stdin via term.write() — exactly the bytes a real terminal sends —
 // and asserted through the resulting viewport state plus the DECSET
-// mouse-mode bytes Kirby emits (read back via GET /output).
+// mouse-mode bytes n10 emits (read back via GET /output).
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
@@ -44,7 +44,7 @@ const WHEEL_DOWN = '\x1b[<65;80;12M';
 const WHEEL_UP = '\x1b[<64;80;12M';
 const SIDEBAR_WHEEL_DOWN = '\x1b[<65;10;12M';
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-wheel-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-wheel-clone-'));
 registerCleanup(cloneDir);
 
 if (hasGhToken) {
@@ -54,11 +54,11 @@ if (hasGhToken) {
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -78,27 +78,25 @@ test.describe('@integration Wheel scrolling', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { keybindPreset: 'vim' },
+    n10RepoPath: cloneDir,
+    n10Config: { keybindPreset: 'vim' },
     rows: 40,
     cols: 120,
   });
 
-  async function openColorSupportDiff(kirby: { term: KirbyTerm }) {
+  async function openColorSupportDiff(n10: { term: N10Term }) {
     await expect(
-      kirby.term.getByText('Add color support for tile values').first()
+      n10.term.getByText('Add color support for tile values').first()
     ).toBeVisible({ timeout: 30_000 });
-    const pr37 = sidebarLocator(kirby.term.page, 'Add color support');
-    expect(await pressUntilSelected(kirby.term, pr37.selected(), 20)).toBe(
-      true
-    );
+    const pr37 = sidebarLocator(n10.term.page, 'Add color support');
+    expect(await pressUntilSelected(n10.term, pr37.selected(), 20)).toBe(true);
     // Input can arrive before Ink's new selection handler is committed.
     // Opening the diff is idempotent; retry until its file list confirms it.
     await pressUntil(
-      kirby.term,
+      n10.term,
       'd',
       () =>
-        kirby.term.page
+        n10.term.page
           .locator('.term-row', { hasText: /render\.c/ })
           .first()
           .isVisible(),
@@ -112,58 +110,58 @@ test.describe('@integration Wheel scrolling', () => {
     // entirely and would never show a "rows above" indicator no matter
     // how scrolling behaves. Longer timeout on the first wait: cold
     // diff fetches on CI can take 15-25s.
-    await kirby.term.page
+    await n10.term.page
       .locator('.term-row', { hasText: /render\.c/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Navigate the file-list selection onto render.c — the selected
     // row carries the '›' prefix (DiffFileList.tsx).
-    const renderSelected = kirby.term.page
+    const renderSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*render\.c/ })
       .first();
-    const gotRender = await pressUntilSelected(kirby.term, renderSelected, 10);
+    const gotRender = await pressUntilSelected(n10.term, renderSelected, 10);
     if (!gotRender) {
       throw new Error('Could not select render.c in the file list');
     }
   }
 
-  test('wheel events scroll the diff viewer', async ({ kirby, baseURL }) => {
-    await openColorSupportDiff(kirby);
-    await kirby.term.press('Enter');
+  test('wheel events scroll the diff viewer', async ({ n10, baseURL }) => {
+    await openColorSupportDiff(n10);
+    await n10.term.press('Enter');
     await expect(
-      kirby.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
+      n10.term.page.locator('.term-row', { hasText: /@@.*@@/ }).first()
     ).toBeVisible({ timeout: 30_000 });
 
-    // Kirby enables SGR button-event mouse tracking for the viewer.
+    // n10 enables SGR button-event mouse tracking for the viewer.
     expect(await rawOutput(baseURL)).toContain('\x1b[?1000h\x1b[?1006h');
-    await expect(kirby.term.getByText('rows above')).toBeHidden();
+    await expect(n10.term.getByText('rows above')).toBeHidden();
 
     // A batched chunk of wheel-down events must all be consumed (the
     // pre-2026 parser took one event per chunk).
-    await kirby.term.write(WHEEL_DOWN + WHEEL_DOWN + WHEEL_DOWN);
-    await expect(kirby.term.getByText('rows above').first()).toBeVisible({
+    await n10.term.write(WHEEL_DOWN + WHEEL_DOWN + WHEEL_DOWN);
+    await expect(n10.term.getByText('rows above').first()).toBeVisible({
       timeout: 10_000,
     });
 
-    for (let i = 0; i < 5; i++) await kirby.term.write(WHEEL_UP);
-    await expect(kirby.term.getByText('rows above')).toBeHidden({
+    for (let i = 0; i < 5; i++) await n10.term.write(WHEEL_UP);
+    await expect(n10.term.getByText('rows above')).toBeHidden({
       timeout: 10_000,
     });
 
     // A wheel event over the sidebar region must NOT scroll the diff.
-    await kirby.term.write(SIDEBAR_WHEEL_DOWN);
-    await expect(kirby.term.getByText('rows above')).toBeHidden();
+    await n10.term.write(SIDEBAR_WHEEL_DOWN);
+    await expect(n10.term.getByText('rows above')).toBeHidden();
   });
 
-  test('mouse clicks do not leak into compose input', async ({ kirby }) => {
-    await openColorSupportDiff(kirby);
+  test('mouse clicks do not leak into compose input', async ({ n10 }) => {
+    await openColorSupportDiff(n10);
     // A stray click while the diff list is focused must not act as
     // input — the SGR bytes previously reached Ink as garbage
     // keypresses.
-    await kirby.term.write('\x1b[<0;10;5M\x1b[<0;10;5m');
+    await n10.term.write('\x1b[<0;10;5M\x1b[<0;10;5m');
     await expect(
-      kirby.term.page.locator('.term-row', { hasText: /\.(c|h)\b/ }).first()
+      n10.term.page.locator('.term-row', { hasText: /\.(c|h)\b/ }).first()
     ).toBeVisible();
   });
 });

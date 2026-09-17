@@ -1,14 +1,14 @@
-import { removeWorktreeSession } from '@kirby/core';
+import { removeWorktreeSession } from '@n10/core';
 import {
   listWorktrees as listWts,
   listBranches as listBr,
   listAllBranches as listAllBr,
   createWorktree as createWt,
   canRemoveBranch as canRemoveBr,
-} from '@kirby/worktree-manager';
+} from '@n10/worktree-manager';
 import { spawn } from 'node:child_process';
-import { fetchWorktreeDiffText } from '@kirby/core';
-import { readConfig } from '@kirby/vcs-core';
+import { fetchWorktreeDiffText } from '@n10/core';
+import { readConfig } from '@n10/vcs-core';
 import { requireRepo } from './repo.js';
 import { stopBabysitForBranch } from './babysit.js';
 

@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs';
 import type {
   ContextMenuItem,
-  KirbyHostApi,
+  N10HostApi,
   ReplyRequest,
   ResolveRequest,
 } from './contract.js';
@@ -26,11 +26,11 @@ import { resolvePickedFolder } from './services/terminal-home.js';
  * plumbing — every method delegates to a service module so business
  * logic stays testable without Electron.
  */
-export function createHostApi(): KirbyHostApi {
+export function createHostApi(): N10HostApi {
   return {
     getVersion: () =>
       Promise.resolve({
-        app: process.env.KIRBY_DESKTOP_VERSION ?? 'dev',
+        app: process.env.N10_DESKTOP_VERSION ?? 'dev',
         electron: process.versions.electron ?? 'unknown',
         node: process.versions.node,
         chrome: process.versions.chrome ?? 'unknown',
@@ -193,7 +193,7 @@ export function setShellGlue(glue: {
  */
 export function registerHostHandlers(
   register: IpcRegistrar,
-  api: KirbyHostApi = createHostApi()
+  api: N10HostApi = createHostApi()
 ): void {
   const handlers: Record<string, HostMethod | undefined> = {
     [IPC.getVersion]: api.getVersion as HostMethod,

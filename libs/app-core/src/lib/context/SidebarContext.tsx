@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import {
   createContext,
   useCallback,
@@ -7,11 +7,11 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
-import type { CategorizedReviews, PullRequestInfo } from '@kirby/vcs-core';
+import type { CategorizedReviews, PullRequestInfo } from '@n10/vcs-core';
 
-import type { SidebarItem } from '@kirby/core';
-import { getItemKey, getPrFromItem, isItemActive } from '@kirby/core';
-import { buildSidebarItems } from '@kirby/core';
+import type { SidebarItem } from '@n10/core';
+import { getItemKey, getPrFromItem, isItemActive } from '@n10/core';
+import { buildSidebarItems } from '@n10/core';
 import { useSessionData } from './SessionContext.js';
 import { useConfig } from './ConfigContext.js';
 

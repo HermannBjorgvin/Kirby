@@ -18,7 +18,7 @@
  * and said so. Only a fetch that succeeded is reused: a failure may
  * have been transient.
  */
-import { fetchBranches, fetchRemote } from '@kirby/worktree-manager';
+import { fetchBranches, fetchRemote } from '@n10/worktree-manager';
 
 export interface FetchRequest {
   /** The repository to fetch in. */

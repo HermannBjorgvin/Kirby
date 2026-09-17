@@ -56,7 +56,7 @@ if (!electronVersion) {
 }
 
 const out = {
-  name: '@hermannbjorgvin/kirby-desktop',
+  name: '@notaharness/n10-desktop',
   version: src.version,
   description: src.description,
   author: src.author,
@@ -77,7 +77,7 @@ const out = {
   files: ['main/', 'preload/', 'renderer/', 'launcher.mjs'],
   main: 'main/main.js',
   bin: {
-    'kirby-desktop': 'launcher.mjs',
+    'n10-desktop': 'launcher.mjs',
   },
   engines: src.engines,
   repository: src.repository,
@@ -100,7 +100,7 @@ chmodSync(resolve(distDir, 'launcher.mjs'), 0o755);
 // a real dependency install (electron + node-pty).
 // The scope makes npm name the tarball `<scope>-<name>-<version>.tgz`.
 for (const f of readdirSync(distDir)) {
-  if (/kirby-desktop-.*\.tgz$/.test(f)) {
+  if (/n10-desktop-.*\.tgz$/.test(f)) {
     rmSync(resolve(distDir, f));
   }
 }

@@ -1,4 +1,4 @@
-import { readConfig } from '@kirby/vcs-core';
+import { readConfig } from '@n10/vcs-core';
 import {
   postReviewComments,
   readComments,
@@ -7,19 +7,19 @@ import {
   updateComment,
   type PostContext,
   type ReviewComment,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 import { requireRepo } from './repo.js';
 import type { PostDraftsRequest } from '../contract.js';
 
 /**
  * Draft review comments written by the review agent through
- * `kirby util add-comment` (stored per PR under ~/.kirby/reviews). The
+ * `n10 util add-comment` (stored per PR under ~/.n10/reviews). The
  * desktop shows them live in the diff and posts them with the same
  * poster the TUI uses, so both shells stay interchangeable.
  */
 
 /** IPC-boundary validation, matching reviews.ts. `prId` becomes a path
- *  segment under ~/.kirby/reviews, so a non-integer value ('../..')
+ *  segment under ~/.n10/reviews, so a non-integer value ('../..')
  *  would write outside the reviews directory entirely. */
 function requirePrId(prId: unknown): number {
   if (typeof prId !== 'number' || !Number.isInteger(prId) || prId <= 0) {
@@ -65,7 +65,7 @@ export function updateDraftComment(
  * severity too, so an edit can make the two disagree — and everything
  * downstream reads the stored one: the walkthrough's order, the rail
  * dot, the TUI's chip. `resolveComment` picks the louder, the same way
- * `kirby util add-comment` does when the agent writes the draft, so the
+ * `n10 util add-comment` does when the agent writes the draft, so the
  * two write paths cannot leave the file in different shapes.
  */
 function resolvedPatch(

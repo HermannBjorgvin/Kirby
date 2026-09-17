@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type {
   AgentId,
   SessionIncarnation,

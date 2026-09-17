@@ -15,11 +15,11 @@ import { killAll } from '../src/lib/pty-registry.js';
 
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
 const archiveHash =
-  '745ec2a22cfdd8b9548b50e2f42e9fba1544504541a5634c35b12789bdd0150e';
+  '8f2203443b94cecfc86e31b0aecb5f3d1329fa3612530fd16c30d24ba72d44d5';
 
 /** One plugin install, repository and tmux server per test. */
 export function orchestraFixture() {
-  const home = mkdtempSync(join(tmpdir(), 'kirby-orchestra-'));
+  const home = mkdtempSync(join(tmpdir(), 'n10-orchestra-'));
   const repo = join(home, 'shop');
   const socketDir = join(home, 'tmux');
   const pluginDir = join(home, '.claude/plugins');

@@ -1,7 +1,7 @@
 import { sessionBranch, sessionKey } from './setup/session-keys.js';
 import type { Page } from '@playwright/test';
 import { test, expect, fakeAgent } from './fixtures/desktop.js';
-import { killKirbySessions, tmuxAvailable } from './setup/tmux.js';
+import { killN10Sessions, tmuxAvailable } from './setup/tmux.js';
 import {
   createWorktree,
   focusTerminal,
@@ -20,7 +20,7 @@ import {
  * itself; these are the only ones that put something *in*.
  */
 
-const BANNER = 'kirby-fake-agent-ready';
+const BANNER = 'n10-fake-agent-ready';
 
 async function launch(page: Page, branch: string) {
   await createWorktree(page, branch);
@@ -41,7 +41,7 @@ async function typeAndExpectEcho(page: Page, text: string) {
 }
 
 test.describe('Terminal input', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ echo: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ echo: true }) } });
 
   test('a keystroke reaches the agent and its reply comes back', async ({
     desktop,
@@ -70,7 +70,7 @@ test.describe('Terminal input', () => {
 });
 
 test.describe('Two agents at once', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ echo: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ echo: true }) } });
 
   test('keep their own output, and switching tabs does not lose it', async ({
     desktop,
@@ -97,7 +97,7 @@ test.describe('Two agents at once', () => {
       page.getByText(/echo:from-beta/).filter({ visible: true })
     ).toHaveCount(0);
 
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    const sessions = await page.evaluate(() => window.n10.listSessions());
     expect(
       sessions
         .filter((s) => s.running)
@@ -126,7 +126,7 @@ test.describe('Two agents at once', () => {
     // queued behind any the switch provoked: once it answers, a second
     // replay would already have been written.
     await page.evaluate(
-      (name) => window.kirby.getSessionBuffer(name),
+      (name) => window.n10.getSessionBuffer(name),
       await sessionKey(page, 'alpha')
     );
 
@@ -145,7 +145,7 @@ test.describe('Two agents at once', () => {
     await expect
       .poll(
         async () => {
-          const s = await page.evaluate(() => window.kirby.listSessions());
+          const s = await page.evaluate(() => window.n10.listSessions());
           return s.filter((x) => x.running).map((x) => sessionBranch(x.name));
         },
         { timeout: 20_000 }
@@ -158,7 +158,7 @@ test.describe('Two agents at once', () => {
 });
 
 test.describe('Pasting an image', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ echo: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ echo: true }) } });
 
   /**
    * A PTY carries text, so an image on the clipboard has to become a
@@ -209,7 +209,7 @@ test.describe('Pasting an image', () => {
     await expect(async () => {
       await page.keyboard.press('Enter');
       await expect(
-        visibleText(page, /echo:.*kirby-pasted-images.*\.png/)
+        visibleText(page, /echo:.*n10-pasted-images.*\.png/)
       ).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
   });
@@ -272,7 +272,7 @@ async function finishAgentClose(page: Page): Promise<void> {
 }
 
 test.describe('Terminal fit', () => {
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ printSize: true }) } });
 
   interface Grid {
     cols: number;
@@ -386,7 +386,7 @@ test.describe('Terminal fit', () => {
     await expect
       .poll(
         async () => {
-          const s = await page.evaluate(() => window.kirby.listSessions());
+          const s = await page.evaluate(() => window.n10.listSessions());
           return s.filter((x) => x.running).length;
         },
         { timeout: 20_000 }
@@ -414,7 +414,7 @@ test.describe('Terminal fit', () => {
     await expect
       .poll(
         async () => {
-          const s = await page.evaluate(() => window.kirby.listSessions());
+          const s = await page.evaluate(() => window.n10.listSessions());
           return s.filter((x) => x.running).length;
         },
         { timeout: 20_000 }
@@ -439,9 +439,9 @@ test.describe('Terminal fit', () => {
   test.describe('on a branch with no worktree', () => {
     test.use({
       repo: { branches: ['undo-support'] },
-      kirbyConfig: { aiCommand: fakeAgent({ printSize: true }) },
+      n10Config: { aiCommand: fakeAgent({ printSize: true }) },
       fakeGitHub: {
-        username: 'kirby-tester',
+        username: 'n10-tester',
         prs: [
           {
             number: 7,
@@ -477,12 +477,12 @@ test.describe('Terminal fit', () => {
   test.describe('under tmux', () => {
     test.skip(!tmuxAvailable(), 'tmux is not installed');
     test.use({
-      kirbyConfig: {
+      n10Config: {
         aiCommand: fakeAgent({ printSize: true }),
       },
     });
     // Closing the app detaches rather than kills, by design.
-    test.afterEach(({ desktop }) => killKirbySessions(desktop.homeDir));
+    test.afterEach(({ desktop }) => killN10Sessions(desktop.homeDir));
 
     test('a restarted tmux agent is given the pane too', async ({
       desktop,
@@ -499,7 +499,7 @@ test.describe('Terminal fit', () => {
       await expect
         .poll(
           async () => {
-            const s = await page.evaluate(() => window.kirby.listSessions());
+            const s = await page.evaluate(() => window.n10.listSessions());
             return s.filter((x) => x.running).length;
           },
           { timeout: 20_000 }

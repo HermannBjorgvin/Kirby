@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/terminal-tmux",
+  "name": "@n10/terminal-tmux",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "@kirby/source": "./src/index.ts",
+      "@n10/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -22,8 +22,8 @@
     ]
   },
   "dependencies": {
-    "@kirby/terminal": "*",
-    "@kirby/terminal-pty": "*",
+    "@n10/terminal": "*",
+    "@n10/terminal-pty": "*",
     "tslib": "^2.3.0"
   }
 }

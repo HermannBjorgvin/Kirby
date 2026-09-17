@@ -6,8 +6,8 @@
  * lines, built to be asserted against. A capture needs the opposite: a
  * terminal that *looks* like an agent at work, with believable pacing,
  * while staying fully deterministic and offline. Same contract as any
- * agent Kirby launches: spawned as the configured aiCommand, seeded
- * through KIRBY_SEED_PROMPT.
+ * agent n10 launches: spawned as the configured aiCommand, seeded
+ * through N10_SEED_PROMPT.
  */
 
 const CSI = '\x1b[';
@@ -92,7 +92,7 @@ const BLANK_STEPS = [
   [300, dim('  Workspace indexed. What should I work on?')],
 ];
 
-const seed = process.env.KIRBY_SEED_PROMPT;
+const seed = process.env.N10_SEED_PROMPT;
 // A babysitter starts this agent in a pane that is still being laid
 // out; a beat before the first line lets the terminal take its final
 // width, so the update is not wrapped for a pane that no longer exists.

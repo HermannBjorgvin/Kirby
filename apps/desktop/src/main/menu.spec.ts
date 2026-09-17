@@ -33,7 +33,7 @@ function clickable(
 
 describe('buildMenuTemplate', () => {
   it('puts the app menu first on macOS only', () => {
-    expect(labels(buildMenuTemplate(env('darwin'), vi.fn()))[0]).toBe('Kirby');
+    expect(labels(buildMenuTemplate(env('darwin'), vi.fn()))[0]).toBe('n10');
     expect(labels(buildMenuTemplate(env('linux'), vi.fn()))[0]).toBe('&File');
   });
 
@@ -95,13 +95,10 @@ describe('menu commands', () => {
     ['Toggle Sidebar', ['toggle-sidebar']],
     ['Refresh Pull Requests', ['refresh-remote']],
     ['Keyboard Shortcuts', ['show-shortcuts']],
-    [
-      'Kirby on GitHub',
-      ['open-url', 'https://github.com/HermannBjorgvin/kirby'],
-    ],
+    ['n10 on GitHub', ['open-url', 'https://github.com/notaharness/n10']],
     [
       'Report an Issue',
-      ['open-url', 'https://github.com/HermannBjorgvin/kirby/issues'],
+      ['open-url', 'https://github.com/notaharness/n10/issues'],
     ],
   ];
 

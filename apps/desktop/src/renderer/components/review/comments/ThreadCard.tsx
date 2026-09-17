@@ -5,7 +5,7 @@ import type {
   RemoteCommentReply,
   RemoteCommentThread,
 } from '../../../../host/contract.js';
-import { snapshotRemote } from '@kirby/core/plan';
+import { snapshotRemote } from '@n10/core/plan';
 import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
 import { useReply, useSetResolved } from '../../../lib/data/mutations.js';

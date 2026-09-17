@@ -14,7 +14,7 @@ import {
 import {
   detachTmuxClients,
   tmuxClientPids,
-  killKirbySessions,
+  killN10Sessions,
   killTmuxSession,
   tmuxAvailable,
 } from './setup/tmux.js';
@@ -29,7 +29,7 @@ test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 test.describe('Terminal tabs under tmux', () => {
   test.afterEach(({ desktop }) => {
-    killKirbySessions(desktop.homeDir);
+    killN10Sessions(desktop.homeDir);
   });
 
   test('a shell is a tagged <repo>-shell session started in its directory, killed on close', async ({
@@ -87,7 +87,7 @@ test.describe('Terminal tabs under tmux', () => {
     await expect(terminalTabs(page)).toHaveCount(0, { timeout: 750 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect
-      .poll(() => page.evaluate(() => window.kirby.listTerminals()))
+      .poll(() => page.evaluate(() => window.n10.listTerminals()))
       .toEqual([]);
   });
 
@@ -111,7 +111,7 @@ test.describe('Terminal tabs under tmux', () => {
       .poll(() => terminalSessions(homeDir), { timeout: 15_000 })
       .toHaveLength(1);
     const [name] = terminalSessions(homeDir);
-    const before = await page.evaluate(() => window.kirby.listTerminals());
+    const before = await page.evaluate(() => window.n10.listTerminals());
 
     const clientsBefore = tmuxClientPids(name, homeDir);
     detachTmuxClients(name, homeDir);
@@ -127,7 +127,7 @@ test.describe('Terminal tabs under tmux', () => {
     await expect
       .poll(
         async () => {
-          const [t] = await page.evaluate(() => window.kirby.listTerminals());
+          const [t] = await page.evaluate(() => window.n10.listTerminals());
           return t
             ? [t.name, t.running, t.spawnedAt === before[0].spawnedAt]
             : null;
@@ -141,8 +141,8 @@ test.describe('Terminal tabs under tmux', () => {
 
     // …and it is the same shell, still taking commands.
     await focusTerminal(page);
-    await page.keyboard.type('echo kirby-after-$((6*7))\n', { delay: 20 });
-    await expect(visibleText(page, 'kirby-after-42')).toBeVisible({
+    await page.keyboard.type('echo n10-after-$((6*7))\n', { delay: 20 });
+    await expect(visibleText(page, 'n10-after-42')).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -182,7 +182,7 @@ test.describe('Terminal tabs surviving a restart', () => {
     // empty `{}` below cannot be replaced with a plain parameter name.
     // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature; see comment above
     folder: async ({}, provide) => {
-      const dir = mkdtempSync(join(tmpdir(), 'kirby-plain-'));
+      const dir = mkdtempSync(join(tmpdir(), 'n10-plain-'));
       await provide(dir);
       rmSync(dir, { recursive: true, force: true });
     },
@@ -209,7 +209,7 @@ test.describe('Terminal tabs surviving a restart', () => {
   });
 
   test.afterEach(({ desktop }) => {
-    killKirbySessions(desktop.homeDir);
+    killN10Sessions(desktop.homeDir);
   });
 
   test('every surviving terminal reopens as a tab in its group, without switching repository', async ({
@@ -222,7 +222,7 @@ test.describe('Terminal tabs surviving a restart', () => {
     // Both come back, whichever repository the app opened on.
     await expect(terminalTabs(page)).toHaveCount(2, { timeout: 30_000 });
     // …and nothing switched: a restored tab is opened without focus.
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: repoPath,
     });
 
@@ -233,14 +233,14 @@ test.describe('Terminal tabs surviving a restart', () => {
     // that repository's name — and that repository is back on the list.
     const foreign = tab(page, /survivor-repo\s*\/\s*/);
     await expect(foreign).toBeVisible();
-    const recents = await page.evaluate(() => window.kirby.listRecentRepos());
+    const recents = await page.evaluate(() => window.n10.listRecentRepos());
     expect(recents.map((r) => r.cwd)).toContain(other);
 
     // Activating the foreign one opens its repository, like any foreign
     // tab, and the pane shows the session that was already running.
     await foreign.click();
     await expect
-      .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+      .poll(() => page.evaluate(() => window.n10.getRepo()), {
         timeout: 30_000,
       })
       .toMatchObject({ cwd: other });
@@ -253,7 +253,7 @@ test.describe('Terminal tabs surviving a restart', () => {
     await expect(visibleText(page, 'plain-shell-was-here')).toBeVisible({
       timeout: 30_000,
     });
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: other,
     });
   });

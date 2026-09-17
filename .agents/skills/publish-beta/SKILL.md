@@ -1,14 +1,14 @@
 ---
 name: publish-beta
-description: Publish both Kirby npm packages at the same beta version. Use only when the user requests a release.
+description: Publish both n10 npm packages at the same beta version. Use only when the user requests a release.
 disable-model-invocation: true
 ---
 
 # Publish a beta
 
 Publish only when the user asks. Both packages release together:
-`@hermannbjorgvin/kirby` (`apps/cli`) and
-`@hermannbjorgvin/kirby-desktop` (`apps/desktop`).
+`@notaharness/n10` (`apps/cli`) and
+`@notaharness/n10-desktop` (`apps/desktop`).
 
 1. Check the worktree and current versions. Choose one shared `-beta.N` version;
    both publish-prep scripts enforce equality through `scripts/shared-version.mjs`.
@@ -24,8 +24,8 @@ Publish only when the user asks. Both packages release together:
 5. Verify both packages' `beta` and `latest` tags point to the chosen version:
 
    ```sh
-   npm view @hermannbjorgvin/kirby dist-tags --json
-   npm view @hermannbjorgvin/kirby-desktop dist-tags --json
+   npm view @notaharness/n10 dist-tags --json
+   npm view @notaharness/n10-desktop dist-tags --json
    ```
 
 Each target builds, prepares its publishable `dist` package, publishes with

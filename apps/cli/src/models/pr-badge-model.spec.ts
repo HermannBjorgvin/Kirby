@@ -3,7 +3,7 @@ import type {
   BuildStatusState,
   PullRequestInfo,
   ReviewDecision,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import {
   buildEmoji,
   prBadgeModel,

@@ -1,5 +1,5 @@
 import { worktreeSessionKey } from '../session-key.js';
-import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
+import type { PullRequestInfo, CategorizedReviews } from '@n10/vcs-core';
 import type { AgentSession, ReviewCategory, SidebarItem } from '../types.js';
 import type { BabysitStatus } from '../babysit/babysit-model.js';
 

@@ -1,15 +1,15 @@
 # Orchestra plugin fixture
 
 `orchestra.tar.gz` is the unmodified `orchestra/` directory from
-[agent-plugins at 5523f241](https://github.com/HermannBjorgvin/agent-plugins/tree/5523f241c5f2082d337617b578ac5960be4e2ab6/orchestra).
-The plugin manifest declares version 2.0.0 and MIT licensing.
+[notaharness/plugins at 49910daa](https://github.com/notaharness/plugins/tree/49910daa13c27f39ac834099e7912ead09b5a626/orchestra).
+The plugin manifest declares version 1.0.0 and MIT licensing.
 
-SHA-256: `745ec2a22cfdd8b9548b50e2f42e9fba1544504541a5634c35b12789bdd0150e`.
+SHA-256: `8f2203443b94cecfc86e31b0aecb5f3d1329fa3612530fd16c30d24ba72d44d5`.
 
 Generate from a checkout of that repository:
 
 ```sh
-git archive --format=tar.gz --output=orchestra.tar.gz 5523f241c5f2082d337617b578ac5960be4e2ab6 orchestra
+git archive --format=tar.gz --output=orchestra.tar.gz 49910daa13c27f39ac834099e7912ead09b5a626 orchestra
 ```
 
 To update, review an upstream commit, export it with the same command, and

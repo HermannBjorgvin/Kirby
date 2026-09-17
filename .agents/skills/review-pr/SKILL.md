@@ -32,7 +32,7 @@ attach inline comments.
 Write a JSON payload to a temporary file, then submit it:
 
 ```sh
-gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input /tmp/kirby-review.json
+gh api repos/OWNER/REPO/pulls/NUMBER/reviews --input /tmp/n10-review.json
 ```
 
 Payload fields: `commit_id`, `body`, `event` (`COMMENT`, `APPROVE`, or
@@ -46,5 +46,5 @@ then the explanation. End each posted body with:
 ```markdown
 ---
 
-_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_
+_Posted via [n10](https://github.com/notaharness/n10) by an agent_
 ```

@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseUnifiedDiff } from '@kirby/diff';
+import { parseUnifiedDiff } from '@n10/diff';
 import { BINARY_NOTE } from './untracked-diff.js';
 import {
   DEFAULT_WORKTREE_DIFF_LIMITS,
@@ -73,7 +73,7 @@ function commitIn(path: string, files: Record<string, string | Buffer>): void {
 }
 
 beforeAll(() => {
-  repo = mkdtempSync(join(tmpdir(), 'kirby-worktree-diff-'));
+  repo = mkdtempSync(join(tmpdir(), 'n10-worktree-diff-'));
   git(repo, ['init', '-q', '-b', 'main', '.']);
   git(repo, ['config', 'user.email', 'test@example.com']);
   git(repo, ['config', 'user.name', 'Test']);
@@ -294,12 +294,14 @@ describe('fetchWorktreeDiffText', () => {
     });
     const files = parseUnifiedDiff(text);
 
-    expect(files.get('kirby/diff-truncated')?.at(-1)?.content).toMatch(
+    expect(files.get('n10/diff-truncated')?.at(-1)?.content).toMatch(
       /exceeded 0\.0 MB and was cut short/
     );
     // The file that fitted is whole — every one of its lines is there,
     // not a prefix ending mid-hunk.
-    expect(files.get('a.txt')?.filter((l) => l.type === 'add')).toHaveLength(20);
+    expect(files.get('a.txt')?.filter((l) => l.type === 'add')).toHaveLength(
+      20
+    );
     expect(files.has('b.txt')).toBe(false);
   });
 });

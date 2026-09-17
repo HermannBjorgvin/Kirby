@@ -6,8 +6,8 @@ import {
   snapshotLocal,
   snapshotRemote,
   type PlanItem,
-} from '@kirby/core/plan';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+} from '@n10/core/plan';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type {
   RemoteCommentThread,
   ReviewComment,
@@ -103,7 +103,7 @@ export function usePlanCheckout({
         : null;
       if (!item) return;
       const queued = plan.has(item.kind, item.id);
-      void window.kirby
+      void window.n10
         .showContextMenu([
           { id: 'toggle', label: queued ? 'Remove from plan' : 'Add to plan' },
           {

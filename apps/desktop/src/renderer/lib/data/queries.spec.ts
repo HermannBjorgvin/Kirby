@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
-  KirbyHostApi,
+  N10HostApi,
   RepoInfo,
   SidebarItem,
 } from '../../../host/contract.js';
@@ -17,8 +17,8 @@ import {
  * handful of bridge calls each case exercises is stubbed — anything
  * else being reached is itself a failure worth seeing.
  */
-function stubHost(api: Partial<KirbyHostApi>): void {
-  (globalThis as { window?: unknown }).window = { kirby: api };
+function stubHost(api: Partial<N10HostApi>): void {
+  (globalThis as { window?: unknown }).window = { n10: api };
 }
 
 afterEach(() => {
@@ -124,7 +124,7 @@ describe('resetRepoScopedCache', () => {
     qc.setQueryData(keys.settings('/repo'), { fields: [] });
     qc.setQueryData(keys.threads('/repo', 7), { threads: [] });
     qc.setQueryData(keys.version, { app: '1', electron: '2' });
-    qc.setQueryData(keys.terminals, [{ name: 'kirby-shell' }]);
+    qc.setQueryData(keys.terminals, [{ name: 'n10-shell' }]);
     qc.getMutationCache().build(qc, { mutationFn: () => Promise.resolve(1) });
     return qc;
   }
@@ -135,7 +135,7 @@ describe('resetRepoScopedCache', () => {
   it('keeps the terminal listing, which no repository owns', () => {
     const qc = seeded();
     resetRepoScopedCache(qc);
-    expect(qc.getQueryData(keys.terminals)).toEqual([{ name: 'kirby-shell' }]);
+    expect(qc.getQueryData(keys.terminals)).toEqual([{ name: 'n10-shell' }]);
   });
 
   it('keeps the open repository so the gate never blanks', () => {

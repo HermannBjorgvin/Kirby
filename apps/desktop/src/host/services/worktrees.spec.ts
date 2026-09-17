@@ -19,7 +19,7 @@ const calls = vi.hoisted(() => ({
 
 vi.mock('./repo.js', () => ({ requireRepo: () => '/repo' }));
 
-vi.mock('@kirby/vcs-core', () => ({ readConfig: () => calls.config }));
+vi.mock('@n10/vcs-core', () => ({ readConfig: () => calls.config }));
 
 vi.mock('node:child_process', () => ({
   spawn: (cmd: string, args: string[], opts: { detached: boolean }) => {
@@ -28,7 +28,7 @@ vi.mock('node:child_process', () => ({
   },
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   removeWorktreeSession: (branch: string, force: boolean, repo: string) => {
     calls.log.push(`remove-session:${repo}:${branch}:${force}`);
     return Promise.resolve(calls.removed);
@@ -40,7 +40,7 @@ vi.mock('./babysit.js', () => ({
     calls.log.push(`stop-babysit:${branch}`),
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   listWorktrees: () => Promise.resolve(calls.worktrees),
   listBranches: () => Promise.resolve(['main']),
   listAllBranches: () => Promise.resolve(['main', 'origin/main']),
@@ -119,7 +119,7 @@ describe('openInEditor', () => {
     expect(calls.spawned[0].args).toEqual(['/repo/.claude/worktrees/b']);
   });
 
-  it('spawns detached so closing Kirby does not close the editor', async () => {
+  it('spawns detached so closing n10 does not close the editor', async () => {
     calls.config = { editor: 'code' };
     await openInEditor('b');
     expect(calls.spawned[0].detached).toBe(true);

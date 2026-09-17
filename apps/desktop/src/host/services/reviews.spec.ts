@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 
 /**
  * Review calls have two jobs beyond forwarding to a provider.
@@ -29,7 +29,7 @@ const env = vi.hoisted(() => ({
   calls: [] as { method: string; args: unknown[] }[],
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   // `./sidebar.js` (imported for refreshPrList) stands its cache up at
   // load, and a verdict re-reads the list through it.
   createPullRequestCache: () => ({
@@ -45,7 +45,7 @@ vi.mock('@kirby/core', () => ({
   },
 }));
 
-vi.mock('@kirby/vcs-core', () => ({ readConfig: () => env.config }));
+vi.mock('@n10/vcs-core', () => ({ readConfig: () => env.config }));
 
 vi.mock('./repo.js', () => {
   const record =
@@ -96,7 +96,7 @@ beforeEach(() => {
   env.config = {
     vendor: 'github',
     vendorAuth: { token: 'tok' },
-    vendorProject: { repo: 'kirby', username: 'hermann' },
+    vendorProject: { repo: 'n10', username: 'hermann' },
   };
   env.configured = true;
   env.capabilities = {
@@ -237,7 +237,7 @@ describe('credentials', () => {
     await fetchCommentThreads(7);
     expect(called('fetchCommentThreads')[0].args).toEqual([
       { token: 'tok' },
-      { repo: 'kirby', username: 'hermann' },
+      { repo: 'n10', username: 'hermann' },
       7,
     ]);
   });

@@ -1,7 +1,7 @@
 import { getRepoRoot } from '../repo-root.js';
 import { worktreeSessionKey } from '../session-key.js';
-import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
-import { createWorktree } from '@kirby/worktree-manager';
+import type { AppConfig, PullRequestInfo } from '@n10/vcs-core';
+import { createWorktree } from '@n10/worktree-manager';
 import { isSessionAlive, hasSessionConnection } from '../pty-registry.js';
 import { hasLiveTmuxSession } from '../session-backend.js';
 import { stopSession } from './stop-session.js';

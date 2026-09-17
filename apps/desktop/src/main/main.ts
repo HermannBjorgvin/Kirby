@@ -14,11 +14,7 @@ import {
   setFolderPicker,
   setShellGlue,
 } from '../host/register-handlers.js';
-import {
-  applySessionBackend,
-  killAll,
-  probeTmuxAvailability,
-} from '@kirby/core';
+import { applySessionBackend, killAll, probeTmuxAvailability } from '@n10/core';
 import {
   MENU_EVENTS,
   type ContextMenuItem,
@@ -44,8 +40,8 @@ import {
 mark(MAIN_MARKS.module);
 
 const DIST = join(import.meta.dirname, '..');
-const DEV_SERVER_URL = process.env.KIRBY_VITE_URL;
-const APP_VERSION = process.env.KIRBY_DESKTOP_VERSION ?? 'dev';
+const DEV_SERVER_URL = process.env.N10_VITE_URL;
+const APP_VERSION = process.env.N10_DESKTOP_VERSION ?? 'dev';
 const IS_DEV = Boolean(DEV_SERVER_URL) || APP_VERSION === 'dev';
 
 let prefs: DesktopPrefs = loadDesktopPrefs();
@@ -75,8 +71,8 @@ function showAbout(): Promise<void> {
   return dialog
     .showMessageBox({
       type: 'info',
-      title: 'About Kirby Desktop',
-      message: 'Kirby Desktop',
+      title: 'About n10 Desktop',
+      message: 'n10 Desktop',
       detail: [
         `Version ${APP_VERSION}`,
         `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
@@ -143,7 +139,7 @@ function createMainWindow(): BrowserWindow {
     height: 860,
     minWidth: 900,
     minHeight: 600,
-    title: 'Kirby',
+    title: 'n10',
     show: false,
     autoHideMenuBar: false,
     ...chrome,
@@ -187,7 +183,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 // ── Headless QA hook ─────────────────────────────────────────────
-// KIRBY_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
+// N10_QA_STEPS='[{"js":"...","waitMs":500,"shot":"/tmp/a.png"}]'
 // runs each step's JS in the page, waits, captures a PNG, then quits.
 // Dev/CI only — lets us screenshot the real app under xvfb.
 
@@ -198,13 +194,13 @@ interface QaStep {
 }
 
 async function runQaSteps(win: BrowserWindow): Promise<void> {
-  const raw = process.env.KIRBY_QA_STEPS;
+  const raw = process.env.N10_QA_STEPS;
   if (!raw) return;
   let steps: QaStep[] = [];
   try {
     steps = JSON.parse(raw) as QaStep[];
   } catch (err) {
-    console.error('[desktop] bad KIRBY_QA_STEPS:', err);
+    console.error('[desktop] bad N10_QA_STEPS:', err);
     app.quit();
     return;
   }
@@ -322,7 +318,7 @@ if (!app.requestSingleInstanceLock()) {
     .catch((err: unknown) => {
       console.error('[desktop] startup failed', err);
       dialog.showErrorBox(
-        'Kirby could not start',
+        'n10 could not start',
         err instanceof Error ? err.message : String(err)
       );
       app.quit();

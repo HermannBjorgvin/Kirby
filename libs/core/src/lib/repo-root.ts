@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-/** Resolve the git toplevel of the repo Kirby is running in, or `null`
+/** Resolve the git toplevel of the repo n10 is running in, or `null`
  *  when there isn't one (launched outside a working tree, `git` missing
  *  from PATH). Cached on first call — including the `null` — because
  *  the TUI is anchored to one repo for its whole process.

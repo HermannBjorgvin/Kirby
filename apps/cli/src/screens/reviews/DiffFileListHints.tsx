@@ -1,5 +1,5 @@
 import { Text, Box } from 'ink';
-import { useKeybindResolve } from '@kirby/app-core';
+import { useKeybindResolve } from '@n10/app-core';
 
 /** The one-line key legend under the file list. */
 export function DiffFileListHints({

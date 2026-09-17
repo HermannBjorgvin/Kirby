@@ -14,7 +14,7 @@ import {
 let file: string;
 
 beforeEach(() => {
-  file = join(mkdtempSync(join(tmpdir(), 'kirby-recents-')), 'recents.json');
+  file = join(mkdtempSync(join(tmpdir(), 'n10-recents-')), 'recents.json');
 });
 
 describe('loadRecents', () => {

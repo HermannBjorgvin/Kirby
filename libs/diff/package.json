@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/diff",
+  "name": "@n10/diff",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/diff",
+    "name": "@n10/diff",
     "tags": [
       "type:lib",
       "scope:diff"

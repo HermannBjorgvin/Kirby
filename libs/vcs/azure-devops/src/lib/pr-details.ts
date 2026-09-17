@@ -1,4 +1,4 @@
-import type { BuildStatusState } from '@kirby/vcs-core';
+import type { BuildStatusState } from '@n10/vcs-core';
 
 /**
  * What a sync cycle already knows about a pull request, so it does not
@@ -199,7 +199,8 @@ export function dueForRefresh(
     // so a hundred running builds still take turns rather than the
     // lowest ids winning every cycle.
     if (Boolean(a.urgent) !== Boolean(b.urgent)) return a.urgent ? -1 : 1;
-    if (a.readAt !== b.readAt) return (a.readAt ?? -Infinity) - (b.readAt ?? -Infinity);
+    if (a.readAt !== b.readAt)
+      return (a.readAt ?? -Infinity) - (b.readAt ?? -Infinity);
     return a.prId - b.prId;
   });
   return new Set(ordered.slice(0, Math.max(0, budget)).map((c) => c.prId));
@@ -251,12 +252,12 @@ export function rememberPrDetails(
     // matching, which `reusableStatus` checks, not its absence here.
     status:
       read.status === undefined
-        ? (previous?.status ?? null)
+        ? previous?.status ?? null
         : { value: read.status, at: read.now, mergeKey: read.mergeKey },
-    statusReadAt: read.statusRead ? read.now : (previous?.statusReadAt ?? null),
+    statusReadAt: read.statusRead ? read.now : previous?.statusReadAt ?? null,
     comments:
       read.comments === undefined
-        ? (previous?.comments ?? null)
+        ? previous?.comments ?? null
         : { value: read.comments, at: read.now },
   });
 }
@@ -294,7 +295,10 @@ export function forgetRepoDetails(repoKey: string): void {
  * Drop rows this repository no longer has open, so a long session does
  * not accumulate an entry for every pull request it has ever seen.
  */
-export function pruneRepoDetails(repoKey: string, keep: Iterable<number>): void {
+export function pruneRepoDetails(
+  repoKey: string,
+  keep: Iterable<number>
+): void {
   const live = new Set([...keep].map((prId) => memoKey(repoKey, prId)));
   for (const key of [...memos.keys()]) {
     if (key.startsWith(`${repoKey}#`) && !live.has(key)) memos.delete(key);

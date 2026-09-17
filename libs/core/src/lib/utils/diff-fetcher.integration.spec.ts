@@ -3,8 +3,8 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { parseUnifiedDiff } from '@kirby/diff';
-import { interleaveComments, type ReviewComment } from '@kirby/review-comments';
+import { parseUnifiedDiff } from '@n10/diff';
+import { interleaveComments, type ReviewComment } from '@n10/review-comments';
 
 function makeComment(
   overrides: Partial<ReviewComment> & { id: string }

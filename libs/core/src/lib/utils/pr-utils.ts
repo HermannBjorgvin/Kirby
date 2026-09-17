@@ -7,7 +7,7 @@ import {
   type CategorizedReviews,
   type AppConfig,
   type VcsProvider,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 
 /**
  * Find PRs created by the current user that have no matching worktree session.

@@ -1,4 +1,4 @@
-import { getSession, hasPersistedTerminalSession } from '@kirby/core';
+import { getSession, hasPersistedTerminalSession } from '@n10/core';
 import type { SessionBuffer } from '../contract.js';
 
 /**
@@ -52,7 +52,7 @@ export function attachRelay(name: string, entry: RelayEntry): void {
     while (entry.bytes > BUFFER_LIMIT && entry.chunks.length > 1) {
       entry.bytes -= entry.chunks.shift()?.length ?? 0;
     }
-    broadcast?.('kirby/session/data', { name, data, seq: entry.seq });
+    broadcast?.('n10/session/data', { name, data, seq: entry.seq });
   });
   session.pty.onExit((code) => {
     // A respawn under the same name — a restart, or a terminal tab
@@ -65,7 +65,7 @@ export function attachRelay(name: string, entry: RelayEntry): void {
     const current = getSession(name);
     if (current && current !== session) return;
     console.log(`[desktop] session ${name} exited with code ${code}`);
-    broadcast?.('kirby/session/exit', {
+    broadcast?.('n10/session/exit', {
       name,
       code,
       retained: !!current && hasPersistedTerminalSession(name),

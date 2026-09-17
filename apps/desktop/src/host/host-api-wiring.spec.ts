@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { KirbyHostApi } from './contract.js';
+import type { N10HostApi } from './contract.js';
 
 /**
  * Which service each bridge method reaches, asserted rather than
@@ -117,7 +117,7 @@ vi.mock('./services/desktop-prefs.js', () =>
 
 const { createHostApi } = await import('./register-handlers.js');
 
-let api: KirbyHostApi;
+let api: N10HostApi;
 
 beforeEach(() => {
   calls.length = 0;
@@ -125,7 +125,7 @@ beforeEach(() => {
 });
 
 /** method → the service call it must make, given these arguments. */
-const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
+const WIRING: [keyof N10HostApi, unknown[], string][] = [
   ['openRepo', ['/repo'], 'repo.openRepo'],
   ['getRepo', [], 'repo.getRepo'],
   ['listRecentRepos', [], 'repo.listRecentRepos'],
@@ -209,7 +209,7 @@ const WIRING: [keyof KirbyHostApi, unknown[], string][] = [
     'terminals.launchTerminal',
   ],
   ['listTerminals', [], 'terminals.listTerminals'],
-  ['killTerminal', ['kirby-shell'], 'terminals.killTerminal'],
+  ['killTerminal', ['n10-shell'], 'terminals.killTerminal'],
 
   ['getDesktopPrefs', [], 'prefs.loadDesktopPrefs'],
 
@@ -249,7 +249,7 @@ describe('host API wiring', () => {
     ]);
     const covered = new Set(WIRING.map(([m]) => m));
     const missing = Object.keys(api).filter(
-      (m) => !covered.has(m as keyof KirbyHostApi) && !notDelegating.has(m)
+      (m) => !covered.has(m as keyof N10HostApi) && !notDelegating.has(m)
     );
     expect(missing).toEqual([]);
   });

@@ -4,8 +4,8 @@ import type {
   RemoteCommentThread,
   RemoteCommentReply,
   VcsProvider,
-} from '@kirby/vcs-core';
-import { logError } from '@kirby/logger';
+} from '@n10/vcs-core';
+import { logError } from '@n10/logger';
 
 const EMPTY_COMMENTS: PullRequestComments = {
   threads: [],

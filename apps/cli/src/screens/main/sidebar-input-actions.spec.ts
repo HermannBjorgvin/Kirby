@@ -1,15 +1,15 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type * as WorktreeManagerModule from '@kirby/worktree-manager';
-import type { WorktreeInfo } from '@kirby/worktree-manager';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type * as WorktreeManagerModule from '@n10/worktree-manager';
+import type { WorktreeInfo } from '@n10/worktree-manager';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import {
   ACTIONS,
   NORMIE_PRESET,
   resolveAction,
   type KeyPress,
   type SidebarItem,
-} from '@kirby/core';
+} from '@n10/core';
 import type { SidebarInputCtx } from './input-types.js';
 
 // Characterization suite for handleSidebarInput's action dispatch.
@@ -28,7 +28,7 @@ let liveSessions = new Set<string>();
 let exitedSessions = new Set<string>();
 const killSessionMock = vi.fn();
 
-vi.mock('@kirby/core', async (importOriginal) => ({
+vi.mock('@n10/core', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getSpawnedAt: (name: string) => (liveSessions.has(name) ? 1 : undefined),
   hasSession: (name: string) =>
@@ -37,7 +37,7 @@ vi.mock('@kirby/core', async (importOriginal) => ({
   stopSession: (name: string) => killSessionMock(name),
 }));
 
-vi.mock('@kirby/worktree-manager', async (importOriginal) => ({
+vi.mock('@n10/worktree-manager', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeManagerModule>()),
   listWorktrees: vi.fn(),
   listAllBranches: vi.fn(),
@@ -58,7 +58,7 @@ import {
   listAllBranches,
   listWorktrees,
   rebaseOntoMaster,
-} from '@kirby/worktree-manager';
+} from '@n10/worktree-manager';
 import { handleSidebarInput } from './sidebar-input.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────

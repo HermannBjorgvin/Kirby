@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseUnifiedDiff } from '@kirby/diff';
+import { parseUnifiedDiff } from '@n10/diff';
 
 describe('parseUnifiedDiff — line-ending handling', () => {
   it('strips trailing CR from CRLF-delimited diff text', () => {

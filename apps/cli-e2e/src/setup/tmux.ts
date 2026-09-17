@@ -5,29 +5,29 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 /**
- * Helpers for asserting on the tmux sessions Kirby creates.
+ * Helpers for asserting on the tmux sessions n10 creates.
  *
- * Every call takes the test's `kirby.homeDir`, because the fixture spawns
- * Kirby with `TMUX_TMPDIR=<homeDir>` — each test's tmux server therefore
+ * Every call takes the test's `n10.homeDir`, because the fixture spawns
+ * n10 with `TMUX_TMPDIR=<homeDir>` — each test's tmux server therefore
  * listens on a socket inside its own temp home, not the shared
  * /tmp/tmux-$UID one. A helper that omitted it would query a different
  * (usually empty) server and report every session as missing.
  *
  * A session's name is a label (`<repo>-<branch>`, with a numeric suffix
- * on collision) and is never parsed. What makes a session Kirby's is
+ * on collision) and is never parsed. What makes a session n10's is
  * its tags — `@orchestra-spawner`, `@orchestra-session-type`,
  * `@orchestra-repo`, `@orchestra-branch` — so every helper here lists
  * with the tags and matches on them, exactly as the app does.
  */
 
 /** Prefix for branches created by tmux e2e tests. Cleanup only ever
- *  touches sessions matching this, so a developer's real Kirby tmux
+ *  touches sessions matching this, so a developer's real n10 tmux
  *  sessions can't be caught in the blast radius. */
 const E2E_BRANCH_PREFIX = 'e2e-tmux-';
 
 /** Basename prefix of the temp homes the fixture creates. The tmux
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
-const HOME_PREFIX = 'kirby-e2e-web-home-';
+const HOME_PREFIX = 'n10-e2e-web-home-';
 
 export function tmuxAvailable(): boolean {
   try {
@@ -53,7 +53,7 @@ export function uniqueTmuxBranch(): string {
  *      default is the OS temp dir, i.e. the developer's own
  *      `/tmp/tmux-$UID/default`.
  *    - `TMUX` names a socket path outright and **wins**. A suite
- *      started from inside a tmux session — which is how Kirby's own
+ *      started from inside a tmux session — which is how n10's own
  *      agents run — reaches the developer's server no matter what
  *      `TMUX_TMPDIR` says.
  *
@@ -112,7 +112,7 @@ export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
   // Resolved *before* the try: `socketEnv` throws to stop a run that
   // would reach the wrong tmux server, and swallowing that here would
   // turn it into an empty list — which is exactly what the negative
-  // assertions ("no kirby session exists") expect, so they would pass
+  // assertions ("no n10 session exists") expect, so they would pass
   // while proving nothing, and teardown would silently reap nothing.
   const env = socketEnv(tmuxTmpdir);
   try {
@@ -153,16 +153,16 @@ export function listTmuxSessions(tmuxTmpdir: string): string[] {
   return listTaggedSessions(tmuxTmpdir).map((s) => s.name);
 }
 
-/** Names of the sessions on the test's server that carry Kirby's
+/** Names of the sessions on the test's server that carry n10's
  *  identity tags — whatever they are called. */
-export function kirbySessions(tmuxTmpdir: string): string[] {
+export function n10Sessions(tmuxTmpdir: string): string[] {
   return listTaggedSessions(tmuxTmpdir)
     .filter((s) => s.spawner && s.type)
     .map((s) => s.name);
 }
 
 /** The tagged worktree session for `branch`, if it exists. */
-export function findKirbySessionFor(
+export function findN10SessionFor(
   branch: string,
   tmuxTmpdir: string
 ): string | undefined {
@@ -171,15 +171,12 @@ export function findKirbySessionFor(
   )?.name;
 }
 
-export function kirbySessionExists(
-  branch: string,
-  tmuxTmpdir: string
-): boolean {
-  return findKirbySessionFor(branch, tmuxTmpdir) !== undefined;
+export function n10SessionExists(branch: string, tmuxTmpdir: string): boolean {
+  return findN10SessionFor(branch, tmuxTmpdir) !== undefined;
 }
 
 /**
- * Teardown for tmux-backed tests. `killAll()` on Kirby exit deliberately
+ * Teardown for tmux-backed tests. `killAll()` on n10 exit deliberately
  * only *detaches*, so every tmux-backed test would otherwise leave a live
  * session (holding a fake-agent process) behind.
  *
@@ -197,7 +194,7 @@ export function cleanupTmuxSessions(
         `refusing to clean up tmux sessions for non-e2e branch "${branch}"`
       );
     }
-    const name = findKirbySessionFor(branch, tmuxTmpdir);
+    const name = findN10SessionFor(branch, tmuxTmpdir);
     if (!name) continue;
     try {
       execFileSync('tmux', ['kill-session', '-t', `=${name}:`], {
@@ -226,15 +223,15 @@ export function killFixtureSessions(homeDir: string): void {
   }
 }
 
-// ── Sessions created without Kirby ───────────────────────────────
+// ── Sessions created without n10 ───────────────────────────────
 //
 // The other direction from the helpers above: instead of asserting on
-// what Kirby made, these *make* the thing Kirby is supposed to notice —
-// a worktree and a tmux session created the way a second Kirby, a
+// what n10 made, these *make* the thing n10 is supposed to notice —
+// a worktree and a tmux session created the way a second n10, a
 // script or an operator at a shell would create them: any name, and
 // the identity tags.
 
-/** The main checkout as Kirby records it in `@orchestra-repo`: the
+/** The main checkout as n10 records it in `@orchestra-repo`: the
  *  symlink-resolved git toplevel, not the fixture's `repoPath`, which
  *  can differ when tmpdir is a symlink (macOS /tmp → /private/tmp). */
 function repoRootOf(repoPath: string): string {
@@ -246,15 +243,15 @@ function repoRootOf(repoPath: string): string {
   );
 }
 
-/** The label Kirby would choose — `<repo>-<branch>` with `/`, `.` and
+/** The label n10 would choose — `<repo>-<branch>` with `/`, `.` and
  *  `:` rewritten. Any name would do; this one keeps `tmux ls` readable. */
-export function kirbyTmuxLabel(repoPath: string, branch: string): string {
+export function n10TmuxLabel(repoPath: string, branch: string): string {
   return `${basename(repoRootOf(repoPath))}-${branch}`.replace(/[/.:]/g, '-');
 }
 
 /**
- * Add a worktree under the directory Kirby's default resolver owns,
- * with plain git and no help from Kirby. Returns its absolute path.
+ * Add a worktree under the directory n10's default resolver owns,
+ * with plain git and no help from n10. Returns its absolute path.
  */
 export function addExternalWorktree(repoPath: string, branch: string): string {
   const path = join(repoPath, '.claude', 'worktrees', branch);
@@ -266,7 +263,7 @@ export function addExternalWorktree(repoPath: string, branch: string): string {
 }
 
 /**
- * Start a detached tmux session tagged the way Kirby tags a worktree
+ * Start a detached tmux session tagged the way n10 tags a worktree
  * session, on the test's own tmux server. Returns its name.
  *
  * `HOME` and `PATH` are pinned per session for the reason the backend
@@ -282,7 +279,7 @@ export function startExternalTmuxSession(opts: {
   worktreePath: string;
   command: string;
 }): string {
-  const name = kirbyTmuxLabel(opts.repoPath, opts.branch);
+  const name = n10TmuxLabel(opts.repoPath, opts.branch);
   const env = socketEnv(opts.homeDir);
   execFileSync(
     'tmux',
@@ -309,7 +306,7 @@ export function startExternalTmuxSession(opts: {
     { stdio: 'ignore', env }
   );
   const tags: Record<string, string> = {
-    '@orchestra-spawner': 'kirby',
+    '@orchestra-spawner': 'n10',
     '@orchestra-repo': repoRootOf(opts.repoPath),
     '@orchestra-session-type': 'worktree',
     '@orchestra-branch': opts.branch,

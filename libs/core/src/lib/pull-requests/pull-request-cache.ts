@@ -42,7 +42,7 @@ import type {
   BranchPrMap,
   PullRequestInfo,
   VcsProvider,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 
 export const PULL_REQUEST_POLL_DEFAULT_MS = 60_000;
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { SessionBackend, SessionSpec } from '@kirby/terminal';
+import type { SessionBackend, SessionSpec } from '@n10/terminal';
 import type * as TmuxCli from './tmux-cli.js';
 
 const mock = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ const mock = vi.hoisted(() => ({
   paneStateGated: false,
   paneStateResolvers: [] as (() => void)[],
   /** When true, tmuxPaneStateAsync answers `{ status: 'failed' }` —
-   *  Kirby could not talk to tmux this tick — regardless of `state`. */
+   *  n10 could not talk to tmux this tick — regardless of `state`. */
   readFailed: false,
   data: vi.fn(),
   spawn: vi.fn(),
@@ -25,7 +25,7 @@ const mock = vi.hoisted(() => ({
   write: vi.fn(),
   resize: vi.fn(),
 }));
-vi.mock('@kirby/terminal-pty', () => ({
+vi.mock('@n10/terminal-pty', () => ({
   PtySession: class {
     pid = 123;
     cols = 80;

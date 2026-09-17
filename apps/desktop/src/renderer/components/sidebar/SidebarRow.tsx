@@ -137,7 +137,7 @@ export function SidebarRow({
   /** Native (OS) context menu — built from the item's state. */
   const openContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
-    const chosen = await window.kirby.showContextMenu(
+    const chosen = await window.n10.showContextMenu(
       sidebarRowMenuItems({
         hasWorktree,
         running,

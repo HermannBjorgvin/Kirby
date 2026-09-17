@@ -1,9 +1,9 @@
 /**
- * How many times Kirby actually went to a provider, and how many times
+ * How many times n10 actually went to a provider, and how many times
  * it did not have to.
  *
  * The counters are always kept — they are four integers per provider —
- * but they are only ever *reported* when `KIRBY_LOG` is set, which is
+ * but they are only ever *reported* when `N10_LOG` is set, which is
  * also what enables the network trace they pair with. Their purpose is
  * answering "did that change reduce the request count?" with a number
  * rather than an impression, which is the only way to tell caching

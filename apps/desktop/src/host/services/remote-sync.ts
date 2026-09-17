@@ -3,9 +3,9 @@ import {
   remoteSyncIntervalMs,
   sweepMergedBranches,
   syncRemote,
-} from '@kirby/core';
-import { listWorktrees } from '@kirby/worktree-manager';
-import { readConfig } from '@kirby/vcs-core';
+} from '@n10/core';
+import { listWorktrees } from '@n10/worktree-manager';
+import { readConfig } from '@n10/vcs-core';
 import { PROVIDERS } from './repo.js';
 import { cachedPullRequests } from './pull-requests.js';
 import { removeWorktree } from './worktrees.js';
@@ -13,7 +13,7 @@ import type { SyncNoticeEvent } from '../contract.js';
 
 /**
  * The desktop's scheduling shell around the shared remote-sync core
- * (`@kirby/app-core` sync/remote-sync) — the same passes the TUI's
+ * (`@n10/app-core` sync/remote-sync) — the same passes the TUI's
  * useRemoteSync / useMergedBranches / useConflictCounts hooks drive:
  * git fetch + fast-forward main, the merged-branch sweep (with
  * auto-delete-on-merge), and conflict counting. Results decorate the

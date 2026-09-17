@@ -15,7 +15,7 @@ export interface SettingsGroupMeta {
 
 /** Section order on the page, and in the jump nav beside it. */
 export const GROUPS: SettingsGroupMeta[] = [
-  { key: 'appearance', label: 'Appearance', blurb: 'How Kirby Desktop looks.' },
+  { key: 'appearance', label: 'Appearance', blurb: 'How n10 Desktop looks.' },
   {
     key: 'general',
     label: 'General',
@@ -24,7 +24,7 @@ export const GROUPS: SettingsGroupMeta[] = [
   {
     key: 'agent',
     label: 'Agent',
-    blurb: 'Which AI coding agent Kirby launches.',
+    blurb: 'Which AI coding agent n10 launches.',
   },
   {
     key: 'sync',

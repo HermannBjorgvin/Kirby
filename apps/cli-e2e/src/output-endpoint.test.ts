@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { wtermHost } from './setup/constants.js';
 
 // GET /output exposes the wterm host's raw PTY ring buffer (base64).
@@ -8,23 +8,23 @@ import { wtermHost } from './setup/constants.js';
 // test pins the endpoint's contract.
 
 test.describe('Raw output endpoint', () => {
-  test('returns the PTY byte stream', async ({ kirby, baseURL }) => {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+  test('returns the PTY byte stream', async ({ n10, baseURL }) => {
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     const res = await fetch(`${wtermHost(baseURL)}/output`);
     expect(res.ok).toBe(true);
     const { base64 } = (await res.json()) as { base64: string };
     const raw = Buffer.from(base64, 'base64').toString('latin1');
-    expect(raw).toContain('Kirby');
+    expect(raw).toContain('n10');
     // Raw ANSI, not the rendered DOM text.
     expect(raw).toContain('\x1b[');
   });
 });
 
 test.describe('Forced kitty image mode', () => {
-  test.use({ kirbyEnv: { KIRBY_IMAGES: 'kitty' } });
+  test.use({ n10Env: { N10_IMAGES: 'kitty' } });
 
-  test('boots normally with KIRBY_IMAGES=kitty', async ({ kirby }) => {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await expect(kirby.term.getByText('(no sessions)').first()).toBeVisible();
+  test('boots normally with N10_IMAGES=kitty', async ({ n10 }) => {
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
+    await expect(n10.term.getByText('(no sessions)').first()).toBeVisible();
   });
 });

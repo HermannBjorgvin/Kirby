@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import type { ReviewComment } from '@kirby/review-comments';
+import type { ReviewComment } from '@n10/review-comments';
 import type * as Util from './util.js';
 import { parseArgs } from './util.js';
 
@@ -67,9 +67,9 @@ describe('add-comment', () => {
 
   beforeEach(async () => {
     originalHome = process.env.HOME;
-    home = mkdtempSync(join(tmpdir(), 'kirby-util-'));
+    home = mkdtempSync(join(tmpdir(), 'n10-util-'));
     process.env.HOME = home;
-    // ~/.kirby is resolved once at import time, so the module chain has
+    // ~/.n10 is resolved once at import time, so the module chain has
     // to be re-imported after HOME moves.
     vi.resetModules();
     util = await import('./util.js');
@@ -88,7 +88,7 @@ describe('add-comment', () => {
    * nothing about the file that is actually the contract.
    */
   const stored = (): ReviewComment[] => {
-    const path = join(home, '.kirby', 'reviews', `pr-${PR}`, 'comments.json');
+    const path = join(home, '.n10', 'reviews', `pr-${PR}`, 'comments.json');
     return (
       JSON.parse(readFileSync(path, 'utf8')) as {
         comments: ReviewComment[];

@@ -12,16 +12,16 @@ const setTitle = (title: string) => `\x1b]2;${title}\x07`;
 
 // XTWINOPS: push the current title onto the terminal's own title stack,
 // pop it back on quit. Terminals without a title stack ignore both and
-// simply keep the title Kirby set.
+// simply keep the title n10 set.
 const PUSH_TITLE = '\x1b[22;2t';
 const POP_TITLE = '\x1b[23;2t';
 
 let pushed = false;
 
 /**
- * Name of the repo Kirby is driving.
+ * Name of the repo n10 is driving.
  *
- * Resolved from the *common* git dir, so a Kirby launched from inside
+ * Resolved from the *common* git dir, so a n10 launched from inside
  * one of its own worktrees still titles the tab with the parent repo
  * rather than the session directory.
  */
@@ -60,7 +60,7 @@ export function setWindowTitle(title: string): void {
   process.stdout.write(setTitle(clean));
 }
 
-/** Hand the tab back the title it had before Kirby started. */
+/** Hand the tab back the title it had before n10 started. */
 export function restoreWindowTitle(): void {
   if (!pushed) return;
   pushed = false;

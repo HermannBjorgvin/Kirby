@@ -13,18 +13,18 @@
  * reachable only from the @integration suite, which needs a token and
  * therefore does not run on most pull requests.
  *
- * The scenario is a JSON file named by KIRBY_FAKE_GH; its shape is
+ * The scenario is a JSON file named by N10_FAKE_GH; its shape is
  * documented in setup/fake-gh.ts. Anything not in it answers with an
  * empty result rather than failing, so a test declares only what it
  * cares about.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const scenarioPath = process.env.KIRBY_FAKE_GH;
+const scenarioPath = process.env.N10_FAKE_GH;
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 
 /**
- * Optional stand-in for the round trip to GitHub (KIRBY_FAKE_GH_LATENCY_MS).
+ * Optional stand-in for the round trip to GitHub (N10_FAKE_GH_LATENCY_MS).
  *
  * Off by default, so the e2e suite stays as fast as it was. The perf
  * suite turns it on: a provider that answers instantly hides the thing
@@ -33,7 +33,7 @@ const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
  * the app waits on — a real slow call blocks nothing else in *this*
  * process either.
  */
-const latency = Number(process.env.KIRBY_FAKE_GH_LATENCY_MS ?? 0);
+const latency = Number(process.env.N10_FAKE_GH_LATENCY_MS ?? 0);
 if (latency > 0) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, latency);
 }
@@ -98,10 +98,10 @@ function searchNode(pr) {
     headRefName: pr.headRefName,
     baseRefName: pr.baseRefName ?? 'main',
     headRefOid: pr.headRefOid ?? 'f'.repeat(40),
-    url: `https://github.com/${scenario.owner ?? 'kirby'}/${
+    url: `https://github.com/${scenario.owner ?? 'n10'}/${
       scenario.repo ?? 'fixture'
     }/pull/${pr.number}`,
-    author: { login: pr.author ?? scenario.username ?? 'kirby-tester' },
+    author: { login: pr.author ?? scenario.username ?? 'n10-tester' },
     isDraft: pr.isDraft ?? false,
     reviews: {
       nodes: (pr.reviews ?? []).map((r) => ({
@@ -158,7 +158,7 @@ function threadNode(t, i) {
 if (argv[0] === 'auth' && argv[1] === 'status') {
   out(
     `github.com\n  ✓ Logged in to github.com account ${
-      scenario.username ?? 'kirby-tester'
+      scenario.username ?? 'n10-tester'
     } (keyring)\n`
   );
 }
@@ -209,7 +209,7 @@ if (argv[0] === 'api' && argv[1] === 'graphql') {
     const found = findThread(vars.threadId);
     const comment = {
       id: `reply-${Date.now()}`,
-      author: scenario.username ?? 'kirby-tester',
+      author: scenario.username ?? 'n10-tester',
       body: vars.body,
       createdAt: new Date().toISOString(),
     };
@@ -234,7 +234,7 @@ if (argv[0] === 'api' && argv[1] === 'graphql') {
   if (query.includes('addComment(')) {
     const pr = prs.find((p) => `PR_${p.number}` === vars.subjectId);
     const comment = {
-      author: scenario.username ?? 'kirby-tester',
+      author: scenario.username ?? 'n10-tester',
       body: vars.body,
       createdAt: new Date().toISOString(),
     };
@@ -300,7 +300,7 @@ if (
   }
 
   if (argv[0] === 'api' && argv[1] === '/user') {
-    out({ login: scenario.username ?? 'kirby-tester' });
+    out({ login: scenario.username ?? 'n10-tester' });
   }
 
   process.stderr.write(`fake gh: unhandled invocation: ${argv.join(' ')}\n`);

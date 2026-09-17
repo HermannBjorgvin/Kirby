@@ -1,4 +1,4 @@
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 
 // ── Session menu model ───────────────────────────────────────────
 //

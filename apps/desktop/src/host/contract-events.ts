@@ -32,8 +32,8 @@ export interface SessionExitEvent {
 
 /** Channels the main process pushes events on (ipcRenderer.on). */
 export const SESSION_EVENTS = {
-  data: 'kirby/session/data',
-  exit: 'kirby/session/exit',
+  data: 'n10/session/data',
+  exit: 'n10/session/exit',
 } as const;
 
 // ── Native menus ─────────────────────────────────────────────────
@@ -60,13 +60,13 @@ export interface MenuCommandEvent {
 }
 
 export const MENU_EVENTS = {
-  command: 'kirby/menu/command',
+  command: 'n10/menu/command',
 } as const;
 
 // ── Remote sync ──────────────────────────────────────────────────
 
 export const SYNC_EVENTS = {
-  notice: 'kirby/sync/notice',
+  notice: 'n10/sync/notice',
   /**
    * Background remote data (the pull request list) has landed and the
    * sidebar model would now answer differently.
@@ -76,7 +76,7 @@ export const SYNC_EVENTS = {
    * whenever the renderer's poll interval next came round — up to four
    * seconds after the host already had them.
    */
-  remote: 'kirby/sync/remote',
+  remote: 'n10/sync/remote',
 } as const;
 
 // ── Discovery ────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ export const DISCOVERY_EVENTS = {
    * provider, this one means the local world changed underneath us.
    * A renderer may well want to react to only one of them.
    */
-  changed: 'kirby/sidebar/discovered',
+  changed: 'n10/sidebar/discovered',
 } as const;
 
 // ── Babysitting ──────────────────────────────────────────────────
@@ -105,7 +105,7 @@ export const BABYSIT_EVENTS = {
    * hold, a delivery into a running agent — reaches the renderer on
    * the sidebar item and needs no event.
    */
-  changed: 'kirby/babysit/changed',
+  changed: 'n10/babysit/changed',
 } as const;
 
 export interface BabysitChangedEvent {

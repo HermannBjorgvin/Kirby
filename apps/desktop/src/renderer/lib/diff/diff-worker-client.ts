@@ -1,4 +1,4 @@
-import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
+import { parseUnifiedDiff, type DiffLine } from '@n10/diff';
 import type {
   SlimToken,
   WorkerRequest,
@@ -53,12 +53,12 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
  * The interesting number is not how long the worker computes but how
  * long the *caller* waits, queueing included — that is the gap between
  * a diff appearing and it becoming readable, and it is invisible from
- * inside the worker. Named `kirby:diff:<type>`, so devtools and the
+ * inside the worker. Named `n10:diff:<type>`, so devtools and the
  * perf harness both read them with no extra wiring.
  */
 function measure(type: WorkerRequest['type'], startedAt: number): void {
   try {
-    performance.measure(`kirby:diff:${type}`, {
+    performance.measure(`n10:diff:${type}`, {
       start: startedAt,
       end: performance.now(),
     });

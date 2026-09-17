@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   sessions: [] as TaggedSession[],
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
 }));
 vi.mock('../session-resolver.js', () => ({
@@ -52,7 +52,7 @@ function session(
     created: 1,
     paneDead: false,
     path,
-    spawner: 'kirby',
+    spawner: 'n10',
     repo,
     type: 'worktree',
     branch,

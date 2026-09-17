@@ -76,12 +76,12 @@ export interface TestRepoOptions {
 }
 
 export function createTestRepo(opts: TestRepoOptions = {}): string {
-  const parent = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-'));
+  const parent = mkdtempSync(join(tmpdir(), 'n10-desktop-e2e-'));
   const dir = opts.name ? join(parent, opts.name) : parent;
   if (opts.name) mkdirSync(dir);
   git(dir, ['init', '-q', '-b', 'main']);
-  git(dir, ['config', 'user.email', 'test@kirby.dev']);
-  git(dir, ['config', 'user.name', 'Kirby Test']);
+  git(dir, ['config', 'user.email', 'test@n10.dev']);
+  git(dir, ['config', 'user.name', 'n10 Test']);
   // Commit hooks and signing would prompt or fail in CI.
   git(dir, ['config', 'commit.gpgsign', 'false']);
   writeFileSync(join(dir, 'README.md'), '# test repo\n', 'utf8');
@@ -170,9 +170,7 @@ export function cleanupTestRepo(dir: string): void {
   // A named repo lives one level inside the tempdir we made, so remove
   // that parent rather than leaking it.
   const parent = dirname(dir);
-  const target = basename(parent).startsWith('kirby-desktop-e2e-')
-    ? parent
-    : dir;
+  const target = basename(parent).startsWith('n10-desktop-e2e-') ? parent : dir;
   try {
     rmSync(target, { recursive: true, force: true });
   } catch {

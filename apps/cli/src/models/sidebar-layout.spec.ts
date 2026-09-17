@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import type { SidebarItem } from '@kirby/core';
-import { LAYOUT } from '@kirby/app-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import type { SidebarItem } from '@n10/core';
+import { LAYOUT } from '@n10/app-core';
 import {
   buildSidebarRows,
   getSectionKey,

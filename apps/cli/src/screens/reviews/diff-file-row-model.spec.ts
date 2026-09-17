@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DiffFile } from '@kirby/diff';
+import type { DiffFile } from '@n10/diff';
 import { fileRowText, statusBadge } from './diff-file-row-model.js';
 
 function file(over: Partial<DiffFile> = {}): DiffFile {

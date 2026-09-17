@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/logger',
   test: {
-    name: '@kirby/logger',
+    name: '@n10/logger',
     watch: false,
     globals: true,
     environment: 'node',

@@ -1,24 +1,20 @@
 import { useCallback, useMemo } from 'react';
 import { useInput } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import { clampOffset, totalRows } from '@kirby/core';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import { clampOffset, totalRows } from '@n10/core';
 import { DiffFileList } from '../reviews/DiffFileList.js';
 import { computeDiffListLayout } from '../reviews/diff-list-layout.js';
 import { useDiffListScrollSync } from '../../hooks/useDiffListScrollSync.js';
 import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
-import type {
-  TerminalLayout,
-  PaneModeValue,
-  DiffBundle,
-} from '@kirby/app-core';
+import type { TerminalLayout, PaneModeValue, DiffBundle } from '@n10/app-core';
 import {
   useKeybindResolve,
   useSessionActions,
   usePlan,
   useDiffFileListViewModel,
   LAYOUT,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 import { handleDiffFileListInput } from './main-input.js';
 
 interface DiffFileListContainerProps {

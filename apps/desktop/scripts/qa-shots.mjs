@@ -5,7 +5,7 @@
  *
  *   node apps/desktop/scripts/qa-shots.mjs <repoPath> <outDir>
  *
- * Requires `nx build desktop` first. Uses the KIRBY_QA_STEPS hook in
+ * Requires `nx build desktop` first. Uses the N10_QA_STEPS hook in
  * src/main/main.ts.
  */
 import { spawnSync } from 'node:child_process';
@@ -91,7 +91,7 @@ const args = useXvfb
 // rather than overridden, and the socket points at an empty scratch dir.
 const qaEnv = {
   ...process.env,
-  TMUX_TMPDIR: mkdtempSync(join(tmpdir(), 'kirby-qa-tmux-')),
+  TMUX_TMPDIR: mkdtempSync(join(tmpdir(), 'n10-qa-tmux-')),
 };
 delete qaEnv.TMUX;
 delete qaEnv.TMUX_PANE;
@@ -101,13 +101,13 @@ const res = spawnSync(cmd, args, {
   timeout: 150_000,
   env: {
     ...qaEnv,
-    KIRBY_START_DIR: repo,
-    KIRBY_DESKTOP_VERSION: 'qa',
-    // A caller may pre-set KIRBY_QA_STEPS to drive a custom scenario.
-    KIRBY_QA_STEPS: process.env.KIRBY_QA_STEPS ?? JSON.stringify(steps),
+    N10_START_DIR: repo,
+    N10_DESKTOP_VERSION: 'qa',
+    // A caller may pre-set N10_QA_STEPS to drive a custom scenario.
+    N10_QA_STEPS: process.env.N10_QA_STEPS ?? JSON.stringify(steps),
   },
 });
-if (!process.env.KIRBY_QA_STEPS && !existsSync(join(out, '01-workspace.png'))) {
+if (!process.env.N10_QA_STEPS && !existsSync(join(out, '01-workspace.png'))) {
   console.error('[qa-shots] no screenshots were produced');
   process.exit(res.status ?? 1);
 }

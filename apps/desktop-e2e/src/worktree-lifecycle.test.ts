@@ -25,7 +25,7 @@ test.describe('Worktree lifecycle', () => {
       true
     );
     // …that git itself reports, so this isn't just a stray directory.
-    const worktrees = await page.evaluate(() => window.kirby.listWorktrees());
+    const worktrees = await page.evaluate(() => window.n10.listWorktrees());
     expect(worktrees.map((w) => w.branch)).toContain(branch);
 
     await expect(tab(page, new RegExp(branch))).toBeVisible();

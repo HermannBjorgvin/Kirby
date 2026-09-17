@@ -29,14 +29,14 @@ import {
  * a render, on top of all the polling.
  */
 
-const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 3);
-const IDLE_MS = Number(process.env.KIRBY_PERF_IDLE_MS ?? 10_000);
+const ITERATIONS = Number(process.env.N10_PERF_ITERATIONS ?? 3);
+const IDLE_MS = Number(process.env.N10_PERF_IDLE_MS ?? 10_000);
 const BRANCH = 'perf-agent';
 
 test('idle with an agent', async () => {
   test.setTimeout((90_000 + IDLE_MS * 2) * ITERATIONS);
   const repoPath = createTestRepo({
-    name: 'kirby-perf',
+    name: 'n10-perf',
     worktrees: [
       { branch: BRANCH, files: { 'a.ts': 'export const a = 1;\n' } },
       { branch: 'perf-other', files: { 'b.ts': 'export const b = 2;\n' } },
@@ -50,7 +50,7 @@ test('idle with an agent', async () => {
         repoPath,
         // Streams forever: the terminal keeps receiving chunks, and the
         // activity registry keeps reporting the session as active.
-        kirbyConfig: {
+        n10Config: {
           aiCommand: fakeAgent({ stream: true, intervalMs: 150 }),
         },
       });
@@ -66,7 +66,7 @@ test('idle with an agent', async () => {
         // means the measurement starts against a live session.
         await sidebarRow(page, new RegExp(BRANCH)).first().dblclick();
         await page
-          .getByText('kirby-fake-agent-ready')
+          .getByText('n10-fake-agent-ready')
           .first()
           .waitFor({ state: 'visible', timeout: 60_000 });
         // Let the polls reach their steady state before counting.
@@ -115,7 +115,7 @@ test('idle with an agent on a large change', async () => {
     for (let i = 0; i < ITERATIONS; i++) {
       const app = await launchApp({
         repoPath: repo.path,
-        kirbyConfig: {
+        n10Config: {
           aiCommand: fakeAgent({ stream: true, intervalMs: 150 }),
         },
       });
@@ -127,7 +127,7 @@ test('idle with an agent on a large change', async () => {
           .waitFor({ state: 'visible', timeout: 30_000 });
         await sidebarRow(page, new RegExp(repo.branch)).first().dblclick();
         await page
-          .getByText('kirby-fake-agent-ready')
+          .getByText('n10-fake-agent-ready')
           .first()
           .waitFor({ state: 'visible', timeout: 60_000 });
         await pace(page, 4000);

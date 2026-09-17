@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/image-loader',
   test: {
-    name: '@kirby/image-loader',
+    name: '@n10/image-loader',
     watch: false,
     globals: true,
     environment: 'node',

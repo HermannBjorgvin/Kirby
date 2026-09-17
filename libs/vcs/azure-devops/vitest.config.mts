@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../../node_modules/.vite/libs/vcs/azure-devops',
   test: {
-    name: '@kirby/vcs-azure-devops',
+    name: '@n10/vcs-azure-devops',
     watch: false,
     globals: true,
     environment: 'node',

@@ -23,7 +23,7 @@ const TERMINAL_LABEL_MAX = 24;
 /**
  * Shorten a path from the front, so its tail stays readable.
  *
- * Whole segments go first — `…/Code/kirby` rather than `…e/Code/kirby`
+ * Whole segments go first — `…/Code/n10` rather than `…e/Code/n10`
  * — and only when the last segment alone is too long is it cut inside.
  */
 export function truncateLeading(path: string, max: number): string {

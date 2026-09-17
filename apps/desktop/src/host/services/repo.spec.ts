@@ -27,7 +27,7 @@ import {
   openStartupRepo,
 } from './repo.js';
 import { loadRecents, saveRecents } from './recent-repos.js';
-import type { RecentRepo } from '@kirby/vcs-core';
+import type { RecentRepo } from '@n10/vcs-core';
 
 const recents = (cwds: string[]): RecentRepo[] =>
   cwds.map((cwd, i) => ({ cwd, lastOpenedAt: i }));
@@ -36,7 +36,7 @@ let gitDir: string;
 let plainDir: string;
 
 beforeEach(() => {
-  const base = mkdtempSync(join(tmpdir(), 'kirby-repo-test-'));
+  const base = mkdtempSync(join(tmpdir(), 'n10-repo-test-'));
   gitDir = join(base, 'repo');
   mkdirSync(join(gitDir, '.git'), { recursive: true });
   plainDir = join(base, 'plain');
@@ -68,8 +68,8 @@ describe('isGitRepo', () => {
 });
 
 describe('openStartupRepo', () => {
-  it('opens the repo when KIRBY_START_DIR is a valid git repo', () => {
-    const info = openStartupRepo({ KIRBY_START_DIR: gitDir });
+  it('opens the repo when N10_START_DIR is a valid git repo', () => {
+    const info = openStartupRepo({ N10_START_DIR: gitDir });
     expect(info).not.toBeNull();
     expect(info!.cwd).toBe(gitDir);
     expect(getRepo()?.cwd).toBe(gitDir);
@@ -84,7 +84,7 @@ describe('openStartupRepo', () => {
 
   it('skips dead recents when restoring', () => {
     const info = openStartupRepo(
-      { KIRBY_START_DIR: plainDir },
+      { N10_START_DIR: plainDir },
       recents(['/gone/repo', gitDir])
     );
     // invalid start dir falls through to the first valid recent
@@ -93,7 +93,7 @@ describe('openStartupRepo', () => {
   });
 
   it('returns null with no start dir and empty recents', () => {
-    expect(openStartupRepo({ KIRBY_START_DIR: undefined }, [])).toBeNull();
+    expect(openStartupRepo({ N10_START_DIR: undefined }, [])).toBeNull();
   });
 });
 
@@ -102,7 +102,7 @@ describe('isGitRepo (worktrees and submodules)', () => {
     // git worktrees and submodules point at the real git dir with a
     // file, not a directory; rejecting those would hide every worktree
     // from the picker.
-    const base = mkdtempSync(join(tmpdir(), 'kirby-repo-file-'));
+    const base = mkdtempSync(join(tmpdir(), 'n10-repo-file-'));
     const wt = join(base, 'wt');
     mkdirSync(wt, { recursive: true });
     writeFileSync(join(wt, '.git'), 'gitdir: /elsewhere/.git/worktrees/wt\n');
@@ -114,7 +114,7 @@ describe('isGitRepo (worktrees and submodules)', () => {
   });
 
   it('rejects a directory that does not exist', () => {
-    expect(isGitRepo(join(tmpdir(), 'kirby-definitely-not-here'))).toBe(false);
+    expect(isGitRepo(join(tmpdir(), 'n10-definitely-not-here'))).toBe(false);
   });
 });
 
@@ -191,7 +191,7 @@ describe('opening a repository through a symlink', () => {
 
   it('canonicalises the start directory the same way', () => {
     saveRecents([]);
-    const info = openStartupRepo({ KIRBY_START_DIR: link });
+    const info = openStartupRepo({ N10_START_DIR: link });
     expect(info?.cwd).toBe(real);
   });
 });
@@ -205,8 +205,8 @@ describe('recent repositories', () => {
 
   it('marks a recent that no longer exists as invalid rather than dropping it', () => {
     // The picker greys these out, which tells the user what happened;
-    // silently removing them looks like Kirby lost their repo.
-    const dead = join(tmpdir(), 'kirby-gone-forever');
+    // silently removing them looks like n10 lost their repo.
+    const dead = join(tmpdir(), 'n10-gone-forever');
     saveRecents(recents([gitDir, dead]));
     const listed = listRecentRepos();
     expect(listed.map((r) => r.cwd)).toContain(dead);

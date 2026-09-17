@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as ReviewCommentsModule from '@kirby/review-comments';
-import type { ReviewComment } from '@kirby/review-comments';
+import type * as ReviewCommentsModule from '@n10/review-comments';
+import type { ReviewComment } from '@n10/review-comments';
 
 /**
  * Draft posting is the one host path that mutates somebody else's
@@ -22,15 +22,15 @@ vi.mock('./repo.js', () => ({
   requireRepo: () => '/repo',
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: () => state.config,
 }));
 
-vi.mock('@kirby/review-comments', async () => ({
+vi.mock('@n10/review-comments', async () => ({
   // The real one: settling a body's header against its severity is
   // logic under test here, not a collaborator to stub out.
   resolveComment: (
-    await vi.importActual<typeof ReviewCommentsModule>('@kirby/review-comments')
+    await vi.importActual<typeof ReviewCommentsModule>('@n10/review-comments')
   ).resolveComment,
   readComments: () => state.comments.map((c) => ({ ...c })),
   updateComment: (_prId: number, id: string, patch: Partial<ReviewComment>) => {
@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 
 describe('PR id validation', () => {
-  // prId becomes a path segment under ~/.kirby/reviews, so anything
+  // prId becomes a path segment under ~/.n10/reviews, so anything
   // that isn't a positive integer could write outside that directory.
   it.each([
     ['a string', '../../etc'],

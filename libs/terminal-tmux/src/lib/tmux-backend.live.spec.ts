@@ -23,7 +23,7 @@ import {
   tmuxListSessionsDetailed,
   tmuxShowOption,
 } from './tmux-cli.js';
-import type { SessionSpec } from '@kirby/terminal';
+import type { SessionSpec } from '@n10/terminal';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 
 function tmuxAvailable(): boolean {
@@ -155,12 +155,12 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     backend.dispose();
 
     // Tmux session should still exist — this is the persistence
-    // guarantee that lets sessions survive Kirby restarts.
+    // guarantee that lets sessions survive n10 restarts.
     await settle(100);
     expect(tmuxHasSession(name)).toBe(true);
   });
 
-  // The whole point of the tmux backend: Kirby exits (dispose), the
+  // The whole point of the tmux backend: n10 exits (dispose), the
   // user relaunches, and the agent is still there with its history.
   // The unit suite can only assert the attach argv; this proves that
   // attaching by a resolved name lands on the *existing* session rather
@@ -179,12 +179,12 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
     await settle(500);
     const firstPanePid = tmuxPanePid(name);
 
-    // Kirby "exits": detach only, tmux keeps running.
+    // n10 "exits": detach only, tmux keeps running.
     first.dispose();
     await settle(200);
     expect(tmuxHasSession(name)).toBe(true);
 
-    // Kirby "relaunches" and resolves the same session.
+    // n10 "relaunches" and resolves the same session.
     const second = await factory({ resolve: () => name })(spec);
     const chunks: string[] = [];
     second.onData((chunk) => chunks.push(chunk));
@@ -331,7 +331,7 @@ describe.skipIf(SKIP)('TmuxBackend live integration', () => {
       expect(tmuxListSessions()).not.toContain(name);
 
       // Deliberately not through the factory: this is the scenario —
-      // something other than Kirby made the session.
+      // something other than n10 made the session.
       startForeignSession(name);
 
       expect(tmuxListSessions()).toContain(name);

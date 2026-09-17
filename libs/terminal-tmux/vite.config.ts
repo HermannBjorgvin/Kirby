@@ -10,7 +10,7 @@ export default defineConfig(() => ({
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/terminal-tmux',
+    name: '@n10/terminal-tmux',
     watch: false,
     globals: true,
     environment: 'node',

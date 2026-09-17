@@ -1,7 +1,7 @@
 # libs/terminal-tmux — persistent session transport
 
 Requires system tmux ≥ 3.2 for per-session environment flags. The package
-contains no Kirby identity, agent or Orchestra policy. Core supplies an
+contains no n10 identity, agent or Orchestra policy. Core supplies an
 explicit serializable `TmuxLaunchPlan` to async `createTmuxBackend`:
 
 - `create`: allocate a sanitized free label, install tags and retention options,

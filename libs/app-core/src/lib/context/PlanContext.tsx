@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import { usePlanStore } from '../plan/use-plan-store.js';
-import type { PlanItem } from '@kirby/core';
+import type { PlanItem } from '@n10/core';
 
 export interface PlanValue {
   /** Reactive snapshot — read to subscribe; mutate via the methods. */

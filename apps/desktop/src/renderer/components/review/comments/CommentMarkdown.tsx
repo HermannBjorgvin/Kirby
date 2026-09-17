@@ -55,8 +55,7 @@ function ExternalAnchor({ href, children, ...rest }: ComponentProps<'a'>) {
       href={href}
       onClick={(e) => {
         e.preventDefault();
-        if (href && /^https?:/i.test(href))
-          void window.kirby.openExternal(href);
+        if (href && /^https?:/i.test(href)) void window.n10.openExternal(href);
       }}
       title={href}
     >
@@ -87,7 +86,7 @@ function CommentImage({ src, alt }: ComponentProps<'img'>) {
         <button
           type="button"
           className="inline-flex items-center gap-1 text-primary hover:underline"
-          onClick={() => void window.kirby.openExternal(url)}
+          onClick={() => void window.n10.openExternal(url)}
         >
           open <ExternalLinkIcon className="size-3" />
         </button>
@@ -129,7 +128,7 @@ function CommentImage({ src, alt }: ComponentProps<'img'>) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void window.kirby.openExternal(url)}
+              onClick={() => void window.n10.openExternal(url)}
             >
               <ExternalLinkIcon /> Open original
             </Button>

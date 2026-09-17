@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/logger",
+  "name": "@n10/logger",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/logger",
+    "name": "@n10/logger",
     "tags": [
       "type:lib",
       "scope:logger"

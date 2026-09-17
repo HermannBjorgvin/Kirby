@@ -58,7 +58,7 @@ export function saveClipboardImage(data: Uint8Array, mimeType: string): string {
       )}MB, limit ${MAX_BYTES / 1024 / 1024}MB)`
     );
   }
-  const dir = join(tmpdir(), 'kirby-pasted-images');
+  const dir = join(tmpdir(), 'n10-pasted-images');
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `paste-${randomBytes(8).toString('hex')}.${ext}`);
   writeFileSync(path, data);

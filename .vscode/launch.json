@@ -37,9 +37,9 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug @kirby/cli-wterm-host with Nx",
+      "name": "Debug @n10/cli-wterm-host with Nx",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["nx", "serve", "@kirby/cli-wterm-host"],
+      "runtimeArgs": ["nx", "serve", "@n10/cli-wterm-host"],
       "env": {
         "NODE_OPTIONS": "--inspect=9230"
       },
@@ -55,7 +55,7 @@
     {
       "type": "chrome",
       "request": "launch",
-      "name": "Kirby in Chrome (wterm)",
+      "name": "n10 in Chrome (wterm)",
       "url": "http://localhost:5174",
       "webRoot": "${workspaceFolder}/apps/cli-wterm-host/src/public",
       "preLaunchTask": "serve cli-wterm-host",

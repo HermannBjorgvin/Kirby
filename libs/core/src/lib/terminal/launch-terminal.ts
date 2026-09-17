@@ -1,4 +1,4 @@
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import type { NamedPtyEntry } from '../pty-registry.js';
 import { buildAgentLaunch } from '../session/launch-session.js';
 import { openSession } from '../session/open-session.js';

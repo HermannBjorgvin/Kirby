@@ -4,7 +4,7 @@ Node HTTP + WS server plus a `@wterm/dom` browser client. `build.mjs` builds
 both in one esbuild script to avoid competing output-directory cleanup.
 
 - `POST /spawn` waits for the existing PTY to exit, clears the buffer and
-  spawns Kirby. `POST /kill` acknowledges only after the PTY exit event.
+  spawns n10. `POST /kill` acknowledges only after the PTY exit event.
   Lifecycle operations are serialized, and WS reconnects never auto-spawn
   another process after a managed session has started. `WS /pty` replays a ~2 MB ring buffer on connect,
   then streams. The first client connecting before any session has started
@@ -12,7 +12,7 @@ both in one esbuild script to avoid competing output-directory cleanup.
 - PTY lifetime is **not** coupled to WS lifetime: automated browsers close a
   socket with 1001 within ~100 ms of opening it. The client reconnects after
   200 ms and the replay restores the screen.
-- `spawnKirby` strips `CI`, `CONTINUOUS_INTEGRATION` and `GITHUB_ACTIONS`
+- `spawnn10` strips `CI`, `CONTINUOUS_INTEGRATION` and `GITHUB_ACTIONS`
   (Ink paints nothing under them) and `$TMUX`, and gives each spawn a tmux
   socket inside its own HOME.
 - One active PTY. Playwright runs with `workers: 1`; two worktrees running

@@ -25,7 +25,7 @@ import {
 } from './ui/dropdown-menu.js';
 import { Kbd } from './ui/kbd.js';
 import { Tip } from './ui/tooltip.js';
-import { KirbyMark } from './KirbyMark.js';
+import { N10Mark } from './N10Mark.js';
 
 /**
  * Top bar. With the custom frame (default) it doubles as the window's
@@ -76,14 +76,14 @@ export function TitleBar({
               size="icon"
               aria-label="Application menu"
               className="app-no-drag"
-              onClick={() => void window.kirby.showAppMenu()}
+              onClick={() => void window.n10.showAppMenu()}
             >
               <MenuIcon />
             </Button>
           </Tip>
         )}
         <div className="app-no-drag flex items-center pl-1">
-          <KirbyMark className="size-5" />
+          <N10Mark className="size-5" />
         </div>
         {repo ? (
           <RepoMenu
@@ -92,7 +92,7 @@ export function TitleBar({
             onOpenRepo={onOpenRepo}
           />
         ) : (
-          <span className="px-2 text-base font-medium">Kirby</span>
+          <span className="px-2 text-base font-medium">n10</span>
         )}
       </div>
 

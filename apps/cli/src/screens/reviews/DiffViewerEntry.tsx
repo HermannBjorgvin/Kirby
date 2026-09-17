@@ -1,6 +1,6 @@
 import { Text } from 'ink';
-import type { AnnotatedLine } from '@kirby/review-comments';
-import { planItemKey } from '@kirby/core';
+import type { AnnotatedLine } from '@n10/review-comments';
+import { planItemKey } from '@n10/core';
 import {
   CommentThreadCard,
   LocalCommentCard,

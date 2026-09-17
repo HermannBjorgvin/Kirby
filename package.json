@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/source",
+  "name": "@n10/source",
   "version": "0.0.0",
   "license": "MIT",
   "type": "module",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",
-    "kirby-desktop": "^0.3.0",
+    "n10-desktop": "^0.3.0",
     "node-pty": "^1.1.0"
   }
 }

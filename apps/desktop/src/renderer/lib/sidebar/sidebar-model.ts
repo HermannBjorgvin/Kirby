@@ -1,4 +1,4 @@
-import type { ReviewDecision } from '@kirby/vcs-core/types';
+import type { ReviewDecision } from '@n10/vcs-core/types';
 import type { SidebarItem } from '../../../host/contract.js';
 
 export type SectionKey =

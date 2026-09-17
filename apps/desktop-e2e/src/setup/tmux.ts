@@ -12,7 +12,7 @@ import { basename, resolve } from 'node:path';
  *
  * A session's name is a label (`<repo>-<branch>`, `<repo>-shell`, with
  * a numeric suffix on collision) and is never parsed. What makes a
- * session Kirby's is its tags — `@orchestra-spawner`,
+ * session n10's is its tags — `@orchestra-spawner`,
  * `@orchestra-session-type`, `@orchestra-repo`, `@orchestra-branch` —
  * so every helper here lists with the tags and matches on them,
  * exactly as the app does.
@@ -20,7 +20,7 @@ import { basename, resolve } from 'node:path';
 
 /** Basename prefix of the temp homes the fixture creates. The tmux
  *  socket lives inside one, and `socketEnv` refuses any other dir. */
-const HOME_PREFIX = 'kirby-desktop-e2e-home-';
+const HOME_PREFIX = 'n10-desktop-e2e-home-';
 
 export function tmuxAvailable(): boolean {
   try {
@@ -41,7 +41,7 @@ export function tmuxAvailable(): boolean {
  *      default is the OS temp dir, i.e. the developer's own
  *      `/tmp/tmux-$UID/default`.
  *    - `TMUX` names a socket path outright and **wins**. A suite
- *      started from inside a tmux session — which is how Kirby's own
+ *      started from inside a tmux session — which is how n10's own
  *      agents run — reaches the developer's server no matter what
  *      `TMUX_TMPDIR` says.
  *
@@ -96,7 +96,7 @@ export function listTaggedSessions(tmuxTmpdir: string): TaggedTmuxSession[] {
   // Resolved *before* the try: `socketEnv` throws to stop a run that
   // would reach the wrong tmux server, and swallowing that here would
   // turn it into an empty list — which is exactly what the negative
-  // assertions ("no kirby session exists") expect, so they would pass
+  // assertions ("no n10 session exists") expect, so they would pass
   // while proving nothing, and teardown would silently reap nothing.
   const env = socketEnv(tmuxTmpdir);
   try {
@@ -122,16 +122,16 @@ export function listTmuxSessions(tmuxTmpdir: string): string[] {
   return listTaggedSessions(tmuxTmpdir).map((s) => s.name);
 }
 
-/** Names of the sessions on the test's server that carry Kirby's
+/** Names of the sessions on the test's server that carry n10's
  *  identity tags — whatever they are called. */
-export function kirbySessions(tmuxTmpdir: string): string[] {
+export function n10Sessions(tmuxTmpdir: string): string[] {
   return listTaggedSessions(tmuxTmpdir)
     .filter((s) => s.spawner && s.type)
     .map((s) => s.name);
 }
 
 /** The tagged worktree session for `branch`, if it exists. */
-export function findKirbySessionFor(
+export function findN10SessionFor(
   branch: string,
   tmuxTmpdir: string
 ): string | undefined {
@@ -140,14 +140,11 @@ export function findKirbySessionFor(
   )?.name;
 }
 
-export function kirbySessionExists(
-  branch: string,
-  tmuxTmpdir: string
-): boolean {
-  return findKirbySessionFor(branch, tmuxTmpdir) !== undefined;
+export function n10SessionExists(branch: string, tmuxTmpdir: string): boolean {
+  return findN10SessionFor(branch, tmuxTmpdir) !== undefined;
 }
 
-/** Write Kirby's identity tags on a session the test created itself. */
+/** Write n10's identity tags on a session the test created itself. */
 export function tagTmuxSession(
   name: string,
   tags: Record<string, string>,
@@ -190,8 +187,8 @@ export function detachTmuxClients(name: string, tmuxTmpdir: string): void {
  * session (holding a fake agent) behind on its own socket — which is
  * removed with the temp home, orphaning the server.
  */
-export function killKirbySessions(tmuxTmpdir: string): void {
-  for (const name of kirbySessions(tmuxTmpdir)) {
+export function killN10Sessions(tmuxTmpdir: string): void {
+  for (const name of n10Sessions(tmuxTmpdir)) {
     killTmuxSession(name, tmuxTmpdir);
   }
 }

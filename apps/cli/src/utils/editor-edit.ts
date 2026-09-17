@@ -33,7 +33,7 @@ export interface OpenCommentInEditorOpts {
  */
 export function openCommentInEditor(opts: OpenCommentInEditorOpts): string {
   const { commentId, initialBody, editor, onUpdate } = opts;
-  const tmpFile = join(tmpdir(), `kirby-comment-${commentId}.md`);
+  const tmpFile = join(tmpdir(), `n10-comment-${commentId}.md`);
   writeFileSync(tmpFile, initialBody, 'utf8');
 
   spawn(editor, [tmpFile], {

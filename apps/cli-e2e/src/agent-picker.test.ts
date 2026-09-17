@@ -1,4 +1,4 @@
-import { test, expect, type KirbyTerm } from './fixtures/kirby.js';
+import { test, expect, type N10Term } from './fixtures/n10.js';
 import { settleFor } from './setup/waits.js';
 import { dismissSessionMenu } from './setup/sessions.js';
 
@@ -12,7 +12,7 @@ import { dismissSessionMenu } from './setup/sessions.js';
 const MENU_PROMPT = 'What would you like to do?';
 
 /** Create a branch through the picker; creation lands in the menu. */
-async function createBranchIntoMenu(term: KirbyTerm, branch: string) {
+async function createBranchIntoMenu(term: N10Term, branch: string) {
   await term.type('c');
   await expect(term.getByText('Branch Picker')).toBeVisible();
   await term.type(branch);
@@ -31,66 +31,60 @@ async function createBranchIntoMenu(term: KirbyTerm, branch: string) {
 
 test.describe('Session menu agent selector', () => {
   test('creating a branch lands in the session menu with the default agent', async ({
-    kirby,
+    n10,
   }) => {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await createBranchIntoMenu(kirby.term, 'agent-menu');
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
+    await createBranchIntoMenu(n10.term, 'agent-menu');
 
     // No PR on a fresh branch → no review rows, just start + cancel.
-    await expect(kirby.term.getByText('Open / resume session')).toBeVisible();
-    await expect(kirby.term.getByText('Start/Continue review')).toBeHidden();
+    await expect(n10.term.getByText('Open / resume session')).toBeVisible();
+    await expect(n10.term.getByText('Start/Continue review')).toBeHidden();
 
     // Automatic selection preserves a recorded agent on later opens.
-    await expect(
-      kirby.term.getByText('Recorded agent / default')
-    ).toBeVisible();
+    await expect(n10.term.getByText('Recorded agent / default')).toBeVisible();
 
     // Arrows cycle the agent for this session only.
-    await kirby.term.press('ArrowRight');
-    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
-    await expect(kirby.term.getByText('Start new session')).toBeVisible();
-    await kirby.term.press('ArrowRight');
-    await expect(kirby.term.getByText('Codex')).toBeVisible();
+    await n10.term.press('ArrowRight');
+    await expect(n10.term.getByText('Claude (default)')).toBeVisible();
+    await expect(n10.term.getByText('Start new session')).toBeVisible();
+    await n10.term.press('ArrowRight');
+    await expect(n10.term.getByText('Codex')).toBeVisible();
 
     // Left through the named default and automatic choice wraps to the end.
-    await kirby.term.press('ArrowLeft');
-    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
-    await kirby.term.press('ArrowLeft');
-    await expect(
-      kirby.term.getByText('Recorded agent / default')
-    ).toBeVisible();
-    await kirby.term.press('ArrowLeft');
-    await expect(kirby.term.getByText('OpenCode')).toBeVisible();
+    await n10.term.press('ArrowLeft');
+    await expect(n10.term.getByText('Claude (default)')).toBeVisible();
+    await n10.term.press('ArrowLeft');
+    await expect(n10.term.getByText('Recorded agent / default')).toBeVisible();
+    await n10.term.press('ArrowLeft');
+    await expect(n10.term.getByText('OpenCode')).toBeVisible();
 
     // Esc dismisses the menu back to the sidebar.
-    await kirby.term.press('Escape');
-    await expect(kirby.term.getByText(MENU_PROMPT)).not.toBeVisible({
+    await n10.term.press('Escape');
+    await expect(n10.term.getByText(MENU_PROMPT)).not.toBeVisible({
       timeout: 5_000,
     });
   });
 
   test('Tab on a non-running session reopens the menu with the default agent', async ({
-    kirby,
+    n10,
   }) => {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await createBranchIntoMenu(kirby.term, 'agent-reset');
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
+    await createBranchIntoMenu(n10.term, 'agent-reset');
 
     // Cycle away from the default, then dismiss.
-    await kirby.term.press('ArrowRight');
-    await expect(kirby.term.getByText('Claude (default)')).toBeVisible();
-    await expect(kirby.term.getByText('Start new session')).toBeVisible();
-    await kirby.term.press('ArrowRight');
-    await expect(kirby.term.getByText('Codex')).toBeVisible();
-    await dismissSessionMenu(kirby.term);
+    await n10.term.press('ArrowRight');
+    await expect(n10.term.getByText('Claude (default)')).toBeVisible();
+    await expect(n10.term.getByText('Start new session')).toBeVisible();
+    await n10.term.press('ArrowRight');
+    await expect(n10.term.getByText('Codex')).toBeVisible();
+    await dismissSessionMenu(n10.term);
 
     // Tab on the still-selected, not-running session reopens the menu;
     // the agent choice is per-open and resets to the default.
-    await kirby.term.press('Tab');
-    await expect(kirby.term.getByText(MENU_PROMPT)).toBeVisible({
+    await n10.term.press('Tab');
+    await expect(n10.term.getByText(MENU_PROMPT)).toBeVisible({
       timeout: 5_000,
     });
-    await expect(
-      kirby.term.getByText('Recorded agent / default')
-    ).toBeVisible();
+    await expect(n10.term.getByText('Recorded agent / default')).toBeVisible();
   });
 });

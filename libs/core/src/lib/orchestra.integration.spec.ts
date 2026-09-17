@@ -50,11 +50,11 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       return session!;
     }
 
-    it('installs the package, launches a player, and attaches Kirby without replacing it', async () => {
+    it('installs the package, launches a player, and attaches n10 without replacing it', async () => {
       const manifest = JSON.parse(
         readFileSync(join(fixture.plugin, '.claude-plugin/plugin.json'), 'utf8')
       );
-      expect(manifest).toMatchObject({ name: 'orchestra', version: '2.0.0' });
+      expect(manifest).toMatchObject({ name: 'orchestra', version: '1.0.0' });
       for (const skill of ['orchestrator', 'player']) {
         expect(
           readFileSync(
@@ -352,7 +352,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       ).toBeUndefined();
     });
 
-    it('lets Orchestra adopt and stop a Kirby-created player while preserving creator identity', async () => {
+    it('lets Orchestra adopt and stop a n10-created player while preserving creator identity', async () => {
       const entry = await openSession({
         session: { type: 'worktree', repo: fixture.repo, branch: 'main' },
         cwd: fixture.repo,
@@ -364,7 +364,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         .poll(() => existsSync(join(fixture.home, 'agent-start.json')))
         .toBe(true);
       const player = resolveWorktreeSession(fixture.repo, 'main')!;
-      expect(player.spawner).toBe('kirby');
+      expect(player.spawner).toBe('n10');
       const adopted = fixture.script(
         'adopt.sh',
         player.name,
@@ -385,7 +385,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
         '$player handoff task'
       );
       expect(resolveWorktreeSession(fixture.repo, 'main')).toMatchObject({
-        spawner: 'kirby',
+        spawner: 'n10',
         orchestrator: target,
       });
       expect(fixture.script('kill.sh', player.name).status).toBe(0);

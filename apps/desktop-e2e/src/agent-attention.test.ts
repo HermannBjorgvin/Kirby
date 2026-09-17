@@ -18,7 +18,7 @@ import { createWorktree, launchAgentFromRail, tab } from './setup/app.js';
 
 test.describe('An agent that finishes while you are elsewhere', () => {
   test.use({
-    kirbyConfig: {
+    n10Config: {
       aiCommand: fakeAgent({ stream: true, intervalMs: 120, streamMs: 6000 }),
     },
   });
@@ -28,7 +28,7 @@ test.describe('An agent that finishes while you are elsewhere', () => {
 
     await createWorktree(page, 'worker');
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -54,7 +54,7 @@ test.describe('An agent that finishes while you are elsewhere', () => {
 
 test.describe('An agent still working', () => {
   test.use({
-    kirbyConfig: { aiCommand: fakeAgent({ stream: true, intervalMs: 120 }) },
+    n10Config: { aiCommand: fakeAgent({ stream: true, intervalMs: 120 }) },
   });
 
   test('shows as busy rather than asking for attention', async ({
@@ -64,7 +64,7 @@ test.describe('An agent still working', () => {
 
     await createWorktree(page, 'busy');
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
 

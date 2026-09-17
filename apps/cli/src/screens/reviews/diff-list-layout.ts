@@ -1,12 +1,12 @@
-import type { DiffFile } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { CommentImageLayouts } from '@kirby/review-comments';
+import type { DiffFile } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { CommentImageLayouts } from '@n10/review-comments';
 import {
   planCommentFooter,
   CARD_MAX_WIDTH,
   type FooterComposeState,
 } from '../../components/CommentThread.js';
-import { totalRows, viewportRowsForBudget } from '@kirby/core';
+import { totalRows, viewportRowsForBudget } from '@n10/core';
 
 // Layout math shared by the DiffFileList renderer and the
 // diff-file-list input handler. Both sides need identical geometry —

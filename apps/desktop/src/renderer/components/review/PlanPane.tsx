@@ -10,7 +10,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import { composePlanPrompt, type PlanItem } from '@kirby/core/plan';
+import { composePlanPrompt, type PlanItem } from '@n10/core/plan';
 import {
   checkoutModel,
   planRows,

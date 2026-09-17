@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../../node_modules/.vite/libs/vcs/github',
   test: {
-    name: '@kirby/vcs-github',
+    name: '@n10/vcs-github',
     watch: false,
     globals: true,
     environment: 'node',

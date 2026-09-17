@@ -9,7 +9,7 @@ vi.mock('../session-backend.js', () => ({
   killPersistedTmuxSession: (key: string) =>
     state.calls.push(['persisted', key]),
 }));
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   removeWorktree: async (branch: string, opts: unknown) => {
     state.calls.push(['remove', branch, opts]);
     return state.removed;

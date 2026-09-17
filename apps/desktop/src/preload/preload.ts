@@ -6,7 +6,7 @@ import {
   MENU_EVENTS,
   SESSION_EVENTS,
   SYNC_EVENTS,
-  type KirbyHostApi,
+  type N10HostApi,
   type MenuCommandEvent,
   type SessionDataEvent,
   type SessionExitEvent,
@@ -16,10 +16,10 @@ import {
 
 /**
  * The only channel between the sandboxed renderer and the host
- * process. Everything exposed here must be part of the KirbyHostApi
- * contract — the renderer gets exactly this object as window.kirby.
+ * process. Everything exposed here must be part of the N10HostApi
+ * contract — the renderer gets exactly this object as window.n10.
  */
-const api: KirbyHostApi = {
+const api: N10HostApi = {
   getVersion: () => ipcRenderer.invoke(IPC.getVersion),
 
   openRepo: (cwd) => ipcRenderer.invoke(IPC.openRepo, cwd),
@@ -139,4 +139,4 @@ const api: KirbyHostApi = {
   },
 };
 
-contextBridge.exposeInMainWorld('kirby', api);
+contextBridge.exposeInMainWorld('n10', api);

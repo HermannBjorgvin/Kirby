@@ -1,4 +1,4 @@
-import { expect, type KirbyTerm } from '../fixtures/kirby.js';
+import { expect, type N10Term } from '../fixtures/n10.js';
 import { settleFor } from './waits.js';
 
 /**
@@ -14,7 +14,7 @@ import { settleFor } from './waits.js';
  * started (use `tabIntoSession` later to start + focus the terminal).
  */
 export async function createSession(
-  term: KirbyTerm,
+  term: N10Term,
   branchName: string,
   opts: { start?: boolean } = {}
 ): Promise<void> {
@@ -62,7 +62,7 @@ const MENU_PROMPT = 'What would you like to do?';
  * "Open / resume session" row. Returns with the menu gone and the
  * PTY spawning — follow with an assertion on the agent's output.
  */
-export async function startFromSessionMenu(term: KirbyTerm): Promise<void> {
+export async function startFromSessionMenu(term: N10Term): Promise<void> {
   await expect(term.getByText(MENU_PROMPT)).toBeVisible({ timeout: 10_000 });
   await term.press('Enter');
   await expect(term.getByText(MENU_PROMPT)).not.toBeVisible({
@@ -71,7 +71,7 @@ export async function startFromSessionMenu(term: KirbyTerm): Promise<void> {
 }
 
 /** Wait for the session menu and dismiss it, staying on the sidebar. */
-export async function dismissSessionMenu(term: KirbyTerm): Promise<void> {
+export async function dismissSessionMenu(term: N10Term): Promise<void> {
   await expect(term.getByText(MENU_PROMPT)).toBeVisible({ timeout: 10_000 });
   await term.press('Escape');
   await expect(term.getByText(MENU_PROMPT)).not.toBeVisible({
@@ -90,7 +90,7 @@ export async function dismissSessionMenu(term: KirbyTerm): Promise<void> {
  * mode `createSession` retries around for 'c'). Re-sending Tab while
  * the menu is already open is a no-op, so the retry is safe.
  */
-export async function tabIntoSession(term: KirbyTerm): Promise<void> {
+export async function tabIntoSession(term: N10Term): Promise<void> {
   await expect(async () => {
     await term.press('Tab');
     await expect(term.getByText(MENU_PROMPT)).toBeVisible({ timeout: 1_000 });
@@ -117,7 +117,7 @@ export async function tabIntoSession(term: KirbyTerm): Promise<void> {
  * Only for idempotent actions — the key may be delivered more than once.
  */
 export async function pressUntil(
-  term: KirbyTerm,
+  term: N10Term,
   key: string,
   predicate: () => boolean | Promise<boolean>,
   opts: { timeout?: number } = {}
@@ -139,7 +139,7 @@ export async function pressUntil(
  * the keystroke then reaches the sidebar handler instead (an `x`
  * there is delete-branch).
  */
-export async function waitForTerminalFocused(term: KirbyTerm): Promise<void> {
+export async function waitForTerminalFocused(term: N10Term): Promise<void> {
   await expect(term.getByText(/ctrl\+space to exit/).first()).toBeVisible({
     timeout: 5_000,
   });
@@ -157,7 +157,7 @@ export async function waitForTerminalFocused(term: KirbyTerm): Promise<void> {
  * Without this wait, the next keystroke can race the escape and end
  * up in the still-focused PTY.
  */
-export async function waitForSidebarFocused(term: KirbyTerm): Promise<void> {
+export async function waitForSidebarFocused(term: N10Term): Promise<void> {
   await expect(term.getByText(/ctrl\+space to exit/)).not.toBeVisible({
     timeout: 5_000,
   });

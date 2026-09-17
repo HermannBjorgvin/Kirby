@@ -1,15 +1,15 @@
-import { sessionLabel } from '@kirby/core';
+import { sessionLabel } from '@n10/core';
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import { useConfig, useKeybindResolve } from '@kirby/app-core';
-import type { KeybindResolveValue } from '@kirby/app-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import { useConfig, useKeybindResolve } from '@n10/app-core';
+import type { KeybindResolveValue } from '@n10/app-core';
 import {
   buildAgentOptions,
   keyDescriptorToString,
   sessionMenuOptions,
   type SessionMenuOptionKey,
-} from '@kirby/core';
+} from '@n10/core';
 
 function Option({ label, selected }: { label: string; selected: boolean }) {
   return (

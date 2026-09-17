@@ -1,7 +1,7 @@
 /**
  * The valve in front of a provider that has asked us to stop.
  *
- * Backing off one request is not enough. Kirby issues a burst per sync
+ * Backing off one request is not enough. n10 issues a burst per sync
  * cycle — a list, then per-pull-request reads — so a 429 on the first
  * of them is a prediction about the rest, and retrying each of those
  * individually is how a throttled client becomes a blocked one. The

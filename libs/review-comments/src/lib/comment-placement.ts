@@ -5,9 +5,9 @@
 // mapping a file line onto a diff row — and deciding what to do when
 // that line is not on screen.
 
-import type { DiffLine } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { log } from '@kirby/logger';
+import type { DiffLine } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import { log } from '@n10/logger';
 import type { ReviewComment } from './types.js';
 
 /** Diff-row index of every file line, one map per side of the diff. */

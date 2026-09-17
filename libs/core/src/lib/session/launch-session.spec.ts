@@ -9,7 +9,7 @@ vi.mock('../pty-registry.js', () => ({
   getSession: vi.fn(),
 }));
 
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import {
   buildAgentLaunch,
   buildLaunchSpec,
@@ -35,8 +35,8 @@ const claude: AgentDefinition = {
   }),
   continueOrSeed: (p) => ({
     cmd: '/bin/sh',
-    args: ['-c', 'claude --continue || claude "$KIRBY_SEED_PROMPT"'],
-    env: { KIRBY_SEED_PROMPT: p },
+    args: ['-c', 'claude --continue || claude "$N10_SEED_PROMPT"'],
+    env: { N10_SEED_PROMPT: p },
   }),
 };
 
@@ -130,13 +130,13 @@ describe('buildLaunchSpec', () => {
           args: [
             '-c',
             o?.appendSystemPrompt
-              ? 'claude --continue || claude --append-system-prompt "$KIRBY_SEED_SYSTEM" "$KIRBY_SEED_PROMPT"'
-              : 'claude --continue || claude "$KIRBY_SEED_PROMPT"',
+              ? 'claude --continue || claude --append-system-prompt "$N10_SEED_SYSTEM" "$N10_SEED_PROMPT"'
+              : 'claude --continue || claude "$N10_SEED_PROMPT"',
           ],
           env: {
-            KIRBY_SEED_PROMPT: p,
+            N10_SEED_PROMPT: p,
             ...(o?.appendSystemPrompt
-              ? { KIRBY_SEED_SYSTEM: o.appendSystemPrompt }
+              ? { N10_SEED_SYSTEM: o.appendSystemPrompt }
               : {}),
           },
         }),
@@ -147,8 +147,8 @@ describe('buildLaunchSpec', () => {
         systemGuidance: 'the guidance',
       });
       expect(spec.env).toEqual({
-        KIRBY_SEED_PROMPT: 'the task',
-        KIRBY_SEED_SYSTEM: 'the guidance',
+        N10_SEED_PROMPT: 'the task',
+        N10_SEED_SYSTEM: 'the guidance',
       });
     });
   });
@@ -205,7 +205,7 @@ describe('retained review guidance', () => {
   const request = {
     intent: 'continue-or-seed' as const,
     prompt: 'Review the change',
-    systemGuidance: 'Use kirby util add-comment',
+    systemGuidance: 'Use n10 util add-comment',
   };
   it('passes Claude system guidance through its resume adapter', () => {
     const result = buildAgentLaunch(

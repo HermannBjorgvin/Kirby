@@ -27,7 +27,7 @@ export function buildMenuTemplate(
   const appMenu: MenuItemConstructorOptions[] = isMac
     ? [
         {
-          label: 'Kirby',
+          label: 'n10',
           submenu: [
             { role: 'about' },
             { type: 'separator' },
@@ -176,14 +176,13 @@ export function buildMenuTemplate(
     label: '&Help',
     submenu: [
       {
-        label: 'Kirby on GitHub',
-        click: () =>
-          send('open-url', 'https://github.com/HermannBjorgvin/kirby'),
+        label: 'n10 on GitHub',
+        click: () => send('open-url', 'https://github.com/notaharness/n10'),
       },
       {
         label: 'Report an Issue',
         click: () =>
-          send('open-url', 'https://github.com/HermannBjorgvin/kirby/issues'),
+          send('open-url', 'https://github.com/notaharness/n10/issues'),
       },
       { type: 'separator' },
       {
@@ -195,7 +194,7 @@ export function buildMenuTemplate(
         : [
             { type: 'separator' } satisfies MenuItemConstructorOptions,
             {
-              label: `About Kirby Desktop`,
+              label: `About n10 Desktop`,
               click: () => send('about'),
             } satisfies MenuItemConstructorOptions,
           ]),

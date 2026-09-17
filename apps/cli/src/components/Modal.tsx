@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Box } from 'ink';
-import { useLayout } from '@kirby/app-core';
+import { useLayout } from '@n10/app-core';
 
 interface ModalProps {
   /** Inner content. Will be centered inside the terminal. */
@@ -43,7 +43,7 @@ interface ModalProps {
 // ensure that whatever modal opens this also gates other input
 // handlers so only the modal's input fires.
 //
-// In Kirby today this is enforced by MainTab's useInput router (see
+// In n10 today this is enforced by MainTab's useInput router (see
 // `screens/main/MainTab.tsx`), which checks `deleteConfirm.confirmDelete`
 // first and routes to `handleConfirmDeleteInput`. Other useInput hooks
 // (DiffPane, raw stdin forwarding, etc.) are gated on pane modes that

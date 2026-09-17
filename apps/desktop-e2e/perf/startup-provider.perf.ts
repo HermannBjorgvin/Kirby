@@ -25,23 +25,23 @@ import {
  * waits for before their worktrees show up.
  */
 
-const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 5);
-const LATENCY_MS = Number(process.env.KIRBY_PERF_GH_LATENCY_MS ?? 700);
+const ITERATIONS = Number(process.env.N10_PERF_ITERATIONS ?? 5);
+const LATENCY_MS = Number(process.env.N10_PERF_GH_LATENCY_MS ?? 700);
 
 test('startup with a provider', async () => {
   test.setTimeout(90_000 * ITERATIONS);
   const repo = createBigRepo({ files: 8, linesPerFile: 200 });
   const scenario: FakeGitHub = {
-    owner: 'kirby',
+    owner: 'n10',
     repo: 'perf',
-    username: 'kirby-perf',
+    username: 'n10-perf',
     latencyMs: LATENCY_MS,
     prs: [
       {
         number: 1,
         title: 'The change under review',
         headRefName: repo.branch,
-        author: 'kirby-perf',
+        author: 'n10-perf',
       },
     ],
   };

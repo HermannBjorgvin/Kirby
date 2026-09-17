@@ -22,7 +22,7 @@ const creds = vi.hoisted(() => ({
 }));
 
 vi.mock('./repo.js', () => ({ requireRepo: () => '/repo' }));
-vi.mock('@kirby/vcs-core', () => ({ readConfig: () => creds.config }));
+vi.mock('@n10/vcs-core', () => ({ readConfig: () => creds.config }));
 vi.mock('node:child_process', () => ({
   // Stands in for `gh auth token`.
   execFile: (

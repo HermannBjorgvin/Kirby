@@ -1,7 +1,7 @@
 {
-  "name": "kirby-desktop",
+  "name": "n10-desktop",
   "version": "1.0.0-beta.7",
-  "description": "Kirby Desktop — GUI shell over the same app core as the Kirby TUI",
+  "description": "n10 Desktop — GUI shell over the same app core as the n10 TUI",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HermannBjorgvin/kirby.git",
+    "url": "git+https://github.com/notaharness/n10.git",
     "directory": "apps/desktop"
   },
   "nx": {
@@ -47,7 +47,7 @@
               ".js": ".js"
             },
             "banner": {
-              "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+              "js": "import { createRequire as __n10CreateRequire } from \"node:module\";const require = __n10CreateRequire(import.meta.url);"
             }
           },
           "additionalEntryPoints": [
@@ -58,7 +58,7 @@
           "development": {
             "esbuildOptions": {
               "banner": {
-                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+                "js": "import { createRequire as __n10CreateRequire } from \"node:module\";const require = __n10CreateRequire(import.meta.url);"
               }
             }
           },
@@ -66,7 +66,7 @@
             "esbuildOptions": {
               "sourcemap": false,
               "banner": {
-                "js": "import { createRequire as __kirbyCreateRequire } from \"node:module\";const require = __kirbyCreateRequire(import.meta.url);"
+                "js": "import { createRequire as __n10CreateRequire } from \"node:module\";const require = __n10CreateRequire(import.meta.url);"
               }
             }
           }
@@ -150,7 +150,7 @@
         ],
         "executor": "nx:run-commands",
         "options": {
-          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -f ./apps/desktop/dist/*kirby-desktop-*.tgz"
+          "command": "chmod +x apps/desktop/dist/launcher.mjs && npm install -f ./apps/desktop/dist/*n10-desktop-*.tgz"
         }
       },
       "publish": {
@@ -162,7 +162,7 @@
           "commands": [
             "chmod +x apps/desktop/dist/launcher.mjs",
             "npm publish --tag beta apps/desktop/dist",
-            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby-desktop"
+            "node scripts/dist-tag-latest.mjs @notaharness/n10-desktop"
           ],
           "parallel": false
         }
@@ -170,8 +170,8 @@
     }
   },
   "dependencies": {
-    "@kirby/app-core": "*",
-    "@kirby/core": "*",
+    "@n10/app-core": "*",
+    "@n10/core": "*",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-virtual": "^3.14.10",

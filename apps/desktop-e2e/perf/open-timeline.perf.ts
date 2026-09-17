@@ -30,11 +30,11 @@ test('open timeline', async () => {
       .waitFor({ state: 'visible', timeout: 30_000 });
     const row = page.getByText(repo.branch, { exact: false }).first();
     await row.waitFor({ state: 'visible', timeout: 20_000 });
-    // KIRBY_PERF_SETTLE_MS: how long to leave the app alone before
+    // N10_PERF_SETTLE_MS: how long to leave the app alone before
     // clicking. Zero is the impatient user who clicks the instant the
     // sidebar paints; a few seconds is everyone else, and the
     // difference is whatever the idle-time prefetching bought.
-    await pace(page, Number(process.env.KIRBY_PERF_SETTLE_MS ?? 0));
+    await pace(page, Number(process.env.N10_PERF_SETTLE_MS ?? 0));
 
     await page.evaluate(() => {
       const w = window as unknown as {
@@ -74,13 +74,10 @@ test('open timeline', async () => {
         __hostDone: number;
       };
       const parse = performance.getEntriesByName(
-        'kirby:diff:parse',
+        'n10:diff:parse',
         'measure'
       )[0];
-      const host = performance.getEntriesByName(
-        'kirby:diff:fetch',
-        'measure'
-      )[0];
+      const host = performance.getEntriesByName('n10:diff:fetch', 'measure')[0];
       const start = parse?.startTime ?? NaN;
       const end = start + (parse?.duration ?? NaN);
       return {

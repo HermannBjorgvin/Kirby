@@ -1,9 +1,9 @@
 # apps/cli-e2e — TUI end-to-end tests
 
-Playwright drives Kirby in headless Chromium through `apps/cli-wterm-host`.
-The fixture (`src/fixtures/kirby.ts`) gives each test a temp git repo, an
-isolated HOME with an optional `.kirby/config.json` (`test.use({ kirbyConfig })`),
-`POST`s `/spawn`, waits for `Kirby` to paint, and yields
+Playwright drives n10 in headless Chromium through `apps/cli-wterm-host`.
+The fixture (`src/fixtures/n10.ts`) gives each test a temp git repo, an
+isolated HOME with an optional `.n10/config.json` (`test.use({ n10Config })`),
+`POST`s `/spawn`, waits for `n10` to paint, and yields
 `{ term, repoPath, homeDir }`. `term` exposes `getByText`, `press`, `type`,
 `write` and `resize`. Full infrastructure notes: `docs/testing.md`.
 

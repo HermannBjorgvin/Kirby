@@ -10,7 +10,7 @@ export type ResolvedTheme = 'light' | 'dark';
  * agree with us); localStorage is only a first-paint cache so the
  * right class is on <html> before the bridge answers.
  */
-const STORAGE_KEY = 'kirby.theme';
+const STORAGE_KEY = 'n10.theme';
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
 
@@ -52,7 +52,7 @@ function setLocal(pref: ThemePreference): void {
 
 export function setThemePreference(pref: ThemePreference): void {
   setLocal(pref);
-  void window.kirby?.setDesktopPrefs({ theme: pref }).catch(() => undefined);
+  void window.n10?.setDesktopPrefs({ theme: pref }).catch(() => undefined);
 }
 
 export function getThemePreference(): ThemePreference {
@@ -67,7 +67,7 @@ media.addEventListener('change', () => {
  *  then reconcile with the host's persisted preference. */
 export function initTheme(): void {
   apply();
-  void window.kirby
+  void window.n10
     ?.getDesktopPrefs()
     .then((p) => {
       if (p.theme !== preference) setLocal(p.theme);

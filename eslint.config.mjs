@@ -73,9 +73,9 @@ export default tseslint.config(
               sourceTag: 'type:lib',
               onlyDependOnLibsWithTags: ['type:lib'],
             },
-            // @kirby/core is the shell-agnostic half of the app: git,
+            // @n10/core is the shell-agnostic half of the app: git,
             // worktrees, PTYs, config, providers and pure helpers. The
-            // React layer (@kirby/app-core) depends on it and never the
+            // React layer (@n10/app-core) depends on it and never the
             // reverse, so a hook can never be reached from a git call.
             // This is a tag constraint rather than a comment because
             // the rule it replaces — "keep the TUI and desktop
@@ -164,7 +164,7 @@ export default tseslint.config(
     // a failure that types alone do not catch and review reliably
     // misses.
     //
-    // `no-floating-promises` is the reason this block exists: Kirby is
+    // `no-floating-promises` is the reason this block exists: n10 is
     // almost entirely async git, PTY and provider calls, and a dropped
     // promise there is a silent no-op followed by an unhandled
     // rejection. `ignoreVoid` keeps deliberate fire-and-forget
@@ -246,14 +246,14 @@ export default tseslint.config(
     },
   },
   {
-    // @kirby/core is rendered *over*, never *with*. Importing React
+    // @n10/core is rendered *over*, never *with*. Importing React
     // here is how the boundary erodes: a pure sequence grows a
     // useCallback, and from then on the other shell cannot call it
     // without reimplementing it — which is how the TUI and the desktop
     // ended up with two copies of worktree deletion that had silently
     // diverged.
     //
-    // Anything that needs React belongs in @kirby/app-core, which
+    // Anything that needs React belongs in @n10/app-core, which
     // depends on this library. The plan store is the worked example:
     // the store is here, its useSyncExternalStore binding is there.
     files: ['libs/core/src/**/*.ts'],
@@ -265,16 +265,16 @@ export default tseslint.config(
             {
               name: 'react',
               message:
-                '@kirby/core is shell-agnostic and must not import React. ' +
-                'Put the hook or context in @kirby/app-core and keep the ' +
+                '@n10/core is shell-agnostic and must not import React. ' +
+                'Put the hook or context in @n10/app-core and keep the ' +
                 'logic here.',
             },
           ],
           patterns: [
             {
-              group: ['react-dom', 'ink', 'electron', '@kirby/app-core'],
+              group: ['react-dom', 'ink', 'electron', '@n10/app-core'],
               message:
-                '@kirby/core must not depend on a shell or on the React ' +
+                '@n10/core must not depend on a shell or on the React ' +
                 'layer. Invert the dependency: the shell calls core.',
             },
             // Restated from the workspace block, not inherited: flat
@@ -309,7 +309,7 @@ export default tseslint.config(
     },
   },
   {
-    // The entry point owns shutdown, and `kirby util` subcommands are
+    // The entry point owns shutdown, and `n10 util` subcommands are
     // plain CLI with no Ink tree to unmount. Exiting the process is
     // their job; the rule is about components reaching for it.
     files: ['apps/cli/src/main.tsx', 'apps/cli/src/commands/**/*.ts'],
@@ -385,12 +385,12 @@ export default tseslint.config(
     //
     // Anything the renderer genuinely needs at runtime belongs behind
     // the host bridge (src/host/contract.ts) or in a browser-safe entry
-    // point, the way @kirby/vcs-core exposes its `./types` subpath and
-    // @kirby/core its `./plan` one.
+    // point, the way @n10/vcs-core exposes its `./types` subpath and
+    // @n10/core its `./plan` one.
     //
     // The `patterns` block is what keeps that list honest. Blocking the
     // package names alone left every subpath of them wide open, so a
-    // `@kirby/core/session` import would have sailed through and taken
+    // `@n10/core/session` import would have sailed through and taken
     // node:child_process with it. Subpaths are blocked as a group and
     // the browser-safe ones named back in, which makes adding another
     // one a deliberate edit here rather than a silent import.
@@ -400,36 +400,36 @@ export default tseslint.config(
         'error',
         {
           paths: [
-            '@kirby/app-core',
-            '@kirby/core',
-            '@kirby/logger',
-            '@kirby/review-comments',
-            '@kirby/terminal-pty',
-            '@kirby/terminal-tmux',
-            '@kirby/vcs-core',
-            '@kirby/vcs-github',
-            '@kirby/worktree-manager',
+            '@n10/app-core',
+            '@n10/core',
+            '@n10/logger',
+            '@n10/review-comments',
+            '@n10/terminal-pty',
+            '@n10/terminal-tmux',
+            '@n10/vcs-core',
+            '@n10/vcs-github',
+            '@n10/worktree-manager',
           ].map((name) => ({
             name,
             allowTypeImports: true,
             message:
               `${name} runs on Node and cannot be imported for its values ` +
               'in the sandboxed renderer. Use `import type`, go through ' +
-              'window.kirby, or import a browser-safe subpath.',
+              'window.n10, or import a browser-safe subpath.',
           })),
           patterns: [
             {
               group: [
-                '@kirby/*/*',
+                '@n10/*/*',
                 // Browser-safe by construction, and tested as such.
-                '!@kirby/core/plan',
-                '!@kirby/app-core/plan',
-                '!@kirby/vcs-core/types',
-                '!@kirby/review-comments/conventional',
+                '!@n10/core/plan',
+                '!@n10/app-core/plan',
+                '!@n10/vcs-core/types',
+                '!@n10/review-comments/conventional',
               ],
               allowTypeImports: true,
               message:
-                'Only explicitly browser-safe @kirby subpaths may be ' +
+                'Only explicitly browser-safe @n10 subpaths may be ' +
                 'imported for their values in the sandboxed renderer. ' +
                 'Add one to the allowed list here only once it is free ' +
                 'of node: builtins and native modules.',

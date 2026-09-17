@@ -8,7 +8,7 @@
  * TUI and the comment poster run.
  *
  * The package's main barrel cannot be used there — `comment-store.ts`
- * reads `~/.kirby` — which is why this subpath exists at all, and why
+ * reads `~/.n10` — which is why this subpath exists at all, and why
  * the desktop renderer's `no-restricted-imports` block names it
  * explicitly (see eslint.config.mjs).
  *
@@ -21,7 +21,7 @@ export {
   AGENT_FOOTER,
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,
-  KIRBY_URL,
+  N10_URL,
   commentBodyParts,
   conventionalForSeverity,
   conventionalSeverity,

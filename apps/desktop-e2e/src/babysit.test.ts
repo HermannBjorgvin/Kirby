@@ -19,7 +19,7 @@ const BRANCH = 'undo-support';
 const NAMING = 'Rename this to something less generic.';
 
 const GITHUB: FakeGitHub = {
-  username: 'kirby-tester',
+  username: 'n10-tester',
   prs: [
     {
       number: 42,
@@ -48,8 +48,8 @@ test.use({
       },
     ],
   },
-  kirbyConfig: { aiCommand: fakeAgent({ printSeed: true }) },
-  env: { KIRBY_BABYSIT_DEBOUNCE_MS: '500', KIRBY_BABYSIT_POLL_MS: '1000' },
+  n10Config: { aiCommand: fakeAgent({ printSeed: true }) },
+  env: { N10_BABYSIT_DEBOUNCE_MS: '500', N10_BABYSIT_POLL_MS: '1000' },
 });
 
 test.describe('Babysitting a pull request', () => {

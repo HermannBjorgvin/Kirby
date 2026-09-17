@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from 'ink-testing-library';
 import { Text } from 'ink';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import { useCommentImages } from './useCommentImages.js';
 
-vi.mock('@kirby/image-loader', () => ({
+vi.mock('@n10/image-loader', () => ({
   fetchImageBytes: vi.fn(),
   decodeImage: vi.fn(),
   decodeGifAnimation: vi.fn(() => null),
@@ -17,7 +17,7 @@ import {
   fetchImageBytes,
   decodeImage,
   decodeGifAnimation,
-} from '@kirby/image-loader';
+} from '@n10/image-loader';
 
 const URL = 'https://x/shot.png';
 
@@ -56,7 +56,7 @@ const flush = () => new Promise((r) => setTimeout(r, 20));
 let writes: string[];
 
 beforeEach(() => {
-  process.env['KIRBY_IMAGES'] = 'kitty';
+  process.env['N10_IMAGES'] = 'kitty';
   writes = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
     writes.push(String(chunk));
@@ -67,7 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  delete process.env['KIRBY_IMAGES'];
+  delete process.env['N10_IMAGES'];
   vi.clearAllMocks();
 });
 
@@ -109,7 +109,7 @@ describe('useCommentImages', () => {
   });
 
   it('is inert when kitty graphics is off', async () => {
-    process.env['KIRBY_IMAGES'] = 'off';
+    process.env['N10_IMAGES'] = 'off';
     const { lastFrame } = render(<Probe threads={[thread(`![s](${URL})`)]} />);
     await flush();
     expect(lastFrame()).toContain('[off]');

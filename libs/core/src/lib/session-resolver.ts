@@ -1,4 +1,4 @@
-import { tmuxListSessionsDetailed } from '@kirby/terminal-tmux';
+import { tmuxListSessionsDetailed } from '@n10/terminal-tmux';
 import {
   isWorktreeSessionFor,
   LISTED_TAGS,

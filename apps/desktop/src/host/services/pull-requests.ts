@@ -1,5 +1,5 @@
 /**
- * The host's instance of `@kirby/core`'s pull request cache, and the
+ * The host's instance of `@n10/core`'s pull request cache, and the
  * provider it resolves through.
  *
  * Every host-side reader of the pull request list sits on this one
@@ -12,12 +12,8 @@ import {
   createPullRequestCache,
   type ProviderResolution,
   type PullRequestLookup,
-} from '@kirby/core';
-import {
-  readConfig,
-  type BranchPrMap,
-  type VcsProvider,
-} from '@kirby/vcs-core';
+} from '@n10/core';
+import { readConfig, type BranchPrMap, type VcsProvider } from '@n10/vcs-core';
 import { PROVIDERS } from './repo.js';
 
 // Installed by main.ts. Fires when a background fetch has changed what

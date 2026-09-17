@@ -1,12 +1,8 @@
 import { useCallback } from 'react';
 import { useInput } from 'ink';
 import { GeneralCommentsPane } from '../reviews/GeneralCommentsPane.js';
-import type {
-  TerminalLayout,
-  PaneModeValue,
-  DiffBundle,
-} from '@kirby/app-core';
-import { useSessionActions, LAYOUT } from '@kirby/app-core';
+import type { TerminalLayout, PaneModeValue, DiffBundle } from '@n10/app-core';
+import { useSessionActions, LAYOUT } from '@n10/app-core';
 import { useScrollWheel } from '../../hooks/useScrollWheel.js';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 

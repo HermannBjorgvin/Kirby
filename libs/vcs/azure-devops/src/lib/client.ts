@@ -1,4 +1,4 @@
-import { logNetwork } from '@kirby/logger';
+import { logNetwork } from '@n10/logger';
 
 /** Everything needed to address one repository's REST API. */
 export interface AdoConfig {
@@ -25,7 +25,7 @@ export function baseUrl(config: AdoConfig): string {
  * PAT — that lives in the Authorization header which is never
  * logged). Response bodies are NOT included; only status + size +
  * (optional) caller-supplied summary. Gated behind
- * `KIRBY_LOG_LEVEL=debug` so day-to-day runs stay quiet.
+ * `N10_LOG_LEVEL=debug` so day-to-day runs stay quiet.
  */
 export async function tracedFetch(
   context: string,

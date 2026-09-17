@@ -55,7 +55,7 @@ export function useSubmitVerdict(cwd: string, providerId?: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: ({ prId, verdict }: { prId: number; verdict: ReviewVerdict }) =>
-      window.kirby.submitReviewVerdict(prId, verdict),
+      window.n10.submitReviewVerdict(prId, verdict),
     // Optimistic: the vote succeeds virtually always, so reflect it in
     // the cached sidebar model immediately (reviewer dots, PR bar and
     // row badges all derive from it) and roll back only on error.
@@ -63,7 +63,7 @@ export function useSubmitVerdict(cwd: string, providerId?: string) {
       const viewer = await qc
         .fetchQuery({
           queryKey: keys.reviewViewer(cwd),
-          queryFn: () => window.kirby.getReviewViewer(),
+          queryFn: () => window.n10.getReviewViewer(),
           staleTime: Infinity,
         })
         .catch(() => null);
@@ -119,7 +119,7 @@ export function useSubmitVerdict(cwd: string, providerId?: string) {
 export function useCreateWorktree(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (branch: string) => window.kirby.createWorktree(branch),
+    mutationFn: (branch: string) => window.n10.createWorktree(branch),
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
@@ -136,7 +136,7 @@ export function useRemoveWorktree(cwd: string) {
   return useMutation({
     mutationKey: REMOVE_WORKTREE_KEY,
     mutationFn: ({ branch, force }: { branch: string; force: boolean }) =>
-      window.kirby.removeWorktree(branch, force),
+      window.n10.removeWorktree(branch, force),
     // Reported here rather than through `mutate`'s own callbacks: the
     // confirm dialog closes as soon as it fires, and per-call callbacks
     // are dropped when their component unmounts. Mutation-level ones run
@@ -175,7 +175,7 @@ export function useRemovingBranches(): Set<string> {
 export function useLaunchAgent(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: SessionLaunchRequest) => window.kirby.launchAgent(req),
+    mutationFn: (req: SessionLaunchRequest) => window.n10.launchAgent(req),
     onSuccess: () => {
       void inv.sidebar();
       void inv.sessions();
@@ -186,8 +186,7 @@ export function useLaunchAgent(cwd: string) {
 export function useLaunchReview(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: ReviewLaunchRequest) =>
-      window.kirby.launchReviewAgent(req),
+    mutationFn: (req: ReviewLaunchRequest) => window.n10.launchReviewAgent(req),
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
@@ -204,7 +203,7 @@ export function useLaunchReview(cwd: string) {
 export function useCheckoutPlan(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: PlanCheckoutRequest) => window.kirby.checkoutPlan(req),
+    mutationFn: (req: PlanCheckoutRequest) => window.n10.checkoutPlan(req),
     onSuccess: () => {
       void inv.sidebar();
       void inv.branches();
@@ -224,7 +223,7 @@ export function useUpdateDraft(cwd: string) {
       prId: number;
       id: string;
       patch: Partial<Pick<ReviewComment, 'body' | 'severity'>>;
-    }) => window.kirby.updateDraftComment(prId, id, patch),
+    }) => window.n10.updateDraftComment(prId, id, patch),
     onSettled: (_r, _e, v) => void inv.drafts(v.prId),
   });
 }
@@ -233,7 +232,7 @@ export function useDeleteDraft(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
     mutationFn: ({ prId, id }: { prId: number; id: string }) =>
-      window.kirby.deleteDraftComment(prId, id),
+      window.n10.deleteDraftComment(prId, id),
     onSettled: (_r, _e, v) => void inv.drafts(v.prId),
   });
 }
@@ -241,7 +240,7 @@ export function useDeleteDraft(cwd: string) {
 export function usePostDrafts(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: PostDraftsRequest) => window.kirby.postDraftComments(req),
+    mutationFn: (req: PostDraftsRequest) => window.n10.postDraftComments(req),
     onSettled: (_r, _e, v) => {
       void inv.drafts(v.prId);
       // The posted comments become remote threads.
@@ -253,7 +252,7 @@ export function usePostDrafts(cwd: string) {
 export function useKillSession(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (name: string) => window.kirby.killSession(name),
+    mutationFn: (name: string) => window.n10.killSession(name),
     onSuccess: () => {
       void inv.sidebar();
       void inv.sessions();
@@ -263,14 +262,14 @@ export function useKillSession(cwd: string) {
 
 export function useOpenInEditor() {
   return useMutation({
-    mutationFn: (branch: string) => window.kirby.openInEditor(branch),
+    mutationFn: (branch: string) => window.n10.openInEditor(branch),
   });
 }
 
 export function useRefreshRemote(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: () => window.kirby.refreshRemote(),
+    mutationFn: () => window.n10.refreshRemote(),
     onSettled: () => {
       void inv.sidebar();
       void inv.sync();
@@ -307,7 +306,7 @@ export function useRefreshThreads(cwd: string) {
 export function useReply(cwd: string) {
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: ReplyRequest) => window.kirby.replyToThread(req),
+    mutationFn: (req: ReplyRequest) => window.n10.replyToThread(req),
     onSuccess: (_r, req) => void inv.threads(req.prId),
   });
 }
@@ -316,7 +315,7 @@ export function useSetResolved(cwd: string) {
   const qc = useQueryClient();
   const inv = useInvalidator(cwd);
   return useMutation({
-    mutationFn: (req: ResolveRequest) => window.kirby.setThreadResolved(req),
+    mutationFn: (req: ResolveRequest) => window.n10.setThreadResolved(req),
     // Optimistic: resolving succeeds virtually always, so flip the
     // thread in the cache immediately and roll back only on error.
     onMutate: async (req) => {
@@ -349,7 +348,7 @@ export function useUpdateSetting(cwd: string) {
     }: {
       ref: { label: string; key: string };
       value: string;
-    }) => window.kirby.updateSettingsField(ref, value),
+    }) => window.n10.updateSettingsField(ref, value),
     onSettled: () => void inv.settings(),
   });
 }

@@ -1,4 +1,4 @@
-import type { ActionId, KeyPress } from '@kirby/core';
+import type { ActionId, KeyPress } from '@n10/core';
 import {
   planItemKey,
   snapshotRemote,
@@ -6,9 +6,9 @@ import {
   scrollIntoView,
   stepNext,
   stepPrev,
-} from '@kirby/core';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { getDisplayFiles } from '@kirby/diff';
+} from '@n10/core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import { getDisplayFiles } from '@n10/diff';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';

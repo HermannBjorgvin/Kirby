@@ -1,5 +1,5 @@
-import type * as CoreModule from '@kirby/core';
-import { worktreeSessionKey } from '@kirby/core';
+import type * as CoreModule from '@n10/core';
+import { worktreeSessionKey } from '@n10/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SessionsModule from './sessions.js';
 
@@ -41,11 +41,11 @@ vi.mock('./repo.js', () => ({
   activeRepoIs: (cwd: string) => cwd === state.cwd,
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: (cwd: string) => state.configByCwd[cwd] ?? { fromCwd: cwd },
 }));
 
-vi.mock('@kirby/terminal-tmux', () => ({
+vi.mock('@n10/terminal-tmux', () => ({
   tmuxSessionSnapshot: (name: string) => state.tmuxSnapshots.get(name) ?? null,
   sameTmuxIncarnation: (
     a: Record<string, unknown>,
@@ -56,7 +56,7 @@ vi.mock('@kirby/terminal-tmux', () => ({
     ),
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
   createWorktree: (branch: string) => {
     if (state.createFails.has(branch)) {
@@ -66,7 +66,7 @@ vi.mock('@kirby/worktree-manager', () => ({
   },
 }));
 
-vi.mock('@kirby/core', async (importOriginal) => {
+vi.mock('@n10/core', async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     worktreeSessionKey: actual.worktreeSessionKey,

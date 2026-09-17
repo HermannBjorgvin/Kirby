@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import { Box } from 'ink';
 import { render } from 'ink-testing-library';
-import type { DiffFile } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { DiffFile } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import type {
   DiffListItem,
   DiffListLayout,

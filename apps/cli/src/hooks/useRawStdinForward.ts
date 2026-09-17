@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { MouseTrackingMode } from '@kirby/terminal';
+import type { MouseTrackingMode } from '@n10/terminal';
 import {
   SGR_SCROLL_DOWN,
   SGR_SCROLL_UP,

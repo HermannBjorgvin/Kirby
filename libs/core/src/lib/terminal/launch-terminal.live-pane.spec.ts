@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import type { TaggedSession } from '../session-identity.js';
 
 // Exercises the real openSession boundary (unlike launch-terminal.spec.ts,
@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   })),
   register: vi.fn(),
 }));
-vi.mock('@kirby/terminal-tmux', () => ({ createTmuxBackend: state.create }));
+vi.mock('@n10/terminal-tmux', () => ({ createTmuxBackend: state.create }));
 vi.mock('../pty-registry.js', () => ({
   spawnSession: state.register,
   sessionNames: () => [],

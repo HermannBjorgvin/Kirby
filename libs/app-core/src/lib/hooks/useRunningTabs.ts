@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useSidebar } from '../context/SidebarContext.js';
-import { getSpawnedAt as registryGetSpawnedAt } from '@kirby/core';
+import { getSpawnedAt as registryGetSpawnedAt } from '@n10/core';
 import {
   orderRunningTabs,
   tabNumberMap,
   type RunningSessionItem,
-} from '@kirby/core';
-import type { SidebarItem } from '@kirby/core';
+} from '@n10/core';
+import type { SidebarItem } from '@n10/core';
 
 /**
  * Pure computation behind `useRunningTabs`, exported so consumers that

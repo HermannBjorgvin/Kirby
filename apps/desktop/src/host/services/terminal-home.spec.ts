@@ -15,11 +15,11 @@ import {
  * to nobody.
  */
 describe('terminalRepo', () => {
-  const roots = new Set(['/home/dev/kirby', '/home/dev/other']);
+  const roots = new Set(['/home/dev/n10', '/home/dev/other']);
   const isRoot = (p: string) => roots.has(p);
 
   it('binds a repository root to itself', () => {
-    expect(terminalRepo('/home/dev/kirby', isRoot)).toBe('/home/dev/kirby');
+    expect(terminalRepo('/home/dev/n10', isRoot)).toBe('/home/dev/n10');
   });
 
   it('treats a folder that is no repository as plain', () => {
@@ -35,15 +35,15 @@ describe('terminalRepo', () => {
       asked.push(p);
       return isRoot(p);
     };
-    expect(terminalRepo('/home/dev/kirby/apps/desktop', spy)).toBeNull();
-    expect(asked).toEqual(['/home/dev/kirby/apps/desktop']);
+    expect(terminalRepo('/home/dev/n10/apps/desktop', spy)).toBeNull();
+    expect(asked).toEqual(['/home/dev/n10/apps/desktop']);
   });
 
   // A picker can hand back a trailing separator; the workspace names
   // the same repository without one, and the two must compare equal or
   // the terminal lands in a group of its own beside the repo's.
   it('drops a trailing separator so the root matches the open repo', () => {
-    expect(terminalRepo('/home/dev/kirby/', isRoot)).toBe('/home/dev/kirby');
+    expect(terminalRepo('/home/dev/n10/', isRoot)).toBe('/home/dev/n10');
   });
 
   it('leaves the filesystem root alone', () => {
@@ -53,9 +53,7 @@ describe('terminalRepo', () => {
 
 describe('displayPath', () => {
   it('writes the home directory as ~', () => {
-    expect(displayPath('/home/dev/code/kirby', '/home/dev')).toBe(
-      '~/code/kirby'
-    );
+    expect(displayPath('/home/dev/code/n10', '/home/dev')).toBe('~/code/n10');
     expect(displayPath('/home/dev', '/home/dev')).toBe('~');
   });
 
@@ -87,7 +85,7 @@ describe('resolvePickedFolder', () => {
   });
 
   it('resolves a symlink to the real directory it points at', () => {
-    dir = mkdtempSync(join(tmpdir(), 'kirby-picked-folder-'));
+    dir = mkdtempSync(join(tmpdir(), 'n10-picked-folder-'));
     const real = realpathSync(join(dir, '.'));
     const link = join(dir, 'link');
     symlinkSync(real, link);
@@ -101,7 +99,7 @@ describe('resolvePickedFolder', () => {
   });
 
   it('falls back to the raw path when resolution fails', () => {
-    const missing = '/definitely/not/a/real/path/kirby-test';
+    const missing = '/definitely/not/a/real/path/n10-test';
     expect(
       resolvePickedFolder(missing, () => {
         throw new Error('ENOENT');

@@ -10,7 +10,7 @@ const GIT_TIMEOUT_MS = 30_000;
  * Environment variables that prevent git and SSH from prompting for
  * credentials interactively. Without these, a locked SSH agent (e.g.
  * 1Password) can cause SSH to open /dev/tty for a passphrase prompt,
- * which steals stdin from Kirby's TUI.
+ * which steals stdin from n10's TUI.
  */
 export const GIT_NO_PROMPT_ENV = {
   GIT_TERMINAL_PROMPT: '0', // git: never prompt for credentials

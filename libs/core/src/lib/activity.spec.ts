@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { SessionBackend } from '@kirby/terminal';
+import type { SessionBackend } from '@n10/terminal';
 import {
   __resetForTests,
   attach,

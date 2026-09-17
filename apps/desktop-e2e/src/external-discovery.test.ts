@@ -70,9 +70,7 @@ test.describe('Discovering work created outside the app', () => {
     await expect
       .poll(
         async () => {
-          const sessions = await page.evaluate(() =>
-            window.kirby.listSessions()
-          );
+          const sessions = await page.evaluate(() => window.n10.listSessions());
           return (
             sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
             false
@@ -109,6 +107,6 @@ test.describe('Discovering work created outside the app', () => {
     await expect(page.getByText(BANNER).first()).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText('kirby-fake-agent-ready')).toHaveCount(0);
+    await expect(page.getByText('n10-fake-agent-ready')).toHaveCount(0);
   });
 });

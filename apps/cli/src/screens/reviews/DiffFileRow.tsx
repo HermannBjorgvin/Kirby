@@ -1,5 +1,5 @@
 import { Text } from 'ink';
-import type { DiffFile } from '@kirby/diff';
+import type { DiffFile } from '@n10/diff';
 import { fileRowText, statusBadge } from './diff-file-row-model.js';
 
 /** One changed file: status letter, optional comment count, name, stats. */

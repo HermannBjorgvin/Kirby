@@ -19,7 +19,7 @@ import {
 
 function storedPrefs(homeDir: string): Record<string, unknown> {
   return JSON.parse(
-    readFileSync(join(homeDir, '.kirby', 'desktop-prefs.json'), 'utf8')
+    readFileSync(join(homeDir, '.n10', 'desktop-prefs.json'), 'utf8')
   ) as Record<string, unknown>;
 }
 
@@ -70,7 +70,7 @@ test.describe('Command palette', () => {
 
     // Persisted so the next launch opens the way it was left.
     expect(
-      await page.evaluate(() => localStorage.getItem('kirby.sidebar.hidden'))
+      await page.evaluate(() => localStorage.getItem('n10.sidebar.hidden'))
     ).toBe('1');
 
     const again = await openPalette(page);

@@ -1,7 +1,7 @@
 # Packaging
 
 Both packages share one version, enforced by `scripts/shared-version.mjs`.
-Publish preparation must leave no private `@kirby/*` workspace dependencies in
+Publish preparation must leave no private `@n10/*` workspace dependencies in
 the distribution manifests.
 
 ## CLI
@@ -20,7 +20,7 @@ in the desktop README; verify supported platforms when upgrading dependencies.
 
 ## Review-agent command
 
-Review agents record drafts with `kirby util add-comment`, supplied by the CLI.
+Review agents record drafts with `n10 util add-comment`, supplied by the CLI.
 Desktop users need both packages for that workflow. A dependency's executable is
 not exposed on the user's global PATH, and declaring the same executable in two
 global packages causes install conflicts. Keep this requirement in both READMEs

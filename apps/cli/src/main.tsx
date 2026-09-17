@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { render, Box, useApp } from 'ink';
-import type { VcsProvider } from '@kirby/vcs-core';
-import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
-import { githubProvider } from '@kirby/vcs-github';
+import type { VcsProvider } from '@n10/vcs-core';
+import { azureDevOpsProvider } from '@n10/vcs-azure-devops';
+import { githubProvider } from '@n10/vcs-github';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal.js';
 import { OnboardingWizard } from './components/OnboardingWizard.js';
 import {
@@ -21,12 +21,8 @@ import {
   SessionProvider,
   SidebarProvider,
   ToastProvider,
-} from '@kirby/app-core';
-import {
-  killAll,
-  applySessionBackend,
-  probeTmuxAvailability,
-} from '@kirby/core';
+} from '@n10/app-core';
+import { killAll, applySessionBackend, probeTmuxAvailability } from '@n10/core';
 import {
   repoTitle,
   setWindowTitle,
@@ -124,7 +120,7 @@ if (targetDir) {
   process.chdir(targetDir);
 }
 
-// Name the tab after the repo, so a terminal full of Kirbys is legible.
+// Name the tab after the repo, so a terminal full of n10s is legible.
 // Skip the git lookup entirely when there's no TTY to title (CI, pipes).
 if (process.stdout.isTTY) {
   setWindowTitle(repoTitle());

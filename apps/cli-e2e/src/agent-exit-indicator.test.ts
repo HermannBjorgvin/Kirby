@@ -1,4 +1,4 @@
-import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
+import { test, expect, fakeAgentCommand } from './fixtures/n10.js';
 import {
   createSession,
   waitForSidebarFocused,
@@ -13,7 +13,7 @@ import { listTaggedSessions } from './setup/tmux.js';
 // dead entry — `hasSession` kept returning true so `session.running`
 // stayed true.
 test.use({
-  kirbyConfig: {
+  n10Config: {
     // Print banner, sit silent, then exit on the first keystroke it
     // receives. Mirrors an agent that quits on its own — but the test
     // controls *when*, so it can confirm the running state first without
@@ -25,36 +25,36 @@ test.use({
 
 test.describe('Sidebar indicator after agent exit (#55)', () => {
   test('flips from running (◉) to stopped (◎) when the agent terminates', async ({
-    kirby,
+    n10,
   }) => {
     const branch = 'short-lived';
-    await createSession(kirby.term, branch, { start: true });
+    await createSession(n10.term, branch, { start: true });
 
     // Wait for the banner so we know the PTY is up.
     await expect(
-      kirby.term.getByText('kirby-fake-agent-ready').first()
+      n10.term.getByText('n10-fake-agent-ready').first()
     ).toBeVisible({ timeout: 10_000 });
 
     const session = () =>
-      listTaggedSessions(kirby.homeDir).find((s) => s.branch === branch);
+      listTaggedSessions(n10.homeDir).find((s) => s.branch === branch);
     const originalPid = session()?.panePid;
 
     // Escape to sidebar so the row icon is visible. Agent is still alive
     // (it only exits on input), so this is a stable ◉.
-    await kirby.term.write('\x00');
-    await waitForSidebarFocused(kirby.term);
+    await n10.term.write('\x00');
+    await waitForSidebarFocused(n10.term);
 
     // Selected + running → ◉
-    const runningRow = kirby.term.page.locator('.term-row', {
+    const runningRow = n10.term.page.locator('.term-row', {
       hasText: new RegExp(`◉.*${branch}`),
     });
     await expect(runningRow).toBeVisible({ timeout: 5_000 });
 
     // Tab back into the terminal and send a keystroke — the agent exits
     // on input, deterministically, only now that ◉ is confirmed.
-    await kirby.term.press('Tab');
-    await waitForTerminalFocused(kirby.term);
-    await kirby.term.type('x');
+    await n10.term.press('Tab');
+    await waitForTerminalFocused(n10.term);
+    await n10.term.type('x');
 
     // Escape back to the sidebar; the row should flip. Selected +
     // stopped → ◎
@@ -66,19 +66,19 @@ test.describe('Sidebar indicator after agent exit (#55)', () => {
     // what shows the new state. Re-escaping drives that repaint instead
     // of waiting for one. On CI, which runs this about half again as
     // slow as a local machine, a fixed 8s wait was losing the race.
-    const stoppedRow = kirby.term.page.locator('.term-row', {
+    const stoppedRow = n10.term.page.locator('.term-row', {
       hasText: new RegExp(`◎.*${branch}`),
     });
     await expect(async () => {
-      await kirby.term.write('\x00');
-      await waitForSidebarFocused(kirby.term);
+      await n10.term.write('\x00');
+      await waitForSidebarFocused(n10.term);
       await expect(stoppedRow).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
     // A stopped agent keeps its tmux session for an explicit restart.
     await expect.poll(() => session()?.paneDead).toBe(true);
-    await tabIntoSession(kirby.term);
-    await kirby.term.write('\x00');
-    await waitForSidebarFocused(kirby.term);
+    await tabIntoSession(n10.term);
+    await n10.term.write('\x00');
+    await waitForSidebarFocused(n10.term);
     await expect(runningRow).toBeVisible({ timeout: 10_000 });
     await expect.poll(() => session()?.paneDead).toBe(false);
     expect(session()?.panePid).not.toBe(originalPid);

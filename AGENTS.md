@@ -22,9 +22,11 @@
 
 <!-- nx configuration end-->
 
-# Kirby
+# n10
 
-Kirby runs coding agents in git worktrees and reviews their pull requests.
+n10 was formerly named Kirby; the repository is `notaharness/n10`.
+
+n10 runs coding agents in git worktrees and reviews their pull requests.
 Nx monorepo with npm workspaces and ESM: `apps/cli` is the Ink TUI,
 `apps/desktop` is Electron, `libs/core` owns shared operations, and
 `libs/app-core` supplies React hooks and controllers.
@@ -64,12 +66,12 @@ GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
 ## Boundaries
 
 - Put shared sequences of git, filesystem, PTY, config and provider operations
-  in `@kirby/core`; both shells call them. When changing worktree removal,
+  in `@n10/core`; both shells call them. When changing worktree removal,
   consolidate the duplicated TUI and desktop flows there.
-- Core cannot import React, Ink, Electron or `@kirby/app-core`. The desktop
-  renderer uses the browser-safe `@kirby/core/plan`, never core's Node entry.
+- Core cannot import React, Ink, Electron or `@n10/app-core`. The desktop
+  renderer uses the browser-safe `@n10/core/plan`, never core's Node entry.
   Keep the core and app-core barrels separate.
-- Terminal backends implement `SessionBackend` without Kirby-specific names.
+- Terminal backends implement `SessionBackend` without n10-specific names.
   tmux session names are labels; `libs/core/src/lib/session-identity.ts`
   owns the `@orchestra-*` tags that identify a session and the label rules.
 
@@ -97,7 +99,7 @@ GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
 
 Tests and scripts must use a scratch socket directory inside a fixture-created
 HOME and unset `TMUX`, which overrides `TMUX_TMPDIR`. Never run
-`tmux kill-server`. Closing Kirby detaches sessions; it must not kill them.
+`tmux kill-server`. Closing n10 detaches sessions; it must not kill them.
 See `libs/terminal-tmux/AGENTS.md`.
 
 ## Git and releases

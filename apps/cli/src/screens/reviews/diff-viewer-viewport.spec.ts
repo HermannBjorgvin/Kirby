@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { RowMap } from '@kirby/review-comments';
+import type { RowMap } from '@n10/review-comments';
 import { diffViewerViewport } from './diff-viewer-viewport.js';
 
 /** A row map for entries of the given heights, laid out end to end. */

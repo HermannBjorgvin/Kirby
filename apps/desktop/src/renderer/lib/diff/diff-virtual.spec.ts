@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,

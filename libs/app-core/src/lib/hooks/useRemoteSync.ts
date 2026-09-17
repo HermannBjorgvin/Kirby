@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useConfig } from '../context/ConfigContext.js';
-import { remoteSyncIntervalMs, syncRemote } from '@kirby/core';
+import { remoteSyncIntervalMs, syncRemote } from '@n10/core';
 import { usePolling } from './usePolling.js';
 
 /** TUI scheduling shell around the shared {@link syncRemote} pass. */

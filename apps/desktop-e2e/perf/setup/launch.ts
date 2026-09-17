@@ -35,7 +35,7 @@ export interface PerfApp {
 
 export interface LaunchOptions {
   repoPath: string;
-  kirbyConfig?: Record<string, unknown>;
+  n10Config?: Record<string, unknown>;
   projectConfig?: Record<string, unknown>;
   fakeGitHub?: FakeGitHub;
 }
@@ -44,11 +44,11 @@ function seedHome(
   homeDir: string,
   opts: LaunchOptions
 ): Record<string, string> {
-  const kirby = join(homeDir, '.kirby');
-  mkdirSync(kirby, { recursive: true });
+  const n10 = join(homeDir, '.n10');
+  mkdirSync(n10, { recursive: true });
   writeFileSync(
-    join(kirby, 'config.json'),
-    JSON.stringify({ aiCommand: 'true', ...opts.kirbyConfig }, null, 2),
+    join(n10, 'config.json'),
+    JSON.stringify({ aiCommand: 'true', ...opts.n10Config }, null, 2),
     'utf8'
   );
   if (opts.projectConfig) {
@@ -56,7 +56,7 @@ function seedHome(
       .update(opts.repoPath)
       .digest('hex')
       .slice(0, 16);
-    const dir = join(kirby, 'projects', key);
+    const dir = join(n10, 'projects', key);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'config.json'),
@@ -68,7 +68,7 @@ function seedHome(
 }
 
 export async function launchApp(opts: LaunchOptions): Promise<PerfApp> {
-  const homeDir = mkdtempSync(join(tmpdir(), 'kirby-perf-home-'));
+  const homeDir = mkdtempSync(join(tmpdir(), 'n10-perf-home-'));
   const ghEnv = seedHome(homeDir, opts);
 
   const parentEnv = { ...process.env };
@@ -78,7 +78,7 @@ export async function launchApp(opts: LaunchOptions): Promise<PerfApp> {
   // Set by `nx serve desktop` and inherited by any shell started from
   // one: the main process would load the renderer from a dev server
   // instead of the build being measured.
-  delete parentEnv.KIRBY_VITE_URL;
+  delete parentEnv.N10_VITE_URL;
 
   const started = Date.now();
   const app = await electron.launch({
@@ -88,8 +88,8 @@ export async function launchApp(opts: LaunchOptions): Promise<PerfApp> {
       ...parentEnv,
       HOME: homeDir,
       XDG_CONFIG_HOME: join(homeDir, '.config'),
-      KIRBY_START_DIR: opts.repoPath,
-      KIRBY_DESKTOP_VERSION: 'perf',
+      N10_START_DIR: opts.repoPath,
+      N10_DESKTOP_VERSION: 'perf',
       ...ghEnv,
       // Last, and not negotiable — see the note in the e2e fixture.
       TMUX_TMPDIR: homeDir,

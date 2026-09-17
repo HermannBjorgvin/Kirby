@@ -7,7 +7,7 @@ working rules; this document explains constraints that are easy to miss.
 
 Core owns sequences of git, filesystem, PTY, config and provider calls.
 App-core supplies React bindings; shells own presentation. The desktop renderer
-cannot use Node APIs and accesses core's plan through `@kirby/core/plan`.
+cannot use Node APIs and accesses core's plan through `@n10/core/plan`.
 Keep that entry browser-safe and the core/app-core barrels separate.
 
 When changing shared behavior, compare both shells. Worktree removal is
@@ -23,7 +23,7 @@ resolved configuration with `npx nx show project <name> --json`.
 
 ## Tmux sessions and transport
 
-Kirby requires tmux 3.2 or newer. Startup probes it and reports an installation
+n10 requires tmux 3.2 or newer. Startup probes it and reports an installation
 hint when unavailable; a stored `terminalBackend` field has no effect. Every
 worktree agent and terminal tab runs in tmux. `node-pty` remains the low-level
 connection used to embed a tmux client in the CLI or desktop terminal.
@@ -83,16 +83,16 @@ Linux, so it may work, but nothing here specifically supports it.
 
 ## Session identity shared with Orchestra
 
-Names are labels; tags carry identity. Kirby and the Orchestra skill's bash
+Names are labels; tags carry identity. n10 and the Orchestra skill's bash
 scripts create ordinary tmux sessions using the same user options:
 
-| Session user option       | Meaning                                 |
-| ------------------------- | --------------------------------------- |
-| `@orchestra-spawner`      | Creator, such as `kirby` or `orchestra` |
-| `@orchestra-repo`         | Canonical main checkout path            |
-| `@orchestra-session-type` | `worktree`, `shell` or `agent`          |
-| `@orchestra-branch`       | Exact branch for a worktree session     |
-| `@orchestra-agent`        | Agent used for the most recent launch   |
+| Session user option       | Meaning                               |
+| ------------------------- | ------------------------------------- |
+| `@orchestra-spawner`      | Creator, such as `n10` or `orchestra` |
+| `@orchestra-repo`         | Canonical main checkout path          |
+| `@orchestra-session-type` | `worktree`, `shell` or `agent`        |
+| `@orchestra-branch`       | Exact branch for a worktree session   |
+| `@orchestra-agent`        | Agent used for the most recent launch |
 
 The shared names live in `session-identity.ts`. Creator/reporting metadata
 survives attachment and restart; a successful new process updates its agent
@@ -129,7 +129,7 @@ An orphaned worktree session appears as an agent terminal when its tagged branch
 no longer matches a listed worktree; attachment preserves its original tags.
 Terminal grouping is derived from its directory. Restoring tabs does not move
 focus. Discovery also removes retained tabs whose sessions were deleted outside
-Kirby.
+n10.
 
 Agent panes use `remain-on-exit` and retain final output. Resume uses the
 recorded agent, regardless of the current project default: Claude and Codex
@@ -145,7 +145,7 @@ transport while preserving the local registry identity and subscriptions.
 Notify snapshots of listeners, because cleanup during one callback must not
 prevent later callbacks from receiving the event.
 
-Quitting Kirby disposes local clients; tmux sessions keep running. Explicit
+Quitting n10 disposes local clients; tmux sessions keep running. Explicit
 Stop, terminal close and worktree removal terminate the matching session,
 including when no local connection exists. `removeWorktreeSession` owns shared
 stop/remove/delete operations with the captured repository.
@@ -294,8 +294,8 @@ with `process.stdout.write`, the precedent being `apps/cli/src/utils/window-titl
 clipped to the card interior so Ink never draws a truncation `…` over the image.
 Each distinct url is fetched and decoded once. Kitty loops animated GIFs natively
 (`a=f` frames plus `a=a,s=3,v=1`, no ongoing traffic); ghostty lacks `a=f`, so
-Kirby re-transmits frames on a chained timeout (≤120 frames, ≥50 ms per frame,
-≤3 concurrent) while a reviews pane shows, and `KIRBY_GIF_ANIMATION=off` keeps a
+n10 re-transmits frames on a chained timeout (≤120 frames, ≥50 ms per frame,
+≤3 concurrent) while a reviews pane shows, and `N10_GIF_ANIMATION=off` keeps a
 static composite. Image download and decoding live in `libs/image-loader`, the
 protocol in `libs/kitty-graphics`.
 

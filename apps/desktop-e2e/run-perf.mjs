@@ -6,7 +6,7 @@
  *
  *   node run-perf.mjs                       # every scenario
  *   node run-perf.mjs --grep startup        # one of them
- *   KIRBY_PERF_LABEL=before node run-perf.mjs
+ *   N10_PERF_LABEL=before node run-perf.mjs
  *
  * Results are written to perf-output/<label>.<scenario>.json; compare
  * two labels with `node perf/report.mjs before after`.
@@ -22,7 +22,7 @@ const playwright = [
   ...process.argv.slice(2),
 ];
 
-const headed = process.env.KIRBY_E2E_HEADED === '1';
+const headed = process.env.N10_E2E_HEADED === '1';
 const wantsXvfb = process.platform === 'linux' && !headed;
 const hasXvfb =
   wantsXvfb &&

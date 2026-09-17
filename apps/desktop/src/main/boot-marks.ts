@@ -14,13 +14,13 @@
  */
 export const MAIN_MARKS = {
   /** Entry module evaluated — Electron is up, our bundle is loaded. */
-  module: 'kirby:main:module',
+  module: 'n10:main:module',
   /** `app.whenReady()` resolved. */
-  ready: 'kirby:main:ready',
+  ready: 'n10:main:ready',
   /** The startup repository is open (or there was none). */
-  repo: 'kirby:main:repo',
+  repo: 'n10:main:repo',
   /** `new BrowserWindow` returned and the load has been kicked off. */
-  window: 'kirby:main:window',
+  window: 'n10:main:window',
 } as const;
 
 export function mark(name: string): void {

@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
-import type { PlanItem } from '@kirby/core';
-import { usePlan, useSidebar } from '@kirby/app-core';
-import { truncate } from '@kirby/core';
+import type { PlanItem } from '@n10/core';
+import { usePlan, useSidebar } from '@n10/app-core';
+import { truncate } from '@n10/core';
 
 // Top-right "add-to-cart" indicator: a titled box listing the comments
 // queued in the current PR's plan. Positioned by TopRightOverlay, which

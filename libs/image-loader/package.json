@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/image-loader",
+  "name": "@n10/image-loader",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/image-loader",
+    "name": "@n10/image-loader",
     "tags": [
       "type:lib",
       "scope:image-loader"

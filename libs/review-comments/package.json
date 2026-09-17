@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/review-comments",
+  "name": "@n10/review-comments",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,14 +19,14 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/review-comments",
+    "name": "@n10/review-comments",
     "tags": [
       "type:lib",
       "scope:review-comments"
     ]
   },
   "dependencies": {
-    "@kirby/logger": "*",
+    "@n10/logger": "*",
     "wrap-ansi": "^9.0.0"
   }
 }

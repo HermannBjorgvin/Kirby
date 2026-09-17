@@ -64,7 +64,7 @@ describe('openCommentInEditor', () => {
       onUpdate: vi.fn(),
     });
 
-    expect(tmpFile).toContain('kirby-comment-c1.md');
+    expect(tmpFile).toContain('n10-comment-c1.md');
     expect(mocks.writeFileSync).toHaveBeenCalledWith(tmpFile, 'hello', 'utf8');
     expect(mocks.spawn).toHaveBeenCalledWith(
       'nano',

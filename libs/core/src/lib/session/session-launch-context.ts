@@ -1,8 +1,8 @@
 import {
   tmuxSessionSnapshot,
   type TmuxSessionIncarnation,
-} from '@kirby/terminal-tmux';
-import type { AppConfig } from '@kirby/vcs-core';
+} from '@n10/terminal-tmux';
+import type { AppConfig } from '@n10/vcs-core';
 import {
   LISTED_TAGS,
   taggedSession,

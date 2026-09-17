@@ -1,9 +1,9 @@
-# libs/core — @kirby/core
+# libs/core — @n10/core
 
 The shell-agnostic half: git, worktrees, PTY and session infrastructure,
 config, providers, keybindings, the plan store, pure helpers. No react, ink,
-electron or `@kirby/app-core` (lint-enforced). `src/plan.ts` is the
-browser-safe entry (`@kirby/core/plan`); nothing under it may touch `node:`.
+electron or `@n10/app-core` (lint-enforced). `src/plan.ts` is the
+browser-safe entry (`@n10/core/plan`); nothing under it may touch `node:`.
 The reasoning behind each rule is in `docs/decisions.md`.
 
 - **Tmux requirement** (`session-backend.ts`): await `probeTmuxAvailability()`
@@ -12,7 +12,7 @@ The reasoning behind each rule is in `docs/decisions.md`.
 - **Launch boundary** (`session/open-session.ts`): receive explicit worktree or
   terminal identity, validate the worktree HEAD, resolve tags, then choose
   create/attach/restart. Build agent argv only for create or restart. The tmux
-  package receives opaque launch plans; it must not infer Kirby identities.
+  package receives opaque launch plans; it must not infer n10 identities.
 - **Registry identity** (`session-key.ts`): worktree keys encode repo and exact
   branch; terminal keys encode the allocated tmux target. Labels never address
   entries. The registry owns connections, rendering and activity, not launch

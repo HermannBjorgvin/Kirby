@@ -5,16 +5,16 @@ import {
   isVcsConfigured,
   autoDetectProjectConfig,
   type AppConfig,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import {
   createTemplateResolver,
   resetWorktreeResolver,
   setWorktreeResolver,
-} from '@kirby/worktree-manager';
-import { resetRepoRoot } from '@kirby/core';
-import { githubProvider } from '@kirby/vcs-github';
-import { azureDevOpsProvider } from '@kirby/vcs-azure-devops';
-import type { VcsProvider } from '@kirby/vcs-core';
+} from '@n10/worktree-manager';
+import { resetRepoRoot } from '@n10/core';
+import { githubProvider } from '@n10/vcs-github';
+import { azureDevOpsProvider } from '@n10/vcs-azure-devops';
+import type { VcsProvider } from '@n10/vcs-core';
 import { NoActiveRepoError, type RepoInfo } from '../contract.js';
 import {
   loadRecents,
@@ -59,7 +59,7 @@ export function isGitRepo(cwd: string): boolean {
  * That is the string git answers for the toplevel, which is what a
  * tmux session's `@orchestra-repo` tag, a worktree's origin and the
  * strip's repository groups are all computed from. Every path a repository is
- * opened by — the picker, the recents list, `KIRBY_START_DIR`, a
+ * opened by — the picker, the recents list, `N10_START_DIR`, a
  * foreign tab — goes through here once, at this boundary, so a
  * checkout reached through a symlink (or macOS's `/var` against
  * `/private/var`) is the same repository everywhere. A path that
@@ -156,7 +156,7 @@ export function getRepo(): RepoInfo | null {
 
 /**
  * Startup repo resolution, in priority order:
- *   1. KIRBY_START_DIR (launcher/dev pass the invoking shell's cwd)
+ *   1. N10_START_DIR (launcher/dev pass the invoking shell's cwd)
  *   2. the most recently opened repo that still exists on disk
  * Falls back to null (repo-open screen) when neither applies.
  */
@@ -164,10 +164,10 @@ export function openStartupRepo(
   env: Record<string, string | undefined> = process.env,
   recents: RecentRepo[] = loadRecents()
 ): RepoInfo | null {
-  const startDir = env.KIRBY_START_DIR;
+  const startDir = env.N10_START_DIR;
   if (startDir) {
     if (!isGitRepo(startDir)) {
-      console.warn(`[desktop] KIRBY_START_DIR is not a git repo: ${startDir}`);
+      console.warn(`[desktop] N10_START_DIR is not a git repo: ${startDir}`);
     } else {
       try {
         return openRepo(startDir);

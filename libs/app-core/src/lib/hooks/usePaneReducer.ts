@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
-import type { PaneMode, SessionMenuState, SidebarItem } from '@kirby/core';
+import type { PaneMode, SessionMenuState, SidebarItem } from '@n10/core';
 import {
   consumeSessionMenuRequest,
   getPrFromItem,
@@ -7,7 +7,7 @@ import {
   openSessionMenuState,
   peekSessionMenuRequest,
   subscribeSessionMenuRequest,
-} from '@kirby/core';
+} from '@n10/core';
 
 // ── State ────────────────────────────────────────────────────────
 

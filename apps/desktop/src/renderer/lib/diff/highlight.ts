@@ -5,7 +5,7 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import { contentKey } from '../content-key.js';
 import type { SplitCell } from './diff-model.js';
 import type { CharRange } from './word-diff.js';

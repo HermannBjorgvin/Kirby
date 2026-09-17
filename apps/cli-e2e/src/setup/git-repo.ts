@@ -4,13 +4,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 export function createTestRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-'));
+  const dir = mkdtempSync(join(tmpdir(), 'n10-e2e-web-'));
   execSync('git init', { cwd: dir, stdio: 'pipe' });
-  execSync('git config user.email "test@kirby.dev"', {
+  execSync('git config user.email "test@n10.dev"', {
     cwd: dir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby Test"', { cwd: dir, stdio: 'pipe' });
+  execSync('git config user.name "n10 Test"', { cwd: dir, stdio: 'pipe' });
   execSync('git commit --allow-empty -m "initial"', {
     cwd: dir,
     stdio: 'pipe',

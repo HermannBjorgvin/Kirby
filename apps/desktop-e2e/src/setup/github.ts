@@ -31,15 +31,15 @@ export function githubToken(): string | undefined {
  * caller owns. Read-only: nothing is pushed.
  */
 export function cloneTestRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'kirby-desktop-integration-'));
+  const dir = mkdtempSync(join(tmpdir(), 'n10-desktop-integration-'));
   execFileSync('git', ['clone', `https://github.com/${TEST_REPO}.git`, dir], {
     stdio: 'pipe',
   });
-  execFileSync('git', ['config', 'user.email', 'e2e@kirby.dev'], {
+  execFileSync('git', ['config', 'user.email', 'e2e@n10.dev'], {
     cwd: dir,
     stdio: 'pipe',
   });
-  execFileSync('git', ['config', 'user.name', 'Kirby E2E'], {
+  execFileSync('git', ['config', 'user.name', 'n10 E2E'], {
     cwd: dir,
     stdio: 'pipe',
   });

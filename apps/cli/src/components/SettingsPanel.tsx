@@ -7,8 +7,8 @@ import {
   useSettingsState,
   useSettingsActions,
   useSessionActions,
-} from '@kirby/app-core';
-import { buildSettingsFields, resolveValue } from '@kirby/core';
+} from '@n10/app-core';
+import { buildSettingsFields, resolveValue } from '@n10/core';
 import { displayValueFor } from '../models/settings-row-model.js';
 import { handleSettingsInput } from '../input-handlers.js';
 

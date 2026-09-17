@@ -1,14 +1,14 @@
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import {
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 import type { LaunchRequest } from './launch-session.js';
 
 /**
  * The launch request for an AI review session of a PR — shared by every
  * shell (TUI, desktop) so the agent always gets the same task prompt
- * and the same `kirby util add-comment` guidance.
+ * and the same `n10 util add-comment` guidance.
  *
  * Resumes an existing review conversation in the worktree when the
  * agent supports it, otherwise seeds a fresh session with the prompt.
@@ -24,7 +24,7 @@ export function buildReviewLaunchRequest(
   // that support it, e.g. Claude; folded into the prompt otherwise).
   const systemGuidance =
     `To add review comments, use this command:\n` +
-    `  kirby util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
+    `  n10 util add-comment --pr=${pr.id} --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body="<comment>"\n\n` +
     `Rules:\n` +
     `- File paths are relative to the repo root\n` +
     `- lineStart/lineEnd are 1-based line numbers in the NEW version of the file\n` +

@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/terminal-tmux',
   test: {
-    name: '@kirby/terminal-tmux',
+    name: '@n10/terminal-tmux',
     watch: false,
     globals: true,
     environment: 'node',

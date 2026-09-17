@@ -1,7 +1,7 @@
 import { Fragment, memo } from 'react';
 import { Text } from 'ink';
-import { segmentCommentBody, imageToken } from '@kirby/review-comments';
-import { placeholderText } from '@kirby/kitty-graphics';
+import { segmentCommentBody, imageToken } from '@n10/review-comments';
+import { placeholderText } from '@n10/kitty-graphics';
 import { useCommentImagesValue } from '../context/CommentImagesContext.js';
 
 interface CommentProseProps {

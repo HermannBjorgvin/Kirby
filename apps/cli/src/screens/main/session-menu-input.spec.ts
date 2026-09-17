@@ -1,8 +1,8 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type * as CoreModule from '@kirby/core';
-import type * as WorktreeManagerModule from '@kirby/worktree-manager';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type * as CoreModule from '@n10/core';
+import type * as WorktreeManagerModule from '@n10/worktree-manager';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import {
   ACTIONS,
   NORMIE_PRESET,
@@ -11,7 +11,7 @@ import {
   type KeyPress,
   type SessionMenuState,
   type SidebarItem,
-} from '@kirby/core';
+} from '@n10/core';
 import type { SessionMenuHandlerCtx } from './input-types.js';
 
 // The session menu handler, driven through the real presets so a moved
@@ -21,20 +21,20 @@ import type { SessionMenuHandlerCtx } from './input-types.js';
 
 let liveSessions = new Set<string>();
 
-vi.mock('@kirby/core', async (importOriginal) => ({
+vi.mock('@n10/core', async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   isSessionAlive: (name: string) => liveSessions.has(name),
   launchSession: vi.fn(),
 }));
 
-vi.mock('@kirby/worktree-manager', async (importOriginal) => ({
+vi.mock('@n10/worktree-manager', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeManagerModule>()),
   listWorktrees: vi.fn(),
   createWorktree: vi.fn(),
 }));
 
-import { launchSession } from '@kirby/core';
-import { createWorktree, listWorktrees } from '@kirby/worktree-manager';
+import { launchSession } from '@n10/core';
+import { createWorktree, listWorktrees } from '@n10/worktree-manager';
 import { handleSessionMenuInput } from './session-menu-input.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────

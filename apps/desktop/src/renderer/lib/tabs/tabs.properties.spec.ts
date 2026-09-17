@@ -59,7 +59,7 @@ const TERMINALS: TerminalEntry[] = [
   },
   ...REPOS.map(
     (repo, i): TerminalEntry => ({
-      name: i === 0 ? `kirby-shell` : `kirby-shell-${i + 1}`,
+      name: i === 0 ? `n10-shell` : `n10-shell-${i + 1}`,
       kind: 'shell',
       cwd: repo,
       displayPath: repo,

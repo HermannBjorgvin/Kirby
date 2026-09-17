@@ -5,14 +5,14 @@ import {
   setRootFrameGap,
   startAnimationLoop,
   type PlacementSize,
-} from '@kirby/kitty-graphics';
+} from '@n10/kitty-graphics';
 import {
   fetchImageBytes,
   decodeImage,
   decodeGifAnimation,
   type DecodedImage,
   type GifAnimation,
-} from '@kirby/image-loader';
+} from '@n10/image-loader';
 import { getGhToken } from '../utils/gh-token.js';
 
 /** A decoded image ready to place, plus its animation if it has one. */
@@ -40,7 +40,7 @@ export async function loadCommentImage(
   if (!decoded) return null;
 
   const wantAnimation =
-    decoded.format === 'gif' && process.env['KIRBY_GIF_ANIMATION'] !== 'off';
+    decoded.format === 'gif' && process.env['N10_GIF_ANIMATION'] !== 'off';
   const animation = wantAnimation ? decodeGifAnimation(bytes) : null;
   return { decoded, animation };
 }

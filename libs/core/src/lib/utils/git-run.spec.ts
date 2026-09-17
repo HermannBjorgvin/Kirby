@@ -19,7 +19,7 @@ import { gitLine, runGit } from './git-run.js';
 let repo: string;
 
 beforeAll(() => {
-  repo = mkdtempSync(join(tmpdir(), 'kirby-git-run-'));
+  repo = mkdtempSync(join(tmpdir(), 'n10-git-run-'));
   execFileSync('git', ['init', '-q', '-b', 'main', '.'], { cwd: repo });
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: repo,

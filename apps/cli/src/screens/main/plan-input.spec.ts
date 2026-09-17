@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment } from '@kirby/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { ReviewComment } from '@n10/review-comments';
 import { handleDiffViewerInput } from './diff-viewer-input.js';
 import { handleDiffFileListInput } from './diff-file-list-input.js';
 import type {
@@ -21,7 +21,7 @@ import {
   annotate,
   clear,
   __resetPlanStoreForTest,
-} from '@kirby/core';
+} from '@n10/core';
 
 const PR_ID = 1;
 const plan = {

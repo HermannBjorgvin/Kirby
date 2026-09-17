@@ -8,8 +8,8 @@ import {
   sessionMenuOptions,
   cycleAgentIndex,
   type SessionMenuOptionKey,
-} from '@kirby/core';
-import { createWorktree, listWorktrees } from '@kirby/worktree-manager';
+} from '@n10/core';
+import { createWorktree, listWorktrees } from '@n10/worktree-manager';
 import type { SessionMenuHandlerCtx } from './input-types.js';
 import { resolveEditorTarget } from './editor-target.js';
 

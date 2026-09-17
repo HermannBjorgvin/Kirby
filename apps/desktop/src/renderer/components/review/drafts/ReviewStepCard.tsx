@@ -11,7 +11,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type {
   CommentSeverity,
   ReviewComment,

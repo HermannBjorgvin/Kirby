@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { SettingsField } from '@kirby/core';
+import type { SettingsField } from '@n10/core';
 import { displayValueFor } from './settings-row-model.js';
 
 const CHOICE: SettingsField = {

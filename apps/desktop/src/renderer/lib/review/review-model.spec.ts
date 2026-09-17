@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type {
   RemoteCommentThread,
   ReviewComment,
@@ -438,7 +438,7 @@ describe('buildCommentRows row contents', () => {
               body:
                 'issue (blocking): The undo stack is never bounded.\n\n' +
                 'Nothing ever pops.\n\n---\n' +
-                '_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_',
+                '_Posted via [n10](https://github.com/notaharness/n10) by an agent_',
               createdAt: '2024-01-01T00:00:00Z',
             },
           ],

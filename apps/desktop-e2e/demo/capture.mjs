@@ -142,7 +142,7 @@ function toGif(
 
 /** Every capture uses its own socket; reap sessions before deleting HOME. */
 function cleanupSessions(home) {
-  if (!basename(home).startsWith('kirby-demo-home-')) {
+  if (!basename(home).startsWith('n10-demo-home-')) {
     throw new Error(`Refusing tmux cleanup outside a demo home: ${home}`);
   }
   const env = { ...process.env, TMUX_TMPDIR: home };
@@ -173,7 +173,7 @@ async function launchApp(
   // This script records the *built* app on a developer's own machine,
   // where `nx serve desktop` may well be running; inheriting its URL
   // would record a dev server instead.
-  delete parentEnv.KIRBY_VITE_URL;
+  delete parentEnv.N10_VITE_URL;
   delete parentEnv.VISUAL;
   // `$TMUX` names a socket outright and beats the TMUX_TMPDIR set
   // below, so a capture run from inside a tmux session would put its
@@ -184,7 +184,7 @@ async function launchApp(
   // Theme is a desktop pref, not config — write it before launch.
   const { writeFileSync } = await import('node:fs');
   writeFileSync(
-    join(scenario.home, '.kirby', 'desktop-prefs.json'),
+    join(scenario.home, '.n10', 'desktop-prefs.json'),
     JSON.stringify({ theme, nativeFrame: false })
   );
 
@@ -202,8 +202,8 @@ async function launchApp(
       DISPLAY,
       HOME: scenario.home,
       XDG_CONFIG_HOME: join(scenario.home, '.config'),
-      KIRBY_START_DIR: scenario.repo,
-      KIRBY_DESKTOP_VERSION: '1.0.0',
+      N10_START_DIR: scenario.repo,
+      N10_DESKTOP_VERSION: '1.0.0',
       ...scenario.env,
       ...env,
       // Last, and not negotiable — see the note in the e2e fixture.
@@ -309,7 +309,7 @@ async function park(page) {
 //
 // The TUI is an Ink app in a PTY, so there is no window to record. It
 // is driven through the same bridge the cli-e2e suite uses: the wterm
-// host spawns Kirby on a PTY and streams it to a browser page that is
+// host spawns n10 on a PTY and streams it to a browser page that is
 // nothing but a full-bleed terminal. Chromium runs in app mode (no
 // tabs, no toolbar, no scrollbars), so the recording is the terminal
 // and nothing else.
@@ -348,7 +348,7 @@ async function startWtermHost() {
 }
 
 /**
- * Spawn Kirby on the host's PTY, then open it in a chrome-less browser
+ * Spawn n10 on the host's PTY, then open it in a chrome-less browser
  * sized to the terminal grid.
  */
 async function launchTui(scenario, { cols = 132, rows = 34 } = {}) {
@@ -370,7 +370,7 @@ async function launchTui(scenario, { cols = 132, rows = 34 } = {}) {
   // attaches to an `--app` window: `chromium.launch` opens its own
   // about:blank and reports zero contexts for the app one.
   const ctx = await chromium.launchPersistentContext(
-    mkdtempSync(join(tmpdir(), 'kirby-demo-chrome-')),
+    mkdtempSync(join(tmpdir(), 'n10-demo-chrome-')),
     {
       headless: false,
       // Same trap as the Electron fixture: Chromium talks to the
@@ -396,9 +396,9 @@ async function launchTui(scenario, { cols = 132, rows = 34 } = {}) {
   if (!page) throw new Error('the app window never opened');
   currentPage = page;
   await page.waitForLoadState('domcontentloaded');
-  // Kirby has painted its first frame once its own name is on screen.
+  // n10 has painted its first frame once its own name is on screen.
   await page
-    .getByText('Kirby')
+    .getByText('n10')
     .first()
     .waitFor({ state: 'visible', timeout: 30_000 });
   return { browser: ctx, page };
@@ -419,7 +419,7 @@ async function waitTui(page, text, { hold = 900, timeout = 30_000 } = {}) {
 }
 
 /**
- * The TUI, doing the thing Kirby is for: read the review comments on a
+ * The TUI, doing the thing n10 is for: read the review comments on a
  * pull request, queue the ones worth acting on, and hand them to an
  * agent working in that branch's worktree.
  *
@@ -527,7 +527,7 @@ async function demoHero(scenario) {
     // An agent running in the background puts the workspace in its
     // natural state: green dot on the row, Agent entry in the rail.
     await page.evaluate(() =>
-      window.kirby.launchAgent({
+      window.n10.launchAgent({
         branch: 'command-palette',
         intent: 'continue-or-blank',
       })
@@ -855,7 +855,7 @@ async function demoBabysit(scenario) {
   const size = { width: 1060, height: 640 };
   const { app, page } = await launchApp(scenario, {
     size,
-    env: { KIRBY_BABYSIT_DEBOUNCE_MS: '3500', KIRBY_BABYSIT_POLL_MS: '1500' },
+    env: { N10_BABYSIT_DEBOUNCE_MS: '3500', N10_BABYSIT_POLL_MS: '1500' },
   });
   await installCursor(page);
   await sleep(600);

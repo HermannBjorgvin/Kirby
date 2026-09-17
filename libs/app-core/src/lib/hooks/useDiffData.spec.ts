@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // has to answer on both entry points, or a spawned call escapes to real
 // git and reports the test repo's refs instead of the scripted ones.
 //
-// The real module is spread back in because importing @kirby/core
+// The real module is spread back in because importing @n10/core
 // loads its whole barrel, and worktree-manager promisifies `exec` at
 // module scope — a mock that supplies only `execFile` makes the import
 // throw before any test runs.

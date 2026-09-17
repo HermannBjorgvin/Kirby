@@ -17,11 +17,11 @@ const seen = new Set<string>();
 
 export const BOOT_MARKS = {
   /** Renderer entry module evaluated; React is about to mount. */
-  boot: 'kirby:boot',
+  boot: 'n10:boot',
   /** The workspace shell (title bar, sidebar frame, editor area) mounted. */
-  shell: 'kirby:shell',
+  shell: 'n10:shell',
   /** The sidebar painted its first real row from the host. */
-  sidebar: 'kirby:sidebar',
+  sidebar: 'n10:sidebar',
 } as const;
 
 /** Mark `name` the first time it happens, and never again. */
@@ -37,7 +37,7 @@ export function markOnce(name: string): void {
 
 /**
  * Time a host round trip onto the renderer's performance timeline as
- * `kirby:diff:<name>`, alongside the diff worker's own measures.
+ * `n10:diff:<name>`, alongside the diff worker's own measures.
  *
  * The point is to be able to say which half of a slow tab open is
  * ours. Measured that way once already: opening a 40-file pull request
@@ -54,7 +54,7 @@ export async function measured<T>(
     return await run();
   } finally {
     try {
-      performance.measure(`kirby:diff:${name}`, {
+      performance.measure(`n10:diff:${name}`, {
         start,
         end: performance.now(),
       });

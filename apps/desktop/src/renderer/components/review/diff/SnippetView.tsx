@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import { lineKey } from '../../../lib/diff/diff-model.js';
 import {
   useFileAnalysis,

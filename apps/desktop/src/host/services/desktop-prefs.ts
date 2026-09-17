@@ -8,7 +8,7 @@ export type DesktopPrefsLike = DesktopPrefs;
 /**
  * Desktop-only preferences that the main process needs *before* the
  * renderer exists (window chrome) or that the renderer must share with
- * the menu (theme). Kept in ~/.kirby/desktop-prefs.json, next to the
+ * the menu (theme). Kept in ~/.n10/desktop-prefs.json, next to the
  * recents file; never merged into the CLI's config.
  */
 const DEFAULTS: DesktopPrefs = {
@@ -17,7 +17,7 @@ const DEFAULTS: DesktopPrefs = {
 };
 
 function prefsPath(): string {
-  return join(homedir(), '.kirby', 'desktop-prefs.json');
+  return join(homedir(), '.n10', 'desktop-prefs.json');
 }
 
 export function loadDesktopPrefs(): DesktopPrefs {

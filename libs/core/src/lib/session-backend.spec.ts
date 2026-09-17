@@ -1,6 +1,6 @@
 import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { TmuxSessionInfo, TmuxStatus } from '@kirby/terminal-tmux';
+import type { TmuxSessionInfo, TmuxStatus } from '@n10/terminal-tmux';
 import type { DiscoveredWorktree } from './discovery/discovery-model.js';
 
 const {
@@ -26,12 +26,12 @@ vi.mock('node:child_process', () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
 }));
 
-vi.mock('@kirby/terminal-tmux', () => ({
+vi.mock('@n10/terminal-tmux', () => ({
   isTmuxAvailable: () => isTmuxAvailableMock(),
   tmuxKillSession: (name: string) => tmuxKillSessionMock(name),
   tmuxListSessionsDetailed: () => tmuxListSessionsMock(),
 }));
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
 }));
 vi.mock('./pty-registry.js', () => ({
@@ -70,7 +70,7 @@ function ours(
     paneDead: false,
     path,
     options: {
-      '@orchestra-spawner': 'kirby',
+      '@orchestra-spawner': 'n10',
       '@orchestra-repo': repo,
       '@orchestra-session-type': type,
       ...(branch === null ? {} : { '@orchestra-branch': branch }),
@@ -366,7 +366,7 @@ describe('observeTmuxSessions', () => {
     expect(seen.terminals).toEqual([]);
   });
 
-  // A session named exactly what Kirby would have chosen, with no
+  // A session named exactly what n10 would have chosen, with no
   // tags, is foreign: neither a persisted worktree nor a terminal.
   it('ignores an untagged session whatever it is called', () => {
     tmuxListSessionsMock.mockReturnValue([

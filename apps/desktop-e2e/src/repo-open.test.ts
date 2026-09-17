@@ -39,7 +39,7 @@ test.describe('Repo picker', () => {
     await page.getByRole('button', { name: 'Open', exact: true }).click();
 
     await expect(newWorktreeButton(page)).toBeVisible({ timeout: 30_000 });
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: repoPath,
     });
   });
@@ -48,7 +48,7 @@ test.describe('Repo picker', () => {
     desktop,
   }) => {
     const { page } = desktop;
-    const notARepo = mkdtempSync(join(tmpdir(), 'kirby-not-a-repo-'));
+    const notARepo = mkdtempSync(join(tmpdir(), 'n10-not-a-repo-'));
     try {
       await page.getByPlaceholder('/path/to/repository').fill(notARepo);
       await page.getByRole('button', { name: 'Open', exact: true }).click();
@@ -57,7 +57,7 @@ test.describe('Repo picker', () => {
       await expect(
         page.getByRole('button', { name: /Open repository/ })
       ).toBeVisible();
-      expect(await page.evaluate(() => window.kirby.getRepo())).toBeNull();
+      expect(await page.evaluate(() => window.n10.getRepo())).toBeNull();
     } finally {
       rmSync(notARepo, { recursive: true, force: true });
     }
@@ -67,7 +67,7 @@ test.describe('Repo picker', () => {
     desktop,
   }) => {
     const { page, repoPath } = desktop;
-    // Kirby's own worktrees look like this, and so does any submodule:
+    // n10's own worktrees look like this, and so does any submodule:
     // `.git` is a file pointing at the real git dir. Refusing them
     // would refuse the very thing the app is about.
     const worktree = join(repoPath, '.claude', 'worktrees', 'inner');
@@ -75,7 +75,7 @@ test.describe('Repo picker', () => {
     await page.getByRole('button', { name: 'Open', exact: true }).click();
 
     await expect(newWorktreeButton(page)).toBeVisible({ timeout: 30_000 });
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: worktree,
     });
   });
@@ -103,7 +103,7 @@ test.describe('Recent repositories', () => {
     const { page, repoPath } = desktop;
     // Recents are what a second launch restores from, so the entry has
     // to exist before the app is closed, not be written on exit.
-    const recents = await page.evaluate(() => window.kirby.listRecentRepos());
+    const recents = await page.evaluate(() => window.n10.listRecentRepos());
     expect(recents.map((r) => r.cwd)).toContain(repoPath);
     expect(recents.find((r) => r.cwd === repoPath)?.valid).toBe(true);
   });

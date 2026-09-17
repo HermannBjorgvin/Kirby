@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Box } from 'ink';
 import { render } from 'ink-testing-library';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment, RowMap } from '@kirby/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { ReviewComment, RowMap } from '@n10/review-comments';
 import {
   useAutoSelectFirstComment,
   type UseAutoSelectFirstCommentOptions,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 
 // ── Test helpers ────────────────────────────────────────────────
 

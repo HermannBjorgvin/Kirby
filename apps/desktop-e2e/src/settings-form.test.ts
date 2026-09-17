@@ -19,7 +19,7 @@ import { clickAppMenuItem } from './setup/menu.js';
 
 function config(homeDir: string): Record<string, unknown> {
   return JSON.parse(
-    readFileSync(join(homeDir, '.kirby', 'config.json'), 'utf8')
+    readFileSync(join(homeDir, '.n10', 'config.json'), 'utf8')
   ) as Record<string, unknown>;
 }
 
@@ -30,16 +30,13 @@ function projectConfig(
 ): Record<string, unknown> {
   const key = createHash('sha256').update(repoPath).digest('hex').slice(0, 16);
   return JSON.parse(
-    readFileSync(
-      join(homeDir, '.kirby', 'projects', key, 'config.json'),
-      'utf8'
-    )
+    readFileSync(join(homeDir, '.n10', 'projects', key, 'config.json'), 'utf8')
   ) as Record<string, unknown>;
 }
 
 function prefs(homeDir: string): Record<string, unknown> {
   return JSON.parse(
-    readFileSync(join(homeDir, '.kirby', 'desktop-prefs.json'), 'utf8')
+    readFileSync(join(homeDir, '.n10', 'desktop-prefs.json'), 'utf8')
   ) as Record<string, unknown>;
 }
 
@@ -112,7 +109,7 @@ test.describe('Settings form', () => {
     // and the assertion turns flaky. Written as a UI test it failed
     // about one run in eight, which is worse than not having it.
     await page.evaluate(() =>
-      window.kirby.updateSettingsField(
+      window.n10.updateSettingsField(
         { label: 'Worktree Path', key: 'worktreePath' },
         '/tmp/temporary'
       )
@@ -120,7 +117,7 @@ test.describe('Settings form', () => {
     expect(config(homeDir).worktreePath).toBe('/tmp/temporary');
 
     await page.evaluate(() =>
-      window.kirby.updateSettingsField(
+      window.n10.updateSettingsField(
         { label: 'Worktree Path', key: 'worktreePath' },
         ''
       )

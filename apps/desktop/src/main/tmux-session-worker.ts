@@ -1,5 +1,5 @@
-import { prepareTmuxSession, type TmuxLaunchPlan } from '@kirby/terminal-tmux';
-import type { SessionSpec } from '@kirby/terminal';
+import { prepareTmuxSession, type TmuxLaunchPlan } from '@n10/terminal-tmux';
+import type { SessionSpec } from '@n10/terminal';
 
 /** A utility process starts tmux without inheriting the browser's open resources. */
 process.parentPort.once(

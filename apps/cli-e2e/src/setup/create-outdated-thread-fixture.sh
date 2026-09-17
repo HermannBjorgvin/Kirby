@@ -67,7 +67,7 @@ PR_URL="$(
     --base main \
     --head "${BRANCH}" \
     --title "Outdated thread fixture (do not merge)" \
-    --body "Permanent fixture for kirby's e2e tests. Used by apps/cli-e2e/src/outdated-thread.test.ts to verify the diff viewer renders outdated review threads inline at their originalLine. Do not merge or modify."
+    --body "Permanent fixture for n10's e2e tests. Used by apps/cli-e2e/src/outdated-thread.test.ts to verify the diff viewer renders outdated review threads inline at their originalLine. Do not merge or modify."
 )"
 PR_NUMBER="${PR_URL##*/}"
 
@@ -76,7 +76,7 @@ echo "created PR #${PR_NUMBER} (${PR_URL}); posting review comment on commit ${F
 cat <<JSON | gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --input -
 {
   "commit_id": "${FIRST_SHA}",
-  "body": "Permanent fixture comment — kirby e2e exercises outdated-thread rendering. Do not delete.",
+  "body": "Permanent fixture comment — n10 e2e exercises outdated-thread rendering. Do not delete.",
   "event": "COMMENT",
   "comments": [
     {

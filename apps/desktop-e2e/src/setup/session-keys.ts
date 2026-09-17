@@ -9,7 +9,7 @@ export function sessionBranch(key: string): string {
 }
 
 export async function sessionKey(page: Page, branch: string): Promise<string> {
-  const sessions = await page.evaluate(() => window.kirby.listSessions());
+  const sessions = await page.evaluate(() => window.n10.listSessions());
   const session = sessions.find((s) => sessionBranch(s.name) === branch);
   if (!session) throw new Error(`No session for ${branch}`);
   return session.name;

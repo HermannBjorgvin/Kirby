@@ -10,12 +10,12 @@
  * the row the user is on. Keeping it here makes those rules assertable
  * without rendering a terminal.
  */
-import { LAYOUT } from '@kirby/app-core';
-import { computeScrollWindow, type SidebarItem } from '@kirby/core';
+import { LAYOUT } from '@n10/app-core';
+import { computeScrollWindow, type SidebarItem } from '@n10/core';
 
 // Rows the sidebar does NOT get for scrollable items:
 //   - Pane border (top + bottom)       → LAYOUT.PANE_BORDER_ROWS
-//   - Pane title row ("Kirby")         → LAYOUT.PANE_TITLE_ROWS
+//   - Pane title row ("n10")         → LAYOUT.PANE_TITLE_ROWS
 // This compensates for the fact that Sidebar gets `termRows` (the full
 // terminal height) but actually renders inside a smaller flex slot.
 const SIDEBAR_CHROME_ROWS = LAYOUT.PANE_BORDER_ROWS + LAYOUT.PANE_TITLE_ROWS;

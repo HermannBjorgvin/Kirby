@@ -10,7 +10,7 @@ export default defineConfig(() => ({
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/terminal',
+    name: '@n10/terminal',
     watch: false,
     globals: true,
     environment: 'node',

@@ -25,14 +25,14 @@ export interface PlacementSize {
  * Env-based capability detection. Placeholder placements need kitty
  * (≥ 0.28) or ghostty — terminals that merely parse the graphics
  * protocol (wezterm) don't render placeholders, so the allowlist is
- * deliberately narrow. KIRBY_IMAGES overrides: 'off' disables,
+ * deliberately narrow. N10_IMAGES overrides: 'off' disables,
  * 'kitty' force-enables (used by tests and unsupported-TERM setups).
  */
 export function detectKittyGraphics(
   env: Record<string, string | undefined>
 ): boolean {
-  if (env['KIRBY_IMAGES'] === 'off') return false;
-  if (env['KIRBY_IMAGES'] === 'kitty') return true;
+  if (env['N10_IMAGES'] === 'off') return false;
+  if (env['N10_IMAGES'] === 'kitty') return true;
   const term = env['TERM'] ?? '';
   if (term.includes('kitty') || term.includes('ghostty')) return true;
   if (env['KITTY_WINDOW_ID']) return true;

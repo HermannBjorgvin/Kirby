@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { isVcsError, type RemoteCommentThread } from '@kirby/vcs-core';
+import { isVcsError, type RemoteCommentThread } from '@n10/vcs-core';
 import {
   parseGitHubRemoteUrl,
   mapReviewState,

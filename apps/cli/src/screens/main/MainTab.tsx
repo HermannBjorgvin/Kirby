@@ -23,8 +23,8 @@ import {
   useKeybinds,
   useSidebar,
   usePaneReducer,
-} from '@kirby/app-core';
-import { dequeueOldest, getItemKey, getSession } from '@kirby/core';
+} from '@n10/app-core';
+import { dequeueOldest, getItemKey, getSession } from '@n10/core';
 import { TopRightOverlay } from '../../components/TopRightOverlay.js';
 import { handleSessionMenuInput, handleSidebarInput } from './main-input.js';
 import { MainContent } from './MainContent.js';

@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/review-comments',
   test: {
-    name: '@kirby/review-comments',
+    name: '@n10/review-comments',
     watch: false,
     globals: true,
     environment: 'node',

@@ -1,4 +1,4 @@
-import type { BuildStatusState, RemoteCommentThread } from '@kirby/vcs-core';
+import type { BuildStatusState, RemoteCommentThread } from '@n10/vcs-core';
 
 // ── Babysitting a pull request ───────────────────────────────────
 //

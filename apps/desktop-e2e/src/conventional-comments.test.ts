@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { AGENT_FOOTER } from '@kirby/review-comments/conventional';
+import { AGENT_FOOTER } from '@n10/review-comments/conventional';
 import { test, expect } from './fixtures/desktop.js';
 import { sidebarRow, visibleText } from './setup/app.js';
 import type { FakeGitHub } from './setup/fake-gh.js';
@@ -26,7 +26,7 @@ const PLAIN = 'Looks good to me, shipping.';
 const AGENT_BODY = `issue (blocking): ${SUBJECT}\n\n${DISCUSSION}\n\n---\n${AGENT_FOOTER}`;
 
 const GITHUB: FakeGitHub = {
-  username: 'kirby-tester',
+  username: 'n10-tester',
   prs: [
     {
       number: 42,
@@ -39,7 +39,7 @@ const GITHUB: FakeGitHub = {
           id: 'T1',
           path: 'undo.c',
           line: 1,
-          comments: [{ author: 'kirby-tester', body: AGENT_BODY }],
+          comments: [{ author: 'n10-tester', body: AGENT_BODY }],
         },
         {
           id: 'T2',
@@ -112,12 +112,12 @@ test.describe('Rendering Conventional Comments', () => {
     const agent = card(page, SUBJECT);
     await expect(agent.getByText(/Posted via/)).toBeVisible();
     // `exact` matters: role-name matching is substring-based, and the
-    // comment's author is "kirby-tester".
+    // comment's author is "n10-tester".
     await expect(
-      agent.getByRole('button', { name: 'Kirby', exact: true })
+      agent.getByRole('button', { name: 'n10', exact: true })
     ).toBeVisible();
     // The markdown it arrived as is never shown.
-    await expect(agent.getByText(/_Posted via \[Kirby\]/)).toHaveCount(0);
+    await expect(agent.getByText(/_Posted via \[n10\]/)).toHaveCount(0);
   });
 
   /** Most comments on a pull request are people's, written however

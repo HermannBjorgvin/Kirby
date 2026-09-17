@@ -18,7 +18,7 @@ import type {
   CommentSeverity,
   ReviewComment,
 } from '../../../../host/contract.js';
-import { snapshotLocal } from '@kirby/core/plan';
+import { snapshotLocal } from '@n10/core/plan';
 import { usePlan, usePlanControls } from '../../../lib/plan/plan.js';
 import { useRepo } from '../../../lib/repo-context.js';
 import {
@@ -156,7 +156,7 @@ function DraftEditor({
 }
 
 /**
- * A draft review comment written by the agent (`kirby util
+ * A draft review comment written by the agent (`n10 util
  * add-comment`). Edit the text/severity, post it as a real review
  * comment, or discard it.
  */

@@ -1,4 +1,4 @@
-import type { SettingsField } from '@kirby/core';
+import type { SettingsField } from '@n10/core';
 
 /**
  * The value column for one settings row. A field with presets shows

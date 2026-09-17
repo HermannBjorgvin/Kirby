@@ -1,10 +1,10 @@
-import { readConfig } from '@kirby/vcs-core';
+import { readConfig } from '@n10/vcs-core';
 import type {
   BranchPrMap,
   PullRequestComments,
   ReviewVerdict,
-} from '@kirby/vcs-core';
-import { fetchDiffText, fetchFileDiffText } from '@kirby/core';
+} from '@n10/vcs-core';
+import { fetchDiffText, fetchFileDiffText } from '@n10/core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { refreshPrList } from './sidebar.js';
 import type { ReplyRequest, ResolveRequest } from '../contract.js';

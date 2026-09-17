@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useConfig } from '../context/ConfigContext.js';
-import { sweepMergedBranches } from '@kirby/core';
+import { sweepMergedBranches } from '@n10/core';
 
 /** TUI state shell around the shared {@link sweepMergedBranches}. */
 export function useMergedBranches(

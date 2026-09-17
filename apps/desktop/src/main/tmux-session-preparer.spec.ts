@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionSpec } from '@kirby/terminal';
+import type { SessionSpec } from '@n10/terminal';
 
 const { fork, prepare, install } = vi.hoisted(() => ({
   fork: vi.fn(),
@@ -8,7 +8,7 @@ const { fork, prepare, install } = vi.hoisted(() => ({
   install: vi.fn(),
 }));
 vi.mock('electron', () => ({ utilityProcess: { fork } }));
-vi.mock('@kirby/terminal-tmux', () => ({
+vi.mock('@n10/terminal-tmux', () => ({
   prepareTmuxSession: prepare,
   setTmuxSessionPreparer: install,
 }));

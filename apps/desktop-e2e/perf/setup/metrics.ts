@@ -10,14 +10,14 @@ export const RESULTS_DIR = resolve(HERE, '..', '..', 'perf-output');
  * Where a benchmark run's numbers go, and how they are compared.
  *
  * Every scenario writes one JSON file of samples per run; `report.mjs`
- * reads them back. A run is labelled (KIRBY_PERF_LABEL, defaulting to
+ * reads them back. A run is labelled (N10_PERF_LABEL, defaulting to
  * the git description) so a before/after pair can sit side by side —
  * a single absolute number from one machine says nothing on its own.
  */
 export type Samples = Record<string, number[]>;
 
 export function label(): string {
-  return process.env.KIRBY_PERF_LABEL ?? 'current';
+  return process.env.N10_PERF_LABEL ?? 'current';
 }
 
 export function saveSamples(scenario: string, samples: Samples): void {
@@ -86,9 +86,9 @@ export async function bootMetrics(page: Page): Promise<Record<string, number>> {
     return {
       domContentLoaded: nav?.domContentLoadedEventEnd ?? NaN,
       fcp: at('first-contentful-paint', 'paint'),
-      bootMark: at('kirby:boot', 'mark'),
-      shellMark: at('kirby:shell', 'mark'),
-      sidebarMark: at('kirby:sidebar', 'mark'),
+      bootMark: at('n10:boot', 'mark'),
+      shellMark: at('n10:shell', 'mark'),
+      sidebarMark: at('n10:sidebar', 'mark'),
     };
   });
 }
@@ -98,7 +98,7 @@ export async function bootMetrics(page: Page): Promise<Record<string, number>> {
  *
  * Both halves are needed. The boot marks are recorded in effects, which
  * React runs after commit but before the browser paints — so waiting on
- * `kirby:sidebar` alone can win the race against first-contentful-paint
+ * `n10:sidebar` alone can win the race against first-contentful-paint
  * and read a timeline that has no paint entry in it yet. Waiting on the
  * paint alone would be worse: it happens long before the sidebar has
  * anything in it.
@@ -106,7 +106,7 @@ export async function bootMetrics(page: Page): Promise<Record<string, number>> {
 export async function waitForBoot(page: Page, timeout: number): Promise<void> {
   await page.waitForFunction(
     () =>
-      performance.getEntriesByName('kirby:sidebar', 'mark').length > 0 &&
+      performance.getEntriesByName('n10:sidebar', 'mark').length > 0 &&
       performance.getEntriesByName('first-contentful-paint', 'paint').length >
         0,
     undefined,
@@ -129,10 +129,10 @@ export async function mainMetrics(
     const at = (name: string): number =>
       performance.getEntriesByName(name, 'mark')[0]?.startTime ?? NaN;
     return {
-      mainModule: at('kirby:main:module'),
-      mainReady: at('kirby:main:ready'),
-      mainRepo: at('kirby:main:repo'),
-      mainWindow: at('kirby:main:window'),
+      mainModule: at('n10:main:module'),
+      mainReady: at('n10:main:ready'),
+      mainRepo: at('n10:main:repo'),
+      mainWindow: at('n10:main:window'),
     };
   });
 }
@@ -205,7 +205,7 @@ export async function duringInteraction<T>(
 
 /**
  * What the diff workers were asked for and how long each answer took,
- * from `kirby:diff:*` measures the worker client records.
+ * from `n10:diff:*` measures the worker client records.
  *
  * Reported as the count and the worst case rather than a mean: the
  * number a reviewer notices is the one file that took a while, not the
@@ -216,7 +216,7 @@ export async function workerPhases(
 ): Promise<Record<string, number>> {
   return page.evaluate(() => {
     const of = (name: string) =>
-      performance.getEntriesByName(`kirby:diff:${name}`, 'measure');
+      performance.getEntriesByName(`n10:diff:${name}`, 'measure');
     const worst = (xs: PerformanceEntry[]) =>
       xs.reduce((a, e) => Math.max(a, e.duration), 0);
     const total = (xs: PerformanceEntry[]) =>

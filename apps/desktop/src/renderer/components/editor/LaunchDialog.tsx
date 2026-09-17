@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { PlayIcon } from 'lucide-react';
 import { useState } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type {
   AgentId,
   SessionIncarnation,
@@ -57,7 +57,7 @@ export function LaunchDialog({
 }) {
   const context = useQuery({
     queryKey: ['session-launch-context', cwd, branch],
-    queryFn: () => window.kirby.getSessionLaunchContext(branch),
+    queryFn: () => window.n10.getSessionLaunchContext(branch),
     staleTime: 0,
     refetchOnWindowFocus: false,
   });

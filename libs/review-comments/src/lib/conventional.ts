@@ -10,12 +10,12 @@ import type { CommentSeverity } from './types.js';
  * A review comment's first line says what kind of remark it is and how
  * much it binds, so a reader can tell "this blocks the merge" from "I
  * would have named it differently" without reading the paragraph
- * underneath. Kirby's agents write in this shape, and both shells
+ * underneath. n10's agents write in this shape, and both shells
  * render the header as badges rather than as the first line of prose.
  *
  * Everything here is pure — no `node:` builtin, no I/O — because the
  * Electron renderer, which is a sandboxed browser context, parses the
- * same bodies the TUI does. `@kirby/review-comments/conventional` is
+ * same bodies the TUI does. `@n10/review-comments/conventional` is
  * the browser-safe entry that exposes it; the package's main barrel
  * reaches the filesystem and is off-limits there.
  *
@@ -135,7 +135,7 @@ export function formatConventionalComment(c: ConventionalComment): string {
 /**
  * How an agent's severity is said in the shared vocabulary.
  *
- * Kirby's agents pick a severity because that is what the diff viewer
+ * n10's agents pick a severity because that is what the diff viewer
  * sorts and colours by; the reviewer on the other end reads a label.
  * These are the same judgement in two vocabularies, so the mapping
  * lives here rather than in whichever caller happens to need it.
@@ -202,7 +202,7 @@ export function conventionalSeverity(
 
 // ── Agent attribution ────────────────────────────────────────────
 
-export const KIRBY_URL = 'https://github.com/HermannBjorgvin/Kirby';
+export const N10_URL = 'https://github.com/notaharness/n10';
 
 /**
  * The line that says a machine wrote this.
@@ -215,8 +215,8 @@ export const KIRBY_URL = 'https://github.com/HermannBjorgvin/Kirby';
  */
 export const AGENT_ATTRIBUTION = {
   prefix: 'Posted via ',
-  linkText: 'Kirby',
-  url: KIRBY_URL,
+  linkText: 'n10',
+  url: N10_URL,
   suffix: ' by an agent',
 } as const;
 

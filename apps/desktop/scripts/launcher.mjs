@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Global-install entry point for kirby-desktop (`bin` in the dist
+// Global-install entry point for n10-desktop (`bin` in the dist
 // package.json). Spawns the Electron binary against this app
 // directory. Mirrors dev.mjs's SUID-sandbox fallback: npm-installed
 // Electron often can't use its setuid helper, and crashing with
@@ -22,7 +22,7 @@ try {
   );
   if (!(st.uid === 0 && (st.mode & 0o4755) === 0o4755)) {
     console.warn(
-      '[kirby-desktop] SUID sandbox unavailable — launching with --no-sandbox'
+      '[n10-desktop] SUID sandbox unavailable — launching with --no-sandbox'
     );
     args.push('--no-sandbox');
   }
@@ -35,8 +35,8 @@ const child = spawn(electron, [...args, appDir], {
   // Launching from inside a repo auto-opens that repo.
   env: {
     ...process.env,
-    KIRBY_START_DIR: process.cwd(),
-    KIRBY_DESKTOP_VERSION: version,
+    N10_START_DIR: process.cwd(),
+    N10_DESKTOP_VERSION: version,
   },
 });
 child.on('close', (code) => process.exit(code ?? 0));

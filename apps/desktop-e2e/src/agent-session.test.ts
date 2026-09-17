@@ -14,7 +14,7 @@ const SESSION = BRANCH;
 
 async function launchAgent(page: Page) {
   await launchAgentFromRail(page);
-  await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
     timeout: 30_000,
   });
 }
@@ -26,7 +26,7 @@ function closeTabButton(page: Page) {
 }
 
 async function sessionRunning(page: Page): Promise<boolean> {
-  const sessions = await page.evaluate(() => window.kirby.listSessions());
+  const sessions = await page.evaluate(() => window.n10.listSessions());
   return (
     sessions.find((s) => sessionBranch(s.name) === SESSION)?.running ?? false
   );
@@ -55,7 +55,7 @@ test.describe('Agent sessions', () => {
     // And once one has run, it is a relaunch.
     await launchAgent(page);
     await page.evaluate(
-      (name) => window.kirby.killSession(name),
+      (name) => window.n10.killSession(name),
       await sessionKey(page, BRANCH)
     );
     await expect(
@@ -70,7 +70,7 @@ test.describe('Agent sessions', () => {
     await createWorktree(page, BRANCH);
     await launchAgent(page);
 
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    const sessions = await page.evaluate(() => window.n10.listSessions());
     expect(sessions.map((s) => sessionBranch(s.name))).toContain(SESSION);
     expect(
       sessions.find((s) => sessionBranch(s.name) === SESSION)?.running
@@ -92,7 +92,7 @@ test.describe('Agent sessions', () => {
     await expect
       .poll(() =>
         page.evaluate(
-          async (key) => (await window.kirby.getSessionActivity())[key],
+          async (key) => (await window.n10.getSessionActivity())[key],
           name
         )
       )
@@ -114,7 +114,7 @@ test.describe('Agent sessions', () => {
 test.describe('Agent sessions (busy agent)', () => {
   // Never stops producing output, so the activity registry keeps
   // `active` set and the close has to ask first.
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ stream: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ stream: true }) } });
 
   test('closing the tab of a working agent asks before killing it', async ({
     desktop,

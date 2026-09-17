@@ -1,57 +1,57 @@
 import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { dismissSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 test.use({
-  kirbyConfig: {
-    aiCommand: 'echo kirby-session-active && sleep 300',
+  n10Config: {
+    aiCommand: 'echo n10-session-active && sleep 300',
     keybindPreset: 'vim',
   },
 });
 
 test.describe('Session Lifecycle – clean delete', () => {
   test('create session via branch picker, then delete with confirmation', async ({
-    kirby,
+    n10,
   }) => {
     const branchName = 'e2e-lifecycle';
     const sessionName = branchName;
 
     // 1. Empty state
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
+    await expect(n10.term.getByText('(no sessions)')).toBeVisible();
 
     // 2. Open branch picker, type a new branch name
-    await kirby.term.type('c');
-    await expect(kirby.term.getByText('Branch Picker')).toBeVisible();
-    await kirby.term.type(branchName);
-    await expect(kirby.term.getByText(/\(new branch\)/).first()).toBeVisible({
+    await n10.term.type('c');
+    await expect(n10.term.getByText('Branch Picker')).toBeVisible();
+    await n10.term.type(branchName);
+    await expect(n10.term.getByText(/\(new branch\)/).first()).toBeVisible({
       timeout: 5_000,
     });
 
     // Let React re-render so useInput closure captures the updated filter.
     await settleFor(
-      kirby.term.page,
+      n10.term.page,
       2_000,
       "Ink's useInput captured the old filter until the next render"
     );
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
     // 3. Branch picker closes, the new session's menu opens; dismiss
     //    it and the session row is in the sidebar
-    await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
+    await expect(n10.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
-    await dismissSessionMenu(kirby.term);
-    await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
+    await dismissSessionMenu(n10.term);
+    await expect(n10.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });
 
     // 4. Worktree directory was created on disk
     const worktreePath = join(
-      kirby.repoPath,
+      n10.repoPath,
       '.claude',
       'worktrees',
       sessionName
@@ -61,22 +61,22 @@ test.describe('Session Lifecycle – clean delete', () => {
     // 5. Press 'x' to delete — no remote tracking, so a confirm dialog
     //    appears. The confirm text wraps in a 100-col terminal, so match
     //    a short fragment that stays on one line.
-    await kirby.term.type('x');
-    await expect(kirby.term.getByText('to confirm').first()).toBeVisible({
+    await n10.term.type('x');
+    await expect(n10.term.getByText('to confirm').first()).toBeVisible({
       timeout: 10_000,
     });
 
     // 6. Type the branch name to confirm deletion
-    await kirby.term.type(branchName);
+    await n10.term.type(branchName);
     await settleFor(
-      kirby.term.page,
+      n10.term.page,
       2_000,
       'the typed branch name to reach the confirm field before Enter'
     );
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
     // 7. Session disappears
-    await expect(kirby.term.getByText('(no sessions)')).toBeVisible({
+    await expect(n10.term.getByText('(no sessions)')).toBeVisible({
       timeout: 15_000,
     });
 
@@ -87,7 +87,7 @@ test.describe('Session Lifecycle – clean delete', () => {
     let branchExists = true;
     try {
       execSync(`git rev-parse --verify "${branchName}"`, {
-        cwd: kirby.repoPath,
+        cwd: n10.repoPath,
         stdio: 'pipe',
       });
     } catch {
@@ -99,40 +99,40 @@ test.describe('Session Lifecycle – clean delete', () => {
 
 test.describe('Session Lifecycle – dirty worktree', () => {
   test('delete session with dirty worktree is force-removed', async ({
-    kirby,
+    n10,
   }) => {
     const branchName = 'e2e-dirty';
     const sessionName = branchName;
 
     // 1. Empty state
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
-    await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
+    await expect(n10.term.getByText('(no sessions)')).toBeVisible();
 
     // 2. Create session via branch picker
-    await kirby.term.type('c');
-    await expect(kirby.term.getByText('Branch Picker')).toBeVisible();
-    await kirby.term.type(branchName);
-    await expect(kirby.term.getByText(/\(new branch\)/).first()).toBeVisible({
+    await n10.term.type('c');
+    await expect(n10.term.getByText('Branch Picker')).toBeVisible();
+    await n10.term.type(branchName);
+    await expect(n10.term.getByText(/\(new branch\)/).first()).toBeVisible({
       timeout: 5_000,
     });
     await settleFor(
-      kirby.term.page,
+      n10.term.page,
       2_000,
       "Ink's useInput captured the old filter until the next render"
     );
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
-    await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
+    await expect(n10.term.getByText('Branch Picker')).not.toBeVisible({
       timeout: 5_000,
     });
-    await dismissSessionMenu(kirby.term);
-    await expect(kirby.term.getByText(sessionName).first()).toBeVisible({
+    await dismissSessionMenu(n10.term);
+    await expect(n10.term.getByText(sessionName).first()).toBeVisible({
       timeout: 10_000,
     });
 
     // 3. Make the worktree dirty by writing an untracked file
     const worktreePath = join(
-      kirby.repoPath,
+      n10.repoPath,
       '.claude',
       'worktrees',
       sessionName
@@ -141,22 +141,22 @@ test.describe('Session Lifecycle – dirty worktree', () => {
     writeFileSync(join(worktreePath, 'dirty.txt'), 'uncommitted change');
 
     // 4. Press 'x' — canRemoveBranch detects uncommitted changes → confirm
-    await kirby.term.type('x');
-    await expect(kirby.term.getByText('to confirm').first()).toBeVisible({
+    await n10.term.type('x');
+    await expect(n10.term.getByText('to confirm').first()).toBeVisible({
       timeout: 10_000,
     });
 
     // 5. Confirm deletion by typing the branch name
-    await kirby.term.type(branchName);
+    await n10.term.type(branchName);
     await settleFor(
-      kirby.term.page,
+      n10.term.page,
       2_000,
       'the typed branch name to reach the confirm field before Enter'
     );
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
     // 6. Session disappears
-    await expect(kirby.term.getByText('(no sessions)')).toBeVisible({
+    await expect(n10.term.getByText('(no sessions)')).toBeVisible({
       timeout: 15_000,
     });
 

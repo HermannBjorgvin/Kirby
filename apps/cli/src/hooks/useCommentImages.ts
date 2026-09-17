@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import {
   collectImageUrls,
   type CommentImageLayouts,
   type CommentImageLayout,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 import {
   detectKittyGraphics,
   supportsNativeAnimation,
   placementForImage,
   deleteImage,
   type PlacementSize,
-} from '@kirby/kitty-graphics';
-import type { GifAnimation } from '@kirby/image-loader';
+} from '@n10/kitty-graphics';
+import type { GifAnimation } from '@n10/image-loader';
 import type {
   CommentImagesValue,
   CommentImageState,
@@ -25,7 +25,7 @@ import {
 } from './comment-image-transmit.js';
 
 // Loads comment images and transmits them to the terminal via the
-// kitty graphics protocol (virtual placements — see @kirby/kitty-graphics).
+// kitty graphics protocol (virtual placements — see @n10/kitty-graphics).
 // Each distinct url is fetched, decoded and transmitted exactly once
 // per process; the state map drives both rendering (CommentProse
 // placeholders) and the row/height math (imageLayouts).
@@ -33,9 +33,9 @@ import {
 // Animated GIFs play back two ways:
 //   - kitty: frames transmit once (a=f) and the TERMINAL loops them
 //     forever (a=a,s=3,v=1) — no timers, no ongoing traffic.
-//   - ghostty (no a=f support upstream): Kirby re-transmits frames on
+//   - ghostty (no a=f support upstream): n10 re-transmits frames on
 //     a chained timeout while a reviews pane is visible. Bounded by
-//     MAX_ANIMATED gifs and MIN_FRAME_MS. `KIRBY_GIF_ANIMATION=off`
+//     MAX_ANIMATED gifs and MIN_FRAME_MS. `N10_GIF_ANIMATION=off`
 //     disables playback entirely (a static composite frame only).
 
 const MAX_ANIMATED = 3;
@@ -157,7 +157,7 @@ export function useCommentImages(
     };
   }, [enabled, native, animationsActive, animVersion]);
 
-  // Free the terminal's image memory when Kirby unmounts / exits.
+  // Free the terminal's image memory when n10 unmounts / exits.
   useEffect(() => {
     if (!enabled) return;
     const ids = transmittedIdsRef.current;

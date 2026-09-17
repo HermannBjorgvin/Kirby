@@ -3,8 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from '@kirby/vcs-core';
-import { tmuxSetOption } from '@kirby/terminal-tmux';
+import type { AppConfig } from '@n10/vcs-core';
+import { tmuxSetOption } from '@n10/terminal-tmux';
 import { orchestraFixture } from '../../../tests/orchestra-fixture.js';
 import { diffScans } from '../discovery/discovery-model.js';
 import {

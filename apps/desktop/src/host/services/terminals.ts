@@ -11,8 +11,8 @@ import {
   launchTerminalSession,
   releaseExitedSession,
   type DiscoveredTerminal,
-} from '@kirby/core';
-import { readConfig } from '@kirby/vcs-core';
+} from '@n10/core';
+import { readConfig } from '@n10/vcs-core';
 import type {
   SessionBuffer,
   TerminalKind,
@@ -248,7 +248,7 @@ export function killTerminal(name: string): void {
   known.delete(name);
 }
 
-/** Forget a target removed outside Kirby, without touching a replacement session. */
+/** Forget a target removed outside n10, without touching a replacement session. */
 export function forgetTerminal(name: string): void {
   if (hasPersistedTerminalSession(name) || !known.delete(name)) return;
   detachSession(name);

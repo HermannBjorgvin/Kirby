@@ -1,4 +1,4 @@
-import type { BuildStatusState } from '@kirby/vcs-core';
+import type { BuildStatusState } from '@n10/vcs-core';
 import type { AdoConfig } from './client.js';
 import { authHeaders, baseUrl } from './client.js';
 import { adoGet, adoGetPage, TTL } from './request.js';
@@ -110,7 +110,7 @@ export async function fetchPrBuildRuns(
  *
  * Worth one call every half hour: with it, the pipeline runs for every
  * open pull request arrive in a single request instead of one per row.
- * Kirby's configuration names the repository, and the builds API will
+ * n10's configuration names the repository, and the builds API will
  * not take a name.
  */
 async function fetchRepositoryId(config: AdoConfig): Promise<string | null> {
@@ -214,7 +214,11 @@ export async function fetchPrBuildRunsBatch(
     else result.set(prId, 'none');
   }
   return missing.length > 0
-    ? fetchEachSeparately(config, missing.slice(0, MAX_SEPARATE_LOOKUPS), result)
+    ? fetchEachSeparately(
+        config,
+        missing.slice(0, MAX_SEPARATE_LOOKUPS),
+        result
+      )
     : result;
 }
 

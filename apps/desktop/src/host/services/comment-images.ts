@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readConfig } from '@kirby/vcs-core';
+import { readConfig } from '@n10/vcs-core';
 import { requireRepo } from './repo.js';
 import type { CommentImagePayload } from '../contract.js';
 

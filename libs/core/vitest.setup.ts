@@ -19,6 +19,6 @@ import { join } from 'node:path';
  * overridden. The scratch server is never killed: it exits by itself
  * once its last session is gone.
  */
-process.env.TMUX_TMPDIR = mkdtempSync(join(tmpdir(), 'kirby-core-tests-'));
+process.env.TMUX_TMPDIR = mkdtempSync(join(tmpdir(), 'n10-core-tests-'));
 delete process.env.TMUX;
 delete process.env.TMUX_PANE;

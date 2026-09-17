@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
@@ -22,7 +22,7 @@ import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-outdated-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-outdated-clone-'));
 registerCleanup(cloneDir);
 
 if (hasGhToken) {
@@ -34,11 +34,11 @@ if (hasGhToken) {
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -52,21 +52,21 @@ test.describe('@integration Outdated Thread Fixture', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { keybindPreset: 'vim' },
-    // Pass GH_TOKEN through explicitly so the spawned Kirby's gh CLI
+    n10RepoPath: cloneDir,
+    n10Config: { keybindPreset: 'vim' },
+    // Pass GH_TOKEN through explicitly so the spawned n10's gh CLI
     // can authenticate even when Playwright reuses a wterm-host that
     // wasn't started with the env (e.g. local dev where the host has
     // been running across shell sessions). The CI runner spawns a
     // fresh host per job, so this is also safe there.
-    kirbyEnv: { GH_TOKEN: process.env.GH_TOKEN ?? '' },
+    n10Env: { GH_TOKEN: process.env.GH_TOKEN ?? '' },
     rows: 60,
     cols: 120,
   });
 
   // Same race-tolerant selection helper as comments-fixture.
   async function pressUntilSelected(
-    kirby: { term: { press: (k: string) => Promise<void> } },
+    n10: { term: { press: (k: string) => Promise<void> } },
     selectedLocator: Locator,
     maxPresses: number
   ): Promise<boolean> {
@@ -76,27 +76,27 @@ test.describe('@integration Outdated Thread Fixture', () => {
         return true;
       } catch {
         if (i === maxPresses) return false;
-        await kirby.term.press('j');
+        await n10.term.press('j');
       }
     }
     return false;
   }
 
-  async function openOutdatedThreadDiff(kirby: {
+  async function openOutdatedThreadDiff(n10: {
     term: {
       page: Page;
       press: (k: string) => Promise<void>;
       getByText: Page['getByText'];
     };
   }) {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText(/Outdated thread fixture/).first()
+      n10.term.getByText(/Outdated thread fixture/).first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr = sidebarLocator(kirby.term.page, 'Outdated thread fixture');
+    const pr = sidebarLocator(n10.term.page, 'Outdated thread fixture');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr.selected().first(),
       20
     );
@@ -104,26 +104,26 @@ test.describe('@integration Outdated Thread Fixture', () => {
       throw new Error('Could not land sidebar selection on PR #322');
     }
 
-    await kirby.term.press('d');
+    await n10.term.press('d');
 
     // Wait for the file-list to appear with the fixture file.
-    await kirby.term.page
+    await n10.term.page
       .locator('.term-row', { hasText: /outdated-thread-fixture\.c/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Single file in this PR — pressing Enter on the (already-selected)
     // first row opens the diff.
-    await kirby.term.press('Enter');
-    await expect(
-      kirby.term.getByText('(no diff for this file)')
-    ).not.toBeVisible({ timeout: 30_000 });
+    await n10.term.press('Enter');
+    await expect(n10.term.getByText('(no diff for this file)')).not.toBeVisible(
+      { timeout: 30_000 }
+    );
   }
 
   test('outdated thread renders inline with the (outdated) tag', async ({
-    kirby,
+    n10,
   }) => {
-    await openOutdatedThreadDiff({ term: kirby.term });
+    await openOutdatedThreadDiff({ term: n10.term });
 
     // The fixture comment body — anchored to original line 10. With
     // the originalLine fallback in transformReviewThread, the thread
@@ -131,14 +131,14 @@ test.describe('@integration Outdated Thread Fixture', () => {
     // section past the end of the diff and this assertion would only
     // pass if the test scrolled to the bottom (it doesn't).
     await expect(
-      kirby.term
+      n10.term
         .getByText(/Fixture comment anchored to the original line 10/)
         .first()
     ).toBeVisible({ timeout: 15_000 });
 
     // The (outdated) marker is part of the card header. Confirms we
     // propagated `isOutdated: true` through the provider transform.
-    await expect(kirby.term.getByText(/\(outdated\)/).first()).toBeVisible({
+    await expect(n10.term.getByText(/\(outdated\)/).first()).toBeVisible({
       timeout: 5_000,
     });
   });

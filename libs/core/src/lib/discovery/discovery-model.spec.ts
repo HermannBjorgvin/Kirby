@@ -14,7 +14,7 @@ function term(
   id: string,
   kind: 'shell' | 'agent' = 'shell'
 ): DiscoveredTerminal {
-  return { name: `kirby-${kind}-${id}`, kind, path: `/dir/${id}` };
+  return { name: `n10-${kind}-${id}`, kind, path: `/dir/${id}` };
 }
 
 function scan(

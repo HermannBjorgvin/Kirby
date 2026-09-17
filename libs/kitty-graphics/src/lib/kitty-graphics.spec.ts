@@ -38,15 +38,15 @@ describe('detectKittyGraphics', () => {
     expect(detectKittyGraphics({})).toBe(false);
   });
 
-  it('KIRBY_IMAGES=off force-disables', () => {
+  it('N10_IMAGES=off force-disables', () => {
     expect(
-      detectKittyGraphics({ TERM: 'xterm-kitty', KIRBY_IMAGES: 'off' })
+      detectKittyGraphics({ TERM: 'xterm-kitty', N10_IMAGES: 'off' })
     ).toBe(false);
   });
 
-  it('KIRBY_IMAGES=kitty force-enables', () => {
+  it('N10_IMAGES=kitty force-enables', () => {
     expect(
-      detectKittyGraphics({ TERM: 'xterm-256color', KIRBY_IMAGES: 'kitty' })
+      detectKittyGraphics({ TERM: 'xterm-256color', N10_IMAGES: 'kitty' })
     ).toBe(true);
   });
 });

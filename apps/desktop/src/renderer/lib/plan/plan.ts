@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { usePlanStore } from '@kirby/app-core/plan';
+import { usePlanStore } from '@n10/app-core/plan';
 import {
   add,
   annotate,
@@ -8,15 +8,15 @@ import {
   remove,
   toggle,
   type PlanItem,
-} from '@kirby/core/plan';
+} from '@n10/core/plan';
 import { toast } from 'sonner';
 
 /**
  * The renderer's view of the plan — the queue of review comments the
  * user is assembling for one agent to work through.
  *
- * The store itself is @kirby/core's, shared with the TUI, and the
- * useSyncExternalStore binding is @kirby/app-core's. Everything here is
+ * The store itself is @n10/core's, shared with the TUI, and the
+ * useSyncExternalStore binding is @n10/app-core's. Everything here is
  * the desktop's own ergonomics on top: operations bound to one pull
  * request, and the add/remove interactions the cards share.
  *

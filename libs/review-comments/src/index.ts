@@ -21,7 +21,7 @@ export {
   AGENT_FOOTER,
   CONVENTIONAL_DECORATIONS,
   CONVENTIONAL_LABELS,
-  KIRBY_URL,
+  N10_URL,
   commentBodyParts,
   conventionalForSeverity,
   conventionalSeverity,

@@ -1,8 +1,8 @@
-import type { AgentId, AppConfig } from '@kirby/vcs-core';
+import type { AgentId, AppConfig } from '@n10/vcs-core';
 
 // ── Agent capability registry ────────────────────────────────────
 //
-// A single, capability-aware description of every AI agent Kirby can
+// A single, capability-aware description of every AI agent n10 can
 // drive. Each definition knows how to build the argv for the ways we
 // launch it — blank, seed-with-a-prompt, or continue-a-prior-session —
 // so callers never hand-compose shell strings (which is how prompt
@@ -79,8 +79,8 @@ export interface AgentDefinition {
 }
 
 // Env var names for the shell-composed `continue || seed` path.
-export const SEED_PROMPT_ENV = 'KIRBY_SEED_PROMPT';
-export const SEED_SYSTEM_ENV = 'KIRBY_SEED_SYSTEM';
+export const SEED_PROMPT_ENV = 'N10_SEED_PROMPT';
+export const SEED_SYSTEM_ENV = 'N10_SEED_SYSTEM';
 
 /**
  * Run `script` through `/bin/sh`, for the `continue || fallback` paths
@@ -193,7 +193,7 @@ export const AGENTS: readonly AgentDefinition[] = [
 
 /**
  * The hidden test-runner agent. Runs an arbitrary command through
- * `sh -c` so the e2e harness can drive Kirby with fake agents (`cat`,
+ * `sh -c` so the e2e harness can drive n10 with fake agents (`cat`,
  * `sleep 300`, the fake-agent script, …). Not shown in settings; only
  * reachable when the resolved id is `test`.
  */

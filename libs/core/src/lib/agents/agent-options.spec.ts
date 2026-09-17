@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import { buildAgentOptions } from './agent-options.js';
 
 function config(partial: Partial<AppConfig>): AppConfig {

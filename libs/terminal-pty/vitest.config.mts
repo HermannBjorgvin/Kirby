@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/terminal-pty',
   test: {
-    name: '@kirby/terminal-pty',
+    name: '@n10/terminal-pty',
     watch: false,
     globals: true,
     environment: 'node',

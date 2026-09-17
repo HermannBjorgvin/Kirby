@@ -170,7 +170,7 @@ describe('createWorktree', () => {
   it('reuses a worktree that has the branch checked out under another directory name', async () => {
     // Nothing at the resolver-derived path, but git reports the branch
     // checked out at a directory named differently — created outside
-    // Kirby, or by Kirby under a different worktreePath template.
+    // n10, or by n10 under a different worktreePath template.
     mockExec.mockResolvedValueOnce(
       worktreeListPorcelain([
         { branch: 'feature/auth', dir: '.claude/worktrees/some-other-name' },

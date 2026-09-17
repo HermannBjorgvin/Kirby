@@ -18,7 +18,7 @@ import type { FakeGitHub } from './setup/fake-gh.js';
  * that lost its label, a theme that half-applied.
  *
  * Kept honest about their limits:
- *   • The repo name is fixed (`kirby-visual`) rather than a random
+ *   • The repo name is fixed (`n10-visual`) rather than a random
  *     tempdir, or every run would differ.
  *   • Animations are disabled and the caret hidden, so a capture cannot
  *     land mid-transition.
@@ -47,7 +47,7 @@ const shot = {
 } as const;
 
 test.describe('Visual @visual', () => {
-  test.use({ repo: { name: 'kirby-visual' } });
+  test.use({ repo: { name: 'n10-visual' } });
 
   test('empty workspace', async ({ desktop }) => {
     const { page } = desktop;
@@ -116,7 +116,7 @@ test.describe('Visual @visual', () => {
 test.describe('Visual (diff) @visual', () => {
   test.use({
     repo: {
-      name: 'kirby-visual',
+      name: 'n10-visual',
       worktrees: [
         {
           branch: 'diffable',
@@ -141,7 +141,7 @@ test.describe('Visual (diff) @visual', () => {
 
 test.describe('Visual (light theme) @visual', () => {
   test.use({
-    repo: { name: 'kirby-visual' },
+    repo: { name: 'n10-visual' },
     desktopPrefs: { theme: 'light', nativeFrame: false },
   });
 
@@ -168,7 +168,7 @@ test.describe('Visual (light theme) @visual', () => {
  */
 const PLAN_BRANCH = 'undo-support';
 const PLAN_GITHUB: FakeGitHub = {
-  username: 'kirby-tester',
+  username: 'n10-tester',
   prs: [
     {
       number: 42,
@@ -235,7 +235,7 @@ async function buildPlan(page: Page) {
 test.describe('Visual (plan) @visual', () => {
   test.use({
     repo: {
-      name: 'kirby-visual',
+      name: 'n10-visual',
       worktrees: [
         {
           branch: PLAN_BRANCH,
@@ -265,7 +265,7 @@ test.describe('Visual (plan) @visual', () => {
 test.describe('Visual (plan, light theme) @visual', () => {
   test.use({
     repo: {
-      name: 'kirby-visual',
+      name: 'n10-visual',
       worktrees: [
         {
           branch: PLAN_BRANCH,
