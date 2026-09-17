@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RemoteCommentThread } from '../../../host/contract.js';
 import {
   composerRefreshNotice,
+  conversationLoading,
   firstNonEmptyLine,
   threadExpanded,
   threadLocation,
@@ -163,5 +164,27 @@ describe('totalCommentCount', () => {
   it('is zero before the query has answered', () => {
     expect(totalCommentCount(undefined)).toBe(0);
     expect(totalCommentCount({ threads: [], generalComments: [] })).toBe(0);
+  });
+});
+
+describe('conversationLoading', () => {
+  it('shows the skeleton while loading with nothing to show yet', () => {
+    expect(conversationLoading(true, 0, 0)).toBe(true);
+  });
+
+  /** A draft needs no round trip to the provider — it exists the
+   *  moment the agent writes it — so it is real content the skeleton
+   *  should not cover up, even while the provider's own threads are
+   *  still loading. */
+  it('prefers a draft already on hand over the loading skeleton', () => {
+    expect(conversationLoading(true, 0, 1)).toBe(false);
+  });
+
+  it('prefers a thread already on hand over the loading skeleton', () => {
+    expect(conversationLoading(true, 1, 0)).toBe(false);
+  });
+
+  it('is false once loading has finished', () => {
+    expect(conversationLoading(false, 0, 0)).toBe(false);
   });
 });

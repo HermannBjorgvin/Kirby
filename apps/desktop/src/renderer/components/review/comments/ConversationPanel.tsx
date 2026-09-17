@@ -8,6 +8,7 @@ import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../../host/contract.js';
+import { conversationLoading } from '../../../lib/diff/thread-model.js';
 import { Skeleton } from '../../ui/skeleton.js';
 import { DraftCard } from '../drafts/DraftCard.js';
 import { ThreadCard } from './ThreadCard.js';
@@ -55,7 +56,7 @@ export function ConversationPanel({
       </button>
       {open && (
         <div className="space-y-3 px-4 pb-3">
-          {loading && threads.length === 0 && (
+          {conversationLoading(loading, threads.length, drafts.length) && (
             <Skeleton className="h-16 w-full" />
           )}
           {drafts.map((d) => (
