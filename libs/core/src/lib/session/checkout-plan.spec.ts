@@ -1,6 +1,6 @@
 import { worktreeSessionKey } from '../session-key.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AppConfig, PullRequestInfo } from '@kirby/vcs-core';
+import type { AppConfig, PullRequestInfo } from '@n10/vcs-core';
 
 // Mock the launcher + registry so the orchestrator's branching is
 // observable without spawning real processes.
@@ -30,7 +30,7 @@ vi.mock('./launch-session.js', () => ({
 
 const branchToSessionName = vi.fn((b: string) => `sess-${b}`);
 const createWorktree = vi.fn();
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (b: string) => branchToSessionName(b),
   createWorktree: (b: string) => createWorktree(b),
 }));

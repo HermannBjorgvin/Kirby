@@ -7,12 +7,12 @@
  * file is a catalogue already.
  */
 
-import type { SessionIncarnation } from '@kirby/core';
+import type { SessionIncarnation } from '@n10/core';
 import type {
   AgentId,
   PullRequestInfo,
   RemoteCommentThread,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 
 export interface ReplyRequest {
   prId: number;

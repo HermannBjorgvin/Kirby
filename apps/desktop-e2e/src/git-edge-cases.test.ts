@@ -9,7 +9,7 @@ import { armContextMenuChoice } from './setup/menu.js';
  * Agents do things to their own worktree that a person rarely does by
  * hand: start a rebase and stop on a conflict, check out a different
  * branch, end up on a detached HEAD. Each leaves git in a state where
- * the directory name, the checked-out branch and the branch Kirby
+ * the directory name, the checked-out branch and the branch n10
  * thinks it is looking at stop agreeing.
  *
  * None of these should be able to take the window down, and the
@@ -39,7 +39,7 @@ test.describe('A worktree stopped mid-rebase', () => {
     const { page } = desktop;
     await workspaceIsUsable(page);
 
-    // git reports no branch for a mid-rebase worktree; Kirby recovers
+    // git reports no branch for a mid-rebase worktree; n10 recovers
     // the name from the rebase state, so the row must still be there.
     const row = sidebarRow(page, /rebasing-branch/);
     await expect(row).toBeVisible();
@@ -105,7 +105,7 @@ test.describe('A worktree on a detached HEAD', () => {
     desktop,
   }) => {
     const worktrees = await desktop.page.evaluate(() =>
-      window.kirby.listWorktrees()
+      window.n10.listWorktrees()
     );
     const detached = worktrees.find((w) => w.path.endsWith('detached-branch'));
     expect(detached).toBeDefined();
@@ -130,7 +130,7 @@ test.describe('A worktree whose branch was switched inside it', () => {
     // on `agent-side-branch` — the sidebar reports what git reports.
     await expect(sidebarRow(page, /agent-side-branch/)).toBeVisible();
 
-    const worktrees = await page.evaluate(() => window.kirby.listWorktrees());
+    const worktrees = await page.evaluate(() => window.n10.listWorktrees());
     const found = worktrees.find((w) => w.path.endsWith('original'));
     expect(found?.branch).toBe('agent-side-branch');
   });
@@ -143,21 +143,21 @@ test.describe('A worktree whose branch was switched inside it', () => {
     await expect(
       page.evaluate(
         (branch) =>
-          window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
+          window.n10.launchAgent({ branch, intent: 'continue-or-blank' }),
         'original'
       )
     ).rejects.toThrow('Failed to resolve a worktree');
-    expect(await page.evaluate(() => window.kirby.listSessions())).toEqual([]);
+    expect(await page.evaluate(() => window.n10.listSessions())).toEqual([]);
     await page.evaluate(
       (branch) =>
-        window.kirby.launchAgent({ branch, intent: 'continue-or-blank' }),
+        window.n10.launchAgent({ branch, intent: 'continue-or-blank' }),
       'agent-side-branch'
     );
 
     expect(existsSync(join(repoPath, '.claude', 'worktrees', 'original'))).toBe(
       true
     );
-    const worktrees = await page.evaluate(() => window.kirby.listWorktrees());
+    const worktrees = await page.evaluate(() => window.n10.listWorktrees());
     expect(worktrees.filter((w) => w.path.endsWith('original'))).toHaveLength(
       1
     );

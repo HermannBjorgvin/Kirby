@@ -26,9 +26,9 @@ import { worktreeSessionKey } from '../session-key.js';
  * themselves are told which repository they are about: each
  * names `cwd`, the repository the pull request belongs to.
  */
-import { logError } from '@kirby/logger';
-import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
-import { checkoutWorktree, refExists } from '@kirby/worktree-manager';
+import { logError } from '@n10/logger';
+import type { AppConfig, PullRequestInfo, VcsProvider } from '@n10/vcs-core';
+import { checkoutWorktree, refExists } from '@n10/worktree-manager';
 import { idleFor } from '../activity.js';
 import { isSessionAlive } from '../pty-registry.js';
 import {
@@ -107,9 +107,9 @@ export function babysitTimingFromEnv(
     const value = Number(env[name]);
     return Number.isFinite(value) && value > 0 ? value : undefined;
   };
-  const debounceMs = read('KIRBY_BABYSIT_DEBOUNCE_MS');
+  const debounceMs = read('N10_BABYSIT_DEBOUNCE_MS');
   return {
-    intervalMs: read('KIRBY_BABYSIT_POLL_MS'),
+    intervalMs: read('N10_BABYSIT_POLL_MS'),
     timing: debounceMs === undefined ? undefined : { debounceMs },
   };
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { PullRequestComments } from '@kirby/vcs-core';
+import type { PullRequestComments } from '@n10/vcs-core';
 import {
   deriveBuildStatus,
   combineBuildStatus,
@@ -495,7 +495,7 @@ describe('deriveBuildStatus', () => {
 
   /**
    * A real response, recorded from a pull request that showed red in
-   * Kirby while Azure showed nothing wrong, then anonymised. It is one
+   * n10 while Azure showed nothing wrong, then anonymised. It is one
    * coverage check reporting five times across two iterations: queued
    * twice, failed on iteration 1, pending on iteration 2, and finally
    * not applicable — so the failure it is remembered by belongs to code
@@ -1221,7 +1221,7 @@ describe('azureDevOpsProvider', () => {
   // ── Mention rewriting ─────────────────────────────────────────
   //
   // ADO's REST API returns raw `@<GUID>` tokens in comment bodies
-  // instead of the display names the web UI renders. Kirby
+  // instead of the display names the web UI renders. n10
   // post-processes each body via the Identities API and replaces
   // resolved GUIDs inline; unresolved ones stay intact so nothing
   // silently disappears.
@@ -1494,7 +1494,7 @@ describe('azureDevOpsProvider', () => {
     it("reads a pull request's threads once for both the count and the viewer", async () => {
       // The sidebar wants a comment count and the review workspace
       // wants the threads; they are the same endpoint, and asking it
-      // twice per poll per row is what got Kirby throttled.
+      // twice per poll per row is what got n10 throttled.
       mockFetch.mockResolvedValue(
         jsonResponse({
           value: [

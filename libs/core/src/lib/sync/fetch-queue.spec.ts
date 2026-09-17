@@ -28,7 +28,7 @@ function fetching(label: string): Promise<boolean> {
   });
 }
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   fetchRemote: (cwd?: string) => fetching(`all@${cwd}`),
   fetchBranches: (refs: string[], cwd?: string) =>
     fetching(`${refs.join(',')}@${cwd}`),

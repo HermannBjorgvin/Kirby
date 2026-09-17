@@ -1,4 +1,4 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import { describe, it, expect } from 'vitest';
 import {
   getMainFocused,

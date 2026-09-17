@@ -1,7 +1,7 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
-import type { KirbyHostApi, RepoInfo } from '../host/contract.js';
+import type { N10HostApi, RepoInfo } from '../host/contract.js';
 import { Toaster } from './components/ui/sonner.js';
 import { TooltipProvider } from './components/ui/tooltip.js';
 import {
@@ -18,7 +18,7 @@ import { useRepoFollowsTabs } from './lib/tabs/use-repo-follows-tabs.js';
 
 declare global {
   interface Window {
-    kirby: KirbyHostApi;
+    n10: N10HostApi;
   }
 }
 
@@ -55,7 +55,7 @@ function Gate() {
   const openRepoAsync = useCallback(
     async (cwd: string): Promise<boolean> => {
       try {
-        adoptRepo(await window.kirby.openRepo(cwd));
+        adoptRepo(await window.n10.openRepo(cwd));
         return true;
       } catch (err: unknown) {
         toast.error(errorMessage(err));
@@ -74,7 +74,7 @@ function Gate() {
   useRepoFollowsTabs(repo?.cwd ?? null, openRepoAsync);
 
   const pickRepoFolder = useCallback(() => {
-    window.kirby
+    window.n10
       .selectRepoDirectory()
       .then((dir) => {
         if (dir) openRepo(dir);

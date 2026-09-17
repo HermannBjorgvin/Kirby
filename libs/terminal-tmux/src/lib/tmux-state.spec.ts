@@ -30,7 +30,7 @@ function respond(err: unknown, stdout = '', stderr = ''): void {
 beforeEach(() => mockedExecFile.mockReset());
 
 // tmuxPaneStateAsync backs the backend's periodic poller (tmux-backend.ts),
-// which must never conclude the hosted process exited just because Kirby
+// which must never conclude the hosted process exited just because n10
 // could not talk to tmux this tick. These three outcomes are what the
 // poller keys its decision on.
 describe('tmuxPaneStateAsync', () => {

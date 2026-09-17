@@ -146,12 +146,12 @@ export function restoreSession(): Session | null {
 // ── The world ────────────────────────────────────────────────────
 
 export function buildScenario() {
-  const parent = mkdtempSync(join(tmpdir(), 'kirby-demo-'));
+  const parent = mkdtempSync(join(tmpdir(), 'n10-demo-'));
   const repo = join(parent, 'atlas');
   mkdirSync(repo);
   git(repo, ['init', '-q', '-b', 'main']);
-  git(repo, ['config', 'user.email', 'demo@kirby.dev']);
-  git(repo, ['config', 'user.name', 'Kirby Demo']);
+  git(repo, ['config', 'user.email', 'demo@n10.dev']);
+  git(repo, ['config', 'user.name', 'n10 Demo']);
   git(repo, ['config', 'commit.gpgsign', 'false']);
 
   writeFileSync(
@@ -233,11 +233,11 @@ export function buildScenario() {
   git(repo, ['fetch', '-q', 'origin']);
 
   // ── HOME ──
-  const home = mkdtempSync(join(tmpdir(), 'kirby-demo-home-'));
-  const kirby = join(home, '.kirby');
-  mkdirSync(kirby, { recursive: true });
+  const home = mkdtempSync(join(tmpdir(), 'n10-demo-home-'));
+  const n10 = join(home, '.n10');
+  mkdirSync(n10, { recursive: true });
   writeFileSync(
-    join(kirby, 'config.json'),
+    join(n10, 'config.json'),
     JSON.stringify(
       {
         aiCommand: `node ${join(HERE, 'demo-agent.mjs')}`,
@@ -252,7 +252,7 @@ export function buildScenario() {
     )
   );
   const key = createHash('sha256').update(repo).digest('hex').slice(0, 16);
-  const projDir = join(kirby, 'projects', key);
+  const projDir = join(n10, 'projects', key);
   mkdirSync(projDir, { recursive: true });
   writeFileSync(
     join(projDir, 'config.json'),
@@ -266,9 +266,9 @@ export function buildScenario() {
     )
   );
 
-  // Agent-drafted review comments on #131, as `kirby util add-comment`
+  // Agent-drafted review comments on #131, as `n10 util add-comment`
   // leaves them.
-  const draftsDir = join(kirby, 'reviews', 'pr-131');
+  const draftsDir = join(n10, 'reviews', 'pr-131');
   mkdirSync(draftsDir, { recursive: true });
   writeFileSync(
     join(draftsDir, 'comments.json'),
@@ -330,7 +330,7 @@ export function buildScenario() {
     home,
     env: {
       PATH: `${binDir}:${process.env.PATH ?? ''}`,
-      KIRBY_FAKE_GH: scenarioPath,
+      N10_FAKE_GH: scenarioPath,
     },
   };
 }

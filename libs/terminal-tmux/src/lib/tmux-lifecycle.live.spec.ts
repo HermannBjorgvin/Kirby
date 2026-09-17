@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { SessionBackend, SessionSpec } from '@kirby/terminal';
+import type { SessionBackend, SessionSpec } from '@n10/terminal';
 import { execFileSync } from 'node:child_process';
 import { assertScratchTmuxSocket } from '../../vitest.setup.js';
 import * as tmuxCli from './tmux-cli.js';

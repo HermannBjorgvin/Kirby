@@ -1,7 +1,7 @@
 import {
   AGENT_ATTRIBUTION,
   commentBodyParts,
-} from '@kirby/review-comments/conventional';
+} from '@n10/review-comments/conventional';
 import { useMemo } from 'react';
 import { conventionalBadge } from '../../../lib/review/severity.js';
 import { Badge } from '../../ui/badge.js';
@@ -62,7 +62,7 @@ function AgentAttribution() {
       <button
         type="button"
         className="underline underline-offset-2 hover:text-foreground"
-        onClick={() => void window.kirby.openExternal(AGENT_ATTRIBUTION.url)}
+        onClick={() => void window.n10.openExternal(AGENT_ATTRIBUTION.url)}
       >
         {AGENT_ATTRIBUTION.linkText}
       </button>

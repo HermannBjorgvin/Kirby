@@ -12,9 +12,9 @@ import type {
   ReviewDecision,
   ReviewVerdict,
   BuildStatusState,
-} from '@kirby/vcs-core';
-import { isVcsError, sanitizeBody } from '@kirby/vcs-core';
-import { logNetwork } from '@kirby/logger';
+} from '@n10/vcs-core';
+import { isVcsError, sanitizeBody } from '@n10/vcs-core';
+import { logNetwork } from '@n10/logger';
 import {
   assertGraphQlData,
   classifyGhError,

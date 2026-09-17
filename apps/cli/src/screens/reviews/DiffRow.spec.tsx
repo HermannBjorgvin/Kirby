@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import { DiffRow } from './DiffRow.js';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 
 // Regression guard for the content-mangling bug reported by the user:
 // long TypeScript lines rendered next to each other appeared to have

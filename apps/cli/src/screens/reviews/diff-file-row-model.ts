@@ -1,5 +1,5 @@
-import { truncate } from '@kirby/core';
-import type { DiffFile } from '@kirby/diff';
+import { truncate } from '@n10/core';
+import type { DiffFile } from '@n10/diff';
 
 /** Letter and colour for a file's change status. */
 export function statusBadge(status: DiffFile['status']): {

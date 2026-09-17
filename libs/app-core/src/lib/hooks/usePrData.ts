@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { BranchPrMap } from '@kirby/vcs-core';
-import { logError } from '@kirby/logger';
+import type { BranchPrMap } from '@n10/vcs-core';
+import { logError } from '@n10/logger';
 import { useConfig } from '../context/ConfigContext.js';
 import { useToastActions } from '../context/ToastContext.js';
 import { usePolling } from './usePolling.js';

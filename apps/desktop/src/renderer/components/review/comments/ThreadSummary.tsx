@@ -6,7 +6,7 @@ import {
   MessageSquareIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { commentBodyParts } from '@kirby/review-comments/conventional';
+import { commentBodyParts } from '@n10/review-comments/conventional';
 import type { RemoteCommentThread } from '../../../../host/contract.js';
 import { firstNonEmptyLine } from '../../../lib/diff/thread-model.js';
 import { cn } from '../../../lib/utils.js';
@@ -19,7 +19,7 @@ import { PlanControls } from '../PlanControls.js';
  * This is the string the provider knows the conversation by — a GitHub
  * review-thread node id, an Azure DevOps thread id — and the same one
  * an agent is given in a plan prompt and hands back through
- * `kirby util add-comment --thread=…`. Having it on the card is what
+ * `n10 util add-comment --thread=…`. Having it on the card is what
  * lets a reader point an agent at *this* conversation rather than
  * describing where it is.
  *

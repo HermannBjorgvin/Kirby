@@ -1,7 +1,7 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type * as CoreModule from '@kirby/core';
-import type * as WorktreeManagerModule from '@kirby/worktree-manager';
+import type * as CoreModule from '@n10/core';
+import type * as WorktreeManagerModule from '@n10/worktree-manager';
 import {
   ACTIONS,
   NORMIE_PRESET,
@@ -9,7 +9,7 @@ import {
   peekSessionMenuRequest,
   resolveAction,
   type KeyPress,
-} from '@kirby/core';
+} from '@n10/core';
 import type { BranchPickerHandlerCtx } from './input-types.js';
 
 // Where the branch picker lands once a worktree exists: a running
@@ -19,19 +19,19 @@ import type { BranchPickerHandlerCtx } from './input-types.js';
 
 let liveSessions = new Set<string>();
 
-vi.mock('@kirby/core', async (importOriginal) => ({
+vi.mock('@n10/core', async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   isSessionAlive: (name: string) => liveSessions.has(name),
   fetchRefs: vi.fn(() => Promise.resolve(true)),
 }));
 
-vi.mock('@kirby/worktree-manager', async (importOriginal) => ({
+vi.mock('@n10/worktree-manager', async (importOriginal) => ({
   ...(await importOriginal<typeof WorktreeManagerModule>()),
   createWorktree: vi.fn(),
   listAllBranches: vi.fn(),
 }));
 
-import { createWorktree } from '@kirby/worktree-manager';
+import { createWorktree } from '@n10/worktree-manager';
 import { handleBranchPickerInput } from './branch-picker-input.js';
 
 function makeKey(overrides: Partial<KeyPress> = {}): KeyPress {

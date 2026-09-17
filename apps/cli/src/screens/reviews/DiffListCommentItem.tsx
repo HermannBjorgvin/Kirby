@@ -1,6 +1,6 @@
 import { Text, Box } from 'ink';
-import { planItemKey } from '@kirby/core';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import { planItemKey } from '@n10/core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import { CommentThreadCard } from '../../components/CommentThread.js';
 import { PlanAnnotateInput } from './PlanAnnotateInput.js';
 

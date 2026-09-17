@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Locator } from '@playwright/test';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
@@ -12,7 +12,7 @@ const hasGhToken = !!process.env.GH_TOKEN;
 
 // Module-scope clone so all tests share one full local repo. Reads
 // only — no branches/PRs created.
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-auto-select-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-auto-select-clone-'));
 registerCleanup(cloneDir);
 
 interface DiscoveredThread {
@@ -26,18 +26,18 @@ let firstInlineThread: DiscoveredThread | null = null;
 if (hasGhToken) {
   const token = process.env.GH_TOKEN;
 
-  // Full clone (no --single-branch) so kirby's diff path can resolve
+  // Full clone (no --single-branch) so n10's diff path can resolve
   // origin/<source> + origin/<target> for any fixture branch.
   execSync(`gh repo clone "${TEST_REPO}" "${cloneDir}"`, { stdio: 'pipe' });
   execSync(
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -82,8 +82,8 @@ test.describe('@integration Auto-select first comment', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { keybindPreset: 'vim' },
+    n10RepoPath: cloneDir,
+    n10Config: { keybindPreset: 'vim' },
     rows: 60,
     cols: 140,
   });
@@ -92,7 +92,7 @@ test.describe('@integration Auto-select first comment', () => {
   // before wterm re-renders the new selection, so a tight count-based
   // loop overshoots — wait for visibility per press instead.
   async function pressUntilSelected(
-    kirby: { term: { press: (k: string) => Promise<void> } },
+    n10: { term: { press: (k: string) => Promise<void> } },
     selectedLocator: Locator,
     maxPresses: number
   ): Promise<boolean> {
@@ -102,38 +102,38 @@ test.describe('@integration Auto-select first comment', () => {
         return true;
       } catch {
         if (i === maxPresses) return false;
-        await kirby.term.press('j');
+        await n10.term.press('j');
       }
     }
     return false;
   }
 
   test('opens PR #38 file with inline comments — at least one thread auto-selects', async ({
-    kirby,
+    n10,
   }) => {
     test.skip(
       !firstInlineThread,
       'No inline comments discovered on fixture PR #38 — fixture changed?'
     );
 
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText('Add undo feature with history stack').first()
+      n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
     // Walk to PR #38 row (PRs sit after worktrees; press j until the
     // sidebar selection icon lands on the row).
-    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr38.selected().first(),
       30
     );
     expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     // Open the PR's file list.
-    await kirby.term.press('d');
-    await kirby.term.page
+    await n10.term.press('d');
+    await n10.term.page
       .locator('.term-row', { hasText: /\.(c|h)\b/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
@@ -141,7 +141,7 @@ test.describe('@integration Auto-select first comment', () => {
     // Walk down to the file containing the discovered thread, then
     // press Enter to open it in the diff viewer.
     const fileBasename = firstInlineThread!.path.split('/').pop()!;
-    const fileRow = kirby.term.page
+    const fileRow = n10.term.page
       .locator('.term-row', { hasText: fileBasename })
       .first();
     await fileRow.waitFor({ state: 'visible', timeout: 10_000 });
@@ -151,13 +151,13 @@ test.describe('@integration Auto-select first comment', () => {
     // — it waits for the selected-row locator per press instead of
     // `count() > 0` + sleep, which races wterm's render and can fire
     // Enter before the cursor finishes moving.
-    const fileSelected = kirby.term.page
+    const fileSelected = n10.term.page
       .locator('.term-row')
       .filter({ hasText: '›' })
       .filter({ hasText: fileBasename })
       .first();
     const fileLanded = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       fileSelected,
       40
     );
@@ -166,7 +166,7 @@ test.describe('@integration Auto-select first comment', () => {
       `Could not land diff-list selection on ${fileBasename}`
     ).toBe(true);
 
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
     // No separate "@@ hunk header" wait — auto-select scrolls past
     // the header within milliseconds of the diff loading, racing the
@@ -181,21 +181,21 @@ test.describe('@integration Auto-select first comment', () => {
     // auto-selects").
     //
     // We deliberately do NOT assert on `firstInlineThread.body` here.
-    // Discovery uses the REST `pulls/{n}/comments` endpoint while Kirby
+    // Discovery uses the REST `pulls/{n}/comments` endpoint while n10
     // fetches via the GraphQL `reviewThreads` field, and the two can
     // disagree on PR #38 (e.g. an orphan inline comment that's a
     // "review comment" in REST but not part of any reviewThread). That
     // disagreement is a separate product question — not what this test
     // is checking.
     await expect(
-      kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
+      n10.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 
   test('posted local comment at navPool[0] does not block auto-select (regression for dead-id bug)', async ({
-    kirby,
+    n10,
   }) => {
-    const { homeDir } = kirby;
+    const { homeDir } = n10;
     test.skip(
       !firstInlineThread,
       'No inline comments discovered on fixture PR #38 — fixture changed?'
@@ -207,7 +207,7 @@ test.describe('@integration Auto-select first comment', () => {
     // (interleaveComments drops them), so `info` is undefined,
     // `rowEntry` is undefined, and the auto-select effect bails
     // forever — no thread gets selected.
-    const reviewsDir = join(homeDir, '.kirby', 'reviews', 'pr-38');
+    const reviewsDir = join(homeDir, '.n10', 'reviews', 'pr-38');
     mkdirSync(reviewsDir, { recursive: true });
     const seededLine = Math.max(1, firstInlineThread!.line - 5);
     const file = {
@@ -232,20 +232,20 @@ test.describe('@integration Auto-select first comment', () => {
       'utf8'
     );
 
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText('Add undo feature with history stack').first()
+      n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr38.selected().first(),
       30
     );
     expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
-    await kirby.term.press('d');
-    await kirby.term.page
+    await n10.term.press('d');
+    await n10.term.page
       .locator('.term-row', { hasText: /\.(c|h)\b/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
@@ -255,13 +255,13 @@ test.describe('@integration Auto-select first comment', () => {
     // helper as the sibling test above — see comment there for why
     // chained string filters and pressUntilSelected matter.
     const fileBasename = firstInlineThread!.path.split('/').pop()!;
-    const fileSelected = kirby.term.page
+    const fileSelected = n10.term.page
       .locator('.term-row')
       .filter({ hasText: '›' })
       .filter({ hasText: fileBasename })
       .first();
     const fileLanded = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       fileSelected,
       40
     );
@@ -269,18 +269,18 @@ test.describe('@integration Auto-select first comment', () => {
       fileLanded,
       `Could not land diff-list selection on ${fileBasename}`
     ).toBe(true);
-    await kirby.term.press('Enter');
+    await n10.term.press('Enter');
 
     // Pre-fix the seeded dead local id sat at navPool[0] and
     // permanently gated `autoSelectedFileRef` — no `[r]eply` would
     // appear because nothing was selected. Post-fix the navPool
     // filters posted-status entries and the remote thread takes the
-    // first slot, so `[r]eply` shows up on whichever thread Kirby
+    // first slot, so `[r]eply` shows up on whichever thread n10
     // auto-selects. We assert only on `[r]eply` (not the discovered
-    // body): see the sibling test above for why discovery and Kirby's
+    // body): see the sibling test above for why discovery and n10's
     // GraphQL fetch can disagree on PR #38's threads.
     await expect(
-      kirby.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
+      n10.term.page.locator('.term-row', { hasText: '[r]eply' }).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 });

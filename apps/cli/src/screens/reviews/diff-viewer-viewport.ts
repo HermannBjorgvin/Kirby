@@ -1,5 +1,5 @@
-import { diffViewportHeight } from '@kirby/core';
-import type { RowMap } from '@kirby/review-comments';
+import { diffViewportHeight } from '@n10/core';
+import type { RowMap } from '@n10/review-comments';
 
 export interface VisibleEntry {
   /** Index into the annotated-line stream this row map was built from. */
@@ -46,7 +46,7 @@ export function diffViewerViewport(opts: {
   const { rowMap, entryCount, scrollOffset, paneRows } = opts;
 
   // Chrome: header + divider + hints = 3 lines. Shared with the
-  // keyboard scroll handlers via @kirby/core so the two cannot
+  // keyboard scroll handlers via @n10/core so the two cannot
   // disagree about where the fold is.
   const viewportHeight = diffViewportHeight(paneRows);
 

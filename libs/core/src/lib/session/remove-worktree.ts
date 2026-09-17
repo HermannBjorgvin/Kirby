@@ -1,4 +1,4 @@
-import { removeWorktree, deleteBranch } from '@kirby/worktree-manager';
+import { removeWorktree, deleteBranch } from '@n10/worktree-manager';
 import { stopSession } from './stop-session.js';
 import { getRepoRoot } from '../repo-root.js';
 import { worktreeSessionKey } from '../session-key.js';

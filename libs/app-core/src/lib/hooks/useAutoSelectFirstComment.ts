@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import type {
   CommentPositionInfo,
   ReviewComment,
   RowMap,
-} from '@kirby/review-comments';
-import { maxDiffScrollOffset } from '@kirby/core';
+} from '@n10/review-comments';
+import { maxDiffScrollOffset } from '@n10/core';
 
 export interface UseAutoSelectFirstCommentOptions {
   /** The currently opened diff file. The hook arms once per file change. */
@@ -62,7 +62,7 @@ export function useAutoSelectFirstComment({
     // (interleaveComments filters them out at libs/review-comments
     // /comment-renderer.ts:249), so their ids never appear in
     // `commentPositions`. Including them here would put a dead id at
-    // navPool[0] for any thread that was authored from kirby, and the
+    // navPool[0] for any thread that was authored from n10, and the
     // rowEntry guard would silently bail forever — exactly the bug
     // we're fixing.
     const navPool: { id: string; lineStart: number }[] = [

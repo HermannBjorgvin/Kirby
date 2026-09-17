@@ -10,7 +10,7 @@ export default defineConfig(() => ({
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/vcs-github',
+    name: '@n10/vcs-github',
     watch: false,
     globals: true,
     environment: 'node',

@@ -1,6 +1,6 @@
-import { worktreeSessionKey, keyForWorktree } from '@kirby/core';
+import { worktreeSessionKey, keyForWorktree } from '@n10/core';
 import { spawn } from 'node:child_process';
-import type { SidebarItem } from '@kirby/core';
+import type { SidebarItem } from '@n10/core';
 import {
   getSpawnedAt,
   hasSession,
@@ -10,14 +10,14 @@ import {
   getPrFromItem,
   orderRunningTabs,
   openSessionMenuState,
-} from '@kirby/core';
+} from '@n10/core';
 import {
   canRemoveBranch,
   createWorktree,
   listAllBranches,
   listWorktrees,
   rebaseOntoMaster,
-} from '@kirby/worktree-manager';
+} from '@n10/worktree-manager';
 import type { SidebarInputCtx } from './input-types.js';
 import { resolveEditorTarget } from './editor-target.js';
 

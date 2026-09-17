@@ -65,7 +65,7 @@ export function StatusBar({
           {running} running
         </Segment>
       )}
-      <Segment label="kirby-desktop build">
+      <Segment label="n10-desktop build">
         <span className="text-muted-foreground">
           v{version.data?.app ?? '…'}
         </span>

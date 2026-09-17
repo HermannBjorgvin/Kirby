@@ -8,20 +8,20 @@ import type {
   DeleteConfirmValue as DeleteConfirmModalValue,
   PaneModeValue,
   PlanValue,
-} from '@kirby/app-core';
-import type { DiffFile, ReviewComment, SidebarItem } from '@kirby/core';
+} from '@n10/app-core';
+import type { DiffFile, ReviewComment, SidebarItem } from '@n10/core';
 import type {
   PullRequestInfo,
   RemoteCommentThread,
   RemoteCommentReply,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import type {
   NavValue,
   AsyncOpsValue,
   SettingsValue,
   TerminalLayout,
 } from '../../input-handlers.js';
-import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
+import type { CommentPositionInfo, RowMap } from '@n10/review-comments';
 
 // ── Context slice types ──────────────────────────────────────────
 

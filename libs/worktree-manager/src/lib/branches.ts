@@ -4,7 +4,7 @@
  *
  * Nothing here knows about worktrees.
  */
-import { log } from '@kirby/logger';
+import { log } from '@n10/logger';
 import { exec, gitOptions } from './exec.js';
 import { assertShellSafeRef } from './refs.js';
 

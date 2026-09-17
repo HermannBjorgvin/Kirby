@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
@@ -13,7 +13,7 @@ import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-comments-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-comments-clone-'));
 registerCleanup(cloneDir);
 
 if (hasGhToken) {
@@ -25,11 +25,11 @@ if (hasGhToken) {
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -113,8 +113,8 @@ test.describe('@integration Comments Fixture', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { keybindPreset: 'vim' },
+    n10RepoPath: cloneDir,
+    n10Config: { keybindPreset: 'vim' },
     rows: 60,
     cols: 120,
   });
@@ -124,7 +124,7 @@ test.describe('@integration Comments Fixture', () => {
   // — Makefile and other files have none), then open its diff.
   //
   // Key robustness detail: `page.keyboard.press` returns as soon as the
-  // key event is dispatched; it does NOT wait for Kirby to process the
+  // key event is dispatched; it does NOT wait for n10 to process the
   // keystroke, emit new PTY output, and for wterm to re-render. A tight
   // `for` loop that reads `.count()` after every `press('j')` therefore
   // races the render pipeline — the naive loop would press 'j' dozens
@@ -132,7 +132,7 @@ test.describe('@integration Comments Fixture', () => {
   // target. We use a per-press `waitFor` with a short timeout to let
   // each render settle before deciding whether to press again.
   async function pressUntilSelected(
-    kirby: { term: { press: (k: string) => Promise<void> } },
+    n10: { term: { press: (k: string) => Promise<void> } },
     selectedLocator: Locator,
     maxPresses: number
   ): Promise<boolean> {
@@ -142,40 +142,40 @@ test.describe('@integration Comments Fixture', () => {
         return true;
       } catch {
         if (i === maxPresses) return false;
-        await kirby.term.press('j');
+        await n10.term.press('j');
       }
     }
     return false;
   }
 
-  async function openPr38DiffFileWithComments(kirby: {
+  async function openPr38DiffFileWithComments(n10: {
     term: {
       page: Page;
       press: (k: string) => Promise<void>;
       getByText: Page['getByText'];
     };
   }) {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText('Add undo feature with history stack').first()
+      n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr38.selected().first(),
       20
     );
     expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
-    await kirby.term.press('d');
+    await n10.term.press('d');
 
     // PR #38 modifies src/undo.c; other fixture PRs don't. So finding
     // undo.c in the file list confirms we opened #38's diff and not a
     // neighbour's (the failure mode under selection drift was opening
     // #39's solver.c/solver.h). Longer timeout than the inner press
     // loop — cold-diff fetches on CI can take 15-25s.
-    await kirby.term.page
+    await n10.term.page
       .locator('.term-row', { hasText: /undo\.c/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
@@ -183,11 +183,11 @@ test.describe('@integration Comments Fixture', () => {
     // Navigate the file-list selection onto src/undo.c. The selected
     // row carries the '›' prefix (DiffFileList.tsx:44). Same race
     // applies — use pressUntilSelected so each press settles.
-    const undoSelected = kirby.term.page
+    const undoSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*undo\.c/ })
       .first();
     const gotUndo = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       undoSelected,
       10
     );
@@ -195,66 +195,66 @@ test.describe('@integration Comments Fixture', () => {
       throw new Error('Could not select src/undo.c in the file list');
     }
 
-    await kirby.term.press('Enter');
-    await expect(
-      kirby.term.getByText('(no diff for this file)')
-    ).not.toBeVisible({ timeout: 30_000 });
+    await n10.term.press('Enter');
+    await expect(n10.term.getByText('(no diff for this file)')).not.toBeVisible(
+      { timeout: 30_000 }
+    );
   }
 
   test('PR #38 diff viewer shows inline remote comments with author and body', async ({
-    kirby,
+    n10,
   }) => {
-    await openPr38DiffFileWithComments({ term: kirby.term });
+    await openPr38DiffFileWithComments({ term: n10.term });
 
     // kirby-test-runner authored both inline comments on src/undo.c.
     // This is "another user" from the PR author's perspective
     // (PR #38 is authored by HermannBjorgvin).
-    await expect(kirby.term.getByText('kirby-test-runner').first()).toBeVisible(
-      { timeout: 15_000 }
-    );
+    await expect(n10.term.getByText('kirby-test-runner').first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Body of the first undo.c comment (line 9) should be rendered
-    // verbatim — at least the opening phrase. Proves Kirby pulls the
+    // verbatim — at least the opening phrase. Proves n10 pulls the
     // real comment content, not just the author.
-    await expect(kirby.term.getByText(/Magic number/).first()).toBeVisible({
+    await expect(n10.term.getByText(/Magic number/).first()).toBeVisible({
       timeout: 5_000,
     });
   });
 
   test('cycling through remote threads with c reveals each comment body', async ({
-    kirby,
+    n10,
   }) => {
-    await openPr38DiffFileWithComments({ term: kirby.term });
+    await openPr38DiffFileWithComments({ term: n10.term });
 
     // Wait for the first comment to render.
-    await expect(kirby.term.getByText(/Magic number/).first()).toBeVisible({
+    await expect(n10.term.getByText(/Magic number/).first()).toBeVisible({
       timeout: 15_000,
     });
 
     // src/undo.c has 2 inline comments. Selecting the first thread
     // (c in vim preset) expands its body — and the "[r]eply [v]resolve"
     // hint appears in the header, confirming the selection landed.
-    await kirby.term.press('c');
-    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+    await n10.term.press('c');
+    await expect(n10.term.getByText(/\[r\]eply/).first()).toBeVisible({
       timeout: 5_000,
     });
 
     // Press c again to cycle to the second thread. Its body mentions
     // inconsistent parameter naming.
-    await kirby.term.press('c');
+    await n10.term.press('c');
     await expect(
-      kirby.term.getByText(/Inconsistent parameter/).first()
+      n10.term.getByText(/Inconsistent parameter/).first()
     ).toBeVisible({ timeout: 5_000 });
   });
 
   test('selecting a remote thread and pressing v toggles resolved state', async ({
-    kirby,
+    n10,
   }) => {
-    await openPr38DiffFileWithComments({ term: kirby.term });
+    await openPr38DiffFileWithComments({ term: n10.term });
 
     // Wait for remote comment fetch to populate — pressing 'c' before
     // threads render is a no-op (nothing to select, no hint appears).
-    await expect(kirby.term.getByText(/Magic number/).first()).toBeVisible({
+    await expect(n10.term.getByText(/Magic number/).first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -262,29 +262,29 @@ test.describe('@integration Comments Fixture', () => {
     // indicator ("[r]eply [v]resolve/reopen" hint) before pressing 'v'
     // — without this pause, 'v' reads a stale selectedCommentId and
     // finds no thread to resolve.
-    await kirby.term.press('c');
-    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+    await n10.term.press('c');
+    await expect(n10.term.getByText(/\[r\]eply/).first()).toBeVisible({
       timeout: 10_000,
     });
 
-    await kirby.term.press('v');
+    await n10.term.press('v');
     await expect(
-      kirby.term.getByText(/Resolving|Resolved|Reopening|Reopened/).first()
+      n10.term.getByText(/Resolving|Resolved|Reopening|Reopened/).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 
   test('posting a reply makes it appear in the thread with the replier as author', async ({
-    kirby,
+    n10,
   }) => {
-    await openPr38DiffFileWithComments({ term: kirby.term });
+    await openPr38DiffFileWithComments({ term: n10.term });
 
     // Wait for remote comments to load, then select the first thread
     // and wait for the selection to commit before pressing 'r'.
-    await expect(kirby.term.getByText('kirby-test-runner').first()).toBeVisible(
-      { timeout: 15_000 }
-    );
-    await kirby.term.press('c');
-    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+    await expect(n10.term.getByText('kirby-test-runner').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await n10.term.press('c');
+    await expect(n10.term.getByText(/\[r\]eply/).first()).toBeVisible({
       timeout: 10_000,
     });
 
@@ -300,16 +300,16 @@ test.describe('@integration Comments Fixture', () => {
     const uniquePart = `${Date.now().toString(36)}reply`;
     const marker = `zz${uniquePart}`;
 
-    await kirby.term.press('r');
-    await expect(kirby.term.getByText('REPLY').first()).toBeVisible({
+    await n10.term.press('r');
+    await expect(n10.term.getByText('REPLY').first()).toBeVisible({
       timeout: 5_000,
     });
 
     // 50ms/key leaves enough settling time for each keystroke without
     // pushing the test out past the network timeout. (10ms dropped
     // characters on CI under load.)
-    await kirby.term.type(marker, { delay: 50 });
-    await kirby.term.press('Enter');
+    await n10.term.type(marker, { delay: 50 });
+    await n10.term.press('Enter');
 
     // Flash confirms the API round-trip completed. Allow either the
     // success or failure message — a network stall on CI can easily
@@ -317,12 +317,12 @@ test.describe('@integration Comments Fixture', () => {
     // version hid the failure signal ("Reply posted" never shown,
     // 20s timeout fired). 30s covers slow GitHub round-trips; a
     // failure flash short-circuits the rest of the assertions.
-    const flashLocator = kirby.term.getByText(/Reply (posted|failed)/).first();
+    const flashLocator = n10.term.getByText(/Reply (posted|failed)/).first();
     await expect(flashLocator).toBeVisible({ timeout: 30_000 });
 
     // Guard: treat a failure flash as a hard test failure instead of
     // silently swallowing it in the subsequent marker check.
-    const failureLocator = kirby.term.getByText(/Reply failed/).first();
+    const failureLocator = n10.term.getByText(/Reply failed/).first();
     await expect(failureLocator).toBeHidden();
 
     // The reply body must render inline in the thread — search for
@@ -330,41 +330,41 @@ test.describe('@integration Comments Fixture', () => {
     // passes even if the leading 'z' was consumed by a stale handler
     // and only 'z<uniquePart>' was appended to the reply buffer.
     await expect(
-      kirby.term.getByText(new RegExp(uniquePart)).first()
+      n10.term.getByText(new RegExp(uniquePart)).first()
     ).toBeVisible({ timeout: 15_000 });
   });
 
   test('Shift+C opens the general-comments pane and Esc returns to pr-detail', async ({
-    kirby,
+    n10,
   }) => {
     // Select PR #38 in the sidebar.
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText('Add undo feature with history stack').first()
+      n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr38.selected().first(),
       20
     );
     expect(landed, 'Could not land sidebar selection on PR #38').toBe(true);
 
     // Open the general-comments pane (vim preset binds this to plain C).
-    await kirby.term.press('C');
+    await n10.term.press('C');
 
     // Either the pane lists PR comments (header "PR Comments") or it
     // shows the empty state — both exercise the routing path.
     await expect(
-      kirby.term.getByText(/PR Comments|No general comments/).first()
+      n10.term.getByText(/PR Comments|No general comments/).first()
     ).toBeVisible({ timeout: 10_000 });
 
     // Esc returns to pr-detail — the signature hint line is visible
     // again ("press d to view diff").
-    await kirby.term.press('Escape');
+    await n10.term.press('Escape');
     await expect(
-      kirby.term.getByText('press d to view diff').first()
+      n10.term.getByText('press d to view diff').first()
     ).toBeVisible({ timeout: 5_000 });
   });
 });

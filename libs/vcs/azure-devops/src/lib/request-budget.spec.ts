@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getRequestCounters, resetRequestCounters } from '@kirby/vcs-core';
+import { getRequestCounters, resetRequestCounters } from '@n10/vcs-core';
 import { azureDevOpsProvider } from './provider.js';
 import { prDetailMemo } from './pr-details.js';
 import { resetAdoTransport } from './request.js';
@@ -8,7 +8,7 @@ import { resetAdoTransport } from './request.js';
  * What one sync cycle costs, in requests.
  *
  * Azure DevOps throttles per organization, so the number of requests
- * Kirby issues is a property worth asserting rather than estimating.
+ * n10 issues is a property worth asserting rather than estimating.
  * Every figure below is the reason a particular piece of the transport
  * exists, and a change that quietly reinstates a per-row call will
  * fail here rather than on someone's account.

@@ -41,7 +41,7 @@ async function switchRepo(page: Page, cwd: string): Promise<void> {
   await page.getByPlaceholder('/path/to/repository').fill(cwd);
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect
-    .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+    .poll(() => page.evaluate(() => window.n10.getRepo()), {
       timeout: 30_000,
     })
     .toMatchObject({ cwd });
@@ -52,7 +52,7 @@ async function attached(page: Page, branch: string): Promise<void> {
   await expect
     .poll(
       async () => {
-        const sessions = await page.evaluate(() => window.kirby.listSessions());
+        const sessions = await page.evaluate(() => window.n10.listSessions());
         return (
           sessions.find((s) => sessionBranch(s.name) === branch)?.running ??
           false
@@ -88,7 +88,7 @@ async function switchRepoFromTitleBar(
   await page.locator('header').getByRole('button').nth(1).click();
   await page.getByRole('menuitem', { name: new RegExp(name) }).click();
   await expect
-    .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+    .poll(() => page.evaluate(() => window.n10.getRepo()), {
       timeout: 30_000,
     })
     .toMatchObject({ cwd });
@@ -96,7 +96,7 @@ async function switchRepoFromTitleBar(
 
 async function repoStays(page: Page, cwd: string, tabName: RegExp) {
   await expect(tab(page, tabName)).toHaveAttribute('aria-selected', 'true');
-  expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+  expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
     cwd,
   });
 }
@@ -156,7 +156,7 @@ test.describe('Discovered sessions across a repo switch', () => {
     await expect(page.getByText('beta-agent-here-later').first()).toBeVisible({
       timeout: 30_000,
     });
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: otherRepo,
     });
     await expect(betaTab).toHaveAttribute('aria-selected', 'true');

@@ -1,7 +1,7 @@
 import { cn } from '../lib/utils.js';
 
 /** Tiny inline logomark: a rounded square with a branching path. */
-export function KirbyMark({ className }: { className?: string }) {
+export function N10Mark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"

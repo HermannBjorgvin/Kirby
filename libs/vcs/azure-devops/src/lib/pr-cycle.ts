@@ -1,4 +1,4 @@
-import type { BuildStatusState, PullRequestInfo } from '@kirby/vcs-core';
+import type { BuildStatusState, PullRequestInfo } from '@n10/vcs-core';
 import { combineBuildStatus } from './build-status.js';
 import {
   dueForRefresh,

@@ -55,16 +55,16 @@ vi.mock('./worktrees.js', () => ({
   },
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: () => ({ vendor: 'github', mergePollInterval: 999 }),
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   listWorktrees: () =>
     Promise.resolve(env.branches.map((branch) => ({ branch }))),
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   remoteSyncIntervalMs: () => 3_600_000,
   syncRemote: (cwd: string) => {
     env.synced.push(cwd);

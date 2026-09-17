@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/core",
+  "name": "@n10/core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,20 +19,20 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/core",
+    "name": "@n10/core",
     "tags": [
       "type:lib",
       "scope:core"
     ]
   },
   "dependencies": {
-    "@kirby/diff": "*",
-    "@kirby/logger": "*",
-    "@kirby/review-comments": "*",
-    "@kirby/terminal": "*",
-    "@kirby/terminal-pty": "*",
-    "@kirby/terminal-tmux": "*",
-    "@kirby/vcs-core": "*",
-    "@kirby/worktree-manager": "*"
+    "@n10/diff": "*",
+    "@n10/logger": "*",
+    "@n10/review-comments": "*",
+    "@n10/terminal": "*",
+    "@n10/terminal-pty": "*",
+    "@n10/terminal-tmux": "*",
+    "@n10/vcs-core": "*",
+    "@n10/worktree-manager": "*"
   }
 }

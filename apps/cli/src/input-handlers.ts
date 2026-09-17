@@ -6,8 +6,8 @@ import type {
   AsyncOpsValue as AsyncOpsContextValue,
   SettingsValue as SettingsModalValue,
   NavValue as NavContextValue,
-} from '@kirby/app-core';
-import type { KeyPress, SettingsField } from '@kirby/core';
+} from '@n10/app-core';
+import type { KeyPress, SettingsField } from '@n10/core';
 import {
   ACTIONS,
   PRESETS,
@@ -19,8 +19,8 @@ import {
   handleTextInput,
   resolveValue,
   settingsEffects,
-} from '@kirby/core';
-import { autoDetectProjectConfig } from '@kirby/vcs-core';
+} from '@n10/core';
+import { autoDetectProjectConfig } from '@n10/vcs-core';
 
 function writeFieldChange(
   field: SettingsField,

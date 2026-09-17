@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/diff',
   test: {
-    name: '@kirby/diff',
+    name: '@n10/diff',
     watch: false,
     globals: true,
     environment: 'node',

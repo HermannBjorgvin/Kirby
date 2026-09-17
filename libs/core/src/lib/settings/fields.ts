@@ -1,4 +1,4 @@
-import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
+import type { AppConfig, VcsProvider } from '@n10/vcs-core';
 import { AGENTS } from '../agents/registry.js';
 
 export interface SettingsField {

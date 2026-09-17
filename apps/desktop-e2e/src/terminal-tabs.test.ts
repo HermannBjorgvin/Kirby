@@ -51,7 +51,7 @@ test.describe('Terminal tabs', () => {
     await expect(tab).toHaveAttribute('aria-selected', 'true');
 
     // The host knows it as a shell at that repository's root.
-    const listed = await page.evaluate(() => window.kirby.listTerminals());
+    const listed = await page.evaluate(() => window.n10.listTerminals());
     expect(listed).toEqual([
       expect.objectContaining({
         kind: 'shell',
@@ -68,8 +68,8 @@ test.describe('Terminal tabs', () => {
       page.locator('[data-terminal-pane]').getByText(/\S/).first()
     ).toBeVisible({ timeout: 15_000 });
     await focusTerminal(page);
-    await page.keyboard.type('echo kirby-shell-$((40+2))\n', { delay: 20 });
-    await expect(visibleText(page, 'kirby-shell-42')).toBeVisible({
+    await page.keyboard.type('echo n10-shell-$((40+2))\n', { delay: 20 });
+    await expect(visibleText(page, 'n10-shell-42')).toBeVisible({
       timeout: 15_000,
     });
 
@@ -82,7 +82,7 @@ test.describe('Terminal tabs', () => {
     await confirm.getByRole('button', { name: /End session/ }).click();
     await expect(terminalTabs(page)).toHaveCount(0);
     await expect
-      .poll(() => page.evaluate(() => window.kirby.listTerminals()))
+      .poll(() => page.evaluate(() => window.n10.listTerminals()))
       .toEqual([]);
   });
 
@@ -108,14 +108,14 @@ test.describe('Terminal tabs', () => {
     // which is two seconds away.
     await expect(terminalTabs(page)).toHaveCount(0, { timeout: 750 });
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    expect(await page.evaluate(() => window.kirby.listTerminals())).toEqual([]);
+    expect(await page.evaluate(() => window.n10.listTerminals())).toEqual([]);
   });
 
   test('a plain folder gets a tab in the repo-less group and switches nothing', async ({
     desktop,
   }) => {
     const { app, page, repoPath } = desktop;
-    const folder = mkdtempSync(join(tmpdir(), 'kirby-plain-'));
+    const folder = mkdtempSync(join(tmpdir(), 'n10-plain-'));
     try {
       // Something of the repository's own on the strip, so the terminal
       // has a group to be apart from.
@@ -139,10 +139,10 @@ test.describe('Terminal tabs', () => {
       await expect(tab).not.toContainText(basename(repoPath));
 
       // Nothing switched, and the host files it under no repository.
-      expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+      expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
         cwd: repoPath,
       });
-      const listed = await page.evaluate(() => window.kirby.listTerminals());
+      const listed = await page.evaluate(() => window.n10.listTerminals());
       expect(listed).toEqual([
         expect.objectContaining({ cwd: folder, repo: null }),
       ]);
@@ -167,14 +167,14 @@ test.describe('Terminal tabs', () => {
       // The terminal belongs to the picked repository, so the workspace
       // follows it there — the same path as activating a foreign tab.
       await expect
-        .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+        .poll(() => page.evaluate(() => window.n10.getRepo()), {
           timeout: 30_000,
         })
         .toMatchObject({ cwd: other });
       expect(repoPath).not.toBe(other);
 
       // …and that repository is now on the list, behind the scenes.
-      const recents = await page.evaluate(() => window.kirby.listRecentRepos());
+      const recents = await page.evaluate(() => window.n10.listRecentRepos());
       expect(recents.map((r) => r.cwd)).toContain(other);
 
       // Once there, the tab is at home: no repository prefix.
@@ -221,7 +221,7 @@ test.describe('Terminal tabs', () => {
     const tab = terminalTabs(page);
     await expect(tab).toHaveCount(1);
     await expect(tab).toHaveAttribute('title', repoPath);
-    const listed = await page.evaluate(() => window.kirby.listTerminals());
+    const listed = await page.evaluate(() => window.n10.listTerminals());
     expect(listed).toEqual([
       expect.objectContaining({ kind: 'shell', cwd: repoPath, running: true }),
     ]);
@@ -239,7 +239,7 @@ test.describe('Terminal tabs', () => {
       // The app rewrote the file at startup with the one it opened on,
       // so both are written back.
       writeFileSync(
-        join(homeDir, '.kirby', 'desktop-recents.json'),
+        join(homeDir, '.n10', 'desktop-recents.json'),
         JSON.stringify([
           { cwd: repoPath, lastOpenedAt: 2 },
           { cwd: other, lastOpenedAt: 1 },
@@ -263,11 +263,11 @@ test.describe('Terminal tabs', () => {
       await expect(dialog).toBeHidden();
       const otherRoot = realpathSync(other);
       await expect
-        .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+        .poll(() => page.evaluate(() => window.n10.getRepo()), {
           timeout: 30_000,
         })
         .toMatchObject({ cwd: otherRoot });
-      const listed = await page.evaluate(() => window.kirby.listTerminals());
+      const listed = await page.evaluate(() => window.n10.listTerminals());
       expect(listed).toEqual([
         expect.objectContaining({
           kind: 'shell',
@@ -291,7 +291,7 @@ test.describe('Terminal tabs', () => {
 test.describe('Agent terminals', () => {
   // An agent that reports what it was seeded with, so "no prompt" is
   // provable rather than assumed.
-  test.use({ kirbyConfig: { aiCommand: fakeAgent({ printSeed: true }) } });
+  test.use({ n10Config: { aiCommand: fakeAgent({ printSeed: true }) } });
 
   test('runs the configured agent in the directory, with no task', async ({
     desktop,
@@ -300,10 +300,10 @@ test.describe('Agent terminals', () => {
     await openNewTerminalDialog(app, page);
     await confirmNewTerminal(page, 'Agent');
 
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
-    const listed = await page.evaluate(() => window.kirby.listTerminals());
+    const listed = await page.evaluate(() => window.n10.listTerminals());
     expect(listed).toEqual([
       expect.objectContaining({ kind: 'agent', cwd: repoPath, running: true }),
     ]);

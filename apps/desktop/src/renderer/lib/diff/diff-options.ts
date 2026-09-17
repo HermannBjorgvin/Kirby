@@ -7,7 +7,7 @@ export interface DiffOptions {
   hideResolved: boolean;
 }
 
-const KEY = 'kirby.diff.options';
+const KEY = 'n10.diff.options';
 const DEFAULTS: DiffOptions = {
   view: 'unified',
   wrap: false,

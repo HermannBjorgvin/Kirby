@@ -6,9 +6,9 @@ import {
   Separator as PanelSeparator,
 } from 'react-resizable-panels';
 import { toast } from 'sonner';
-import { type DiffLine } from '@kirby/diff';
-import type { PlanItem } from '@kirby/core/plan';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import { type DiffLine } from '@n10/diff';
+import type { PlanItem } from '@n10/core/plan';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import { useDiffOptions } from '../../lib/diff/diff-options.js';
 import {
   useDiff,

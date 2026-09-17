@@ -53,9 +53,9 @@ export function SettingsView() {
         <div className="mx-auto max-w-3xl px-8 py-6">
           <h1 className="text-xl font-semibold">Settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Stored in <span className="font-mono">~/.kirby</span> and the
-            repository's <span className="font-mono">.kirby/</span> — shared
-            with the Kirby terminal UI.
+            Stored in <span className="font-mono">~/.n10</span> and the
+            repository's <span className="font-mono">.n10/</span> — shared with
+            the n10 terminal UI.
           </p>
 
           {view.isLoading && (

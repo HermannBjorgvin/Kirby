@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useInput } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import { PlanCheckoutPane } from '../reviews/PlanCheckoutPane.js';
-import type { TerminalLayout, PaneModeValue } from '@kirby/app-core';
+import type { TerminalLayout, PaneModeValue } from '@n10/app-core';
 import {
   useKeybindResolve,
   useSessionActions,
@@ -12,7 +12,7 @@ import {
   useAsyncOps,
   usePlan,
   useConfig,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 import { handlePlanCheckoutInput } from './main-input.js';
 
 interface PlanCheckoutContainerProps {

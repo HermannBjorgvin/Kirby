@@ -52,7 +52,7 @@ export interface SessionBackend {
   offExit(cb: (code: number, signal?: number) => void): void;
   /** Soft cleanup: release local resources. For the tmux backend this
    *  detaches the local PTY and leaves the tmux session running so it
-   *  can be reattached on the next Kirby start. */
+   *  can be reattached on the next n10 start. */
   dispose(): void;
   /** Hard teardown: terminate the underlying session. For the tmux
    *  backend this runs `tmux kill-session` first, then disposes the

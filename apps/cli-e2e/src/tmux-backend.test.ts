@@ -1,4 +1,4 @@
-import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
+import { test, expect, fakeAgentCommand } from './fixtures/n10.js';
 import { wtermHost } from './setup/constants.js';
 import {
   createSession,
@@ -7,7 +7,7 @@ import {
 } from './setup/sessions.js';
 import {
   cleanupTmuxSessions,
-  kirbySessionExists,
+  n10SessionExists,
   tmuxAvailable,
   uniqueTmuxBranch,
 } from './setup/tmux.js';
@@ -17,7 +17,7 @@ import {
  *
  * The lib-level suites (libs/terminal-tmux) already cover the backend in
  * isolation against a real tmux binary. What only this file can prove is
- * that Kirby *selects* tmux from config, composes the session name, and
+ * that n10 *selects* tmux from config, composes the session name, and
  * routes its kill/quit paths to the right teardown — i.e. that the wiring
  * between the app and the backend is real.
  *
@@ -28,9 +28,9 @@ import {
 test.skip(!tmuxAvailable(), 'tmux is not installed');
 
 test.use({
-  kirbyConfig: {
+  n10Config: {
     aiCommand: fakeAgentCommand({
-      banner: 'kirby-fake-agent-ready',
+      banner: 'n10-fake-agent-ready',
       bursts: 'inf',
       burstMs: 500,
       idleMs: 200,
@@ -50,36 +50,36 @@ async function fetchStatus(baseURL: string): Promise<Status> {
 
 test.describe('Tmux backend (e2e)', () => {
   // Branches whose tmux sessions need reaping. Populated per test, since
-  // Kirby's own exit path leaves them running by design.
+  // n10's own exit path leaves them running by design.
   let branches: string[] = [];
 
   test.beforeEach(() => {
     branches = [];
   });
 
-  // Requests `kirby` so the reap runs against the test's own tmux socket
+  // Requests `n10` so the reap runs against the test's own tmux socket
   // (TMUX_TMPDIR=homeDir). afterEach runs before fixture teardown, so the
   // temp home — and the socket inside it — still exists here.
-  test.afterEach(({ kirby }) => {
-    cleanupTmuxSessions(branches, kirby.homeDir);
+  test.afterEach(({ n10 }) => {
+    cleanupTmuxSessions(branches, n10.homeDir);
   });
 
   test('starting an agent creates a real tmux session and streams its output', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch, { start: true });
+    await createSession(n10.term, branch, { start: true });
 
-    // Output arriving at all proves the whole chain: Kirby → local PTY →
+    // Output arriving at all proves the whole chain: n10 → local PTY →
     // tmux client → tmux server → fake agent, and back.
     await expect(
-      kirby.term.getByText('kirby-fake-agent-ready').first()
+      n10.term.getByText('n10-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
 
     await expect
-      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
+      .poll(() => n10SessionExists(branch, n10.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
@@ -90,81 +90,81 @@ test.describe('Tmux backend (e2e)', () => {
   // dispose(). With dispose() the UI would look identical — row gone, pane
   // cleared — while the tmux session kept running the agent forever.
   test('kill-agent destroys the tmux session rather than orphaning it', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch, { start: true });
+    await createSession(n10.term, branch, { start: true });
     await expect(
-      kirby.term.getByText('kirby-fake-agent-ready').first()
+      n10.term.getByText('n10-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
     await expect
-      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
+      .poll(() => n10SessionExists(branch, n10.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
       .toBe(true);
 
     // Escape to the sidebar so the keypress is a sidebar action.
-    await kirby.term.write('\x00');
-    await waitForSidebarFocused(kirby.term);
+    await n10.term.write('\x00');
+    await waitForSidebarFocused(n10.term);
 
     // vim preset binds sidebar.kill-agent to 'K'. Retried: a key following
     // Ctrl+Space can be dropped before Ink's sidebar useInput is active,
     // and a longer wait can't recover a key that never arrived. Safe to
     // repeat — killSession no-ops once the registry entry is gone.
     await pressUntil(
-      kirby.term,
+      n10.term,
       'K',
-      () => !kirbySessionExists(branch, kirby.homeDir)
+      () => !n10SessionExists(branch, n10.homeDir)
     );
   });
 
-  // The feature's whole reason to exist: quitting Kirby must leave the
+  // The feature's whole reason to exist: quitting n10 must leave the
   // tmux session running so the next launch reattaches. killAll() calls
   // dispose() for exactly this reason.
-  test('quitting Kirby leaves the tmux session alive for the next launch', async ({
-    kirby,
+  test('quitting n10 leaves the tmux session alive for the next launch', async ({
+    n10,
     baseURL,
   }) => {
     const host = wtermHost(baseURL);
     const branch = uniqueTmuxBranch();
     branches.push(branch);
 
-    await createSession(kirby.term, branch, { start: true });
+    await createSession(n10.term, branch, { start: true });
     await expect(
-      kirby.term.getByText('kirby-fake-agent-ready').first()
+      n10.term.getByText('n10-fake-agent-ready').first()
     ).toBeVisible({ timeout: 20_000 });
     await expect
-      .poll(() => kirbySessionExists(branch, kirby.homeDir), {
+      .poll(() => n10SessionExists(branch, n10.homeDir), {
         timeout: 10_000,
         intervals: [250],
       })
       .toBe(true);
 
-    await kirby.term.write('\x00');
-    await waitForSidebarFocused(kirby.term);
+    await n10.term.write('\x00');
+    await waitForSidebarFocused(n10.term);
 
-    // 'q' quits. Wait for Kirby's own PTY to be gone before judging the
+    // 'q' quits. Wait for n10's own PTY to be gone before judging the
     // tmux session, otherwise we might sample before teardown ran at all.
     await pressUntil(
-      kirby.term,
+      n10.term,
       'q',
       async () => !(await fetchStatus(host)).ptyAlive
     );
 
-    // Kirby is gone; the agent's tmux session is not.
-    expect(kirbySessionExists(branch, kirby.homeDir)).toBe(true);
+    // n10 is gone; the agent's tmux session is not.
+    expect(n10SessionExists(branch, n10.homeDir)).toBe(true);
   });
 
   test('Settings does not offer a terminal backend selector', async ({
-    kirby,
+    n10,
   }) => {
-    await kirby.term.press('s');
-    await expect(kirby.term.getByText('Settings').first()).toBeVisible({
+    await n10.term.press('s');
+    await expect(n10.term.getByText('Settings').first()).toBeVisible({
       timeout: 10_000,
     });
-    await expect(kirby.term.getByText('Terminal Backend')).toHaveCount(0);
+    await expect(n10.term.getByText('Terminal Backend')).toHaveCount(0);
   });
 });

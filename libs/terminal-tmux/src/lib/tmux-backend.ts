@@ -1,5 +1,5 @@
-import type { SessionBackend, SessionSpec } from '@kirby/terminal';
-import { PtySession } from '@kirby/terminal-pty';
+import type { SessionBackend, SessionSpec } from '@n10/terminal';
+import { PtySession } from '@n10/terminal-pty';
 import {
   tmuxAttachArgs,
   tmuxCapturePane,
@@ -172,7 +172,7 @@ class TmuxBackend implements SessionBackend {
     // earlier poll) can land between the read starting and resolving.
     if (this.disposed || !this.state.running) return;
     // A failed read (non-zero exit, spawn error) says nothing about the
-    // pane — Kirby simply could not talk to tmux this tick. Leave
+    // pane — n10 simply could not talk to tmux this tick. Leave
     // `state.running` and the timer untouched; the next tick tries again.
     if (read.status === 'failed') return;
     if (read.status === 'ok' && !read.state.paneDead) return;

@@ -1,4 +1,4 @@
-import type { BuildStatusState } from '@kirby/vcs-core';
+import type { BuildStatusState } from '@n10/vcs-core';
 import type { AdoConfig } from './client.js';
 import { authHeaders, baseUrl } from './client.js';
 import { adoGet, TTL } from './request.js';

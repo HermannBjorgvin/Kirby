@@ -24,7 +24,7 @@ const state = vi.hoisted(() => ({
 vi.mock('node:fs', () => ({
   realpathSync: (p: string) => state.realpaths[p] ?? p,
 }));
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   listLiveWorktreeSessions: () => state.live,
 }));
 vi.mock('./repo.js', () => ({

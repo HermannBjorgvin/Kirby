@@ -107,7 +107,7 @@ export function startSurvivingTerminal(
   tagTmuxSession(
     opts.name,
     {
-      '@orchestra-spawner': 'kirby',
+      '@orchestra-spawner': 'n10',
       '@orchestra-repo': opts.cwd,
       '@orchestra-session-type': opts.kind ?? 'shell',
     },

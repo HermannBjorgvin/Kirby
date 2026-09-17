@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { DiffFile } from '@kirby/core';
-import { resolveRef, fetchFileDiffText } from '@kirby/core';
+import type { DiffFile } from '@n10/core';
+import { resolveRef, fetchFileDiffText } from '@n10/core';
 import { beginOp } from './useAsyncOperation.js';
 
 const execFile = promisify(execFileCb);
 
 /**
  * Environment variables that prevent git/SSH from prompting for auth.
- * Mirrors the same constant in @kirby/worktree-manager's exec.ts.
+ * Mirrors the same constant in @n10/worktree-manager's exec.ts.
  */
 const GIT_NO_PROMPT_ENV = {
   GIT_TERMINAL_PROMPT: '0',

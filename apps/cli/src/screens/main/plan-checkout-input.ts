@@ -1,11 +1,11 @@
-import { worktreeSessionKey } from '@kirby/core';
-import type { KeyPress, PlanItem } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
+import type { KeyPress, PlanItem } from '@n10/core';
 import {
   hasSession,
   checkoutPlan,
   composePlanPrompt,
   planItemKey,
-} from '@kirby/core';
+} from '@n10/core';
 
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { PlanCheckoutHandlerCtx } from './input-types.js';

@@ -68,7 +68,7 @@ test.describe('Diff viewer', () => {
     // The rail only offers an Agent entry once a session exists, and
     // launching one auto-selects the terminal.
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
     // The diff pane stays mounted (hidden) rather than being torn down,
@@ -89,9 +89,7 @@ test.describe('Diff viewer', () => {
     // …and back to the terminal, whose scrollback survived because the
     // pane stays mounted.
     await page.getByRole('button', { name: /^Agent/ }).click();
-    await expect(
-      page.getByText('kirby-fake-agent-ready').first()
-    ).toBeVisible();
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
   });
 
   test('Split view renders the same content as Unified', async ({
@@ -121,7 +119,7 @@ test.describe('Live worktree diff', () => {
     repo: {
       worktrees: [{ branch: LIVE, files: { 'committed.txt': 'one\n' } }],
     },
-    kirbyConfig: { aiCommand: fakeAgent({ stream: true }) },
+    n10Config: { aiCommand: fakeAgent({ stream: true }) },
   });
 
   /**
@@ -160,7 +158,7 @@ test.describe('Live worktree diff', () => {
     // Start the agent: the poll only runs while one is working, which is
     // the only time the tree changes underneath the viewer.
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -200,7 +198,7 @@ test.describe('File tree collapse', () => {
         },
       ],
     },
-    kirbyConfig: { aiCommand: fakeAgent({ stream: true }) },
+    n10Config: { aiCommand: fakeAgent({ stream: true }) },
   });
 
   test('a closed folder survives a file appearing elsewhere', async ({
@@ -221,7 +219,7 @@ test.describe('File tree collapse', () => {
     await expect(fileTree(page).getByText('guide.md')).toHaveCount(0);
 
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -257,7 +255,7 @@ test.describe('File tree collapse', () => {
     await expect(fileTree(page).getByText('app.ts')).toHaveCount(0);
 
     await launchAgentFromRail(page);
-    await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible({
+    await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
       timeout: 30_000,
     });
 

@@ -1,4 +1,4 @@
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type { CommentSeverity, ReviewComment } from '../../../host/contract.js';
 
 /**

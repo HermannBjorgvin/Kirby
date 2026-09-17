@@ -2,13 +2,13 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { startFromSessionMenu } from './setup/sessions.js';
 import { settleFor } from './setup/waits.js';
 
 test.use({
-  kirbyConfig: {
-    aiCommand: 'echo kirby-session-active && sleep 300',
+  n10Config: {
+    aiCommand: 'echo n10-session-active && sleep 300',
     keybindPreset: 'vim',
   },
 });
@@ -20,7 +20,7 @@ test.use({
 // dedicated e2e.
 test.describe('Delete active session', () => {
   test('git-clean session with live PTY requires confirmation', async ({
-    kirby,
+    n10,
   }) => {
     const branchName = 'e2e-active-delete';
 
@@ -30,38 +30,38 @@ test.describe('Delete active session', () => {
     // branch's tip is reachable from `--remotes`, which makes
     // canRemoveBranch return safe and lets the active-session check
     // be the only thing standing between a key press and deletion.
-    const bareRemote = mkdtempSync(join(tmpdir(), 'kirby-e2e-bare-'));
+    const bareRemote = mkdtempSync(join(tmpdir(), 'n10-e2e-bare-'));
     try {
       execSync('git init --bare', { cwd: bareRemote, stdio: 'pipe' });
       execSync(`git remote add origin "${bareRemote}"`, {
-        cwd: kirby.repoPath,
+        cwd: n10.repoPath,
         stdio: 'pipe',
       });
       execSync('git push origin HEAD:master', {
-        cwd: kirby.repoPath,
+        cwd: n10.repoPath,
         stdio: 'pipe',
       });
 
-      await expect(kirby.term.getByText('(no sessions)')).toBeVisible();
+      await expect(n10.term.getByText('(no sessions)')).toBeVisible();
 
       // Create the session via the branch picker.
-      await kirby.term.type('c');
-      await expect(kirby.term.getByText('Branch Picker')).toBeVisible();
-      await kirby.term.type(branchName);
-      await expect(kirby.term.getByText(/\(new branch\)/).first()).toBeVisible({
+      await n10.term.type('c');
+      await expect(n10.term.getByText('Branch Picker')).toBeVisible();
+      await n10.term.type(branchName);
+      await expect(n10.term.getByText(/\(new branch\)/).first()).toBeVisible({
         timeout: 5_000,
       });
       // Let React re-render so useInput closure captures the updated filter.
       await settleFor(
-        kirby.term.page,
+        n10.term.page,
         2_000,
         "Ink's useInput captured the old filter until the next render"
       );
-      await kirby.term.press('Enter');
-      await expect(kirby.term.getByText('Branch Picker')).not.toBeVisible({
+      await n10.term.press('Enter');
+      await expect(n10.term.getByText('Branch Picker')).not.toBeVisible({
         timeout: 5_000,
       });
-      await expect(kirby.term.getByText(branchName).first()).toBeVisible({
+      await expect(n10.term.getByText(branchName).first()).toBeVisible({
         timeout: 10_000,
       });
 
@@ -69,12 +69,12 @@ test.describe('Delete active session', () => {
       // PTY. Wait for the agent's stdout marker to confirm the PTY is
       // alive, then exit back to the sidebar with Ctrl+Space (\x00 —
       // Tab is forwarded into the PTY when focused there).
-      await startFromSessionMenu(kirby.term);
+      await startFromSessionMenu(n10.term);
       await expect(
-        kirby.term.getByText('kirby-session-active').first()
+        n10.term.getByText('n10-session-active').first()
       ).toBeVisible({ timeout: 10_000 });
-      await kirby.term.write('\x00');
-      await expect(kirby.term.getByText('quit').first()).toBeVisible({
+      await n10.term.write('\x00');
+      await expect(n10.term.getByText('quit').first()).toBeVisible({
         timeout: 5_000,
       });
 
@@ -90,21 +90,21 @@ test.describe('Delete active session', () => {
       // CI failure that does not reproduce on a developer machine.
       // Repeating is harmless: the modal itself only answers y/n/Esc.
       await expect(async () => {
-        await kirby.term.type('x');
-        await expect(
-          kirby.term.getByText('Confirm Delete').first()
-        ).toBeVisible({ timeout: 3_000 });
+        await n10.term.type('x');
+        await expect(n10.term.getByText('Confirm Delete').first()).toBeVisible({
+          timeout: 3_000,
+        });
       }).toPass({ timeout: 20_000 });
       await expect(
-        kirby.term.getByText(/session is active/i).first()
+        n10.term.getByText(/session is active/i).first()
       ).toBeVisible();
 
       // Esc cancels — session must remain in the sidebar.
-      await kirby.term.press('Escape');
-      await expect(kirby.term.getByText('Confirm Delete')).not.toBeVisible({
+      await n10.term.press('Escape');
+      await expect(n10.term.getByText('Confirm Delete')).not.toBeVisible({
         timeout: 5_000,
       });
-      await expect(kirby.term.getByText(branchName).first()).toBeVisible();
+      await expect(n10.term.getByText(branchName).first()).toBeVisible();
     } finally {
       rmSync(bareRemote, { recursive: true, force: true });
     }

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { createTestRepo, cleanupTestRepo } from './setup/git-repo.js';
 
 // Exercise the real host and node-pty exit event. A delayed shutdown write

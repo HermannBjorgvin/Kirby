@@ -1,10 +1,10 @@
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import {
   AGENT_ATTRIBUTION,
   commentBodyParts,
   conventionalSeverity,
   type ReviewComment,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 
 /**
  * The decisions a comment card makes before it draws anything.
@@ -241,7 +241,7 @@ export interface CommentBodyView {
  * without a header, which is most of a human's, come back verbatim.
  *
  * Every card measures itself by re-deriving what it will paint (see
- * `estimateCardRows` in @kirby/review-comments), so the estimator and
+ * `estimateCardRows` in @n10/review-comments), so the estimator and
  * the component both go through here. A card measured against a
  * different split from the one it renders puts every row below it in
  * the wrong place.
@@ -279,7 +279,7 @@ export function commentBodyView(body: string): CommentBodyView {
  * An unselected draft shows at most this many body lines. The cap
  * exists so a long draft cannot push its neighbours off the pane while
  * the user is scanning past it — expanding is what selecting it does.
- * `estimateCollapsedBodyRows` in @kirby/review-comments mirrors this
+ * `estimateCollapsedBodyRows` in @n10/review-comments mirrors this
  * number for the scroll maths; they have to move together.
  */
 export const MAX_COLLAPSED_BODY_LINES = 4;

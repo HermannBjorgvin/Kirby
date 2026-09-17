@@ -1,14 +1,14 @@
 import { memo, type ReactNode } from 'react';
 import { Box, Text } from 'ink';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import {
   estimateBodyRows,
   estimateCardRows,
   estimateReplyInputRows,
   type CommentImageLayouts,
   type ReviewComment,
-} from '@kirby/review-comments';
-import { planItemKey } from '@kirby/core';
+} from '@n10/review-comments';
+import { planItemKey } from '@n10/core';
 import { CommentProse } from './CommentProse.js';
 import {
   cardBorderColor,
@@ -41,7 +41,7 @@ import {
  * text-measure pipeline keeps every span on one row and truncates on
  * overflow. Sibling <Text> nodes in a row Box would each get a
  * flex-shrunk column allocation and wrap individually, producing a
- * 2-row mangled header ("kirby-test-run | er", " · 2h | ago",
+ * 2-row mangled header ("n10-test-run | er", " · 2h | ago",
  * "[r]eply | [v]reopen").
  */
 function HeaderLine({ spans }: { spans: HeaderSpan[] }) {

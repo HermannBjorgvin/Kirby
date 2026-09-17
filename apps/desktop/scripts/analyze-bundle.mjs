@@ -43,7 +43,7 @@ await build({
   build: { outDir: OUT, emptyOutDir: true },
   plugins: [
     {
-      name: 'kirby-analyze',
+      name: 'n10-analyze',
       generateBundle(_opts, bundle) {
         for (const [file, chunk] of Object.entries(bundle)) {
           if (chunk.type !== 'chunk') continue;

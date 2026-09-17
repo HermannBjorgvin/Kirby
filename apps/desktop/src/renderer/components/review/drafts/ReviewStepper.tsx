@@ -1,7 +1,7 @@
 import { CheckIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type { ReviewComment } from '../../../../host/contract.js';
 import {
   orderDraftsForReview,

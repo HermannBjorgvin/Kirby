@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type * as BabysitModule from './babysit.js';
 
 const state = vi.hoisted(() => ({
@@ -22,7 +22,7 @@ vi.mock('./repo.js', () => ({
   requireRepo: () => state.cwd,
   activeRepoIs: (cwd: string) => cwd === state.cwd,
 }));
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: () => ({ vendorAuth: {}, vendorProject: {} }),
 }));
 vi.mock('./pull-requests.js', () => ({
@@ -38,7 +38,7 @@ vi.mock('./sessions.js', () => ({
   defaultPaneSize: () => ({ cols: 120, rows: 40 }),
   isForeignSession: () => false,
 }));
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   startPrBabysitter: (opts: {
     pr: PullRequestInfo;
     cwd: string;

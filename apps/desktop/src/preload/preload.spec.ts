@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { IPC, type KirbyHostApi } from '../host/contract.js';
+import { IPC, type N10HostApi } from '../host/contract.js';
 
 /**
  * The bridge is a three-way agreement between contract.ts (the channel
@@ -37,11 +37,11 @@ vi.mock('electron', () => ({
   },
 }));
 
-let api: KirbyHostApi;
+let api: N10HostApi;
 
 beforeAll(async () => {
   await import('./preload.js');
-  api = exposed.kirby as KirbyHostApi;
+  api = exposed.n10 as N10HostApi;
 });
 
 /** Bridge methods that subscribe to pushed events instead of invoking. */
@@ -56,8 +56,8 @@ const EVENT_METHODS = [
 ] as const;
 
 describe('preload bridge', () => {
-  it('exposes the API as window.kirby', () => {
-    expect(Object.keys(exposed)).toEqual(['kirby']);
+  it('exposes the API as window.n10', () => {
+    expect(Object.keys(exposed)).toEqual(['n10']);
     expect(api).toBeTypeOf('object');
   });
 

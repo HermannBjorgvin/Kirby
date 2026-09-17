@@ -5,11 +5,7 @@ import { test, expect } from './fixtures/desktop.js';
 import { sessionMenu, sidebarRow, startSessionFromMenu } from './setup/app.js';
 import { armContextMenuChoice } from './setup/menu.js';
 import type { ElectronApplication } from '@playwright/test';
-import {
-  findKirbySessionFor,
-  socketEnv,
-  tagTmuxSession,
-} from './setup/tmux.js';
+import { findN10SessionFor, socketEnv, tagTmuxSession } from './setup/tmux.js';
 
 const BRANCH = 'launch-dialog';
 const TITLE = `Launch ${'a-very-long-unbroken-title-'.repeat(18)}`;
@@ -38,7 +34,7 @@ async function openMenu(
   await expect(
     page.getByRole('button', { name: `${BRANCH} → main`, exact: true })
   ).toBeVisible();
-  const sessions = await page.evaluate(() => window.kirby.listSessions());
+  const sessions = await page.evaluate(() => window.n10.listSessions());
   if (!sessions.some((s) => s.running)) {
     await page
       .getByRole('button', { name: /^(Launch|Relaunch) agent$/, exact: true })
@@ -106,8 +102,8 @@ test('Orchestra context shows real report metadata only for Continue and preserv
   const { app, page, homeDir } = desktop;
   await openMenu(page, app);
   await startSessionFromMenu(page);
-  await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible();
-  const name = findKirbySessionFor(BRANCH, homeDir)!;
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+  const name = findN10SessionFor(BRANCH, homeDir)!;
   tagTmuxSession(
     name,
     {
@@ -145,8 +141,8 @@ test('a stopped unknown agent has no Continue action; a recorded resumable agent
   const { app, page, homeDir } = desktop;
   await openMenu(page, app);
   await startSessionFromMenu(page);
-  await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible();
-  const name = findKirbySessionFor(BRANCH, homeDir)!;
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+  const name = findN10SessionFor(BRANCH, homeDir)!;
   const pid = Number(await pane(homeDir, name, '#{pane_pid}'));
   process.kill(pid, 'SIGTERM');
   await expect.poll(() => pane(homeDir, name, '#{pane_dead}')).toBe('1');
@@ -184,8 +180,8 @@ test('Review sends its selected agent and instructions to the same guarded workt
   }, bin);
   await openMenu(page, app);
   await startSessionFromMenu(page);
-  await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible();
-  const name = findKirbySessionFor(BRANCH, homeDir)!;
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+  const name = findN10SessionFor(BRANCH, homeDir)!;
   tagTmuxSession(
     name,
     {
@@ -221,15 +217,13 @@ test('Review sends its selected agent and instructions to the same guarded workt
   await expect(page.getByText('selected-codex-ready').first()).toBeVisible();
   const args: string[] = JSON.parse(readFileSync(capture, 'utf8'));
   expect(args.join('\n')).toContain('Check module boundaries.');
-  expect(args.join('\n')).toContain('kirby util add-comment');
+  expect(args.join('\n')).toContain('n10 util add-comment');
   expect(args.join('\n')).toContain('42');
   expect(args).not.toContain('resume');
-  expect(findKirbySessionFor(BRANCH, homeDir)).toBe(name);
+  expect(findN10SessionFor(BRANCH, homeDir)).toBe(name);
   expect(await pane(homeDir, name, '#{@orchestra-agent}')).toBe('codex');
   expect(await pane(homeDir, name, '#{@orchestra-spawner}')).toBe('orchestra');
   expect(await pane(homeDir, name, '#{@orchestra-orchestrator}')).toBe('');
   expect(await pane(homeDir, name, '#{@orchestra-last-report}')).toBe('');
-  expect(await page.evaluate(() => window.kirby.listSessions())).toHaveLength(
-    1
-  );
+  expect(await page.evaluate(() => window.n10.listSessions())).toHaveLength(1);
 });

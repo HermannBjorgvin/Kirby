@@ -11,9 +11,9 @@ import {
   useSidebar,
   useNavState,
   useNavActions,
-} from '@kirby/app-core';
-import type { PaneModeValue } from '@kirby/app-core';
-import { computeScrollWindow } from '@kirby/core';
+} from '@n10/app-core';
+import type { PaneModeValue } from '@n10/app-core';
+import { computeScrollWindow } from '@n10/core';
 import { handleBranchPickerInput } from './branch-picker-input.js';
 
 export const BranchPicker = memo(function BranchPicker({

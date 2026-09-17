@@ -2,7 +2,7 @@
  * Host-side ownership of pull request babysitters.
  *
  * What to watch, what counts as news and when to tell the agent all
- * live in `@kirby/core`; what the desktop adds is the same thing it
+ * live in `@n10/core`; what the desktop adds is the same thing it
  * adds to every other launch — adopting a session core spawned so its
  * output reaches the renderer. Status travels on the sidebar item
  * (`getSidebarSnapshot` decorates the rows from `babysatStatuses`),
@@ -20,9 +20,9 @@ import {
   startPrBabysitter,
   type BabysitStatus,
   type PrBabysitter,
-} from '@kirby/core';
+} from '@n10/core';
 import type { BabysitChangedEvent } from '../contract.js';
-import { readConfig } from '@kirby/vcs-core';
+import { readConfig } from '@n10/vcs-core';
 import { activeRepoIs, requireRepo } from './repo.js';
 import {
   adoptSpawnedSession,

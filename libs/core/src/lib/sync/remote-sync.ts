@@ -1,10 +1,7 @@
 import { worktreeSessionKey } from '../session-key.js';
-import {
-  canRemoveBranch,
-  fastForwardMainBranch,
-} from '@kirby/worktree-manager';
-import { logError } from '@kirby/logger';
-import type { AppConfig, BranchPrMap, VcsProvider } from '@kirby/vcs-core';
+import { canRemoveBranch, fastForwardMainBranch } from '@n10/worktree-manager';
+import { logError } from '@n10/logger';
+import type { AppConfig, BranchPrMap, VcsProvider } from '@n10/vcs-core';
 import { isSessionAlive } from '../pty-registry.js';
 import { hasLiveTmuxSession } from '../session-backend.js';
 import { countBranchConflicts } from './conflicts.js';
@@ -86,7 +83,7 @@ async function autoDeleteMerged(args: {
   const { merged, onAutoDelete, isCancelled } = args;
   const rebasingNow: string[] = [];
   for (const branch of merged) {
-    // A live agent prevents auto-deletion even when Kirby is detached.
+    // A live agent prevents auto-deletion even when n10 is detached.
     // Deleting its working directory would disrupt the running process.
     const sessionName = worktreeSessionKey(branch);
     if (isSessionAlive(sessionName) || hasLiveTmuxSession(sessionName)) {

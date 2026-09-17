@@ -2,7 +2,7 @@ import {
   isBlockingDecision,
   type BuildStatusState,
   type PullRequestInfo,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 
 /**
  * Everything the sidebar's PR badge decides before it draws anything.

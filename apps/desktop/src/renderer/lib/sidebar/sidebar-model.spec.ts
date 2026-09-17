@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PullRequestInfo, ReviewDecision } from '@kirby/vcs-core';
+import type { PullRequestInfo, ReviewDecision } from '@n10/vcs-core';
 import type { SidebarItem } from '../../../host/contract.js';
 import {
   applyPendingRemovals,

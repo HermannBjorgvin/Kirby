@@ -131,7 +131,7 @@ describe('useAsyncOperation (module store)', () => {
 
   // Nothing awaits `run`, so it must not reject: an unhandled rejection
   // ends the process, which is how a failing git call used to take
-  // Kirby down. The failure has to reach the error handler instead, and
+  // n10 down. The failure has to reach the error handler instead, and
   // the op still has to leave the in-flight set.
   it('reports a throwing fn instead of rejecting, and still clears the op', async () => {
     const seen: { name: string; message: string }[] = [];

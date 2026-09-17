@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { DiffLine } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { DiffLine } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import type { ReviewComment } from './types.js';
 import {
   type AnnotatedLine,

@@ -24,11 +24,11 @@ let repo: string;
 let worktree: string;
 
 beforeAll(() => {
-  scratch = mkdtempSync(join(tmpdir(), 'kirby-origin-'));
+  scratch = mkdtempSync(join(tmpdir(), 'n10-origin-'));
   repo = join(scratch, 'repo');
   git(scratch, ['init', '-q', '-b', 'main', repo]);
-  git(repo, ['config', 'user.email', 'test@kirby.dev']);
-  git(repo, ['config', 'user.name', 'Kirby Test']);
+  git(repo, ['config', 'user.email', 'test@n10.dev']);
+  git(repo, ['config', 'user.name', 'n10 Test']);
   git(repo, ['commit', '-q', '--allow-empty', '-m', 'initial']);
   worktree = join(repo, '.claude', 'worktrees', 'feat-x');
   git(repo, ['worktree', 'add', '-q', '-b', 'feat/x', worktree]);

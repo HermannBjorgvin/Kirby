@@ -22,7 +22,7 @@ const QUESTION = 'Should the undo stack be bounded?';
 const ANSWER = 'Yes — cap it at fifty entries.';
 
 const GITHUB: FakeGitHub = {
-  username: 'kirby-tester',
+  username: 'n10-tester',
   prs: [
     {
       number: 42,

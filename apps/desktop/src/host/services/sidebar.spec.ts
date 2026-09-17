@@ -1,12 +1,12 @@
-import { worktreeSessionKey } from '@kirby/core';
+import { worktreeSessionKey } from '@n10/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as SidebarModule from './sidebar.js';
 import type * as PullRequestsModule from './pull-requests.js';
-import type * as Core from '@kirby/core';
+import type * as Core from '@n10/core';
 
 /**
  * The renderer polls the sidebar model continuously; the pull request
- * list behind it comes from `@kirby/core`'s per-repository cache,
+ * list behind it comes from `@n10/core`'s per-repository cache,
  * whose semantics (TTL, joining, retiring, eviction, credentials) are
  * its own spec's. What is asserted here is the sidebar's use of it:
  * that the model never waits for the provider, that a landed fetch is
@@ -75,11 +75,11 @@ vi.mock('./remote-sync.js', () => ({
   }),
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: () => ({ vendor: 'github', ...env.config }),
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   listWorktrees: () =>
     env.holdWorktrees
       ? new Promise<typeof env.worktrees>((resolve) => {
@@ -91,7 +91,7 @@ vi.mock('@kirby/worktree-manager', () => ({
     (wt.branch ?? 'detached').replace(/\//g, '-'),
 }));
 
-vi.mock('@kirby/core', async (importOriginal) => ({
+vi.mock('@n10/core', async (importOriginal) => ({
   // The cache is the real one: this spec is about what the sidebar
   // does with it, and a fake would only prove the fake.
   ...(await importOriginal<typeof Core>()),

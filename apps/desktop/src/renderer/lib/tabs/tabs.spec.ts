@@ -119,7 +119,7 @@ describe('sync-items opens a tab per running agent', () => {
   const live: ItemEntry = {
     itemKey: 'branch:feat-x',
     branch: 'feat-x',
-    sessionName: 'kirby-feat-x',
+    sessionName: 'n10-feat-x',
     running: true,
   };
 
@@ -169,9 +169,9 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.tabs).toEqual([]);
     // A different session on the same item is a new agent — but still
     // only once it is actually running.
-    s = sync(s, [{ ...live, sessionName: 'kirby-feat-x-2', running: false }]);
+    s = sync(s, [{ ...live, sessionName: 'n10-feat-x-2', running: false }]);
     expect(s.tabs).toEqual([]);
-    s = sync(s, [{ ...live, sessionName: 'kirby-feat-x-2' }]);
+    s = sync(s, [{ ...live, sessionName: 'n10-feat-x-2' }]);
     expect(s.tabs).toHaveLength(1);
     expect(s.activeId).toBe(id('branch:feat-x'));
   });
@@ -210,7 +210,7 @@ describe('sync-items opens a tab per running agent', () => {
     // `item:pr:1` was open, and the answer is: leave it alone.
     const entries: ItemEntry[] = [
       { itemKey: 'branch:c', branch: 'c' },
-      { itemKey: 'pr:1', branch: 'x', sessionName: 'kirby-x', running: true },
+      { itemKey: 'pr:1', branch: 'x', sessionName: 'n10-x', running: true },
     ];
     let s = open(empty, 'branch:c');
     s = open(s, 'branch:x');
@@ -224,7 +224,7 @@ describe('sync-items opens a tab per running agent', () => {
     expect(s.tabs.map((t) => t.id)).toEqual([id('branch:c'), id('branch:x')]);
     // …and the session counts as auto-opened, so a later poll can't
     // retry the move.
-    expect(s.autoOpened).toContain(autoOpenKey(REPO, 'kirby-x'));
+    expect(s.autoOpened).toContain(autoOpenKey(REPO, 'n10-x'));
     // …but the user is still looking at what they were looking at.
     expect(s.activeId).toBe(id('branch:c'));
 
@@ -242,7 +242,7 @@ describe('forget-auto-opened', () => {
     const live: ItemEntry = {
       itemKey: 'branch:feat-x',
       branch: 'feat-x',
-      sessionName: 'kirby-feat-x',
+      sessionName: 'n10-feat-x',
       running: true,
     };
     let s = sync(empty, [live]);
@@ -256,7 +256,7 @@ describe('forget-auto-opened', () => {
 
     s = reduce(s, {
       type: 'forget-auto-opened',
-      keys: [autoOpenKey(REPO, 'kirby-feat-x')],
+      keys: [autoOpenKey(REPO, 'n10-feat-x')],
     });
     s = sync(s, [live]);
     expect(s.tabs).toHaveLength(1);
@@ -278,7 +278,7 @@ describe('sync-items pins previews with a live agent', () => {
       {
         itemKey: 'branch:feat-x',
         branch: 'feat-x',
-        sessionName: 'kirby-feat-x',
+        sessionName: 'n10-feat-x',
         running: true,
       },
     ]);
@@ -293,7 +293,7 @@ describe('sync-items pins previews with a live agent', () => {
       {
         itemKey: 'branch:feat-x',
         branch: 'feat-x',
-        sessionName: 'kirby-feat-x',
+        sessionName: 'n10-feat-x',
       },
     ]);
     expect(s.tabs[0].preview).toBe(true);
@@ -313,7 +313,7 @@ describe('sync-items pins previews with a live agent', () => {
       {
         itemKey: 'branch:feat-x',
         branch: 'feat-x',
-        sessionName: 'kirby-feat-x',
+        sessionName: 'n10-feat-x',
         running: true,
       },
     ]);
@@ -747,14 +747,14 @@ describe('sync-items stamps the title', () => {
  */
 describe('terminal tabs', () => {
   const plain: TerminalEntry = {
-    name: 'kirby-shell',
+    name: 'n10-shell',
     kind: 'shell',
     cwd: '/home/dev/notes',
     displayPath: '~/notes',
     repo: null,
   };
   const inAlpha: TerminalEntry = {
-    name: 'kirby-agent',
+    name: 'n10-agent',
     kind: 'agent',
     cwd: REPO,
     displayPath: REPO,
@@ -886,7 +886,7 @@ describe('terminal tabs', () => {
     const running: ItemEntry = {
       itemKey: 'branch:feat-x',
       branch: 'feat-x',
-      sessionName: 'kirby-feat-x',
+      sessionName: 'n10-feat-x',
       running: true,
     };
     const action = {
@@ -1038,7 +1038,7 @@ describe('terminal tabs', () => {
     it('is a no-op for a name that has no terminal tab', () => {
       const s = open(openTerminal(empty, plain), 'branch:x');
       expect(ended(s, 'feat-x')).toBe(s);
-      expect(ended(s, 'kirby-shell-9')).toBe(s);
+      expect(ended(s, 'n10-shell-9')).toBe(s);
     });
   });
 

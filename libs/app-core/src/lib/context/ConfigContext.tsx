@@ -13,9 +13,9 @@ import {
   readProjectConfig,
   writeProjectConfig,
   isVcsConfigured,
-} from '@kirby/vcs-core';
-import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
-import type { SettingsField } from '@kirby/core';
+} from '@n10/vcs-core';
+import type { AppConfig, VcsProvider } from '@n10/vcs-core';
+import type { SettingsField } from '@n10/core';
 
 /** Subset of AppConfig persisted via keybind mutators (see updateKeybindFields) */
 export type KeybindFields = Pick<

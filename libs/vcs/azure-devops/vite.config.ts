@@ -10,7 +10,7 @@ export default defineConfig(() => ({
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/vcs-azure-devops',
+    name: '@n10/vcs-azure-devops',
     watch: false,
     globals: true,
     environment: 'node',

@@ -58,7 +58,7 @@ export function fakeAgent(
     printSize?: boolean;
   } = {}
 ): string {
-  const flags = [`--banner=kirby-fake-agent-ready`];
+  const flags = [`--banner=n10-fake-agent-ready`];
   if (opts.stream) flags.push('--stream');
   if (opts.echo) flags.push('--echo');
   if (opts.printSeed) flags.push('--print-seed');
@@ -72,7 +72,7 @@ export function fakeAgent(
 
 export interface DesktopOptions {
   /** Config layered over the fake agent in the isolated HOME. */
-  kirbyConfig?: Record<string, unknown>;
+  n10Config?: Record<string, unknown>;
   /**
    * Per-project config (vendor, org, repo…), written to the cwd-hashed
    * path the config store reads it from. Needed for anything gated on a
@@ -80,13 +80,13 @@ export interface DesktopOptions {
    * auth fields once one is selected.
    */
   projectConfig?: Record<string, unknown>;
-  /** Written to $HOME/.kirby/desktop-prefs.json before launch. */
+  /** Written to $HOME/.n10/desktop-prefs.json before launch. */
   desktopPrefs?: Record<string, unknown>;
   /** Seed options for the per-test git repo. */
   repo?: TestRepoOptions;
   /**
    * Start with no repo open (the repo picker screen) instead of
-   * pointing KIRBY_START_DIR at the test repo.
+   * pointing N10_START_DIR at the test repo.
    */
   startWithoutRepo?: boolean;
   /**
@@ -97,7 +97,7 @@ export interface DesktopOptions {
   repoPathOverride?: string;
   /**
    * Agent-authored draft review comments, keyed by pull request id, as
-   * `kirby util add-comment` would have left them.
+   * `n10 util add-comment` would have left them.
    */
   drafts?: Record<number, unknown[]>;
   /**
@@ -117,7 +117,7 @@ export interface DesktopOptions {
    * Agent sessions already running when the app starts — the state
    * after a previous run whose agents were left in tmux. Each is a
    * worktree added with plain git plus a tmux session under the name
-   * Kirby uses, on the test's own socket. Data rather than a callback: Playwright
+   * n10 uses, on the test's own socket. Data rather than a callback: Playwright
    * reads a function-valued option as a fixture definition. `repo`
    * puts the agent in another repository than the test's own — the
    * state after a run that had work open across several.
@@ -169,26 +169,26 @@ function seedHome(
   homeDir: string,
   repoPath: string,
   opts: {
-    kirbyConfig?: Record<string, unknown>;
+    n10Config?: Record<string, unknown>;
     projectConfig?: Record<string, unknown>;
     desktopPrefs?: Record<string, unknown>;
     drafts?: Record<number, unknown[]>;
     fakeGitHub?: FakeGitHub;
   }
 ): Record<string, string> {
-  const kirby = join(homeDir, '.kirby');
-  mkdirSync(kirby, { recursive: true });
+  const n10 = join(homeDir, '.n10');
+  mkdirSync(n10, { recursive: true });
   // A terminal tab runs the developer's login shell in this home. zsh
   // greets a home with no rc file with its first-user wizard, which
   // swallows whatever a test types next; an empty one means "configured,
   // nothing to do" and the shell comes up at a prompt.
   writeFileSync(join(homeDir, '.zshrc'), '', 'utf8');
   writeFileSync(
-    join(kirby, 'config.json'),
+    join(n10, 'config.json'),
     JSON.stringify(
       {
         aiCommand: fakeAgent(),
-        ...opts.kirbyConfig,
+        ...opts.n10Config,
       },
       null,
       2
@@ -201,12 +201,12 @@ function seedHome(
     (opts.fakeGitHub ? fakeGhProjectConfig(opts.fakeGitHub) : undefined);
   if (projectConfig) {
     // Per-project config lives under a hash of the repo path — see
-    // projectKey() in @kirby/vcs-core's config store.
+    // projectKey() in @n10/vcs-core's config store.
     const key = createHash('sha256')
       .update(repoPath)
       .digest('hex')
       .slice(0, 16);
-    const dir = join(kirby, 'projects', key);
+    const dir = join(n10, 'projects', key);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'config.json'),
@@ -216,8 +216,8 @@ function seedHome(
   }
 
   for (const [prId, comments] of Object.entries(opts.drafts ?? {})) {
-    // Same layout the review agent writes to: ~/.kirby/reviews/pr-<id>.
-    const dir = join(kirby, 'reviews', `pr-${prId}`);
+    // Same layout the review agent writes to: ~/.n10/reviews/pr-<id>.
+    const dir = join(n10, 'reviews', `pr-${prId}`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'comments.json'),
@@ -228,7 +228,7 @@ function seedHome(
 
   if (opts.desktopPrefs) {
     writeFileSync(
-      join(kirby, 'desktop-prefs.json'),
+      join(n10, 'desktop-prefs.json'),
       JSON.stringify(opts.desktopPrefs, null, 2),
       'utf8'
     );
@@ -265,7 +265,7 @@ export const test = base.extend<
 >({
   // eslint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture dependency parameter.
   fixtureHome: async ({}, provide) => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-home-'));
+    const homeDir = mkdtempSync(join(tmpdir(), 'n10-desktop-e2e-home-'));
     try {
       await provide(homeDir);
     } finally {
@@ -273,7 +273,7 @@ export const test = base.extend<
       await rm(homeDir, { recursive: true, force: true });
     }
   },
-  kirbyConfig: [undefined, { option: true }],
+  n10Config: [undefined, { option: true }],
   projectConfig: [undefined, { option: true }],
   desktopPrefs: [undefined, { option: true }],
   repo: [undefined, { option: true }],
@@ -288,7 +288,7 @@ export const test = base.extend<
 
   desktop: async (
     {
-      kirbyConfig,
+      n10Config,
       projectConfig,
       desktopPrefs,
       repo,
@@ -312,7 +312,7 @@ export const test = base.extend<
     const repoPath = repoPathOverride ?? createTestRepo(repo ?? {});
     const homeDir = fixtureHome;
     const ghEnv = seedHome(homeDir, repoPath, {
-      kirbyConfig,
+      n10Config,
       projectConfig,
       desktopPrefs,
       drafts,
@@ -342,7 +342,7 @@ export const test = base.extend<
     // orchestrator exports it into every shell it starts — so a run from
     // one of those terminals silently tests a different bundle, or, once
     // the dev server is gone, a blank window and 30s timeouts.
-    delete parentEnv.KIRBY_VITE_URL;
+    delete parentEnv.N10_VITE_URL;
 
     seedTmux(repoPath, homeDir, liveSessions, liveTerminals);
 
@@ -363,8 +363,8 @@ export const test = base.extend<
         // never makes one test's launch quit against another's).
         HOME: homeDir,
         XDG_CONFIG_HOME: join(homeDir, '.config'),
-        KIRBY_START_DIR: startWithoutRepo ? '' : repoPath,
-        KIRBY_DESKTOP_VERSION: 'e2e',
+        N10_START_DIR: startWithoutRepo ? '' : repoPath,
+        N10_DESKTOP_VERSION: 'e2e',
         ...(githubToken ? { GH_TOKEN: githubToken } : {}),
         // The fake `gh` has to win the PATH lookup.
         ...ghEnv,

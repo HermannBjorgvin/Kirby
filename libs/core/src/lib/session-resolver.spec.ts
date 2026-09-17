@@ -61,7 +61,7 @@ function tags(
   branch?: string
 ): Record<string, string> {
   return {
-    '@orchestra-spawner': 'kirby',
+    '@orchestra-spawner': 'n10',
     '@orchestra-repo': repo,
     '@orchestra-session-type': type,
     ...(branch ? { '@orchestra-branch': branch } : {}),
@@ -72,7 +72,7 @@ beforeAll(() => {
   if (SKIP) return;
   if (
     process.env.TMUX ||
-    !process.env.TMUX_TMPDIR?.includes('kirby-core-tests-')
+    !process.env.TMUX_TMPDIR?.includes('n10-core-tests-')
   ) {
     throw new Error(
       'refusing to run against a tmux socket that is not the scratch one'
@@ -106,12 +106,12 @@ describe.skipIf(SKIP)('session resolver', () => {
     });
   });
 
-  // The name Kirby would have chosen, on a session nobody tagged: not
+  // The name n10 would have chosen, on a session nobody tagged: not
   // ours. Neither the branch lookup nor the registry-key lookup may
   // land on it.
   it('does not find an untagged session that carries the expected name', () => {
     startSession(`alpha-${RUN}-feat-a`, {});
-    startSession(name('half'), { '@orchestra-spawner': 'kirby' });
+    startSession(name('half'), { '@orchestra-spawner': 'n10' });
     expect(resolveWorktreeSession(REPO, 'feat-a')).toBeNull();
     expect(resolveRegistrySession(REPO, `alpha-${RUN}-feat-a`)).toBeNull();
     expect(resolveSessionByName(`alpha-${RUN}-feat-a`)).toBeNull();

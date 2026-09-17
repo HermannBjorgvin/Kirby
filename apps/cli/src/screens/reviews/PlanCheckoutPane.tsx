@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
-import { truncate, planItemKey, type PlanItem } from '@kirby/core';
+import { truncate, planItemKey, type PlanItem } from '@n10/core';
 
 // Presentational checkout pane: a checklist of plan items with an
 // include/exclude toggle, inline note editing, and a send action. When

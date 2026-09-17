@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
 import { PlanCheckoutPane } from './PlanCheckoutPane.js';
-import type { LocalPlanItem, RemotePlanItem } from '@kirby/core';
+import type { LocalPlanItem, RemotePlanItem } from '@n10/core';
 
 const remote: RemotePlanItem = {
   kind: 'remote',

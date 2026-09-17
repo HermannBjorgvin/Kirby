@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/kitty-graphics",
+  "name": "@n10/kitty-graphics",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/kitty-graphics",
+    "name": "@n10/kitty-graphics",
     "tags": [
       "type:lib",
       "scope:kitty-graphics"

@@ -45,7 +45,7 @@ export function AppearanceRows() {
       <RowShell
         htmlFor="pref-native-frame"
         label="Native window frame"
-        description="Use the operating system's title bar and menu bar instead of Kirby's compact header. Takes effect the next time Kirby starts."
+        description="Use the operating system's title bar and menu bar instead of n10's compact header. Takes effect the next time n10 starts."
         control={
           <Switch
             id="pref-native-frame"

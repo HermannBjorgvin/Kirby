@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
-import { usePaneReducer } from '@kirby/app-core';
+import { usePaneReducer } from '@n10/app-core';
 import {
   SESSION_MENU_REQUEST_TTL_MS,
   __resetSessionMenuRequestForTests,
   requestSessionMenu,
   type SidebarItem,
-} from '@kirby/core';
+} from '@n10/core';
 
 // The pane reducer honors a session-menu request from whichever pane
 // shows that session: the one already mounted when the request is

@@ -1,5 +1,5 @@
-import type { DiffLine } from '@kirby/diff';
-import { commentBodyParts } from '@kirby/review-comments/conventional';
+import type { DiffLine } from '@n10/diff';
+import { commentBodyParts } from '@n10/review-comments/conventional';
 import type {
   RemoteCommentThread,
   ReviewComment,

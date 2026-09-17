@@ -3,7 +3,7 @@ import {
   unavailableError,
   VcsError,
   type VcsErrorKind,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 
 /**
  * What went wrong when `gh` did.
@@ -79,7 +79,7 @@ const MESSAGES: Partial<Record<VcsErrorKind, string>> = {
 export function classifyGhError(err: unknown): VcsError {
   if (code(err) === 'ENOENT') {
     return unavailableError(
-      'The GitHub CLI (gh) is not installed — Kirby reaches GitHub through it',
+      'The GitHub CLI (gh) is not installed — n10 reaches GitHub through it',
       { cause: err }
     );
   }

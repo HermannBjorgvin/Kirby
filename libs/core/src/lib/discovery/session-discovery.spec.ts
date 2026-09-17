@@ -1,6 +1,6 @@
 import { worktreeSessionKey, terminalSessionKey } from '../session-key.js';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { WorktreeInfo } from '@kirby/worktree-manager';
+import type { WorktreeInfo } from '@n10/worktree-manager';
 import type {
   DiscoveredTerminal,
   DiscoveredWorktree,
@@ -27,11 +27,11 @@ const {
 vi.mock('node:fs', () => ({
   watch: (...args: unknown[]) => watchMock(...args),
 }));
-vi.mock('@kirby/logger', () => ({
+vi.mock('@n10/logger', () => ({
   log: () => undefined,
   logError: () => undefined,
 }));
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   listWorktrees: () => listWorktreesMock(),
   // The real rule, not `wt.branch`: a detached-HEAD worktree has no
   // branch and is named after its directory. Stubbing it as the branch
@@ -131,7 +131,7 @@ function start(
 }
 
 const shellTerm: DiscoveredTerminal = {
-  name: terminalSessionKey('kirby-shell-1a2b3c'),
+  name: terminalSessionKey('n10-shell-1a2b3c'),
   kind: 'shell',
   path: '/home/dev/notes',
 };

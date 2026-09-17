@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   head: vi.fn(),
   held: vi.fn(() => false),
 }));
-vi.mock('@kirby/terminal-tmux', () => ({ createTmuxBackend: state.create }));
+vi.mock('@n10/terminal-tmux', () => ({ createTmuxBackend: state.create }));
 vi.mock('../pty-registry.js', () => ({
   spawnSession: state.register,
   sessionNames: () => [],

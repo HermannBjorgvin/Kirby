@@ -1,5 +1,5 @@
 import { TerminalView } from '../../components/TerminalView.js';
-import type { TerminalLayout } from '@kirby/app-core';
+import type { TerminalLayout } from '@n10/app-core';
 import { useTerminal } from '../../hooks/useTerminal.js';
 
 interface TerminalPaneProps {

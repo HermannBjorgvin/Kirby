@@ -1,12 +1,12 @@
 {
-  "name": "@hermannbjorgvin/kirby",
+  "name": "@hermannbjorgvin/n10",
   "version": "1.0.0-beta.7",
   "description": "A TUI workflow manager for git worktrees",
   "author": "Hermann Bjorgvin",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "kirby": "./main.js"
+    "n10": "./main.js"
   },
   "publishConfig": {
     "access": "public"
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HermannBjorgvin/kirby.git",
+    "url": "git+https://github.com/notaharness/n10.git",
     "directory": "apps/cli"
   },
   "nx": {
@@ -51,7 +51,7 @@
           ],
           "esbuildOptions": {
             "banner": {
-              "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);\nimport { dirname as __kirbyDirname } from \"node:path\";\nimport { fileURLToPath as __kirbyFileURLToPath } from \"node:url\";\nconst __filename = __kirbyFileURLToPath(import.meta.url);\nconst __dirname = __kirbyDirname(__filename);"
+              "js": "#!/usr/bin/env node\nimport { createRequire as __n10CreateRequire } from \"node:module\";\nconst require = __n10CreateRequire(import.meta.url);\nimport { dirname as __n10Dirname } from \"node:path\";\nimport { fileURLToPath as __n10FileURLToPath } from \"node:url\";\nconst __filename = __n10FileURLToPath(import.meta.url);\nconst __dirname = __n10Dirname(__filename);"
             },
             "alias": {
               "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
@@ -67,7 +67,7 @@
           "production": {
             "esbuildOptions": {
               "banner": {
-                "js": "#!/usr/bin/env node\nimport { createRequire as __kirbyCreateRequire } from \"node:module\";\nconst require = __kirbyCreateRequire(import.meta.url);\nimport { dirname as __kirbyDirname } from \"node:path\";\nimport { fileURLToPath as __kirbyFileURLToPath } from \"node:url\";\nconst __filename = __kirbyFileURLToPath(import.meta.url);\nconst __dirname = __kirbyDirname(__filename);"
+                "js": "#!/usr/bin/env node\nimport { createRequire as __n10CreateRequire } from \"node:module\";\nconst require = __n10CreateRequire(import.meta.url);\nimport { dirname as __n10Dirname } from \"node:path\";\nimport { fileURLToPath as __n10FileURLToPath } from \"node:url\";\nconst __filename = __n10FileURLToPath(import.meta.url);\nconst __dirname = __n10Dirname(__filename);"
               },
               "alias": {
                 "react-devtools-core": "./apps/cli/scripts/react-devtools-core.stub.mjs"
@@ -132,7 +132,7 @@
           "commands": [
             "node apps/cli/scripts/prepare-publish.mjs",
             "npm publish --tag beta apps/cli/dist",
-            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/kirby"
+            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/n10"
           ],
           "parallel": false
         }
@@ -150,16 +150,16 @@
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
-    "@kirby/app-core": "*",
-    "@kirby/core": "*",
-    "@kirby/logger": "*",
-    "@kirby/terminal": "*",
-    "@kirby/terminal-pty": "*",
-    "@kirby/terminal-tmux": "*",
-    "@kirby/vcs-azure-devops": "*",
-    "@kirby/vcs-core": "*",
-    "@kirby/vcs-github": "*",
-    "@kirby/worktree-manager": "*",
+    "@n10/app-core": "*",
+    "@n10/core": "*",
+    "@n10/logger": "*",
+    "@n10/terminal": "*",
+    "@n10/terminal-pty": "*",
+    "@n10/terminal-tmux": "*",
+    "@n10/vcs-azure-devops": "*",
+    "@n10/vcs-core": "*",
+    "@n10/vcs-github": "*",
+    "@n10/worktree-manager": "*",
     "@mishieck/ink-titled-box": "0.4.2",
     "cli-highlight": "^2.1.11",
     "ink": "^6.8.0",

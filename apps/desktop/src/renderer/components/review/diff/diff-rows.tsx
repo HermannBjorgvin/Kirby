@@ -4,7 +4,7 @@ import {
   ChevronUpIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type { SplitCell } from '../../../lib/diff/diff-model.js';
 import type { CharRange } from '../../../lib/diff/word-diff.js';
 import type { LineTokens } from '../../../lib/diff/highlight.js';

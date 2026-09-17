@@ -75,7 +75,7 @@ async function probe(): Promise<TmuxStatus> {
 
 /** Memoized one-shot probe. The result is cached for the process
  *  lifetime — if the user installs tmux mid-session they need to
- *  restart Kirby for the change to take effect. */
+ *  restart n10 for the change to take effect. */
 export function isTmuxAvailable(): Promise<TmuxStatus> {
   if (!memoized) memoized = probe();
   return memoized;

@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTmuxBackend } from '@kirby/terminal-tmux';
+import { createTmuxBackend } from '@n10/terminal-tmux';
 import { orchestraFixture } from '../../tests/orchestra-fixture.js';
 import { diffScans } from './discovery/discovery-model.js';
 import { getSession, isSessionAlive, killSession } from './pty-registry.js';

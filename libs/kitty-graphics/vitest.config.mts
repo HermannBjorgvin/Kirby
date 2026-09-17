@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/kitty-graphics',
   test: {
-    name: '@kirby/kitty-graphics',
+    name: '@n10/kitty-graphics',
     watch: false,
     globals: true,
     environment: 'node',

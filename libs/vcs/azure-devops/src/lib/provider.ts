@@ -10,9 +10,9 @@ import type {
   ReviewDecision,
   ReviewVerdict,
   BuildStatusState,
-} from '@kirby/vcs-core';
-import { sanitizeBody } from '@kirby/vcs-core';
-import { log } from '@kirby/logger';
+} from '@n10/vcs-core';
+import { sanitizeBody } from '@n10/vcs-core';
+import { log } from '@n10/logger';
 import type { AdoConfig } from './client.js';
 import { authHeaders, baseUrl } from './client.js';
 import {
@@ -394,7 +394,7 @@ async function getCachedIdentity(
 // ── @mention resolution (GUID → display name) ──────────────────────
 //
 // ADO's REST API returns comment bodies with raw `@<GUID>` tokens
-// where the web UI renders `@<Display Name>`. Kirby post-processes
+// where the web UI renders `@<Display Name>`. n10 post-processes
 // fetched comment bodies: extracts mention GUIDs, batch-resolves them
 // against the ADO Identities API, caches the results, and substitutes
 // the tokens inline before handing off to the renderer.
@@ -555,7 +555,7 @@ function adoStatusToResolved(status: string | undefined): boolean {
  * Sanitized snapshot of an ADO thread for diagnostic logging. Strips
  * comment bodies (reviewer text, noisy) and author names (PII), keeping
  * only the structural fields needed to reproduce a placement bug. Set
- * `KIRBY_LOG=/path/to/log` to capture; safe to share in bug reports.
+ * `N10_LOG=/path/to/log` to capture; safe to share in bug reports.
  */
 function sanitizeAdoThreadForLog(thread: AdoThread): unknown {
   return {
@@ -837,7 +837,7 @@ async function fetchAdoCommentThreads(
  * The comment id a reply should hang under. ADO renders threading from
  * `parentCommentId`, where `0` means "this IS the thread root" — so
  * replying with `0` posts an extra top-level comment instead of a
- * reply. That is invisible in Kirby's flat rendering and confusing to
+ * reply. That is invisible in n10's flat rendering and confusing to
  * anyone reading the pull request in ADO's web UI.
  *
  * Falling back to `0` covers a thread holding nothing but system
@@ -1007,7 +1007,7 @@ export const azureDevOpsProvider: VcsProvider = {
                 runVerdicts,
                 now,
               })),
-            }) satisfies PullRequestInfo
+            } satisfies PullRequestInfo)
         )
       );
       // A pull request that has closed is not coming back to this list;

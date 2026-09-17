@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import { BranchPicker } from './BranchPicker.js';
 import { SettingsPanel } from '../../components/SettingsPanel.js';
 import { ControlsPanel } from '../../components/ControlsPanel.js';
@@ -10,13 +10,13 @@ import { DiffFileListContainer } from './DiffFileListContainer.js';
 import { DiffFileViewerContainer } from './DiffFileViewerContainer.js';
 import { GeneralCommentsContainer } from './GeneralCommentsContainer.js';
 import { PlanCheckoutContainer } from './PlanCheckoutContainer.js';
-import type { TerminalLayout, PaneModeValue } from '@kirby/app-core';
+import type { TerminalLayout, PaneModeValue } from '@n10/app-core';
 import {
   useConfig,
   useDiffBundle,
   useSettingsState,
   useBranchPickerState,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 import { CARD_INDENT, CARD_MAX_WIDTH } from '../../components/CommentThread.js';
 import { CommentImagesContext } from '../../context/CommentImagesContext.js';
 import { useCommentImages } from '../../hooks/useCommentImages.js';

@@ -19,7 +19,7 @@ const archiveHash =
 
 /** One plugin install, repository and tmux server per test. */
 export function orchestraFixture() {
-  const home = mkdtempSync(join(tmpdir(), 'kirby-orchestra-'));
+  const home = mkdtempSync(join(tmpdir(), 'n10-orchestra-'));
   const repo = join(home, 'shop');
   const socketDir = join(home, 'tmux');
   const pluginDir = join(home, '.claude/plugins');

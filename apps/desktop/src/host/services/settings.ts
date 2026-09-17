@@ -1,12 +1,12 @@
-import { readConfig } from '@kirby/vcs-core';
-import { persistConfigField, updateConfigField } from '@kirby/app-core';
+import { readConfig } from '@n10/vcs-core';
+import { persistConfigField, updateConfigField } from '@n10/app-core';
 import {
   buildSettingsFields,
   resolveValue,
   settingsEffects,
   type SettingsEffect,
   type SettingsField,
-} from '@kirby/core';
+} from '@n10/core';
 import { PROVIDERS, requireRepo } from './repo.js';
 import { onCredentialsChanged } from './sidebar.js';
 import { startRemoteSyncLoop } from './remote-sync.js';
@@ -124,7 +124,7 @@ export function updateSettingsFromView(
 
 /**
  * Carry out what the write implies. Which effects a field has is
- * `@kirby/core`'s call (settings/effects.ts) and is shared with the
+ * `@n10/core`'s call (settings/effects.ts) and is shared with the
  * TUI; only the doing is the host's.
  */
 function runSettingsEffects(effects: SettingsEffect[]): void {

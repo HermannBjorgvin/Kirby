@@ -11,7 +11,7 @@ import type {
 } from './types.js';
 import { detectProvider } from './registry.js';
 
-const WM_DIR = join(homedir(), '.kirby');
+const WM_DIR = join(homedir(), '.n10');
 const GLOBAL_CONFIG_PATH = join(WM_DIR, 'config.json');
 
 // ── Internal file helpers ──────────────────────────────────────────

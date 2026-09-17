@@ -10,12 +10,12 @@ import type {
   PullRequestInfo,
   CategorizedReviews,
   BranchPrMap,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import {
   findOrphanPrs,
   categorizeReviews as categorizePrReviews,
   buildSessionLookups,
-} from '@kirby/core';
+} from '@n10/core';
 import { setOperationErrorHandler } from '../hooks/useAsyncOperation.js';
 import { useSessionManager } from '../hooks/useSessionManager.js';
 import { usePrData } from '../hooks/usePrData.js';
@@ -26,8 +26,8 @@ import { useConfig } from './ConfigContext.js';
 import { useBranchPickerActions } from './ModalContext.js';
 import { useToastActions } from './ToastContext.js';
 import type { ToastVariant } from './ToastContext.js';
-import type { AgentSession } from '@kirby/core';
-import { sortSessionsByPrId } from '@kirby/core';
+import type { AgentSession } from '@n10/core';
+import { sortSessionsByPrId } from '@n10/core';
 
 // ── Data context (consumed by SidebarProvider, changes on data refresh) ──
 

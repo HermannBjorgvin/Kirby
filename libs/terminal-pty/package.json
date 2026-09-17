@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/terminal-pty",
+  "name": "@n10/terminal-pty",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "@kirby/source": "./src/index.ts",
+      "@n10/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -22,7 +22,7 @@
     ]
   },
   "dependencies": {
-    "@kirby/terminal": "*",
+    "@n10/terminal": "*",
     "node-pty": "^1.1.0",
     "tslib": "^2.3.0"
   }

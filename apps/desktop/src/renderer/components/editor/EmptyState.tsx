@@ -1,4 +1,4 @@
-import { KirbyMark } from '../KirbyMark.js';
+import { N10Mark } from '../N10Mark.js';
 import { Kbd } from '../ui/kbd.js';
 import { MOD } from '../../lib/utils.js';
 
@@ -11,7 +11,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex h-full select-none flex-col items-center justify-center bg-background text-muted-foreground">
-      <KirbyMark className="size-14 opacity-20 grayscale" />
+      <N10Mark className="size-14 opacity-20 grayscale" />
       <p className="mt-4 text-base">
         {hasItems
           ? 'Pick a worktree or pull request from the sidebar.'

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import {
   CommentThreadCard,
   LocalCommentCard,
@@ -13,8 +13,8 @@ import {
   estimateReplyInputRows,
   withAgentFooter,
   type ReviewComment,
-} from '@kirby/review-comments';
-import { planItemKey } from '@kirby/core';
+} from '@n10/review-comments';
+import { planItemKey } from '@n10/core';
 
 // Regression: a selected card with resolved + outdated + a long
 // author used to overflow the card's content width — the trailing
@@ -88,7 +88,7 @@ describe('CommentThreadCard — header overflow', () => {
     }
     // Regression: the header used to span two rows because each
     // sibling <Text> got a flex-shrunk column allocation and
-    // wrapped within it ("kirby-test-run | er", " · 2h | ago",
+    // wrapped within it ("n10-test-run | er", " · 2h | ago",
     // " ✓ | resolved", "(outdated", "[r]eply | [v]reopen"). One
     // logical header row should land on exactly one rendered row.
     const headerRowIdx = rows.findIndex((r) => r.includes('[r]eply'));

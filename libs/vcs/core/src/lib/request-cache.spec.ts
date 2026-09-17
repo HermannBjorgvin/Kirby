@@ -5,7 +5,7 @@ import { getRequestCounters, resetRequestCounters } from './request-stats.js';
 /**
  * The cache in front of a provider, driven directly.
  *
- * Every property here is one Kirby was relying on and did not have:
+ * Every property here is one n10 was relying on and did not have:
  * concurrent callers sharing a request, a repeat inside the TTL
  * costing nothing, and — the one that is easy to get backwards — a
  * failure never being kept.

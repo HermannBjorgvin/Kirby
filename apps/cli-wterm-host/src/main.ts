@@ -53,7 +53,7 @@ async function killActivePty(): Promise<void> {
   if (activePty) await stopPty(activePty);
 }
 
-async function spawnKirby(req: SpawnRequest): Promise<void> {
+async function spawnN10(req: SpawnRequest): Promise<void> {
   await killActivePty();
   clearBuffer();
 
@@ -61,15 +61,15 @@ async function spawnKirby(req: SpawnRequest): Promise<void> {
     `[pty] spawn: node ${cliBinary} ${req.repoPath} (HOME=${req.homeDir})`
   );
   // Ink disables its interactive TTY renderer when CI-env-vars are set, so
-  // Kirby produces no output under Playwright's webServer (which inherits
-  // CI=true). Strip them for the spawned PTY so Kirby paints normally.
+  // n10 produces no output under Playwright's webServer (which inherits
+  // CI=true). Strip them for the spawned PTY so n10 paints normally.
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
     TERM: 'xterm-256color',
     ...req.env,
     HOME: req.homeDir,
     // A tmux server keeps the environment it was started with, and an
-    // every Kirby spawn uses tmux, so it needs a socket inside its own
+    // every n10 spawn uses tmux, so it needs a socket inside its own
     // HOME, which its owner deletes on teardown.
     //
     // Last, and not negotiable: the host also auto-spawns a dev-default
@@ -85,7 +85,7 @@ async function spawnKirby(req: SpawnRequest): Promise<void> {
   delete childEnv.GITHUB_ACTIONS;
   // A tmux client reads the socket path straight out of `$TMUX` and
   // ignores `TMUX_TMPDIR` when it is set, so a host started from inside
-  // a tmux session hands the spawned Kirby the *developer's* tmux
+  // a tmux session hands the spawned n10 the *developer's* tmux
   // server — where it would create (and the tests would fail to find)
   // its sessions. Nothing here should ever be nested in a real session.
   delete childEnv.TMUX;
@@ -124,24 +124,24 @@ async function spawnKirby(req: SpawnRequest): Promise<void> {
 }
 
 async function spawnDevDefault(): Promise<void> {
-  const home = execSync(`mktemp -d "${tmpdir()}/kirby-wterm-dev-home.XXXXXX"`)
+  const home = execSync(`mktemp -d "${tmpdir()}/n10-wterm-dev-home.XXXXXX"`)
     .toString()
     .trim();
-  const repo = execSync(`mktemp -d "${tmpdir()}/kirby-wterm-dev-repo.XXXXXX"`)
+  const repo = execSync(`mktemp -d "${tmpdir()}/n10-wterm-dev-repo.XXXXXX"`)
     .toString()
     .trim();
   execSync('git init', { cwd: repo, stdio: 'pipe' });
-  execSync('git config user.email "dev@kirby.dev"', {
+  execSync('git config user.email "dev@n10.dev"', {
     cwd: repo,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby Dev"', { cwd: repo, stdio: 'pipe' });
+  execSync('git config user.name "n10 Dev"', { cwd: repo, stdio: 'pipe' });
   execSync('git commit --allow-empty -m "initial"', {
     cwd: repo,
     stdio: 'pipe',
   });
-  execSync(`mkdir -p "${path.join(home, '.kirby')}"`, { stdio: 'pipe' });
-  await spawnKirby({ repoPath: repo, homeDir: home });
+  execSync(`mkdir -p "${path.join(home, '.n10')}"`, { stdio: 'pipe' });
+  await spawnN10({ repoPath: repo, homeDir: home });
 }
 
 async function readBody(req: http.IncomingMessage): Promise<string> {
@@ -211,7 +211,7 @@ async function handleRequest(
         return;
       }
       hasSpawned = true;
-      await queuePty(() => spawnKirby(parsed));
+      await queuePty(() => spawnN10(parsed));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
@@ -245,7 +245,7 @@ async function handleRequest(
  * `/output` hands back the raw PTY ring buffer (base64) — the browser
  * terminal can't render kitty graphics or synthesise mouse reports, so
  * e2e tests read the bytes here to assert on the escape sequences
- * Kirby emitted (kitty APC payloads, DECSET mouse toggles).
+ * n10 emitted (kitty APC payloads, DECSET mouse toggles).
  */
 function handleGetJson(pathname: string, res: http.ServerResponse): boolean {
   const json = (body: unknown) => {

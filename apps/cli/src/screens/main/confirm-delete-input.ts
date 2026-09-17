@@ -1,4 +1,4 @@
-import { handleTextInput, type KeyPress } from '@kirby/core';
+import { handleTextInput, type KeyPress } from '@n10/core';
 import type { DeleteConfirmHandlerCtx } from './input-types.js';
 
 export function handleConfirmDeleteInput(

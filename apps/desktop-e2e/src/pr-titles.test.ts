@@ -27,7 +27,7 @@ async function switchRepo(page: Page, cwd: string): Promise<void> {
   await page.getByPlaceholder('/path/to/repository').fill(cwd);
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect
-    .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+    .poll(() => page.evaluate(() => window.n10.getRepo()), {
       timeout: 30_000,
     })
     .toMatchObject({ cwd });
@@ -76,7 +76,7 @@ test.describe('Pull request titles', () => {
     // And back.
     await foreign.click();
     await expect
-      .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+      .poll(() => page.evaluate(() => window.n10.getRepo()), {
         timeout: 30_000,
       })
       .toMatchObject({ cwd: repoPath });

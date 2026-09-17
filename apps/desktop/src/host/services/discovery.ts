@@ -2,7 +2,7 @@
  * Host-side ownership of external-session discovery.
  *
  * The scanning, the diffing and the decision about what may be attached
- * to all live in `@kirby/core`; what the desktop adds is the same thing
+ * to all live in `@n10/core`; what the desktop adds is the same thing
  * it adds to every other launch — its own bookkeeping (`launchAgent`
  * records the session and starts the output relay) and a push to the
  * renderer, which serves its sidebar from a query cache and would
@@ -12,7 +12,7 @@ import {
   startSessionDiscovery,
   type DiscoveredWorktree,
   type SessionDiscovery,
-} from '@kirby/core';
+} from '@n10/core';
 import { activeRepoIs } from './repo.js';
 import { launchAgent } from './sessions.js';
 import { adoptTerminal, forgetTerminal } from './terminals.js';

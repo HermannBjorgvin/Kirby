@@ -1,6 +1,6 @@
 /**
  * Terminal tabs: sessions that belong to a directory rather than to a
- * worktree, so the user never has to leave Kirby for a plain terminal.
+ * worktree, so the user never has to leave n10 for a plain terminal.
  *
  * Split from `contract.ts` because it is one subject, and because that
  * file is a catalogue already.

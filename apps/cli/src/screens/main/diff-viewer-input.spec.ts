@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type * as ReviewCommentsModule from '@kirby/review-comments';
+import type * as ReviewCommentsModule from '@n10/review-comments';
 import {
   readComments,
   updateComment,
@@ -7,19 +7,16 @@ import {
   type ReviewComment,
   type CommentPositionInfo,
   type RowMapEntry,
-} from '@kirby/review-comments';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { DiffFile } from '@kirby/diff';
-import {
-  type SessionActionsContextValue,
-  type PlanValue,
-} from '@kirby/app-core';
+} from '@n10/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { DiffFile } from '@n10/diff';
+import { type SessionActionsContextValue, type PlanValue } from '@n10/app-core';
 import {
   ACTIONS,
   NORMIE_PRESET,
   resolveAction,
   type KeyPress,
-} from '@kirby/core';
+} from '@n10/core';
 import { handleDiffViewerInput } from './diff-viewer-input.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 
@@ -36,7 +33,7 @@ import type { DiffViewerHandlerCtx } from './input-types.js';
 // two would mean re-deriving another shell's y/n and text-editing
 // contract instead of pinning one of the 22 listed actions.
 
-vi.mock('@kirby/review-comments', async (importOriginal) => {
+vi.mock('@n10/review-comments', async (importOriginal) => {
   const actual = await importOriginal<typeof ReviewCommentsModule>();
   return {
     ...actual,
@@ -48,7 +45,7 @@ vi.mock('@kirby/review-comments', async (importOriginal) => {
 });
 
 vi.mock('../../utils/editor-edit.js', () => ({
-  openCommentInEditor: vi.fn().mockReturnValue('/tmp/kirby-comment-fake.md'),
+  openCommentInEditor: vi.fn().mockReturnValue('/tmp/n10-comment-fake.md'),
 }));
 
 import { openCommentInEditor } from '../../utils/editor-edit.js';

@@ -7,8 +7,8 @@ import type {
   PullRequestComments,
   RemoteCommentThread,
   RemoteCommentReply,
-} from '@kirby/vcs-core';
-import { useRemoteComments } from '@kirby/app-core';
+} from '@n10/vcs-core';
+import { useRemoteComments } from '@n10/app-core';
 
 // ── Test helpers ────────────────────────────────────────────────
 

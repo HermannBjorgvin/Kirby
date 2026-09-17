@@ -59,13 +59,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.INTEGRATION_TEST_PAT }}
           TEST_REPO: ${{ vars.TEST_REPO || 'kirby-test-runner/kirby-integration-test-repository' }}
-          # Wire Kirby's logger to the file the "Upload debug logs"
+          # Wire n10's logger to the file the "Upload debug logs"
           # step below already publishes. cli-wterm-host forwards
-          # process.env into every spawned Kirby PTY
+          # process.env into every spawned n10 PTY
           # (apps/cli-wterm-host/src/main.ts:70), so this lands in
-          # every test's Kirby instance with no fixture changes.
-          KIRBY_LOG: /tmp/kirby-integ-debug.log
-          KIRBY_LOG_LEVEL: debug
+          # every test's n10 instance with no fixture changes.
+          N10_LOG: /tmp/n10-integ-debug.log
+          N10_LOG_LEVEL: debug
 
       - name: Run desktop e2e tests (including integration)
         run: npx nx e2e:integration desktop-e2e
@@ -77,8 +77,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kirby-debug-logs
-          path: /tmp/kirby-integ-debug.log
+          name: n10-debug-logs
+          path: /tmp/n10-integ-debug.log
           if-no-files-found: ignore
           retention-days: 7
 

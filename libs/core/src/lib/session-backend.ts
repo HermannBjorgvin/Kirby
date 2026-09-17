@@ -6,7 +6,7 @@ import {
   isTmuxAvailable,
   tmuxKillSession,
   type TmuxStatus,
-} from '@kirby/terminal-tmux';
+} from '@n10/terminal-tmux';
 import type {
   DiscoveredTerminal,
   DiscoveredWorktree,
@@ -35,7 +35,7 @@ let cachedTmuxStatus: TmuxStatus | null = null;
 
 /** Run the tmux availability probe and cache the result. Call once
  *  at startup. Subsequent calls re-await the same memoized
- *  Promise from `@kirby/terminal-tmux`'s `isTmuxAvailable()`. */
+ *  Promise from `@n10/terminal-tmux`'s `isTmuxAvailable()`. */
 export async function probeTmuxAvailability(): Promise<void> {
   cachedTmuxStatus = await isTmuxAvailable();
 }
@@ -51,14 +51,14 @@ export function getTmuxAvailability(): TmuxStatus | null {
 export function applySessionBackend(): void {
   if (!cachedTmuxStatus?.available) {
     throw new Error(
-      `Kirby requires tmux 3.2 or newer. ${
+      `n10 requires tmux 3.2 or newer. ${
         cachedTmuxStatus?.reason ?? 'Availability has not been checked.'
-      } ${cachedTmuxStatus?.installHint ?? 'Install tmux and restart Kirby.'}`
+      } ${cachedTmuxStatus?.installHint ?? 'Install tmux and restart n10.'}`
     );
   }
 }
 
-/** What one `tmux list-sessions` fork says about the sessions Kirby
+/** What one `tmux list-sessions` fork says about the sessions n10
  *  cares about. */
 export interface TmuxObservation {
   /** The registry names of the asked-about worktrees that have a live
@@ -84,7 +84,7 @@ function worktreeBranch(wt: DiscoveredWorktree): string {
  * terminal sessions exist.
  *
  * Every session is read through the resolver, so only tagged sessions
- * are seen at all: a session whose name Kirby might have chosen but
+ * are seen at all: a session whose name n10 might have chosen but
  * that carries no tags is foreign and never listed. A worktree session
  * is this repository's when its `@orchestra-repo` is the open root;
  * it is *persisted* when one of the worktrees handed in is on the

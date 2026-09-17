@@ -26,8 +26,8 @@ import {
  * that keeps this app open all day, that is the fan.
  */
 
-const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 5);
-const IDLE_MS = Number(process.env.KIRBY_PERF_IDLE_MS ?? 8_000);
+const ITERATIONS = Number(process.env.N10_PERF_ITERATIONS ?? 5);
+const IDLE_MS = Number(process.env.N10_PERF_IDLE_MS ?? 8_000);
 const BRANCHES = ['perf-one', 'perf-two', 'perf-three', 'perf-four'];
 
 /** Ctrl+K, then how long until the palette is on screen. */
@@ -77,7 +77,7 @@ async function flipTabs(page: Page, times: number): Promise<number> {
 test('interactions and idle', async () => {
   test.setTimeout((90_000 + IDLE_MS) * ITERATIONS);
   const repoPath = createTestRepo({
-    name: 'kirby-perf',
+    name: 'n10-perf',
     worktrees: BRANCHES.map((branch) => ({
       branch,
       files: {

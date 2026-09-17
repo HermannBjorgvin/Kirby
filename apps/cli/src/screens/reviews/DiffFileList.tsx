@@ -1,9 +1,9 @@
 import { memo, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { ReviewComment } from '@kirby/core';
-import type { DiffFile } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { partitionFiles } from '@kirby/diff';
+import type { ReviewComment } from '@n10/core';
+import type { DiffFile } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import { partitionFiles } from '@n10/diff';
 import { VirtualViewport } from '../../components/VirtualViewport.js';
 import { computeDiffListLayout } from './diff-list-layout.js';
 import { DirRow, FileRow } from './DiffFileRow.js';

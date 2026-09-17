@@ -9,8 +9,8 @@
  * no pull request has nothing on the remote to be judged against and
  * is compared locally with origin's main branch.
  */
-import type { PullRequestInfo } from '@kirby/vcs-core';
-import { countConflicts, countConflictsBetween } from '@kirby/worktree-manager';
+import type { PullRequestInfo } from '@n10/vcs-core';
+import { countConflicts, countConflictsBetween } from '@n10/worktree-manager';
 
 /** Files that conflict with the pull request's target, or null when
  *  the check could not run — the tracking refs are not fetched, or

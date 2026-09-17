@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AppConfig, BranchPrMap, VcsProvider } from '@kirby/vcs-core';
+import type { AppConfig, BranchPrMap, VcsProvider } from '@n10/vcs-core';
 import {
   createPullRequestCache,
   type PullRequestCache,

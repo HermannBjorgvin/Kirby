@@ -14,7 +14,7 @@
 //             confirmation appear.
 //
 // Flags:
-//   --banner=<str>       first line (default "kirby-fake-agent-ready")
+//   --banner=<str>       first line (default "n10-fake-agent-ready")
 //   --stream             emit a line every --interval-ms, forever
 //   --interval-ms=<n>    stream interval (default 150)
 //   --stream-ms=<n>      stop streaming after N ms but stay alive — an
@@ -22,7 +22,7 @@
 //                        waiting at its prompt
 //   --exit-after-ms=<n>  self-exit after N ms (default never)
 //   --print-seed         print the seed prompt the launcher handed it
-//                        (KIRBY_SEED_PROMPT), one marked line per line, so
+//                        (N10_SEED_PROMPT), one marked line per line, so
 //                        a test can prove what the agent was actually
 //                        started with rather than what the UI claimed.
 //   --print-size         print the PTY's grid as `size:<cols>x<rows>#<pid>`,
@@ -50,7 +50,7 @@ const args = Object.fromEntries(
     })
 );
 
-const banner = args.banner ?? 'kirby-fake-agent-ready';
+const banner = args.banner ?? 'n10-fake-agent-ready';
 const intervalMs = parseInt(args['interval-ms'] ?? '150', 10);
 const exitAfterMs = args['exit-after-ms']
   ? parseInt(args['exit-after-ms'], 10)
@@ -59,7 +59,7 @@ const exitAfterMs = args['exit-after-ms']
 process.stdout.write(banner + '\r\n');
 
 if (args['print-seed']) {
-  for (const line of (process.env.KIRBY_SEED_PROMPT ?? '').split('\n')) {
+  for (const line of (process.env.N10_SEED_PROMPT ?? '').split('\n')) {
     process.stdout.write(`seed:${line}\r\n`);
   }
 }

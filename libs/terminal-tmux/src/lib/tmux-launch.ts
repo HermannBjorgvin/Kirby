@@ -2,7 +2,7 @@ import {
   runGuardedTmuxCommands,
   type TmuxSessionIncarnation,
 } from './tmux-snapshot.js';
-import type { SessionSpec } from '@kirby/terminal';
+import type { SessionSpec } from '@n10/terminal';
 import { sanitizeTmuxSessionName } from './sanitize-tmux-session-name.js';
 import {
   isDuplicateSession,

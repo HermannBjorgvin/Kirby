@@ -1,4 +1,4 @@
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import { AGENTS, resolveAgent, type AgentDefinition } from './registry.js';
 
 export interface AgentOption {

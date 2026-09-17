@@ -2,8 +2,8 @@ import {
   createTmuxBackend,
   type TmuxSessionIncarnation,
   type TmuxLaunchPlan,
-} from '@kirby/terminal-tmux';
-import type { SessionSpec } from '@kirby/terminal';
+} from '@n10/terminal-tmux';
+import type { SessionSpec } from '@n10/terminal';
 import {
   sessionNames,
   spawnSession,

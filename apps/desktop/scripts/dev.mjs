@@ -1,5 +1,5 @@
 /**
- * Dev orchestrator for kirby-desktop:
+ * Dev orchestrator for n10-desktop:
  *   1. builds main + preload bundles with esbuild (watched)
  *   2. starts the Vite dev server for the renderer (HMR)
  *   3. launches Electron pointed at the dev server
@@ -28,8 +28,8 @@ const DEV_URL = 'http://localhost:5173';
 // Must mirror the build-main nx target exactly: electron + node-pty
 // stay external, and the ESM output needs a require shim for them.
 const REQUIRE_BANNER =
-  'import { createRequire as __kirbyCreateRequire } from "node:module";' +
-  'const require = __kirbyCreateRequire(import.meta.url);';
+  'import { createRequire as __n10CreateRequire } from "node:module";' +
+  'const require = __n10CreateRequire(import.meta.url);';
 
 const mainOptions = {
   entryPoints: [
@@ -85,8 +85,8 @@ function startElectron() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      KIRBY_VITE_URL: DEV_URL,
-      KIRBY_DESKTOP_VERSION: 'dev',
+      N10_VITE_URL: DEV_URL,
+      N10_DESKTOP_VERSION: 'dev',
       ELECTRON_ENABLE_LOGGING: '1',
     },
   });
@@ -127,7 +127,7 @@ function scheduleRestart(label) {
 }
 function restartOnRebuild(label) {
   return {
-    name: 'kirby-restart-electron',
+    name: 'n10-restart-electron',
     setup(build) {
       build.onEnd((result) => {
         if (result.errors.length > 0) {

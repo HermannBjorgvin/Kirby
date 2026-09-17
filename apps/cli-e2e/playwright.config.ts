@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 
 // The port is machine-wide and `reuseExistingServer` attaches to
 // whatever answers on it — a host left running by another worktree's
-// run would quietly put *that* worktree's Kirby under test. PORT moves
+// run would quietly put *that* worktree's n10 under test. PORT moves
 // this run, host and browser alike, onto a port of its own.
 const port = Number(process.env.PORT ?? 5174);
 const baseURL = process.env.BASE_URL ?? `http://localhost:${port}`;

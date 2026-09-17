@@ -53,7 +53,7 @@ export function tmuxPaneState(name: string): TmuxPaneState | null {
 
 /** Outcome of an async pane-state read, for the backend's poller. A
  *  non-zero exit or spawn error (`EAGAIN`/`EMFILE` on fork, `ENOENT`, the
- *  5s timeout kill — see `runTmuxAsync`) means Kirby could not talk to
+ *  5s timeout kill — see `runTmuxAsync`) means n10 could not talk to
  *  tmux at all: `'failed'`. That is distinct from tmux itself answering
  *  with an empty, unparseable pane for a target that genuinely no longer
  *  exists: `'gone'`. Only `'gone'` means the hosted process is gone; a
@@ -90,7 +90,7 @@ function classifyPaneStateResult(result: TmuxRunResult): TmuxPaneRead {
  *  main process every 500ms per session. Unlike the sync reader, this
  *  distinguishes a read failure from a genuinely vanished target — see
  *  {@link TmuxPaneRead} — because the poller must not conclude the hosted
- *  process exited merely because Kirby momentarily could not fork tmux. */
+ *  process exited merely because n10 momentarily could not fork tmux. */
 export async function tmuxPaneStateAsync(name: string): Promise<TmuxPaneRead> {
   return classifyPaneStateResult(await runTmuxAsync(paneStateArgs(name)));
 }

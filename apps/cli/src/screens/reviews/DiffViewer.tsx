@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { Text, Box } from 'ink';
 import { Spinner } from '@inkjs/ui';
-import type { AnnotatedLine, RowMap } from '@kirby/review-comments';
-import { languageFromFilename } from '@kirby/core';
+import type { AnnotatedLine, RowMap } from '@n10/review-comments';
+import { languageFromFilename } from '@n10/core';
 import { CARD_MAX_WIDTH, CARD_INDENT } from '../../components/CommentThread.js';
 import { diffViewerViewport } from './diff-viewer-viewport.js';
 import { DiffViewerEntry, type DiffEntryState } from './DiffViewerEntry.js';

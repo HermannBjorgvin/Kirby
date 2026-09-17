@@ -1,5 +1,5 @@
 import { Text, Box, useInput } from 'ink';
-import type { AppConfig, VcsProvider } from '@kirby/vcs-core';
+import type { AppConfig, VcsProvider } from '@n10/vcs-core';
 
 interface WelcomeStepProps {
   provider: VcsProvider;
@@ -30,7 +30,7 @@ export function WelcomeStep({
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <Text bold color="cyan">
-        Welcome to Kirby
+        Welcome to n10
       </Text>
       <Text> </Text>
       <Text>

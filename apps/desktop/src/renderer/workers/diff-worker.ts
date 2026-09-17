@@ -5,7 +5,7 @@
  * typing stutter. All of it runs here instead; the renderer talks to
  * this worker through lib/diff-worker-client.ts.
  */
-import { parseUnifiedDiff, type DiffLine } from '@kirby/diff';
+import { parseUnifiedDiff, type DiffLine } from '@n10/diff';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import { bundledLanguages } from 'shiki/langs';

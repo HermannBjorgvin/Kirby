@@ -4,7 +4,7 @@ import {
   resolveComment,
   type CommentSeverity,
   type ReviewComment,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 
 const VALID_SEVERITIES = new Set<CommentSeverity>([
   'critical',
@@ -49,7 +49,7 @@ function handleAddComment(args: string[]): void {
   if (missing.length > 0) {
     console.error(`Missing required fields: ${missing.join(', ')}`);
     console.error(
-      'Usage: kirby util add-comment --pr=<id> --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body=<text> [--side=LEFT|RIGHT] [--thread=<id>]'
+      'Usage: n10 util add-comment --pr=<id> --file=<path> --lineStart=<n> --lineEnd=<n> --severity=<critical|major|minor|nit> --body=<text> [--side=LEFT|RIGHT] [--thread=<id>]'
     );
     process.exit(1);
   }

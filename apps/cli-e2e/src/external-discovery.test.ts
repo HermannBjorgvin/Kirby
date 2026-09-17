@@ -1,4 +1,4 @@
-import { test, expect, fakeAgentCommand } from './fixtures/kirby.js';
+import { test, expect, fakeAgentCommand } from './fixtures/n10.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import {
   addExternalWorktree,
@@ -9,8 +9,8 @@ import {
 } from './setup/tmux.js';
 
 /**
- * Worktrees and agent sessions can be created without this Kirby being
- * involved — a second Kirby, an Orchestra spawn, or someone running `git
+ * Worktrees and agent sessions can be created without this n10 being
+ * involved — a second n10, an Orchestra spawn, or someone running `git
  * worktree add` and a tagged `tmux new-session` at a shell. This file
  * drives that from the outside while the TUI is already running and
  * asserts it catches up on its own.
@@ -30,47 +30,47 @@ test.skip(!tmuxAvailable(), 'tmux is not installed');
 const BANNER = 'external-agent-was-already-running';
 
 test.use({
-  kirbyConfig: {
-    aiCommand: fakeAgentCommand({ banner: 'kirby-fake-agent-ready' }),
+  n10Config: {
+    aiCommand: fakeAgentCommand({ banner: 'n10-fake-agent-ready' }),
     keybindPreset: 'vim',
   },
 });
 
-test.describe('Discovering sessions created outside Kirby', () => {
+test.describe('Discovering sessions created outside n10', () => {
   let branches: string[] = [];
 
   test.beforeEach(() => {
     branches = [];
   });
 
-  // Kirby's own exit path detaches rather than kills, so anything left
+  // n10's own exit path detaches rather than kills, so anything left
   // running here would outlive the test.
-  test.afterEach(({ kirby }) => {
-    cleanupTmuxSessions(branches, kirby.homeDir);
+  test.afterEach(({ n10 }) => {
+    cleanupTmuxSessions(branches, n10.homeDir);
   });
 
   test('a worktree added from outside appears in the sidebar', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
-    const row = sidebarLocator(kirby.term.page, branch);
+    const row = sidebarLocator(n10.term.page, branch);
     await expect(row.any()).toHaveCount(0);
 
-    addExternalWorktree(kirby.repoPath, branch);
+    addExternalWorktree(n10.repoPath, branch);
 
     await expect(row.any().first()).toBeVisible({ timeout: 20_000 });
   });
 
   test('a tmux session started from outside shows as running', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
-    const worktreePath = addExternalWorktree(kirby.repoPath, branch);
+    const worktreePath = addExternalWorktree(n10.repoPath, branch);
     startExternalTmuxSession({
-      repoPath: kirby.repoPath,
-      homeDir: kirby.homeDir,
+      repoPath: n10.repoPath,
+      homeDir: n10.homeDir,
       branch,
       worktreePath,
       command: `printf '%s\\n' ${BANNER}; sleep 120`,
@@ -79,58 +79,58 @@ test.describe('Discovering sessions created outside Kirby', () => {
     // A running indicator, not merely a row: the row would show up for
     // the bare worktree too.
     await expect(
-      sidebarLocator(kirby.term.page, branch).running().first()
+      sidebarLocator(n10.term.page, branch).running().first()
     ).toBeVisible({ timeout: 30_000 });
   });
 
   // The strongest claim in the feature: the tag resolver found the
   // agent that was already there and the backend attached to it. Output
-  // the external session printed before Kirby knew it existed is redrawn
+  // the external session printed before n10 knew it existed is redrawn
   // on attach — a fresh spawn would run `aiCommand` instead and print
   // the fake agent's banner.
   test('attaching reaches the running agent rather than starting a new one', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
-    const worktreePath = addExternalWorktree(kirby.repoPath, branch);
+    const worktreePath = addExternalWorktree(n10.repoPath, branch);
     startExternalTmuxSession({
-      repoPath: kirby.repoPath,
-      homeDir: kirby.homeDir,
+      repoPath: n10.repoPath,
+      homeDir: n10.homeDir,
       branch,
       worktreePath,
       command: `printf '%s\\n' ${BANNER}; sleep 120`,
     });
 
     await expect(
-      sidebarLocator(kirby.term.page, branch).running().first()
+      sidebarLocator(n10.term.page, branch).running().first()
     ).toBeVisible({ timeout: 30_000 });
 
     // Only now is a key pressed — to look at what was attached to.
-    await kirby.term.press('Tab');
-    await expect(kirby.term.getByText(BANNER).first()).toBeVisible({
+    await n10.term.press('Tab');
+    await expect(n10.term.getByText(BANNER).first()).toBeVisible({
       timeout: 20_000,
     });
-    await expect(kirby.term.getByText('kirby-fake-agent-ready')).toHaveCount(0);
+    await expect(n10.term.getByText('n10-fake-agent-ready')).toHaveCount(0);
   });
 
   test('a session killed from outside stops showing as running', async ({
-    kirby,
+    n10,
   }) => {
     const branch = uniqueTmuxBranch();
     branches.push(branch);
-    const worktreePath = addExternalWorktree(kirby.repoPath, branch);
+    const worktreePath = addExternalWorktree(n10.repoPath, branch);
     startExternalTmuxSession({
-      repoPath: kirby.repoPath,
-      homeDir: kirby.homeDir,
+      repoPath: n10.repoPath,
+      homeDir: n10.homeDir,
       branch,
       worktreePath,
       command: `printf '%s\\n' ${BANNER}; sleep 120`,
     });
-    const row = sidebarLocator(kirby.term.page, branch);
+    const row = sidebarLocator(n10.term.page, branch);
     await expect(row.running().first()).toBeVisible({ timeout: 30_000 });
 
-    cleanupTmuxSessions([branch], kirby.homeDir);
+    cleanupTmuxSessions([branch], n10.homeDir);
 
     // The row stays — the worktree is still there — but the agent
     // behind it is gone.

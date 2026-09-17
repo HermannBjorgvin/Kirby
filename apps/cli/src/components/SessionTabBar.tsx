@@ -1,16 +1,16 @@
 import { Box, Text } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import {
   useSessionData,
   runningTabsFromItems,
   useSidebar,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 import {
   getItemKey,
   getSpawnedAt,
   tabDigit,
   type RunningSessionItem,
-} from '@kirby/core';
+} from '@n10/core';
 import { useMemo } from 'react';
 import { theme } from '../theme.js';
 

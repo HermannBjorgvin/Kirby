@@ -1,5 +1,5 @@
 import { Text, Box } from 'ink';
-import { useKeybindResolve } from '@kirby/app-core';
+import { useKeybindResolve } from '@n10/app-core';
 
 // Separate component to isolate context subscription from memo'd parent
 export function DiffViewerHints({

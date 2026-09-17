@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { KeyPress } from '@kirby/core';
-import type { AppConfig } from '@kirby/vcs-core';
+import type { KeyPress } from '@n10/core';
+import type { AppConfig } from '@n10/vcs-core';
 
 import { handleSettingsInput } from './input-handlers.js';
-import { buildSettingsFields } from '@kirby/core';
+import { buildSettingsFields } from '@n10/core';
 
 const fieldIndexOf = (key: string) =>
   buildSettingsFields(null).findIndex((f) => f.key === key);

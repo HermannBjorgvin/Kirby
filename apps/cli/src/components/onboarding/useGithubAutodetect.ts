@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { VcsProvider } from '@kirby/vcs-core';
-import { checkGhAuth } from '@kirby/vcs-github';
-import { useConfig } from '@kirby/app-core';
-import type { SettingsField } from '@kirby/core';
+import type { VcsProvider } from '@n10/vcs-core';
+import { checkGhAuth } from '@n10/vcs-github';
+import { useConfig } from '@n10/app-core';
+import type { SettingsField } from '@n10/core';
 
 /**
  * For GitHub providers, attempt to read the user's username from the

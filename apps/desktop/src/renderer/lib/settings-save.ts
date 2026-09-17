@@ -10,7 +10,7 @@
  * So a save is remembered until the query speaks again. The moment it
  * does — reporting our own write, or somebody else's — the query is
  * authoritative and the record is spent. What the record must *not* do
- * is outlive that: Kirby's config has two front ends, and once the
+ * is outlive that: n10's config has two front ends, and once the
  * query has reported our B a second writer can put the old A back.
  * Matching on the value alone cannot tell that A from the A the save
  * was made against, so the row would go on offering B and republish it

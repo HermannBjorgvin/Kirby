@@ -11,7 +11,7 @@ import { join } from 'node:path';
  * the live suite talks to `/tmp/tmux-$UID/default`, the developer's own
  * tmux server. It would start one if none was running, and create,
  * find and kill sessions on it alongside the user's real work. On a
- * machine where Kirby's own agents are tmux sessions, that is the
+ * machine where n10's own agents are tmux sessions, that is the
  * user's running agents.
  *
  * Two variables decide the socket, and only setting one of them is the
@@ -19,14 +19,14 @@ import { join } from 'node:path';
  *
  *   • `TMUX_TMPDIR` picks the directory the socket lives in.
  *   • `TMUX` names a socket path outright, and **wins** — a tmux client
- *     started from inside a tmux session (which is how Kirby's own
+ *     started from inside a tmux session (which is how n10's own
  *     agents run) ignores `TMUX_TMPDIR` entirely.
  *
  * So the second is removed rather than overridden. The scratch server
  * is never killed: it exits by itself once its last session is gone,
  * and `kill-server` cannot be aimed safely enough to be worth using.
  */
-const FIXTURE_HOME = mkdtempSync(join(tmpdir(), 'kirby-tmux-tests-'));
+const FIXTURE_HOME = mkdtempSync(join(tmpdir(), 'n10-tmux-tests-'));
 const SCRATCH_SOCKET_DIR = join(FIXTURE_HOME, 'sockets');
 mkdirSync(SCRATCH_SOCKET_DIR);
 process.env.HOME = FIXTURE_HOME;

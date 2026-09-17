@@ -1,10 +1,7 @@
 // NOTE: the renderer must import vcs-core through the pure `/types`
 // subpath — the package root re-exports the config store, whose
 // `node:fs` import blanks the whole window in the browser bundle.
-import {
-  isBlockingDecision,
-  type PullRequestInfo,
-} from '@kirby/vcs-core/types';
+import { isBlockingDecision, type PullRequestInfo } from '@n10/vcs-core/types';
 import type { SidebarItem } from '../../../host/contract.js';
 import { itemKey } from './sidebar-model.js';
 

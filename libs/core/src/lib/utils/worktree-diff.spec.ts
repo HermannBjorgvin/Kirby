@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseUnifiedDiff } from '@kirby/diff';
+import { parseUnifiedDiff } from '@n10/diff';
 import { placeholderPatch, trimToFileBoundary } from './diff-patch.js';
 import { untrackedFilePatch } from './untracked-diff.js';
 import { parseNumstat } from './worktree-diff.js';
@@ -154,8 +154,8 @@ describe('placeholderPatch', () => {
     const lines = parse(placeholderPatch('big.bin', 'file too large')).get(
       'big.bin'
     )!;
-    expect(lines.filter((l) => l.type === 'add').map((l) => l.content)).toEqual([
-      'file too large',
-    ]);
+    expect(lines.filter((l) => l.type === 'add').map((l) => l.content)).toEqual(
+      ['file too large']
+    );
   });
 });

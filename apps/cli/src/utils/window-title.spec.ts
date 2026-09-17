@@ -26,7 +26,7 @@ describe('repoTitle', () => {
     execFileSync('git', args, { cwd, stdio: 'ignore' });
 
   beforeAll(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'kirby-window-title-'));
+    tmp = mkdtempSync(join(tmpdir(), 'n10-window-title-'));
     repo = join(tmp, 'my-repo');
     mkdirSync(repo);
 

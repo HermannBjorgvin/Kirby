@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { findKirbySessionFor, socketEnv } from './setup/tmux.js';
+import { findN10SessionFor, socketEnv } from './setup/tmux.js';
 import { sessionBranch } from './setup/session-keys.js';
 import { test, expect } from './fixtures/desktop.js';
 import {
@@ -53,12 +53,12 @@ test.describe('Session menu', () => {
     await sidebarRow(page, /enter-branch/).focus();
     await page.keyboard.press('Enter');
     await startSessionFromMenu(page);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
-    const before = (
-      await page.evaluate(() => window.kirby.listSessions())
-    ).find((s) => sessionBranch(s.name) === 'enter-branch');
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
+    const before = (await page.evaluate(() => window.n10.listSessions())).find(
+      (s) => sessionBranch(s.name) === 'enter-branch'
+    );
     expect(before?.running).toBe(true);
-    const native = findKirbySessionFor('enter-branch', homeDir)!;
+    const native = findN10SessionFor('enter-branch', homeDir)!;
     const processIdentity = () =>
       execFileSync(
         'tmux',
@@ -82,7 +82,7 @@ test.describe('Session menu', () => {
       .getByRole('button', { name: 'Open Custom', exact: true })
       .click();
     await expect(menu).toBeHidden();
-    const after = (await page.evaluate(() => window.kirby.listSessions())).find(
+    const after = (await page.evaluate(() => window.n10.listSessions())).find(
       (s) => s.name === before?.name
     );
     expect(after?.running).toBe(true);
@@ -96,8 +96,8 @@ test.describe('Session menu', () => {
     await createWorktree(page, 'fresh-branch');
     await sidebarRow(page, /fresh-branch/).dblclick();
     await startSessionFromMenu(page);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
-    const [before] = await page.evaluate(() => window.kirby.listSessions());
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
+    const [before] = await page.evaluate(() => window.n10.listSessions());
     await sidebarRow(page, /fresh-branch/).dblclick();
     const menu = sessionMenu(page);
     await menu.getByRole('radio', { name: 'New session', exact: true }).click();
@@ -112,11 +112,11 @@ test.describe('Session menu', () => {
       .poll(
         async () =>
           (
-            await page.evaluate(() => window.kirby.listSessions())
+            await page.evaluate(() => window.n10.listSessions())
           )[0]?.spawnedAt
       )
       .not.toBe(before.spawnedAt);
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    const sessions = await page.evaluate(() => window.n10.listSessions());
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({ name: before.name, running: true });
   });

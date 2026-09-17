@@ -21,7 +21,7 @@ export function useHostEvents(
   // The host's remote sync loop toasts its events (auto-deleted merged
   // branch, blocked auto-delete) and the sidebar refetches to match.
   useEffect(() => {
-    const off = window.kirby.onSyncNotice(({ message, kind }) => {
+    const off = window.n10.onSyncNotice(({ message, kind }) => {
       if (kind === 'success') toast.success(message);
       else toast.warning(message);
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
@@ -34,7 +34,7 @@ export function useHostEvents(
   // that event is what keeps "fast" from meaning "stale for four
   // seconds": the rows appear as soon as the host has them.
   useEffect(() => {
-    const off = window.kirby.onRemoteUpdated(() => {
+    const off = window.n10.onRemoteUpdated(() => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
       void qc.invalidateQueries({ queryKey: keys.sync(cwd) });
     });
@@ -49,7 +49,7 @@ export function useHostEvents(
   // stamp. A worktree agent's exit rides the same event and names no
   // terminal tab, so it closes nothing.
   useEffect(() => {
-    const off = window.kirby.onSessionExit(({ name, retained }) => {
+    const off = window.n10.onSessionExit(({ name, retained }) => {
       if (!retained) terminalEnded(name);
       void qc.invalidateQueries({ queryKey: keys.terminals });
     });
@@ -57,11 +57,11 @@ export function useHostEvents(
   }, [qc, terminalEnded]);
 
   // Worktrees and agent sessions can also appear without this process
-  // being involved — a second Kirby, a script, an operator with tmux.
+  // being involved — a second n10, a script, an operator with tmux.
   // The host notices and says so; the sidebar is a query cache, so it
   // has to be told to look again.
   useEffect(() => {
-    const off = window.kirby.onDiscoveryChanged(() => {
+    const off = window.n10.onDiscoveryChanged(() => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
       void qc.invalidateQueries({ queryKey: keys.sessions(cwd) });
       // Discovery also brings back terminal tabs, and what it found
@@ -79,7 +79,7 @@ export function useHostEvents(
   // late: an agent it started (a row and a session), or a watch that
   // ended with its pull request.
   useEffect(() => {
-    const off = window.kirby.onBabysitChanged((event) => {
+    const off = window.n10.onBabysitChanged((event) => {
       if (event.ended) {
         toast.info(
           `Stopped babysitting #${event.ended.prId}: the pull request is no longer open`

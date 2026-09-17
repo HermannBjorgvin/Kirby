@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Box } from 'ink';
 import { render } from 'ink-testing-library';
-import type { CommentPositionInfo, RowMap } from '@kirby/review-comments';
+import type { CommentPositionInfo, RowMap } from '@n10/review-comments';
 import {
   usePendingThreadScrollIntoView,
   type UsePendingThreadScrollIntoViewOptions,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 
 function makeRowMap(
   positions: { rowStart: number; rowSpan: number }[]

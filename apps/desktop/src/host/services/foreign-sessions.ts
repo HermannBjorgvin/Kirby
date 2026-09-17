@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import { listLiveWorktreeSessions } from '@kirby/core';
+import { listLiveWorktreeSessions } from '@n10/core';
 import type { ForeignSessionSummary } from '../contract.js';
 import { ensureRecent } from './recent-repos.js';
 import { requireRepo } from './repo.js';

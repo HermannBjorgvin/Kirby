@@ -1,11 +1,11 @@
-import type { DiffLine } from '@kirby/diff';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { DiffLine } from '@n10/diff';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type { ReactNode, Ref, RefObject } from 'react';
 import type {
   RemoteCommentThread,
   ReviewComment,
 } from '../../../host/contract.js';
-import type { PlanItem } from '@kirby/core/plan';
+import type { PlanItem } from '@n10/core/plan';
 import { type Mode } from '../../lib/review/review-model.js';
 import { cn } from '../../lib/utils.js';
 import { SessionTerminal } from '../terminal/SessionTerminal.js';

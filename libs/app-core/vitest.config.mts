@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/libs/app-core',
   test: {
-    name: '@kirby/app-core',
+    name: '@n10/app-core',
     watch: false,
     passWithNoTests: true,
     globals: true,

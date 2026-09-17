@@ -10,7 +10,7 @@ export default defineConfig(() => ({
   //  plugins: [],
   // },
   test: {
-    name: '@kirby/core',
+    name: '@n10/core',
     watch: false,
     globals: true,
     environment: 'node',

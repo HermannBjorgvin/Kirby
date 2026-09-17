@@ -22,17 +22,17 @@ let home: string;
 let originalHome: string | undefined;
 
 function prefsPath(): string {
-  return join(home, '.kirby', 'desktop-prefs.json');
+  return join(home, '.n10', 'desktop-prefs.json');
 }
 
 function writePrefs(contents: string): void {
-  mkdirSync(join(home, '.kirby'), { recursive: true });
+  mkdirSync(join(home, '.n10'), { recursive: true });
   writeFileSync(prefsPath(), contents, 'utf8');
 }
 
 beforeEach(() => {
   originalHome = process.env.HOME;
-  home = mkdtempSync(join(tmpdir(), 'kirby-prefs-'));
+  home = mkdtempSync(join(tmpdir(), 'n10-prefs-'));
   process.env.HOME = home;
 });
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import type { OpenSessionParams } from '../session/open-session.js';
 import { terminalSessionKey } from '../session-key.js';
 const state = vi.hoisted(() => ({ calls: [] as OpenSessionParams[] }));

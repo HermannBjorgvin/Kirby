@@ -1,4 +1,4 @@
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import { getSession, type NamedPtyEntry } from '../pty-registry.js';
 import type { SessionIncarnation } from './session-launch-context.js';
 import { openSession } from './open-session.js';
@@ -31,7 +31,7 @@ export interface LaunchRequest {
   /** Required for `seed` / `continue-or-seed`. */
   prompt?: string;
   /**
-   * Optional guidance (e.g. "here's how to use Kirby's add-comment
+   * Optional guidance (e.g. "here's how to use n10's add-comment
    * command"). Delivered as a native system prompt for agents that
    * support it (Claude), folded into the prompt for the rest.
    */

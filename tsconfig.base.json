@@ -17,6 +17,6 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@kirby/source"]
+    "customConditions": ["@n10/source"]
   }
 }

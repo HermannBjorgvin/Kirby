@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
 import {
@@ -28,7 +28,7 @@ const branchB = `${prefix}/nav-b`;
 const worktreeDirA = branchA.replace(/\//g, '-');
 const worktreeDirB = branchB.replace(/\//g, '-');
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-navjump-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-navjump-clone-'));
 registerCleanup(cloneDir);
 
 if (hasGhToken) {
@@ -39,11 +39,11 @@ if (hasGhToken) {
     { stdio: 'pipe' }
   );
 
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -96,8 +96,8 @@ test.describe('@integration Navigation Jump', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: {
+    n10RepoPath: cloneDir,
+    n10Config: {
       aiCommand: 'cat',
       keybindPreset: 'vim',
       prPollInterval: 5000,
@@ -107,34 +107,30 @@ test.describe('@integration Navigation Jump', () => {
   });
 
   test('selected session stays selected when another session moves to Pull Requests', async ({
-    kirby,
+    n10,
   }) => {
     let prNumberA: number | undefined;
 
     try {
-      // 1. Kirby rendered (fixture waited for it)
-      await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+      // 1. n10 rendered (fixture waited for it)
+      await expect(n10.term.getByText('n10').first()).toBeVisible();
 
       // 2. Both sessions appear under "Worktrees" (no PRs yet).
       //    Order is [A, B] — sessions without PRs preserve input order.
-      await expect(
-        sidebarLocator(kirby.term.page, branchA).any()
-      ).toBeVisible();
-      await expect(
-        sidebarLocator(kirby.term.page, branchB).any()
-      ).toBeVisible();
+      await expect(sidebarLocator(n10.term.page, branchA).any()).toBeVisible();
+      await expect(sidebarLocator(n10.term.page, branchB).any()).toBeVisible();
 
       // 3. Navigate down once to select session B (index 1 within Worktrees)
-      await kirby.term.write('j');
+      await n10.term.write('j');
       await settleFor(
-        kirby.term.page,
+        n10.term.page,
         500,
         'the sidebar selection to move before the next key'
       );
 
       // 4. Session B is selected
       await expect(
-        sidebarLocator(kirby.term.page, branchB).selected()
+        sidebarLocator(n10.term.page, branchB).selected()
       ).toBeVisible();
 
       // 5. Create a PR for branch A. A moves from Worktrees into
@@ -145,33 +141,33 @@ test.describe('@integration Navigation Jump', () => {
       // 6. Trigger PR refresh via 'r' periodically. Also polls via config
       //    (5s). Wait up to 90s for the search API to index the new PR.
       const refreshTimer = setInterval(() => {
-        void kirby.term.write('r');
+        void n10.term.write('r');
       }, 10_000);
-      await kirby.term.write('r');
+      await n10.term.write('r');
 
       try {
-        await expect(kirby.term.getByText(`#${prNumberA}`).first()).toBeVisible(
-          { timeout: 90_000 }
-        );
+        await expect(n10.term.getByText(`#${prNumberA}`).first()).toBeVisible({
+          timeout: 90_000,
+        });
       } finally {
         clearInterval(refreshTimer);
       }
 
       // Let React settle after the reorder.
       await settleFor(
-        kirby.term.page,
+        n10.term.page,
         1_000,
         'the reorder to land, so the next assertion sees after it, not before'
       );
 
       // 7. Selection is still on session B
       await expect(
-        sidebarLocator(kirby.term.page, branchB).selected()
+        sidebarLocator(n10.term.page, branchB).selected()
       ).toBeVisible();
 
       // 8. Selection is NOT on session A's PR row
       await expect(
-        sidebarLocator(kirby.term.page, `e2e: ${branchA}`).selected()
+        sidebarLocator(n10.term.page, `e2e: ${branchA}`).selected()
       ).toBeHidden();
     } finally {
       // Cleanup GitHub resources (best-effort)

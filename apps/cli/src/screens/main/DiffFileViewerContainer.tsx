@@ -1,13 +1,9 @@
 import { useCallback } from 'react';
 import { useInput } from 'ink';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import { DiffViewer } from '../reviews/DiffViewer.js';
 import { CARD_INDENT, CARD_MAX_WIDTH } from '../../components/CommentThread.js';
-import type {
-  TerminalLayout,
-  PaneModeValue,
-  DiffBundle,
-} from '@kirby/app-core';
+import type { TerminalLayout, PaneModeValue, DiffBundle } from '@n10/app-core';
 import {
   useSessionActions,
   useConfig,
@@ -16,8 +12,8 @@ import {
   usePlan,
   useDiffFileViewerViewModel,
   LAYOUT,
-} from '@kirby/app-core';
-import { diffViewportHeight } from '@kirby/core';
+} from '@n10/app-core';
+import { diffViewportHeight } from '@n10/core';
 import { useScrollWheel, SCROLL_LINES } from '../../hooks/useScrollWheel.js';
 import { useCommentImagesValue } from '../../context/CommentImagesContext.js';
 import { handleDiffViewerInput } from './main-input.js';

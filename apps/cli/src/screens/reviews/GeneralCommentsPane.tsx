@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import { CommentThreadCard } from '../../components/CommentThread.js';
 
 export const GeneralCommentsPane = memo(function GeneralCommentsPane({

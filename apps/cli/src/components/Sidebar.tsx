@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo } from 'react';
 import { Text, Box } from 'ink';
-import type { SidebarItem } from '@kirby/core';
-import { useConfig, useKeybindResolve } from '@kirby/app-core';
+import type { SidebarItem } from '@n10/core';
+import { useConfig, useKeybindResolve } from '@n10/app-core';
 import {
   SECTION_LABELS,
   buildSidebarRows,
@@ -192,7 +192,7 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <SidebarLayout
-      title="😸 Kirby"
+      title="😸 n10"
       focused={focused}
       sidebarWidth={sidebarWidth}
       emptyText="(no sessions)"

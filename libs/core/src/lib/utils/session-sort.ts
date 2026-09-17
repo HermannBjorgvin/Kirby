@@ -1,5 +1,5 @@
 import type { AgentSession } from '../types.js';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 
 /**
  * Sort sessions by descending PR ID.

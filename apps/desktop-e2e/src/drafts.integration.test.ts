@@ -15,8 +15,8 @@ import {
  * The draft review flow: what the review agent writes, and what you do
  * with it before any of it reaches GitHub.
  *
- * The agent leaves comments in ~/.kirby/reviews/pr-<id>/comments.json
- * through `kirby util add-comment`; the desktop picks them up, shows
+ * The agent leaves comments in ~/.n10/reviews/pr-<id>/comments.json
+ * through `n10 util add-comment`; the desktop picks them up, shows
  * them against the code they were written about, and walks you through
  * them in severity order. Everything up to the moment of posting is
  * covered here — posting itself is left alone, because these fixture
@@ -108,7 +108,7 @@ test.describe('@integration Agent draft comments', () => {
     const listed = await page.evaluate(
       (id) =>
         (
-          window.kirby as never as {
+          window.n10 as never as {
             listDraftComments(prId: number): Promise<{ id: string }[]>;
           }
         ).listDraftComments(id),
@@ -125,7 +125,7 @@ test.describe('@integration Agent draft comments', () => {
     await page.evaluate(
       (id) =>
         (
-          window.kirby as never as {
+          window.n10 as never as {
             updateDraftComment(
               prId: number,
               commentId: string,
@@ -140,7 +140,7 @@ test.describe('@integration Agent draft comments', () => {
     // `add-comment` run does not overwrite them.
     const stored = JSON.parse(
       readFileSync(
-        join(homeDir, '.kirby', 'reviews', `pr-${PR_ID}`, 'comments.json'),
+        join(homeDir, '.n10', 'reviews', `pr-${PR_ID}`, 'comments.json'),
         'utf8'
       )
     ) as { comments: { id: string; body: string }[] };
@@ -154,7 +154,7 @@ test.describe('@integration Agent draft comments', () => {
     await page.evaluate(
       (id) =>
         (
-          window.kirby as never as {
+          window.n10 as never as {
             deleteDraftComment(prId: number, commentId: string): Promise<void>;
           }
         ).deleteDraftComment(id, 'draft-minor'),
@@ -164,7 +164,7 @@ test.describe('@integration Agent draft comments', () => {
     const listed = await page.evaluate(
       (id) =>
         (
-          window.kirby as never as {
+          window.n10 as never as {
             listDraftComments(prId: number): Promise<{ id: string }[]>;
           }
         ).listDraftComments(id),

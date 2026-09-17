@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import type { PullRequestInfo } from '@kirby/vcs-core/types';
+import type { PullRequestInfo } from '@n10/vcs-core/types';
 import {
   useStartBabysit,
   useStopBabysit,
@@ -26,7 +26,7 @@ export function usePullRequestRow(
     if (!pr) return;
     switch (command) {
       case 'open-pr':
-        void window.kirby.openExternal(pr.url);
+        void window.n10.openExternal(pr.url);
         break;
       case 'babysit':
         start.mutate(pr.id, {

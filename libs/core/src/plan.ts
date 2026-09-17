@@ -8,7 +8,7 @@
  * no Node, can import it for its *values* and run the identical store
  * and prompt composition the TUI runs.
  *
- * That is the whole point of the subpath. `@kirby/core`'s main barrel
+ * That is the whole point of the subpath. `@n10/core`'s main barrel
  * reaches git, PTYs and the filesystem, so the renderer is blocked from
  * importing it (see the desktop renderer's no-restricted-imports block
  * in eslint.config.mjs). Without this entry the desktop would have to

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import { contentKey } from '../content-key.js';
 import { loadDesktopPrefs } from '../desktop-prefs.js';
 import { parseDiffInWorker } from '../diff/diff-worker-client.js';
@@ -33,7 +33,7 @@ import type { RepoInfo, SidebarItem } from '../../../host/contract.js';
  */
 export async function loadRepoGate(): Promise<RepoInfo | null> {
   const [repo] = await Promise.all([
-    window.kirby.getRepo().catch(() => null),
+    window.n10.getRepo().catch(() => null),
     loadDesktopPrefs(),
   ]);
   return repo;
@@ -52,7 +52,7 @@ export function useRepoGate() {
 export function useVersion() {
   return useQuery({
     queryKey: keys.version,
-    queryFn: () => window.kirby.getVersion(),
+    queryFn: () => window.n10.getVersion(),
     staleTime: Infinity,
   });
 }
@@ -60,7 +60,7 @@ export function useVersion() {
 export function useRecentRepos() {
   return useQuery({
     queryKey: keys.recents,
-    queryFn: () => window.kirby.listRecentRepos(),
+    queryFn: () => window.n10.listRecentRepos(),
     staleTime: 0,
   });
 }
@@ -82,7 +82,7 @@ export async function loadSidebarModel(
   cwd: string,
   previous: SidebarItem[] | undefined
 ): Promise<SidebarItem[]> {
-  const answer = await window.kirby.getSidebarModel();
+  const answer = await window.n10.getSidebarModel();
   if (answer.cwd !== cwd) return previous ?? [];
   return answer.items;
 }
@@ -103,7 +103,7 @@ export function useSidebarModel(cwd: string) {
 export function useSyncState(cwd: string) {
   return useQuery({
     queryKey: keys.sync(cwd),
-    queryFn: () => window.kirby.getSyncState(),
+    queryFn: () => window.n10.getSyncState(),
     refetchInterval: 4_000,
     placeholderData: (prev) => prev,
   });
@@ -112,7 +112,7 @@ export function useSyncState(cwd: string) {
 export function useAllBranches(cwd: string, enabled = true) {
   return useQuery({
     queryKey: keys.branches(cwd),
-    queryFn: () => window.kirby.listAllBranches(),
+    queryFn: () => window.n10.listAllBranches(),
     enabled,
     staleTime: 30_000,
   });
@@ -132,7 +132,7 @@ export type BranchRemovalSafety =
 export function loadBranchRemovalSafety(
   branch: string
 ): Promise<BranchRemovalSafety> {
-  return window.kirby.canRemoveBranch(branch).catch((err: unknown) => ({
+  return window.n10.canRemoveBranch(branch).catch((err: unknown) => ({
     safe: false as const,
     reason: errorMessage(err),
   }));
@@ -155,7 +155,7 @@ export function useBranchRemovalSafety(cwd: string, branch: string) {
 export function useSettingsView(cwd: string) {
   return useQuery({
     queryKey: keys.settings(cwd),
-    queryFn: () => window.kirby.getSettingsView(),
+    queryFn: () => window.n10.getSettingsView(),
   });
 }
 
@@ -168,7 +168,7 @@ export function useDiff(
   return useQuery({
     queryKey: keys.diff(cwd, source, target),
     queryFn: () =>
-      measured('fetch', () => window.kirby.fetchDiffText(source, target)),
+      measured('fetch', () => window.n10.fetchDiffText(source, target)),
     enabled: opts.enabled ?? true,
     staleTime: 60_000,
   });
@@ -200,9 +200,7 @@ export function useWorktreeDiff(
   return useQuery({
     queryKey: keys.worktreeDiff(cwd, branch, target),
     queryFn: () =>
-      measured('fetch', () =>
-        window.kirby.fetchWorktreeDiffText(branch, target)
-      ),
+      measured('fetch', () => window.n10.fetchWorktreeDiffText(branch, target)),
     enabled: opts.enabled,
     refetchInterval: opts.live ? 2_000 : false,
     // Keep the previous patch on screen while the next one is in
@@ -244,7 +242,7 @@ export function useParsedDiff(text: string | undefined) {
 export function useThreads(cwd: string, prId: number) {
   return useQuery({
     queryKey: keys.threads(cwd, prId),
-    queryFn: () => window.kirby.fetchCommentThreads(prId),
+    queryFn: () => window.n10.fetchCommentThreads(prId),
     staleTime: 30_000,
     // prId 0 = a worktree without a PR: nothing to fetch.
     enabled: prId > 0,
@@ -255,7 +253,7 @@ export function useThreads(cwd: string, prId: number) {
 export function useAgentOptions(cwd: string) {
   return useQuery({
     queryKey: keys.agentOptions(cwd),
-    queryFn: () => window.kirby.listAgentOptions(),
+    queryFn: () => window.n10.listAgentOptions(),
   });
 }
 
@@ -269,7 +267,7 @@ export function useAgentOptions(cwd: string) {
 export function useSessions(cwd: string) {
   return useQuery({
     queryKey: keys.sessions(cwd),
-    queryFn: () => window.kirby.listSessions(),
+    queryFn: () => window.n10.listSessions(),
     refetchInterval: 2_000,
     placeholderData: (prev) => prev,
   });
@@ -283,7 +281,7 @@ export function useSessions(cwd: string) {
 export function useTerminals() {
   return useQuery({
     queryKey: keys.terminals,
-    queryFn: () => window.kirby.listTerminals(),
+    queryFn: () => window.n10.listTerminals(),
     refetchInterval: 2_000,
     placeholderData: (prev) => prev,
   });
@@ -299,7 +297,7 @@ export function useTerminals() {
 export function useForeignSessions() {
   return useQuery({
     queryKey: keys.foreignSessions,
-    queryFn: () => window.kirby.listForeignSessions(),
+    queryFn: () => window.n10.listForeignSessions(),
     refetchInterval: 4_000,
     placeholderData: (prev) => prev,
   });
@@ -310,7 +308,7 @@ export function useForeignSessions() {
 export function useSessionActivity(cwd: string) {
   return useQuery({
     queryKey: keys.activity(cwd),
-    queryFn: () => window.kirby.getSessionActivity(),
+    queryFn: () => window.n10.getSessionActivity(),
     refetchInterval: 1_000,
     placeholderData: (prev) => prev,
   });
@@ -319,7 +317,7 @@ export function useSessionActivity(cwd: string) {
 export function usePrDescription(cwd: string, prId: number) {
   return useQuery({
     queryKey: keys.prDescription(cwd, prId),
-    queryFn: () => window.kirby.fetchPrDescription(prId),
+    queryFn: () => window.n10.fetchPrDescription(prId),
     staleTime: 5 * 60_000,
     enabled: prId > 0,
   });
@@ -329,7 +327,7 @@ export function usePrDescription(cwd: string, prId: number) {
 export function useCommentImage(url: string) {
   return useQuery({
     queryKey: keys.commentImage(url),
-    queryFn: () => window.kirby.fetchCommentImage(url),
+    queryFn: () => window.n10.fetchCommentImage(url),
     enabled: url.length > 0,
     staleTime: Infinity,
     gcTime: 10 * 60_000,
@@ -341,7 +339,7 @@ export function useCommentImage(url: string) {
 export function useDraftComments(cwd: string, prId: number) {
   return useQuery({
     queryKey: keys.drafts(cwd, prId),
-    queryFn: () => window.kirby.listDraftComments(prId),
+    queryFn: () => window.n10.listDraftComments(prId),
     refetchInterval: 2_000,
     placeholderData: (prev) => prev,
     enabled: prId > 0,

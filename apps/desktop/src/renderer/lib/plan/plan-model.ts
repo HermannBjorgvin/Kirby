@@ -1,4 +1,4 @@
-import { planItemKey, type PlanItem } from '@kirby/core/plan';
+import { planItemKey, type PlanItem } from '@n10/core/plan';
 import type { CommentSeverity } from '../../../host/contract.js';
 
 /**
@@ -7,7 +7,7 @@ import type { CommentSeverity } from '../../../host/contract.js';
  *
  * A plan is a queue of review comments the user wants one agent to work
  * through in one go. The items are *value snapshots* taken at add-time
- * (see @kirby/core's plan-types) — resolving, editing or posting the
+ * (see @n10/core's plan-types) — resolving, editing or posting the
  * underlying comment afterwards leaves the queued copy alone, which is
  * why a row here reads from the snapshot and never from the live
  * thread.

@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/terminal",
+  "name": "@n10/terminal",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "@xterm/headless": "^6.0.0"
   },
   "nx": {
-    "name": "@kirby/terminal",
+    "name": "@n10/terminal",
     "tags": [
       "type:lib",
       "scope:terminal"

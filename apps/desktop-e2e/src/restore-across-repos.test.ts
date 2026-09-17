@@ -36,7 +36,7 @@ const test = base.extend<{ other: string; alphaLink: string }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright fixture signature
   alphaLink: async ({}, provide) => {
     const real = createTestRepo({ name: 'repo-alpha' });
-    const linkDir = mkdtempSync(join(tmpdir(), 'kirby-desktop-e2e-link-'));
+    const linkDir = mkdtempSync(join(tmpdir(), 'n10-desktop-e2e-link-'));
     const link = join(linkDir, 'repo-alpha');
     symlinkSync(real, link);
     await provide(link);
@@ -67,7 +67,7 @@ test.describe('Agents restored across repositories', () => {
     other,
   }) => {
     const { page, repoPath } = desktop;
-    const getRepo = () => page.evaluate(() => window.kirby.getRepo());
+    const getRepo = () => page.evaluate(() => window.n10.getRepo());
     const groups = page.locator('[role="tab"][data-starts-group="true"]');
     // Opened through a symlink, known by its real path.
     const alphaRoot = realpathSync(repoPath);
@@ -103,7 +103,7 @@ test.describe('Agents restored across repositories', () => {
     // what a repository identified by the path it was opened through
     // gets the moment its agents are described by the real one.
     await expect
-      .poll(() => page.evaluate(() => window.kirby.listForeignSessions()), {
+      .poll(() => page.evaluate(() => window.n10.listForeignSessions()), {
         timeout: 30_000,
       })
       .toEqual([expect.objectContaining({ repo: alphaRoot, branch: ALPHA })]);

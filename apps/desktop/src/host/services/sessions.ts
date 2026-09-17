@@ -1,4 +1,4 @@
-import { worktreeSessionKey, sessionLabel } from '@kirby/core';
+import { worktreeSessionKey, sessionLabel } from '@n10/core';
 import {
   buildReviewLaunchRequest,
   checkoutPlan as checkoutPlanCore,
@@ -14,10 +14,10 @@ import {
   noteResize,
   noteSeen,
   snapshot as activitySnapshot,
-} from '@kirby/core';
-import { readConfig } from '@kirby/vcs-core';
-import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@kirby/terminal-tmux';
-import { createWorktree } from '@kirby/worktree-manager';
+} from '@n10/core';
+import { readConfig } from '@n10/vcs-core';
+import { tmuxSessionSnapshot, sameTmuxIncarnation } from '@n10/terminal-tmux';
+import { createWorktree } from '@n10/worktree-manager';
 import { requireRepo } from './repo.js';
 import {
   attachRelay,
@@ -79,7 +79,7 @@ function adoptSession(name: string, branch: string, repoCwd: string): void {
 }
 
 /**
- * Adopt a session another service had `@kirby/core` spawn — the
+ * Adopt a session another service had `@n10/core` spawn — the
  * babysitter's, started to receive an update when no agent was
  * running. Same bookkeeping as a launch from the renderer.
  */
@@ -301,7 +301,7 @@ const inflightCheckouts = new Map<string, Promise<PlanCheckoutResult>>();
  * Send a composed plan to the agent for `req.pr`.
  *
  * The three-state decision — inject into a live agent, respawn it, or
- * create the worktree and start one — lives in @kirby/core and is
+ * create the worktree and start one — lives in @n10/core and is
  * shared with the TUI. What the desktop adds is its own bookkeeping:
  * the ownership guard, and adopting whatever PTY comes out so its
  * output reaches the renderer.

@@ -1,5 +1,5 @@
-import { TerminalEmulator } from '@kirby/terminal';
-import type { SessionBackend } from '@kirby/terminal';
+import { TerminalEmulator } from '@n10/terminal';
+import type { SessionBackend } from '@n10/terminal';
 import * as activity from './activity.js';
 import { remove as removeInactiveAlert } from './inactive-alerts.js';
 
@@ -192,7 +192,7 @@ export function releaseExitedSession(name: string): void {
   if (registry.get(name)?.exited) detachSession(name);
 }
 
-/** Soft cleanup — used on Kirby process exit. Calls the backend's
+/** Soft cleanup — used on n10 process exit. Calls the backend's
  *  `dispose()` so tmux sessions survive and can be reattached on the
  *  next launch.
  */

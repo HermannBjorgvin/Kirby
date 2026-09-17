@@ -1,5 +1,5 @@
-import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { CommentSeverity, ReviewComment } from '@n10/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 
 // ── Plan items ───────────────────────────────────────────────────
 //

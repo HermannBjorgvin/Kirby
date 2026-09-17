@@ -1,12 +1,12 @@
 import { appendFileSync } from 'node:fs';
 
-const logPath = process.env.KIRBY_LOG || null;
+const logPath = process.env.N10_LOG || null;
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 // Levels in increasing severity. Filter drops anything *below* the
 // configured level. Default is `info` so high-volume `debug` (e.g.
-// network traces) is opt-in via `KIRBY_LOG_LEVEL=debug`.
+// network traces) is opt-in via `N10_LOG_LEVEL=debug`.
 const LEVEL_RANK: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
@@ -15,7 +15,7 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 };
 
 function resolveMinLevel(): number {
-  const raw = (process.env.KIRBY_LOG_LEVEL || 'info').toLowerCase();
+  const raw = (process.env.N10_LOG_LEVEL || 'info').toLowerCase();
   if (raw in LEVEL_RANK) return LEVEL_RANK[raw as LogLevel];
   return LEVEL_RANK.info;
 }
@@ -71,7 +71,7 @@ export function logError(context: string, err: unknown): void {
 
 /**
  * Log a network request/response pair at `debug` level. Suppressed
- * unless `KIRBY_LOG_LEVEL=debug` is set, so day-to-day runs don't
+ * unless `N10_LOG_LEVEL=debug` is set, so day-to-day runs don't
  * spam the log with every gh/ADO call.
  *
  * Caller is responsible for sanitizing — do NOT pass auth headers,

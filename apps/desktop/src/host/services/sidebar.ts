@@ -1,5 +1,5 @@
-import { keyForWorktree } from '@kirby/core';
-import { listWorktrees } from '@kirby/worktree-manager';
+import { keyForWorktree } from '@n10/core';
+import { listWorktrees } from '@n10/worktree-manager';
 import {
   buildSidebarItems,
   buildSessionLookups,
@@ -9,7 +9,7 @@ import {
   sortSessionsByPrId,
   type AgentSession,
   type SidebarItem,
-} from '@kirby/core';
+} from '@n10/core';
 import { activeRepoIs, requireRepo } from './repo.js';
 import { babysatStatuses } from './babysit.js';
 import { isOwnSessionAlive } from './sessions.js';
@@ -30,7 +30,7 @@ import type { SidebarModel, SyncState } from '../contract.js';
  *
  * Local state (worktrees, alive PTYs) is cheap and re-read on every
  * call; remote pull request data comes from the host's one instance
- * of `@kirby/core`'s per-repository cache (`services/pull-requests.ts`),
+ * of `@n10/core`'s per-repository cache (`services/pull-requests.ts`),
  * so the renderer can poll the model frequently without hammering the
  * provider API.
  *

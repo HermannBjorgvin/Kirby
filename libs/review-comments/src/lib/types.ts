@@ -12,7 +12,7 @@ export interface ReviewComment {
   createdAt: string;
   /**
    * The provider's id for an existing review thread this draft was
-   * written in answer to, when it was (`kirby util add-comment
+   * written in answer to, when it was (`n10 util add-comment
    * --thread=…`). Recorded rather than acted on: posting still opens a
    * new thread at the draft's own file and line, so a draft that names
    * a thread is a draft whose *subject* is that conversation, and the

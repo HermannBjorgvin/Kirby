@@ -31,7 +31,7 @@ export function placeholderPatch(path: string, note: string): string {
 
 /** The path a truncation notice is filed under, so it sorts out of the way
  *  and cannot collide with a real file. */
-const TRUNCATED_PATH = 'kirby/diff-truncated';
+const TRUNCATED_PATH = 'n10/diff-truncated';
 
 export function truncationPatch(limitBytes: number): string {
   return placeholderPatch(

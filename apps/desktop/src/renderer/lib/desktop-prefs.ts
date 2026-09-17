@@ -7,7 +7,7 @@ const listeners = new Set<() => void>();
 
 export async function loadDesktopPrefs(): Promise<DesktopPrefs> {
   try {
-    prefs = await window.kirby.getDesktopPrefs();
+    prefs = await window.n10.getDesktopPrefs();
   } catch {
     // keep defaults
   }
@@ -18,7 +18,7 @@ export async function loadDesktopPrefs(): Promise<DesktopPrefs> {
 export async function updateDesktopPrefs(
   patch: Partial<DesktopPrefs>
 ): Promise<void> {
-  prefs = await window.kirby.setDesktopPrefs(patch);
+  prefs = await window.n10.setDesktopPrefs(patch);
   for (const l of listeners) l();
 }
 

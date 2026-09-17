@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import stripAnsi from 'strip-ansi';
-import type { DiffFile } from '@kirby/diff';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { DiffFile } from '@n10/diff';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import { renderWithProviders } from '../../test-utils/render-with-providers.js';
 import { DiffFileList } from './DiffFileList.js';
 

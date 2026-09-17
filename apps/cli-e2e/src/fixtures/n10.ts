@@ -32,7 +32,7 @@ const FAKE_AGENT_PATH = fileURLToPath(
 );
 
 /**
- * Returns a shell command (suitable for `kirbyConfig.aiCommand`) that
+ * Returns a shell command (suitable for `n10Config.aiCommand`) that
  * spawns the fake-agent harness with the given scenario. See
  * `fake-agent.mjs` for the full flag reference.
  */
@@ -53,24 +53,24 @@ export function fakeAgentCommand(opts: FakeAgentOpts = {}): string {
   return ['node', FAKE_AGENT_PATH, ...flags].join(' ');
 }
 
-export interface KirbyOptions {
-  /** Config written to the isolated HOME before launching Kirby. */
-  kirbyConfig?: Record<string, unknown>;
-  kirbyEnv?: Record<string, string>;
+export interface N10Options {
+  /** Config written to the isolated HOME before launching n10. */
+  n10Config?: Record<string, unknown>;
+  n10Env?: Record<string, string>;
   cols: number;
   rows: number;
   /**
-   * Override the repo path Kirby runs against. If unset, the fixture
+   * Override the repo path n10 runs against. If unset, the fixture
    * creates a fresh git-init'd tempdir per test and cleans it up on
    * teardown. If set, the fixture uses the given path as-is and leaves
    * it alone on teardown (caller owns the directory's lifecycle —
    * useful for module-scope clones of real test repos in
    * integration tests).
    */
-  kirbyRepoPath?: string;
+  n10RepoPath?: string;
 }
 
-export interface KirbyTerm {
+export interface N10Term {
   page: Page;
   root: Locator;
   getByText: Page['getByText'];
@@ -80,8 +80,8 @@ export interface KirbyTerm {
   resize(cols: number, rows: number): Promise<void>;
 }
 
-export interface KirbySession {
-  term: KirbyTerm;
+export interface N10Session {
+  term: N10Term;
   repoPath: string;
   homeDir: string;
 }
@@ -92,10 +92,10 @@ async function stopHost(host: string): Promise<void> {
 }
 
 export const test = base.extend<
-  KirbyOptions & { kirby: KirbySession; fixtureHome: string }
+  N10Options & { n10: N10Session; fixtureHome: string }
 >({
   fixtureHome: async ({ baseURL }, provide) => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'kirby-e2e-web-home-'));
+    const homeDir = mkdtempSync(join(tmpdir(), 'n10-e2e-web-home-'));
     try {
       await provide(homeDir);
     } finally {
@@ -106,23 +106,14 @@ export const test = base.extend<
       await rm(homeDir, { recursive: true, force: true });
     }
   },
-  kirbyConfig: [undefined, { option: true }],
-  kirbyEnv: [undefined, { option: true }],
+  n10Config: [undefined, { option: true }],
+  n10Env: [undefined, { option: true }],
   cols: [100, { option: true }],
   rows: [30, { option: true }],
-  kirbyRepoPath: [undefined, { option: true }],
+  n10RepoPath: [undefined, { option: true }],
 
-  kirby: async (
-    {
-      page,
-      baseURL,
-      kirbyConfig,
-      kirbyEnv,
-      cols,
-      rows,
-      kirbyRepoPath,
-      fixtureHome,
-    },
+  n10: async (
+    { page, baseURL, n10Config, n10Env, cols, rows, n10RepoPath, fixtureHome },
     // Playwright's fixture callback. Named `provide` rather than the
     // conventional `use` so it does not read as a React hook call to
     // the react-hooks rules, which run over this workspace.
@@ -130,13 +121,13 @@ export const test = base.extend<
     testInfo
   ) => {
     const host = baseURL ?? 'http://localhost:5174';
-    const ownsRepo = !kirbyRepoPath;
-    const repoPath = kirbyRepoPath ?? createTestRepo();
+    const ownsRepo = !n10RepoPath;
+    const repoPath = n10RepoPath ?? createTestRepo();
     const homeDir = fixtureHome;
-    await mkdir(join(homeDir, '.kirby'), { recursive: true });
+    await mkdir(join(homeDir, '.n10'), { recursive: true });
     await writeFile(
-      join(homeDir, '.kirby', 'config.json'),
-      JSON.stringify(kirbyConfig ?? {}, null, 2)
+      join(homeDir, '.n10', 'config.json'),
+      JSON.stringify(n10Config ?? {}, null, 2)
     );
 
     const consoleMessages: string[] = [];
@@ -157,7 +148,7 @@ export const test = base.extend<
           //
           // Last, so a test's own env additions cannot override it. The
           // host pins the same value again for the same reason.
-          env: { ...kirbyEnv, TMUX_TMPDIR: homeDir },
+          env: { ...n10Env, TMUX_TMPDIR: homeDir },
         }),
       });
       if (!spawnRes.ok) {
@@ -176,17 +167,17 @@ export const test = base.extend<
       await page.goto('/');
       const root = page.locator('#wterm-root');
 
-      // Wait for Kirby's first render. Cold-start + any WS reconnect cycles
+      // Wait for n10's first render. Cold-start + any WS reconnect cycles
       // can take several seconds on CI runners.
       // Using locator.waitFor() (not `expect`) keeps this out of the
       // `playwright/no-standalone-expect` eslint rule's scope — this is
       // readiness plumbing, not a test assertion.
       await page
-        .getByText('Kirby')
+        .getByText('n10')
         .first()
         .waitFor({ state: 'visible', timeout: 30_000 });
 
-      const term: KirbyTerm = {
+      const term: N10Term = {
         page,
         root,
         getByText: page.getByText.bind(page),
@@ -221,7 +212,7 @@ export const test = base.extend<
     } catch (err) {
       if (consoleMessages.length) {
         console.error(
-          `[kirby fixture] browser console while test failed:\n${consoleMessages.join(
+          `[n10 fixture] browser console while test failed:\n${consoleMessages.join(
             '\n'
           )}`
         );

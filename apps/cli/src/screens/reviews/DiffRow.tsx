@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Box, Text } from 'ink';
 import { highlight } from 'cli-highlight';
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 
 // Per-row diff renderer. Replaces the older ANSI-string pipeline in
 // `libs/diff/src/lib/diff-renderer.ts`: the gutter, prefix, and content

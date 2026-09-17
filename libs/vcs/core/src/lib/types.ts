@@ -236,7 +236,7 @@ export interface KeyDescriptorConfig {
 }
 
 /**
- * The AI agents Kirby knows how to drive natively (blank / seed /
+ * The AI agents n10 knows how to drive natively (blank / seed /
  * continue with per-agent capabilities). A hidden `test` runner exists
  * in the CLI registry for e2e tests but is intentionally NOT part of
  * this public union — it is never written to a user's config.
@@ -276,7 +276,7 @@ export interface AppConfig {
   keybindPreset?: string;
   keybindOverrides?: Record<string, KeyDescriptorConfig[]>;
   /** Recently opened repositories, newest first. Shared naming so any
-   *  Kirby shell (TUI, desktop) reads and writes the same list. */
+   *  n10 shell (TUI, desktop) reads and writes the same list. */
   recentRepos?: RecentRepo[];
 }
 

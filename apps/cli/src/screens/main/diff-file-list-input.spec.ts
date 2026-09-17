@@ -3,16 +3,11 @@ import type {
   PaneModeValue,
   PlanValue,
   SessionActionsContextValue,
-} from '@kirby/app-core';
-import type { KeyPress } from '@kirby/core';
-import {
-  ACTIONS,
-  NORMIE_PRESET,
-  planItemKey,
-  resolveAction,
-} from '@kirby/core';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { DiffFile } from '@kirby/diff';
+} from '@n10/app-core';
+import type { KeyPress } from '@n10/core';
+import { ACTIONS, NORMIE_PRESET, planItemKey, resolveAction } from '@n10/core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { DiffFile } from '@n10/diff';
 import { handleDiffFileListInput } from './diff-file-list-input.js';
 import type { DiffFileListHandlerCtx } from './input-types.js';
 

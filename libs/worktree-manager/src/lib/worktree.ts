@@ -7,7 +7,7 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { log } from '@kirby/logger';
+import { log } from '@n10/logger';
 import { exec, gitOptions } from './exec.js';
 import { assertShellSafeRef } from './refs.js';
 import { worktreeDir } from './worktree-resolver.js';
@@ -18,14 +18,14 @@ import { getMainBranch } from './branches.js';
  * Resolve the actual on-disk path of the worktree that has `branch`
  * checked out, by asking git rather than deriving it from the branch
  * name. A worktree's directory is independent of its branch name (git
- * lets you `worktree add <any-dir> <branch>`, and Kirby's resolver only
+ * lets you `worktree add <any-dir> <branch>`, and n10's resolver only
  * governs the dirs *it* creates), so the resolver-derived path can be
  * wrong for externally-created worktrees.
  *
  * Uses `listWorktrees` rather than the raw porcelain so a mid-rebase
  * worktree — which reports a detached HEAD with no `branch` line — still
  * matches via its recovered branch, and so the result is scoped to
- * Kirby-owned worktrees. Returns `null` if no owned worktree currently
+ * n10-owned worktrees. Returns `null` if no owned worktree currently
  * has the branch checked out.
  */
 async function worktreeForBranch(
@@ -117,7 +117,7 @@ export async function checkoutWorktree(
   const absoluteDir = resolve(cwd, relativeDir);
 
   // As in `createWorktree`: a worktree's directory is independent of
-  // its branch name, so the path above only finds the ones Kirby made
+  // its branch name, so the path above only finds the ones n10 made
   // under the current template. Asking git — about `cwd`'s repository,
   // not the process's, since a caller here may outlive a change of
   // directory — is what stops a branch that is already checked out
@@ -228,7 +228,7 @@ async function hasUncommittedChanges(
     // emptiness, so NUL termination would buy nothing. Add it before
     // parsing the entries — the newline form renders a rename as
     // `old -> new` in one field, which is the same trap `--numstat`
-    // set with its brace form (see parseNumstat in @kirby/app-core).
+    // set with its brace form (see parseNumstat in @n10/app-core).
     const { stdout } = await exec(`git -C "${dir}" status --porcelain`, {
       encoding: 'utf8',
     });

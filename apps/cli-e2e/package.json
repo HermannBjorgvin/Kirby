@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/cli-e2e",
+  "name": "@n10/cli-e2e",
   "version": "0.0.1",
   "private": true,
   "type": "module",

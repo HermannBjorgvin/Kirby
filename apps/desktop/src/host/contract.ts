@@ -1,18 +1,18 @@
 /**
  * Typed contract between the Electron main process and the renderer.
  *
- * The preload script exposes exactly this shape as `window.kirby` via
+ * The preload script exposes exactly this shape as `window.n10` via
  * contextBridge; the main process implements it behind ipcMain
  * handlers. Both sides import these types from this file so the
  * compiler keeps the bridge honest.
  *
  * Process model: the renderer is sandboxed (no Node). All filesystem,
  * git, and VCS-provider work happens in the main process through the
- * existing @kirby libs. The host holds one "active repo" — desktop is
+ * existing @n10 libs. The host holds one "active repo" — desktop is
  * single-repo-per-window, matching how the CLI runs inside a repo.
  */
 
-import type { AgentId, ReviewVerdict } from '@kirby/vcs-core';
+import type { AgentId, ReviewVerdict } from '@n10/vcs-core';
 export type { AgentId, ReviewVerdict };
 import type {
   SessionLaunchContext,
@@ -20,27 +20,23 @@ import type {
   BabysitStatus,
   LaunchIntent,
   SidebarItem,
-} from '@kirby/core';
-import type { CommentSeverity, ReviewComment } from '@kirby/review-comments';
+} from '@n10/core';
+import type { CommentSeverity, ReviewComment } from '@n10/review-comments';
 export type { CommentSeverity, ReviewComment };
-import type { WorktreeInfo } from '@kirby/worktree-manager';
+import type { WorktreeInfo } from '@n10/worktree-manager';
 import type {
   BranchPrMap,
   PullRequestComments,
   RemoteCommentReply,
   RemoteCommentThread,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 export type {
   BranchPrMap,
   PullRequestComments,
   RemoteCommentReply,
   RemoteCommentThread,
 };
-export type {
-  BabysitStatus,
-  PullRequestLookup,
-  SidebarItem,
-} from '@kirby/core';
+export type { BabysitStatus, PullRequestLookup, SidebarItem } from '@n10/core';
 
 // The push half of the contract — channel names and their payloads.
 export * from './contract-events.js';
@@ -76,8 +72,8 @@ import type {
   SyncNoticeEvent,
 } from './contract-events.js';
 
-export interface KirbyVersionInfo {
-  /** kirby-desktop package version */
+export interface N10VersionInfo {
+  /** n10-desktop package version */
   app: string;
   electron: string;
   node: string;
@@ -250,9 +246,9 @@ export interface SessionActivitySnapshot {
   exited?: boolean;
 }
 
-/** The API surface exposed on `window.kirby`. */
-export interface KirbyHostApi {
-  getVersion(): Promise<KirbyVersionInfo>;
+/** The API surface exposed on `window.n10`. */
+export interface N10HostApi {
+  getVersion(): Promise<N10VersionInfo>;
 
   // ── Repo ─────────────────────────────────────────────────────
   /** Validate + open a directory as the active repo. */
@@ -432,65 +428,65 @@ export interface KirbyHostApi {
 
 /** IPC channel names — single source of truth for main and preload. */
 export const IPC = {
-  getVersion: 'kirby/version',
-  openRepo: 'kirby/repo/open',
-  listRecentRepos: 'kirby/repo/recents',
-  selectRepoDirectory: 'kirby/repo/select-directory',
-  selectFolder: 'kirby/shell/select-folder',
-  forgetRecent: 'kirby/repo/forget',
-  getRepo: 'kirby/repo/get',
-  getSettingsView: 'kirby/settings/view',
-  updateSettingsField: 'kirby/config/update-field',
-  getSidebarModel: 'kirby/sidebar/model',
-  getSyncState: 'kirby/sidebar/sync-state',
-  refreshRemote: 'kirby/sidebar/refresh-remote',
-  listWorktrees: 'kirby/worktree/list',
-  listBranches: 'kirby/worktree/branches',
-  listAllBranches: 'kirby/worktree/all-branches',
-  createWorktree: 'kirby/worktree/create',
-  removeWorktree: 'kirby/worktree/remove',
-  canRemoveBranch: 'kirby/worktree/can-remove',
-  openInEditor: 'kirby/worktree/open-in-editor',
-  launchAgent: 'kirby/session/launch',
-  listSessions: 'kirby/session/list',
-  listForeignSessions: 'kirby/session/list-foreign',
-  getSessionActivity: 'kirby/session/activity',
-  markSessionSeen: 'kirby/session/seen',
-  getSessionBuffer: 'kirby/session/buffer',
-  writeSession: 'kirby/session/write',
-  resizeSession: 'kirby/session/resize',
-  killSession: 'kirby/session/kill',
-  saveClipboardImage: 'kirby/session/clipboard-image',
-  launchTerminal: 'kirby/terminal/launch',
-  listTerminals: 'kirby/terminal/list',
-  killTerminal: 'kirby/terminal/kill',
-  fetchPullRequests: 'kirby/reviews/prs',
-  fetchCommentThreads: 'kirby/reviews/comments',
-  replyToThread: 'kirby/reviews/reply',
-  setThreadResolved: 'kirby/reviews/resolve',
-  fetchPrDescription: 'kirby/reviews/pr-description',
-  submitReviewVerdict: 'kirby/reviews/submit-verdict',
-  getReviewViewer: 'kirby/reviews/viewer',
-  fetchCommentImage: 'kirby/reviews/comment-image',
-  listDraftComments: 'kirby/drafts/list',
-  updateDraftComment: 'kirby/drafts/update',
-  deleteDraftComment: 'kirby/drafts/delete',
-  postDraftComments: 'kirby/drafts/post',
-  launchReviewAgent: 'kirby/session/launch-review',
-  listAgentOptions: 'kirby/session/agent-options',
-  getSessionLaunchContext: 'kirby/session/launch-context',
-  checkoutPlan: 'kirby/session/checkout-plan',
-  fetchDiffText: 'kirby/diff/text',
-  fetchWorktreeDiffText: 'kirby/diff/worktree-text',
-  fetchFileDiffText: 'kirby/diff/file-text',
-  openExternal: 'kirby/shell/open-external',
-  showContextMenu: 'kirby/shell/context-menu',
-  showAppMenu: 'kirby/shell/app-menu',
-  getDesktopPrefs: 'kirby/shell/prefs/get',
-  setDesktopPrefs: 'kirby/shell/prefs/set',
-  showAbout: 'kirby/shell/about',
-  startBabysit: 'kirby/babysit/start',
-  stopBabysit: 'kirby/babysit/stop',
+  getVersion: 'n10/version',
+  openRepo: 'n10/repo/open',
+  listRecentRepos: 'n10/repo/recents',
+  selectRepoDirectory: 'n10/repo/select-directory',
+  selectFolder: 'n10/shell/select-folder',
+  forgetRecent: 'n10/repo/forget',
+  getRepo: 'n10/repo/get',
+  getSettingsView: 'n10/settings/view',
+  updateSettingsField: 'n10/config/update-field',
+  getSidebarModel: 'n10/sidebar/model',
+  getSyncState: 'n10/sidebar/sync-state',
+  refreshRemote: 'n10/sidebar/refresh-remote',
+  listWorktrees: 'n10/worktree/list',
+  listBranches: 'n10/worktree/branches',
+  listAllBranches: 'n10/worktree/all-branches',
+  createWorktree: 'n10/worktree/create',
+  removeWorktree: 'n10/worktree/remove',
+  canRemoveBranch: 'n10/worktree/can-remove',
+  openInEditor: 'n10/worktree/open-in-editor',
+  launchAgent: 'n10/session/launch',
+  listSessions: 'n10/session/list',
+  listForeignSessions: 'n10/session/list-foreign',
+  getSessionActivity: 'n10/session/activity',
+  markSessionSeen: 'n10/session/seen',
+  getSessionBuffer: 'n10/session/buffer',
+  writeSession: 'n10/session/write',
+  resizeSession: 'n10/session/resize',
+  killSession: 'n10/session/kill',
+  saveClipboardImage: 'n10/session/clipboard-image',
+  launchTerminal: 'n10/terminal/launch',
+  listTerminals: 'n10/terminal/list',
+  killTerminal: 'n10/terminal/kill',
+  fetchPullRequests: 'n10/reviews/prs',
+  fetchCommentThreads: 'n10/reviews/comments',
+  replyToThread: 'n10/reviews/reply',
+  setThreadResolved: 'n10/reviews/resolve',
+  fetchPrDescription: 'n10/reviews/pr-description',
+  submitReviewVerdict: 'n10/reviews/submit-verdict',
+  getReviewViewer: 'n10/reviews/viewer',
+  fetchCommentImage: 'n10/reviews/comment-image',
+  listDraftComments: 'n10/drafts/list',
+  updateDraftComment: 'n10/drafts/update',
+  deleteDraftComment: 'n10/drafts/delete',
+  postDraftComments: 'n10/drafts/post',
+  launchReviewAgent: 'n10/session/launch-review',
+  listAgentOptions: 'n10/session/agent-options',
+  getSessionLaunchContext: 'n10/session/launch-context',
+  checkoutPlan: 'n10/session/checkout-plan',
+  fetchDiffText: 'n10/diff/text',
+  fetchWorktreeDiffText: 'n10/diff/worktree-text',
+  fetchFileDiffText: 'n10/diff/file-text',
+  openExternal: 'n10/shell/open-external',
+  showContextMenu: 'n10/shell/context-menu',
+  showAppMenu: 'n10/shell/app-menu',
+  getDesktopPrefs: 'n10/shell/prefs/get',
+  setDesktopPrefs: 'n10/shell/prefs/set',
+  showAbout: 'n10/shell/about',
+  startBabysit: 'n10/babysit/start',
+  stopBabysit: 'n10/babysit/stop',
 } as const;
 
 /** Error thrown by host handlers when no repo has been opened yet. */

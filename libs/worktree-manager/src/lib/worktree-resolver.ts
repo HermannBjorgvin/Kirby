@@ -2,9 +2,9 @@
  * Where a worktree for a branch lives on disk.
  *
  * The resolver is process-wide state because it is a property of the
- * open repository, not of any one call: Kirby detects the project's
+ * open repository, not of any one call: n10 detects the project's
  * worktree template once at open and every later `createWorktree` /
- * `listWorktrees` has to agree about which directories are Kirby's.
+ * `listWorktrees` has to agree about which directories are n10's.
  */
 import { resolve } from 'node:path';
 import { branchToSessionName } from './refs.js';
@@ -67,7 +67,7 @@ const defaultResolver: WorktreeResolver = {
   dir: (branch) => '.claude/worktrees/' + branchToSessionName(branch),
   owns: (p, cwd) => isUnder(p, defaultResolver.base(cwd)),
   // Resolved per call, not captured: the default resolver is the one
-  // in force before anything has told Kirby which repo it is in, and
+  // in force before anything has told n10 which repo it is in, and
   // the desktop chdir()s into a repo after that point.
   base: (cwd = process.cwd()) => resolve(cwd, '.claude/worktrees'),
 };
@@ -111,14 +111,14 @@ export function worktreeDir(branch: string): string {
 }
 
 /**
- * True if this absolute worktree path is one Kirby manages, judged
+ * True if this absolute worktree path is one n10 manages, judged
  * against `cwd`'s repository (the process's directory when omitted).
  */
 export function ownsWorktreePath(absolutePath: string, cwd?: string): boolean {
   return activeResolver.owns(absolutePath, cwd);
 }
 
-/** The absolute directory Kirby's worktrees live under, per the
+/** The absolute directory n10's worktrees live under, per the
  *  resolver in force. May not exist yet. */
 export function worktreesBasePath(cwd?: string): string {
   return activeResolver.base(cwd);

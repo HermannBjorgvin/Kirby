@@ -1,7 +1,7 @@
 import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
+import type { TmuxSessionInfo } from '@n10/terminal-tmux';
 
 /**
  * What a tmux session *is*, and what it is merely *called*.
@@ -9,9 +9,9 @@ import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
  * Names are labels, tags are identity. A session's name is chosen once
  * at creation, for a human reading `tmux ls`, and never parsed: every
  * lookup — attach, exists, kill, adopt, list — goes through the
- * session user options ("tags") below, which both Kirby and Orchestra
+ * session user options ("tags") below, which both n10 and Orchestra
  * write on the sessions they create and read on each other's. A
- * session whose name Kirby would have chosen but that lacks the tags is
+ * session whose name n10 would have chosen but that lacks the tags is
  * foreign: never attached to, killed, adopted or listed.
  *
  * Tags: `set-option -t '=<name>:' @orchestra-x value` to write,
@@ -20,7 +20,7 @@ import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
  * an absent tag is unset, never a sentinel.
  */
 export const ORCHESTRA_TAG = {
-  /** `kirby` or `orchestra`: whichever program created the session. */
+  /** `n10` or `orchestra`: whichever program created the session. */
   spawner: '@orchestra-spawner',
   /** The absolute, symlink-resolved path of the main checkout — what
    *  `git rev-parse --show-toplevel` prints there. */
@@ -42,13 +42,13 @@ export const ORCHESTRA_TAG = {
 /** Every tag a listing asks tmux for, in the one fork. */
 export const LISTED_TAGS: readonly string[] = Object.values(ORCHESTRA_TAG);
 
-/** What Kirby writes as `@orchestra-spawner` on the sessions it creates. */
-export const KIRBY_SPAWNER = 'kirby';
+/** What n10 writes as `@orchestra-spawner` on the sessions it creates. */
+export const N10_SPAWNER = 'n10';
 
 /**
- * - `worktree`: an agent bound to one git worktree and branch (Kirby's
+ * - `worktree`: an agent bound to one git worktree and branch (n10's
  *   worktree sessions, Orchestra's players). Identity = (repo, branch).
- * - `shell` / `agent`: a Kirby terminal tab — the user's shell, or an
+ * - `shell` / `agent`: a n10 terminal tab — the user's shell, or an
  *   agent CLI not bound to a worktree. Identity = the name, which is
  *   unique on the server and stable for the session's life.
  */
@@ -146,13 +146,13 @@ export function registryNameOf(session: TaggedSession): string {
     : terminalSessionKey(session.name);
 }
 
-/** The tags Kirby writes on a session it creates. */
+/** The tags n10 writes on a session it creates. */
 export function sessionTags(
   repoRoot: string,
   identity: { type: 'worktree'; branch: string } | { type: 'shell' | 'agent' }
 ): Record<string, string> {
   return {
-    [ORCHESTRA_TAG.spawner]: KIRBY_SPAWNER,
+    [ORCHESTRA_TAG.spawner]: N10_SPAWNER,
     [ORCHESTRA_TAG.repo]: repoRoot,
     [ORCHESTRA_TAG.sessionType]: identity.type,
     ...(identity.type === 'worktree'
@@ -196,7 +196,7 @@ function sessionLabel(repoRoot: string, rest: string): string {
   )}`;
 }
 
-/** `<repo basename>-<branch>` — e.g. `kirby-feature-x`. */
+/** `<repo basename>-<branch>` — e.g. `n10-feature-x`. */
 export function worktreeSessionLabel(repoRoot: string, branch: string): string {
   return sessionLabel(repoRoot, branch);
 }

@@ -1,7 +1,7 @@
 import type { BrowserWindowConstructorOptions } from 'electron';
 
 /**
- * Web preferences for the Kirby renderer window.
+ * Web preferences for the n10 renderer window.
  *
  * Security posture: the renderer is an untrusted web context (it
  * renders remote content like PR comments), so it gets no Node access

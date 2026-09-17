@@ -3,7 +3,7 @@ import type * as TerminalsModule from './terminals.js';
 
 /**
  * The desktop's terminal tabs: sessions that belong to a directory
- * rather than a worktree. What the host adds over `@kirby/core`'s
+ * rather than a worktree. What the host adds over `@n10/core`'s
  * launcher is bookkeeping — which directory, which kind, whether the
  * directory is a repository root (and so which tab group), the output
  * relay — and none of it may depend on which repository is open.
@@ -52,7 +52,7 @@ vi.mock('node:fs', () => ({
 
 vi.mock('./repo.js', () => ({
   isGitRepo: (cwd: string) => state.repoRoots.has(cwd),
-  requireRepo: () => '/home/dev/kirby',
+  requireRepo: () => '/home/dev/n10',
 }));
 
 vi.mock('./recent-repos.js', () => ({
@@ -61,11 +61,11 @@ vi.mock('./recent-repos.js', () => ({
   },
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: (cwd: string) => state.configByCwd[cwd] ?? { fromCwd: cwd },
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   launchTerminalSession: async (spec: {
     name?: string;
     kind: string;
@@ -80,8 +80,8 @@ vi.mock('@kirby/core', () => ({
     if (!spec.name) state.nextId += 1;
     const allocated =
       state.nextId === 1
-        ? `kirby-${spec.kind}`
-        : `kirby-${spec.kind}-${state.nextId}`;
+        ? `n10-${spec.kind}`
+        : `n10-${spec.kind}-${state.nextId}`;
     const actual = {
       ...spec,
       name: spec.name ?? state.allocatedName ?? allocated,
@@ -135,7 +135,7 @@ beforeEach(async () => {
   state.onExit = new Map();
   state.sessions = new Map();
   state.configByCwd = {};
-  state.repoRoots = new Set(['/home/dev/kirby', '/home/dev/other']);
+  state.repoRoots = new Set(['/home/dev/n10', '/home/dev/other']);
   state.recents = [];
   state.nextId = 0;
   state.modes = [];
@@ -185,7 +185,7 @@ describe('launchTerminal', () => {
 
   it('treats a subfolder of a repository as a plain folder', async () => {
     const summary = await terminals.launchTerminal(
-      { kind: 'shell', cwd: '/home/dev/kirby/apps' },
+      { kind: 'shell', cwd: '/home/dev/n10/apps' },
       HOME
     );
     expect(summary.repo).toBeNull();
@@ -259,20 +259,20 @@ describe('adoptTerminal', () => {
   // launch reattaches under exactly that name.
   it('reattaches under the name and in the directory tmux reported', async () => {
     await terminals.adoptTerminal({
-      name: 'kirby-shell',
+      name: 'n10-shell',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
       expect.objectContaining({
-        name: 'kirby-shell',
+        name: 'n10-shell',
         kind: 'shell',
         cwd: '/home/dev/notes',
       }),
     ]);
     expect(terminals.listTerminals(HOME)).toEqual([
       expect.objectContaining({
-        name: 'kirby-shell',
+        name: 'n10-shell',
         repo: null,
         displayPath: '~/notes',
       }),
@@ -281,7 +281,7 @@ describe('adoptTerminal', () => {
 
   it('coalesces concurrent attachment before installing one output relay', async () => {
     const terminal = {
-      name: 'kirby-shell',
+      name: 'n10-shell',
       kind: 'shell' as const,
       path: '/x',
     };
@@ -302,7 +302,7 @@ describe('adoptTerminal', () => {
   // tab opens that repository.
   it('puts a restored terminal’s repository back on the repo list', async () => {
     await terminals.adoptTerminal({
-      name: 'kirby-agent',
+      name: 'n10-agent',
       kind: 'agent',
       path: '/home/dev/other',
     });
@@ -314,7 +314,7 @@ describe('adoptTerminal', () => {
 describe('listTerminals', () => {
   it('reports every terminal, running or not, whatever repository is open', async () => {
     const a = await terminals.launchTerminal(
-      { kind: 'shell', cwd: '/home/dev/kirby' },
+      { kind: 'shell', cwd: '/home/dev/n10' },
       HOME
     );
     const b = await terminals.launchTerminal(
@@ -369,7 +369,7 @@ describe('a terminal whose process ended', () => {
     endProcess(name);
     expect(state.broadcasts).toEqual([
       {
-        channel: 'kirby/session/exit',
+        channel: 'n10/session/exit',
         payload: { name, code: 0, retained: false },
       },
     ]);
@@ -405,13 +405,13 @@ describe('a terminal whose process ended', () => {
   // drop the terminal the new client is attached to.
   it('keeps a terminal that was respawned under the same name', async () => {
     await terminals.adoptTerminal({
-      name: 'kirby-shell',
+      name: 'n10-shell',
       kind: 'shell',
       path: '/x',
     });
-    const oldExits = [...(state.onExit.get('kirby-shell') ?? [])];
+    const oldExits = [...(state.onExit.get('n10-shell') ?? [])];
     await terminals.adoptTerminal({
-      name: 'kirby-shell',
+      name: 'n10-shell',
       kind: 'shell',
       path: '/x',
     });
@@ -437,10 +437,10 @@ describe('a retained agent pane', () => {
     expect(state.spawns).toHaveLength(1);
     expect(state.released).toEqual([]);
     expect(
-      state.broadcasts.filter((event) => event.channel === 'kirby/session/exit')
+      state.broadcasts.filter((event) => event.channel === 'n10/session/exit')
     ).toEqual([
       {
-        channel: 'kirby/session/exit',
+        channel: 'n10/session/exit',
         payload: { name, code: 0, retained: true },
       },
     ]);
@@ -490,7 +490,7 @@ describe('a retained agent pane', () => {
     state.tmuxHolds.add(tab.name);
     endProcess(tab.name);
     await terminals.launchTerminal(
-      { kind: 'agent', cwd: '/home/dev/kirby', sessionName: tab.name },
+      { kind: 'agent', cwd: '/home/dev/n10', sessionName: tab.name },
       HOME
     );
     expect(state.recents).toEqual(['/home/dev/other']);
@@ -552,7 +552,7 @@ describe('killTerminal', () => {
   });
 
   it('is a no-op for a name it never launched', () => {
-    terminals.killTerminal('kirby-shell-9');
+    terminals.killTerminal('n10-shell-9');
     expect(state.killed).toEqual([]);
   });
 });
@@ -581,23 +581,23 @@ describe('agentTerminalNames', () => {
 });
 
 it('uses the allocated backend name for the tab and its lifecycle', async () => {
-  state.allocatedName = 'kirby-shell-3';
+  state.allocatedName = 'n10-shell-3';
   const tab = await terminals.launchTerminal({
     kind: 'shell',
-    cwd: '/home/dev/kirby',
+    cwd: '/home/dev/n10',
   });
   expect(state.modes).toEqual([undefined]);
-  expect(tab.name).toBe('kirby-shell-3');
+  expect(tab.name).toBe('n10-shell-3');
   expect(tab.running).toBe(true);
-  expect(state.onExit.has('kirby-shell-3')).toBe(true);
+  expect(state.onExit.has('n10-shell-3')).toBe(true);
   // Restoring names a target explicitly rather than allocating another.
   await terminals.adoptTerminal({
     name: tab.name,
     kind: 'shell',
-    path: '/home/dev/kirby',
+    path: '/home/dev/n10',
   });
   expect(state.modes).toEqual([undefined, 'attach']);
   expect(
     terminals.listTerminals(HOME).map((terminal) => terminal.name)
-  ).toEqual(['kirby-shell-3']);
+  ).toEqual(['n10-shell-3']);
 });

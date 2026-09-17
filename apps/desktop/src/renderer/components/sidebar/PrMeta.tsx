@@ -8,10 +8,7 @@ import {
   MessageSquareIcon,
   XCircleIcon,
 } from 'lucide-react';
-import {
-  isBlockingDecision,
-  type PullRequestInfo,
-} from '@kirby/vcs-core/types';
+import { isBlockingDecision, type PullRequestInfo } from '@n10/vcs-core/types';
 import {
   prStatusIndicator,
   type StatusGlyph,

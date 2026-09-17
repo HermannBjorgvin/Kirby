@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/vcs-azure-devops",
+  "name": "@n10/vcs-azure-devops",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,14 +14,14 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/vcs-azure-devops",
+    "name": "@n10/vcs-azure-devops",
     "tags": [
       "type:lib",
       "scope:vcs"
     ]
   },
   "dependencies": {
-    "@kirby/logger": "*",
-    "@kirby/vcs-core": "*"
+    "@n10/logger": "*",
+    "@n10/vcs-core": "*"
   }
 }

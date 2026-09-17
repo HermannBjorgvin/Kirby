@@ -46,7 +46,7 @@ import { setThemePreference, type ThemePreference } from '../lib/theme.js';
 import { errorMessage } from '../lib/utils.js';
 import { useHostEvents } from './use-host-events.js';
 
-const SIDEBAR_KEY = 'kirby.sidebar.hidden';
+const SIDEBAR_KEY = 'n10.sidebar.hidden';
 
 /**
  * The main window once a repo is open: title bar, resizable sidebar +
@@ -206,13 +206,13 @@ function WorkspaceInner({
         }
       },
       'open-url': (arg) => {
-        if (arg) void window.kirby.openExternal(arg);
+        if (arg) void window.n10.openExternal(arg);
       },
       'show-shortcuts': () => setShortcutsOpen(true),
-      about: () => void window.kirby.showAbout(),
+      about: () => void window.n10.showAbout(),
     };
-    const off = window.kirby.onMenuCommand(
-      ({ command, arg }: MenuCommandEvent) => handlers[command](arg)
+    const off = window.n10.onMenuCommand(({ command, arg }: MenuCommandEvent) =>
+      handlers[command](arg)
     );
     return off;
   }, [

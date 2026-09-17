@@ -4,7 +4,7 @@
 // only calls attach/detach at the lifecycle boundary; everything else
 // (the React hook, the input forwarder) talks to this module by name.
 
-import type { SessionBackend, TerminalEmulator } from '@kirby/terminal';
+import type { SessionBackend, TerminalEmulator } from '@n10/terminal';
 import {
   ACTIVITY_IDLE_MS,
   INPUT_ECHO_MS,

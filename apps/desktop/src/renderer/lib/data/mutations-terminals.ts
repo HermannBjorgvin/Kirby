@@ -11,8 +11,7 @@ import type { TerminalLaunchRequest } from '../../../host/contract.js';
 export function useLaunchTerminal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (req: TerminalLaunchRequest) =>
-      window.kirby.launchTerminal(req),
+    mutationFn: (req: TerminalLaunchRequest) => window.n10.launchTerminal(req),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.terminals });
       // A terminal at another repository's root put that repo on the
@@ -25,7 +24,7 @@ export function useLaunchTerminal() {
 export function useKillTerminal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => window.kirby.killTerminal(name),
+    mutationFn: (name: string) => window.n10.killTerminal(name),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.terminals });
     },

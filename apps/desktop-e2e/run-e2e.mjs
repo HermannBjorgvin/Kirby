@@ -10,7 +10,7 @@
  * Playwright's actionability checks are both sensitive to it.
  *
  * So: always run under xvfb on Linux, whether or not DISPLAY is set.
- * Set KIRBY_E2E_HEADED=1 to watch the run on your own display instead.
+ * Set N10_E2E_HEADED=1 to watch the run on your own display instead.
  */
 import { spawnSync } from 'node:child_process';
 
@@ -30,7 +30,7 @@ const playwright = [
   ...passthrough,
 ];
 
-const headed = process.env.KIRBY_E2E_HEADED === '1';
+const headed = process.env.N10_E2E_HEADED === '1';
 const wantsXvfb = process.platform === 'linux' && !headed;
 const hasXvfb =
   wantsXvfb &&

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { SessionBackend } from '@kirby/terminal';
+import type { SessionBackend } from '@n10/terminal';
 import { MIN_ACTIVE_MS } from './activity-config.js';
 
 // Capture every session backend / TerminalEmulator the registry constructs
@@ -50,7 +50,7 @@ class MockEmu {
   dispose = vi.fn();
 }
 
-vi.mock('@kirby/terminal', () => ({
+vi.mock('@n10/terminal', () => ({
   TerminalEmulator: function MockTerminalEmulator() {
     const m = new MockEmu();
     emus.push(m);
@@ -191,7 +191,7 @@ describe('pty-registry — teardown contract', () => {
     expect(hasSession('s1')).toBe(false);
   });
 
-  it('killAll calls dispose(), so tmux sessions survive a Kirby restart', () => {
+  it('killAll calls dispose(), so tmux sessions survive a n10 restart', () => {
     spawnSession('s1');
     spawnSession('s2');
     const spawned = [...ptys];

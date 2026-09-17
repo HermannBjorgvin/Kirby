@@ -3,9 +3,9 @@ import {
   handleTextInput,
   type KeyPress,
   type ActionId,
-} from '@kirby/core';
+} from '@n10/core';
 import { handleReplyModeInput } from '../../utils/reply-mode.js';
-import { updateComment, removeComment } from '@kirby/review-comments';
+import { updateComment, removeComment } from '@n10/review-comments';
 import { handlePlanAnnotateInput } from '../../utils/plan-annotate-mode.js';
 import type { DiffViewerHandlerCtx } from './input-types.js';
 import { DIFF_VIEWER_ACTIONS } from './diff-viewer-actions.js';

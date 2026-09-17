@@ -11,7 +11,7 @@ import { keys } from './query-keys.js';
 export function useStartBabysit(cwd: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (prId: number) => window.kirby.startBabysit(prId),
+    mutationFn: (prId: number) => window.n10.startBabysit(prId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
     },
@@ -21,7 +21,7 @@ export function useStartBabysit(cwd: string) {
 export function useStopBabysit(cwd: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (prId: number) => window.kirby.stopBabysit(prId),
+    mutationFn: (prId: number) => window.n10.stopBabysit(prId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.sidebar(cwd) });
     },

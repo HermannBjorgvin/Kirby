@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TerminalEmulator } from '@kirby/terminal';
+import { TerminalEmulator } from '@n10/terminal';
 import { PtySession } from './pty-session.js';
 
 describe('PTY → TerminalEmulator integration', () => {

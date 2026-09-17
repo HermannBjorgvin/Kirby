@@ -5,9 +5,9 @@ import { basename, join } from 'node:path';
 import { listTaggedSessions, socketEnv, tagTmuxSession } from './tmux.js';
 
 /**
- * Creating the things Kirby is supposed to notice on its own: a
+ * Creating the things n10 is supposed to notice on its own: a
  * worktree and an agent session made without the app being involved,
- * the way a second Kirby, an Orchestra spawn or an operator at a shell
+ * the way a second n10, an Orchestra spawn or an operator at a shell
  * would make them — under any name, carrying the identity tags.
  *
  * Every call takes the test's `homeDir`, because the fixture launches
@@ -35,7 +35,7 @@ export function uniqueExternalBranch(): string {
   return `${E2E_BRANCH_PREFIX}${randomBytes(3).toString('hex')}`;
 }
 
-/** The main checkout as Kirby records it in `@orchestra-repo`: the
+/** The main checkout as n10 records it in `@orchestra-repo`: the
  *  symlink-resolved git toplevel, not the fixture's `repoPath`, which
  *  can differ when tmpdir is a symlink. */
 export function repoRootOf(repoPath: string): string {
@@ -47,13 +47,13 @@ export function repoRootOf(repoPath: string): string {
   );
 }
 
-/** The label Kirby would choose — `<repo>-<branch>` with `/`, `.` and
+/** The label n10 would choose — `<repo>-<branch>` with `/`, `.` and
  *  `:` rewritten. Any name would do; this one keeps `tmux ls` readable. */
-export function kirbyTmuxLabel(repoPath: string, branch: string): string {
+export function n10TmuxLabel(repoPath: string, branch: string): string {
   return `${basename(repoRootOf(repoPath))}-${branch}`.replace(/[/.:]/g, '-');
 }
 
-/** Add a worktree under the directory Kirby's resolver owns, with plain
+/** Add a worktree under the directory n10's resolver owns, with plain
  *  git. Returns its absolute path. */
 export function addExternalWorktree(repoPath: string, branch: string): string {
   const path = join(repoPath, '.claude', 'worktrees', branch);
@@ -65,7 +65,7 @@ export function addExternalWorktree(repoPath: string, branch: string): string {
 }
 
 /**
- * Start a detached tmux session tagged the way Kirby tags a worktree
+ * Start a detached tmux session tagged the way n10 tags a worktree
  * session. Returns its name.
  *
  * `HOME` and `PATH` are pinned per session for the reason the backend
@@ -80,7 +80,7 @@ export function startExternalTmuxSession(opts: {
   worktreePath: string;
   command: string;
 }): string {
-  const name = kirbyTmuxLabel(opts.repoPath, opts.branch);
+  const name = n10TmuxLabel(opts.repoPath, opts.branch);
   execFileSync(
     'tmux',
     [
@@ -108,7 +108,7 @@ export function startExternalTmuxSession(opts: {
   tagTmuxSession(
     name,
     {
-      '@orchestra-spawner': 'kirby',
+      '@orchestra-spawner': 'n10',
       '@orchestra-repo': repoRootOf(opts.repoPath),
       '@orchestra-session-type': 'worktree',
       '@orchestra-branch': opts.branch,

@@ -3,8 +3,8 @@ import {
   getSessionLaunchContext as readSessionLaunchContext,
   resolveAgent,
   worktreeSessionKey,
-} from '@kirby/core';
-import { readConfig } from '@kirby/vcs-core';
+} from '@n10/core';
+import { readConfig } from '@n10/vcs-core';
 import type { AgentOptionView, SessionLaunchView } from '../contract.js';
 import { requireRepo } from './repo.js';
 

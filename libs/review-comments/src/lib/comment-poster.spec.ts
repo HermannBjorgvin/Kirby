@@ -4,7 +4,7 @@ import type { PostContext } from './comment-poster.js';
 import type { ReviewComment } from './types.js';
 
 /**
- * The one place Kirby writes to somebody else's pull request.
+ * The one place n10 writes to somebody else's pull request.
  *
  * A wrong payload here is not a crash — it is a comment that lands on
  * the wrong line, or a review filed as the wrong kind, on a real pull
@@ -142,7 +142,7 @@ describe('posting to GitHub', () => {
     const body = env.ghInputs[0].body as { comments: { body: string }[] };
     expect(body.comments[0].body).toBe(
       'issue (non-blocking): This leaks a handle.\n\n---\n' +
-        '_Posted via [Kirby](https://github.com/HermannBjorgvin/Kirby) by an agent_'
+        '_Posted via [n10](https://github.com/notaharness/n10) by an agent_'
     );
   });
 

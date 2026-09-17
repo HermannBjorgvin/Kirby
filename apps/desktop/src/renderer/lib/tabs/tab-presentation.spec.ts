@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PullRequestInfo } from '@kirby/vcs-core';
+import type { PullRequestInfo } from '@n10/vcs-core';
 import type { SidebarItem } from '../../../host/contract.js';
 import {
   repoDisplayName,
@@ -38,15 +38,15 @@ const terminal = (name: string, repo: string | null, cwd = '/x'): Tab => ({
 
 describe('repoDisplayName', () => {
   it('is the checkout directory name', () => {
-    expect(repoDisplayName('/home/dev/code/kirby')).toBe('kirby');
+    expect(repoDisplayName('/home/dev/code/n10')).toBe('n10');
   });
 
   it('ignores a trailing separator', () => {
-    expect(repoDisplayName('/home/dev/code/kirby/')).toBe('kirby');
+    expect(repoDisplayName('/home/dev/code/n10/')).toBe('n10');
   });
 
   it('handles a Windows path', () => {
-    expect(repoDisplayName('C:\\src\\kirby')).toBe('kirby');
+    expect(repoDisplayName('C:\\src\\n10')).toBe('n10');
   });
 
   it('falls back to the path when there is nothing to take', () => {
@@ -128,17 +128,17 @@ describe('tabRepo', () => {
 
 /**
  * A directory is read from its tail — the last segments are what tells
- * `~/Code/kirby` from `~/Code/other` — so a long one loses its head,
+ * `~/Code/n10` from `~/Code/other` — so a long one loses its head,
  * never its end.
  */
 describe('truncateLeading', () => {
   it('keeps a short path whole', () => {
-    expect(truncateLeading('~/Code/kirby', 24)).toBe('~/Code/kirby');
+    expect(truncateLeading('~/Code/n10', 24)).toBe('~/Code/n10');
   });
 
   it('drops leading segments and marks the cut', () => {
-    expect(truncateLeading('~/Documents/Code/Personal/kirby', 24)).toBe(
-      '…/Code/Personal/kirby'
+    expect(truncateLeading('~/Documents/Code/Personal/n10', 24)).toBe(
+      '…/Code/Personal/n10'
     );
   });
 
@@ -204,10 +204,10 @@ describe('tabPresentation', () => {
   it('shows a terminal as its directory, cut from the front', () => {
     expect(
       tabPresentation(
-        terminal('t', null, '~/Documents/Code/Personal/kirby'),
+        terminal('t', null, '~/Documents/Code/Personal/n10'),
         undefined
       )
-    ).toEqual({ label: '…/Code/Personal/kirby', face: 'terminal' });
+    ).toEqual({ label: '…/Code/Personal/n10', face: 'terminal' });
   });
 
   it('names the settings tab', () => {

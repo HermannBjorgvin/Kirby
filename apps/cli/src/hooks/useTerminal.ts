@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePtySession } from '@kirby/app-core';
+import { usePtySession } from '@n10/app-core';
 import { useRawStdinForward } from './useRawStdinForward.js';
 
 /**

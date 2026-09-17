@@ -1,11 +1,11 @@
 import { worktreeSessionKey } from '../session-key.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VcsProvider } from '@kirby/vcs-core';
+import type { VcsProvider } from '@n10/vcs-core';
 
 /**
  * The sweep that deletes people's branches.
  *
- * Auto-delete-on-merge is the only thing in Kirby that destroys work
+ * Auto-delete-on-merge is the only thing in n10 that destroys work
  * without being asked to each time, so every condition standing between
  * a merged pull request and `git branch -D` matters, and each one is a
  * separate way to lose something:
@@ -34,7 +34,7 @@ const env = vi.hoisted(() => ({
   checks: 0,
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (b: string) => b.replace(/\//g, '-'),
   canRemoveBranch: (branch: string) => {
     env.checks += 1;
@@ -53,7 +53,7 @@ vi.mock('@kirby/worktree-manager', () => ({
   fetchBranches: () => Promise.resolve(true),
 }));
 
-vi.mock('@kirby/logger', () => ({ logError: () => undefined }));
+vi.mock('@n10/logger', () => ({ logError: () => undefined }));
 
 vi.mock('../pty-registry.js', () => ({
   isSessionAlive: (name: string) => env.alive.has(name),

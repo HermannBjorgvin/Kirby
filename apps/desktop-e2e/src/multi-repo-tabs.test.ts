@@ -25,7 +25,7 @@ import { cleanupTestRepo, createTestRepo } from './setup/git-repo.js';
  * disk and a real (fake) agent running in the first.
  *
  * Switching goes through the palette and the repo picker rather than
- * `window.kirby.openRepo`: the bridge call switches the *host* only,
+ * `window.n10.openRepo`: the bridge call switches the *host* only,
  * and the renderer would never learn about it — which is precisely the
  * seam under test.
  */
@@ -46,7 +46,7 @@ async function switchRepo(page: Page, cwd: string): Promise<void> {
   await page.getByPlaceholder('/path/to/repository').fill(cwd);
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect
-    .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+    .poll(() => page.evaluate(() => window.n10.getRepo()), {
       timeout: 30_000,
     })
     .toMatchObject({ cwd });
@@ -73,7 +73,7 @@ test.describe('Tabs across repositories', () => {
     // An agent running in repo alpha, in its own tab.
     await createWorktree(page, BRANCH);
     await launchAgentFromRail(page);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
     await expect(tab(page, new RegExp(BRANCH))).toBeVisible();
@@ -85,19 +85,19 @@ test.describe('Tabs across repositories', () => {
     await expect(foreign).toBeVisible();
     await expect(foreign).toHaveAttribute('title', repoPath);
     // …but its content is not: beta is in view, and it has no tabs.
-    await expect(page.getByText('kirby-fake-agent-ready')).toBeHidden();
+    await expect(page.getByText('n10-fake-agent-ready')).toBeHidden();
 
     // Activating it brings alpha back — sidebar, status bar and all.
     await foreign.click();
     await expect
-      .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+      .poll(() => page.evaluate(() => window.n10.getRepo()), {
         timeout: 30_000,
       })
       .toMatchObject({ cwd: repoPath });
 
     // The agent kept running the whole time, and its scrollback is
     // replayed from the host's buffer into the remounted terminal.
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
     await expect(tab(page, new RegExp(`^\\s*${BRANCH}`))).toBeVisible();
@@ -135,7 +135,7 @@ test.describe('Tabs across repositories', () => {
 
     await createWorktree(page, BRANCH);
     await launchAgentFromRail(page);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
 
@@ -147,7 +147,7 @@ test.describe('Tabs across repositories', () => {
     // close cannot have killed it — the agent is still there when
     // alpha comes back.
     await switchRepo(page, repoPath);
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    const sessions = await page.evaluate(() => window.n10.listSessions());
     expect(
       sessions.find((s) => sessionBranch(s.name) === BRANCH)?.running
     ).toBe(true);
@@ -168,7 +168,7 @@ test.describe('Tabs across repositories', () => {
     await switchRepo(page, otherRepo);
     await createWorktree(page, SHARED);
     await launchAgentFromRail(page);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
 
@@ -187,12 +187,12 @@ test.describe('Tabs across repositories', () => {
     await expect(foreign).toHaveCount(0);
 
     // Beta's agent survived its neighbour's tab closing.
-    const sessions = await page.evaluate(() => window.kirby.listSessions());
+    const sessions = await page.evaluate(() => window.n10.listSessions());
     expect(
       sessions.find((s) => sessionBranch(s.name) === SHARED)?.running
     ).toBe(true);
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible();
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible();
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: otherRepo,
     });
     expect(repoPath).not.toBe(otherRepo);
@@ -226,7 +226,7 @@ test.describe('Tabs across repositories', () => {
     await expect(retry).toBeVisible();
     // The failed open left the workspace where it was, and did not
     // retry itself into a loop.
-    expect(await page.evaluate(() => window.kirby.getRepo())).toMatchObject({
+    expect(await page.evaluate(() => window.n10.getRepo())).toMatchObject({
       cwd: otherRepo,
     });
     // Alpha's tab is the active one, but it is alpha's — beta's
@@ -238,7 +238,7 @@ test.describe('Tabs across repositories', () => {
     renameSync(moved, repoPath);
     await retry.click();
     await expect
-      .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+      .poll(() => page.evaluate(() => window.n10.getRepo()), {
         timeout: 30_000,
       })
       .toMatchObject({ cwd: repoPath });

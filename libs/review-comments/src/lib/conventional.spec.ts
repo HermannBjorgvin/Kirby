@@ -259,8 +259,8 @@ describe('the agent attribution', () => {
     });
   });
 
-  it('does not mistake a mention of Kirby in the prose for a signature', () => {
-    const text = 'I posted this via Kirby, by hand.';
+  it('does not mistake a mention of n10 in the prose for a signature', () => {
+    const text = 'I posted this via n10, by hand.';
     expect(splitAgentFooter(text).footer).toBeNull();
   });
 });

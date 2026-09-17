@@ -17,7 +17,7 @@ import type { ReviewComment } from './types.js';
  * posted.
  *
  * Two processes share this file: the agent appends to it through
- * `kirby util add-comment` while the reader — the TUI's viewer or the
+ * `n10 util add-comment` while the reader — the TUI's viewer or the
  * desktop, which polls it — has it open and may be editing the same
  * comments. So the reads have to tolerate a file that is missing or
  * mid-write, and the writes must never leave a half-written file for a
@@ -46,9 +46,9 @@ function comment(id: string, body = `body ${id}`): ReviewComment {
 
 beforeEach(async () => {
   originalHome = process.env.HOME;
-  home = mkdtempSync(join(tmpdir(), 'kirby-comment-store-'));
+  home = mkdtempSync(join(tmpdir(), 'n10-comment-store-'));
   process.env.HOME = home;
-  // The module resolves ~/.kirby once at import time, so it has to be
+  // The module resolves ~/.n10 once at import time, so it has to be
   // re-imported after HOME changes.
   vi.resetModules();
   store = await import('./comment-store.js');

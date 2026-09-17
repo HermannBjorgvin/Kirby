@@ -101,7 +101,7 @@ export function updateFakeGh(
 export function installFakeGh(
   homeDir: string,
   scenario: FakeGitHub
-): { PATH: string; KIRBY_FAKE_GH: string; KIRBY_FAKE_GH_LATENCY_MS?: string } {
+): { PATH: string; N10_FAKE_GH: string; N10_FAKE_GH_LATENCY_MS?: string } {
   const binDir = join(homeDir, 'fake-bin');
   mkdirSync(binDir, { recursive: true });
   const gh = join(binDir, 'gh');
@@ -113,9 +113,9 @@ export function installFakeGh(
 
   return {
     PATH: `${binDir}:${process.env.PATH ?? ''}`,
-    KIRBY_FAKE_GH: scenarioPath,
+    N10_FAKE_GH: scenarioPath,
     ...(scenario.latencyMs
-      ? { KIRBY_FAKE_GH_LATENCY_MS: String(scenario.latencyMs) }
+      ? { N10_FAKE_GH_LATENCY_MS: String(scenario.latencyMs) }
       : {}),
   };
 }
@@ -131,9 +131,9 @@ export function fakeGhProjectConfig(
   return {
     vendor: 'github',
     vendorProject: {
-      owner: scenario.owner ?? 'kirby',
+      owner: scenario.owner ?? 'n10',
       repo: scenario.repo ?? 'fixture',
-      username: scenario.username ?? 'kirby-tester',
+      username: scenario.username ?? 'n10-tester',
     },
   };
 }

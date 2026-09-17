@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { composePlanPrompt, type PlanItem } from '@kirby/core/plan';
+import { composePlanPrompt, type PlanItem } from '@n10/core/plan';
 import {
   checkoutModel,
   planLocation,
@@ -94,7 +94,7 @@ describe('planRows', () => {
 /**
  * The cart's numbering and the prompt's numbering are produced by two
  * different modules — `planRows` here and `composePlanPrompt` in
- * @kirby/core. If they ever disagree, the user annotates "item 3" and
+ * @n10/core. If they ever disagree, the user annotates "item 3" and
  * the agent is told to fix a different comment, which nothing else
  * would catch. Tie them together explicitly.
  */

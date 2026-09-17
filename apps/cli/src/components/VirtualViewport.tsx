@@ -5,7 +5,7 @@ import {
   itemBounds,
   totalRows,
   viewportRowsForBudget,
-} from '@kirby/core';
+} from '@n10/core';
 
 /**
  * Row-granular viewport over variable-height items — the render half

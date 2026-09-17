@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react';
-import type { BranchPrMap } from '@kirby/vcs-core';
-import { computeConflictCounts } from '@kirby/core';
+import type { BranchPrMap } from '@n10/vcs-core';
+import { computeConflictCounts } from '@n10/core';
 
 /**
  * Batch conflict checking for all branches at once — TUI state shell

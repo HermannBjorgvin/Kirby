@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { PullRequestInfo, ReviewVerdict } from '@kirby/vcs-core';
+import type { PullRequestInfo, ReviewVerdict } from '@n10/vcs-core';
 import { usePrDescription } from '../../lib/data/queries.js';
 import { useSubmitVerdict } from '../../lib/data/mutations.js';
 import { useRepo } from '../../lib/repo-context.js';

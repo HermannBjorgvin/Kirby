@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { getItemKey, getPrFromItem, type SidebarItem } from '@kirby/core';
+import { getItemKey, getPrFromItem, type SidebarItem } from '@n10/core';
 import { sidebarHitTestRef } from '../../components/sidebar-hit-test.js';
 import {
   useScrollWheel,

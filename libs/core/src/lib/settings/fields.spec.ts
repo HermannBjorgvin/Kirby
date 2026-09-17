@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AppConfig } from '@kirby/vcs-core';
+import type { AppConfig } from '@n10/vcs-core';
 import { buildSettingsFields, resolveValue } from './fields.js';
 
 const EMPTY_CONFIG: AppConfig = { vendorAuth: {}, vendorProject: {} };

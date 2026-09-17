@@ -1,6 +1,6 @@
-import { worktreeSessionKey, keyForWorktree } from '@kirby/core';
-import { type WorktreeInfo } from '@kirby/worktree-manager';
-import type { SidebarItem } from '@kirby/core';
+import { worktreeSessionKey, keyForWorktree } from '@n10/core';
+import { type WorktreeInfo } from '@n10/worktree-manager';
+import type { SidebarItem } from '@n10/core';
 
 export interface EditorTargetDeps {
   listWorktrees: () => Promise<WorktreeInfo[]>;

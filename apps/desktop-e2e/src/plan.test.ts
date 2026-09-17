@@ -22,7 +22,7 @@ const UNBOUNDED = 'The undo stack is never bounded.';
 const NAMING = 'Rename this to something less generic.';
 
 const GITHUB: FakeGitHub = {
-  username: 'kirby-tester',
+  username: 'n10-tester',
   prs: [
     {
       number: 42,
@@ -216,7 +216,7 @@ test.describe('Adding comments to the plan', () => {
 
 test.describe('Sending the plan', () => {
   test.use({
-    kirbyConfig: { aiCommand: fakeAgent({ printSeed: true, echo: true }) },
+    n10Config: { aiCommand: fakeAgent({ printSeed: true, echo: true }) },
   });
 
   test('starts an agent with the composed plan as its prompt', async ({
@@ -286,7 +286,7 @@ test.describe('Sending the plan', () => {
     await page
       .getByRole('button', { name: 'Start new session', exact: true })
       .click();
-    await expect(visibleText(page, 'kirby-fake-agent-ready')).toBeVisible({
+    await expect(visibleText(page, 'n10-fake-agent-ready')).toBeVisible({
       timeout: 30_000,
     });
 

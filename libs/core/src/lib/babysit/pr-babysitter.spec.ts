@@ -5,7 +5,7 @@ import type {
   PullRequestComments,
   PullRequestInfo,
   VcsProvider,
-} from '@kirby/vcs-core';
+} from '@n10/vcs-core';
 import type { BabysitStatus } from './babysit-model.js';
 import type { PullRequestLookup } from '../pull-requests/pull-request-cache.js';
 
@@ -31,11 +31,11 @@ const mocks = vi.hoisted(() => ({
   launchSession: vi.fn(),
 }));
 
-vi.mock('@kirby/logger', () => ({ logError: () => undefined }));
+vi.mock('@n10/logger', () => ({ logError: () => undefined }));
 // No `createWorktree` here on purpose: the babysitter must never reach
 // the variant that invents a branch, and an import of it would fail
 // loudly rather than pass through a stub.
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (b: string) => b.replace(/\//g, '-'),
   countConflictsBetween: (base: string, head: string, cwd?: string) =>
     mocks.countConflictsBetween(base, head, cwd),
@@ -556,16 +556,16 @@ describe('startPrBabysitter', () => {
   it('takes its cadence from the environment when the caller sets none', async () => {
     expect(
       babysitTimingFromEnv({
-        KIRBY_BABYSIT_POLL_MS: '1000',
-        KIRBY_BABYSIT_DEBOUNCE_MS: '500',
+        N10_BABYSIT_POLL_MS: '1000',
+        N10_BABYSIT_DEBOUNCE_MS: '500',
       })
     ).toEqual({ intervalMs: 1000, timing: { debounceMs: 500 } });
-    expect(babysitTimingFromEnv({ KIRBY_BABYSIT_POLL_MS: 'soon' })).toEqual({
+    expect(babysitTimingFromEnv({ N10_BABYSIT_POLL_MS: 'soon' })).toEqual({
       intervalMs: undefined,
       timing: undefined,
     });
 
-    vi.stubEnv('KIRBY_BABYSIT_DEBOUNCE_MS', '500');
+    vi.stubEnv('N10_BABYSIT_DEBOUNCE_MS', '500');
     try {
       const sitter = start();
       await sitter.pollNow();

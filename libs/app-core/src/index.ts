@@ -1,10 +1,10 @@
-// @kirby/app-core — the React layer shared by Kirby's shells.
+// @n10/app-core — the React layer shared by n10's shells.
 //
 // Contexts, hooks and headless screen controllers. Everything here
-// needs React; anything that does not belongs in @kirby/core, which
+// needs React; anything that does not belongs in @n10/core, which
 // this package depends on and which never depends back.
 //
-// Consumers import backend primitives from @kirby/core directly — this
+// Consumers import backend primitives from @n10/core directly — this
 // barrel deliberately does not re-export them, so the layer a symbol
 // comes from is visible at every call site.
 

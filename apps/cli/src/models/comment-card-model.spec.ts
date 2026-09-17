@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { withAgentFooter, type ReviewComment } from '@kirby/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import { withAgentFooter, type ReviewComment } from '@n10/review-comments';
 import {
   AGENT_FOOTER_LINE,
   cardBorderColor,

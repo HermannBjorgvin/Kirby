@@ -11,7 +11,7 @@
 // future surface — share one source of truth.
 
 import wrapAnsi from 'wrap-ansi';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import { commentBodyParts } from './conventional.js';
 import {
   segmentCommentBody,

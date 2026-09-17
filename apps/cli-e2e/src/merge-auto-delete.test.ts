@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO, testBranchPrefix } from './setup/constants.js';
@@ -26,7 +26,7 @@ const prefix = testBranchPrefix();
 const branchName = `${prefix}/test-merge`;
 const worktreeDirName = branchName.replace(/\//g, '-');
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-integ-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-integ-clone-'));
 registerCleanup(cloneDir);
 const worktreePath = join(cloneDir, '.claude', 'worktrees', worktreeDirName);
 
@@ -40,11 +40,11 @@ if (hasGhToken) {
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', {
+  execSync('git config user.name "n10 E2E"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
@@ -62,7 +62,7 @@ if (hasGhToken) {
     .replace('refs/remotes/origin/', '');
   execSync(`git checkout "${defaultBranch}"`, { cwd: cloneDir, stdio: 'pipe' });
 
-  // Create worktree so Kirby sees it as an existing session on startup
+  // Create worktree so n10 sees it as an existing session on startup
   execSync(`git worktree add "${worktreePath}" "${branchName}"`, {
     cwd: cloneDir,
     stdio: 'pipe',
@@ -73,21 +73,21 @@ test.describe('@integration Merge Auto-Delete', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { autoDeleteOnMerge: true, keybindPreset: 'vim' },
+    n10RepoPath: cloneDir,
+    n10Config: { autoDeleteOnMerge: true, keybindPreset: 'vim' },
     rows: 80,
   });
 
-  test('detects merged PR and auto-deletes session', async ({ kirby }) => {
+  test('detects merged PR and auto-deletes session', async ({ n10 }) => {
     // 1. Push branch + create PR (GitHub ops, not in module scope)
     pushBranch(cloneDir, branchName);
     const prNumber = createPullRequest(TEST_REPO, branchName, cloneDir);
 
     try {
-      // 2. Kirby renders (fixture already waited) + session visible
-      await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+      // 2. n10 renders (fixture already waited) + session visible
+      await expect(n10.term.getByText('n10').first()).toBeVisible();
       await expect(
-        sidebarLocator(kirby.term.page, branchName).any()
+        sidebarLocator(n10.term.page, branchName).any()
       ).toBeVisible();
 
       // 3. Merge the PR now that we've confirmed the session is visible
@@ -99,9 +99,9 @@ test.describe('@integration Merge Auto-Delete', () => {
       //    (keyboard events with delay) to match the legacy
       //    terminal.write('g') semantics and avoid per-char overhead.
       const syncTimer = setInterval(() => {
-        void kirby.term.write('g');
+        void n10.term.write('g');
       }, 10_000);
-      await kirby.term.write('g');
+      await n10.term.write('g');
 
       try {
         // 5. Wait for actual deletion: a worktree row can change its label
@@ -115,7 +115,7 @@ test.describe('@integration Merge Auto-Delete', () => {
 
       // 6. The worktree row is gone; review PR rows may remain visible.
       await expect(
-        sidebarLocator(kirby.term.page, branchName).any()
+        sidebarLocator(n10.term.page, branchName).any()
       ).toBeHidden();
 
       // 7. Local branch was deleted

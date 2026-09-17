@@ -1,6 +1,6 @@
 import { worktreeSessionKey, terminalSessionKey } from './session-key.js';
 import { describe, expect, it } from 'vitest';
-import type { TmuxSessionInfo } from '@kirby/terminal-tmux';
+import type { TmuxSessionInfo } from '@n10/terminal-tmux';
 import {
   isTerminalSession,
   isWorktreeSessionFor,
@@ -26,7 +26,7 @@ describe('session labels', () => {
   // and four hex digits of the SHA-256 of the *unsanitized*
   // `<basename>-<branch>`.
   it.each([
-    ['/home/u/Kirby', 'worktree', 'feature/x', 'Kirby-feature-x'],
+    ['/home/u/n10', 'worktree', 'feature/x', 'n10-feature-x'],
     [
       '/srv/agent-plugins',
       'worktree',
@@ -34,8 +34,8 @@ describe('session labels', () => {
       'agent-plugins-fix-typo-v1-2-rc',
     ],
     ['/x/my.repo', 'worktree', 'main', 'my-repo-main'],
-    ['/home/u/Kirby', 'shell', '', 'Kirby-shell'],
-    ['/home/u/Kirby', 'agent', '', 'Kirby-agent'],
+    ['/home/u/n10', 'shell', '', 'n10-shell'],
+    ['/home/u/n10', 'agent', '', 'n10-agent'],
     ['/x/r', 'worktree', 'a'.repeat(250), `r-${'a'.repeat(193)}-0a22`],
     // Same first 195 characters, different tails: only a hash over the
     // raw `<basename>-<branch>` tells `a/` from `a.` past the cut.
@@ -85,7 +85,7 @@ function listed(
 }
 
 const OURS = {
-  '@orchestra-spawner': 'kirby',
+  '@orchestra-spawner': 'n10',
   '@orchestra-repo': '/repos/alpha',
   '@orchestra-session-type': 'worktree',
   '@orchestra-branch': 'feat/a',
@@ -98,19 +98,19 @@ describe('taggedSession', () => {
       created: 10,
       paneDead: false,
       path: '/p',
-      spawner: 'kirby',
+      spawner: 'n10',
       repo: '/repos/alpha',
       type: 'worktree',
       branch: 'feat/a',
     });
   });
 
-  // A session whose name is exactly what Kirby would have chosen, but
+  // A session whose name is exactly what n10 would have chosen, but
   // that carries no tags, is foreign. Half the tags are not enough.
   it.each([
     ['no tags', undefined],
     ['empty tags', {}],
-    ['spawner only', { '@orchestra-spawner': 'kirby' }],
+    ['spawner only', { '@orchestra-spawner': 'n10' }],
     [
       'worktree without repo',
       {
@@ -122,7 +122,7 @@ describe('taggedSession', () => {
     [
       'worktree with empty repo',
       {
-        '@orchestra-spawner': 'kirby',
+        '@orchestra-spawner': 'n10',
         '@orchestra-session-type': 'worktree',
         '@orchestra-repo': '',
         '@orchestra-branch': 'feat/a',
@@ -131,18 +131,18 @@ describe('taggedSession', () => {
     ['session type only', { '@orchestra-session-type': 'worktree' }],
     [
       'an unknown session type',
-      { '@orchestra-spawner': 'kirby', '@orchestra-session-type': 'player' },
+      { '@orchestra-spawner': 'n10', '@orchestra-session-type': 'player' },
     ],
     [
       'repo and branch but no type',
       {
-        '@orchestra-spawner': 'kirby',
+        '@orchestra-spawner': 'n10',
         '@orchestra-repo': '/repos/alpha',
         '@orchestra-branch': 'feat/a',
       },
     ],
   ])('treats a session with %s as foreign', (_label, options) => {
-    expect(taggedSession(listed('kirby-feat-a', options))).toBeNull();
+    expect(taggedSession(listed('n10-feat-a', options))).toBeNull();
   });
 
   it('carries the Orchestra tags along when set, and leaves them out when not', () => {
@@ -151,14 +151,14 @@ describe('taggedSession', () => {
         ...OURS,
         '@orchestra-spawner': 'orchestra',
         '@orchestra-agent': 'codex',
-        '@orchestra-orchestrator': 'tmux:kirby-main',
+        '@orchestra-orchestrator': 'tmux:n10-main',
         '@orchestra-last-report': 'DONE 2026-09-14T10:22:03Z',
       })
     );
     expect(session).toMatchObject({
       spawner: 'orchestra',
       agent: 'codex',
-      orchestrator: 'tmux:kirby-main',
+      orchestrator: 'tmux:n10-main',
       lastReport: 'DONE 2026-09-14T10:22:03Z',
     });
     expect(taggedSession(listed('x', OURS))).not.toHaveProperty('agent');
@@ -169,7 +169,7 @@ describe('matching', () => {
   const worktree = taggedSession(listed('n', OURS))!;
   const shell = taggedSession(
     listed('alpha-shell', {
-      '@orchestra-spawner': 'kirby',
+      '@orchestra-spawner': 'n10',
       '@orchestra-repo': '/repos/alpha',
       '@orchestra-session-type': 'shell',
     })
@@ -208,7 +208,7 @@ describe('sessionTags', () => {
       sessionTags('/repos/alpha', { type: 'worktree', branch: 'feat/a' })
     ).toEqual(OURS);
     expect(sessionTags('/repos/alpha', { type: 'agent' })).toEqual({
-      '@orchestra-spawner': 'kirby',
+      '@orchestra-spawner': 'n10',
       '@orchestra-repo': '/repos/alpha',
       '@orchestra-session-type': 'agent',
     });
@@ -217,7 +217,7 @@ describe('sessionTags', () => {
   it('round-trips through taggedSession', () => {
     const tags = sessionTags('/repos/alpha', { type: 'shell' });
     expect(taggedSession(listed('alpha-shell', tags))).toMatchObject({
-      spawner: 'kirby',
+      spawner: 'n10',
       repo: '/repos/alpha',
       type: 'shell',
     });

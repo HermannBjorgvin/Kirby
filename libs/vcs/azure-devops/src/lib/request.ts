@@ -12,8 +12,8 @@ import {
   throttledError,
   ThrottleGate,
   type RequestCounters,
-} from '@kirby/vcs-core';
-import { log } from '@kirby/logger';
+} from '@n10/vcs-core';
+import { log } from '@n10/logger';
 import { tracedFetch } from './client.js';
 import { clearPrDetails } from './pr-details.js';
 
@@ -90,7 +90,7 @@ function isHtml(res: Response): boolean {
  * Issue one request, honouring the gate and updating it from the
  * response headers. Never parses anything.
  *
- * A refusal does not sleep and retry here. Kirby is a polling client:
+ * A refusal does not sleep and retry here. n10 is a polling client:
  * the retry is the next poll, which the gate holds off until the wait
  * has elapsed. Sleeping inside the call instead would keep a sync
  * cycle — and, in the TUI, the pass that draws the sidebar — parked on
@@ -239,7 +239,7 @@ export function _adoThrottleGateForTests(): ThrottleGate {
 /**
  * Wrap one logical operation and log what it cost in requests.
  *
- * `KIRBY_LOG` gates the output (the counters themselves are four
+ * `N10_LOG` gates the output (the counters themselves are four
  * integers and always run), which makes "how many calls is one sync
  * cycle?" a question with an answer instead of an estimate.
  */

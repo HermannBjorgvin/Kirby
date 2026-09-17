@@ -1,6 +1,6 @@
-import { readConfig } from '@kirby/vcs-core';
-import { updateConfigField, persistConfigField } from '@kirby/app-core';
-import { type SettingsField } from '@kirby/core';
+import { readConfig } from '@n10/vcs-core';
+import { updateConfigField, persistConfigField } from '@n10/app-core';
+import { type SettingsField } from '@n10/core';
 import { requireRepo } from './repo.js';
 
 /**

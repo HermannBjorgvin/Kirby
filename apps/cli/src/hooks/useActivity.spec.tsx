@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Text, Box } from 'ink';
 import { render } from 'ink-testing-library';
-import type { SessionBackend } from '@kirby/terminal';
+import type { SessionBackend } from '@n10/terminal';
 import {
   useActivityStatus,
   useSpinnerFrame,
   __resetForTests as resetHooks,
   __timerActiveForTests,
   __subscriberCountForTests,
-} from '@kirby/app-core';
+} from '@n10/app-core';
 import {
   attach,
   __resetActivityForTests as resetActivity,
   ACTIVITY_IDLE_MS,
-} from '@kirby/core';
+} from '@n10/core';
 import { RainbowSpinner } from '../components/RainbowSpinner.js';
 
 class MockPty {

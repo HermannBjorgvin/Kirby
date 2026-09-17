@@ -1,21 +1,21 @@
-import { keyForWorktree } from '@kirby/core';
+import { keyForWorktree } from '@n10/core';
 import { useState, useEffect, useCallback, useEffectEvent } from 'react';
 import {
   listAllBranches,
   listWorktrees,
   setWorktreeResolver,
   createTemplateResolver,
-} from '@kirby/worktree-manager';
-import type { AgentSession, DiscoveredWorktree } from '@kirby/core';
-import { readConfig, autoDetectProjectConfig } from '@kirby/vcs-core';
-import type { VcsProvider } from '@kirby/vcs-core';
+} from '@n10/worktree-manager';
+import type { AgentSession, DiscoveredWorktree } from '@n10/core';
+import { readConfig, autoDetectProjectConfig } from '@n10/vcs-core';
+import type { VcsProvider } from '@n10/vcs-core';
 import {
   removeWorktreeSession,
   isSessionAlive,
   launchSession,
   onSessionExit,
   startSessionDiscovery,
-} from '@kirby/core';
+} from '@n10/core';
 import { useLayout } from '../context/LayoutContext.js';
 
 export function useSessionManager(
@@ -56,7 +56,7 @@ export function useSessionManager(
   );
 
   // Attach to an agent session that was started outside this process —
-  // another Kirby, an Orchestra spawn, someone tagging a `tmux
+  // another n10, an Orchestra spawn, someone tagging a `tmux
   // new-session` by hand. This is the ordinary launch path: on the tmux
   // backend the factory resolves the running session by its tags and
   // attaches to it rather than starting a second one, and discovery

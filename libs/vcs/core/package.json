@@ -1,5 +1,5 @@
 {
-  "name": "@kirby/vcs-core",
+  "name": "@n10/vcs-core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "./package.json": "./package.json"
   },
   "nx": {
-    "name": "@kirby/vcs-core",
+    "name": "@n10/vcs-core",
     "tags": [
       "type:lib",
       "scope:vcs"

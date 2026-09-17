@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PullRequestInfo, CategorizedReviews } from '@kirby/vcs-core';
+import type { PullRequestInfo, CategorizedReviews } from '@n10/vcs-core';
 import type { AgentSession } from '../types.js';
 import { buildSidebarItems } from './sidebar-items.js';
 

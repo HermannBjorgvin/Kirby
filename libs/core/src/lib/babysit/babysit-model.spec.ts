@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import {
   BABYSIT_DEBOUNCE_MS,
   BABYSIT_MAX_WAIT_MS,

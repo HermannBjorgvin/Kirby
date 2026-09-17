@@ -1,6 +1,6 @@
-import type { DiffLine } from '@kirby/diff';
+import type { DiffLine } from '@n10/diff';
 import type { ReviewComment } from './types.js';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
+import type { RemoteCommentThread } from '@n10/vcs-core';
 import type { InsertionMap } from './comment-placement.js';
 import {
   computeInsertionMap,
@@ -185,7 +185,7 @@ export function interleaveComments(
 } {
   // Drop posted local comments from the render pipeline: once a local
   // comment has been pushed to the remote, its `status` flips to
-  // 'posted' but the entry stays in .kirby-comments.json as an audit
+  // 'posted' but the entry stays in .n10-comments.json as an audit
   // trail. The same comment is also served back by fetchCommentThreads
   // as a RemoteCommentThread, so rendering both would duplicate the box.
   const drafts = comments.filter((c) => c.status !== 'posted');

@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { test, expect } from './fixtures/kirby.js';
+import { test, expect } from './fixtures/n10.js';
 import { registerCleanup } from './setup/git-repo.js';
 import { sidebarLocator } from './setup/sidebar.js';
 import { TEST_REPO } from './setup/constants.js';
@@ -16,7 +16,7 @@ import { TEST_REPO } from './setup/constants.js';
 
 const hasGhToken = !!process.env.GH_TOKEN;
 
-const cloneDir = mkdtempSync(join(tmpdir(), 'kirby-plan-clone-'));
+const cloneDir = mkdtempSync(join(tmpdir(), 'n10-plan-clone-'));
 registerCleanup(cloneDir);
 
 if (hasGhToken) {
@@ -26,11 +26,11 @@ if (hasGhToken) {
     `git remote set-url origin "https://x-access-token:${token}@github.com/${TEST_REPO}.git"`,
     { cwd: cloneDir, stdio: 'pipe' }
   );
-  execSync('git config user.email "e2e@kirby.dev"', {
+  execSync('git config user.email "e2e@n10.dev"', {
     cwd: cloneDir,
     stdio: 'pipe',
   });
-  execSync('git config user.name "Kirby E2E"', { cwd: cloneDir, stdio: 'pipe' });
+  execSync('git config user.name "n10 E2E"', { cwd: cloneDir, stdio: 'pipe' });
   execSync('git fetch origin fixture/add-undo-feature', {
     cwd: cloneDir,
     stdio: 'pipe',
@@ -41,14 +41,14 @@ test.describe('@integration Plan Checkout', () => {
   test.skip(!hasGhToken, 'Requires GH_TOKEN for real GitHub ops');
 
   test.use({
-    kirbyRepoPath: cloneDir,
-    kirbyConfig: { keybindPreset: 'vim' },
+    n10RepoPath: cloneDir,
+    n10Config: { keybindPreset: 'vim' },
     rows: 60,
     cols: 120,
   });
 
   async function pressUntilSelected(
-    kirby: { term: { press: (k: string) => Promise<void> } },
+    n10: { term: { press: (k: string) => Promise<void> } },
     selectedLocator: Locator,
     maxPresses: number
   ): Promise<boolean> {
@@ -58,100 +58,100 @@ test.describe('@integration Plan Checkout', () => {
         return true;
       } catch {
         if (i === maxPresses) return false;
-        await kirby.term.press('j');
+        await n10.term.press('j');
       }
     }
     return false;
   }
 
-  async function openPr38DiffAndSelectThread(kirby: {
+  async function openPr38DiffAndSelectThread(n10: {
     term: {
       page: Page;
       press: (k: string) => Promise<void>;
       getByText: Page['getByText'];
     };
   }) {
-    await expect(kirby.term.getByText('Kirby').first()).toBeVisible();
+    await expect(n10.term.getByText('n10').first()).toBeVisible();
     await expect(
-      kirby.term.getByText('Add undo feature with history stack').first()
+      n10.term.getByText('Add undo feature with history stack').first()
     ).toBeVisible({ timeout: 30_000 });
 
-    const pr38 = sidebarLocator(kirby.term.page, 'Add undo feature');
+    const pr38 = sidebarLocator(n10.term.page, 'Add undo feature');
     const landed = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       pr38.selected().first(),
       20
     );
     if (!landed) throw new Error('Could not select PR #38');
 
-    await kirby.term.press('d');
-    await kirby.term.page
+    await n10.term.press('d');
+    await n10.term.page
       .locator('.term-row', { hasText: /undo\.c/ })
       .first()
       .waitFor({ state: 'visible', timeout: 30_000 });
 
-    const undoSelected = kirby.term.page
+    const undoSelected = n10.term.page
       .locator('.term-row', { hasText: /›.*undo\.c/ })
       .first();
     const gotUndo = await pressUntilSelected(
-      { term: kirby.term },
+      { term: n10.term },
       undoSelected,
       10
     );
     if (!gotUndo) throw new Error('Could not select src/undo.c');
 
-    await kirby.term.press('Enter');
-    await expect(kirby.term.getByText(/Magic number/).first()).toBeVisible({
+    await n10.term.press('Enter');
+    await expect(n10.term.getByText(/Magic number/).first()).toBeVisible({
       timeout: 30_000,
     });
 
     // Select the first remote thread (vim: c = next-comment). The
     // [r]eply hint confirms the selection committed.
-    await kirby.term.press('c');
-    await expect(kirby.term.getByText(/\[r\]eply/).first()).toBeVisible({
+    await n10.term.press('c');
+    await expect(n10.term.getByText(/\[r\]eply/).first()).toBeVisible({
       timeout: 10_000,
     });
   }
 
   test('add a comment to the plan, annotate it, and open checkout', async ({
-    kirby,
+    n10,
   }) => {
-    await openPr38DiffAndSelectThread({ term: kirby.term });
+    await openPr38DiffAndSelectThread({ term: n10.term });
 
     // `a` adds the selected thread to the plan — the top-right indicator
     // shows "Plan (1)".
-    await kirby.term.press('a');
-    await expect(kirby.term.getByText(/Plan \(1\)/).first()).toBeVisible({
+    await n10.term.press('a');
+    await expect(n10.term.getByText(/Plan \(1\)/).first()).toBeVisible({
       timeout: 10_000,
     });
 
     // `o` (vim checkout) opens the interactive checklist pane.
-    await kirby.term.press('o');
-    await expect(
-      kirby.term.getByText(/Plan Checkout \(1\)/).first()
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(kirby.term.getByText(/undo\.c:/).first()).toBeVisible({
+    await n10.term.press('o');
+    await expect(n10.term.getByText(/Plan Checkout \(1\)/).first()).toBeVisible(
+      { timeout: 10_000 }
+    );
+    await expect(n10.term.getByText(/undo\.c:/).first()).toBeVisible({
       timeout: 5_000,
     });
 
     // Esc returns to the diff, plan intact.
-    await kirby.term.press('Escape');
-    await expect(kirby.term.getByText(/Plan \(1\)/).first()).toBeVisible({
+    await n10.term.press('Escape');
+    await expect(n10.term.getByText(/Plan \(1\)/).first()).toBeVisible({
       timeout: 5_000,
     });
   });
 
-  test('toggling a comment off removes it from the plan', async ({ kirby }) => {
-    await openPr38DiffAndSelectThread({ term: kirby.term });
+  test('toggling a comment off removes it from the plan', async ({ n10 }) => {
+    await openPr38DiffAndSelectThread({ term: n10.term });
 
-    await kirby.term.press('a');
-    await expect(kirby.term.getByText(/Plan \(1\)/).first()).toBeVisible({
+    await n10.term.press('a');
+    await expect(n10.term.getByText(/Plan \(1\)/).first()).toBeVisible({
       timeout: 10_000,
     });
 
     // Second `a` toggles it back off — the indicator disappears.
-    await kirby.term.press('a');
-    await expect(kirby.term.getByText(/Plan \(1\)/)).not.toBeVisible({
+    await n10.term.press('a');
+    await expect(n10.term.getByText(/Plan \(1\)/)).not.toBeVisible({
       timeout: 10_000,
     });
   });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import stripAnsi from 'strip-ansi';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import { estimateCardRows } from '@kirby/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import { estimateCardRows } from '@n10/review-comments';
 import { CommentThreadCard } from './CommentThread.js';
 import {
   CommentImagesContext,

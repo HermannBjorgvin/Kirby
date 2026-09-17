@@ -1,7 +1,7 @@
-import type * as CoreModule from '@kirby/core';
-import { worktreeSessionKey } from '@kirby/core';
+import type * as CoreModule from '@n10/core';
+import { worktreeSessionKey } from '@n10/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionDiscoveryOptions } from '@kirby/core';
+import type { SessionDiscoveryOptions } from '@n10/core';
 import type * as DiscoveryModule from './discovery.js';
 import type * as SessionsModule from './sessions.js';
 
@@ -10,7 +10,7 @@ import type * as SessionsModule from './sessions.js';
  *
  * What decides *whether* a session should be attached to — the backend,
  * whether tmux still has it, whether this process already holds a PTY
- * for it — belongs to `@kirby/core` and is tested in
+ * for it — belongs to `@n10/core` and is tested in
  * `libs/core/src/lib/discovery`. `startSessionDiscovery` is stubbed here
  * so these tests can drive the callbacks the desktop supplies and assert
  * only on what the desktop contributes: the launch path an attach goes
@@ -43,11 +43,11 @@ vi.mock('./recent-repos.js', () => ({
   ensureRecent: () => undefined,
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: (cwd: string) => state.configByCwd[cwd] ?? { fromCwd: cwd },
 }));
 
-vi.mock('@kirby/worktree-manager', () => ({
+vi.mock('@n10/worktree-manager', () => ({
   branchToSessionName: (branch: string) => branch.replace(/\//g, '-'),
   createWorktree: (branch: string) => {
     state.createWorktreeCalls.push(branch);
@@ -58,7 +58,7 @@ vi.mock('@kirby/worktree-manager', () => ({
   },
 }));
 
-vi.mock('@kirby/core', async (importOriginal) => {
+vi.mock('@n10/core', async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     worktreeSessionKey: actual.worktreeSessionKey,
@@ -231,17 +231,15 @@ describe('startDiscoveryForRepo', () => {
   it('attaches a surviving terminal through the terminals service', async () => {
     discovery.startDiscoveryForRepo('/repo-a');
     await opts().adoptTerminal?.({
-      name: 'kirby-shell',
+      name: 'n10-shell',
       kind: 'shell',
       path: '/home/dev/notes',
     });
     expect(state.spawns).toEqual([
-      { name: 'kirby-shell', cwd: '/home/dev/notes' },
+      { name: 'n10-shell', cwd: '/home/dev/notes' },
     ]);
     const terminals = await import('./terminals.js');
-    expect(terminals.listTerminals().map((t) => t.name)).toEqual([
-      'kirby-shell',
-    ]);
+    expect(terminals.listTerminals().map((t) => t.name)).toEqual(['n10-shell']);
   });
 
   // A scan that began before a repo switch must not finish against the

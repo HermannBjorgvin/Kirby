@@ -4,7 +4,7 @@ import {
   readComments,
   commentDirPath,
   type ReviewComment,
-} from '@kirby/review-comments';
+} from '@n10/review-comments';
 
 export function useReviewComments(prId: number | null): ReviewComment[] {
   // Revision counter bumped by file watcher to trigger re-reads

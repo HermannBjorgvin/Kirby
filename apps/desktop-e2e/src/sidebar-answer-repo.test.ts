@@ -31,7 +31,7 @@ async function switchRepo(page: Page, cwd: string): Promise<void> {
   await page.getByPlaceholder('/path/to/repository').fill(cwd);
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect
-    .poll(() => page.evaluate(() => window.kirby.getRepo()), {
+    .poll(() => page.evaluate(() => window.n10.getRepo()), {
       timeout: 30_000,
     })
     .toMatchObject({ cwd });
@@ -63,8 +63,8 @@ test.describe('A sidebar answer about another repository', () => {
     // renderer still shows alpha — the state a switch passes through.
     await page.evaluate(
       async ({ cwd, branch }) => {
-        await window.kirby.openRepo(cwd);
-        await window.kirby.launchAgent({
+        await window.n10.openRepo(cwd);
+        await window.n10.launchAgent({
           branch,
           intent: 'continue-or-blank',
         });

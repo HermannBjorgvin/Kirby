@@ -1,4 +1,4 @@
-// @kirby/core — the shell-agnostic half of Kirby.
+// @n10/core — the shell-agnostic half of n10.
 //
 // Everything here is plain TypeScript: git, worktrees, PTYs, config,
 // providers, keybinding data and pure helpers. Nothing in this library
@@ -6,7 +6,7 @@
 //
 // The shells (the Ink TUI and the Electron desktop) render over this.
 // React-flavoured wrappers — contexts, hooks, controllers — live in
-// @kirby/app-core, which depends on this package and never the reverse.
+// @n10/app-core, which depends on this package and never the reverse.
 
 // ── Input primitives ─────────────────────────────────────────────
 export type { KeyPress } from './lib/input/key-press.js';

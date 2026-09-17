@@ -32,7 +32,7 @@ import {
  * reported a beautifully fast diff viewer it had never looked at.
  */
 
-const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 5);
+const ITERATIONS = Number(process.env.N10_PERF_ITERATIONS ?? 5);
 const SCROLL_STEPS = 60;
 
 const CODE_ROW = '[data-diff-scroll] [data-row-kind="unified"]';

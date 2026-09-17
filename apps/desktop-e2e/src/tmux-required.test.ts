@@ -3,8 +3,8 @@ import { test, expect } from './fixtures/desktop.js';
 import { createWorktree, launchAgentFromRail, tab } from './setup/app.js';
 import { clickAppMenuItem } from './setup/menu.js';
 import {
-  findKirbySessionFor,
-  kirbySessionExists,
+  findN10SessionFor,
+  n10SessionExists,
   socketEnv,
   tmuxClientPids,
 } from './setup/tmux.js';
@@ -13,7 +13,7 @@ for (const legacyBackend of [undefined, 'pty']) {
   test.describe(`Required tmux (stored backend: ${
     legacyBackend ?? 'absent'
   })`, () => {
-    test.use({ kirbyConfig: { terminalBackend: legacyBackend } });
+    test.use({ n10Config: { terminalBackend: legacyBackend } });
 
     test('launches an agent in tmux without a backend selector', async ({
       desktop,
@@ -21,12 +21,10 @@ for (const legacyBackend of [undefined, 'pty']) {
       const { page, homeDir, app } = desktop;
       await createWorktree(page, 'tmux-required');
       await launchAgentFromRail(page);
-      await expect(
-        page.getByText('kirby-fake-agent-ready').first()
-      ).toBeVisible({
+      await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible({
         timeout: 30_000,
       });
-      expect(kirbySessionExists('tmux-required', homeDir)).toBe(true);
+      expect(n10SessionExists('tmux-required', homeDir)).toBe(true);
 
       await clickAppMenuItem(app, 'Settings…');
       await expect(tab(page, /Settings/)).toBeVisible();
@@ -43,15 +41,15 @@ test('quitting detaches the app and leaves its agent session running', async ({
   const { page, app, homeDir } = desktop;
   await createWorktree(page, 'survives-quit');
   await launchAgentFromRail(page);
-  await expect(page.getByText('kirby-fake-agent-ready').first()).toBeVisible();
-  const session = findKirbySessionFor('survives-quit', homeDir);
+  await expect(page.getByText('n10-fake-agent-ready').first()).toBeVisible();
+  const session = findN10SessionFor('survives-quit', homeDir);
   expect(session).toBeDefined();
 
   // Close before fixture cleanup: a tmux server inheriting Electron's
   // descriptors would keep Playwright waiting here until the agent dies.
   await app.close();
 
-  expect(findKirbySessionFor('survives-quit', homeDir)).toBe(session);
+  expect(findN10SessionFor('survives-quit', homeDir)).toBe(session);
   await expect.poll(() => tmuxClientPids(session!, homeDir)).toEqual([]);
   expect(
     execFileSync(

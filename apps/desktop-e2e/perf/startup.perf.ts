@@ -26,7 +26,7 @@ import {
  *   scriptKb     — JavaScript the renderer actually downloaded to boot
  */
 
-const ITERATIONS = Number(process.env.KIRBY_PERF_ITERATIONS ?? 7);
+const ITERATIONS = Number(process.env.N10_PERF_ITERATIONS ?? 7);
 
 test('startup', async () => {
   test.setTimeout(60_000 * ITERATIONS);

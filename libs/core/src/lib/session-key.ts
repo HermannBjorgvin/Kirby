@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { WorktreeInfo } from '@kirby/worktree-manager';
+import type { WorktreeInfo } from '@n10/worktree-manager';
 import { getRepoRoot } from './repo-root.js';
 
 export type SessionIdentity =

@@ -54,7 +54,7 @@ function notify(): void {
  * `run` is called for its side effects and no caller awaits it, so a
  * rejection had nowhere to go: Node treats an unhandled rejection as
  * fatal, which turned a git call failing — no upstream, a locked index,
- * an unreachable remote — into Kirby exiting. Failures come here
+ * an unreachable remote — into n10 exiting. Failures come here
  * instead and the shell decides how to show them.
  */
 export type OperationErrorHandler = (

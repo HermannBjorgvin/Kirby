@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { isVcsError, type VcsError } from '@kirby/vcs-core';
+import { isVcsError, type VcsError } from '@n10/vcs-core';
 import {
   _adoThrottleGateForTests,
   adoGet,

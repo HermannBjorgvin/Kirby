@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsEffect, SettingsField } from '@kirby/core';
+import type { SettingsEffect, SettingsField } from '@n10/core';
 import { SECRET_PLACEHOLDER } from '../contract.js';
 
 /**
@@ -59,15 +59,15 @@ vi.mock('./remote-sync.js', () => ({
   },
 }));
 
-vi.mock('@kirby/vcs-core', () => ({
+vi.mock('@n10/vcs-core', () => ({
   readConfig: () => state.config,
 }));
 
-vi.mock('@kirby/core', () => ({
+vi.mock('@n10/core', () => ({
   buildSettingsFields: () => state.fields,
   resolveValue: (_config: unknown, field: SettingsField) =>
     state.resolved[field.key] ?? '',
-  // Which effects a field has is decided in @kirby/core and asserted
+  // Which effects a field has is decided in @n10/core and asserted
   // there (settings/effects.spec.ts). What matters here is that the
   // host asks, and then does what it is told.
   settingsEffects: (field: SettingsField) => {
@@ -77,8 +77,8 @@ vi.mock('@kirby/core', () => ({
 }));
 
 // updateConfigField/persistConfigField are pure, but they live in
-// ConfigContext.tsx and so ship from @kirby/app-core.
-vi.mock('@kirby/app-core', () => ({
+// ConfigContext.tsx and so ship from @n10/app-core.
+vi.mock('@n10/app-core', () => ({
   updateConfigField: (
     config: Record<string, unknown>,
     field: SettingsField,
@@ -172,7 +172,7 @@ describe('updateSettingsFromView', () => {
    * A replacement access token used to change nothing the user could
    * see: the sidebar kept the failure the old one caused, and the next
    * real attempt was a poll interval — up to an hour — away. The host
-   * asks @kirby/core what a write implies and then carries it out; the
+   * asks @n10/core what a write implies and then carries it out; the
    * shared table is what stops the TUI and the desktop drifting.
    */
   describe('effects of a write', () => {

@@ -2,7 +2,7 @@ import { ClockIcon, FolderOpenIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { RepoInfo } from '../../host/contract.js';
-import { KirbyMark } from '../components/KirbyMark.js';
+import { N10Mark } from '../components/N10Mark.js';
 import { TitleBar } from '../components/TitleBar.js';
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
@@ -20,7 +20,7 @@ export function RepoOpen({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
     if (!cwd) return;
     setBusy(true);
     try {
-      onOpened(await window.kirby.openRepo(cwd));
+      onOpened(await window.n10.openRepo(cwd));
     } catch (err: unknown) {
       toast.error(errorMessage(err));
       void recents.refetch();
@@ -31,7 +31,7 @@ export function RepoOpen({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
 
   const pickFolder = async () => {
     try {
-      const dir = await window.kirby.selectRepoDirectory();
+      const dir = await window.n10.selectRepoDirectory();
       if (dir) void open(dir);
     } catch (err: unknown) {
       toast.error(errorMessage(err));
@@ -47,9 +47,9 @@ export function RepoOpen({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
         <div className="grid w-full max-w-3xl grid-cols-[1fr_1.1fr] gap-10">
           <section className="flex flex-col justify-center">
             <div className="flex items-center gap-3">
-              <KirbyMark className="size-10" />
+              <N10Mark className="size-10" />
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">Kirby</h1>
+                <h1 className="text-2xl font-semibold tracking-tight">n10</h1>
                 <p className="text-sm text-muted-foreground">
                   Worktrees, agents and reviews for one repository.
                 </p>
@@ -139,7 +139,7 @@ export function RepoOpen({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
                     aria-label="Remove from recent"
                     className="opacity-0 group-hover:opacity-100"
                     onClick={() =>
-                      void window.kirby
+                      void window.n10
                         .forgetRecent(r.cwd)
                         .then(() => recents.refetch())
                     }

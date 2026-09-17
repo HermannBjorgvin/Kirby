@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { CommentImageLayouts } from '@kirby/review-comments';
+import type { CommentImageLayouts } from '@n10/review-comments';
 
 // Per-url state of comment images. `ready` images have been
 // transmitted to the terminal (kitty graphics, virtual placement) and

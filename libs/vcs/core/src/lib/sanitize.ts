@@ -1,8 +1,8 @@
 // Strip ANSI escape sequences from text that originates from an
 // untrusted remote source (PR/issue/thread bodies). A reviewer's
-// comment containing `\x1b[2J\x1b[H` would otherwise clear Kirby's
+// comment containing `\x1b[2J\x1b[H` would otherwise clear n10's
 // terminal when the body is rendered to <Text>; `\x1b[8m` hides
-// content; cursor-position writes can fake a Kirby UI line.
+// content; cursor-position writes can fake a n10 UI line.
 //
 // Pattern source: ansi-regex (chalk org). Covers CSI (`\x1b[…m`),
 // OSC (`\x1b]…BEL`), and SS3/SCS variants. Simpler than ansi-regex

@@ -7,7 +7,7 @@
  * resolved the process's directory at the moment it ran would fetch,
  * and judge conflicts, in whichever checkout happened to be open.
  */
-import type { AppConfig, PullRequestInfo, VcsProvider } from '@kirby/vcs-core';
+import type { AppConfig, PullRequestInfo, VcsProvider } from '@n10/vcs-core';
 import { countPullRequestConflicts } from '../sync/conflicts.js';
 import { fetchRefs } from '../sync/fetch-queue.js';
 import {

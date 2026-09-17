@@ -143,7 +143,7 @@ async function runTabMenu(
   tabs: ReturnType<typeof useTabs>,
   closer: Closer
 ): Promise<void> {
-  const chosen = await window.kirby.showContextMenu(
+  const chosen = await window.n10.showContextMenu(
     tabMenuItems(tab, tabs.tabs.length)
   );
   if (chosen === 'close') closer.close(tab.id);
@@ -188,17 +188,17 @@ export function TabButton({
       aria-selected={active}
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData('text/kirby-tab', tab.id);
+        e.dataTransfer.setData('text/n10-tab', tab.id);
         e.dataTransfer.effectAllowed = 'move';
       }}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('text/kirby-tab')) {
+        if (e.dataTransfer.types.includes('text/n10-tab')) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
         }
       }}
       onDrop={(e) => {
-        const dragged = e.dataTransfer.getData('text/kirby-tab');
+        const dragged = e.dataTransfer.getData('text/n10-tab');
         if (!dragged || dragged === tab.id) return;
         e.preventDefault();
         const rect = e.currentTarget.getBoundingClientRect();

@@ -4,7 +4,7 @@ const state = vi.hoisted(() => ({ agent: 'claude', dead: true, exists: true }));
 vi.mock('../session-resolver.js', () => ({
   resolveWorktreeSession: () => ({ name: 'player' }),
 }));
-vi.mock('@kirby/terminal-tmux', () => ({
+vi.mock('@n10/terminal-tmux', () => ({
   tmuxSessionSnapshot: () =>
     state.exists
       ? {

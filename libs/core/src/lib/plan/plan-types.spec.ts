@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { RemoteCommentThread } from '@kirby/vcs-core';
-import type { ReviewComment } from '@kirby/review-comments';
+import type { RemoteCommentThread } from '@n10/vcs-core';
+import type { ReviewComment } from '@n10/review-comments';
 import { planItemKey, snapshotLocal, snapshotRemote } from './plan-types.js';
 
 function thread(over: Partial<RemoteCommentThread> = {}): RemoteCommentThread {
