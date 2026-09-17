@@ -143,6 +143,13 @@ export function computeInsertionMap(
   const outOfDiff: ReviewComment[] = [];
 
   for (const comment of comments) {
+    // A whole-file draft has no line to sit on; it is listed with the
+    // file's out-of-diff comments. (A whole-PR draft never reaches a
+    // file's map.)
+    if (comment.lineStart == null || comment.lineEnd == null) {
+      outOfDiff.push(comment);
+      continue;
+    }
     const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
     const insertAfter = placeAfter(
       lineMap,

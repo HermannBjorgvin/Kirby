@@ -130,6 +130,40 @@ describe('buildFlatDiff', () => {
     expect(flat.fileIndex.get('a.ts')).toBe(1);
   });
 
+  /** A whole-PR draft is a reason for the conversation row to exist
+   *  and is reached through it, like a general thread. */
+  it('maps whole-PR draft ids to the conversation row', () => {
+    const pr = {
+      ...draft('pr', 1),
+      file: null,
+      lineStart: null,
+      lineEnd: null,
+    } as ReviewComment;
+    const flat = buildFlatDiff(
+      [['a.ts', smallFile]],
+      options({ hasConversation: true, generalDrafts: [pr] })
+    );
+    expect(flat.rows[0]).toMatchObject({ kind: 'conversation' });
+    expect(flat.indexById.get('pr')).toBe(0);
+  });
+
+  /** A whole-file draft has no line in the diff, so it is listed in the
+   *  file's orphan tail rather than dropped. */
+  it('lists a whole-file draft with the file’s out-of-diff comments', () => {
+    const whole = {
+      ...draft('whole', 1),
+      lineStart: null,
+      lineEnd: null,
+    } as ReviewComment;
+    const flat = buildFlatDiff(
+      [['a.ts', smallFile]],
+      options({ draftsByFile: new Map([['a.ts', [whole]]]) })
+    );
+    const orphans = flat.rows.find((r) => r.kind === 'orphans');
+    expect(orphans).toMatchObject({ drafts: [{ id: 'whole' }] });
+    expect(flat.indexById.get('whole')).toBe(flat.rows.indexOf(orphans!));
+  });
+
   it('builds split pairs in split view', () => {
     const lines: DiffLine[] = [
       ctx(1, 1),

@@ -53,7 +53,9 @@ function buildHighlightSet(
   if (!selectedCommentId) return highlighted;
 
   const comment = comments.find((c) => c.id === selectedCommentId);
-  if (!comment) return highlighted;
+  if (!comment || comment.lineStart == null || comment.lineEnd == null) {
+    return highlighted;
+  }
 
   for (let i = 0; i < diffLines.length; i++) {
     const dl = diffLines[i];
@@ -138,7 +140,10 @@ function appendOutOfDiffLocals(
 
   builder.beginSection('comments on lines not in diff');
   for (const comment of comments) {
-    builder.label(lineLabel(comment.lineStart, comment.lineEnd));
+    // A whole-file draft has no line to name.
+    if (comment.lineStart != null && comment.lineEnd != null) {
+      builder.label(lineLabel(comment.lineStart, comment.lineEnd));
+    }
     builder.localThread(comment);
   }
 }
@@ -275,6 +280,7 @@ export function getCommentPositions(
 
   const commentLineStartDiffIdx = new Map<string, number>();
   for (const comment of comments) {
+    if (comment.lineStart == null) continue;
     const lineMap = comment.side === 'LEFT' ? oldLineToIndex : newLineToIndex;
     const idx = lineMap.get(comment.lineStart);
     if (idx !== undefined) {

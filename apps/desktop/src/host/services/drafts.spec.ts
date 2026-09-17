@@ -135,14 +135,27 @@ describe('postDraftComments', () => {
     expect(state.posts.map((p) => p.ids)).toEqual([['a'], ['b'], ['c']]);
   });
 
-  it('sends a verdict with the first post only', async () => {
+  /** Riding the verdict on a comment post would let one draft make two
+   *  writes on GitHub (its own comment, plus a bare verdict review),
+   *  breaking the "one write per call" bound the loop above relies on.
+   *  The verdict rides its own, empty-batch call instead, once every
+   *  draft is live. */
+  it('files the verdict once, after every draft has posted', async () => {
     await postDraftComments({ prId: 1, headSha: 'sha', event: 'APPROVE' });
-    // Repeating the event per comment would file three approvals.
-    expect(state.posts.map((p) => p.event)).toEqual([
-      'APPROVE',
-      'COMMENT',
-      'COMMENT',
+    expect(state.posts).toEqual([
+      { ids: ['a'], event: 'COMMENT' },
+      { ids: ['b'], event: 'COMMENT' },
+      { ids: ['c'], event: 'COMMENT' },
+      { ids: [], event: 'APPROVE' },
     ]);
+  });
+
+  it('does not file a verdict when a draft fails to post', async () => {
+    state.failOn = 'b';
+    await expect(
+      postDraftComments({ prId: 1, headSha: 'sha', event: 'APPROVE' })
+    ).rejects.toThrow('provider said no');
+    expect(state.posts.map((p) => p.event)).toEqual(['COMMENT', 'COMMENT']);
   });
 
   it('defaults to a plain comment event', async () => {

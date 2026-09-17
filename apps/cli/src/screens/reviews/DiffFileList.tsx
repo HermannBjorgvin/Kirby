@@ -101,6 +101,7 @@ export const DiffFileList = memo(function DiffFileList({
     const counts = new Map<string, number>();
     if (!comments) return counts;
     for (const c of comments) {
+      if (c.file == null) continue;
       counts.set(c.file, (counts.get(c.file) ?? 0) + 1);
     }
     return counts;

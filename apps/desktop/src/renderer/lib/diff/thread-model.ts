@@ -112,3 +112,18 @@ export function totalCommentCount(
     0
   );
 }
+
+/**
+ * Whether the conversation panel shows its loading skeleton in place of
+ * content. A draft is written locally by `n10 util add-comment` and
+ * needs no round trip to the provider, so once one exists there is
+ * real content to show even while the provider's own threads are still
+ * loading.
+ */
+export function conversationLoading(
+  loading: boolean,
+  threadCount: number,
+  draftCount: number
+): boolean {
+  return loading && threadCount === 0 && draftCount === 0;
+}

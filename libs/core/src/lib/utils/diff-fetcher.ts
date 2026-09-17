@@ -24,11 +24,14 @@ import { gitLine, runGit } from './git-run.js';
  */
 const MAX_DIFF_BYTES = 64 * 1024 * 1024;
 
-export async function resolveRef(branch: string): Promise<string> {
+export async function resolveRef(
+  branch: string,
+  cwd?: string
+): Promise<string> {
   // Prefer remote tracking ref, fall back to local branch
   for (const candidate of [`origin/${branch}`, branch]) {
     try {
-      await gitLine(['rev-parse', '--verify', candidate]);
+      await gitLine(['rev-parse', '--verify', candidate], { cwd });
       return candidate;
     } catch {
       // try next

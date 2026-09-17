@@ -158,6 +158,9 @@ export interface FlatDiffOptions {
   hideResolved: boolean;
   hasConversation: boolean;
   generalThreads: readonly RemoteCommentThread[];
+  /** Drafts about the pull request itself; they live in the
+   *  conversation row with the general threads. */
+  generalDrafts?: readonly ReviewComment[];
   threadsByFile: ReadonlyMap<string, RemoteCommentThread[]>;
   draftsByFile: ReadonlyMap<string, ReviewComment[]>;
   fileState: ReadonlyMap<string, FileDisplayState>;
@@ -220,6 +223,7 @@ export function buildFlatDiff(
   if (opts.hasConversation) {
     rows.push({ key: 'conversation', kind: 'conversation' });
     for (const t of opts.generalThreads) indexById.set(t.id, 0);
+    for (const d of opts.generalDrafts ?? []) indexById.set(d.id, 0);
   }
 
   for (const [file, lines] of files) {

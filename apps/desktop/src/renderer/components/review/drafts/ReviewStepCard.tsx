@@ -4,6 +4,7 @@ import {
   ChevronRightIcon,
   FileIcon,
   Loader2Icon,
+  MessagesSquareIcon,
   PencilIcon,
   SendIcon,
   SkipForwardIcon,
@@ -16,6 +17,7 @@ import type {
   CommentSeverity,
   ReviewComment,
 } from '../../../../host/contract.js';
+import { describeAnchor } from '@n10/review-comments/conventional';
 import { useThreads } from '../../../lib/data/queries.js';
 import { totalCommentCount } from '../../../lib/diff/thread-model.js';
 import { useRepo } from '../../../lib/repo-context.js';
@@ -72,7 +74,8 @@ export function StepCard({
   onPrev: () => void;
   onNext: () => void;
   onExit: () => void;
-  onOpenInDiff: () => void;
+  /** Absent for a draft about the pull request itself. */
+  onOpenInDiff?: () => void;
   onPost: () => void;
   onDiscard: () => void;
   onSave: (body: string, severity: CommentSeverity) => void;
@@ -169,23 +172,29 @@ export function StepCard({
 
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto max-w-3xl space-y-3 p-4">
-          {/* Location */}
-          <button
-            type="button"
-            onClick={onOpenInDiff}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            title="Open this file in the diff"
-          >
-            <FileIcon className="size-3.5" />
-            <span className="font-mono">
-              {draft.file}:{draft.lineStart}
-              {draft.lineEnd !== draft.lineStart ? `-${draft.lineEnd}` : ''}
-            </span>
-            <ArrowRightIcon className="size-3" />
-          </button>
+          {/* Location: a file to open, or the conversation itself. */}
+          {onOpenInDiff && draft.file != null ? (
+            <button
+              type="button"
+              onClick={onOpenInDiff}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              title="Open this file in the diff"
+            >
+              <FileIcon className="size-3.5" />
+              <span className="font-mono">{describeAnchor(draft)}</span>
+              <ArrowRightIcon className="size-3" />
+            </button>
+          ) : (
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MessagesSquareIcon className="size-3.5" />
+              <span>{describeAnchor(draft)}</span>
+            </p>
+          )}
 
-          {/* Snippet */}
-          <SnippetView filename={draft.file} rows={snippet} />
+          {/* Snippet — only a line anchor has code to show. */}
+          {draft.file != null && snippet.length > 0 && (
+            <SnippetView filename={draft.file} rows={snippet} />
+          )}
 
           {/* Draft */}
           <div className="rounded-lg border border-dashed border-border bg-card">

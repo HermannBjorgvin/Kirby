@@ -95,6 +95,7 @@ export * from './lib/utils/diff-scroll.js';
 export * from './lib/utils/pr-utils.js';
 export * from './lib/utils/diff-fetcher.js';
 export * from './lib/utils/worktree-diff.js';
+export * from './lib/utils/comment-anchor-check.js';
 export * from './lib/utils/language.js';
 export * from './lib/utils/resolve-preset-name.js';
 

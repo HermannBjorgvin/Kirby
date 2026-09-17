@@ -1,10 +1,23 @@
 export type CommentSeverity = 'critical' | 'major' | 'minor' | 'nit';
 
+/**
+ * A draft is anchored to a line range, to a whole file, or to the pull
+ * request itself — the same three shapes a remote thread comes in.
+ *
+ * The provider rejects a line anchor outside the diff, and a remark
+ * about unchanged code or about the change as a whole has no line to
+ * sit on. Nullable `file`/`lineStart`/`lineEnd` mirror
+ * `RemoteCommentThread`, so every surface that already lists a general
+ * thread ahead of the inline ones can list a general draft the same
+ * way. See `commentAnchor`.
+ */
 export interface ReviewComment {
   id: string;
-  file: string;
-  lineStart: number;
-  lineEnd: number;
+  /** Repo-relative path, or null for a remark about the whole pull request. */
+  file: string | null;
+  /** 1-based, inclusive; null for a remark about the whole file (or PR). */
+  lineStart: number | null;
+  lineEnd: number | null;
   severity: CommentSeverity;
   body: string;
   side: 'LEFT' | 'RIGHT';

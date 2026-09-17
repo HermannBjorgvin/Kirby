@@ -36,7 +36,10 @@ under `src/screens/main` (sidebar, diff, branch picker) and
   records drafts. It ships only in this package, so a desktop-only install
   cannot run agent reviews; both READMEs say so. Draft posting is one comment
   per `postReviewComments` call so a mid-batch failure cannot reset live
-  comments to draft.
+  comments to draft. A draft is anchored to lines, a file (`--file` alone) or
+  the pull request (no `--file`); with `--base` a line anchor is checked
+  against the diff (`commentableLines` in core) and refused if the provider
+  would reject it. The TUI does not list whole-PR drafts.
 - Comment images (`![alt](url)`) render inline through kitty graphics only
   when `TERM` is kitty/ghostty or `N10_IMAGES=kitty`; other terminals keep the
   markdown token; `N10_IMAGES=off` disables. `useCommentImages` owns the
