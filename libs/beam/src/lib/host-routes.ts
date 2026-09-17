@@ -29,6 +29,7 @@ const AUTH_STATUS: Record<AuthError['kind'], number> = {
   'stale-challenge': 401,
   'spent-ticket': 401,
   'host-key-mismatch': 401, // never raised host-side; listed for completeness.
+  'host-id-mismatch': 401, // client-side only; listed for completeness.
 };
 
 export interface RouteContext {

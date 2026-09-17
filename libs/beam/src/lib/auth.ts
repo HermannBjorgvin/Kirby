@@ -21,7 +21,8 @@ export type AuthErrorKind =
   | 'bad-signature'
   | 'stale-challenge'
   | 'spent-ticket'
-  | 'host-key-mismatch';
+  | 'host-key-mismatch'
+  | 'host-id-mismatch';
 
 export class AuthError extends Error {
   constructor(public readonly kind: AuthErrorKind, message: string) {

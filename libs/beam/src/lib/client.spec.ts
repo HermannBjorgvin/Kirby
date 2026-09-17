@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuthError } from './auth.js';
 import { dial, pair } from './client.js';
 import { Host } from './host.js';
-import { loadOrCreateIdentity } from './identity.js';
+import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
 
 let hostDir: string;
@@ -37,6 +37,10 @@ describe('pair()', () => {
 
     const result = await pair(url, clientPeers, { identity: clientIdentity });
 
+    // The id must be derived from the key the host actually returned, not
+    // merely equal to what the client already expected (A3): this is the
+    // assertion that fails if the client stores an asserted id unchecked.
+    expect(result.peer.peerId).toBe(derivePeerId(result.peer.publicKeyPem));
     expect(result.peer.peerId).toBe(host.identity.peerId);
     expect(clientPeers.get(host.identity.peerId)?.publicKeyPem).toBe(
       host.identity.publicKeyPem

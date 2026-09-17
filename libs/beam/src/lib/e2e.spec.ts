@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { dial, pair } from './client.js';
 import { Host } from './host.js';
-import { loadOrCreateIdentity } from './identity.js';
+import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
 import { createPtyStreamHandler } from './pty-handler.js';
 
@@ -48,7 +48,10 @@ describe('beam end to end: pair, dial, pty', () => {
     const { peer: paired } = await pair(url, peersB, { identity: identityB });
 
     // Pairing is symmetric: both tables now hold the other's public key,
-    // and each side independently derived the same id for it.
+    // and each side independently derived the same id for it. Comparing
+    // against `derivePeerId` (not merely `identityA.peerId`) is what fails
+    // if the client ever stores an id the host merely asserted (A3).
+    expect(paired.peerId).toBe(derivePeerId(paired.publicKeyPem));
     expect(paired.peerId).toBe(identityA.peerId);
     expect(peersA.get(identityB.peerId)?.publicKeyPem).toBe(
       identityB.publicKeyPem

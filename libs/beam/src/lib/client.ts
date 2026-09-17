@@ -5,11 +5,12 @@
  * ours.
  */
 
-import { verifyHostSignature, signNonce } from './auth.js';
+import { AuthError, verifyHostSignature, signNonce } from './auth.js';
+import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection, type PeerConnection } from './connection.js';
 import type { HostDescriptor } from './host.js';
 import { DESCRIPTOR_PATH, PROTOCOL_VERSION } from './host.js';
-import type { Identity } from './identity.js';
+import { derivePeerId, type Identity } from './identity.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
 import { randomSecret } from './secrets.js';
 import { StreamRegistry } from './stream-registry.js';
@@ -84,8 +85,19 @@ export async function pair(
     publicKeyPem: string;
     endpoints: string[];
   };
+  // The id is derived, never asserted (docs/beam.md): a pairing host that
+  // claims an id its own key does not derive to — including one already in
+  // this table — would otherwise silently replace that record's key with no
+  // `--force` gate, indistinguishable from an attacker swapping the key.
+  const derivedPeerId = derivePeerId(body.publicKeyPem);
+  if (derivedPeerId !== body.peerId) {
+    throw new AuthError(
+      'host-id-mismatch',
+      `host claimed id ${body.peerId} but its public key derives to ${derivedPeerId}`
+    );
+  }
   const peer = peers.upsert({
-    peerId: body.peerId,
+    peerId: derivedPeerId,
     label: body.label,
     publicKeyPem: body.publicKeyPem,
     endpoints: body.endpoints,
@@ -97,6 +109,11 @@ export interface DialOptions {
   identity: Identity;
   peers: PeerTable;
   registry?: StreamRegistry;
+  /** Live connections this dial registers into (A2) — the mailbox flusher
+   * looks connections up by peerId regardless of which side dialed, so a
+   * dialed connection must land here exactly as an accepted one does on the
+   * host side. */
+  connections?: ConnectionRegistry;
   transport?: Transport;
 }
 
@@ -153,10 +170,12 @@ export async function dial(
 
   const connection = createConnection({
     peerId: peer.peerId,
+    label: peer.label,
     role: 'initiator',
     socket,
     registry: options.registry ?? new StreamRegistry(),
   });
+  (options.connections ?? new ConnectionRegistry()).add(connection);
   options.peers.touch(peer.peerId);
   return connection;
 }
