@@ -148,6 +148,110 @@ describe('Muxer open/ack/data/close round trip', () => {
     expect(opens).toBe(2);
   });
 
+  it('A6: sends open name+params in one frame — no stray Data frame reaches the handler before the ack', async () => {
+    const registryB = new StreamRegistry();
+    const receivedBeforeAck: Uint8Array[] = [];
+    let acked = false;
+    registryB.register('exec', (stream) => {
+      // Regression for the pre-D1 bug: the old protocol sent params as an
+      // immediate Data frame, and `stream.onData` was wired before the ack
+      // — so the params would be delivered as if they were input. Proves
+      // nothing arrives on this stream before the handler explicitly acks.
+      stream.onData((data) => receivedBeforeAck.push(data));
+      expect(receivedBeforeAck).toHaveLength(0);
+      expect(stream.openParams).toEqual({ argv: ['echo', 'hi'] });
+      acked = true;
+      stream.control({ kind: 'opened' });
+    });
+    const { a } = wirePair(new StreamRegistry(), registryB);
+    await a.openStream('exec', { argv: ['echo', 'hi'] });
+    expect(acked).toBe(true);
+    expect(receivedBeforeAck).toHaveLength(0);
+  });
+
+  it('A6: a bare (non-JSON) Open payload still works as the host-poc name form', async () => {
+    const registryB = new StreamRegistry();
+    let seenParams: Record<string, unknown> | undefined = { still: 'set' };
+    registryB.register('echo', (stream) => {
+      seenParams = stream.openParams;
+      stream.control({ kind: 'opened' });
+    });
+    const { a } = wirePair(new StreamRegistry(), registryB);
+    await a.openStream('echo');
+    expect(seenParams).toBeUndefined();
+  });
+
+  it('A7: a sequence gap closes the stream instead of delivering the frame as ordinary data', () => {
+    const registryB = new StreamRegistry();
+    let opened: BeamStream | undefined;
+    const delivered: Uint8Array[] = [];
+    let closeReason: string | undefined;
+    registryB.register('echo', (stream) => {
+      opened = stream;
+      stream.onData((d) => delivered.push(d));
+      stream.onClose((reason) => {
+        closeReason = reason;
+      });
+      stream.control({ kind: 'opened' });
+    });
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: () => undefined,
+    });
+    b.receive(
+      encodeFrame({
+        type: FrameType.Open,
+        streamId: 7,
+        seq: 0,
+        payload: new TextEncoder().encode('echo'),
+      })
+    );
+    expect(opened).toBeDefined();
+    // Seq 1 would be the legitimate next frame; jumping to 3 is a gap.
+    b.receive(
+      encodeFrame({
+        type: FrameType.Data,
+        streamId: 7,
+        seq: 3,
+        payload: new TextEncoder().encode('should not be delivered'),
+      })
+    );
+    expect(delivered).toHaveLength(0);
+    expect(closeReason).toMatch(/sequence error/);
+  });
+
+  it('A7: a duplicate Data frame is dropped, not delivered a second time', () => {
+    const registryB = new StreamRegistry();
+    const delivered: string[] = [];
+    registryB.register('echo', (stream) => {
+      stream.onData((d) => delivered.push(new TextDecoder().decode(d)));
+      stream.control({ kind: 'opened' });
+    });
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: () => undefined,
+    });
+    b.receive(
+      encodeFrame({
+        type: FrameType.Open,
+        streamId: 11,
+        seq: 0,
+        payload: new TextEncoder().encode('echo'),
+      })
+    );
+    const dataFrame = encodeFrame({
+      type: FrameType.Data,
+      streamId: 11,
+      seq: 1,
+      payload: new TextEncoder().encode('once'),
+    });
+    b.receive(dataFrame);
+    // The identical frame again — e.g. a resend after a crash before the
+    // sender saw the ack. The stream must see it exactly once.
+    b.receive(dataFrame);
+    expect(delivered).toEqual(['once']);
+  });
+
   it('initiator and acceptor allocate disjoint stream ids', async () => {
     const registryA = new StreamRegistry();
     const registryB = new StreamRegistry();

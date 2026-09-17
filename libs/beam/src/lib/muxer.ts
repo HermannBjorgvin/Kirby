@@ -15,7 +15,12 @@ import {
   encodeFrame,
   type Frame,
 } from './protocol.js';
-import { BeamStreamImpl, type BeamStream, type StreamSink } from './stream.js';
+import {
+  BeamStreamImpl,
+  type BeamStream,
+  type StreamContext,
+  type StreamSink,
+} from './stream.js';
 import type { StreamRegistry } from './stream-registry.js';
 
 const encoder = new TextEncoder();
@@ -23,6 +28,10 @@ const encoder = new TextEncoder();
 /** How long a locally-opened stream waits for the peer's ack before the
  * promise from `openStream` rejects. */
 const OPEN_ACK_TIMEOUT_MS = 10_000;
+
+/** Used when a caller (tests, mostly) builds a Muxer without a peer
+ * context — production call sites (connection.ts) always supply one. */
+const UNKNOWN_PEER: StreamContext = { peerId: 'unknown', label: 'unknown' };
 
 export type MuxerRole = 'initiator' | 'acceptor';
 
@@ -32,6 +41,31 @@ export interface MuxerOptions {
    * open a stream. */
   role: MuxerRole;
   sendBytes: (bytes: Uint8Array) => void;
+  /** Who is on the other end of this connection; stamped onto every stream
+   * this Muxer creates (D1/A1/A4). */
+  peer?: StreamContext;
+}
+
+/** Decode an Open frame's payload per D1: a `{`-prefixed payload is a JSON
+ * object whose `name` is the stream name and whose other fields are its open
+ * parameters, in one frame; anything else (including malformed JSON, or JSON
+ * without a string `name`) is the bare stream name, unparsed — the host-poc
+ * form, which stays valid. */
+function parseOpenPayload(text: string): {
+  name: string;
+  params?: Record<string, unknown>;
+} {
+  if (!text.startsWith('{')) return { name: text };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { name: text };
+  }
+  if (typeof parsed !== 'object' || parsed === null) return { name: text };
+  const { name, ...params } = parsed as Record<string, unknown>;
+  if (typeof name !== 'string') return { name: text };
+  return { name, params };
 }
 
 export class Muxer {
@@ -42,12 +76,14 @@ export class Muxer {
   private readonly sink: StreamSink;
   private readonly registry: StreamRegistry;
   private readonly sendBytes: (bytes: Uint8Array) => void;
+  private readonly peer: StreamContext;
   private nextStreamId: number;
   private disposed = false;
 
   constructor(registry: StreamRegistry, options: MuxerOptions) {
     this.registry = registry;
     this.sendBytes = options.sendBytes;
+    this.peer = options.peer ?? UNKNOWN_PEER;
     this.nextStreamId = options.role === 'initiator' ? 1 : 2;
     this.sink = {
       sendData: (streamId, data) =>
@@ -77,12 +113,19 @@ export class Muxer {
    * that delivers synchronously (as a same-process wired pair does in
    * tests) can round-trip the peer's response before a `new Promise`
    * executor would otherwise get a chance to run.
+   *
+   * `params`, if given, travels in the same frame as the name (D1): there is
+   * no longer a follow-up Data frame, which is what used to let an open
+   * payload be typed into whatever `stream.onData` was already wired to.
    */
-  openStream(name: string, openPayload?: Uint8Array): Promise<BeamStream> {
+  openStream(
+    name: string,
+    params?: Record<string, unknown>
+  ): Promise<BeamStream> {
     if (this.disposed) return Promise.reject(new Error('connection is closed'));
     const id = this.nextStreamId;
     this.nextStreamId += 2;
-    const stream = new BeamStreamImpl(this.sink, id, name);
+    const stream = new BeamStreamImpl(this.sink, id, name, this.peer, params);
     this.streams.set(id, stream);
 
     let resolveReady!: (value: BeamStream) => void;
@@ -99,12 +142,16 @@ export class Muxer {
       this.streams.delete(id);
       stream.readyResolve = null;
       stream.readyReject = null;
+      stream.readyTimer = null;
       rejectReady(new Error(`stream '${name}' was never acknowledged`));
     }, OPEN_ACK_TIMEOUT_MS);
     timer.unref?.();
+    stream.readyTimer = timer;
 
-    this.sendFrame(FrameType.Open, id, encoder.encode(name));
-    if (openPayload) this.sendFrame(FrameType.Data, id, openPayload);
+    const payload = params
+      ? encoder.encode(JSON.stringify({ name, ...params }))
+      : encoder.encode(name);
+    this.sendFrame(FrameType.Open, id, payload);
     return ready;
   }
 
@@ -121,6 +168,13 @@ export class Muxer {
     return true;
   }
 
+  /** Call when the transport itself has ended, before `dispose`: surfaces a
+   * `truncated` ProtocolError if bytes were left mid-frame, so a connection
+   * that died mid-frame is distinguishable from one that just went quiet. */
+  finishTransport(): void {
+    this.decoder.finish();
+  }
+
   /** Transport ended (close, error, or abrupt disconnect): reap every
    * stream so nothing is left running unobserved. */
   dispose(reason = 'connection closed'): void {
@@ -128,6 +182,7 @@ export class Muxer {
     this.disposed = true;
     for (const [id, stream] of [...this.streams]) {
       this.streams.delete(id);
+      this.clearReadyTimer(stream);
       if (stream.readyReject) {
         const reject = stream.readyReject;
         stream.readyResolve = null;
@@ -137,6 +192,12 @@ export class Muxer {
         stream.emitClose(reason);
       }
     }
+  }
+
+  private clearReadyTimer(stream: BeamStreamImpl): void {
+    if (!stream.readyTimer) return;
+    clearTimeout(stream.readyTimer);
+    stream.readyTimer = null;
   }
 
   private handleFrame(frame: Frame): void {
@@ -165,7 +226,12 @@ export class Muxer {
       );
       return;
     }
-    const name = decodeText(frame);
+    // `seq` counts every frame on this stream, not just Data (SeqSender
+    // claims it uniformly for Open/Data/Close) — the tracker must see the
+    // Open frame's seq too, or it will expect the first Data frame to start
+    // back at 0 and flag it as a gap.
+    this.tracker.feed(frame.streamId, frame.seq);
+    const { name, params } = parseOpenPayload(decodeText(frame));
     const handler = this.registry.resolve(name);
     if (!handler) {
       this.sendFrame(
@@ -175,7 +241,13 @@ export class Muxer {
       );
       return;
     }
-    const stream = new BeamStreamImpl(this.sink, frame.streamId, name);
+    const stream = new BeamStreamImpl(
+      this.sink,
+      frame.streamId,
+      name,
+      this.peer,
+      params
+    );
     this.streams.set(frame.streamId, stream);
     handler(stream);
   }
@@ -183,7 +255,16 @@ export class Muxer {
   private handleData(frame: Frame): void {
     const stream = this.streams.get(frame.streamId);
     if (!stream) return;
-    this.tracker.feed(frame.streamId, frame.seq);
+    const verdict = this.tracker.feed(frame.streamId, frame.seq);
+    if (verdict === 'duplicate') return; // Already delivered; drop silently.
+    if (verdict === 'gap' || verdict === 'reorder') {
+      // We cannot know what was lost or how to reassemble it; delivering
+      // this frame as if it were the next one would corrupt whatever the
+      // stream carries. Fail the stream rather than deliver bad data.
+      this.streams.delete(frame.streamId);
+      stream.emitClose(`frame sequence error: ${verdict}`);
+      return;
+    }
     stream.emitData(frame.payload);
   }
 
@@ -191,6 +272,7 @@ export class Muxer {
     const stream = this.streams.get(frame.streamId);
     if (!stream) return;
     this.streams.delete(frame.streamId);
+    this.clearReadyTimer(stream);
     const reason = frame.payload.byteLength > 0 ? decodeText(frame) : undefined;
     if (stream.readyReject) {
       const reject = stream.readyReject;
@@ -220,6 +302,7 @@ export class Muxer {
       const resolve = stream.readyResolve;
       stream.readyResolve = null;
       stream.readyReject = null;
+      this.clearReadyTimer(stream);
       resolve(stream);
       return;
     }

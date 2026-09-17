@@ -3,9 +3,27 @@
  * get, whether they opened it or the peer did. See docs/beam.md.
  */
 
+/** Who is on the other end of the connection this stream rides on. Set once
+ * per connection and identical for every stream on it, whether this side
+ * opened the stream or the peer did — it is what lets a handler answer "who
+ * is calling me" (A4's injected environment) and what a per-connection cache
+ * keys itself on (A1's PTY session map). */
+export interface StreamContext {
+  /** The peer machine at the other end of this connection. */
+  peerId: string;
+  /** That peer's label, as this machine knows it right now. */
+  label: string;
+}
+
 export interface BeamStream {
   readonly id: number;
   readonly name: string;
+  /** The peer this stream's connection is with. */
+  readonly peer: StreamContext;
+  /** Parsed JSON open parameters (D1): the fields of a `{`-prefixed Open
+   * payload other than `name`. Undefined for a bare stream-name Open, or for
+   * a stream this side opened without params. */
+  readonly openParams?: Record<string, unknown>;
   write(data: Uint8Array): void;
   /** Send a connection-level Control message scoped to this stream (e.g. a
    * pty resize); the muxer stamps `streamId` on it. */
@@ -31,6 +49,9 @@ export class BeamStreamImpl implements BeamStream {
   readyResolve: ((stream: BeamStream) => void) | null = null;
   /** @internal ditto. */
   readyReject: ((error: Error) => void) | null = null;
+  /** @internal the open-ack timer, so it can be cleared as soon as the
+   * outcome is known instead of firing uselessly later. */
+  readyTimer: ReturnType<typeof setTimeout> | null = null;
 
   private dataHandlers: ((data: Uint8Array) => void)[] = [];
   private closeHandlers: ((reason?: string) => void)[] = [];
@@ -40,7 +61,9 @@ export class BeamStreamImpl implements BeamStream {
   constructor(
     private readonly sink: StreamSink,
     readonly id: number,
-    readonly name: string
+    readonly name: string,
+    readonly peer: StreamContext,
+    readonly openParams?: Record<string, unknown>
   ) {}
 
   write(data: Uint8Array): void {

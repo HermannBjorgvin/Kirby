@@ -1,11 +1,15 @@
 /**
  * beam `pty` / `pty:<program>` stream handler — a real terminal, backed by
- * node-pty. `pty` runs the login shell; `pty:<program>` runs that program
- * directly with no shell word-splitting. See docs/beam.md.
+ * node-pty. Open parameters (D1): `{ argv?, cwd?, env?, cols?, rows? }`. An
+ * absent or empty `argv` means the login shell; `argv[0]` is executed
+ * directly, no shell, no word splitting. `pty:<program>` stays valid as a
+ * shorthand for `argv: ['<program>']`. See docs/beam.md.
  */
 
 import { existsSync } from 'node:fs';
 import * as pty from 'node-pty';
+import { injectedEnv, type NodeEnvContext } from './injected-env.js';
+import { resolveCwd } from './resolve-cwd.js';
 import type { StreamOpenHandler } from './stream-registry.js';
 import type { BeamStream } from './stream.js';
 
@@ -13,6 +17,8 @@ import type { BeamStream } from './stream.js';
 export const MAX_PTY_SESSIONS = 32;
 const MIN_COLS_ROWS = 2;
 const MAX_COLS_ROWS = 500;
+const DEFAULT_COLS = 80;
+const DEFAULT_ROWS = 24;
 
 /** Login shell preference: $SHELL, then bash, then sh — whatever exists. */
 export function shellForEnv(): string {
@@ -29,8 +35,8 @@ function programFor(streamName: string): string {
     : shellForEnv();
 }
 
-function clampInt(value: unknown): number | null {
-  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+function clampInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
   return Math.min(MAX_COLS_ROWS, Math.max(MIN_COLS_ROWS, Math.trunc(value)));
 }
 
@@ -38,25 +44,67 @@ function isResize(message: Record<string, unknown>): boolean {
   return message['kind'] === 'resize';
 }
 
+/** `argv[0]` runs directly — no shell, no word splitting — with the rest as
+ * literal arguments. An absent or empty `argv` param falls back to the
+ * stream-name form (`pty` -> login shell, `pty:<program>` -> that program). */
+function resolveArgv(stream: BeamStream): string[] {
+  const argv = stream.openParams?.['argv'];
+  if (Array.isArray(argv) && argv.length > 0 && argv.every(isString)) {
+    return argv as string[];
+  }
+  return [programFor(stream.name)];
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.values(value).every(isString)
+  );
+}
+
 /** Create a fresh handler: one instance owns the live sessions for one
- * connection, so the 32-PTY cap applies per connection, not globally. */
-export function createPtyStreamHandler(): StreamOpenHandler {
-  const sessions = new Map<number, pty.IPty>();
+ * *node* (not one connection — A1). Sessions are keyed by `(peerId,
+ * streamId)`, since stream ids are only unique within one connection and two
+ * peers can each open stream id 1 at the same time. `node` supplies the
+ * facts every spawned process is told about itself (A4); it is optional so
+ * unit tests can drive the handler without a real node directory. */
+export function createPtyStreamHandler(
+  node?: NodeEnvContext
+): StreamOpenHandler {
+  const sessions = new Map<string, pty.IPty>();
+  const key = (stream: BeamStream): string =>
+    `${stream.peer.peerId}:${stream.id}`;
 
   return (stream: BeamStream) => {
     if (sessions.size >= MAX_PTY_SESSIONS) {
       stream.close('too many live pty sessions');
       return;
     }
-    const file = programFor(stream.name);
+    const cwdResult = resolveCwd(stream.openParams?.['cwd']);
+    if (!cwdResult.ok) {
+      stream.close(cwdResult.reason);
+      return;
+    }
+    const [file, ...args] = resolveArgv(stream);
+    const overrides = stream.openParams?.['env'];
+    const env = injectedEnv(
+      node ?? { beamDir: '', inboxSocketPath: '', ownPeerId: '' },
+      stream.peer,
+      isStringRecord(overrides) ? overrides : {}
+    );
     let proc: pty.IPty;
     try {
-      proc = pty.spawn(file, [], {
+      proc = pty.spawn(file, args, {
         name: 'xterm-256color',
-        cols: 80,
-        rows: 24,
-        cwd: process.cwd(),
-        env: process.env as Record<string, string>,
+        cols: clampInt(stream.openParams?.['cols'], DEFAULT_COLS),
+        rows: clampInt(stream.openParams?.['rows'], DEFAULT_ROWS),
+        cwd: cwdResult.cwd,
+        env,
       });
     } catch (error) {
       stream.close(
@@ -64,8 +112,8 @@ export function createPtyStreamHandler(): StreamOpenHandler {
       );
       return;
     }
-    sessions.set(stream.id, proc);
-    wireSession(stream, proc, sessions);
+    sessions.set(key(stream), proc);
+    wireSession(stream, proc, sessions, key(stream));
     stream.control({ kind: 'opened' });
   };
 }
@@ -73,22 +121,23 @@ export function createPtyStreamHandler(): StreamOpenHandler {
 function wireSession(
   stream: BeamStream,
   proc: pty.IPty,
-  sessions: Map<number, pty.IPty>
+  sessions: Map<string, pty.IPty>,
+  sessionKey: string
 ): void {
   proc.onData((data) => {
-    if (sessions.get(stream.id) === proc)
+    if (sessions.get(sessionKey) === proc)
       stream.write(Buffer.from(data, 'utf8'));
   });
   proc.onExit(({ exitCode, signal }) => {
-    if (sessions.get(stream.id) !== proc) return;
-    sessions.delete(stream.id);
+    if (sessions.get(sessionKey) !== proc) return;
+    sessions.delete(sessionKey);
     const signalPart = signal ? `, signal ${signal}` : '';
     stream.close(`process exited (code ${exitCode}${signalPart})`);
   });
   stream.onData((data) => proc.write(Buffer.from(data).toString('utf8')));
   stream.onClose(() => {
-    if (sessions.get(stream.id) !== proc) return;
-    sessions.delete(stream.id);
+    if (sessions.get(sessionKey) !== proc) return;
+    sessions.delete(sessionKey);
     try {
       proc.kill();
     } catch {
@@ -97,9 +146,9 @@ function wireSession(
   });
   stream.onControl((message) => {
     if (!isResize(message)) return;
-    const cols = clampInt(message['cols']);
-    const rows = clampInt(message['rows']);
-    if (cols === null || rows === null) return;
+    const cols = clampInt(message['cols'], NaN);
+    const rows = clampInt(message['rows'], NaN);
+    if (Number.isNaN(cols) || Number.isNaN(rows)) return;
     proc.resize(cols, rows);
   });
 }

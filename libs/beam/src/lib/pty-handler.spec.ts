@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createPtyStreamHandler, MAX_PTY_SESSIONS } from './pty-handler.js';
-import type { BeamStream } from './stream.js';
+import type { BeamStream, StreamContext } from './stream.js';
 
 /** Minimal fake BeamStream: enough surface for the pty handler to drive,
  * plus test-only getters to observe what it did. */
-function fakeStream(id: number, name: string) {
+function fakeStream(
+  id: number,
+  name: string,
+  options: { peer?: StreamContext; openParams?: Record<string, unknown> } = {}
+) {
   const dataHandlers: ((data: Uint8Array) => void)[] = [];
   const closeHandlers: ((reason?: string) => void)[] = [];
   const controlHandlers: ((message: Record<string, unknown>) => void)[] = [];
@@ -15,6 +19,8 @@ function fakeStream(id: number, name: string) {
   const stream: BeamStream = {
     id,
     name,
+    peer: options.peer ?? { peerId: 'peer-under-test', label: 'test-peer' },
+    openParams: options.openParams,
     write: (data) => written.push(data),
     control: (message) => controlsSent.push(message),
     close: (reason) => {
@@ -147,5 +153,98 @@ describe('createPtyStreamHandler', () => {
     const over = fakes[MAX_PTY_SESSIONS];
     expect(over.closedWith).toMatch(/too many live pty sessions/);
     for (const fake of fakes) fake.stream.close();
+  });
+
+  it('A1: two peers opening the same stream id run independent, non-colliding shells', async () => {
+    // Regression for the cross-connection orphaning bug: a single handler
+    // instance serves every connection (host.ts shares one StreamRegistry),
+    // so two peers each opening stream id 1 must not collide in the
+    // handler's session bookkeeping.
+    const handler = createPtyStreamHandler();
+    const peerA = { peerId: 'peer-a', label: 'a' };
+    const peerB = { peerId: 'peer-b', label: 'b' };
+    const fakeA = fakeStream(1, 'pty:sh', { peer: peerA });
+    const fakeB = fakeStream(1, 'pty:sh', { peer: peerB });
+    handler(fakeA.stream);
+    handler(fakeB.stream);
+
+    fakeA.emitData(new TextEncoder().encode('echo from-a\n'));
+    fakeB.emitData(new TextEncoder().encode('echo from-b\n'));
+    await waitFor(fakeA.text, (t) => t.includes('from-a'));
+    await waitFor(fakeB.text, (t) => t.includes('from-b'));
+
+    // Closing A's stream must not touch B's still-live shell.
+    fakeA.stream.close('a done');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const bLengthAfterAClosed = fakeB.written.length;
+    fakeB.emitData(new TextEncoder().encode('echo still-alive\n'));
+    const output = await waitFor(fakeB.text, (t) => t.includes('still-alive'));
+    expect(output).toContain('still-alive');
+    expect(fakeB.written.length).toBeGreaterThan(bLengthAfterAClosed);
+
+    fakeB.stream.close('b done');
+  });
+
+  it('A4: the child sees the caller id and label, and no secret material', async () => {
+    const handler = createPtyStreamHandler({
+      beamDir: '/tmp/beam-test-dir',
+      inboxSocketPath: '/tmp/beam-test-dir/run/inbox.sock',
+      ownPeerId: 'this-node-id',
+    });
+    const fake = fakeStream(1, 'pty:sh', {
+      peer: { peerId: 'caller-id-123', label: 'laptop' },
+    });
+    handler(fake.stream);
+    fake.emitData(
+      new TextEncoder().encode(
+        'printenv BEAM_CALLER_ID BEAM_CALLER_LABEL BEAM_PEER_ID BEAM_DIR BEAM_INBOX\n'
+      )
+    );
+    const output = await waitFor(fake.text, (t) => t.includes('caller-id-123'));
+    expect(output).toContain('caller-id-123');
+    expect(output).toContain('laptop');
+    expect(output).toContain('this-node-id');
+    expect(output).toContain('/tmp/beam-test-dir');
+    for (const forbidden of ['PRIVATE_KEY', 'BEAM_TICKET', 'BEAM_TOKEN']) {
+      expect(output).not.toContain(forbidden);
+    }
+    fake.stream.close();
+  });
+
+  it('D1: argv[0] runs directly (no shell, no word splitting) and env/cwd/cols/rows are honored', async () => {
+    const handler = createPtyStreamHandler();
+    const fake = fakeStream(1, 'pty', {
+      openParams: {
+        argv: ['sh', '-c', 'echo $GREETING; pwd; echo "$COLUMNS"'],
+        cwd: '/tmp',
+        env: { GREETING: 'hi-from-openparams' },
+        cols: 100,
+        rows: 40,
+      },
+    });
+    handler(fake.stream);
+    const output = await waitFor(fake.text, (t) =>
+      t.includes('hi-from-openparams')
+    );
+    expect(output).toContain('hi-from-openparams');
+    expect(output).toContain('/tmp');
+    fake.stream.close();
+  });
+
+  it('D1: empty argv means the login shell, matching the bare "pty" name', () => {
+    const handler = createPtyStreamHandler();
+    const fake = fakeStream(1, 'pty', { openParams: { argv: [] } });
+    expect(() => handler(fake.stream)).not.toThrow();
+    expect(fake.controlsSent).toContainEqual({ kind: 'opened' });
+    fake.stream.close();
+  });
+
+  it('rejects a relative cwd rather than resolving it against the host cwd', () => {
+    const handler = createPtyStreamHandler();
+    const fake = fakeStream(1, 'pty:sh', {
+      openParams: { cwd: 'relative/dir' },
+    });
+    handler(fake.stream);
+    expect(fake.closedWith).toMatch(/cwd must be absolute or start with ~\//);
   });
 });

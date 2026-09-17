@@ -12,17 +12,25 @@ import type { TransportSocket } from './transport.js';
 export interface PeerConnection {
   /** The machine at the other end. */
   readonly peerId: string;
-  openStream(name: string, openPayload?: Uint8Array): Promise<BeamStream>;
+  openStream(
+    name: string,
+    params?: Record<string, unknown>
+  ): Promise<BeamStream>;
   /** Register the handler for streams the peer opens. Shared with every
    * other connection built against the same registry, so a later phase can
    * register `exec` or `msg` once and have it apply everywhere. */
   onStream(name: string, handler: StreamOpenHandler): void;
-  onClose(cb: () => void): void;
+  /** `reason` distinguishes an ordinary close from a transport that ended
+   * mid-frame ("truncated...", A7's FrameDecoder.finish() wiring). */
+  onClose(cb: (reason: string) => void): void;
   close(): void;
 }
 
 export interface CreateConnectionOptions {
   peerId: string;
+  /** The peer's label, as this machine knows it right now. Defaults to
+   * `peerId` for callers (mostly tests) that have no label handy. */
+  label?: string;
   role: MuxerRole;
   socket: TransportSocket;
   registry: StreamRegistry;
@@ -39,25 +47,37 @@ export function createConnection(
   const muxer = new Muxer(registry, {
     role: options.role,
     sendBytes: (bytes) => socket.send(bytes),
+    peer: { peerId: options.peerId, label: options.label ?? options.peerId },
   });
-  const closeHandlers: (() => void)[] = [];
+  const closeHandlers: ((reason: string) => void)[] = [];
   let closed = false;
 
   const finish = (reason: string): void => {
     if (closed) return;
     closed = true;
     muxer.dispose(reason);
-    for (const cb of closeHandlers) cb();
+    for (const cb of closeHandlers) cb(reason);
   };
 
   socket.onData((data) => {
     if (!muxer.receive(data)) socket.close();
   });
-  socket.onClose(() => finish('connection closed'));
+  socket.onClose(() => {
+    // Wire FrameDecoder.finish() into the real transport-end path (A7): a
+    // connection that died mid-frame is reported as truncated, not as a
+    // quiet, ordinary close.
+    let reason = 'connection closed';
+    try {
+      muxer.finishTransport();
+    } catch (error) {
+      reason = `connection closed: ${(error as Error).message}`;
+    }
+    finish(reason);
+  });
 
   return {
     peerId: options.peerId,
-    openStream: (name, openPayload) => muxer.openStream(name, openPayload),
+    openStream: (name, params) => muxer.openStream(name, params),
     onStream: (name, handler) => registry.register(name, handler),
     onClose: (cb) => closeHandlers.push(cb),
     close: () => {

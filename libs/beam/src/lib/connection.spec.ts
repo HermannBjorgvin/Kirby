@@ -99,4 +99,48 @@ describe('createConnection', () => {
     a.close();
     expect(closed).toBe(true);
   });
+
+  it('A7: a transport that ends mid-frame is reported as truncated, not an ordinary close', () => {
+    const dataHandlers: ((data: Uint8Array) => void)[] = [];
+    const closeHandlers: (() => void)[] = [];
+    const socket: TransportSocket = {
+      send: () => undefined,
+      close: () => closeHandlers.forEach((h) => h()),
+      onData: (h) => dataHandlers.push(h),
+      onClose: (h) => closeHandlers.push(h),
+    };
+    const conn = createConnection({
+      peerId: 'p',
+      role: 'initiator',
+      socket,
+      registry: new StreamRegistry(),
+    });
+    let reason: string | undefined;
+    conn.onClose((r) => {
+      reason = r;
+    });
+    // A 12-byte header declaring a 50-byte payload, then nothing: the
+    // decoder is left mid-frame when the transport ends right after.
+    dataHandlers.forEach((h) =>
+      h(new Uint8Array([1, 1, 0, 5, 0, 0, 0, 1, 0, 0, 0, 50, 9, 9]))
+    );
+    closeHandlers.forEach((h) => h());
+    expect(reason).toMatch(/buffered bytes/);
+  });
+
+  it('an ordinary close (nothing buffered) is not reported as truncated', () => {
+    const [a] = wireSockets();
+    const conn = createConnection({
+      peerId: 'p',
+      role: 'initiator',
+      socket: a,
+      registry: new StreamRegistry(),
+    });
+    let reason: string | undefined;
+    conn.onClose((r) => {
+      reason = r;
+    });
+    a.close();
+    expect(reason).not.toMatch(/buffered bytes/);
+  });
 });

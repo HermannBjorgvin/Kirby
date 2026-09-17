@@ -6,15 +6,18 @@ function fakeConnection(peerId: string): {
   conn: PeerConnection;
   triggerClose: () => void;
 } {
-  const closeHandlers: (() => void)[] = [];
+  const closeHandlers: ((reason: string) => void)[] = [];
   const conn: PeerConnection = {
     peerId,
     openStream: vi.fn(),
     onStream: vi.fn(),
     onClose: (cb) => closeHandlers.push(cb),
-    close: () => closeHandlers.forEach((h) => h()),
+    close: () => closeHandlers.forEach((h) => h('closed locally')),
   };
-  return { conn, triggerClose: () => closeHandlers.forEach((h) => h()) };
+  return {
+    conn,
+    triggerClose: () => closeHandlers.forEach((h) => h('connection closed')),
+  };
 }
 
 describe('ConnectionRegistry', () => {
