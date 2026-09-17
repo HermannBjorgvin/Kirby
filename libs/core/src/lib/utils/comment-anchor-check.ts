@@ -35,6 +35,7 @@ const CONTEXT_LINES = 3;
 const MAX_PATCH_BYTES = 16 * 1024 * 1024;
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+const RENAME_STATUS = /^R\d+$/;
 
 function range(start: string, count: string | undefined): LineRange | null {
   const n = count === undefined ? 1 : Number(count);
@@ -59,10 +60,53 @@ export function parseHunkRanges(patch: string): CommentableLines {
 }
 
 /**
+ * A pathspec that names `file` relative to the repo root regardless of
+ * the cwd git runs from (`top`), and never as a glob (`literal`) — a
+ * path that happens to contain `*`, `?`, `[` or a leading `:` is still
+ * one file.
+ */
+function pathspec(file: string): string {
+  return `:(top,literal)${file}`;
+}
+
+/**
+ * The path `file` was renamed from between `base` and `HEAD`, or null
+ * when it was not renamed.
+ *
+ * `git diff -- <pathspec>` applies the pathspec *before* rename
+ * detection runs, so a renamed file diffed by its new name alone comes
+ * back as a wholly new file — every line on the right, none on the
+ * left. Finding the old name first and including it in the pathspec
+ * restores rename detection.
+ */
+async function findRenameSource(
+  base: string,
+  file: string,
+  cwd: string
+): Promise<string | null> {
+  const { text, truncated } = await runGit(
+    ['diff', '--name-status', '-M', base, 'HEAD'],
+    { cwd, maxBytes: MAX_PATCH_BYTES }
+  );
+  if (truncated) {
+    throw new Error(
+      `The pull request's file list was too large to check ${file} against ` +
+        `the diff`
+    );
+  }
+  for (const line of text.split('\n')) {
+    const [status, from, to] = line.split('\t');
+    if (to === file && status && RENAME_STATUS.test(status)) return from;
+  }
+  return null;
+}
+
+/**
  * The commentable lines of `file` in the pull request that merges
  * `cwd`'s HEAD into `targetBranch`, or null when the file is not in
- * that diff at all. Throws when the target cannot be resolved, so the
- * caller can decide whether an unverifiable anchor is allowed through.
+ * that diff at all. Throws when the target cannot be resolved, or when
+ * the diff itself is too large to read fully, so the caller can decide
+ * whether an unverifiable anchor is allowed through.
  */
 export async function commentableLines(opts: {
   cwd: string;
@@ -73,22 +117,63 @@ export async function commentableLines(opts: {
   const base = await gitLine(['merge-base', targetRef, 'HEAD'], {
     cwd: opts.cwd,
   });
-  const { text } = await runGit(
-    ['diff', `-U${CONTEXT_LINES}`, '--no-color', base, 'HEAD', '--', opts.file],
+  const renamedFrom = await findRenameSource(base, opts.file, opts.cwd);
+  const pathspecs = renamedFrom
+    ? [pathspec(renamedFrom), pathspec(opts.file)]
+    : [pathspec(opts.file)];
+  const { text, truncated } = await runGit(
+    [
+      'diff',
+      `-U${CONTEXT_LINES}`,
+      '--no-color',
+      base,
+      'HEAD',
+      '--',
+      ...pathspecs,
+    ],
     { cwd: opts.cwd, maxBytes: MAX_PATCH_BYTES }
   );
+  if (truncated) {
+    throw new Error(
+      `The diff for ${opts.file} was too large to check against the pull ` +
+        `request's diff`
+    );
+  }
   if (text.trim() === '') return null;
   return parseHunkRanges(text);
 }
 
-function within(ranges: LineRange[], line: number): boolean {
-  return ranges.some((r) => line >= r.start && line <= r.end);
+/** Whether the whole `[lineStart, lineEnd]` range sits inside a single
+ *  hunk — the provider requires `start_line` and `line` to share one
+ *  hunk, so a range spanning two is refused even when both ends are
+ *  individually commentable. */
+function fitsOneHunk(
+  ranges: LineRange[],
+  lineStart: number,
+  lineEnd: number
+): boolean {
+  return ranges.some((r) => lineStart >= r.start && lineEnd <= r.end);
 }
 
 function describeRanges(ranges: LineRange[]): string {
   return ranges
     .map((r) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`))
     .join(', ');
+}
+
+/**
+ * Why the provider would refuse a remark anchored to this whole file:
+ * it is not part of the pull request's diff, so there is nothing on it
+ * to comment on. Shared by `lineAnchorProblem` (a line anchor whose
+ * file is out of the diff) and `n10 util add-comment`'s check of a
+ * whole-file anchor, so the wording lives in one place.
+ */
+export function fileAnchorProblem(file: string): string {
+  return (
+    `${file} is not part of this pull request's diff, so nothing in ` +
+    `it can be commented on. Comment on a changed file, or omit --file for ` +
+    `a remark about the pull request.`
+  );
 }
 
 /**
@@ -113,21 +198,26 @@ export function lineAnchorProblem(
     'Anchor to one of those lines, omit --lineStart/--lineEnd for a remark ' +
     'about the whole file, or omit --file too for a remark about the pull request.';
   if (lines === null) {
-    return (
-      `${anchor.file} is not part of this pull request's diff, so nothing in ` +
-      `it can be commented on. Comment on a changed file, or omit --file for ` +
-      `a remark about the pull request.`
-    );
+    return fileAnchorProblem(anchor.file);
   }
   const ranges = anchor.side === 'LEFT' ? lines.left : lines.right;
-  if (within(ranges, anchor.lineStart) && within(ranges, anchor.lineEnd)) {
-    return null;
-  }
+  if (fitsOneHunk(ranges, anchor.lineStart, anchor.lineEnd)) return null;
   const sideNote = anchor.side === 'LEFT' ? ' (old-file lines)' : '';
-  return (
+  const parts = [
     `${where} is not part of this pull request's diff. The provider only ` +
-    `accepts line comments on changed lines and the ${CONTEXT_LINES} lines of ` +
-    `context around them; the commentable lines in ${anchor.file}${sideNote} ` +
-    `are ${describeRanges(ranges) || 'none'}. ${alternatives}`
-  );
+      `accepts line comments on changed lines and the ${CONTEXT_LINES} lines ` +
+      `of context around them, all within one hunk; the commentable lines in ` +
+      `${anchor.file}${sideNote} are ${describeRanges(ranges) || 'none'}.`,
+  ];
+  if (
+    anchor.side === 'RIGHT' &&
+    fitsOneHunk(lines.left, anchor.lineStart, anchor.lineEnd)
+  ) {
+    parts.push(
+      'Those lines were removed, not added — comment on the old-file side ' +
+        'with --side=LEFT.'
+    );
+  }
+  parts.push(alternatives);
+  return parts.join(' ');
 }
