@@ -111,6 +111,35 @@ export type { CwdResult } from './lib/resolve-cwd.js';
 export type { StreamContext } from './lib/stream.js';
 
 export {
+  MAX_PAYLOAD_BYTES,
+  isEnvelope,
+  payloadByteLength,
+  type Envelope,
+} from './lib/mailbox/envelope.js';
+export {
+  OutboundQueue,
+  type QuarantinedFile,
+  type QueuedEnvelope,
+} from './lib/mailbox/outbound-queue.js';
+export { SeqCounter } from './lib/mailbox/seq-counter.js';
+export {
+  MailboxCorruptionError,
+  SeenTracker,
+  type AcceptVerdict,
+} from './lib/mailbox/seen-tracker.js';
+export { derivePeerState, type PeerState } from './lib/mailbox/peer-state.js';
+export { Flusher, type FlusherOptions } from './lib/mailbox/flusher.js';
+export {
+  Mailbox,
+  type MailboxOptions,
+  type PeerStatus,
+  type QueuedForPeer,
+  type RejectReason,
+  type SendInput,
+  type SendOutcome,
+} from './lib/mailbox/mailbox.js';
+
+export {
   DESCRIPTOR_PATH,
   Host,
   PROTOCOL_VERSION,
