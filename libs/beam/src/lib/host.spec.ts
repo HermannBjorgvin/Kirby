@@ -246,13 +246,17 @@ describe('Host HTTP surface', () => {
       'bad-signature'
     );
 
-    h.peers.revoke(client.peerId);
+    // Fetch a legitimate challenge *before* revoking, so this exercises
+    // /session's own revocation check independently of /challenge's — the
+    // window A5 closes is exactly a peer revoked between challenge issuance
+    // and session completion (e.g. inside a stale ticket's 30s life).
     const { challenge: challenge2 } = (await (
       await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
     ).json()) as {
       challenge: string;
     };
     const signature2 = signNonce(client.privateKeyPem, challenge2);
+    h.peers.revoke(client.peerId);
     const revokedRes = await session({
       peerId: client.peerId,
       challenge: challenge2,
@@ -263,6 +267,103 @@ describe('Host HTTP surface', () => {
     expect(((await revokedRes.json()) as { error: string }).error).toBe(
       'revoked-peer'
     );
+  });
+
+  it('A5: /challenge/:peerId also 403s a revoked peer, not just /session', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    h.peers.revoke(client.peerId);
+    const res = await fetch(`${h.baseUrl}/challenge/${client.peerId}`);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      'revoked-peer'
+    );
+  });
+
+  it('A5: revoking a peer with a live connection drops it', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    const { challenge } = (await (
+      await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
+    ).json()) as { challenge: string };
+    const signature = signNonce(client.privateKeyPem, challenge);
+    const sessionRes = await fetch(`${h.baseUrl}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        peerId: client.peerId,
+        challenge,
+        signature,
+        clientChallenge: 'x',
+      }),
+    });
+    const { ticket } = (await sessionRes.json()) as { ticket: string };
+    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
+      ticket
+    )}`;
+    const socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('error', reject);
+    });
+    expect(h.connections.get(client.peerId)).toBeDefined();
+
+    const closed = new Promise<void>((resolve) =>
+      socket.once('close', resolve)
+    );
+    h.revoke(client.peerId);
+    await closed;
+    expect(h.connections.get(client.peerId)).toBeUndefined();
+  });
+
+  it('A5: revoking inside the ticket window still blocks the upgrade', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    const { challenge } = (await (
+      await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
+    ).json()) as { challenge: string };
+    const signature = signNonce(client.privateKeyPem, challenge);
+    const sessionRes = await fetch(`${h.baseUrl}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        peerId: client.peerId,
+        challenge,
+        signature,
+        clientChallenge: 'x',
+      }),
+    });
+    const { ticket } = (await sessionRes.json()) as { ticket: string };
+    // Revoke *after* the ticket was minted but *before* it is redeemed — the
+    // exact window a ticket alone cannot close.
+    h.peers.revoke(client.peerId);
+    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
+      ticket
+    )}`;
+    const socket = new WebSocket(wsUrl);
+    const outcome = await new Promise<'open' | 'error'>((resolve) => {
+      socket.once('open', () => resolve('open'));
+      socket.once('error', () => resolve('error'));
+    });
+    expect(outcome).toBe('error');
   });
 
   it('POST /rtc reports webrtc as unsupported in this phase', async () => {

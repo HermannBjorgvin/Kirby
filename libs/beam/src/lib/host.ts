@@ -194,9 +194,19 @@ export class Host {
       socket.destroy();
       return;
     }
+    // A5: revocation inside the ticket's 30s window must still take effect —
+    // the ticket alone is not enough to trust; re-check the peer is still
+    // in good standing at the moment the upgrade actually happens.
+    const peer = this.peers.get(peerId);
+    if (!peer || peer.revoked) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     this.wss?.handleUpgrade(req, socket, head, (ws) => {
       const connection = createConnection({
         peerId,
+        label: peer.label,
         role: 'acceptor',
         socket: wrapWebSocket(ws),
         registry: this.registry,
@@ -204,5 +214,13 @@ export class Host {
       this.connections.add(connection);
       this.peers.touch(peerId);
     });
+  }
+
+  /** Revoke a peer and drop its live connection, if any (A5) — revocation
+   * that does not close an already-open connection is not really
+   * revocation. */
+  revoke(peerId: string): void {
+    this.peers.revoke(peerId);
+    this.connections.get(peerId)?.close();
   }
 }

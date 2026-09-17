@@ -120,8 +120,14 @@ export function handleChallenge(
   peerId: string,
   res: ServerResponse
 ): void {
-  if (!ctx.peers.get(peerId)) {
+  const peer = ctx.peers.get(peerId);
+  if (!peer) {
     sendJson(res, 404, { error: 'unknown-peer' });
+    return;
+  }
+  // A5: a revoked peer gets no nonce to sign, matching /session's own check.
+  if (peer.revoked) {
+    sendJson(res, 403, { error: 'revoked-peer' });
     return;
   }
   sendJson(res, 200, { challenge: ctx.auth.issueChallenge() });
