@@ -180,9 +180,10 @@ describe('orderDraftsForReview', () => {
 });
 
 describe('orderDraftsForReview anchors', () => {
-  /** The walkthrough reads top to bottom like the diff: the
-   *  conversation first, then each file, a whole-file remark ahead of
-   *  that file's line remarks. */
+  /** Severity is the primary key (see the plain `orderDraftsForReview`
+   *  tests above); within a severity, the walkthrough reads top to
+   *  bottom like the diff: the conversation first, then each file, a
+   *  whole-file remark ahead of that file's line remarks. */
   it('puts whole-PR drafts first and whole-file drafts before lines', () => {
     const order = new Map([['a.ts', 0]]);
     const drafts = [
@@ -194,6 +195,33 @@ describe('orderDraftsForReview anchors', () => {
       'pr',
       'file',
       'line',
+    ]);
+  });
+
+  /** A whole-PR anchor only wins the tie within its own severity — it
+   *  does not vault a `nit` draft ahead of a `critical` line draft in
+   *  another file. */
+  it('sorts a nit whole-PR draft after a critical line draft', () => {
+    const order = new Map([['a.ts', 0]]);
+    const drafts = [
+      draft({
+        id: 'nit-pr',
+        severity: 'nit',
+        file: null,
+        lineStart: null,
+        lineEnd: null,
+      }),
+      draft({
+        id: 'crit-line',
+        severity: 'critical',
+        file: 'a.ts',
+        lineStart: 2,
+        lineEnd: 2,
+      }),
+    ];
+    expect(orderDraftsForReview(drafts, order).map((d) => d.id)).toEqual([
+      'crit-line',
+      'nit-pr',
     ]);
   });
 });
