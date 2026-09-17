@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   commentableLines,
+  fileAnchorProblem,
   lineAnchorProblem,
   type CommentableLines,
 } from '@n10/core';
@@ -82,10 +83,11 @@ function parseAnchor(parsed: Record<string, string>): Anchor {
 }
 
 /**
- * Refuse a line anchor the provider would refuse, while the agent can
+ * Refuse an anchor the provider would refuse, while the agent can
  * still choose another. Needs the target branch (`--base`) to find the
  * diff; without it, or when the branch cannot be resolved here, the
- * draft is taken on trust and the post may fail later instead.
+ * draft is taken on trust and the post may fail later instead. A
+ * whole-PR draft (no `--file`) has no diff to check against.
  */
 async function checkLineAnchor(
   base: string | undefined,
@@ -93,7 +95,6 @@ async function checkLineAnchor(
   side: 'LEFT' | 'RIGHT'
 ): Promise<void> {
   if (!base || anchor.file === null) return;
-  if (anchor.lineStart === null || anchor.lineEnd === null) return;
   let lines: CommentableLines | null;
   try {
     lines = await commentableLines({
@@ -107,6 +108,10 @@ async function checkLineAnchor(
       `warning: could not check the anchor against the diff (${why}); ` +
         `the draft is recorded unchecked`
     );
+    return;
+  }
+  if (anchor.lineStart === null || anchor.lineEnd === null) {
+    if (lines === null) fail(fileAnchorProblem(anchor.file));
     return;
   }
   const problem = lineAnchorProblem(lines, {

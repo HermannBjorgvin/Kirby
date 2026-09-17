@@ -277,6 +277,22 @@ describe('add-comment', () => {
       expect(errors.join('\n')).toContain('src/other.c is not part');
     });
 
+    /** A whole-file draft (`--file` alone) with `--base` is checked
+     *  too: the file itself still has to be part of the diff, even
+     *  though there is no line to anchor within it. */
+    it('refuses a whole-file draft when the base is known and the file is not in the diff', async () => {
+      anchorEnv.lines = null;
+      await expect(run('--file=src/other.c', '--base=main')).rejects.toThrow(
+        'exit 1'
+      );
+      expect(errors.join('\n')).toContain('src/other.c is not part');
+    });
+
+    it('accepts a whole-file draft when the base is known and the file is in the diff', async () => {
+      await run('--file=src/undo.c', '--base=main');
+      expect(stored()).toHaveLength(1);
+    });
+
     /** A checkout without the target branch fetched cannot verify;
      *  losing the draft over that would be worse than a later 422. */
     it('records the draft unchecked when the base cannot be resolved', async () => {
