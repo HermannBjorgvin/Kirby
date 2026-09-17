@@ -15,13 +15,13 @@ import {
 /**
  * Names are labels, tags are identity. The label builder is the half
  * of the convention both programs implement independently (Orchestra
- * in bash), so its outputs are pinned as literals — the same table
- * lives in agent-plugins' CLAUDE.md — rather than derived from the
- * function under test.
+ * in bash), so its outputs are pinned as literals — Orchestra pins the
+ * same cases in `orchestra/tests/test_port.py` — rather than derived
+ * from the function under test.
  */
 describe('session labels', () => {
-  // The table pinned in agent-plugins' CLAUDE.md, byte for byte: repo,
-  // type, branch → label. `/`, `.` and `:` become `-`; the repo's
+  // The cases Orchestra's test_port.py pins: repo, type, branch →
+  // label. `/`, `.` and `:` become `-`; the repo's
   // basename keeps its case; on overflow the first 195 characters, `-`
   // and four hex digits of the SHA-256 of the *unsanitized*
   // `<basename>-<branch>`.

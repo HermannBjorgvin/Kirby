@@ -164,7 +164,7 @@ export function sessionTags(
 // ── Labels ────────────────────────────────────────────────────────
 //
 // The rule both programs implement (Orchestra in bash, pinned as a
-// table in agent-plugins' CLAUDE.md and in session-identity.spec.ts):
+// table in Orchestra's tests/test_port.py and in session-identity.spec.ts):
 // the preferred label is `<basename(repo)>-<branch>` (or `-shell` /
 // `-agent`) with every `/`, `.` and `:` replaced by `-`, capped at 200
 // characters. On overflow the label is the first 195 characters, `-`,

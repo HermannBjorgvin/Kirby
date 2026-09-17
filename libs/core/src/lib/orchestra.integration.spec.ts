@@ -54,7 +54,7 @@ describe.skipIf(spawnSync('tmux', ['-V']).status !== 0)(
       const manifest = JSON.parse(
         readFileSync(join(fixture.plugin, '.claude-plugin/plugin.json'), 'utf8')
       );
-      expect(manifest).toMatchObject({ name: 'orchestra', version: '2.0.0' });
+      expect(manifest).toMatchObject({ name: 'orchestra', version: '1.0.0' });
       for (const skill of ['orchestrator', 'player']) {
         expect(
           readFileSync(
