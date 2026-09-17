@@ -162,7 +162,7 @@
           "commands": [
             "chmod +x apps/desktop/dist/launcher.mjs",
             "npm publish --tag beta apps/desktop/dist",
-            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/n10-desktop"
+            "node scripts/dist-tag-latest.mjs @notaharness/n10-desktop"
           ],
           "parallel": false
         }

@@ -4,15 +4,15 @@ A desktop app for running AI coding agents across git worktrees, with pull-reque
 
 n10 gives every branch its own worktree and its own agent session, and puts them in tabs. A pull request opens as a review workspace: the diff with inline comment threads on one side, the agent's terminal on the other. Agents can write draft review comments that you walk through and post. Sessions run under tmux when available, so they survive closing the app.
 
-This is the GUI. The terminal UI ships separately as [`@hermannbjorgvin/n10`](https://www.npmjs.com/package/@hermannbjorgvin/n10) and shares the same core — install it too, because it is also how review agents write their comments (see Requirements).
+This is the GUI. The terminal UI ships separately as [`@notaharness/n10`](https://www.npmjs.com/package/@notaharness/n10) and shares the same core — install it too, because it is also how review agents write their comments (see Requirements).
 
 > Beta. Expect rough edges, and pin a version if you depend on it.
 
 ## Install
 
 ```sh
-npm install -g @hermannbjorgvin/n10-desktop@beta
-npm install -g @hermannbjorgvin/n10          # for agent-written reviews
+npm install -g @notaharness/n10-desktop@beta
+npm install -g @notaharness/n10          # for agent-written reviews
 ```
 
 Then, from inside any git repository:
@@ -28,7 +28,7 @@ Launching from a repository opens it directly; launching from anywhere else brin
 - **Node.js 20+** and **git**.
 - **A build toolchain on Linux.** `node-pty` ships prebuilt binaries for macOS and Windows, but not Linux, so npm compiles it during install. On Debian/Ubuntu: `sudo apt install build-essential python3`. macOS needs the Xcode command line tools (`xcode-select --install`); most machines already have them.
 - **An agent CLI** on your `PATH` — `claude`, `codex`, `copilot`, `gemini` or `opencode`. Configurable in Settings.
-- **`n10` on your `PATH`, for agent-written reviews.** A review agent records its comments by running `n10 util add-comment`, which ships in the [terminal UI package](https://www.npmjs.com/package/@hermannbjorgvin/n10). Without it the agent reviews the diff and has nowhere to put what it found. Everything else here works without it.
+- **`n10` on your `PATH`, for agent-written reviews.** A review agent records its comments by running `n10 util add-comment`, which ships in the [terminal UI package](https://www.npmjs.com/package/@notaharness/n10). Without it the agent reviews the diff and has nowhere to put what it found. Everything else here works without it.
 - **`tmux` 3.2 or newer.** Agents and terminal tabs run in tmux, survive quitting n10, and reattach on the next launch.
 - **`gh` or `az` (optional)** for pull-request features, on GitHub and Azure DevOps respectively.
 

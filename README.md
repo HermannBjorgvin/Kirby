@@ -33,8 +33,8 @@ n10 runs agents and terminal tabs in tmux. Quitting n10 detaches from them; reop
 Install the desktop app and CLI:
 
 ```sh
-npm install -g @hermannbjorgvin/n10-desktop  # Desktop app
-npm install -g @hermannbjorgvin/n10          # Terminal UI and CLI utilities
+npm install -g @notaharness/n10-desktop  # Desktop app
+npm install -g @notaharness/n10          # Terminal UI and CLI utilities
 ```
 
 The desktop app uses the CLI for agent-drafted reviews: agents save their comments with `n10 util add-comment`, so `n10` must be on your `PATH`. If you don't use that feature, you can install the desktop app on its own.

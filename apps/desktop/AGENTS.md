@@ -93,6 +93,6 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are pinned to one exact version. Upgrade all together and check
   `npm ls @wterm/dom @wterm/react @wterm/core` shows one copy each. Import the
   stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.
-- Published as `@hermannbjorgvin/n10-desktop`; `prepare-install.mjs` writes
+- Published as `@notaharness/n10-desktop`; `prepare-install.mjs` writes
   `dist/package.json`. Linux installs compile `node-pty`. See the
   `publish-beta` skill.

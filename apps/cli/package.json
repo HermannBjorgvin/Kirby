@@ -1,5 +1,5 @@
 {
-  "name": "@hermannbjorgvin/n10",
+  "name": "@notaharness/n10",
   "version": "1.0.0-beta.7",
   "description": "A TUI workflow manager for git worktrees",
   "author": "Hermann Bjorgvin",
@@ -132,7 +132,7 @@
           "commands": [
             "node apps/cli/scripts/prepare-publish.mjs",
             "npm publish --tag beta apps/cli/dist",
-            "node scripts/dist-tag-latest.mjs @hermannbjorgvin/n10"
+            "node scripts/dist-tag-latest.mjs @notaharness/n10"
           ],
           "parallel": false
         }

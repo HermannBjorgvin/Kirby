@@ -56,7 +56,7 @@ if (!electronVersion) {
 }
 
 const out = {
-  name: '@hermannbjorgvin/n10-desktop',
+  name: '@notaharness/n10-desktop',
   version: src.version,
   description: src.description,
   author: src.author,

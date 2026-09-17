@@ -1,6 +1,6 @@
 // The one version both published packages carry.
 //
-// `@hermannbjorgvin/n10` (TUI) and `@hermannbjorgvin/n10-desktop`
+// `@notaharness/n10` (TUI) and `@notaharness/n10-desktop`
 // are two front-ends over the same core and are released together, so a
 // user can compare the two numbers and know what they have. Keeping
 // that true by hand doesn't survive contact with a release, so each
