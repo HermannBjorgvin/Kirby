@@ -97,6 +97,11 @@ Authentication only; no payload ever travels over HTTP. Bodies are capped at 64 
 | POST   | `/rtc`                   | WebRTC offer for a ticket, returns the answer                                  |
 | GET    | `/ws?ticket=…`           | upgrade to the stream connection                                               |
 
+The `peerId` in `/challenge/:peerId` and in the `/session` body is the **caller's own** id, looked
+up in the accepting machine's peer table. That is what makes `unknown peer` and `revoked peer`
+answerable at all: the accepting side is being asked to produce a nonce for, and then verify, a
+specific peer it has a record of.
+
 `POST /session` takes `{ peerId, challenge, signature, clientChallenge }`. The host verifies
 the peer's signature **before** consuming the challenge, so a bogus signature cannot burn the
 legitimate one. It then signs `clientChallenge` with its own key and returns that signature;
@@ -122,21 +127,46 @@ header (12 bytes)                                  payload
 `type` is `Open(0) | Data(1) | Close(2) | Control(3)`. `seq` counts frames per stream per
 direction from 0; a receiver feeds sequences through a tracker that distinguishes ok,
 duplicate, gap and reorder. `MAX_PAYLOAD` is 1 MiB. Version mismatch, unknown type, oversized
-declared length and truncation are distinct decode errors.
+declared length and truncation are distinct decode errors. Truncation is only detectable when a
+transport ends with bytes still buffered, so the decoder exposes an explicit finish step that
+reports it; a connection that dies mid-frame must not look like a connection that went quiet.
 
-`Open` carries the stream name as UTF-8. Capabilities are advertised in the descriptor and the
-handshake, so new stream names are additive: a client checks the capability before opening.
-Current names: `pty`, `pty:<program>`, `exec`, `msg`.
+Either side may open a stream, so stream ids are partitioned by role to keep two simultaneous
+opens from colliding: the side that dialled uses odd ids, the side that accepted uses even ones.
+
+### The `Open` payload
+
+`Open`'s payload is UTF-8 and carries the stream name plus whatever that stream needs to start:
+
+- A payload beginning with `{` is a JSON object whose `name` is the stream name and whose
+  remaining fields are that stream's open parameters.
+- Any other payload is the bare stream name, which is the host-poc form and stays valid.
+
+One frame rather than a name followed by a parameter frame, because a stream whose parameters are
+optional — `pty` with no `argv` — would otherwise leave the handler unable to tell an absent
+parameter frame from the first byte of input. Handlers get everything they need at open time.
+
+Capabilities are advertised in the descriptor and in the handshake, so new stream names are
+additive: a caller checks the capability before opening. Current names: `pty`, `pty:<program>`,
+`exec`, `msg`.
 
 ## Streams
 
 ### `pty`, `pty:<program>`
 
-A real terminal, `node-pty` on Node. `pty` runs the login shell (`$SHELL`, else bash, else
-sh); `pty:<program>` runs that program with no shell parsing of arguments. `Control`
-`{ kind: "resize", streamId, cols, rows }` resizes, clamped to 2–500 in both axes because the
-numbers come from the far side. Closing the stream kills the process; the process exiting
-closes the stream with a reason. A cap of 32 live PTYs per connection.
+A real terminal, `node-pty` on Node. Open parameters:
+`{ name: "pty", argv?: string[], cwd?: string, env?: Record<string,string>, cols?, rows? }`.
+An absent or empty `argv` means the login shell (`$SHELL`, else bash, else sh); otherwise
+`argv[0]` is executed directly, with no shell and no word splitting of the remaining arguments.
+The bare name `pty:<program>` stays valid and is equivalent to `argv: ["<program>"]`.
+
+A remote session needs all of those: attaching a tmux client is
+`tmux -u -S <socket> attach-session -t =name:`, which is an argv, a cwd and a size, not a program
+name.
+
+`Control` `{ kind: "resize", streamId, cols, rows }` resizes, clamped to 2–500 in both axes
+because the numbers come from the far side. Closing the stream kills the process; the process
+exiting closes the stream with a reason. A cap of 32 live PTYs per connection.
 
 ### `exec`
 
@@ -144,7 +174,7 @@ The `ssh host cmd` contract: run an argv, pipe stdin, get stdout, stderr and an 
 This is what lets a caller run `git` and `tmux` on the far machine without beam knowing what
 those commands mean.
 
-`Open` payload is JSON: `{ argv: string[], cwd?: string, env?: Record<string,string> }`.
+Open parameters: `{ name: "exec", argv: string[], cwd?: string, env?: Record<string,string> }`.
 `argv[0]` is executed directly — no shell, no word splitting. `cwd` must be absolute or start
 with `~/`. Provided `env` entries are merged over the host's environment, not replacing it.
 
@@ -279,11 +309,12 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
 
 ## Deliberately out of scope, doors left open
 
-| Later                                     | What keeps it possible                                                          |
-| ----------------------------------------- | ------------------------------------------------------------------------------- |
-| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                     |
-| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                  |
-| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment |
-| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`         |
-| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                 |
-| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts           |
+| Later                                     | What keeps it possible                                                                                                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure |
+| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                            |
+| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                         |
+| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                        |
+| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`                                                                                                |
+| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                                                                                                        |
+| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts                                                                                                  |
