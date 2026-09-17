@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import * as pty from 'node-pty';
 import { injectedEnv, type NodeEnvContext } from './injected-env.js';
+import { isString, isStringRecord } from './open-params.js';
 import { resolveCwd } from './resolve-cwd.js';
 import type { StreamOpenHandler } from './stream-registry.js';
 import type { BeamStream } from './stream.js';
@@ -53,18 +54,6 @@ function resolveArgv(stream: BeamStream): string[] {
     return argv as string[];
   }
   return [programFor(stream.name)];
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Object.values(value).every(isString)
-  );
 }
 
 /** Create a fresh handler: one instance owns the live sessions for one

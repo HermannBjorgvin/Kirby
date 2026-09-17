@@ -95,6 +95,22 @@ export {
 } from './lib/pty-handler.js';
 
 export {
+  createExecStreamHandler,
+  decodeExecExit,
+  demuxExecData,
+  encodeExecExit,
+  prefixChannel,
+  EXEC_CHANNEL_STDERR,
+  EXEC_CHANNEL_STDIN,
+  EXEC_CHANNEL_STDOUT,
+  type ExecExit,
+} from './lib/exec-handler.js';
+
+export type { NodeEnvContext } from './lib/injected-env.js';
+export type { CwdResult } from './lib/resolve-cwd.js';
+export type { StreamContext } from './lib/stream.js';
+
+export {
   DESCRIPTOR_PATH,
   Host,
   PROTOCOL_VERSION,
