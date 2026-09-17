@@ -1,0 +1,277 @@
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import WebSocket from 'ws';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { signNonce, verifySignature } from './auth.js';
+import { derivePeerId, loadOrCreateIdentity } from './identity.js';
+import { PeerTable } from './peer-table.js';
+import { Host } from './host.js';
+
+let dir: string;
+let host: Host;
+
+interface ClientIdentity {
+  peerId: string;
+  publicKeyPem: string;
+  privateKeyPem: string;
+}
+
+function clientKeyPair(): ClientIdentity {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const publicKeyPem = publicKey
+    .export({ type: 'spki', format: 'pem' })
+    .toString();
+  const privateKeyPem = privateKey
+    .export({ type: 'pkcs8', format: 'pem' })
+    .toString();
+  return { peerId: derivePeerId(publicKeyPem), publicKeyPem, privateKeyPem };
+}
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'beam-host-'));
+});
+
+afterEach(async () => {
+  await host?.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+async function startHost(
+  overrides: Partial<{ hostname: string; log: (m: string) => void }> = {}
+): Promise<Host> {
+  const identity = loadOrCreateIdentity(dir, { hostname: () => 'host-box' });
+  const peers = new PeerTable(dir);
+  host = new Host({ identity, peers, port: 0, ...overrides });
+  await host.listen();
+  return host;
+}
+
+describe('Host HTTP surface', () => {
+  it('defaults to binding loopback', async () => {
+    const h = await startHost();
+    expect(h.hostname).toBe('127.0.0.1');
+  });
+
+  it('logs when told to bind a non-loopback interface', async () => {
+    const logs: string[] = [];
+    await startHost({ hostname: '0.0.0.0', log: (m) => logs.push(m) });
+    expect(logs.some((m) => m.includes('0.0.0.0'))).toBe(true);
+  });
+
+  it('serves its own descriptor', async () => {
+    const h = await startHost();
+    const res = await fetch(`${h.baseUrl}/.well-known/beam/host`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      peerId: string;
+      label: string;
+      protocol: number;
+      capabilities: string[];
+    };
+    expect(body.peerId).toBe(h.identity.peerId);
+    expect(body.label).toBe('host-box');
+    expect(Array.isArray(body.capabilities)).toBe(true);
+  });
+
+  it("pairing registers the caller and returns this host's own identity, symmetrically", async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const token = h.issuePairingToken();
+
+    const res = await fetch(`${h.baseUrl}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        publicKeyPem: client.publicKeyPem,
+        label: 'laptop',
+        endpoints: [],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      peerId: string;
+      label: string;
+      publicKeyPem: string;
+      endpoints: string[];
+    };
+    expect(body.peerId).toBe(h.identity.peerId);
+    expect(body.publicKeyPem).toBe(h.identity.publicKeyPem);
+
+    const stored = h.peers.get(client.peerId);
+    expect(stored?.label).toBe('laptop');
+    expect(stored?.publicKeyPem).toBe(client.publicKeyPem);
+  });
+
+  it('a pairing token works exactly once', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const token = h.issuePairingToken();
+    const pair = () =>
+      fetch(`${h.baseUrl}/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          publicKeyPem: client.publicKeyPem,
+          label: 'laptop',
+          endpoints: [],
+        }),
+      });
+    expect((await pair()).status).toBe(201);
+    expect((await pair()).status).toBe(401);
+  });
+
+  it('rejects a body over the 64 KiB cap', async () => {
+    const h = await startHost();
+    const res = await fetch(`${h.baseUrl}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'x', publicKeyPem: 'x'.repeat(70 * 1024) }),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('the full mutual-auth round trip: challenge, session, and a ws upgrade with the ticket', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+
+    const challengeRes = await fetch(`${h.baseUrl}/challenge/${client.peerId}`);
+    expect(challengeRes.status).toBe(200);
+    const { challenge } = (await challengeRes.json()) as { challenge: string };
+
+    const signature = signNonce(client.privateKeyPem, challenge);
+    const sessionRes = await fetch(`${h.baseUrl}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        peerId: client.peerId,
+        challenge,
+        signature,
+        clientChallenge: 'nonce-x',
+      }),
+    });
+    expect(sessionRes.status).toBe(200);
+    const { ticket, hostSignature } = (await sessionRes.json()) as {
+      ticket: string;
+      hostSignature: string;
+    };
+    expect(
+      verifySignature(h.identity.publicKeyPem, 'nonce-x', hostSignature)
+    ).toBe(true);
+
+    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
+      ticket
+    )}`;
+    const socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('error', reject);
+    });
+    expect(h.connections.get(client.peerId)).toBeDefined();
+    socket.close();
+  });
+
+  it('GET /challenge/:peerId 404s for an unknown peer', async () => {
+    const h = await startHost();
+    const res = await fetch(`${h.baseUrl}/challenge/nope`);
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /session distinguishes unknown-peer, revoked-peer, bad-signature and stale-challenge', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+
+    const session = (body: Record<string, unknown>) =>
+      fetch(`${h.baseUrl}/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    const unknown = await session({
+      peerId: 'nope',
+      challenge: 'x',
+      signature: 'x',
+      clientChallenge: 'x',
+    });
+    expect(unknown.status).toBe(404);
+    expect(((await unknown.json()) as { error: string }).error).toBe(
+      'unknown-peer'
+    );
+
+    const forgedChallenge = 'never-issued-by-this-host';
+    const validSignatureOverForgedChallenge = signNonce(
+      client.privateKeyPem,
+      forgedChallenge
+    );
+    const staleRes = await session({
+      peerId: client.peerId,
+      challenge: forgedChallenge,
+      signature: validSignatureOverForgedChallenge,
+      clientChallenge: 'x',
+    });
+    expect(staleRes.status).toBe(401);
+    expect(((await staleRes.json()) as { error: string }).error).toBe(
+      'stale-challenge'
+    );
+
+    const { challenge } = (await (
+      await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
+    ).json()) as {
+      challenge: string;
+    };
+    const badSig = await session({
+      peerId: client.peerId,
+      challenge,
+      signature: 'not-a-real-signature',
+      clientChallenge: 'x',
+    });
+    expect(badSig.status).toBe(401);
+    expect(((await badSig.json()) as { error: string }).error).toBe(
+      'bad-signature'
+    );
+
+    h.peers.revoke(client.peerId);
+    const { challenge: challenge2 } = (await (
+      await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
+    ).json()) as {
+      challenge: string;
+    };
+    const signature2 = signNonce(client.privateKeyPem, challenge2);
+    const revokedRes = await session({
+      peerId: client.peerId,
+      challenge: challenge2,
+      signature: signature2,
+      clientChallenge: 'x',
+    });
+    expect(revokedRes.status).toBe(403);
+    expect(((await revokedRes.json()) as { error: string }).error).toBe(
+      'revoked-peer'
+    );
+  });
+
+  it('POST /rtc reports webrtc as unsupported in this phase', async () => {
+    const h = await startHost();
+    const res = await fetch(`${h.baseUrl}/rtc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ticket: 'whatever', sdp: 'x', type: 'offer' }),
+    });
+    expect(res.status).toBe(501);
+  });
+});
