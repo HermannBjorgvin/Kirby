@@ -13,7 +13,12 @@ Keep that entry browser-safe and the core/app-core barrels separate.
 When changing shared behavior, compare both shells. Worktree removal is
 implemented in the TUI's `performDelete` and desktop's `services/worktrees.ts`;
 both use core's removal sequence to stop persisted tmux sessions. Draft posting uses one comment per `postReviewComments` call,
-so a partial failure cannot reset already-posted comments to drafts.
+so a partial failure cannot reset already-posted comments to drafts. The
+desktop posts every draft as a plain COMMENT and, when the request carries a
+verdict (APPROVE/REQUEST_CHANGES), files it once afterward with an empty
+comment batch — riding the verdict on a draft's own post would let that one
+call make two writes on GitHub (a whole-file comment, then a bare verdict
+review), breaking the one-write-per-call bound.
 
 A draft comment anchors to lines, to a whole file, or to the pull request
 (`file`/`lineStart`/`lineEnd` nullable, the shape `RemoteCommentThread` uses).

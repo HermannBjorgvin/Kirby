@@ -139,18 +139,17 @@ export async function postDraftComments(
   // One comment per post call, like the TUI's diff viewer. A batch
   // that dies mid-way would otherwise reset already-live comments back
   // to draft (duplicating them on retry); posting singly bounds any
-  // failure to exactly the comment that failed.
+  // failure to exactly the comment that failed. Every draft posts as a
+  // plain COMMENT — riding a verdict on whichever comment a draft
+  // happens to be would let a single post make two writes (a whole-file
+  // comment plus a bare verdict review on GitHub), which breaks that
+  // same one-write-per-call bound. The verdict is filed separately,
+  // once, after every draft is live.
   let posted = 0;
   for (const c of wanted) {
     updateComment(req.prId, c.id, { status: 'posting' });
     try {
-      // A non-COMMENT event (verdict) must ride exactly one review —
-      // repeating it per comment would file N approvals on GitHub.
-      await postReviewComments(
-        [c],
-        ctx,
-        posted === 0 ? req.event ?? 'COMMENT' : 'COMMENT'
-      );
+      await postReviewComments([c], ctx, 'COMMENT');
       posted += 1;
     } catch (err) {
       updateComment(req.prId, c.id, { status: 'draft' });
@@ -161,6 +160,11 @@ export async function postDraftComments(
           : message
       );
     }
+  }
+  if (req.event === 'APPROVE' || req.event === 'REQUEST_CHANGES') {
+    // An empty comment batch with a verdict files exactly one bare
+    // review — see postGitHub's `takeVerdict` fallback.
+    await postReviewComments([], ctx, req.event);
   }
   return posted;
 }
