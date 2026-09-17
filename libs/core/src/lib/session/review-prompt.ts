@@ -33,10 +33,11 @@ export function buildReviewLaunchRequest(
     `changed lines and the 3 lines of context around them. The provider ` +
     `rejects anything else, so the command checks the anchor against ` +
     `--base and refuses one it would reject, naming the lines that work\n` +
-    `- For a remark about code the pull request did not change, give ` +
-    `--file and omit --lineStart/--lineEnd: it is posted on the file as a ` +
-    `whole. For a remark about the change itself, omit --file too: it is ` +
-    `posted on the pull request's conversation\n` +
+    `- For a remark about unchanged lines in a file this pull request ` +
+    `touches, give --file and omit --lineStart/--lineEnd: it is posted on ` +
+    `the file as a whole. A remark about a file the pull request does not ` +
+    `touch belongs on the pull request: omit --file too, and it is posted ` +
+    `on the pull request's conversation\n` +
     `- Severity: critical (blocks merge), major (should fix), minor (nice to fix), nit (style/preference)\n` +
     `- Add --thread=<id> to record which existing review thread a comment ` +
     `is about. It is still posted as a new comment at --file/--lineStart, ` +
