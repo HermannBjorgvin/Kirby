@@ -139,6 +139,8 @@ export {
   type SendOutcome,
 } from './lib/mailbox/mailbox.js';
 
+export { IpcSocket, type IpcSocketOptions } from './lib/ipc-socket.js';
+
 export {
   DESCRIPTOR_PATH,
   Host,
