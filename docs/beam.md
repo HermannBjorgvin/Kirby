@@ -175,8 +175,14 @@ This is what lets a caller run `git` and `tmux` on the far machine without beam 
 those commands mean.
 
 Open parameters: `{ name: "exec", argv: string[], cwd?: string, env?: Record<string,string> }`.
-`argv[0]` is executed directly — no shell, no word splitting. `cwd` must be absolute or start
-with `~/`. Provided `env` entries are merged over the host's environment, not replacing it.
+`argv[0]` is executed directly — no shell, no word splitting. Provided `env` entries are merged
+over the host's environment, not replacing it.
+
+`cwd` must be absolute or start with `~/`, and a leading `~/` is expanded **by the accepting
+machine**, against the home directory of the user the node runs as. Because there is no shell
+anywhere in this path, a caller cannot expand it and a `~` appearing anywhere else in an argument
+is a literal character. That is why callers that need a remote home-relative directory pass it as
+`cwd` rather than as an argument such as `git -C ~/repo`, which would never resolve.
 
 Data frames on an exec stream carry a one-byte channel prefix: `0` stdin (client→host), `1`
 stdout, `2` stderr (host→client). The prefix is local to the exec handler; the muxer stays
