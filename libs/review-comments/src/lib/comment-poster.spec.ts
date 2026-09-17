@@ -311,6 +311,19 @@ describe('posting to GitHub', () => {
     expect(events).toEqual(['APPROVE', 'COMMENT', undefined]);
   });
 
+  /** The desktop posts drafts one at a time and files a verdict
+   *  separately once every draft is live (see `postDraftComments`), so
+   *  a single write never carries both a comment and a verdict. An
+   *  empty batch has to be enough on its own to file the verdict. */
+  it('files exactly one bare review for an empty batch carrying a verdict', async () => {
+    await postReviewComments([], github, 'APPROVE');
+    expect(env.ghInputs).toHaveLength(1);
+    expect(env.ghInputs[0].args).toContain(
+      'repos/acme/widgets/pulls/7/reviews'
+    );
+    expect(env.ghInputs[0].body).toMatchObject({ event: 'APPROVE' });
+  });
+
   /** A batch of only whole-file drafts files no review of its own, so
    *  the verdict needs a bare one to ride on. */
   it('files a bare review for a verdict nothing else carried', async () => {
@@ -381,6 +394,23 @@ describe('posting to Azure DevOps', () => {
     expect(body.threadContext.rightFileEnd.line).toBe(5);
     expect(body.comments[0].content).toContain('issue (non-blocking):');
     expect(body.comments[0].content).toContain('by an agent_');
+  });
+
+  /** A LEFT comment is anchored to a deleted line, which only exists
+   *  on the old side of the diff; sending it as `rightFileStart` would
+   *  point at whatever line now occupies that number in the new file. */
+  it('anchors a LEFT comment to the old-file side', async () => {
+    await postReviewComments(
+      [comment({ side: 'LEFT', lineStart: 3, lineEnd: 5 })],
+      azure
+    );
+    const body = JSON.parse(String(env.fetches[0].init.body)) as {
+      threadContext: Record<string, { line: number }>;
+    };
+    expect(body.threadContext.leftFileStart.line).toBe(3);
+    expect(body.threadContext.leftFileEnd.line).toBe(5);
+    expect(body.threadContext.rightFileStart).toBeUndefined();
+    expect(body.threadContext.rightFileEnd).toBeUndefined();
   });
 
   it('opens a whole-file thread with a path and no lines', async () => {

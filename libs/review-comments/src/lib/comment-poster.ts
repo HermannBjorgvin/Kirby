@@ -206,12 +206,13 @@ function azureThreadContext(comment: ReviewComment) {
   if (anchor === 'pr') return {};
   const filePath = `/${comment.file}`;
   if (anchor === 'file') return { threadContext: { filePath } };
+  const start = { line: comment.lineStart, offset: 1 };
+  const end = { line: comment.lineEnd, offset: 1 };
   return {
-    threadContext: {
-      filePath,
-      rightFileStart: { line: comment.lineStart, offset: 1 },
-      rightFileEnd: { line: comment.lineEnd, offset: 1 },
-    },
+    threadContext:
+      comment.side === 'LEFT'
+        ? { filePath, leftFileStart: start, leftFileEnd: end }
+        : { filePath, rightFileStart: start, rightFileEnd: end },
   };
 }
 
