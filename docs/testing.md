@@ -24,7 +24,7 @@ The `desktop-e2e` targets build Electron before testing. Directly invoking
 `src/fixtures/desktop.ts` creates a repo and isolated HOME, seeds optional git
 states, supplies a scriptable fake agent and fails on renderer exceptions.
 Every test uses a private tmux socket inside its fixture HOME and kills only
-that fixture's sessions at teardown. It drops `KIRBY_VITE_URL` to ensure tests
+that fixture's sessions at teardown. It drops `N10_VITE_URL` to ensure tests
 use the built app.
 
 `src/setup/fake-gh.ts` supplies offline PRs, threads, comments and checks through
@@ -34,7 +34,7 @@ app construct paths differently. Provider project fields belong in `vendorProjec
 or auto-detection replaces them.
 
 Tests run under Xvfb on Linux, even with DISPLAY set. The fixture drops
-`WAYLAND_DISPLAY` and selects X11. Use `KIRBY_E2E_HEADED=1` to watch a run.
+`WAYLAND_DISPLAY` and selects X11. Use `N10_E2E_HEADED=1` to watch a run.
 `@visual` tests run in the pinned Playwright container with zero pixel tolerance.
 From `apps/desktop-e2e`, run `node run-visual.mjs --update-snapshots` after building,
 and inspect the resulting image diff.
@@ -54,10 +54,10 @@ GH_TOKEN=$(gh auth token) npx nx e2e:integration desktop-e2e
 
 ## TUI and browser bridge
 
-`apps/cli-e2e/src/fixtures/kirby.ts` creates a repo and HOME, sends `/spawn` to
-`cli-wterm-host`, waits for Kirby to render, and yields `{ term, repoPath, homeDir }`.
+`apps/cli-e2e/src/fixtures/n10.ts` creates a repo and HOME, sends `/spawn` to
+`cli-wterm-host`, waits for n10 to render, and yields `{ term, repoPath, homeDir }`.
 Teardown calls `/kill` and removes fixture directories. Configure it with
-`test.use({ kirbyConfig: { keybindPreset: 'vim' } })`.
+`test.use({ n10Config: { keybindPreset: 'vim' } })`.
 
 `term` provides `getByText`, `press`, `type`, `write` and `resize`. Wait for DOM
 updates between tight input/assertion loops, and for dialogs to close before
@@ -85,8 +85,8 @@ Start `npx nx serve cli-wterm-host`. The repository's configured Playwright MCP
 attaches to Chrome on CDP port 9222; it does not launch Chrome. Clients without
 that MCP can use their available browser tools against `http://localhost:5174`.
 
-VS Code's `Kirby in Chrome (wterm)` launch configuration or `Launch Chrome for
-Kirby QA` task starts Chrome with the isolated `.vscode/chrome` profile. A shell
+VS Code's `n10 in Chrome (wterm)` launch configuration or `Launch Chrome for
+n10 QA` task starts Chrome with the isolated `.vscode/chrome` profile. A shell
 can start the same instance:
 
 ```sh
@@ -110,7 +110,7 @@ Read the demo directory's README before recording.
 
 Integration tests exercise real GitHub operations and are **skipped** when `GH_TOKEN` is not set.
 
-- `merge-auto-delete.test.ts` — creates branches, PRs, merges, verifies Kirby auto-deletes the session
+- `merge-auto-delete.test.ts` — creates branches, PRs, merges, verifies n10 auto-deletes the session
 - `reviews-fixture.test.ts` — reads permanent fixture PRs in the test repo, verifies the Reviews tab categorizes them correctly
 
 **Running locally:**
@@ -129,7 +129,7 @@ GH_TOKEN=<fine-grained-PAT> npx nx e2e:integration cli-e2e
 
 - `GH_TOKEN` — fine-grained PAT for the test repo (required to run integration tests)
 - `TEST_REPO` — override the test repo (default: `kirby-test-runner/kirby-integration-test-repository`)
-- `KIRBY_LOG` — set automatically by the test to capture debug logs from the Kirby process
+- `N10_LOG` — set automatically by the test to capture debug logs from the n10 process
 
 **Fixture PRs in the test repo** (used by `reviews-fixture.test.ts`):
 
@@ -170,8 +170,8 @@ GH_TOKEN=<integration-pat> gh api \
 `npx nx test core` includes `orchestra.integration.spec.ts`, which installs the
 pinned Orchestra package under a fixture HOME and runs its real Bash scripts
 against an isolated tmux server. Only the agent CLI and report queue are fake.
-The suite covers large prompts, tagged discovery, Kirby attaching without
-restarting a player, Orchestra adopting and stopping Kirby players, and successful
+The suite covers large prompts, tagged discovery, n10 attaching without
+restarting a player, Orchestra adopting and stopping n10 players, and successful
 and failed report delivery. It does not exercise a model or CLI plugin manager.
 
 The archive, provenance, checksum and update instructions live in

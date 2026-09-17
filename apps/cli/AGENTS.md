@@ -1,6 +1,6 @@
 # apps/cli — the Ink TUI
 
-Thin render layer over `@kirby/app-core`. `src/main.tsx` is the entry;
+Thin render layer over `@n10/app-core`. `src/main.tsx` is the entry;
 `src/input-handlers.ts` holds the keybind-driven state transitions; screens
 under `src/screens/main` (sidebar, diff, branch picker) and
 `src/screens/reviews`; pure view-models in `src/models`; Ink-coupled hooks in
@@ -22,7 +22,7 @@ under `src/screens/main` (sidebar, diff, branch picker) and
 - The serve target sets `TSX_TSCONFIG_PATH` so tsx uses `jsx: react-jsx`;
   without it every file needs `import React`.
 - Ink paints nothing when `CI`, `CONTINUOUS_INTEGRATION` or `GITHUB_ACTIONS`
-  is set. Strip them from any env that spawns Kirby.
+  is set. Strip them from any env that spawns n10.
 - Worktree removal uses core's shared stop → remove → delete sequence.
   `stopSession` terminates one held target or one persisted target, never both.
 - `usePrData` polls the provider itself; it is the only reader in this process.
@@ -32,14 +32,14 @@ under `src/screens/main` (sidebar, diff, branch picker) and
   rendering, PTY forwarding and real terminal interaction are manual or
   `apps/cli-e2e`. Specs are type-checked through `tsconfig.spec.json`; a new
   project must reference its spec tsconfig as well as the app one.
-- `kirby util add-comment` (`src/commands/util.ts`) is how a review agent
+- `n10 util add-comment` (`src/commands/util.ts`) is how a review agent
   records drafts. It ships only in this package, so a desktop-only install
   cannot run agent reviews; both READMEs say so. Draft posting is one comment
   per `postReviewComments` call so a mid-batch failure cannot reset live
   comments to draft.
 - Comment images (`![alt](url)`) render inline through kitty graphics only
-  when `TERM` is kitty/ghostty or `KIRBY_IMAGES=kitty`; other terminals keep the
-  markdown token; `KIRBY_IMAGES=off` disables. `useCommentImages` owns the
+  when `TERM` is kitty/ghostty or `N10_IMAGES=kitty`; other terminals keep the
+  markdown token; `N10_IMAGES=off` disables. `useCommentImages` owns the
   pipeline and `CommentImagesContext` carries per-url state and `layouts`;
   every row estimator (`estimateBodyRows`, `estimateCardRows`, `buildRowMap`,
   `planCommentFooter`) takes `imageLayouts` so scroll geometry matches painted

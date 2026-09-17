@@ -1,7 +1,7 @@
 # apps/desktop — the Electron shell
 
 `src/main` owns the window and native menu; `src/preload` exposes a typed
-`window.kirby`; `src/host/contract.ts` is the single source of truth for the
+`window.n10`; `src/host/contract.ts` is the single source of truth for the
 bridge API and IPC names; `src/host/services` are main-process services;
 `src/renderer` is Vite + React 19 + Tailwind v4 with no Node access, its
 `lib/` grouped by subsystem (`data`, `diff`, `tabs`, `plan`, `review`,
@@ -65,7 +65,7 @@ Every rule below has its reasoning in `docs/decisions.md`.
   working tree, polled at 2 s only while the agent runs. `FileTree` collapse
   state is reconciled from the per-file `revision` delta during render
   (`lib/diff/file-tree-model.ts`), never from the poll.
-- The plan is a cart of value snapshots (`@kirby/core/plan`). The prompt is
+- The plan is a cart of value snapshots (`@n10/core/plan`). The prompt is
   composed in the renderer so the preview is the delivery; `plan-model.spec.ts`
   asserts numbering against `planRows`. Adopting a respawned session carries
   the chunk `seq` forward.
@@ -93,6 +93,6 @@ Every rule below has its reasoning in `docs/decisions.md`.
   are pinned to one exact version. Upgrade all together and check
   `npm ls @wterm/dom @wterm/react @wterm/core` shows one copy each. Import the
   stylesheet from `@wterm/dom/css`, never `@wterm/react/css`.
-- Published as `@hermannbjorgvin/kirby-desktop`; `prepare-install.mjs` writes
+- Published as `@hermannbjorgvin/n10-desktop`; `prepare-install.mjs` writes
   `dist/package.json`. Linux installs compile `node-pty`. See the
   `publish-beta` skill.

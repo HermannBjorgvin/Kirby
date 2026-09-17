@@ -1,7 +1,7 @@
 # Project structure
 
 ```
-apps/cli/                        — Ink TUI application (ESM, React 19) — thin render layer over @kirby/app-core
+apps/cli/                        — Ink TUI application (ESM, React 19) — thin render layer over @n10/app-core
   src/main.tsx                   — Entry point, root component
   src/input-handlers.ts          — Settings/controls input handlers (keybind-driven state transitions)
   src/components/                — Shared components (SidebarLayout, TerminalView, TabBar, StatusBar, etc.)
@@ -9,10 +9,10 @@ apps/cli/                        — Ink TUI application (ESM, React 19) — thi
   src/screens/main/              — Main tab (sidebar, diff, branch picker, confirm dialogs)
   src/screens/reviews/           — Reviews tab (DiffFileList, DiffViewer, ReviewDetailPane)
   src/hooks/                     — Ink-coupled hooks (useTerminal, useScrollWheel, useRawStdinForward, useDiffListScrollSync)
-apps/desktop/                    — Electron GUI shell over @kirby/app-core (kirby-desktop)
+apps/desktop/                    — Electron GUI shell over @n10/app-core (n10-desktop)
   src/main/tmux-session-preparer.ts — Utility-process boundary for isolated tmux server creation
-  src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), KIRBY_QA_STEPS hook
-  src/preload/preload.ts         — Typed contextBridge → window.kirby
+  src/main/                      — Electron main: window chrome + security posture (window.ts), native app menu (menu.ts), N10_QA_STEPS hook
+  src/preload/preload.ts         — Typed contextBridge → window.n10
   src/host/contract.ts           — Single source of truth for the bridge API + IPC channel names (incl. MenuCommand, ContextMenuItem, DesktopPrefs)
   src/host/services/             — Main-process services (sidebar w/ remote PR cache, sessions w/ scrollback buffer, settings, desktop-prefs…)
   src/renderer/                  — Vite + React 19 + Tailwind v4 web app (no Node access)
@@ -24,7 +24,7 @@ apps/desktop/                    — Electron GUI shell over @kirby/app-core (ki
     components/review/diff/      — the viewer: DiffPane, VirtualDiffList, diff-rows, FileTree, SnippetView…
     components/review/drafts/    — the agent's drafts + walkthrough: DraftCard, DraftEditor, ReviewStepper…
     lib/                         — grouped by subsystem, not one flat folder (see below)
-    lib/data/                    — queries.ts (TanStack Query over window.kirby), mutations.ts, query-keys.ts
+    lib/data/                    — queries.ts (TanStack Query over window.n10), mutations.ts, query-keys.ts
     lib/diff/                    — diff-model.ts (fold, split pairing), diff-virtual.ts, word-diff.ts, highlight.ts, thread-model.ts
     lib/tabs/                    — tabs-model.ts (pure reducer: preview/pinned, `sync-items`), tabs.tsx, use-close-tabs.tsx
     lib/plan/                    — plan-model.ts (rows, numbering), plan.ts, use-plan-checkout.ts
@@ -34,21 +34,21 @@ apps/desktop/                    — Electron GUI shell over @kirby/app-core (ki
     screens/                     — RepoOpen (repo picker) and Workspace (shell + shortcuts)
   scripts/dev.mjs                — Dev orchestrator: esbuild watch + vite HMR + electron restart
   scripts/qa-shots.mjs           — Headless visual QA: drives the built app under xvfb and writes PNGs
-apps/cli-wterm-host/             — HTTP + WS host that bridges Kirby PTY to browser
+apps/cli-wterm-host/             — HTTP + WS host that bridges n10 PTY to browser
   src/main.ts                    — Server: /spawn, /kill, WS /pty, ring buffer
   src/protocol.ts                — Shared SpawnRequest + ControlMessage types
   src/public/index.html
   src/public/client.ts           — Browser: @wterm/dom + auto-reconnect WS
   build.mjs                      — Single esbuild script (Node server + browser client)
 apps/cli-e2e/                    — E2E tests (@playwright/test)
-  src/fixtures/kirby.ts          — Per-test: temp repo, POST /spawn, page, term helpers
+  src/fixtures/n10.ts          — Per-test: temp repo, POST /spawn, page, term helpers
   src/setup/                     — git-repo.ts, sidebar.ts, constants.ts, github.ts
   src/*.test.ts                  — Test files (one per feature area)
   playwright.config.ts           — chromium-only, workers: 1, webServer: nx serve cli-wterm-host
 libs/core/                       — Shell-agnostic core. No React, Ink or Electron (lint-enforced)
   src/lib/session/               — Session launch + plan checkout flows
   src/lib/plan/                  — Plan store (external store) + prompt composition
-  src/plan.ts                    — Browser-safe entry (`@kirby/core/plan`) for the renderer
+  src/plan.ts                    — Browser-safe entry (`@n10/core/plan`) for the renderer
   src/lib/utils/                 — Pure helpers (sidebar-items, session-sort, diff-fetcher, virtual-viewport…)
   src/lib/settings/              — Settings field model (fields, presets, resolveValue)
   src/lib/sync/                  — Remote sync passes (sweepMergedBranches, conflict counts)
@@ -65,7 +65,7 @@ libs/core/                       — Shell-agnostic core. No React, Ink or Elect
     hints.ts                     — Human-readable key display strings
     controls-data.ts             — Controls panel data logic (buildControlsRows, getBindingRows)
   src/lib/input/                 — KeyPress type (shell-agnostic ink-Key shape) + text-input handling
-libs/app-core/                   — The React layer over @kirby/core, shared by both shells
+libs/app-core/                   — The React layer over @n10/core, shared by both shells
   src/lib/context/               — React state contexts (Config, Session, Sidebar, Nav, Modal, Toast, Layout…)
   src/lib/hooks/                 — Shell-agnostic hooks (useSessionManager, useDiffData, useRemoteComments…)
   src/lib/controllers/           — Headless screen controllers (diff file list / viewer view-models)

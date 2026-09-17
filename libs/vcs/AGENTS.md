@@ -8,7 +8,7 @@ ceiling: it is a REST surface. Reasoning: `docs/decisions.md`.
 - **GitHub is tested offline and live; Azure DevOps has no e2e at all.** The
   recorded anonymised fixtures in `azure-devops/src/lib/__fixtures__/` are its
   only safety net: extend them when you touch that provider. Record by hitting
-  the API with the PAT from `~/.kirby/config.json`, scrub org/repo names and
+  the API with the PAT from `~/.n10/config.json`, scrub org/repo names and
   `createdBy`, and read them with `readFileSync` in the spec.
 - Azure `/statuses` is a history, not a state: `deriveBuildStatus` groups by
   `context` and counts only the newest entry per check (`iterationId`, date,
