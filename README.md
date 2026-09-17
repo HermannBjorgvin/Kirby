@@ -1,4 +1,4 @@
-# 😸 n10 (working title, name of my cat)
+# N10
 
 Run AI coding agents across git worktrees, track pull requests, and review code from a desktop app or terminal UI.
 
