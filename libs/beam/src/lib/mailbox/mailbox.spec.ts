@@ -8,6 +8,7 @@ import { loadOrCreateIdentity, type Identity } from '../identity.js';
 import { PeerTable } from '../peer-table.js';
 import { StreamRegistry } from '../stream-registry.js';
 import type { TransportSocket } from '../transport.js';
+import { InboundStore } from './inbound-store.js';
 import { OutboundQueue, type QuarantinedFile } from './outbound-queue.js';
 import { Mailbox, type SendOutcome } from './mailbox.js';
 import type { Envelope } from './envelope.js';
@@ -38,7 +39,12 @@ function tmp(prefix: string): string {
   return dir;
 }
 
-function makeNode(
+/** Everything a node needs *except* an inbound subscriber — split out so a
+ * test that wants to control subscription itself (D15's durability tests,
+ * which need to observe what happens *before* anything acks) is not forced
+ * to also carry `makeNode`'s own auto-acking `onMessage` handler, which
+ * would otherwise race it for every inbound envelope. */
+function makeRawNode(
   hostname: string,
   overrides: Partial<{
     ackTimeoutMs: number;
@@ -46,13 +52,12 @@ function makeNode(
     sendAwaitMs: number;
     onQuarantine: (info: QuarantinedFile) => void;
   }> = {}
-): TestNode {
+): Omit<TestNode, 'received'> {
   const dir = tmp(`beam-mbx-${hostname}-`);
   const identity = loadOrCreateIdentity(dir, { hostname: () => hostname });
   const peers = new PeerTable(dir);
   const registry = new StreamRegistry();
   const connections = new ConnectionRegistry();
-  const received: Envelope[] = [];
   const mailbox = new Mailbox({
     identity,
     peers,
@@ -64,8 +69,22 @@ function makeNode(
     sendAwaitMs: overrides.sendAwaitMs ?? 400,
     onQuarantine: overrides.onQuarantine,
   });
-  mailbox.onMessage((envelope) => received.push(envelope));
-  return { dir, identity, peers, registry, connections, mailbox, received };
+  return { dir, identity, peers, registry, connections, mailbox };
+}
+
+function makeNode(
+  hostname: string,
+  overrides: Partial<{
+    ackTimeoutMs: number;
+    retryIntervalMs: number;
+    sendAwaitMs: number;
+    onQuarantine: (info: QuarantinedFile) => void;
+  }> = {}
+): TestNode {
+  const raw = makeRawNode(hostname, overrides);
+  const received: Envelope[] = [];
+  raw.mailbox.onMessage((envelope) => received.push(envelope));
+  return { ...raw, received };
 }
 
 /** Re-open a node against the same on-disk beamDir with fresh in-memory
@@ -261,17 +280,21 @@ describe('Mailbox: offline queueing and drain', () => {
 });
 
 describe('Mailbox: rejection', () => {
-  it('an unknown peer is rejected and stores nothing', async () => {
+  it('an unknown peer is rejected and stores nothing, echoing the requested name in `to`', async () => {
     const a = makeNode('a');
     const outcome = await a.mailbox.send({
       to: 'not-a-real-peer',
       topic: 't',
       payload: 'x',
     });
-    expect(outcome).toEqual({ outcome: 'rejected', reason: 'unknown-peer' });
+    expect(outcome).toEqual({
+      outcome: 'rejected',
+      reason: 'unknown-peer',
+      to: 'not-a-real-peer',
+    });
   });
 
-  it('a revoked peer is rejected and stores nothing', async () => {
+  it('a revoked peer is rejected and stores nothing, with `to`/`label` resolved', async () => {
     const a = makeNode('a');
     const b = makeNode('b');
     pairNodes(a, b);
@@ -281,11 +304,16 @@ describe('Mailbox: rejection', () => {
       topic: 't',
       payload: 'x',
     });
-    expect(outcome).toEqual({ outcome: 'rejected', reason: 'revoked-peer' });
+    expect(outcome).toEqual({
+      outcome: 'rejected',
+      reason: 'revoked-peer',
+      to: b.identity.peerId,
+      label: 'b',
+    });
     expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
   });
 
-  it('an oversized payload is rejected and stores nothing', async () => {
+  it('an oversized payload is rejected and stores nothing, with `to`/`label` resolved', async () => {
     const a = makeNode('a');
     const b = makeNode('b');
     pairNodes(a, b);
@@ -298,6 +326,8 @@ describe('Mailbox: rejection', () => {
     expect(outcome).toEqual({
       outcome: 'rejected',
       reason: 'oversized-payload',
+      to: b.identity.peerId,
+      label: 'b',
     });
     expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
   });
@@ -503,6 +533,69 @@ describe('Mailbox: crash windows', () => {
       (n) => n === 3
     );
     expect(b.received.map((e) => e.payload)).toEqual(['one', 'two', 'three']);
+  });
+});
+
+describe('Mailbox: inbound durability (D15)', () => {
+  it('persists an accepted envelope to disk before any subscriber acknowledges it', async () => {
+    const a = makeNode('a');
+    // A raw node for b: no auto-acking `onMessage` handler racing the
+    // never-acking subscriber this test installs below.
+    const b = makeRawNode('b');
+    pairNodes(a, { ...b, received: [] });
+    connectNodes(a, { ...b, received: [] });
+
+    // A low-level subscriber that never acknowledges — proving persistence
+    // does not depend on a subscriber taking the message at all, let alone
+    // finishing first.
+    let sawOnDisk: string[] | undefined;
+    b.mailbox.subscribeInbound(() => {
+      sawOnDisk = new InboundStore(b.dir)
+        .list(a.identity.peerId)
+        .map((e) => e.payload);
+    });
+
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'durable',
+    });
+    // The *wire* ack already happened — a's send() sees `delivered` — even
+    // though nothing has taken the message on b's side yet.
+    expect(outcome.outcome).toBe('delivered');
+    expect(sawOnDisk).toEqual(['durable']);
+  });
+
+  it('killed before any subscriber acks, restarted, a fresh subscriber sees the envelope exactly once', async () => {
+    const a = makeNode('a');
+    const b = makeRawNode('b');
+    pairNodes(a, { ...b, received: [] });
+    connectNodes(a, { ...b, received: [] });
+
+    // b's only subscriber never acknowledges — simulating the receiving
+    // node being killed before an application (e.g. `msg listen`) ever
+    // attached to take the message.
+    b.mailbox.subscribeInbound(() => undefined);
+
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'kill-before-ack',
+    });
+    expect(outcome.outcome).toBe('delivered');
+
+    // "Kill" b: dispose without ever acking, then reopen against the same
+    // beamDir — a real restart, not a mock. `reopenNode` wires its own
+    // auto-acking `onMessage` handler (like a real `msg listen` would),
+    // which is what this test observes — the redelivery this whole
+    // property is about.
+    b.mailbox.dispose();
+    const reopened = reopenNode({ ...b, received: [] });
+
+    expect(reopened.received.map((e) => e.payload)).toEqual([
+      'kill-before-ack',
+    ]);
+    expect(reopened.received).toHaveLength(1); // exactly once, not lost, not duplicated
   });
 });
 

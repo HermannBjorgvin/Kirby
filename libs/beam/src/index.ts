@@ -122,6 +122,7 @@ export {
   type QuarantinedFile,
   type QueuedEnvelope,
 } from './lib/mailbox/outbound-queue.js';
+export { InboundStore } from './lib/mailbox/inbound-store.js';
 export { SeqCounter } from './lib/mailbox/seq-counter.js';
 export {
   MailboxCorruptionError,
@@ -132,6 +133,7 @@ export { derivePeerState, type PeerState } from './lib/mailbox/peer-state.js';
 export { Flusher, type FlusherOptions } from './lib/mailbox/flusher.js';
 export {
   Mailbox,
+  type InboundHandler,
   type MailboxOptions,
   type PeerStatus,
   type QueuedForPeer,

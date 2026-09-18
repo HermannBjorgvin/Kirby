@@ -307,14 +307,29 @@ are line-delimited JSON:
 ```
 {"op":"send","to":"<peerId|label>","topic":"orchestra","payload":"…","encoding":"utf8"}
   → {"status":"queued","to":"<peerId>","label":"workbox","queueDepth":2,"reason":"peer not connected"}
-{"op":"subscribe","topic":"orchestra"}      → one envelope per line (see acknowledgement below)
-{"op":"status"}                             → peers, reachability, queue depths
+{"op":"subscribe","topic":"orchestra","from":["<peerId>",…]}
+  → one envelope per line (see acknowledgement below); both `topic` and `from` are optional
+    filters, applied server-side — an envelope neither wants is left for another subscriber,
+    never acked-and-discarded by this one
+{"op":"status"}                             → { peers, bindAddress }
+{"op":"revoke","peer":"<peerId>"}           → { status: "ok" } | { status: "error", reason }
+{"op":"rename","peer":"<peerId>","label":"<label>"}
+  → { status: "ok", label: "<resolved label>" } | { status: "error", reason }
+{"op":"forget","peer":"<peerId>"}           → { status: "ok" } | { status: "error", reason }
+{"op":"reload-peers"}                       → { status: "ok" }
 ```
 
 One node per `$BEAM_DIR`. A CLI that needs an existing node's connections (`msg send` from a
 script, `msg listen` beside a running node) uses this socket; a one-shot dial (`exec`,
 `connect`) may start its own ephemeral node instead. Because dedup state is shared through
 `$BEAM_DIR`, a second node cannot cause double delivery.
+
+`revoke`/`rename`/`forget` apply directly to the running node's live `PeerTable` — the same
+instance its `Host` and `Mailbox` already hold — so the change is visible to auth and delivery
+immediately, not only after a restart re-reads `peers.json`; `revoke` also closes that peer's
+live connection. `reload-peers` re-reads `peers.json` from disk, for the one case that writes it
+from a _different_ process: `pair` running as a separate CLI invocation. A CLI command prefers
+this socket and falls back to writing `peers.json` directly only when no node answers.
 
 #### Acknowledging a subscription
 

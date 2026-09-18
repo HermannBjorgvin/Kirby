@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthError } from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
 import { dial, pair, PeerKeyMismatchError } from './client.js';
@@ -94,6 +94,50 @@ describe('pair()', () => {
       force: true,
     });
     expect(result.peer.publicKeyPem).toBe(host.identity.publicKeyPem);
+  });
+
+  it('calls onBeforeCommit with the verified identity before anything is written', async () => {
+    const clientIdentity = loadOrCreateIdentity(clientDir, {
+      hostname: () => 'laptop',
+    });
+    const clientPeers = new PeerTable(clientDir);
+    const { url } = host.issuePairingUrl();
+
+    let sawDuringCallback: unknown;
+    await pair(url, clientPeers, {
+      identity: clientIdentity,
+      onBeforeCommit: (info) => {
+        expect(info.peerId).toBe(host.identity.peerId);
+        expect(info.publicKeyPem).toBe(host.identity.publicKeyPem);
+        // Read the *same* table instance pair() is about to write to, at
+        // the instant the callback runs — this is what proves it fires
+        // before the write, not merely before pair() returns.
+        sawDuringCallback = clientPeers.get(info.peerId);
+      },
+    });
+    expect(sawDuringCallback).toBeUndefined();
+    expect(clientPeers.get(host.identity.peerId)).toBeDefined();
+  });
+
+  it('does not call onBeforeCommit when a key mismatch refuses the pair', async () => {
+    const clientIdentity = loadOrCreateIdentity(clientDir, {
+      hostname: () => 'laptop',
+    });
+    const clientPeers = new PeerTable(clientDir);
+    const bogusKey = host.identity.publicKeyPem.replace('A', 'B');
+    clientPeers.upsert({
+      peerId: host.identity.peerId,
+      label: 'old-workbox',
+      publicKeyPem: bogusKey,
+      endpoints: [],
+    });
+
+    const { url } = host.issuePairingUrl();
+    const onBeforeCommit = vi.fn();
+    await expect(
+      pair(url, clientPeers, { identity: clientIdentity, onBeforeCommit })
+    ).rejects.toThrow(PeerKeyMismatchError);
+    expect(onBeforeCommit).not.toHaveBeenCalled();
   });
 });
 

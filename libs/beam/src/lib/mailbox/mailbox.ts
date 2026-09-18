@@ -18,10 +18,23 @@ import {
   type Envelope,
 } from './envelope.js';
 import { Flusher } from './flusher.js';
+import { InboundStore } from './inbound-store.js';
 import { OutboundQueue, type QuarantinedFile } from './outbound-queue.js';
 import { derivePeerState, type PeerState } from './peer-state.js';
 import { MailboxCorruptionError, SeenTracker } from './seen-tracker.js';
 import { SeqCounter } from './seq-counter.js';
+
+/** A raw inbound subscriber: called once per accepted envelope (live or
+ * replayed from the inbound store at subscribe time), with an
+ * `acknowledge()` that must be called once it has been durably taken —
+ * that is what unlinks this receiver's on-disk copy. Used by IpcSocket,
+ * whose own subscriber ack is explicit and can arrive long after this call
+ * returns; `onMessage` below layers the simpler auto-ack API most callers
+ * want on top of it. */
+export type InboundHandler = (
+  envelope: Envelope,
+  acknowledge: () => void
+) => void;
 
 export type RejectReason =
   | 'unknown-peer'
@@ -37,7 +50,12 @@ export type SendOutcome =
       queueDepth: number;
       reason: string;
     }
-  | { outcome: 'rejected'; reason: RejectReason };
+  // `to` echoes what the caller asked for (a label or a peerId — whatever
+  // was passed to send()); `label` is the resolved display name where one
+  // could be resolved at all, absent for `unknown-peer` since there is
+  // nothing to resolve it from. D11/D9: a rejection must still say who it
+  // was for, not only why.
+  | { outcome: 'rejected'; to: string; label?: string; reason: RejectReason };
 
 export interface SendInput {
   /** A peerId or label — the same lookup dial()/PeerTable.resolve use. */
@@ -84,6 +102,7 @@ export class Mailbox {
   private readonly peers: PeerTable;
   private readonly connections: ConnectionRegistry;
   private readonly queueStore: OutboundQueue;
+  private readonly inboundStore: InboundStore;
   private readonly seqCounter: SeqCounter;
   private readonly seenTracker: SeenTracker;
   private readonly flusher: Flusher;
@@ -95,7 +114,7 @@ export class Mailbox {
     string,
     (delivered: boolean) => void
   >();
-  private readonly messageHandlers: ((envelope: Envelope) => void)[] = [];
+  private readonly inboundHandlers: InboundHandler[] = [];
 
   constructor(options: MailboxOptions) {
     this.identity = options.identity;
@@ -109,6 +128,7 @@ export class Mailbox {
     this.queueStore = new OutboundQueue(options.beamDir, {
       onQuarantine: (info) => this.reportQuarantine(info, options.onQuarantine),
     });
+    this.inboundStore = new InboundStore(options.beamDir);
     this.seqCounter = new SeqCounter(options.beamDir);
     this.seenTracker = new SeenTracker(options.beamDir);
     this.flusher = new Flusher({
@@ -139,15 +159,29 @@ export class Mailbox {
    */
   async send(input: SendInput): Promise<SendOutcome> {
     const peer = this.peers.resolve(input.to);
-    if (!peer) return { outcome: 'rejected', reason: 'unknown-peer' };
-    if (peer.revoked) return { outcome: 'rejected', reason: 'revoked-peer' };
+    if (!peer) {
+      return { outcome: 'rejected', reason: 'unknown-peer', to: input.to };
+    }
+    if (peer.revoked) {
+      return {
+        outcome: 'rejected',
+        reason: 'revoked-peer',
+        to: peer.peerId,
+        label: peer.label,
+      };
+    }
 
     const encoding = input.encoding ?? 'utf8';
     if (
       payloadByteLength({ payload: input.payload, encoding }) >
       MAX_PAYLOAD_BYTES
     ) {
-      return { outcome: 'rejected', reason: 'oversized-payload' };
+      return {
+        outcome: 'rejected',
+        reason: 'oversized-payload',
+        to: peer.peerId,
+        label: peer.label,
+      };
     }
 
     // The seq is only claimed once the message is known-storable: claiming
@@ -188,13 +222,57 @@ export class Mailbox {
   }
 
   /** Envelopes accepted from a peer, delivered exactly once each, in
-   * sender order. Returns an unsubscribe function. */
+   * sender order. Returns an unsubscribe function.
+   *
+   * The handler's return *is* the acknowledgement (docs/beam.md's "In the
+   * library, a handler returning successfully is that acknowledgement"):
+   * once it returns without throwing, this receiver's on-disk copy
+   * (`mailbox/in/`) is unlinked. A handler that throws leaves the envelope
+   * in place, to be redelivered — this is the simple, auto-ack API; a
+   * caller that needs to hold the receiver's copy open past this call
+   * returning (IpcSocket's explicit subscriber ack) uses
+   * `subscribeInbound` instead. */
   onMessage(handler: (envelope: Envelope) => void): () => void {
-    this.messageHandlers.push(handler);
+    return this.subscribeInbound((envelope, acknowledge) => {
+      try {
+        handler(envelope);
+        acknowledge();
+      } catch (error) {
+        const msg = (error as Error).message;
+        this.log(
+          `inbound handler for ${envelope.from}/${envelope.id} threw, leaving it for redelivery: ${msg}`
+        );
+      }
+    });
+  }
+
+  /** Lower-level subscription: every raw handler gets called for every
+   * envelope this mailbox has accepted and not yet had acknowledged by a
+   * subscriber, including whatever was still sitting in the inbound store
+   * from a previous run (D15: "on start, anything still there is
+   * redelivered" — a subscriber that crashed, exited, or never attached
+   * loses nothing). Returns an unsubscribe function. */
+  subscribeInbound(handler: InboundHandler): () => void {
+    this.inboundHandlers.push(handler);
+    for (const { peerId, envelope } of this.pendingInboundBacklog()) {
+      handler(envelope, () => this.inboundStore.remove(peerId, envelope.seq));
+    }
     return () => {
-      const i = this.messageHandlers.indexOf(handler);
-      if (i >= 0) this.messageHandlers.splice(i, 1);
+      const i = this.inboundHandlers.indexOf(handler);
+      if (i >= 0) this.inboundHandlers.splice(i, 1);
     };
+  }
+
+  // Oldest first, across every sender — a per-sender backlog is already in
+  // order (InboundStore.list sorts by seq); createdAt breaks ties across
+  // senders into a stable overall receive order.
+  private pendingInboundBacklog(): { peerId: string; envelope: Envelope }[] {
+    const out: { peerId: string; envelope: Envelope }[] = [];
+    for (const peerId of this.inboundStore.peerIds()) {
+      for (const envelope of this.inboundStore.list(peerId))
+        out.push({ peerId, envelope });
+    }
+    return out.sort((a, b) => a.envelope.createdAt - b.envelope.createdAt);
   }
 
   status(): PeerStatus[] {
@@ -292,16 +370,35 @@ export class Mailbox {
     }
     if (!isEnvelope(parsed) || parsed.from !== stream.peer.peerId) return;
     const envelope = parsed;
-    // No contiguity requirement (D1): `accept` takes any seq greater than
-    // the last one seen from this sender. Accepted and duplicate both ack
-    // `true` — a duplicate is exactly the resend a crash between the
-    // sender's original delivery and its ack produces, and re-acking is
-    // what lets the sender finally unlink it.
+    const peerId = stream.peer.peerId;
+    // No contiguity requirement (D1): anything greater than the last seq
+    // seen from this sender is new. Accepted and duplicate both ack `true`
+    // — a duplicate is exactly the resend a crash between the sender's
+    // original delivery and its ack produces, and re-acking is what lets
+    // the sender finally unlink it.
     try {
-      const verdict = this.seenTracker.accept(stream.peer.peerId, envelope.seq);
+      if (this.seenTracker.lastSeq(peerId) >= envelope.seq) {
+        // Already accepted on a previous frame — and, since acceptance and
+        // the wire ack always follow persistence (below), possibly already
+        // taken by a subscriber and unlinked too. Re-ack without persisting
+        // or redelivering to the application again.
+        stream.control({ kind: 'ack', id: envelope.id, accepted: true });
+        return;
+      }
+      // D15: durability before acknowledgement, mirroring the outbound
+      // queue. This *wire* ack's whole meaning is "this machine has the
+      // envelope on disk" — that is what lets the sender unlink its own
+      // copy and report `delivered`. It is deliberately a different,
+      // earlier thing than the *subscriber* ack (acknowledgeInbound,
+      // reached through subscribeInbound/onMessage above), which means "an
+      // application has taken it" and is the only thing that unlinks this
+      // receiver's own copy. See docs/beam.md's "Durable mailbox" and its
+      // two-acknowledgement table.
+      this.inboundStore.enqueue(peerId, envelope);
+      this.seenTracker.accept(peerId, envelope.seq);
       stream.control({ kind: 'ack', id: envelope.id, accepted: true });
-      if (verdict === 'accepted') {
-        for (const handler of this.messageHandlers) handler(envelope);
+      for (const handler of this.inboundHandlers) {
+        handler(envelope, () => this.inboundStore.remove(peerId, envelope.seq));
       }
     } catch (error) {
       if (!(error instanceof MailboxCorruptionError)) throw error;

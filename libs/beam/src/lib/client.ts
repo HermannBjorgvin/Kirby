@@ -35,6 +35,16 @@ export interface PairOptions {
    * silent replacement would be indistinguishable from an attacker swapping
    * the key underneath a label the user recognises (docs/beam.md). */
   force?: boolean;
+  /** Called with the verified peer identity once the key-mismatch check has
+   * passed but *before* anything is written — the one point where nothing
+   * has changed yet if the caller wants to show the label and fingerprint
+   * for the out-of-band comparison docs/beam.md describes and bail out
+   * without a `--force` re-run leaving a stale record behind it. */
+  onBeforeCommit?: (info: {
+    peerId: string;
+    label: string;
+    publicKeyPem: string;
+  }) => void;
 }
 
 /** Thrown by `pair()` when the descriptor's key does not match what this
@@ -128,6 +138,11 @@ export async function pair(
   ) {
     throw new PeerKeyMismatchError(derivedPeerId, existing.label);
   }
+  options.onBeforeCommit?.({
+    peerId: derivedPeerId,
+    label: body.label,
+    publicKeyPem: body.publicKeyPem,
+  });
   const peer = peers.upsert({
     peerId: derivedPeerId,
     label: body.label,
