@@ -349,6 +349,25 @@ to deliver has destroyed a message the sender was already told would arrive — 
 consumer that merely observes (a status board, a log) is free to ack immediately; it just has to
 say so by acking.
 
+#### The desktop is a mailbox subscriber
+
+Under a plain terminal, Orchestra's `relay.sh` is the subscriber. Under N10 Desktop it is the
+desktop itself (`apps/desktop/src/main/beam-node-mail.ts`'s `InboundMailSubscriber`, built on
+`Mailbox.subscribeInbound` rather than `onMessage`): the desktop already owns the tmux sessions a
+report needs to land in, so it is the one thing in a position to ack honestly. Its subscriber ack
+means "this pane received the text", not "a process took delivery of the bytes" — `subscribeInbound`
+holds each envelope's `acknowledge()` open across a utility-process hop to the main process, which
+resolves a target against local state (D14, below) and injects into the pane
+(`apps/desktop/src/main/beam-mail-relay.ts`), and only a successful injection acks. A refusal or a
+target with no live connection never acks: the envelope stays in `mailbox/in/`, visible in the
+machines panel as waiting or refused, exactly as durable as it was before the desktop read it.
+
+Because `subscribeInbound` replays its backlog synchronously, inside `Mailbox`'s call, before any
+caller-side listener can be attached, `InboundMailSubscriber.onMail` replays whatever it still
+holds unacked to a listener that attaches after construction — otherwise a restart's backlog would
+be handed to zero listeners and silently lost, defeating the "anything still there at start-up is
+redelivered" guarantee above one layer up.
+
 ### Injected environment
 
 Processes started by the host for a `pty` or `exec` stream get:
