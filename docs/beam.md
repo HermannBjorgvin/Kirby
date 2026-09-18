@@ -111,8 +111,13 @@ the client verifies it against the stored `publicKeyPem` and aborts on mismatch.
 means neither side talks to an impostor, which matters because the WebSocket transport is not
 itself encrypted.
 
-Failure modes are distinguishable, because the UI has to explain them: unknown peer, revoked
-peer, bad signature, stale challenge, spent ticket, host key mismatch.
+Failure modes are distinguishable where they can be, because the UI has to explain them: unknown
+peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch.
+
+One deliberate exception: a pairing token that is expired and one that has already been spent
+answer identically. Single-use secrets are built so that unknown, expired and spent all fail the
+same way, which is what stops the endpoint being an oracle for guessing tokens. So a UI can say the
+token is no longer usable, and must not claim to know which.
 
 ## Frame protocol
 
