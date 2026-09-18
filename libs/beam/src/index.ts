@@ -14,6 +14,7 @@ export { resolveBeamDir, type BeamDirEnv } from './lib/beam-dir.js';
 export {
   derivePeerId,
   loadOrCreateIdentity,
+  renameIdentity,
   type Identity,
   type LoadOrCreateIdentityOptions,
 } from './lib/identity.js';

@@ -68,6 +68,20 @@ export function loadOrCreateIdentity(
   return toIdentity(stored);
 }
 
+/**
+ * Rename this machine's own local display name. Never touches the
+ * keypair or `peerId` — renaming is purely local and cosmetic, exactly
+ * like renaming a peer in the peer table (`PeerTable.rename`).
+ */
+export function renameIdentity(beamDir: string, label: string): Identity {
+  const path = join(beamDir, 'identity.json');
+  const existing = readStored(path);
+  if (!existing) throw new Error(`no identity stored at ${beamDir}`);
+  const updated: StoredIdentity = { ...existing, label };
+  writeStoredAtomic(beamDir, path, updated);
+  return toIdentity(updated);
+}
+
 function readStored(path: string): StoredIdentity | null {
   if (!existsSync(path)) return null;
   const raw = readFileSync(path, 'utf8');
