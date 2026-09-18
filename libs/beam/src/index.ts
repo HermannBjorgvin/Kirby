@@ -153,6 +153,8 @@ export {
   dial,
   fetchDescriptor,
   pair,
+  parsePairUrl,
+  PeerKeyMismatchError,
   type DialOptions,
   type PairOptions,
   type PairResult,

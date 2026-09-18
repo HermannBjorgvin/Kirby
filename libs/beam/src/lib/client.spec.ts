@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuthError } from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
-import { dial, pair } from './client.js';
+import { dial, pair, PeerKeyMismatchError } from './client.js';
 import { Host } from './host.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
@@ -62,6 +62,38 @@ describe('pair()', () => {
     await expect(
       pair(url, clientPeers, { identity: identityA })
     ).rejects.toThrow(/pairing failed/);
+  });
+
+  it('refuses to replace an existing peer stored under the same id with a different key, unless forced', async () => {
+    const clientIdentity = loadOrCreateIdentity(clientDir, {
+      hostname: () => 'laptop',
+    });
+    const clientPeers = new PeerTable(clientDir);
+    // Simulate a client that already holds a (fabricated) record for the
+    // host's id under a different key — the only way this collision can
+    // arise honestly is a hash collision, but the guard must hold
+    // regardless of how the mismatch came about.
+    const bogusKey = host.identity.publicKeyPem.replace('A', 'B');
+    clientPeers.upsert({
+      peerId: host.identity.peerId,
+      label: 'old-workbox',
+      publicKeyPem: bogusKey,
+      endpoints: [],
+    });
+
+    const { url } = host.issuePairingUrl();
+    await expect(
+      pair(url, clientPeers, { identity: clientIdentity })
+    ).rejects.toThrow(PeerKeyMismatchError);
+    // The stored record must be untouched — this is the whole point.
+    expect(clientPeers.get(host.identity.peerId)?.publicKeyPem).toBe(bogusKey);
+
+    const { url: url2 } = host.issuePairingUrl();
+    const result = await pair(url2, clientPeers, {
+      identity: clientIdentity,
+      force: true,
+    });
+    expect(result.peer.publicKeyPem).toBe(host.identity.publicKeyPem);
   });
 });
 

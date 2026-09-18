@@ -30,16 +30,34 @@ export interface PairOptions {
   /** Where the host may dial this machine back; empty if it does not accept
    * connections. */
   endpoints?: string[];
+  /** Replace an existing peer's stored key under the same id. Without this,
+   * pair() refuses when we already hold a different key for that id — a
+   * silent replacement would be indistinguishable from an attacker swapping
+   * the key underneath a label the user recognises (docs/beam.md). */
+  force?: boolean;
 }
 
-export interface PairResult {
+/** Thrown by `pair()` when the descriptor's key does not match what this
+ * machine already holds for that peer id, and `force` was not passed. The
+ * caller (CLI or desktop) is expected to show the two fingerprints and ask
+ * for explicit confirmation before retrying with `force: true`. */
+export class PeerKeyMismatchError extends Error {
+  constructor(readonly peerId: string, readonly existingLabel: string) {
+    super(
+      `peer ${peerId} is already paired under a different key (known here as "${existingLabel}") — pass force to replace it`
+    );
+    this.name = 'PeerKeyMismatchError';
+  }
+}
+
+/** Parse the `#token=` fragment out of a `beam serve` pairing URL. Exported
+ * so a caller can preview a host's descriptor (fetchDescriptor) before
+ * spending the token via the full pair() below — the two-step confirm
+ * trust-on-first-use depends on. */
+export function parsePairUrl(pairUrl: string): {
   baseUrl: string;
-  /** The host, as now stored in this machine's own peer table. */
-  peer: PeerRecord;
-}
-
-/** Parse the `#token=` fragment out of a `beam serve` pairing URL. */
-function parsePairUrl(pairUrl: string): { baseUrl: string; token: string } {
+  token: string;
+} {
   const url = new URL(pairUrl);
   const prefix = '#token=';
   if (!url.hash.startsWith(prefix))
@@ -49,6 +67,12 @@ function parsePairUrl(pairUrl: string): { baseUrl: string; token: string } {
     baseUrl: `${url.origin}${url.pathname.replace(/\/pair$/, '')}`,
     token,
   };
+}
+
+export interface PairResult {
+  baseUrl: string;
+  /** The host, as now stored in this machine's own peer table. */
+  peer: PeerRecord;
 }
 
 /** Trade a one-time pairing token for the host's identity, and store it —
@@ -95,6 +119,14 @@ export async function pair(
       'host-id-mismatch',
       `host claimed id ${body.peerId} but its public key derives to ${derivedPeerId}`
     );
+  }
+  const existing = peers.get(derivedPeerId);
+  if (
+    existing &&
+    existing.publicKeyPem !== body.publicKeyPem &&
+    !options.force
+  ) {
+    throw new PeerKeyMismatchError(derivedPeerId, existing.label);
   }
   const peer = peers.upsert({
     peerId: derivedPeerId,
