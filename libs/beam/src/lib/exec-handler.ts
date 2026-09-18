@@ -116,16 +116,26 @@ export function createExecStreamHandler(
 }
 
 /** Forward one child output stream to the BeamStream, one chunk at a time:
- * pause the source immediately after each chunk and resume on the next
- * tick. This bounds how far the child can run ahead of a transport that has
- * fallen behind to roughly one chunk (Node's own pipe highWaterMark) rather
- * than buffering an unbounded amount of output in this process — the
- * concern a large `tmux capture-pane` raises. */
+ * pause the source immediately after each chunk and resume on a
+ * `setImmediate`. This does *not* actually throttle the child to the
+ * transport's own pace — `resume()` fires regardless of whether the `ws`
+ * send queue (or any other transport) is keeping up, so a fast child can
+ * still run the transport's own outbound buffer up without bound. What it
+ * does bound is how much this process itself buffers on the *read* side: at
+ * most one chunk (Node's pipe highWaterMark) sits between reads, rather
+ * than the child's output piling up unread in this process while a slow
+ * transport is bypassed entirely. A large `tmux capture-pane` can still
+ * grow the transport's own send queue; gating on that (e.g. `bufferedAmount`
+ * and a drain event) is real backpressure and is not implemented here. */
 function pumpChannel(
   source: NodeJS.ReadableStream,
   channel: number,
   stream: BeamStream
 ): void {
+  // A read error on the child's own stdout/stderr pipe must not crash the
+  // whole node — same class of bug as the stdin write this file guards
+  // against below (D3's audit).
+  source.on('error', () => undefined);
   source.on('data', (chunk: Buffer) => {
     source.pause();
     stream.write(prefixChannel(channel, chunk));
@@ -144,18 +154,33 @@ function killProcessGroup(proc: ChildProcess): void {
 
 function wireExec(stream: BeamStream, proc: ChildProcess): void {
   let settled = false;
+  let stdinEnded = false;
   pumpChannel(proc.stdout ?? neverReadable(), EXEC_CHANNEL_STDOUT, stream);
   pumpChannel(proc.stderr ?? neverReadable(), EXEC_CHANNEL_STDERR, stream);
 
+  // D3: the actual fix is the `stdinEnded` guard below — never write to
+  // stdin once it has been ended. This listener is the second layer: it
+  // exists so that if a write ever does race an end anyway (a bug in this
+  // class, here or added later), it surfaces as a normal, swallowed error
+  // instead of an unhandled 'error' event that takes down the whole node
+  // process (ERR_STREAM_WRITE_AFTER_END) — which is exactly what an EOF
+  // followed by more stdin from any paired peer, hostile or merely
+  // reordering, did before this fix.
+  proc.stdin?.on('error', () => undefined);
+
   stream.onData((data) => {
     const { channel, payload } = demuxExecData(data);
-    if (channel !== EXEC_CHANNEL_STDIN) return;
-    // An empty stdin chunk signals EOF (there is no separate Control
-    // message for it in docs/beam.md): a command that reads to EOF before
-    // producing output — `tmux load-buffer -`, `sort` — can never finish
-    // without a way to end stdin short of closing the whole stream.
-    if (payload.byteLength === 0) proc.stdin?.end();
-    else proc.stdin?.write(Buffer.from(payload));
+    if (channel !== EXEC_CHANNEL_STDIN || stdinEnded) return;
+    proc.stdin?.write(Buffer.from(payload));
+  });
+  // EOF is an explicit Control message, not a zero-length Data frame: a
+  // zero-length chunk is not worth defending as a meaning distinct from "an
+  // empty write", and Control is already the stream's unambiguous
+  // out-of-band channel (it already carries acks).
+  stream.onControl((message) => {
+    if (message['kind'] !== 'stdin-eof' || stdinEnded) return;
+    stdinEnded = true;
+    proc.stdin?.end();
   });
 
   proc.on('exit', (exitCode, signal) => {

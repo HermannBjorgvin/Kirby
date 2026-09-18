@@ -29,6 +29,7 @@ function fakeStream(
 ) {
   const dataHandlers: ((data: Uint8Array) => void)[] = [];
   const closeHandlers: ((reason?: string) => void)[] = [];
+  const controlHandlers: ((message: Record<string, unknown>) => void)[] = [];
   let closedWith: string | undefined;
   let closed = false;
   const stdout: Uint8Array[] = [];
@@ -52,7 +53,7 @@ function fakeStream(
     },
     onData: (h) => dataHandlers.push(h),
     onClose: (h) => closeHandlers.push(h),
-    onControl: () => undefined,
+    onControl: (h) => controlHandlers.push(h),
   };
   return {
     stream,
@@ -60,8 +61,9 @@ function fakeStream(
       dataHandlers.forEach((h) =>
         h(prefixChannel(0, new TextEncoder().encode(text)))
       ),
-    endStdin: () =>
-      dataHandlers.forEach((h) => h(prefixChannel(0, new Uint8Array(0)))),
+    /** EOF is an explicit Control message (D1/D3), not a zero-length Data
+     * frame. */
+    sendEof: () => controlHandlers.forEach((h) => h({ kind: 'stdin-eof' })),
     stdoutText: () =>
       stdout.map((b) => Buffer.from(b).toString('utf8')).join(''),
     stderrText: () =>
@@ -134,12 +136,36 @@ describe('createExecStreamHandler', () => {
     handler(fake.stream);
     const big = 'x'.repeat(70 * 1024);
     fake.sendStdin(big);
-    fake.endStdin();
+    fake.sendEof();
     const output = await waitFor(
       fake.stdoutText,
       (t) => t.length >= big.length
     );
     expect(output.length).toBe(big.length);
+  });
+
+  it('D3: more stdin after EOF does not crash the node, and never reaches the process', async () => {
+    const handler = createExecStreamHandler();
+    const fake = fakeStream({ argv: ['cat'] });
+    handler(fake.stream);
+    fake.sendStdin('before-eof');
+    fake.sendEof();
+    // A hostile or merely reordering peer sends more stdin after EOF. Before
+    // this fix, the resulting write to an already-ended stdin raised
+    // ERR_STREAM_WRITE_AFTER_END as an unhandled 'error' event and crashed
+    // the whole node process — this call itself would have taken down the
+    // entire test run, not merely failed an assertion.
+    expect(() => fake.sendStdin('after-eof')).not.toThrow();
+
+    const exit = await waitFor(
+      () => decodeExecExit(fake.closedWith),
+      (e) => e !== null
+    );
+    // `cat` still ran to a normal, successful completion on its real EOF —
+    // proving the late write was silently dropped, not merely non-fatal.
+    expect(exit).toEqual({ exitCode: 0, signal: null });
+    expect(fake.stdoutText()).toBe('before-eof');
+    expect(fake.stdoutText()).not.toContain('after-eof');
   });
 
   it('rejects a relative cwd rather than resolving it against the host cwd', () => {
