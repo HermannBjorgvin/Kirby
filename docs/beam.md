@@ -40,6 +40,7 @@ $BEAM_DIR/
   mailbox/
     seq.json             send counter per recipient
     out/<peerId>/        one file per undelivered message
+    in/<peerId>/         one file per received message not yet taken by a subscriber
     corrupt/             quarantined queue files, reported as lost
     seen/<peerId>.json   highest accepted seq from that peer
   run/inbox.sock         local IPC socket, present while a node runs (0600)
@@ -244,6 +245,25 @@ a node-wide counter would present each of its peers a sequence full of holes. Th
 `mailbox/seq.json`, keyed by recipient.
 
 Acks are `Control` `{ kind: "ack", id, accepted: true|false, reason? }`.
+
+**Both ends are durable, and the two acknowledgements mean different things.** A receiving node
+writes the envelope to `mailbox/in/<peerId>/` before acknowledging it on the wire, and unlinks it
+only when a subscriber acknowledges having taken it. Anything still there at start-up is
+redelivered.
+
+| Acknowledgement                   | Means                                | Effect                                              |
+| --------------------------------- | ------------------------------------ | --------------------------------------------------- |
+| wire ack, to the sender           | the receiving machine has it on disk | the sender unlinks its copy and reports `delivered` |
+| subscriber ack, to the local node | an application has taken it          | the receiver unlinks its copy                       |
+
+Without the inbound store, `delivered` would mean only that a process somewhere had the message in
+memory: killing the receiver would lose it, and a resend would be refused as a duplicate because the
+receiver's `seen/` had already advanced. A subscriber that crashes, exits, or never attaches must
+lose nothing, which is exactly what a relay delivering into a terminal needs.
+
+The alternative — withholding the wire ack until a subscriber takes the message — would make
+`delivered` depend on a consumer being attached at that instant, and would leave the sender retrying
+against a machine that already has the message.
 
 **Flush triggers**: a connection to the peer becoming live (either direction), node start,
 and a bounded retry while a connection stays up. No timers are needed for offline peers —
