@@ -8,10 +8,27 @@ import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection as createBeamConnection } from './connection.js';
 import { loadOrCreateIdentity, type Identity } from './identity.js';
 import { IpcSocket } from './ipc-socket.js';
+import { InboundStore } from './mailbox/inbound-store.js';
 import { Mailbox } from './mailbox/mailbox.js';
 import { PeerTable } from './peer-table.js';
 import { StreamRegistry } from './stream-registry.js';
 import type { TransportSocket } from './transport.js';
+
+async function waitFor<T>(
+  read: () => T,
+  predicate: (value: T) => boolean,
+  timeoutMs = 3000
+): Promise<T> {
+  const started = Date.now();
+  for (;;) {
+    const value = read();
+    if (predicate(value)) return value;
+    if (Date.now() - started > timeoutMs) {
+      throw new Error('timed out waiting for condition');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 let dirs: string[] = [];
 let sockets: IpcSocket[] = [];
@@ -121,7 +138,12 @@ async function startIpc(
   node: TestNode
 ): Promise<{ socket: IpcSocket; path: string }> {
   const path = join(node.dir, 'run', 'inbox.sock');
-  const socket = new IpcSocket({ path, mailbox: node.mailbox });
+  const socket = new IpcSocket({
+    path,
+    mailbox: node.mailbox,
+    peers: node.peers,
+    connections: node.connections,
+  });
   await socket.listen();
   sockets.push(socket);
   return { socket, path };
@@ -278,14 +300,21 @@ describe('IpcSocket', () => {
     await new Promise<void>((resolve) => leaked.close(() => resolve()));
 
     const identity = loadOrCreateIdentity(dir, { hostname: () => 'stale' });
+    const peers = new PeerTable(dir);
+    const connections = new ConnectionRegistry();
     const mailbox = new Mailbox({
       identity,
-      peers: new PeerTable(dir),
-      connections: new ConnectionRegistry(),
+      peers,
+      connections,
       registry: new StreamRegistry(),
       beamDir: dir,
     });
-    const socket = new IpcSocket({ path: sockPath, mailbox });
+    const socket = new IpcSocket({
+      path: sockPath,
+      mailbox,
+      peers,
+      connections,
+    });
     await expect(socket.listen()).resolves.toBeUndefined();
     sockets.push(socket);
   });
@@ -293,7 +322,12 @@ describe('IpcSocket', () => {
   it('a live socket is not replaced — a second listen on the same path fails', async () => {
     const a = makeNode('a');
     const { path } = await startIpc(a);
-    const second = new IpcSocket({ path, mailbox: a.mailbox });
+    const second = new IpcSocket({
+      path,
+      mailbox: a.mailbox,
+      peers: a.peers,
+      connections: a.connections,
+    });
     await expect(second.listen()).rejects.toThrow(/already listening/);
   });
 
@@ -313,15 +347,20 @@ describe('IpcSocket', () => {
     // what exercises the real ordering bug — a subscribe wired in before
     // that bind call resolves or rejects, not before some earlier check.
     const badPath = join(a.dir, 'run', `bad${String.fromCharCode(0)}name.sock`);
-    const socket = new IpcSocket({ path: badPath, mailbox: a.mailbox });
-    const onMessageSpy = vi.spyOn(a.mailbox, 'onMessage');
+    const socket = new IpcSocket({
+      path: badPath,
+      mailbox: a.mailbox,
+      peers: a.peers,
+      connections: a.connections,
+    });
+    const subscribeSpy = vi.spyOn(a.mailbox, 'subscribeInbound');
 
     await expect(socket.listen()).rejects.toThrow();
 
     // If listen() subscribed before the bind resolved, this would have been
     // called even though the bind itself failed — a subscription with
     // nothing that will ever unsubscribe it.
-    expect(onMessageSpy).not.toHaveBeenCalled();
+    expect(subscribeSpy).not.toHaveBeenCalled();
   });
 
   it('an accepted connection that errors does not crash the node (D3 audit)', async () => {
@@ -344,5 +383,158 @@ describe('IpcSocket', () => {
     // EventEmitter with nobody listening for 'error' throws synchronously
     // when one is emitted, which is exactly what happened before this fix.
     expect(() => fake.emit('error', new Error('ECONNRESET'))).not.toThrow();
+  });
+
+  it('a subscriber acking unlinks the mailbox inbound store, not just its own in-memory queue', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    connectNodes(a, b);
+    const { path } = await startIpc(b);
+
+    const client = connectClient(path);
+    await waitForOpen(client.conn);
+    client.send({ op: 'subscribe', topic: 'orchestra' });
+
+    await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 'orchestra',
+      payload: 'ack-unlinks',
+    });
+    const envelope = await client.nextLine();
+    const before = new InboundStore(b.dir).list(a.identity.peerId);
+    expect(before.map((e) => e.payload)).toEqual(['ack-unlinks']);
+
+    client.send({ op: 'ack', id: envelope['id'] });
+    await waitFor(
+      () => new InboundStore(b.dir).list(a.identity.peerId).length,
+      (n) => n === 0
+    );
+    client.conn.destroy();
+  });
+
+  describe('subscribe with a `from` filter (server-side peer filter)', () => {
+    it('delivers a matching peer, and leaves a non-matching one for another subscriber rather than consuming it', async () => {
+      const a = makeNode('a');
+      const b = makeNode('b');
+      const c = makeNode('c');
+      pairNodes(a, b);
+      pairNodes(c, b);
+      connectNodes(a, b);
+      connectNodes(c, b);
+      const { path } = await startIpc(b);
+
+      const filtered = connectClient(path);
+      await waitForOpen(filtered.conn);
+      filtered.send({ op: 'subscribe', from: [a.identity.peerId] });
+
+      const catchAll = connectClient(path);
+      await waitForOpen(catchAll.conn);
+      catchAll.send({ op: 'subscribe' });
+
+      // From c, which `filtered` does not want: must not go to `filtered`,
+      // and must not be stuck behind it either — `catchAll` gets it.
+      await c.mailbox.send({
+        to: b.identity.peerId,
+        topic: 't',
+        payload: 'from-c',
+      });
+      const seenByCatchAll = await catchAll.nextLine();
+      expect(seenByCatchAll['payload']).toBe('from-c');
+      catchAll.send({ op: 'ack', id: seenByCatchAll['id'] });
+
+      // From a, which `filtered` does want.
+      await a.mailbox.send({
+        to: b.identity.peerId,
+        topic: 't',
+        payload: 'from-a',
+      });
+      const seenByFiltered = await filtered.nextLine();
+      expect(seenByFiltered['payload']).toBe('from-a');
+      filtered.send({ op: 'ack', id: seenByFiltered['id'] });
+
+      filtered.conn.destroy();
+      catchAll.conn.destroy();
+    });
+  });
+
+  describe('admin ops reach a running node immediately (D9/D15 review)', () => {
+    it("revoke applies to the live PeerTable and drops the peer's live connection, without a restart", async () => {
+      const a = makeNode('a');
+      const b = makeNode('b');
+      pairNodes(a, b);
+      connectNodes(a, b);
+      const { path } = await startIpc(a);
+
+      expect(a.peers.get(b.identity.peerId)?.revoked).toBe(false);
+      expect(a.connections.get(b.identity.peerId)).toBeDefined();
+
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+      client.send({ op: 'revoke', peer: b.identity.peerId });
+      const response = await client.nextLine();
+      expect(response['status']).toBe('ok');
+
+      // Applied to the live table this process already holds — no restart.
+      expect(a.peers.get(b.identity.peerId)?.revoked).toBe(true);
+      // And the persisted file agrees, for a process that does restart.
+      expect(new PeerTable(a.dir).get(b.identity.peerId)?.revoked).toBe(true);
+      // The live connection is dropped, not merely marked stale.
+      expect(a.connections.get(b.identity.peerId)).toBeUndefined();
+
+      client.conn.destroy();
+    });
+
+    it('rename and forget also apply to the live PeerTable immediately', async () => {
+      const a = makeNode('a');
+      const b = makeNode('b');
+      pairNodes(a, b);
+      const { path } = await startIpc(a);
+
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+
+      client.send({
+        op: 'rename',
+        peer: b.identity.peerId,
+        label: 'renamed-b',
+      });
+      const renameResponse = await client.nextLine();
+      expect(renameResponse['status']).toBe('ok');
+      expect(renameResponse['label']).toBe('renamed-b');
+      expect(a.peers.get(b.identity.peerId)?.label).toBe('renamed-b');
+
+      client.send({ op: 'forget', peer: b.identity.peerId });
+      const forgetResponse = await client.nextLine();
+      expect(forgetResponse['status']).toBe('ok');
+      expect(a.peers.get(b.identity.peerId)).toBeUndefined();
+
+      client.conn.destroy();
+    });
+
+    it('reload-peers picks up a pairing a separate process just wrote to peers.json', async () => {
+      const a = makeNode('a');
+      const { path } = await startIpc(a);
+
+      // A separate PeerTable instance, as a second CLI process's `pair`
+      // would construct, writes directly to the same beamDir.
+      const outOfProcessWrite = new PeerTable(a.dir);
+      outOfProcessWrite.upsert({
+        peerId: 'freshly-paired-peer',
+        label: 'fresh',
+        publicKeyPem: 'fresh-key',
+        endpoints: [],
+      });
+      expect(a.peers.get('freshly-paired-peer')).toBeUndefined(); // not yet visible
+
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+      client.send({ op: 'reload-peers' });
+      const response = await client.nextLine();
+      expect(response['status']).toBe('ok');
+
+      expect(a.peers.get('freshly-paired-peer')?.label).toBe('fresh');
+      client.conn.destroy();
+    });
   });
 });

@@ -137,6 +137,16 @@ export class PeerTable {
     this.save();
   }
 
+  /** Re-read `peers.json` from disk, discarding this instance's in-memory
+   * state. Used by a running node's IPC socket to pick up a pairing or
+   * admin change a separate CLI process just wrote to the same file — the
+   * node's own live `PeerTable` otherwise only ever loads once, at
+   * construction (see docs/beam.md's local IPC `reload-peers` op). */
+  reload(): void {
+    this.peers = new Map();
+    this.load();
+  }
+
   private require(peerId: string): PeerRecord {
     const record = this.peers.get(peerId);
     if (!record) throw new Error(`unknown peer: ${peerId}`);

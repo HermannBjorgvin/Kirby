@@ -12,17 +12,50 @@ import {
   type Socket,
 } from 'node:net';
 import { dirname } from 'node:path';
+import type { ConnectionRegistry } from './connection-registry.js';
 import type { Envelope } from './mailbox/envelope.js';
 import type { Mailbox, SendOutcome } from './mailbox/mailbox.js';
+import type { PeerTable } from './peer-table.js';
 
 interface Subscriber {
   socket: Socket;
   topic?: string;
+  /** Only deliver envelopes from one of these senders — the server-side
+   * half of `msg listen [<peer>...]` (decisions.md's Phase 3 review: a
+   * client-side ack-and-discard filter is a special case of the durability
+   * hole D15 fixes, and unnecessary besides, since `pump` below already
+   * skips a non-matching envelope for the next subscriber instead of
+   * blocking on it). Absent means "any sender". */
+  from?: string[];
+}
+
+/** One envelope still waiting on a subscriber ack, paired with the
+ * `acknowledge()` that actually unlinks the mailbox's on-disk copy — see
+ * Mailbox.subscribeInbound. Held here, not called, until a real subscriber
+ * acks it over the wire: that gap is the whole point of the *subscriber*
+ * ack being a distinct, later thing than the *wire* ack Mailbox already
+ * gave the sender. */
+interface PendingEnvelope {
+  envelope: Envelope;
+  acknowledge: () => void;
 }
 
 export interface IpcSocketOptions {
   path: string;
   mailbox: Mailbox;
+  /** The live peer table this node's Host and Mailbox already share —
+   * `revoke`/`rename`/`forget`/`reload-peers` act on this same instance, so
+   * the change is visible to this node's own auth and delivery checks
+   * immediately, not only after a restart re-reads peers.json. */
+  peers: PeerTable;
+  /** So `revoke`/`forget` can drop a peer's live connection (and, with it,
+   * its open streams) the moment it is no longer trusted. */
+  connections: ConnectionRegistry;
+  /** This node's own bind address, already known by the time `serve`
+   * constructs this (Host.listen() runs first) — reported back on the
+   * `status` op so a separate CLI process can show it without a
+   * CLI-private sidecar file. */
+  bindAddress?: string;
   log?: (message: string) => void;
 }
 
@@ -64,19 +97,26 @@ async function removeStaleSocket(
 export class IpcSocket {
   private readonly path: string;
   private readonly mailbox: Mailbox;
+  private readonly peers: PeerTable;
+  private readonly connections: ConnectionRegistry;
+  private readonly bindAddress?: string;
   private readonly log: (message: string) => void;
   private server: Server | null = null;
   private readonly subscribers: Subscriber[] = [];
   /** Envelopes accepted but not yet acknowledged by a subscriber, oldest
    * first. An envelope leaves this list only once acked — a subscriber
    * that disconnects mid-message puts it straight back. */
-  private readonly pending: Envelope[] = [];
-  private current: { envelope: Envelope; subscriber: Subscriber } | null = null;
+  private readonly pending: PendingEnvelope[] = [];
+  private current: { pending: PendingEnvelope; subscriber: Subscriber } | null =
+    null;
   private unsubscribeMailbox: (() => void) | null = null;
 
   constructor(options: IpcSocketOptions) {
     this.path = options.path;
     this.mailbox = options.mailbox;
+    this.peers = options.peers;
+    this.connections = options.connections;
+    this.bindAddress = options.bindAddress;
     this.log = options.log ?? (() => undefined);
   }
 
@@ -102,10 +142,19 @@ export class IpcSocket {
     // "already listening" case, mainly) never leaks this subscription —
     // there is nothing to unwind for a caller who has no reason to call
     // close() on an IpcSocket whose listen() rejected.
-    this.unsubscribeMailbox = this.mailbox.onMessage((envelope) => {
-      this.pending.push(envelope);
-      this.pump();
-    });
+    //
+    // subscribeInbound, not onMessage: a socket subscriber's ack is
+    // explicit and can arrive long after this callback returns (or never,
+    // if the subscriber crashes or exits first) — `acknowledge` is held in
+    // `pending`/`current` until a real subscriber sends `{"op":"ack",...}`
+    // for it, which is what keeps Mailbox's on-disk copy durable in the
+    // meantime (D15).
+    this.unsubscribeMailbox = this.mailbox.subscribeInbound(
+      (envelope, acknowledge) => {
+        this.pending.push({ envelope, acknowledge });
+        this.pump();
+      }
+    );
   }
 
   close(): Promise<void> {
@@ -150,11 +199,27 @@ export class IpcSocket {
     if (this.current?.subscriber.socket === socket) {
       // The consumer dropped mid-message: it stays unacknowledged and goes
       // back to the front of the line for whoever subscribes next.
-      this.pending.unshift(this.current.envelope);
+      this.pending.unshift(this.current.pending);
       this.current = null;
       this.pump();
     }
   }
+
+  /** Op name → handler, looked up rather than switched on — a dispatch
+   * table keeps this small even as the protocol grows admin ops. */
+  private readonly opHandlers: Record<
+    string,
+    (socket: Socket, record: Record<string, unknown>) => void
+  > = {
+    send: (socket, record) => void this.handleSend(socket, record),
+    subscribe: (socket, record) => this.handleSubscribe(socket, record),
+    status: (socket) => this.handleStatus(socket),
+    ack: (socket, record) => this.handleAck(socket, record),
+    revoke: (socket, record) => this.handleRevoke(socket, record),
+    rename: (socket, record) => this.handleRename(socket, record),
+    forget: (socket, record) => this.handleForget(socket, record),
+    'reload-peers': (socket) => this.handleReloadPeers(socket),
+  };
 
   private handleLine(socket: Socket, line: string): void {
     let message: unknown;
@@ -165,22 +230,20 @@ export class IpcSocket {
     }
     if (typeof message !== 'object' || message === null) return;
     const record = message as Record<string, unknown>;
-    switch (record['op']) {
-      case 'send':
-        void this.handleSend(socket, record);
-        return;
-      case 'subscribe':
-        this.handleSubscribe(socket, record);
-        return;
-      case 'status':
-        writeLine(socket, { peers: this.mailbox.status() });
-        return;
-      case 'ack':
-        this.handleAck(socket, record);
-        return;
-      default:
-        return;
-    }
+    const op = typeof record['op'] === 'string' ? record['op'] : '';
+    this.opHandlers[op]?.(socket, record);
+  }
+
+  private handleStatus(socket: Socket): void {
+    writeLine(socket, {
+      peers: this.mailbox.status(),
+      bindAddress: this.bindAddress ?? null,
+    });
+  }
+
+  private handleReloadPeers(socket: Socket): void {
+    this.peers.reload();
+    writeLine(socket, { status: 'ok' });
   }
 
   private async handleSend(
@@ -214,33 +277,106 @@ export class IpcSocket {
   ): void {
     const topic =
       typeof record['topic'] === 'string' ? record['topic'] : undefined;
-    this.subscribers.push({ socket, topic });
+    const from = isStringArray(record['from']) ? record['from'] : undefined;
+    this.subscribers.push({ socket, topic, from });
     this.pump();
   }
 
   private handleAck(socket: Socket, record: Record<string, unknown>): void {
     if (!this.current || this.current.subscriber.socket !== socket) return;
-    if (record['id'] !== this.current.envelope.id) return;
+    if (record['id'] !== this.current.pending.envelope.id) return;
+    this.current.pending.acknowledge();
     this.current = null;
     this.pump();
   }
 
+  private handleRevoke(socket: Socket, record: Record<string, unknown>): void {
+    const peerId = record['peer'];
+    if (typeof peerId !== 'string') {
+      writeLine(socket, {
+        status: 'error',
+        reason: 'malformed revoke request',
+      });
+      return;
+    }
+    try {
+      this.peers.revoke(peerId);
+    } catch (error) {
+      writeLine(socket, { status: 'error', reason: (error as Error).message });
+      return;
+    }
+    // A revoke that does not close an already-open connection (and, with
+    // it, every stream on it) is not really a revoke — same rule as
+    // Host.revoke, applied here so it also takes effect through the local
+    // socket, not only through a peer dialing in fresh.
+    this.connections.get(peerId)?.close();
+    writeLine(socket, { status: 'ok' });
+  }
+
+  private handleRename(socket: Socket, record: Record<string, unknown>): void {
+    const peerId = record['peer'];
+    const label = record['label'];
+    if (typeof peerId !== 'string' || typeof label !== 'string') {
+      writeLine(socket, {
+        status: 'error',
+        reason: 'malformed rename request',
+      });
+      return;
+    }
+    try {
+      const updated = this.peers.rename(peerId, label);
+      writeLine(socket, { status: 'ok', label: updated.label });
+    } catch (error) {
+      writeLine(socket, { status: 'error', reason: (error as Error).message });
+    }
+  }
+
+  private handleForget(socket: Socket, record: Record<string, unknown>): void {
+    const peerId = record['peer'];
+    if (typeof peerId !== 'string') {
+      writeLine(socket, {
+        status: 'error',
+        reason: 'malformed forget request',
+      });
+      return;
+    }
+    this.peers.remove(peerId);
+    this.connections.get(peerId)?.close();
+    writeLine(socket, { status: 'ok' });
+  }
+
+  private subscriberWants(subscriber: Subscriber, envelope: Envelope): boolean {
+    if (subscriber.topic && subscriber.topic !== envelope.topic) return false;
+    if (subscriber.from && !subscriber.from.includes(envelope.from)) {
+      return false;
+    }
+    return true;
+  }
+
   /** Hand the oldest pending envelope a matching subscriber can take to
    * that subscriber, one at a time — the next one waits for this one's ack
-   * (or its consumer's disconnect) before anything else moves. */
+   * (or its consumer's disconnect) before anything else moves. An envelope
+   * no subscriber currently wants (wrong topic, or a `from` filter that
+   * excludes its sender) is simply skipped, left for whichever subscriber
+   * does want it — it never blocks the ones that do. */
   private pump(): void {
     if (this.current) return;
-    const index = this.pending.findIndex((envelope) =>
-      this.subscribers.some((s) => !s.topic || s.topic === envelope.topic)
+    const index = this.pending.findIndex(({ envelope }) =>
+      this.subscribers.some((s) => this.subscriberWants(s, envelope))
     );
     if (index < 0) return;
-    const envelope = this.pending[index];
+    const pendingEnvelope = this.pending[index];
     const subscriber = this.subscribers.find(
-      (s) => !s.topic || s.topic === envelope.topic
+      (s) =>
+        pendingEnvelope && this.subscriberWants(s, pendingEnvelope.envelope)
     );
-    if (!envelope || !subscriber) return;
+    if (!pendingEnvelope || !subscriber) return;
     this.pending.splice(index, 1);
-    this.current = { envelope, subscriber };
-    writeLine(subscriber.socket, envelope);
+    this.current = { pending: pendingEnvelope, subscriber };
+    writeLine(subscriber.socket, pendingEnvelope.envelope);
   }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
 }
