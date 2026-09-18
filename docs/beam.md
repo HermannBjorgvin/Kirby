@@ -38,8 +38,9 @@ $BEAM_DIR/
   identity.json          this machine's keypair + label            (0600)
   peers.json             the peer table                            (0600)
   mailbox/
-    seq                  monotonic send counter
+    seq.json             send counter per recipient
     out/<peerId>/        one file per undelivered message
+    corrupt/             quarantined queue files, reported as lost
     seen/<peerId>.json   highest accepted seq from that peer
   run/inbox.sock         local IPC socket, present while a node runs (0600)
 ```
@@ -189,6 +190,11 @@ stdout, `2` stderr (host→client). The prefix is local to the exec handler; the
 payload-agnostic. `Close` from the host carries `{ exitCode, signal }`. Closing from the
 client kills the process group.
 
+End of stdin is a `Control` message `{ kind: "stdin-eof" }`, not a zero-length data frame: it is
+unambiguous, and `Control` is already the channel acks use. The host guards writes after end and
+keeps an `'error'` listener on the child's streams regardless — an unhandled stream `'error'`
+anywhere in a node is a remote crash, since the far side chooses what it sends and when.
+
 ### `msg`
 
 Carries mailbox envelopes (below). Either side may open it, because either side may send.
@@ -223,15 +229,33 @@ worker box cannot dial.
 
 **Delivery.** Strictly sequential: send one envelope, wait for its ack, unlink, continue. The
 receiver persists the highest accepted `seq` per sender in `mailbox/seen/<peerId>.json`,
-accepts `seq == last + 1`, re-acks and drops anything at or below `last` (the duplicate a
-crash between delivery and ack produces), and treats a gap as an error rather than silently
-accepting out of order. At-least-once on the wire plus receiver dedup means the receiving
-application sees each message exactly once, in sender order. Acks are `Control`
-`{ kind: "ack", id, accepted: true|false, reason? }`.
+accepts any `seq` above it, and re-acks without re-delivering anything at or below it — which is
+the duplicate a crash between delivery and ack produces. At-least-once on the wire plus that
+dedup means the receiving application sees each message exactly once, in sender order.
+
+The receiver deliberately does **not** require `seq == last + 1`. Ordering does not come from
+contiguity: it comes from the sender draining its queue strictly sequentially over an ordered
+transport, so the receiver cannot observe reordering in the first place. Requiring contiguity would
+only add _detection_ of a sender-side loss — which the sender already knows about, and is the side
+that can report it — at the cost of a receiver that wedges permanently on a hole it can never fill.
+
+`seq` counts per **(sender, recipient) pair**, not per node: the receiver's dedup is per sender, so
+a node-wide counter would present each of its peers a sequence full of holes. The counter lives in
+`mailbox/seq.json`, keyed by recipient.
+
+Acks are `Control` `{ kind: "ack", id, accepted: true|false, reason? }`.
 
 **Flush triggers**: a connection to the peer becoming live (either direction), node start,
 and a bounded retry while a connection stays up. No timers are needed for offline peers —
 there is nothing to try.
+
+**A queue file that cannot be read is a lost message, and is reported as one.** It is quarantined
+rather than retried forever, and the loss is surfaced — an event, an entry in the queue listing, a
+warning. This matters because `send()` already returned `queued` for that message, so the sender was
+told it was durable. Silently continuing would make the one promise this mailbox exists to keep a
+lie. A counter or dedup file that cannot be read is different: those are refused outright rather
+than reset, because a sequence number that restarts causes the receiver to judge real messages as
+duplicates, ack them, and let the sender report `delivered` for mail that will never arrive.
 
 ### Send outcomes
 
@@ -274,20 +298,16 @@ script, `msg listen` beside a running node) uses this socket; a one-shot dial (`
 
 #### Acknowledging a subscription
 
-A subscriber chooses when a message is considered taken, because the two cases are genuinely
-different and getting it wrong loses messages:
+A subscriber acknowledges each envelope by id, after it has done something durable with it. One
+that fails, crashes or exits without acking leaves the envelope unacknowledged, so it stays in the
+sender's queue and is redelivered later. In the library, a handler returning successfully is that
+acknowledgement; over the socket and in the CLI it is explicit.
 
-- **Ack on take** (the default): the envelope is acknowledged as it is handed over. Right for a
-  consumer that only observes — a status board, a log.
-- **Explicit ack**: the subscriber acknowledges each envelope by id after it has done something
-  durable with it. Right for anything that _delivers_ the message onward. A consumer that fails,
-  crashes or exits without acking leaves the envelope unacknowledged, so it stays in the sender's
-  queue and is redelivered later. In the library this is what a handler returning successfully
-  means; over the socket and in the CLI it is an explicit mode.
-
-Getting this wrong is not a small bug. A relay that acknowledges on receipt and then fails to
-deliver has destroyed a message the sender was already told would arrive — which is worse than the
-`queued` case the mailbox exists to make safe, because the sender has no reason to doubt it.
+There is deliberately no acknowledge-on-receipt mode. A relay that acks on receipt and then fails
+to deliver has destroyed a message the sender was already told would arrive — worse than the
+`queued` case the mailbox exists to make safe, because the sender has no reason to doubt it. A
+consumer that merely observes (a status board, a log) is free to ack immediately; it just has to
+say so by acking.
 
 ### Injected environment
 
