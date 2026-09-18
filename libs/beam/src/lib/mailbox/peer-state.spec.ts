@@ -11,8 +11,8 @@ describe('derivePeerState', () => {
     expect(derivePeerState({ endpoints: [] }, false)).toBe('no-endpoint');
   });
 
-  it('an endpoint with no connection and no probe defaults to unreachable, never a guessed reachable', () => {
-    expect(derivePeerState({ endpoints: ['x'] }, false)).toBe('unreachable');
+  it('an endpoint with no connection and no probe defaults to unknown, never a guessed reachable or unreachable (D4)', () => {
+    expect(derivePeerState({ endpoints: ['x'] }, false)).toBe('unknown');
   });
 
   it('an explicit probe result is honored when not connected', () => {

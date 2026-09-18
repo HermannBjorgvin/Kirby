@@ -10,16 +10,20 @@ export type PeerState =
   | 'connected'
   | 'reachable'
   | 'unreachable'
-  | 'no-endpoint';
+  | 'no-endpoint'
+  | 'unknown';
 
 /**
  * `connected` and `no-endpoint` are answerable with certainty from what
  * this library tracks today (a live connection, and whether any endpoint is
- * known). `reachable` requires an active probe this phase does not
- * implement — no prober exists yet — so a peer with an endpoint but no live
- * connection is reported `unreachable` rather than guessing `reachable`
- * with no evidence. A caller that does implement a probe passes its result
- * to get an honest `reachable`/`unreachable` split instead.
+ * known). `reachable`/`unreachable` require an active probe this phase does
+ * not implement — no prober exists yet — so a peer with a known endpoint
+ * that simply has not been probed reports `unknown` (D4), not a guessed
+ * `unreachable`: a laptop that has never dialed a paired worker box is not
+ * at fault, and reporting it `unreachable` would read as a live problem and
+ * invite the user to re-pair a perfectly healthy machine. A caller that
+ * does implement a probe passes its result to get an honest
+ * `reachable`/`unreachable` split instead.
  */
 export function derivePeerState(
   peer: Pick<PeerRecord, 'endpoints'>,
@@ -28,5 +32,5 @@ export function derivePeerState(
 ): PeerState {
   if (connected) return 'connected';
   if (peer.endpoints.length === 0) return 'no-endpoint';
-  return probe ?? 'unreachable';
+  return probe ?? 'unknown';
 }
