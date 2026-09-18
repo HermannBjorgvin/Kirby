@@ -50,4 +50,26 @@ describe('WebSocketTransport', () => {
     const transport = new WebSocketTransport();
     await expect(transport.connect('ws://127.0.0.1:1')).rejects.toThrow();
   });
+
+  it('does not lose a frame the peer sends the instant the connection completes, before onData is wired', async () => {
+    // Regression: dial() does `await transport.connect(url)` before wiring
+    // a Muxer to the result. A peer that sends data as soon as *it* sees
+    // the connection accepted — exactly what the mailbox flusher does when
+    // mail is already queued for a reconnecting peer — can win that race,
+    // and the frame must not be dropped in the gap.
+    server.on('connection', (ws) => {
+      ws.send(new Uint8Array([9, 8, 7]));
+    });
+
+    const transport = new WebSocketTransport();
+    const socket = await transport.connect(url);
+    // Deliberately wait a tick *before* wiring onData, widening the exact
+    // gap that lost the frame prior to the fix.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const received = await new Promise<Uint8Array>((resolve) =>
+      socket.onData(resolve)
+    );
+    expect(Array.from(received)).toEqual([9, 8, 7]);
+    socket.close();
+  });
 });
