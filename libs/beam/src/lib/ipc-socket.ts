@@ -4,7 +4,7 @@
  * or ask `status` without holding the identity itself. See docs/beam.md.
  */
 
-import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import {
   createConnection,
   createServer,
@@ -83,16 +83,29 @@ export class IpcSocket {
   async listen(): Promise<void> {
     await removeStaleSocket(this.path, this.log);
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
+    this.server = createServer((socket) => this.handleConnection(socket));
+    // The socket's mode grants message-sending to anything that can connect
+    // to it. Chmod-ing it *after* listen() leaves a window at the platform
+    // default (typically world-writable) between the bind and the chmod;
+    // setting the umask around the bind itself means the file is created
+    // 0600 atomically, with no window to close after the fact.
+    const previousUmask = process.umask(0o177);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.server?.once('error', reject);
+        this.server?.listen(this.path, () => resolve());
+      });
+    } finally {
+      process.umask(previousUmask);
+    }
+    // Subscribing only after a successful bind means a failed listen() (the
+    // "already listening" case, mainly) never leaks this subscription —
+    // there is nothing to unwind for a caller who has no reason to call
+    // close() on an IpcSocket whose listen() rejected.
     this.unsubscribeMailbox = this.mailbox.onMessage((envelope) => {
       this.pending.push(envelope);
       this.pump();
     });
-    this.server = createServer((socket) => this.handleConnection(socket));
-    await new Promise<void>((resolve, reject) => {
-      this.server?.once('error', reject);
-      this.server?.listen(this.path, () => resolve());
-    });
-    chmodSync(this.path, 0o600);
   }
 
   close(): Promise<void> {
@@ -115,6 +128,10 @@ export class IpcSocket {
 
   private handleConnection(socket: Socket): void {
     let buffer = '';
+    // A local client that resets or drops the connection abruptly must not
+    // crash the node with an unhandled 'error' — 'close' still fires right
+    // after and does the real cleanup (D3's audit).
+    socket.on('error', () => undefined);
     socket.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf8');
       let newlineAt: number;

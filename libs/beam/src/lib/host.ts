@@ -180,6 +180,12 @@ export class Host {
     socket: Socket,
     head: Buffer
   ): void {
+    // A client that resets the connection while we are still writing a
+    // rejection (bad path, unknown/revoked peer) or destroying the socket
+    // must not crash the node with an unhandled 'error' (D3's audit). `ws`
+    // attaches its own listener once we reach `wss.handleUpgrade()` below;
+    // this covers the rejection paths that return before that point.
+    socket.on('error', () => undefined);
     const url = new URL(req.url ?? '/', 'http://internal');
     if (url.pathname !== '/ws') {
       socket.destroy();

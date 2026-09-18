@@ -1,8 +1,9 @@
+import { EventEmitter } from 'node:events';
 import { createConnection, createServer, type Socket } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection as createBeamConnection } from './connection.js';
 import { loadOrCreateIdentity, type Identity } from './identity.js';
@@ -294,5 +295,54 @@ describe('IpcSocket', () => {
     const { path } = await startIpc(a);
     const second = new IpcSocket({ path, mailbox: a.mailbox });
     await expect(second.listen()).rejects.toThrow(/already listening/);
+  });
+
+  it('the socket file is created 0600, with no window at a looser default', async () => {
+    const a = makeNode('a');
+    const { path } = await startIpc(a);
+    const mode = statSync(path).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it('a failed bind leaves no leaked mailbox subscription (D5)', async () => {
+    const a = makeNode('a');
+    // A NUL byte in the filename does not exist as far as `existsSync` is
+    // concerned (it never throws, and reports false for an invalid path),
+    // so `removeStaleSocket`'s own pre-check passes clean; the *actual*
+    // `server.listen()` bind call then fails for real (EINVAL). This is
+    // what exercises the real ordering bug — a subscribe wired in before
+    // that bind call resolves or rejects, not before some earlier check.
+    const badPath = join(a.dir, 'run', `bad${String.fromCharCode(0)}name.sock`);
+    const socket = new IpcSocket({ path: badPath, mailbox: a.mailbox });
+    const onMessageSpy = vi.spyOn(a.mailbox, 'onMessage');
+
+    await expect(socket.listen()).rejects.toThrow();
+
+    // If listen() subscribed before the bind resolved, this would have been
+    // called even though the bind itself failed — a subscription with
+    // nothing that will ever unsubscribe it.
+    expect(onMessageSpy).not.toHaveBeenCalled();
+  });
+
+  it('an accepted connection that errors does not crash the node (D3 audit)', async () => {
+    const a = makeNode('a');
+    const { socket } = await startIpc(a);
+    const fake = new EventEmitter();
+    Object.assign(fake, {
+      write: () => true,
+      writable: true,
+      destroy: () => undefined,
+    });
+
+    const withPrivateAccess = socket as unknown as {
+      handleConnection(s: Socket): void;
+    };
+    expect(() =>
+      withPrivateAccess.handleConnection(fake as unknown as Socket)
+    ).not.toThrow();
+    // A local client resetting the connection must not crash the node — an
+    // EventEmitter with nobody listening for 'error' throws synchronously
+    // when one is emitted, which is exactly what happened before this fix.
+    expect(() => fake.emit('error', new Error('ECONNRESET'))).not.toThrow();
   });
 });

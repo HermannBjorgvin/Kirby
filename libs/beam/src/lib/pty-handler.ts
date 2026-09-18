@@ -14,7 +14,12 @@ import { resolveCwd } from './resolve-cwd.js';
 import type { StreamOpenHandler } from './stream-registry.js';
 import type { BeamStream } from './stream.js';
 
-/** Upper bound on live PTY sessions per handler instance (per connection). */
+/** Upper bound on live PTY sessions per peer (docs/beam.md's "per
+ * connection"). One handler instance is shared by every connection on a
+ * node (host.ts hands every connection the same StreamRegistry — A1), so
+ * the cap is enforced per peerId within that shared session map, not
+ * globally across the whole node: one peer opening 32 shells must not
+ * shrink another peer's own budget (D5). */
 export const MAX_PTY_SESSIONS = 32;
 const MIN_COLS_ROWS = 2;
 const MAX_COLS_ROWS = 500;
@@ -57,9 +62,12 @@ function resolveArgv(stream: BeamStream): string[] {
 }
 
 /** Create a fresh handler: one instance owns the live sessions for one
- * *node* (not one connection — A1). Sessions are keyed by `(peerId,
+ * *node* (not one connection — A1), because host.ts shares one
+ * StreamRegistry across every connection. Sessions are keyed by `(peerId,
  * streamId)`, since stream ids are only unique within one connection and two
- * peers can each open stream id 1 at the same time. `node` supplies the
+ * peers can each open stream id 1 at the same time; that same key lets
+ * `MAX_PTY_SESSIONS` be enforced per peer rather than globally (D5), even
+ * though every peer's sessions live in one shared map. `node` supplies the
  * facts every spawned process is told about itself (A4); it is optional so
  * unit tests can drive the handler without a real node directory. */
 export function createPtyStreamHandler(
@@ -68,9 +76,17 @@ export function createPtyStreamHandler(
   const sessions = new Map<string, pty.IPty>();
   const key = (stream: BeamStream): string =>
     `${stream.peer.peerId}:${stream.id}`;
+  const sessionsForPeer = (peerId: string): number => {
+    const prefix = `${peerId}:`;
+    let count = 0;
+    for (const sessionKey of sessions.keys()) {
+      if (sessionKey.startsWith(prefix)) count += 1;
+    }
+    return count;
+  };
 
   return (stream: BeamStream) => {
-    if (sessions.size >= MAX_PTY_SESSIONS) {
+    if (sessionsForPeer(stream.peer.peerId) >= MAX_PTY_SESSIONS) {
       stream.close('too many live pty sessions');
       return;
     }
@@ -138,6 +154,15 @@ function wireSession(
     const cols = clampInt(message['cols'], NaN);
     const rows = clampInt(message['rows'], NaN);
     if (Number.isNaN(cols) || Number.isNaN(rows)) return;
-    proc.resize(cols, rows);
+    try {
+      // node-pty's resize() is a native ioctl call and throws if the pty's
+      // fd is already gone — a resize can race the process exiting. Same
+      // class of bug as D3's stdin write: a remote peer's ordinary, timing-
+      // dependent message must never be able to throw an uncaught
+      // exception out of a control-frame handler and crash the node.
+      proc.resize(cols, rows);
+    } catch {
+      // The pty has already exited; nothing to resize.
+    }
   });
 }

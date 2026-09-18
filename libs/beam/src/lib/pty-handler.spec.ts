@@ -144,7 +144,7 @@ describe('createPtyStreamHandler', () => {
     expect(fake.closedWith).toMatch(/exit/);
   });
 
-  it('enforces a cap of MAX_PTY_SESSIONS live PTYs per handler instance', () => {
+  it('enforces a cap of MAX_PTY_SESSIONS live PTYs per peer', () => {
     const handler = createPtyStreamHandler();
     const fakes = Array.from({ length: MAX_PTY_SESSIONS + 1 }, (_, i) =>
       fakeStream(100 + i, 'pty:sh')
@@ -153,6 +153,29 @@ describe('createPtyStreamHandler', () => {
     const over = fakes[MAX_PTY_SESSIONS];
     expect(over.closedWith).toMatch(/too many live pty sessions/);
     for (const fake of fakes) fake.stream.close();
+  });
+
+  it("D5: the cap is per peer, not per node — one peer at its cap cannot shrink another peer's budget", () => {
+    const handler = createPtyStreamHandler();
+    const peerA = { peerId: 'peer-a-at-cap', label: 'a' };
+    const peerB = { peerId: 'peer-b', label: 'b' };
+    const aFakes = Array.from({ length: MAX_PTY_SESSIONS }, (_, i) =>
+      fakeStream(200 + i, 'pty:sh', { peer: peerA })
+    );
+    for (const fake of aFakes) handler(fake.stream);
+    // Peer A is now exactly at its own cap.
+    const overForA = fakeStream(999, 'pty:sh', { peer: peerA });
+    handler(overForA.stream);
+    expect(overForA.closedWith).toMatch(/too many live pty sessions/);
+
+    // Peer B, sharing the same handler instance (one per node — A1), must
+    // still get its own full budget.
+    const forB = fakeStream(1, 'pty:sh', { peer: peerB });
+    expect(() => handler(forB.stream)).not.toThrow();
+    expect(forB.controlsSent).toContainEqual({ kind: 'opened' });
+
+    for (const fake of aFakes) fake.stream.close();
+    forB.stream.close();
   });
 
   it('A1: two peers opening the same stream id run independent, non-colliding shells', async () => {

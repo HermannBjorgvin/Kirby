@@ -1,5 +1,8 @@
 import { generateKeyPairSync } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
+import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
@@ -374,5 +377,31 @@ describe('Host HTTP surface', () => {
       body: JSON.stringify({ ticket: 'whatever', sdp: 'x', type: 'offer' }),
     });
     expect(res.status).toBe(501);
+  });
+
+  it('D3 audit: a raw upgrade socket that errors after a rejection does not crash the node', async () => {
+    const h = await startHost();
+    const fakeSocket = new EventEmitter();
+    Object.assign(fakeSocket, { write: () => true, destroy: () => undefined });
+    const req = { url: '/ws?ticket=not-a-real-ticket' } as IncomingMessage;
+
+    const withPrivateAccess = h as unknown as {
+      handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void;
+    };
+    // The bad ticket takes the write-401-then-destroy rejection path.
+    expect(() =>
+      withPrivateAccess.handleUpgrade(
+        req,
+        fakeSocket as unknown as Socket,
+        Buffer.alloc(0)
+      )
+    ).not.toThrow();
+    // A client resetting the connection right as we reject it must not
+    // surface as an unhandled 'error' — same class of bug as D3's stdin
+    // write, and an EventEmitter with nobody listening throws synchronously
+    // when one fires.
+    expect(() =>
+      fakeSocket.emit('error', new Error('ECONNRESET'))
+    ).not.toThrow();
   });
 });
