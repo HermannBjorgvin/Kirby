@@ -108,6 +108,39 @@ describe('Host HTTP surface', () => {
     expect(stored?.publicKeyPem).toBe(client.publicKeyPem);
   });
 
+  it('setEndpoints changes what a pairing response advertises, without a restart', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const before = await fetch(`${h.baseUrl}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        token: h.issuePairingToken(),
+        publicKeyPem: client.publicKeyPem,
+        label: 'laptop',
+        endpoints: [],
+      }),
+    });
+    expect(
+      ((await before.json()) as { endpoints: string[] }).endpoints
+    ).toEqual([]);
+
+    h.setEndpoints([h.baseUrl]);
+    const after = await fetch(`${h.baseUrl}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        token: h.issuePairingToken(),
+        publicKeyPem: client.publicKeyPem,
+        label: 'laptop',
+        endpoints: [],
+      }),
+    });
+    expect(((await after.json()) as { endpoints: string[] }).endpoints).toEqual(
+      [h.baseUrl]
+    );
+  });
+
   it('a pairing token works exactly once', async () => {
     const h = await startHost();
     const client = clientKeyPair();
