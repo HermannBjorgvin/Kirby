@@ -43,7 +43,15 @@ through the exported API in `src/index.ts`.
   own bookkeeping must key on `(peer, streamId)`, never bare `streamId` —
   stream ids are only unique within one connection, and two peers can each
   open id 1 at the same moment. `argv[0]` always runs directly; nothing here
-  ever passes a caller's argv through a shell.
+  ever passes a caller's argv through a shell. `exec`'s stdin EOF is an
+  explicit Control message (`{ kind: 'stdin-eof' }`), not a zero-length Data
+  frame. Every child stream and every raw socket in this library needs an
+  `'error'` listener, even a swallowing one: an EventEmitter that emits
+  `'error'` with nobody listening throws, and an uncaught throw from a
+  connection any paired peer controls the timing of is a remote kill
+  switch — this applies to a child's stdin/stdout/stderr, accepted sockets
+  on `ipc-socket.ts`, and the raw upgrade socket in `host.ts`, not only the
+  transport's own WebSocket.
 - **Injected environment** (`injected-env.ts`): `BEAM_DIR`, `BEAM_INBOX`,
   `BEAM_PEER_ID`, `BEAM_CALLER_ID`, `BEAM_CALLER_LABEL` are appended last, so
   a caller's own `env` open parameter cannot spoof who it is. Never inject a
@@ -53,8 +61,30 @@ through the exported API in `src/index.ts`.
   (send, await ack, unlink, next) over whichever connection to that peer is
   live. `queued` is a success outcome, not a pending failure: the message is
   durable and the caller must not resend it. The receiver dedups by
-  persisting the highest accepted `seq` per sender; a malformed queue file
-  is quarantined, not left to block the messages behind it.
+  persisting the highest accepted `seq` per sender and accepts any `seq`
+  greater than that — there is no contiguity requirement. Ordering still
+  holds: the sender drains strictly sequentially over one ordered transport,
+  so the receiver cannot observe reordering; contiguity never provided that,
+  only detection of a sender-side loss the sender already knows about. A
+  malformed queue file is quarantined (moved to `corrupt/`), not left to
+  block the messages behind it, and quarantine is loud, never silent: it is
+  logged, handed to `onQuarantine`, and stays discoverable afterwards
+  through `Mailbox.quarantined()`/`OutboundQueue.quarantined()`, across a
+  restart, since the file and its reason stay on disk. `enqueue` never
+  overwrites an existing queue file — a seq collision is a thrown fatal
+  error, not something to rename over. `SeqCounter` (`mailbox/seq.json`)
+  throws on an unreadable or unparseable file rather than silently
+  restarting numbering at 1, and reconciles every `next()` against the
+  highest seq already on that peer's own disk (queued or quarantined) so a
+  _lost_ counter file cannot reissue a seq this node already wrote down —
+  though a seq already delivered and unlinked before the loss leaves no
+  on-disk trace to reconcile against, a residual window reconciliation
+  cannot close from local state alone. The PTY cap
+  (`pty-handler.ts`'s `MAX_PTY_SESSIONS`) and revocation
+  (`Flusher`'s `isRevoked`) are both enforced per peer, not globally across
+  the node — one peer must not be able to consume another's budget, and
+  revoking a peer must stop its queued mail even if something closes its
+  connection without also revoking it.
 - **Local IPC** (`ipc-socket.ts`): `$BEAM_DIR/run/inbox.sock`, mode `0600`,
   line-delimited JSON. Only remove a stale socket left by a crashed node;
   check liveness before unlinking one a running node may still own.
