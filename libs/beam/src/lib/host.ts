@@ -103,6 +103,17 @@ export class Host {
     return `http://${this.hostname}:${this.port}`;
   }
 
+  /**
+   * Update the endpoints this host tells a pairing caller it may be
+   * dialed back on. Separate from the constructor because the real
+   * bound address (an ephemeral `port: 0` resolves after `listen()`)
+   * is not known until then — a caller typically calls this once,
+   * right after `listen()` resolves, with its own `baseUrl`.
+   */
+  setEndpoints(endpoints: string[]): void {
+    this.ctx.endpoints = endpoints;
+  }
+
   /** Mint a bare one-time pairing token (10 min TTL). */
   issuePairingToken(): string {
     return this.ctx.pairingTokens.issue(undefined);
