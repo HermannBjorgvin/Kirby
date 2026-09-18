@@ -8,7 +8,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { derivePeerId, loadOrCreateIdentity } from './identity.js';
+import {
+  derivePeerId,
+  loadOrCreateIdentity,
+  renameIdentity,
+} from './identity.js';
 
 let dir: string;
 
@@ -72,5 +76,22 @@ describe('loadOrCreateIdentity', () => {
     loadOrCreateIdentity(dir);
     const raw2 = readFileSync(join(dir, 'identity.json'), 'utf8');
     expect(raw2).toBe(raw1);
+  });
+});
+
+describe('renameIdentity', () => {
+  it('changes the label without touching the keypair or peerId', () => {
+    const before = loadOrCreateIdentity(dir, { hostname: () => 'laptop' });
+    const after = renameIdentity(dir, 'my-laptop');
+    expect(after.label).toBe('my-laptop');
+    expect(after.peerId).toBe(before.peerId);
+    expect(after.publicKeyPem).toBe(before.publicKeyPem);
+    expect(after.privateKeyPem).toBe(before.privateKeyPem);
+    // Persisted, not just returned.
+    expect(loadOrCreateIdentity(dir).label).toBe('my-laptop');
+  });
+
+  it('throws when there is no identity to rename yet', () => {
+    expect(() => renameIdentity(dir, 'x')).toThrow(/no identity/);
   });
 });
