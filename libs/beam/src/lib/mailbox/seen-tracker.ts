@@ -3,6 +3,18 @@
  * accepted seq from that sender. At-least-once delivery on the wire plus
  * this dedup is what makes the receiving application see each message
  * exactly once, in order. See docs/beam.md.
+ *
+ * There is no contiguity requirement: `accept` takes any `seq` greater than
+ * the last one seen, not only `last + 1`. Ordering still holds regardless —
+ * the sender drains its queue strictly sequentially over one ordered
+ * transport, so the receiver can never observe reordering. Contiguity never
+ * provided that ordering; it only provided *detection* of a sender-side
+ * loss (a gap), and the sender already knows about that loss on its own
+ * side (an unrecoverable, quarantined queue file — see OutboundQueue). A
+ * receiver that instead treated a gap as fatal had no way to recover from
+ * one without the sender: a quarantined file's crash window between
+ * quarantine and telling the receiver about it would wedge this pair
+ * permanently, with no recovery but hand-deleting this file (D1).
  */
 
 import {
@@ -26,7 +38,7 @@ export class MailboxCorruptionError extends Error {
   }
 }
 
-export type AcceptVerdict = 'accepted' | 'duplicate' | 'gap';
+export type AcceptVerdict = 'accepted' | 'duplicate';
 
 export class SeenTracker {
   private readonly dir: string;
@@ -66,31 +78,17 @@ export class SeenTracker {
   }
 
   /**
-   * Judge `seq` from `peerId` and, if it is the legitimate next one,
-   * persist it in the same step: `seq === last + 1` is accepted; anything
-   * at or below `last` is a duplicate (the resend a crash between delivery
-   * and ack produces) and must be re-acked without being delivered to the
-   * application again; anything further ahead is a gap and is an error,
-   * never silently accepted out of order.
+   * Judge `seq` from `peerId` and, if it is new, persist it in the same
+   * step: anything at or below `last` is a duplicate (the resend a crash
+   * between delivery and ack produces, or simply a sender retrying because
+   * it never saw the ack) and must be re-acked without being delivered to
+   * the application again; anything greater than `last` is accepted,
+   * whether or not it is `last + 1` — see the class comment for why no
+   * contiguity check is needed.
    */
   accept(peerId: string, seq: number): AcceptVerdict {
-    return this.judge(peerId, seq);
-  }
-
-  /**
-   * Advance past `seq` for `peerId` without any content — the sender's
-   * counterpart to a hole it can never fill (an unrecoverable queue file,
-   * see OutboundQueue). Same contiguity rule as `accept`; the caller never
-   * delivers anything to the application for a skipped seq.
-   */
-  skip(peerId: string, seq: number): AcceptVerdict {
-    return this.judge(peerId, seq);
-  }
-
-  private judge(peerId: string, seq: number): AcceptVerdict {
     const last = this.lastSeq(peerId);
     if (seq <= last) return 'duplicate';
-    if (seq !== last + 1) return 'gap';
     this.save(peerId, seq);
     return 'accepted';
   }

@@ -16,6 +16,8 @@ import {
 import { join } from 'node:path';
 import { isEnvelope, type Envelope } from './envelope.js';
 
+const REASON_SUFFIX = '.reason';
+
 const SEQ_PAD = 10;
 
 export interface QuarantinedFile {
@@ -42,6 +44,32 @@ export class OutboundQueue {
   constructor(beamDir: string, options: OutboundQueueOptions = {}) {
     this.root = join(beamDir, 'mailbox', 'out');
     this.onQuarantine = options.onQuarantine;
+    this.reapStaleTemp();
+  }
+
+  /** Remove leftover `<seq>.json.<pid>.tmp` files at startup: `enqueue`'s
+   * write-then-rename is atomic for the target file, but a crash between
+   * the write and the rename can still orphan the temp file itself, which
+   * would otherwise accumulate forever (it is invisible to `list()`, which
+   * only looks at `*.json`). */
+  private reapStaleTemp(): void {
+    for (const peerId of this.peerIds()) {
+      const dir = this.peerDir(peerId);
+      let names: string[];
+      try {
+        names = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        if (!name.endsWith('.tmp')) continue;
+        try {
+          unlinkSync(join(dir, name));
+        } catch {
+          // Already gone — fine.
+        }
+      }
+    }
   }
 
   private peerDir(peerId: string): string {
@@ -55,11 +83,23 @@ export class OutboundQueue {
   /** Durable write: temp file, then rename over the target. A reader never
    * observes a partially written envelope — the crash window this closes
    * is "wrote the file, crashed before sending": on restart, the file is
-   * either fully there or not there at all. */
+   * either fully there or not there at all.
+   *
+   * Exclusive create (D2): a name collision — a file already sitting at
+   * this seq's path — is a fatal inconsistency, not something to rename
+   * over. `SeqCounter.next()` is what is supposed to make every seq handed
+   * to `enqueue` unique; if one collides anyway, silently overwriting it
+   * would clobber a still-queued, undelivered message, which is worse than
+   * failing loudly. */
   enqueue(peerId: string, envelope: Envelope): void {
     const dir = this.peerDir(peerId);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const target = join(dir, this.fileName(envelope.seq));
+    if (existsSync(target)) {
+      throw new Error(
+        `refusing to overwrite an already-queued message for ${peerId} at seq ${envelope.seq} (${target})`
+      );
+    }
     const tmp = `${target}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(envelope), { mode: 0o600 });
     renameSync(tmp, target);
@@ -129,12 +169,46 @@ export class OutboundQueue {
       .map((e) => e.name);
   }
 
+  /** Every file quarantined for `peerId`, so `beam msg queue` and any other
+   * diagnostic surface can show what was lost (D1) — durable across a
+   * restart, since both the file and its reason stay on disk in `corrupt/`
+   * rather than only ever being reported through the transient
+   * `onQuarantine` callback. */
+  quarantined(peerId: string): QuarantinedFile[] {
+    const dir = join(this.peerDir(peerId), 'corrupt');
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((n) => n.endsWith('.json'))
+      .sort()
+      .map((fileName) => ({
+        peerId,
+        fileName,
+        reason: this.readQuarantineReason(dir, fileName),
+      }));
+  }
+
+  private readQuarantineReason(dir: string, fileName: string): string {
+    try {
+      return readFileSync(join(dir, `${fileName}${REASON_SUFFIX}`), 'utf8');
+    } catch {
+      return 'reason unavailable';
+    }
+  }
+
   private quarantine(dir: string, name: string, reason: string): void {
     const quarantineDir = join(dir, 'corrupt');
     const peerId = dir.slice(this.root.length + 1);
     try {
       mkdirSync(quarantineDir, { recursive: true, mode: 0o700 });
       renameSync(join(dir, name), join(quarantineDir, name));
+      try {
+        writeFileSync(join(quarantineDir, `${name}${REASON_SUFFIX}`), reason, {
+          mode: 0o600,
+        });
+      } catch {
+        // Best-effort: the file is still quarantined and discoverable even
+        // without its reason recorded alongside it.
+      }
     } catch {
       // If even the rename fails there is nothing more to safely do; the
       // caller already skips this file either way.

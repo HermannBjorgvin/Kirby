@@ -21,15 +21,16 @@ describe('SeenTracker', () => {
     expect(tracker.accept('p', 1)).toBe('duplicate');
   });
 
-  it('accepts strictly increasing seqs and flags a jump as a gap without advancing', () => {
+  it('accepts a jump ahead — there is no contiguity requirement (D1)', () => {
     const tracker = new SeenTracker(dir);
     expect(tracker.accept('p', 1)).toBe('accepted');
     expect(tracker.accept('p', 2)).toBe('accepted');
-    expect(tracker.accept('p', 5)).toBe('gap');
-    // The gap must not have moved lastSeq forward: 3 is still the
-    // legitimate next value, and is accepted normally.
-    expect(tracker.lastSeq('p')).toBe(2);
-    expect(tracker.accept('p', 3)).toBe('accepted');
+    expect(tracker.accept('p', 5)).toBe('accepted');
+    expect(tracker.lastSeq('p')).toBe(5);
+    // Anything at or below the new lastSeq is now a duplicate, including
+    // the seqs the jump skipped over — there is no hole left to fill.
+    expect(tracker.accept('p', 3)).toBe('duplicate');
+    expect(tracker.accept('p', 5)).toBe('duplicate');
   });
 
   it('treats anything at or below last as duplicate, never as a gap', () => {
@@ -54,13 +55,6 @@ describe('SeenTracker', () => {
     const reopened = new SeenTracker(dir);
     expect(reopened.lastSeq('p')).toBe(1);
     expect(reopened.accept('p', 1)).toBe('duplicate');
-  });
-
-  it('skip() advances lastSeq without needing content, under the same contiguity rule', () => {
-    const tracker = new SeenTracker(dir);
-    expect(tracker.skip('p', 1)).toBe('accepted');
-    expect(tracker.accept('p', 2)).toBe('accepted');
-    expect(tracker.skip('p', 2)).toBe('duplicate');
   });
 
   it('a partially/unparseable seen file throws MailboxCorruptionError rather than resetting to 0', () => {

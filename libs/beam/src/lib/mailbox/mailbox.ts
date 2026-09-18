@@ -96,10 +96,6 @@ export class Mailbox {
     (delivered: boolean) => void
   >();
   private readonly messageHandlers: ((envelope: Envelope) => void)[] = [];
-  /** Seq numbers a peer's queue can never produce real content for again
-   * (an unrecoverable queue file) — told to the peer as `skip`s so a
-   * quarantined file does not wedge every message behind it forever. */
-  private readonly holes = new Map<string, Set<number>>();
 
   constructor(options: MailboxOptions) {
     this.identity = options.identity;
@@ -111,7 +107,7 @@ export class Mailbox {
     this.onCorruption = options.onCorruption;
 
     this.queueStore = new OutboundQueue(options.beamDir, {
-      onQuarantine: (info) => this.recordHole(info, options.onQuarantine),
+      onQuarantine: (info) => this.reportQuarantine(info, options.onQuarantine),
     });
     this.seqCounter = new SeqCounter(options.beamDir);
     this.seenTracker = new SeenTracker(options.beamDir);
@@ -123,9 +119,7 @@ export class Mailbox {
       log: this.log,
       onDelivered: (peerId, envelope) =>
         this.resolveDelivery(envelope.id, true),
-      holesFor: (peerId) =>
-        [...(this.holes.get(peerId) ?? [])].sort((a, b) => a - b),
-      onHoleResolved: (peerId, seq) => this.holes.get(peerId)?.delete(seq),
+      isRevoked: (peerId) => this.peers.get(peerId)?.revoked === true,
     });
 
     options.registry.register('msg', (stream) => this.handleInbound(stream));
@@ -227,6 +221,18 @@ export class Mailbox {
     return out;
   }
 
+  /** Messages lost to quarantine — a queue file too corrupt to ever recover
+   * or send, meaning a message a caller was already told was durable
+   * (`queued`) is gone. Quarantine must be loud, never silent (D1): this is
+   * what lets `beam msg queue` show it, and it stays discoverable here
+   * across a restart, since the file and its reason stay on disk in
+   * `corrupt/` — unlike the transient `onQuarantine` callback, which only
+   * fires for the process that was running at the moment of quarantine. */
+  quarantined(peerId?: string): QuarantinedFile[] {
+    const ids = peerId ? [peerId] : this.queueStore.peerIds();
+    return ids.flatMap((id) => this.queueStore.quarantined(id));
+  }
+
   dispose(): void {
     this.flusher.dispose();
     for (const resolve of this.deliveryWaiters.values()) resolve(false);
@@ -255,36 +261,26 @@ export class Mailbox {
     resolve(delivered);
   }
 
-  /** Record a hole (an unrecoverable queue file) so the flusher tells the
-   * peer about it before sending anything with a higher seq. */
-  private recordHole(
+  /** A quarantined file means a message a caller was already told was
+   * durable (`queued`) is gone and can never be sent — surfaced loudly
+   * (D1), never left for the caller to discover only by its absence: logged
+   * on the node's own diagnostic path (`this.log`, which defaults to
+   * `console.log` — see Host's default), handed to whoever passed
+   * `onQuarantine`, and durably discoverable afterwards via `quarantined()`
+   * even across a restart, since the file and its reason stay on disk. */
+  private reportQuarantine(
     info: QuarantinedFile,
     forward?: (info: QuarantinedFile) => void
   ): void {
-    const seq = Number(info.fileName.replace(/\.json$/, ''));
-    if (Number.isInteger(seq)) {
-      const set = this.holes.get(info.peerId) ?? new Set<number>();
-      set.add(seq);
-      this.holes.set(info.peerId, set);
-      this.flusher.kick(info.peerId);
-    }
-    this.log(`quarantined ${info.peerId}/${info.fileName}: ${info.reason}`);
+    this.log(
+      `quarantined ${info.peerId}/${info.fileName} — message lost, it will never be delivered: ${info.reason}`
+    );
     forward?.(info);
   }
 
   private handleInbound(stream: BeamStream): void {
     stream.control({ kind: 'opened' });
     stream.onData((data) => this.handleEnvelopeFrame(stream, data));
-    stream.onControl((message) => this.handleInboundControl(stream, message));
-  }
-
-  private handleInboundControl(
-    stream: BeamStream,
-    message: Record<string, unknown>
-  ): void {
-    if (message['kind'] !== 'skip' || typeof message['seq'] !== 'number')
-      return;
-    this.judgeSeq(stream.peer.peerId, message['seq'], stream, 'skip-ack');
   }
 
   private handleEnvelopeFrame(stream: BeamStream, data: Uint8Array): void {
@@ -296,59 +292,26 @@ export class Mailbox {
     }
     if (!isEnvelope(parsed) || parsed.from !== stream.peer.peerId) return;
     const envelope = parsed;
-    const verdict = this.judgeSeq(
-      stream.peer.peerId,
-      envelope.seq,
-      stream,
-      'ack',
-      envelope.id
-    );
-    // Accepted and duplicate both ack `true`: a duplicate is exactly the
-    // resend a crash between the sender's original delivery and its ack
-    // produces, and re-acking is what lets the sender finally unlink it.
-    if (verdict === true) {
-      for (const handler of this.messageHandlers) handler(envelope);
-    }
-  }
-
-  /** Shared judge-and-ack path for a real envelope (`accept`) or a `skip`:
-   * both are governed by the same per-sender contiguity rule. Returns
-   * whether the application should be told — true only for a genuinely new
-   * envelope, never for a duplicate, a gap, a skip, or unreadable state. */
-  private judgeSeq(
-    peerId: string,
-    seq: number,
-    stream: BeamStream,
-    ackKind: 'ack' | 'skip-ack',
-    envelopeId?: string
-  ): boolean {
-    const ackExtra = ackKind === 'ack' ? { id: envelopeId } : { seq };
+    // No contiguity requirement (D1): `accept` takes any seq greater than
+    // the last one seen from this sender. Accepted and duplicate both ack
+    // `true` — a duplicate is exactly the resend a crash between the
+    // sender's original delivery and its ack produces, and re-acking is
+    // what lets the sender finally unlink it.
     try {
-      const verdict =
-        ackKind === 'ack'
-          ? this.seenTracker.accept(peerId, seq)
-          : this.seenTracker.skip(peerId, seq);
-      if (verdict === 'gap') {
-        stream.control({
-          kind: ackKind,
-          ...ackExtra,
-          accepted: false,
-          reason: 'sequence gap',
-        });
-        return false;
+      const verdict = this.seenTracker.accept(stream.peer.peerId, envelope.seq);
+      stream.control({ kind: 'ack', id: envelope.id, accepted: true });
+      if (verdict === 'accepted') {
+        for (const handler of this.messageHandlers) handler(envelope);
       }
-      stream.control({ kind: ackKind, ...ackExtra, accepted: true });
-      return verdict === 'accepted';
     } catch (error) {
       if (!(error instanceof MailboxCorruptionError)) throw error;
       this.onCorruption?.(error);
       stream.control({
-        kind: ackKind,
-        ...ackExtra,
+        kind: 'ack',
+        id: envelope.id,
         accepted: false,
         reason: 'seen state unreadable',
       });
-      return false;
     }
   }
 }

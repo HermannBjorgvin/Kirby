@@ -24,15 +24,13 @@ export interface FlusherOptions {
   ackTimeoutMs?: number;
   retryIntervalMs?: number;
   onDelivered?: (peerId: string, envelope: Envelope) => void;
-  /** Sequence numbers this peer can never receive real content for (a
-   * queue file too corrupt to recover — see OutboundQueue.onQuarantine),
-   * ascending, not yet told to the peer. The drain loop tells the peer
-   * about each one (a `skip` Control round trip) before sending anything
-   * with a higher seq — otherwise the receiver's contiguity check would
-   * reject every later message as a permanent gap, which is exactly the
-   * "wedged behind a bad file" outcome this exists to avoid. */
-  holesFor?: (peerId: string) => number[];
-  onHoleResolved?: (peerId: string, seq: number) => void;
+  /** True if `peerId` is currently revoked. Checked on every turn of the
+   * drain loop, not just at kick time: revoking a peer must stop queued
+   * mail going out to it, not merely drop its live connections (D5) — a
+   * revoke that races an in-flight drain, or one issued through the peer
+   * table directly rather than through a path that also closes
+   * connections, must still take effect immediately. */
+  isRevoked?: (peerId: string) => boolean;
   log?: (message: string) => void;
 }
 
@@ -52,8 +50,7 @@ export class Flusher {
   private readonly ackTimeoutMs: number;
   private readonly retryIntervalMs: number;
   private readonly onDelivered?: (peerId: string, envelope: Envelope) => void;
-  private readonly holesFor: (peerId: string) => number[];
-  private readonly onHoleResolved?: (peerId: string, seq: number) => void;
+  private readonly isRevoked: (peerId: string) => boolean;
   private readonly log: (message: string) => void;
   private readonly active = new Set<string>();
   /** Peers kicked again while their drain was already running (or just
@@ -69,8 +66,7 @@ export class Flusher {
     this.ackTimeoutMs = options.ackTimeoutMs ?? DEFAULT_ACK_TIMEOUT_MS;
     this.retryIntervalMs = options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
     this.onDelivered = options.onDelivered;
-    this.holesFor = options.holesFor ?? (() => []);
-    this.onHoleResolved = options.onHoleResolved;
+    this.isRevoked = options.isRevoked ?? (() => false);
     this.log = options.log ?? (() => undefined);
   }
 
@@ -92,16 +88,23 @@ export class Flusher {
 
   private startDrain(peerId: string): void {
     this.active.add(peerId);
-    void this.drain(peerId).finally(() => {
-      this.active.delete(peerId);
-      if (
-        this.recheck.delete(peerId) &&
-        !this.disposed &&
-        this.connections.get(peerId)
-      ) {
-        this.startDrain(peerId);
-      }
-    });
+    // `.catch` before `.finally`: a throw inside `drain` (e.g. a queue read
+    // that raises) must be logged, not left to become an unhandled
+    // rejection nobody awaits — `void` alone is not error handling.
+    void this.drain(peerId)
+      .catch((error) =>
+        this.log(`drain for ${peerId} failed: ${(error as Error).message}`)
+      )
+      .finally(() => {
+        this.active.delete(peerId);
+        if (
+          this.recheck.delete(peerId) &&
+          !this.disposed &&
+          this.connections.get(peerId)
+        ) {
+          this.startDrain(peerId);
+        }
+      });
   }
 
   dispose(): void {
@@ -111,12 +114,16 @@ export class Flusher {
   private async drain(peerId: string): Promise<void> {
     for (;;) {
       if (this.disposed) return;
+      // Revoking a peer must stop queued mail going out to it, not just
+      // drop its connections (D5) — checked on every turn, not only at
+      // kick time, so a revoke racing an in-flight drain still lands before
+      // the next envelope goes out.
+      if (this.isRevoked(peerId)) return;
       const connection = this.connections.get(peerId);
       if (!connection) return; // No connection right now; a future connect re-kicks.
 
-      const nextHole = this.nextHoleFor(peerId);
       const next = this.queue.list(peerId)[0];
-      if (nextHole === undefined && !next) return; // Nothing left to drain.
+      if (!next) return; // Nothing left to drain.
 
       const state = await this.streamFor(peerId, connection);
       if (!state) {
@@ -124,42 +131,19 @@ export class Flusher {
         continue;
       }
 
-      // A hole must be told to the peer before any later-seq envelope, or
-      // the peer's contiguity check would reject that envelope as a gap
-      // forever — exactly the "wedged behind a bad file" outcome a
-      // quarantined queue file must not cause.
-      const progressed =
-        nextHole !== undefined
-          ? await this.stepHole(peerId, state, nextHole)
-          : await this.stepEnvelope(peerId, state, next);
+      const progressed = await this.stepEnvelope(peerId, state, next);
       if (!progressed) await delay(this.retryIntervalMs);
     }
   }
 
-  private nextHoleFor(peerId: string): number | undefined {
-    const holes = this.holesFor(peerId);
-    return holes.length > 0 ? Math.min(...holes) : undefined;
-  }
-
-  /** Send one queued skip; returns whether the loop made progress (an
-   * unacked skip is retried by the caller's delay, not treated as done). */
-  private async stepHole(
-    peerId: string,
-    state: MsgStreamState,
-    seq: number
-  ): Promise<boolean> {
-    const accepted = await this.sendSkip(state, seq);
-    if (accepted) this.onHoleResolved?.(peerId, seq);
-    return accepted;
-  }
-
-  /** Send one queued envelope; same progress convention as `stepHole`. */
+  /** Send one queued envelope; returns whether the loop made progress (an
+   * unacked envelope is retried by the caller's delay, not treated as
+   * done). */
   private async stepEnvelope(
     peerId: string,
     state: MsgStreamState,
-    next: QueuedEnvelope | undefined
+    next: QueuedEnvelope
   ): Promise<boolean> {
-    if (!next) return true; // Resolved by a hole step elsewhere; loop again.
     const accepted = await this.sendOne(state, next.envelope);
     if (accepted) {
       this.queue.remove(peerId, next.fileName);
@@ -197,19 +181,10 @@ export class Flusher {
     state: MsgStreamState,
     message: Record<string, unknown>
   ): void {
-    let key: string | undefined;
-    if (message['kind'] === 'ack' && typeof message['id'] === 'string') {
-      key = message['id'];
-    } else if (
-      message['kind'] === 'skip-ack' &&
-      typeof message['seq'] === 'number'
-    ) {
-      key = skipKey(message['seq']);
-    }
-    if (key === undefined) return;
-    const resolve = state.pending.get(key);
+    if (message['kind'] !== 'ack' || typeof message['id'] !== 'string') return;
+    const resolve = state.pending.get(message['id']);
     if (!resolve) return;
-    state.pending.delete(key);
+    state.pending.delete(message['id']);
     resolve(message['accepted'] === true);
   }
 
@@ -241,14 +216,4 @@ export class Flusher {
       state.stream.write(new TextEncoder().encode(JSON.stringify(envelope)))
     );
   }
-
-  private sendSkip(state: MsgStreamState, seq: number): Promise<boolean> {
-    return this.awaitAck(state, skipKey(seq), () =>
-      state.stream.control({ kind: 'skip', seq })
-    );
-  }
-}
-
-function skipKey(seq: number): string {
-  return `skip:${seq}`;
 }

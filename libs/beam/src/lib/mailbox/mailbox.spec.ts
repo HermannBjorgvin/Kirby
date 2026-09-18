@@ -8,7 +8,7 @@ import { loadOrCreateIdentity, type Identity } from '../identity.js';
 import { PeerTable } from '../peer-table.js';
 import { StreamRegistry } from '../stream-registry.js';
 import type { TransportSocket } from '../transport.js';
-import { OutboundQueue } from './outbound-queue.js';
+import { OutboundQueue, type QuarantinedFile } from './outbound-queue.js';
 import { Mailbox, type SendOutcome } from './mailbox.js';
 import type { Envelope } from './envelope.js';
 
@@ -44,6 +44,7 @@ function makeNode(
     ackTimeoutMs: number;
     retryIntervalMs: number;
     sendAwaitMs: number;
+    onQuarantine: (info: QuarantinedFile) => void;
   }> = {}
 ): TestNode {
   const dir = tmp(`beam-mbx-${hostname}-`);
@@ -61,6 +62,7 @@ function makeNode(
     ackTimeoutMs: overrides.ackTimeoutMs ?? 200,
     retryIntervalMs: overrides.retryIntervalMs ?? 30,
     sendAwaitMs: overrides.sendAwaitMs ?? 400,
+    onQuarantine: overrides.onQuarantine,
   });
   mailbox.onMessage((envelope) => received.push(envelope));
   return { dir, identity, peers, registry, connections, mailbox, received };
@@ -367,8 +369,9 @@ describe('Mailbox: crash windows', () => {
     expect(b.received.map((e) => e.payload)).toEqual(['once']);
   });
 
-  it('a malformed queue file does not block the messages behind it', async () => {
-    const a = makeNode('a');
+  it('a malformed queue file is quarantined, the loss is surfaced, and messages after it still flow (D1)', async () => {
+    const quarantined: QuarantinedFile[] = [];
+    const a = makeNode('a', { onQuarantine: (info) => quarantined.push(info) });
     const b = makeNode('b');
     pairNodes(a, b);
 
@@ -401,7 +404,131 @@ describe('Mailbox: crash windows', () => {
       (n) => n >= 2,
       3000
     );
+    // Without a contiguity requirement (D1), the receiver accepts seq 3
+    // right after seq 1 — there is no hole for anything to wedge behind.
     expect(b.received.map((e) => e.payload)).toEqual(['good-1', 'good-3']);
+
+    // The loss must be surfaced, never silent: discoverable through the
+    // queue API by peer and by the exact seq it can never deliver again,
+    // and handed to whoever asked to be told.
+    const listed = a.mailbox.quarantined(b.identity.peerId);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.fileName).toBe('0000000002.json');
+    expect(listed[0]?.reason.length).toBeGreaterThan(0);
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0]?.fileName).toBe('0000000002.json');
+  });
+
+  it('quarantine is durable and discoverable across a restart, even with no live onQuarantine listener', async () => {
+    let a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    const dir = join(a.dir, 'mailbox', 'out', b.identity.peerId);
+    const outbound = new OutboundQueue(a.dir);
+    outbound.enqueue(b.identity.peerId, {
+      id: 'lost',
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq: 1,
+      topic: 't',
+      payload: 'lost',
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+    writeFileSync(join(dir, '0000000001.json'), 'not json at all {{{');
+
+    a.mailbox.dispose();
+    a = reopenNode(a); // A fresh process, with nobody watching onQuarantine.
+    // Reading the queue at all is what discovers and quarantines the file —
+    // status()/queue() both do this, so a mere restart-and-inspect finds it.
+    a.mailbox.queue(b.identity.peerId);
+
+    const listed = a.mailbox.quarantined();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.peerId).toBe(b.identity.peerId);
+    expect(listed[0]?.fileName).toBe('0000000001.json');
+  });
+
+  it('a lost seq.json reconciles against the still-queued backlog, so a real message is never silently swallowed and falsely reported delivered (D2)', async () => {
+    let a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    const { dialerConn } = connectNodes(a, b);
+
+    const first = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'one',
+    });
+    expect(first.outcome).toBe('delivered'); // b's SeenTracker lastSeq is now 1.
+
+    // Disconnect before sending 'two', so it stays queued on disk as seq 2
+    // — the realistic shape of the bug: seq.json is lost while real backlog
+    // still exists, not while the queue happens to be empty.
+    dialerConn.close();
+    const second = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'two',
+    });
+    expect(second.outcome).toBe('queued');
+    expect(
+      new OutboundQueue(a.dir)
+        .list(b.identity.peerId)
+        .map((q) => q.envelope.seq)
+    ).toEqual([2]);
+
+    a.mailbox.dispose();
+    rmSync(join(a.dir, 'mailbox', 'seq.json'), { force: true }); // Lost outright.
+    a = reopenNode(a);
+
+    const third = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'three',
+    });
+    expect(third.outcome).toBe('queued'); // Still no connection.
+    // Reconciliation against the on-disk backlog (seq 2 still queued) must
+    // assign 'three' seq 3, never a reset seq 1 that would collide with
+    // what b already acked for 'one'.
+    expect(
+      new OutboundQueue(a.dir)
+        .list(b.identity.peerId)
+        .map((q) => q.envelope.seq)
+    ).toEqual([2, 3]);
+
+    connectNodes(a, b);
+    await waitFor(
+      () => b.received.length,
+      (n) => n === 3
+    );
+    expect(b.received.map((e) => e.payload)).toEqual(['one', 'two', 'three']);
+  });
+});
+
+describe('Mailbox: revocation stops queued mail (D5)', () => {
+  it('a peer revoked after a message is already queued never receives it, even once a connection exists', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: 'should-not-arrive',
+    });
+    expect(outcome.outcome).toBe('queued');
+
+    // Revoked through the peer table directly — not through a path that
+    // also happens to close connections — so this exercises the flusher's
+    // own check, not just "there is no connection to revoke".
+    a.peers.revoke(b.identity.peerId);
+    connectNodes(a, b);
+
+    // Give the flusher every chance it would need to (wrongly) drain.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(b.received).toHaveLength(0);
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(1);
   });
 });
 
