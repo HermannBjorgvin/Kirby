@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MailboxCorruptionError } from './seen-tracker.js';
 import { SeqCounter } from './seq-counter.js';
 
 let dir: string;
@@ -44,15 +45,50 @@ describe('SeqCounter', () => {
     expect(reopened.next('p')).toBe(2);
   });
 
-  it('a malformed counter file resets rather than crashing the node', () => {
+  it('a malformed counter file throws rather than silently resetting to 1 (D2)', () => {
     const path = join(dir, 'mailbox', 'seq.json');
     new SeqCounter(dir).next('p'); // creates the real file (mailbox/ dir included) first.
     writeFileSync(path, 'not valid json {{');
+    // A counter that cannot be trusted must not be guessed: resetting to 1
+    // would reissue a seq the receiver already accepted, which it would
+    // then judge a duplicate, ack, and let the sender unlink — a real
+    // message silently lost and reported delivered.
+    expect(() => new SeqCounter(dir)).toThrow(MailboxCorruptionError);
+  });
+
+  it('a seq.json that cannot be read as a file also throws, not resets', () => {
+    const path = join(dir, 'mailbox', 'seq.json');
+    // A directory where the file should be makes readFileSync fail (EISDIR)
+    // — a different failure shape than a parse error, and it must be
+    // treated the same way: loud, not guessed.
+    mkdirSync(path, { recursive: true });
+    expect(() => new SeqCounter(dir)).toThrow(MailboxCorruptionError);
+  });
+
+  it('reconciles against the highest seq already in the queue directory when the counter file is missing (D2)', () => {
+    const outDir = join(dir, 'mailbox', 'out', 'peer-x');
+    mkdirSync(outDir, { recursive: true });
+    // A real queued file survives even though seq.json itself is gone —
+    // e.g. it was never written yet, or was lost outright.
+    writeFileSync(join(outDir, '0000000005.json'), '{}');
     const counter = new SeqCounter(dir);
-    // Resets to an empty counter rather than throwing: numbering restarts
-    // at 1, which SeenTracker's contiguity check treats as a regression
-    // (duplicate/gap) on the receiving end rather than silently accepting
-    // it, so this can never cause a duplicate or out-of-order delivery.
-    expect(counter.next('p')).toBe(1);
+    expect(counter.next('peer-x')).toBe(6);
+  });
+
+  it('reconciliation also counts quarantined files, so a lost seq is never reissued (D2)', () => {
+    const corruptDir = join(dir, 'mailbox', 'out', 'peer-x', 'corrupt');
+    mkdirSync(corruptDir, { recursive: true });
+    writeFileSync(join(corruptDir, '0000000009.json'), 'garbage');
+    const counter = new SeqCounter(dir);
+    expect(counter.next('peer-x')).toBe(10);
+  });
+
+  it('reconciliation never lowers the counter when the persisted value is already ahead of the queue', () => {
+    const outDir = join(dir, 'mailbox', 'out', 'peer-x');
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, '0000000002.json'), '{}');
+    new SeqCounter(dir).next('peer-x'); // persists 3 (max(0, 2) + 1).
+    const reopened = new SeqCounter(dir);
+    expect(reopened.next('peer-x')).toBe(4); // not max(0, 2) + 1 again.
   });
 });
