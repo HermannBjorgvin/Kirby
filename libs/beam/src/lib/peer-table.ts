@@ -37,6 +37,8 @@ export interface PeerRecord {
   lastSeenAt?: number;
   /** Kept, never matched, never dialed. */
   revoked: boolean;
+  /** When `revoked` became true; absent while it is false. */
+  revokedAt?: number;
 }
 
 export type NewPeer = Omit<PeerRecord, 'pairedAt' | 'revoked'>;
@@ -110,7 +112,11 @@ export class PeerTable {
   /** Kept in the table but never matched or dialed again. */
   revoke(peerId: string): void {
     const record = this.require(peerId);
-    this.peers.set(peerId, { ...record, revoked: true });
+    this.peers.set(peerId, {
+      ...record,
+      revoked: true,
+      revokedAt: this.now(),
+    });
     this.save();
   }
 

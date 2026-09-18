@@ -139,13 +139,14 @@ describe('PeerTable operations', () => {
     expect(table.resolve('renamed-box')?.peerId).toBe('peer-a');
   });
 
-  it('revoke keeps the record but marks it revoked', () => {
-    const table = new PeerTable(dir);
+  it('revoke keeps the record but marks it revoked, stamped with when', () => {
+    const table = new PeerTable(dir, { now: () => 5000 });
     table.upsert(record());
     table.revoke('peer-a');
     const stored = table.get('peer-a');
     expect(stored).toBeDefined();
     expect(stored?.revoked).toBe(true);
+    expect(stored?.revokedAt).toBe(5000);
   });
 
   it('remove drops the record entirely', () => {
