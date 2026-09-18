@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuthError } from './auth.js';
+import { ConnectionRegistry } from './connection-registry.js';
 import { dial, pair } from './client.js';
 import { Host } from './host.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
@@ -108,6 +109,32 @@ describe('dial()', () => {
     });
     expect(connection.peerId).toBe(host.identity.peerId);
     expect(host.connections.get(clientIdentity.peerId)).toBeDefined();
+    connection.close();
+  });
+
+  it('A2: registers the dialed connection into the caller-supplied ConnectionRegistry', async () => {
+    // The mailbox flusher looks connections up by peerId in whatever
+    // registry it was built against — a dialed connection that never lands
+    // in the caller's own registry would make every outbound-dialer case
+    // silently undeliverable, and passing `host.connections` above would
+    // not catch that: it only proves the *host's* side registered the
+    // accepted connection, not that `dial()` did anything with the
+    // registry it was given.
+    const clientIdentity = loadOrCreateIdentity(clientDir, {
+      hostname: () => 'laptop',
+    });
+    const clientPeers = new PeerTable(clientDir);
+    const clientConnections = new ConnectionRegistry();
+    const { url } = host.issuePairingUrl();
+    const { peer } = await pair(url, clientPeers, { identity: clientIdentity });
+
+    const connection = await dial(host.baseUrl, peer.peerId, {
+      identity: clientIdentity,
+      peers: clientPeers,
+      connections: clientConnections,
+    });
+
+    expect(clientConnections.get(host.identity.peerId)).toBe(connection);
     connection.close();
   });
 
