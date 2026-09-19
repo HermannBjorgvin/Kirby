@@ -63,6 +63,16 @@ function isResize(message: Record<string, unknown>): boolean {
  * narrowest shape that admits. Exported so the guard can be exercised
  * without having to break a real pty.
  */
+/** node-pty emits `read EIO` (`errno 5` on older Node) on the master fd
+ * as its ordinary signal that the child closed the pty — the exit itself,
+ * which `onExit` reports a moment later with a real code and signal. It is
+ * not a fault, and closing the stream on it would replace the exit status
+ * a caller needs with a message about a file descriptor. Every other error
+ * is a fault nothing else on this stream will report. */
+export function isPtyExitError(error: Error): boolean {
+  return /EIO|errno 5/.test(error.message);
+}
+
 export function guardPtyErrors(
   proc: pty.IPty,
   onError: (error: Error) => void
@@ -153,16 +163,10 @@ function wireSession(
   sessionKey: string
 ): void {
   guardPtyErrors(proc, (error) => {
-    // On Linux the master fd reports EIO the moment the child exits, which
-    // is an ordinary exit that `onExit` is about to close the stream for
-    // with a real reason. Let it have that chance: only an error that
-    // leaves the session still live afterwards is one nothing else will
-    // report, and that is the one worth closing on.
-    setImmediate(() => {
-      if (sessions.get(sessionKey) !== proc) return;
-      sessions.delete(sessionKey);
-      stream.close(`pty error: ${error.message.split('\n')[0]}`);
-    });
+    if (isPtyExitError(error)) return;
+    if (sessions.get(sessionKey) !== proc) return;
+    sessions.delete(sessionKey);
+    stream.close(`pty error: ${error.message.split('\n')[0]}`);
   });
   proc.onData((data) => {
     if (sessions.get(sessionKey) === proc)

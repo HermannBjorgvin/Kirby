@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPtyStreamHandler,
   guardPtyErrors,
+  isPtyExitError,
   MAX_PTY_SESSIONS,
 } from './pty-handler.js';
 import type { BeamStream, StreamContext } from './stream.js';
@@ -288,5 +289,14 @@ describe('createPtyStreamHandler', () => {
     );
     expect(() => proc.emit('error', new Error('read EIO'))).not.toThrow();
     expect(reported).toEqual(['read EIO']);
+  });
+
+  it("treats node-pty's EIO as the exit it is, and anything else as a fault", () => {
+    // `read EIO` is how node-pty reports that the child closed the pty.
+    // Closing the stream on it would replace the exit code and signal the
+    // caller needs with a message about a file descriptor.
+    expect(isPtyExitError(new Error('read EIO'))).toBe(true);
+    expect(isPtyExitError(new Error('errno 5'))).toBe(true);
+    expect(isPtyExitError(new Error('EACCES: permission denied'))).toBe(false);
   });
 });
