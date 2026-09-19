@@ -23,7 +23,17 @@ export interface PeerConnection {
   /** `reason` distinguishes an ordinary close from a transport that ended
    * mid-frame ("truncated...", A7's FrameDecoder.finish() wiring). */
   onClose(cb: (reason: string) => void): void;
+  /** Ordinary, polite shutdown: reap the streams, then ask the transport to
+   * close gracefully. The peer decides when the socket actually dies. */
   close(): void;
+  /**
+   * Revocation's close. Reap the streams, then drop the transport without
+   * waiting for the peer to agree — `close()` leaves a hostile peer the
+   * whole of `ws`'s 30s close timeout, during which its frames are still
+   * delivered. Taking access back is not a request, so it does not go
+   * through a handshake the far end can decline.
+   */
+  terminate(reason?: string): void;
 }
 
 export interface CreateConnectionOptions {
@@ -83,6 +93,17 @@ export function createConnection(
     close: () => {
       finish('closed locally');
       socket.close();
+    },
+    // `finish` is idempotent, so the transport's own 'close' event arriving
+    // afterwards is a no-op. That is only safe because nothing can enter
+    // the Muxer's stream map after `dispose`: `openStream` throws, and
+    // `receive`/`handleOpen` drop inbound frames once disposed. Without
+    // those guards a peer could open streams in the gap between `finish`
+    // and the socket actually dying, and the second `finish` would return
+    // early and never reap them.
+    terminate: (reason) => {
+      finish(reason ?? 'terminated locally');
+      socket.terminate();
     },
   };
 }

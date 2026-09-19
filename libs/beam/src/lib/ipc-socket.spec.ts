@@ -85,12 +85,14 @@ function wireSockets(): [TransportSocket, TransportSocket] {
   const a: TransportSocket = {
     send: (data) => bHandlers.forEach((h) => h(data)),
     close: () => aCloseHandlers.forEach((h) => h()),
+    terminate: () => aCloseHandlers.forEach((h) => h()),
     onData: (h) => aHandlers.push(h),
     onClose: (h) => aCloseHandlers.push(h),
   };
   const b: TransportSocket = {
     send: (data) => aHandlers.forEach((h) => h(data)),
     close: () => bCloseHandlers.forEach((h) => h()),
+    terminate: () => bCloseHandlers.forEach((h) => h()),
     onData: (h) => bHandlers.push(h),
     onClose: (h) => bCloseHandlers.push(h),
   };

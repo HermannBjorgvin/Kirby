@@ -312,9 +312,11 @@ export class Host {
 
   /** Revoke a peer and drop its live connection, if any (A5) — revocation
    * that does not close an already-open connection is not really
-   * revocation. */
+   * revocation. `terminate`, not `close`: a graceful close is a handshake
+   * the revoked peer can simply decline, and it keeps opening shells for as
+   * long as it declines. */
   revoke(peerId: string): void {
     this.peers.revoke(peerId);
-    this.connections.get(peerId)?.close();
+    this.connections.get(peerId)?.terminate('peer revoked');
   }
 }

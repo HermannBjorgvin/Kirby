@@ -31,6 +31,7 @@ function deadSocket(): TransportSocket {
   return {
     send: () => undefined,
     close: () => undefined,
+    terminate: () => undefined,
     onData: () => undefined,
     onClose: () => undefined,
   };

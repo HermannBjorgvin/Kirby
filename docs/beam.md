@@ -179,6 +179,13 @@ reports it; a connection that dies mid-frame must not look like a connection tha
 Either side may open a stream, so stream ids are partitioned by role to keep two simultaneous
 opens from colliding: the side that dialled uses odd ids, the side that accepted uses even ones.
 
+Closing a connection reaps every stream on it, and from that moment the muxer is deaf: inbound
+frames are dropped and an `Open` is refused with `connection is closed`. That matters because a
+transport is not dead the moment this side is finished with it — a graceful WebSocket close is a
+handshake the far end can decline, and `ws` keeps delivering frames for the whole of its 30s
+close timeout while it waits for an answer. `Open` is the frame whose effect outlives the
+connection, since it spawns a process, so it is refused in its own right as well.
+
 ### The `Open` payload
 
 `Open`'s payload is UTF-8 and carries the stream name plus whatever that stream needs to start:
@@ -418,12 +425,20 @@ script, `msg listen` beside a running node) uses this socket; a one-shot dial (`
 
 `revoke`/`rename`/`forget` apply directly to the running node's live `PeerTable` — the same
 instance its `Host` and `Mailbox` already hold — so the change is visible to auth and delivery
-immediately, not only after a restart re-reads `peers.json`; `revoke` also closes that peer's
+immediately, not only after a restart re-reads `peers.json`; `revoke` also drops that peer's
 live connection. `reload-peers` re-reads `peers.json` from disk, for the one case that writes it
 from a _different_ process: `pair` running as a separate CLI invocation, or a `revoke` that
-fell back to the file because no node answered. It then closes the live connection of every
+fell back to the file because no node answered. It then drops the live connection of every
 peer the reload found revoked or gone, for the same reason `revoke` does: a revocation that
-leaves an already-open connection and its running shells up is not one. A CLI command prefers
+leaves an already-open connection and its running shells up is not one.
+
+Every revocation path — `Host.revoke`, and `revoke`, `forget` and `reload-peers` over this
+socket — _terminates_ the connection rather than closing it gracefully. A graceful close is a
+request the peer has to agree to, and a peer that has just lost access is the one with a reason
+to refuse: `ws` would then hold the socket open for its 30s close timeout, delivering that
+peer's frames the whole time. Terminating destroys the transport on the spot. An ordinary
+shutdown — `Host.close()`, or a peer's new connection superseding its old one — still closes
+politely. A CLI command prefers
 this socket and falls back to writing `peers.json` directly only when no node answers.
 
 #### Acknowledging a subscription
@@ -487,6 +502,9 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
 - Pairing grants a shell as the user running the node. `exec` adds no privilege a `pty` stream
   did not already give. Treat pairing like granting SSH access; `beam revoke` takes it back
   immediately, and a revoked peer fails authentication rather than being silently ignored.
+  Immediately means the transport is destroyed, not asked to close, and the muxer stops
+  serving frames the moment the connection is reaped — a revoked peer gets no window in which
+  to open one more shell.
 - The WebSocket transport is not encrypted. WebRTC data channels are (DTLS). Mutual
   authentication is mandatory on both, so a plain-WS network attacker can read traffic but
   cannot impersonate either side. That extends to the upgrade itself: a ticket read off the
@@ -539,7 +557,7 @@ loud rather than silent — both stated in full under "Durable mailbox" above.
 
 | Later                                     | What keeps it possible                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure                                                                                                                                                 |
+| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam — `send`, `close`, `terminate`, `onData`, `onClose`, where `terminate` is the abrupt drop revocation needs; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure                                      |
 | tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                                                                                                                                                                            |
 | ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                                                                                                                                                                         |
 | several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                                                                                                                                                                        |

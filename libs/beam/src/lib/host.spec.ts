@@ -11,6 +11,7 @@ import { signNonce, verifySignature, WS_PROOF_PREFIX } from './auth.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
 import { DESCRIPTOR_PATH, Host } from './host.js';
+import { encodeFrame, FrameType } from './protocol.js';
 
 let dir: string;
 let host: Host;
@@ -108,6 +109,76 @@ function rawUpgrade(h: Host, target: string): Promise<string> {
     });
     socket.on('error', reject);
     socket.on('close', () => resolve(response));
+  });
+}
+
+/** A WebSocket peer that speaks the wire by hand and, unlike every `ws`
+ * client, never answers a Close frame. That refusal is the whole point: a
+ * graceful close is a handshake, and `ws` waits out its 30s `closeTimeout`
+ * for an answer that is never coming while inbound frames keep arriving. */
+async function hostilePeer(url: string): Promise<{
+  send(bytes: Uint8Array): void;
+  closed: Promise<void>;
+}> {
+  const target = new URL(url);
+  const socket = connect(Number(target.port), target.hostname);
+  const closed = new Promise<void>((resolve) => socket.on('close', resolve));
+  socket.on('error', () => undefined);
+  await new Promise<void>((resolve, reject) => {
+    socket.on('connect', () => {
+      socket.write(
+        `GET ${target.pathname}${target.search} HTTP/1.1\r\n` +
+          `Host: ${target.host}\r\n` +
+          'Upgrade: websocket\r\n' +
+          'Connection: Upgrade\r\n' +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          'Sec-WebSocket-Version: 13\r\n\r\n'
+      );
+    });
+    // Everything after the 101 is frames this peer deliberately ignores,
+    // the server's Close frame included.
+    socket.once('data', (chunk: Buffer) => {
+      const status = chunk.toString('latin1').split('\r\n')[0];
+      if (status.includes('101')) resolve();
+      else reject(new Error(`upgrade refused: ${status}`));
+    });
+    socket.once('error', reject);
+  });
+  return {
+    send: (bytes) => {
+      // One masked binary frame; every payload these tests send is short
+      // enough for the 7-bit length form.
+      const mask = Buffer.from([0x0a, 0x0b, 0x0c, 0x0d]);
+      const masked = Buffer.from(bytes);
+      for (let i = 0; i < masked.length; i += 1) masked[i] ^= mask[i % 4];
+      socket.write(
+        Buffer.concat([Buffer.from([0x82, 0x80 | masked.length]), mask, masked])
+      );
+    },
+    closed,
+  };
+}
+
+/** An Open frame for `name` on a stream id an acceptor accepts as the
+ * peer's to allocate (odd). */
+function openFrame(streamId: number, name: string): Uint8Array {
+  return encodeFrame({
+    type: FrameType.Open,
+    streamId,
+    seq: 0,
+    payload: new TextEncoder().encode(name),
+  });
+}
+
+function until(predicate: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + 2000;
+    const tick = (): void => {
+      if (predicate()) resolve();
+      else if (Date.now() > deadline) reject(new Error('timed out waiting'));
+      else setTimeout(tick, 5);
+    };
+    tick();
   });
 }
 
@@ -503,6 +574,47 @@ describe('Host HTTP surface', () => {
     h.revoke(client.peerId);
     await closed;
     expect(h.connections.get(client.peerId)).toBeUndefined();
+  });
+
+  it('A5: revocation drops a peer that refuses to close, and opens nothing after it', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    const opened: string[] = [];
+    h.registry.register('probe', (stream) => {
+      opened.push(stream.name);
+      stream.control({ kind: 'opened' });
+    });
+
+    const peer = await hostilePeer(
+      wsUrlFor(h, client, await ticketFor(h, client))
+    );
+    await until(() => h.connections.get(client.peerId) !== undefined);
+    // This hand-rolled peer really does open streams — otherwise the
+    // assertions after the revoke would pass for the wrong reason.
+    peer.send(openFrame(1, 'probe'));
+    await until(() => opened.length === 1);
+
+    h.revoke(client.peerId);
+
+    // A graceful close would leave this peer the whole of `ws`'s 30s close
+    // timeout, opening a fresh shell per Open frame for as long as it
+    // declined to answer. The connection is gone now instead.
+    const outcome = await Promise.race([
+      peer.closed.then(() => 'dropped'),
+      new Promise((resolve) => setTimeout(() => resolve('still up'), 1500)),
+    ]);
+    expect(outcome).toBe('dropped');
+    expect(h.connections.get(client.peerId)).toBeUndefined();
+
+    peer.send(openFrame(3, 'probe'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(opened).toEqual(['probe']);
   });
 
   it('A5: revoking inside the ticket window still blocks the upgrade', async () => {

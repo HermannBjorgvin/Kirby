@@ -37,8 +37,10 @@ export function handleRevoke(
   // A revoke that does not close an already-open connection (and, with it,
   // every stream on it) is not really a revoke — same rule as Host.revoke,
   // applied here so it also takes effect through the local socket, not only
-  // through a peer dialing in fresh.
-  ctx.connections.get(peerId)?.close();
+  // through a peer dialing in fresh. `terminate` rather than `close`: a
+  // graceful close asks the peer to agree, and the peer being revoked is
+  // exactly the one with a reason not to.
+  ctx.connections.get(peerId)?.terminate('peer revoked');
   writeLine(socket, { status: 'ok' });
 }
 
@@ -72,7 +74,7 @@ export function handleForget(
     return;
   }
   ctx.peers.remove(peerId);
-  ctx.connections.get(peerId)?.close();
+  ctx.connections.get(peerId)?.terminate('peer forgotten');
   writeLine(socket, { status: 'ok' });
 }
 
@@ -86,7 +88,7 @@ export function handleReloadPeers(ctx: PeerOpContext, socket: Socket): void {
   // `handleRevoke` and `Host.revoke` already apply on their own paths.
   for (const connection of ctx.connections.list()) {
     const peer = ctx.peers.get(connection.peerId);
-    if (!peer || peer.revoked) connection.close();
+    if (!peer || peer.revoked) connection.terminate('peer revoked');
   }
   writeLine(socket, { status: 'ok' });
 }

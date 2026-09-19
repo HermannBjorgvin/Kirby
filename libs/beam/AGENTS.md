@@ -37,7 +37,12 @@ through the exported API in `src/index.ts`.
   exists, regardless of who opened it. Both `Host` (accepted) and `dial()`
   (dialed) register every live connection into a `ConnectionRegistry`; a
   mailbox flusher that only checked one side would silently fail to reach
-  half of its peers.
+  half of its peers. Revocation uses `terminate()`, never `close()`:
+  a graceful WebSocket close is a handshake the peer can decline, and `ws`
+  keeps delivering its frames for the whole 30s close timeout while it waits.
+  `Muxer.receive`/`handleOpen` drop frames once disposed for the same reason,
+  so no transport can spawn a process after its connection was reaped;
+  ordinary shutdowns still close politely.
 - **Streams** (`pty-handler.ts`, `exec-handler.ts`): a handler is registered
   once on a `StreamRegistry` shared by every connection on a node, so its
   own bookkeeping must key on `(peer, streamId)`, never bare `streamId` —

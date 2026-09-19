@@ -9,7 +9,17 @@ import { MAX_TRANSPORT_MESSAGE_BYTES } from './protocol.js';
 
 export interface TransportSocket {
   send(data: Uint8Array): void;
+  /** Close politely: the graceful handshake the protocol defines, which
+   * needs the peer to play along to complete. Right for an ordinary
+   * shutdown; not right when the peer has just lost the right to be here. */
   close(code?: number): void;
+  /**
+   * Drop the connection now, without waiting for the peer. Every transport
+   * must offer this: a graceful close is a request the far end can simply
+   * ignore — `ws` waits out its 30s `closeTimeout` while inbound frames keep
+   * arriving — and revocation cannot be a request. See `PeerConnection.terminate`.
+   */
+  terminate(): void;
   onData(handler: (data: Uint8Array) => void): void;
   onClose(handler: () => void): void;
 }
@@ -85,6 +95,10 @@ export function wrapWebSocket(socket: WebSocket): TransportSocket {
   return {
     send: (data) => socket.send(data),
     close: (code) => socket.close(code ?? 1000),
+    // `ws.terminate()` destroys the underlying socket immediately instead of
+    // sending a Close frame and waiting for the peer's, so a peer that
+    // ignores the handshake gets no window at all.
+    terminate: () => socket.terminate(),
     onData: (handler) => {
       dataHandlers.push(handler);
       if (buffered.length === 0) return;

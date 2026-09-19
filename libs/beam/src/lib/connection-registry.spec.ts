@@ -13,6 +13,8 @@ function fakeConnection(peerId: string): {
     onStream: vi.fn(),
     onClose: (cb) => closeHandlers.push(cb),
     close: () => closeHandlers.forEach((h) => h('closed locally')),
+    terminate: (reason) =>
+      closeHandlers.forEach((h) => h(reason ?? 'terminated locally')),
   };
   return {
     conn,

@@ -509,3 +509,70 @@ describe('Muxer open/ack/data/close round trip', () => {
     expect(fromA.id).not.toBe(fromB.id);
   });
 });
+
+describe('Muxer after dispose', () => {
+  /** An Open frame as a peer that is no longer welcome would send it: id 1,
+   * which an acceptor-role muxer accepts as the peer's to allocate. */
+  function openFrame(name: string): Uint8Array {
+    return encodeFrame({
+      type: FrameType.Open,
+      streamId: 1,
+      seq: 0,
+      payload: new TextEncoder().encode(name),
+    });
+  }
+
+  it('refuses to open a stream for frames that arrive after dispose', () => {
+    const registry = new StreamRegistry();
+    const opened: string[] = [];
+    registry.register('shell', (stream) => {
+      opened.push(stream.name);
+      stream.control({ kind: 'opened' });
+    });
+    const sent: Uint8Array[] = [];
+    const muxer = new Muxer(registry, {
+      role: 'acceptor',
+      sendBytes: (bytes) => sent.push(bytes),
+    });
+
+    muxer.receive(openFrame('shell'));
+    expect(opened).toEqual(['shell']);
+
+    // A transport is not dead the moment we stop wanting it: a graceful
+    // WebSocket close is a handshake the peer can decline, and frames keep
+    // being delivered for the whole of `ws`'s 30s close timeout while it
+    // waits. Opening a stream spawns a process, so a peer that has just
+    // been revoked must get nothing out of that window.
+    muxer.dispose('peer revoked');
+    sent.length = 0;
+    expect(muxer.receive(openFrame('shell'))).toBe(true);
+    expect(opened).toEqual(['shell']);
+    expect(sent).toEqual([]);
+  });
+
+  it('handleOpen refuses on its own, even reached past receive', () => {
+    const registry = new StreamRegistry();
+    const opened: string[] = [];
+    registry.register('shell', (stream) => opened.push(stream.name));
+    const sent: Uint8Array[] = [];
+    const muxer = new Muxer(registry, {
+      role: 'acceptor',
+      sendBytes: (bytes) => sent.push(bytes),
+    });
+    muxer.dispose('peer revoked');
+
+    // The second lock on the same door: `receive` already drops everything,
+    // but Open is the one frame whose effect outlives the connection.
+    (muxer as unknown as { handleOpen(frame: unknown): void }).handleOpen({
+      type: FrameType.Open,
+      streamId: 1,
+      seq: 0,
+      payload: new TextEncoder().encode('shell'),
+    });
+    expect(opened).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(
+      new TextDecoder().decode(sent[0]).includes('connection is closed')
+    ).toBe(true);
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createConnection } from './connection.js';
+import { encodeFrame, FrameType } from './protocol.js';
 import { StreamRegistry } from './stream-registry.js';
 import type { TransportSocket } from './transport.js';
 
@@ -12,12 +13,14 @@ function wireSockets(): [TransportSocket, TransportSocket] {
   const a: TransportSocket = {
     send: (data) => bHandlers.forEach((h) => h(data)),
     close: () => aCloseHandlers.forEach((h) => h()),
+    terminate: () => aCloseHandlers.forEach((h) => h()),
     onData: (h) => aHandlers.push(h),
     onClose: (h) => aCloseHandlers.push(h),
   };
   const b: TransportSocket = {
     send: (data) => aHandlers.forEach((h) => h(data)),
     close: () => bCloseHandlers.forEach((h) => h()),
+    terminate: () => bCloseHandlers.forEach((h) => h()),
     onData: (h) => bHandlers.push(h),
     onClose: (h) => bCloseHandlers.push(h),
   };
@@ -106,6 +109,7 @@ describe('createConnection', () => {
     const socket: TransportSocket = {
       send: () => undefined,
       close: () => closeHandlers.forEach((h) => h()),
+      terminate: () => closeHandlers.forEach((h) => h()),
       onData: (h) => dataHandlers.push(h),
       onClose: (h) => closeHandlers.push(h),
     };
@@ -126,6 +130,68 @@ describe('createConnection', () => {
     );
     closeHandlers.forEach((h) => h());
     expect(reason).toMatch(/buffered bytes/);
+  });
+
+  it('terminate() asks the transport to drop now, and nothing opens after it even if the transport lingers', () => {
+    const dataHandlers: ((data: Uint8Array) => void)[] = [];
+    const closeHandlers: (() => void)[] = [];
+    const calls: string[] = [];
+    // The worst case this has to survive: a transport whose close *and*
+    // terminate both linger, so bytes keep arriving after the connection is
+    // finished with. Real `ws` destroys the socket on terminate; the muxer
+    // guards are what make that a belt-and-braces rather than the only lock.
+    const socket: TransportSocket = {
+      send: () => undefined,
+      close: () => calls.push('close'),
+      terminate: () => calls.push('terminate'),
+      onData: (h) => dataHandlers.push(h),
+      onClose: (h) => closeHandlers.push(h),
+    };
+    const registry = new StreamRegistry();
+    const opened: string[] = [];
+    registry.register('shell', (stream) => {
+      opened.push(stream.name);
+      stream.control({ kind: 'opened' });
+    });
+    const conn = createConnection({
+      peerId: 'p',
+      role: 'acceptor',
+      socket,
+      registry,
+    });
+    const reasons: string[] = [];
+    conn.onClose((r) => reasons.push(r));
+
+    const open = encodeFrame({
+      type: FrameType.Open,
+      streamId: 1,
+      seq: 0,
+      payload: new TextEncoder().encode('shell'),
+    });
+    dataHandlers.forEach((h) => h(open));
+    expect(opened).toEqual(['shell']);
+
+    conn.terminate('peer revoked');
+    expect(calls).toEqual(['terminate']);
+    expect(reasons).toEqual(['peer revoked']);
+
+    // The revoked peer keeps sending. It gets nothing: no second shell, and
+    // no state added behind the reaping pass `dispose` has already run —
+    // which is why the transport's own close arriving later, and `finish`
+    // returning early because it already ran, leaves nothing unreaped.
+    dataHandlers.forEach((h) =>
+      h(
+        encodeFrame({
+          type: FrameType.Open,
+          streamId: 3,
+          seq: 0,
+          payload: new TextEncoder().encode('shell'),
+        })
+      )
+    );
+    closeHandlers.forEach((h) => h());
+    expect(opened).toEqual(['shell']);
+    expect(reasons).toEqual(['peer revoked']);
   });
 
   it('an ordinary close (nothing buffered) is not reported as truncated', () => {

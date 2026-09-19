@@ -162,8 +162,15 @@ export class Muxer {
   /** Feed one inbound chunk of transport bytes. Malformed frames end the
    * connection's decode state but never throw into the caller, and neither
    * does a stream handler: a throw out of `handleFrame` fails only the
-   * stream it belongs to. */
+   * stream it belongs to.
+   *
+   * Bytes that arrive after `dispose` are dropped. A transport is not
+   * guaranteed to be dead the moment we stop wanting it: a graceful
+   * WebSocket close is a handshake the peer can decline, and `ws` keeps
+   * delivering frames for the whole of its 30s close timeout while it
+   * waits. A revoked peer must not be served out of that window. */
   receive(raw: Uint8Array): boolean {
+    if (this.disposed) return true;
     let frames: Frame[];
     try {
       frames = this.decoder.push(raw);
@@ -263,6 +270,18 @@ export class Muxer {
   }
 
   private handleOpen(frame: Frame): void {
+    // Opening a stream spawns a process. `receive` already drops everything
+    // once disposed; this is the second lock on the same door, because this
+    // is the one frame type whose effect outlives the connection, and
+    // `dispose` has already run its reaping pass by the time we get here.
+    if (this.disposed) {
+      this.sendFrame(
+        FrameType.Close,
+        frame.streamId,
+        encoder.encode('connection is closed')
+      );
+      return;
+    }
     if (!this.ids.belongsToPeer(frame.streamId)) {
       this.sendFrame(
         FrameType.Close,
