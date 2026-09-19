@@ -27,6 +27,10 @@ export const FRAME_HEADER_SIZE = 12;
 /** Hard cap on one frame's payload; protects decoders from garbage. */
 export const MAX_PAYLOAD = 1 << 20;
 
+/** The highest stream id the wire's 16-bit `sid` field can carry. Id 0 is
+ * the connection's own control channel, so a stream never uses it. */
+export const MAX_STREAM_ID = 0xffff;
+
 export const FrameType = {
   /** Open stream `streamId`. Payload: UTF-8 stream name. */
   Open: 0,
@@ -66,7 +70,7 @@ const decoder = new TextDecoder();
 const VALID_TYPES: ReadonlySet<number> = new Set(Object.values(FrameType));
 
 function checkStreamId(streamId: number): void {
-  if (!Number.isInteger(streamId) || streamId < 0 || streamId > 0xffff) {
+  if (!Number.isInteger(streamId) || streamId < 0 || streamId > MAX_STREAM_ID) {
     throw new RangeError(`streamId out of range: ${streamId}`);
   }
 }

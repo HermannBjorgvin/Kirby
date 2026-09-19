@@ -367,7 +367,7 @@ describe('Muxer open/ack/data/close round trip', () => {
     b.receive(
       encodeFrame({
         type: FrameType.Open,
-        streamId: 4,
+        streamId: 7,
         seq: 0,
         payload: new TextEncoder().encode('pty'),
       })
@@ -379,12 +379,78 @@ describe('Muxer open/ack/data/close round trip', () => {
           streamId: 0,
           seq: 0,
           payload: new TextEncoder().encode(
-            JSON.stringify({ kind: 'resize', streamId: 4, cols: 80, rows: 24 })
+            JSON.stringify({ kind: 'resize', streamId: 7, cols: 80, rows: 24 })
           ),
         })
       )
     ).not.toThrow();
     expect(failedReason).toBe('stream handler failed: resize exploded');
+  });
+
+  it("an inbound Open inside this side's own parity space is refused", () => {
+    const registryB = new StreamRegistry();
+    const opens: number[] = [];
+    registryB.register('echo', (stream) => opens.push(stream.id));
+    const sent: Uint8Array[] = [];
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: (bytes) => sent.push(bytes),
+    });
+    // An acceptor allocates even ids, so an even id from the peer would
+    // collide with one this side is about to hand out itself — and id 0 is
+    // the control channel, never a stream.
+    for (const streamId of [0, 6]) {
+      b.receive(
+        encodeFrame({
+          type: FrameType.Open,
+          streamId,
+          seq: 0,
+          payload: new TextEncoder().encode('echo'),
+        })
+      );
+    }
+    expect(opens).toEqual([]);
+    expect(
+      sent.map((bytes) => new TextDecoder().decode(bytes.slice(12)))
+    ).toEqual([
+      "stream id is not the opener's to allocate",
+      "stream id is not the opener's to allocate",
+    ]);
+    // The peer's own parity still opens normally.
+    b.receive(
+      encodeFrame({
+        type: FrameType.Open,
+        streamId: 7,
+        seq: 0,
+        payload: new TextEncoder().encode('echo'),
+      })
+    );
+    expect(opens).toEqual([7]);
+  });
+
+  it('openStream skips an id that is still live rather than displacing it', async () => {
+    const registryB = new StreamRegistry();
+    registryB.register('echo', (stream) => stream.control({ kind: 'opened' }));
+    const { a } = wirePair(new StreamRegistry(), registryB);
+    const first = await a.openStream('echo');
+    // Rewind the allocator onto an id that is still open, as a long-lived
+    // connection's counter eventually does by wrapping.
+    (a as unknown as { nextStreamId: number }).nextStreamId = first.id;
+    const second = await a.openStream('echo');
+    expect(second.id).not.toBe(first.id);
+    // The first stream is still the one its id resolves to: a displaced
+    // entry would silently stop receiving anything.
+    const seen: string[] = [];
+    first.onData((d) => seen.push(new TextDecoder().decode(d)));
+    const second2 = second;
+    expect(second2.id % 2).toBe(1);
+    expect(seen).toEqual([]);
+  });
+
+  it('openStream rejects, rather than throwing, when stream ids run out', async () => {
+    const { a } = wirePair(new StreamRegistry(), new StreamRegistry());
+    (a as unknown as { nextStreamId: number }).nextStreamId = 0x10001;
+    await expect(a.openStream('echo')).rejects.toThrow(/no stream ids left/);
   });
 
   it('initiator and acceptor allocate disjoint stream ids', async () => {

@@ -8,6 +8,7 @@
 import {
   FrameDecoder,
   FrameType,
+  MAX_STREAM_ID,
   ProtocolError,
   SeqSender,
   SeqTracker,
@@ -77,6 +78,9 @@ export class Muxer {
   private readonly registry: StreamRegistry;
   private readonly sendBytes: (bytes: Uint8Array) => void;
   private readonly peer: StreamContext;
+  /** 1 when this side allocates odd ids (it dialled), 0 when it allocates
+   * even ones (it accepted). */
+  private readonly ownParity: number;
   private nextStreamId: number;
   private disposed = false;
 
@@ -84,6 +88,7 @@ export class Muxer {
     this.registry = registry;
     this.sendBytes = options.sendBytes;
     this.peer = options.peer ?? UNKNOWN_PEER;
+    this.ownParity = options.role === 'initiator' ? 1 : 0;
     this.nextStreamId = options.role === 'initiator' ? 1 : 2;
     this.sink = {
       sendData: (streamId, data) =>
@@ -118,13 +123,28 @@ export class Muxer {
    * no longer a follow-up Data frame, which is what used to let an open
    * payload be typed into whatever `stream.onData` was already wired to.
    */
-  openStream(
+  async openStream(
     name: string,
     params?: Record<string, unknown>
   ): Promise<BeamStream> {
-    if (this.disposed) return Promise.reject(new Error('connection is closed'));
-    const id = this.nextStreamId;
-    this.nextStreamId += 2;
+    if (this.disposed) throw new Error('connection is closed');
+    const id = this.allocateStreamId();
+    const payload = params
+      ? encoder.encode(JSON.stringify({ name, ...params }))
+      : encoder.encode(name);
+    // Encode before registering anything. Encoding is what enforces the
+    // wire's limits, and a map entry plus a live timer for a stream that
+    // was never sent would sit there with nothing left to reap them.
+    // `async` so that failure reaches the caller as the rejection this
+    // signature has always promised, rather than as a synchronous throw at
+    // the call site.
+    const bytes = encodeFrame({
+      type: FrameType.Open,
+      streamId: id,
+      seq: this.sender.claim(id),
+      payload,
+    });
+
     const stream = new BeamStreamImpl(this.sink, id, name, this.peer, params);
     this.streams.set(id, stream);
 
@@ -148,11 +168,25 @@ export class Muxer {
     timer.unref?.();
     stream.readyTimer = timer;
 
-    const payload = params
-      ? encoder.encode(JSON.stringify({ name, ...params }))
-      : encoder.encode(name);
-    this.sendFrame(FrameType.Open, id, payload);
+    this.sendBytes(bytes);
     return ready;
+  }
+
+  /** The next free id in this side's own parity space, skipping any that
+   * is still live. `nextStreamId` alone is not enough: an id can still be
+   * occupied when the counter wraps back onto it, and `streams.set` would
+   * then overwrite a live stream's entry, detaching it from every frame
+   * that followed with nothing to say so. */
+  private allocateStreamId(): number {
+    let id = this.nextStreamId;
+    while (this.streams.has(id)) id += 2;
+    if (id > MAX_STREAM_ID) {
+      throw new RangeError(
+        `this connection has no stream ids left (the wire maximum is ${MAX_STREAM_ID})`
+      );
+    }
+    this.nextStreamId = id + 2;
+    return id;
   }
 
   /** Feed one inbound chunk of transport bytes. Malformed frames end the
@@ -278,6 +312,14 @@ export class Muxer {
   }
 
   private handleOpen(frame: Frame): void {
+    if (!this.isPeerStreamId(frame.streamId)) {
+      this.sendFrame(
+        FrameType.Close,
+        frame.streamId,
+        encoder.encode("stream id is not the opener's to allocate")
+      );
+      return;
+    }
     if (this.streams.has(frame.streamId)) {
       this.sendFrame(
         FrameType.Close,
@@ -310,6 +352,18 @@ export class Muxer {
     );
     this.streams.set(frame.streamId, stream);
     handler(stream);
+  }
+
+  /** Stream ids are partitioned by role (docs/beam.md): the side that
+   * dialled allocates odd ids, the side that accepted even ones, and id 0
+   * is the connection's own control channel rather than a stream. An
+   * inbound Open inside *our* parity space is refused — honouring it would
+   * either displace a stream we already hold or collide with one we are
+   * about to allocate, and the partition exists precisely so that cannot
+   * happen. */
+  private isPeerStreamId(streamId: number): boolean {
+    if (streamId === 0) return false;
+    return streamId % 2 !== this.ownParity;
   }
 
   private handleData(frame: Frame): void {
