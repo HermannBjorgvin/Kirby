@@ -45,6 +45,19 @@ export class SingleUseSecrets<T> {
     return { valid: true, payload: entry.payload };
   }
 
+  /** Read a secret's payload without spending it. Same TTL rule as
+   * `consume`, and the same indistinguishable failure for unknown,
+   * expired and already-spent. It exists so a caller can check something
+   * *about* a secret before deciding whether to spend it — verifying a
+   * proof first is what stops a bogus one burning the legitimate holder's
+   * secret. */
+  peek(secret: string): ConsumeResult<T> {
+    const entry = this.issued.get(secret);
+    if (entry === undefined) return { valid: false };
+    if (this.now() - entry.issuedAt > this.ttlMs) return { valid: false };
+    return { valid: true, payload: entry.payload };
+  }
+
   /** Drop expired entries so un-presented secrets cannot grow memory. */
   private sweep(): void {
     const now = this.now();

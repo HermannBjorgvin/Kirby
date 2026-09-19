@@ -5,7 +5,12 @@
  * ours.
  */
 
-import { AuthError, verifyHostSignature, signNonce } from './auth.js';
+import {
+  AuthError,
+  verifyHostSignature,
+  signNonce,
+  WS_PROOF_PREFIX,
+} from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection, type PeerConnection } from './connection.js';
 import type { HostDescriptor } from './host.js';
@@ -230,7 +235,17 @@ export async function dial(
   verifyHostSignature(peer.publicKeyPem, clientChallenge, hostSignature);
 
   const transport = options.transport ?? new WebSocketTransport();
-  const wsUrl = new URL(`/ws?ticket=${encodeURIComponent(ticket)}`, baseUrl);
+  const wsUrl = new URL('/ws', baseUrl);
+  wsUrl.searchParams.set('ticket', ticket);
+  // The transport is not encrypted, so the ticket travels where anyone on
+  // the path can read it. Possession of it therefore cannot be the whole
+  // of the authorisation: the upgrade also proves the private key the host
+  // already holds a record of. See WS_PROOF_PREFIX for why the ticket is
+  // not signed bare.
+  wsUrl.searchParams.set(
+    'proof',
+    signNonce(options.identity.privateKeyPem, `${WS_PROOF_PREFIX}${ticket}`)
+  );
   wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = await transport.connect(wsUrl.toString());
 

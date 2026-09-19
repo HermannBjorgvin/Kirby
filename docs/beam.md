@@ -104,7 +104,7 @@ Authentication only; no payload ever travels over HTTP. Bodies are capped at 64 
 | GET    | `/challenge/:peerId`     | `{ challenge }` — a nonce for that peer to sign (60s TTL)                      |
 | POST   | `/session`               | mutual proof, returns `{ ticket, hostSignature }` (ticket 30s TTL, single use) |
 | POST   | `/rtc`                   | WebRTC offer for a ticket, returns the answer                                  |
-| GET    | `/ws?ticket=…`           | upgrade to the stream connection                                               |
+| GET    | `/ws?ticket=…&proof=…`   | upgrade to the stream connection; both are required                            |
 
 The `peerId` in `/challenge/:peerId` and in the `/session` body is the **caller's own** id, looked
 up in the accepting machine's peer table. That is what makes `unknown peer` and `revoked peer`
@@ -117,6 +117,19 @@ legitimate one. It then signs `clientChallenge` with its own key and returns tha
 the client verifies it against the stored `publicKeyPem` and aborts on mismatch. Mutual proof
 means neither side talks to an impostor, which matters because the WebSocket transport is not
 itself encrypted.
+
+`GET /ws` takes a `proof` as well as the `ticket`: the caller's signature over
+`beam-ws:<ticket>`, verified against the public key stored for the peer the ticket was issued
+to. The transport is not encrypted, so the ticket travels where anyone on the path can read
+it; possession of it alone would let a passive attacker race the legitimate client for it.
+The proof is verified **before** the ticket is consumed, for the same reason `/session`
+verifies the signature before consuming the challenge — consume first and an attacker who
+read the ticket could spend it with a garbage proof and burn the legitimate client's. The
+peer whose key the proof is checked against comes from the ticket, never from the caller. The
+`beam-ws:` prefix is domain separation from the `/session` challenge signature: without it a
+signature captured from one exchange would verify in the other, since both are otherwise just
+"this key signed this opaque string". The peer's current standing is re-checked after the
+ticket is consumed, so a revocation inside the ticket's 30s window still takes effect.
 
 Failure modes are distinguishable where they can be, because the UI has to explain them: unknown
 peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch, already
@@ -410,8 +423,10 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   immediately, and a revoked peer fails authentication rather than being silently ignored.
 - The WebSocket transport is not encrypted. WebRTC data channels are (DTLS). Mutual
   authentication is mandatory on both, so a plain-WS network attacker can read traffic but
-  cannot impersonate either side. Run over Tailscale or tailcat when the network is not
-  trusted.
+  cannot impersonate either side. That extends to the upgrade itself: a ticket read off the
+  wire is not enough to connect, because `/ws` also requires a signature over
+  `beam-ws:<ticket>` from the key the host stored at pairing. Run over Tailscale or tailcat
+  when the network is not trusted.
 - Default bind is loopback. Exposing the node on other interfaces requires an explicit
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout

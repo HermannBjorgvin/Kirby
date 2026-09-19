@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { signNonce, verifySignature } from './auth.js';
+import { signNonce, verifySignature, WS_PROOF_PREFIX } from './auth.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
 import { Host } from './host.js';
@@ -49,6 +49,53 @@ async function startHost(
   host = new Host({ identity, peers, port: 0, ...overrides });
   await host.listen();
   return host;
+}
+
+/** The `/ws` URL a legitimate client builds: the ticket, plus a signature
+ * over `beam-ws:<ticket>` proving the key the host stored at pairing. */
+function wsUrlFor(
+  h: Host,
+  client: ClientIdentity,
+  ticket: string,
+  overrides: { proof?: string } = {}
+): string {
+  const url = new URL(`ws://${h.hostname}:${h.port}/ws`);
+  url.searchParams.set('ticket', ticket);
+  const proof =
+    overrides.proof ??
+    signNonce(client.privateKeyPem, `${WS_PROOF_PREFIX}${ticket}`);
+  if (proof) url.searchParams.set('proof', proof);
+  return url.toString();
+}
+
+/** Drive the full challenge/session exchange and return the ticket. */
+async function ticketFor(h: Host, client: ClientIdentity): Promise<string> {
+  const { challenge } = (await (
+    await fetch(`${h.baseUrl}/challenge/${client.peerId}`)
+  ).json()) as { challenge: string };
+  const res = await fetch(`${h.baseUrl}/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      peerId: client.peerId,
+      challenge,
+      signature: signNonce(client.privateKeyPem, challenge),
+      clientChallenge: 'x',
+    }),
+  });
+  return ((await res.json()) as { ticket: string }).ticket;
+}
+
+/** Whether a `/ws` upgrade to `url` completes. */
+function upgrades(url: string): Promise<boolean> {
+  const socket = new WebSocket(url);
+  return new Promise<boolean>((resolve) => {
+    socket.once('open', () => {
+      socket.close();
+      resolve(true);
+    });
+    socket.once('error', () => resolve(false));
+  });
 }
 
 describe('Host HTTP surface', () => {
@@ -261,10 +308,7 @@ describe('Host HTTP surface', () => {
       verifySignature(h.identity.publicKeyPem, 'nonce-x', hostSignature)
     ).toBe(true);
 
-    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
-      ticket
-    )}`;
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrlFor(h, client, ticket));
     await new Promise<void>((resolve, reject) => {
       socket.once('open', () => resolve());
       socket.once('error', reject);
@@ -403,10 +447,7 @@ describe('Host HTTP surface', () => {
       }),
     });
     const { ticket } = (await sessionRes.json()) as { ticket: string };
-    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
-      ticket
-    )}`;
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrlFor(h, client, ticket));
     await new Promise<void>((resolve, reject) => {
       socket.once('open', () => resolve());
       socket.once('error', reject);
@@ -448,15 +489,84 @@ describe('Host HTTP surface', () => {
     // Revoke *after* the ticket was minted but *before* it is redeemed — the
     // exact window a ticket alone cannot close.
     h.peers.revoke(client.peerId);
-    const wsUrl = `ws://${h.hostname}:${h.port}/ws?ticket=${encodeURIComponent(
-      ticket
-    )}`;
-    const socket = new WebSocket(wsUrl);
-    const outcome = await new Promise<'open' | 'error'>((resolve) => {
-      socket.once('open', () => resolve('open'));
-      socket.once('error', () => resolve('error'));
+    expect(await upgrades(wsUrlFor(h, client, ticket))).toBe(false);
+  });
+
+  it('the ws upgrade needs proof of the key, not just the ticket', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const attacker = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
     });
-    expect(outcome).toBe('error');
+
+    // The transport is not encrypted, so the ticket is readable by anyone
+    // on the path. Possession of it alone must not be enough.
+    expect(
+      await upgrades(
+        await ticketFor(h, client).then((t) =>
+          wsUrlFor(h, client, t, { proof: '' })
+        )
+      )
+    ).toBe(false);
+
+    expect(
+      await upgrades(
+        await ticketFor(h, client).then((t) =>
+          wsUrlFor(h, client, t, {
+            proof: signNonce(attacker.privateKeyPem, `${WS_PROOF_PREFIX}${t}`),
+          })
+        )
+      )
+    ).toBe(false);
+
+    // A signature over the bare ticket is not a signature over
+    // `beam-ws:<ticket>`: the prefix keeps this proof and /session's
+    // challenge proof from standing in for one another.
+    expect(
+      await upgrades(
+        await ticketFor(h, client).then((t) =>
+          wsUrlFor(h, client, t, {
+            proof: signNonce(client.privateKeyPem, t),
+          })
+        )
+      )
+    ).toBe(false);
+
+    expect(
+      await upgrades(wsUrlFor(h, client, await ticketFor(h, client)))
+    ).toBe(true);
+  });
+
+  it('a bad proof does not spend the ticket it was presented with', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const attacker = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    const ticket = await ticketFor(h, client);
+
+    // An attacker who read the ticket off the wire races the legitimate
+    // client with a garbage proof. If the ticket were consumed before the
+    // proof was checked, that race alone would burn it.
+    expect(
+      await upgrades(
+        wsUrlFor(h, client, ticket, {
+          proof: signNonce(
+            attacker.privateKeyPem,
+            `${WS_PROOF_PREFIX}${ticket}`
+          ),
+        })
+      )
+    ).toBe(false);
+    expect(await upgrades(wsUrlFor(h, client, ticket))).toBe(true);
   });
 
   it('POST /rtc reports webrtc as unsupported in this phase', async () => {

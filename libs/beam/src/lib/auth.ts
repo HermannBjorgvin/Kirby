@@ -15,6 +15,13 @@ import {
   TICKET_TTL_MS,
 } from './secrets.js';
 
+/** Domain separation for the WebSocket upgrade proof. A caller signs
+ * `beam-ws:<ticket>`, never the bare ticket: both this and `/session`'s
+ * challenge are otherwise just "this key signed this opaque string", so
+ * without a distinguishing prefix a signature captured from one exchange
+ * would verify in the other. */
+export const WS_PROOF_PREFIX = 'beam-ws:';
+
 export type AuthErrorKind =
   | 'unknown-peer'
   | 'revoked-peer'
@@ -153,6 +160,21 @@ export class MutualAuth {
       ticket,
       hostSignature: signNonce(this.privateKeyPem, proof.clientChallenge),
     };
+  }
+
+  /**
+   * The peerId a ticket was issued for, without spending it; null if the
+   * ticket is unknown, expired or already used.
+   *
+   * The WS upgrade verifies the caller's proof *before* consuming the
+   * ticket, so a bogus proof cannot burn the legitimate client's — the
+   * same rule `proveSession` applies to the challenge. The peerId has to
+   * come from the ticket rather than from the caller, or an attacker
+   * would get to choose which key their own proof is checked against.
+   */
+  peekTicket(ticket: string): string | null {
+    const result = this.tickets.peek(ticket);
+    return result.valid ? result.payload : null;
   }
 
   /** Consume a ticket, returning the peerId it was issued for. */

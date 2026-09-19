@@ -13,7 +13,7 @@ import {
 } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { MutualAuth } from './auth.js';
+import { MutualAuth, verifySignature, WS_PROOF_PREFIX } from './auth.js';
 import { ConnectionRegistry } from './connection-registry.js';
 import { createConnection } from './connection.js';
 import { sendJson } from './http-json.js';
@@ -29,7 +29,7 @@ import {
   type RouteContext,
 } from './host-routes.js';
 import type { Identity } from './identity.js';
-import type { PeerTable } from './peer-table.js';
+import type { PeerRecord, PeerTable } from './peer-table.js';
 import { PAIRING_TOKEN_TTL_MS, SingleUseSecrets } from './secrets.js';
 import { StreamRegistry } from './stream-registry.js';
 import { wrapWebSocket } from './transport.js';
@@ -202,24 +202,13 @@ export class Host {
       socket.destroy();
       return;
     }
-    const ticket = url.searchParams.get('ticket') ?? '';
-    let peerId: string;
-    try {
-      peerId = this.ctx.auth.consumeTicket(ticket);
-    } catch {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    const authorized = this.authorizeUpgrade(url);
+    if ('refusal' in authorized) {
+      socket.write(`HTTP/1.1 ${authorized.refusal}\r\n\r\n`);
       socket.destroy();
       return;
     }
-    // A5: revocation inside the ticket's 30s window must still take effect —
-    // the ticket alone is not enough to trust; re-check the peer is still
-    // in good standing at the moment the upgrade actually happens.
-    const peer = this.peers.get(peerId);
-    if (!peer || peer.revoked) {
-      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-      socket.destroy();
-      return;
-    }
+    const { peerId, peer } = authorized;
     this.wss?.handleUpgrade(req, socket, head, (ws) => {
       const connection = createConnection({
         peerId,
@@ -231,6 +220,48 @@ export class Host {
       this.connections.add(connection);
       this.peers.touch(peerId);
     });
+  }
+
+  /**
+   * Ticket possession alone is not authorisation. The transport is not
+   * encrypted, so anyone on the path reads the ticket off the wire and can
+   * race the legitimate client for it. The caller also signs the ticket
+   * with the private key behind the public key this machine stored at
+   * pairing time, and that proof is verified **before** the ticket is
+   * consumed — consume first and an attacker who read the ticket could
+   * spend it with a garbage proof and burn the legitimate client's.
+   * `MutualAuth.proveSession` applies exactly this rule to the challenge.
+   *
+   * The peerId comes from the ticket, never from the caller: a
+   * caller-supplied id would let an attacker choose which key their own
+   * proof is checked against.
+   */
+  private authorizeUpgrade(
+    url: URL
+  ): { peerId: string; peer: PeerRecord } | { refusal: string } {
+    const ticket = url.searchParams.get('ticket') ?? '';
+    const proof = url.searchParams.get('proof') ?? '';
+    const peerId = this.ctx.auth.peekTicket(ticket);
+    const claimed = peerId ? this.peers.get(peerId) : undefined;
+    const proven =
+      claimed !== undefined &&
+      verifySignature(
+        claimed.publicKeyPem,
+        `${WS_PROOF_PREFIX}${ticket}`,
+        proof
+      );
+    if (!peerId || !proven) return { refusal: '401 Unauthorized' };
+    try {
+      this.ctx.auth.consumeTicket(ticket);
+    } catch {
+      return { refusal: '401 Unauthorized' };
+    }
+    // A5: revocation inside the ticket's 30s window must still take effect —
+    // the ticket alone is not enough to trust; re-check the peer is still
+    // in good standing at the moment the upgrade actually happens.
+    const peer = this.peers.get(peerId);
+    if (!peer || peer.revoked) return { refusal: '403 Forbidden' };
+    return { peerId, peer };
   }
 
   /** Revoke a peer and drop its live connection, if any (A5) — revocation
