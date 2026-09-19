@@ -362,6 +362,10 @@ are line-delimited JSON:
 {"op":"reload-peers"}                       → { status: "ok" }
 ```
 
+One request line is capped at 1 MiB; a client that sends more than that without a newline has
+its connection dropped, so no local process can grow the node's heap by never terminating a
+line.
+
 One node per `$BEAM_DIR`. A CLI that needs an existing node's connections (`msg send` from a
 script, `msg listen` beside a running node) uses this socket; a one-shot dial (`exec`,
 `connect`) may start its own ephemeral node instead. Because dedup state is shared through

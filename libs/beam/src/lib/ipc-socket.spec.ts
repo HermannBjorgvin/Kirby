@@ -537,6 +537,21 @@ describe('IpcSocket', () => {
       client.conn.destroy();
     });
 
+    it('drops a client that sends an unterminated line past the cap', async () => {
+      const a = makeNode('a');
+      const { path } = await startIpc(a);
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+      const closed = new Promise<void>((resolve) =>
+        client.conn.once('close', () => resolve())
+      );
+      // No newline, ever: without a cap this buffer grows until the node
+      // runs out of heap, and any local process can do it.
+      client.conn.write('x'.repeat(2 * 1024 * 1024));
+      await closed;
+      expect(client.conn.destroyed).toBe(true);
+    });
+
     it('an op that fails still answers, rather than leaving the caller hanging', async () => {
       const a = makeNode('a');
       const b = makeNode('b');

@@ -25,6 +25,13 @@ import type { Envelope } from './mailbox/envelope.js';
 import type { Mailbox, SendOutcome } from './mailbox/mailbox.js';
 import type { PeerTable } from './peer-table.js';
 
+/** Cap on one unterminated request line. The socket is line-delimited
+ * JSON, and the largest legitimate line is a `send` carrying a 256 KiB
+ * payload, so this is generous headroom — while keeping any local process
+ * from growing this node's heap without bound simply by never sending a
+ * newline. Counted in characters, each of which is at least one byte. */
+const MAX_LINE_CHARS = 1024 * 1024;
+
 interface Subscriber {
   socket: Socket;
   topic?: string;
@@ -193,6 +200,11 @@ export class IpcSocket {
         buffer = buffer.slice(newlineAt + 1);
         if (line.trim()) this.handleLine(socket, line);
       }
+      if (buffer.length <= MAX_LINE_CHARS) return;
+      buffer = '';
+      writeLine(socket, { status: 'error', reason: 'request line too long' });
+      this.log('dropping a local client that sent an over-long request line');
+      socket.destroy();
     });
     socket.on('close', () => this.handleSocketClosed(socket));
   }
