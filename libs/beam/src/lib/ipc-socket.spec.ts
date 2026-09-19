@@ -537,6 +537,32 @@ describe('IpcSocket', () => {
       client.conn.destroy();
     });
 
+    it('reload-peers drops the connection of a peer revoked out of process', async () => {
+      const a = makeNode('a');
+      const b = makeNode('b');
+      pairNodes(a, b);
+      connectNodes(a, b);
+      const { path } = await startIpc(a);
+      expect(a.connections.get(b.identity.peerId)).toBeDefined();
+
+      // A separate CLI invocation revokes by writing peers.json, which is
+      // exactly the case reload-peers exists for.
+      new PeerTable(a.dir).revoke(b.identity.peerId);
+
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+      client.send({ op: 'reload-peers' });
+      expect((await client.nextLine())['status']).toBe('ok');
+
+      // A revocation that leaves the connection and its running shells up
+      // is not a revocation.
+      await waitFor(
+        () => a.connections.get(b.identity.peerId),
+        (connection) => connection === undefined
+      );
+      client.conn.destroy();
+    });
+
     it('drops a client that sends an unterminated line past the cap', async () => {
       const a = makeNode('a');
       const { path } = await startIpc(a);

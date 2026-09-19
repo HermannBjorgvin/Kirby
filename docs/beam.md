@@ -375,7 +375,10 @@ script, `msg listen` beside a running node) uses this socket; a one-shot dial (`
 instance its `Host` and `Mailbox` already hold — so the change is visible to auth and delivery
 immediately, not only after a restart re-reads `peers.json`; `revoke` also closes that peer's
 live connection. `reload-peers` re-reads `peers.json` from disk, for the one case that writes it
-from a _different_ process: `pair` running as a separate CLI invocation. A CLI command prefers
+from a _different_ process: `pair` running as a separate CLI invocation, or a `revoke` that
+fell back to the file because no node answered. It then closes the live connection of every
+peer the reload found revoked or gone, for the same reason `revoke` does: a revocation that
+leaves an already-open connection and its running shells up is not one. A CLI command prefers
 this socket and falls back to writing `peers.json` directly only when no node answers.
 
 #### Acknowledging a subscription

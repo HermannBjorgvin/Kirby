@@ -78,5 +78,15 @@ export function handleForget(
 
 export function handleReloadPeers(ctx: PeerOpContext, socket: Socket): void {
   ctx.peers.reload();
+  // `reload-peers` is the cross-process path: a separate CLI invocation
+  // wrote `peers.json`, and that write may have revoked or removed a peer
+  // this node still holds a live connection to. Leaving that connection —
+  // and every stream on it, including a running shell — up until it
+  // happens to drop is not really a revocation, which is the rule
+  // `handleRevoke` and `Host.revoke` already apply on their own paths.
+  for (const connection of ctx.connections.list()) {
+    const peer = ctx.peers.get(connection.peerId);
+    if (!peer || peer.revoked) connection.close();
+  }
   writeLine(socket, { status: 'ok' });
 }
