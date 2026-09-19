@@ -153,9 +153,16 @@ function wireSession(
   sessionKey: string
 ): void {
   guardPtyErrors(proc, (error) => {
-    if (sessions.get(sessionKey) !== proc) return;
-    sessions.delete(sessionKey);
-    stream.close(`pty error: ${error.message.split('\n')[0]}`);
+    // On Linux the master fd reports EIO the moment the child exits, which
+    // is an ordinary exit that `onExit` is about to close the stream for
+    // with a real reason. Let it have that chance: only an error that
+    // leaves the session still live afterwards is one nothing else will
+    // report, and that is the one worth closing on.
+    setImmediate(() => {
+      if (sessions.get(sessionKey) !== proc) return;
+      sessions.delete(sessionKey);
+      stream.close(`pty error: ${error.message.split('\n')[0]}`);
+    });
   });
   proc.onData((data) => {
     if (sessions.get(sessionKey) === proc)
