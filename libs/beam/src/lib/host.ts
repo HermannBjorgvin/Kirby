@@ -193,6 +193,22 @@ export class Host {
     sendJson(res, 404, { error: 'not found' });
   }
 
+  /**
+   * The `'upgrade'` listener is synchronous, and an upgrade is reached
+   * before any authentication: no ticket, no proof, no pairing. A throw out
+   * of here escapes the `'upgrade'` emit and takes the whole node down,
+   * dropping every other peer's connection and the shells running on them,
+   * for the price of one TCP connection. Parsing alone can throw — a
+   * request-target `new URL()` rejects (`//[::1`, `http://[`, `//:`) is a
+   * well-formed HTTP request line as far as the parser is concerned — and
+   * `socket.on('error')` does not catch it, because a thrown exception is
+   * not an `'error'` event. The HTTP path is already covered by
+   * `handleRequest(...).catch(...)` in `listen()`.
+   *
+   * The guard wraps the whole body rather than just the parse, the way
+   * `Muxer.failStream` contains a stream handler, so anything added to the
+   * upgrade path later inherits it without anyone remembering to.
+   */
   private handleUpgrade(
     req: IncomingMessage,
     socket: Socket,
@@ -201,9 +217,33 @@ export class Host {
     // A client that resets the connection while we are still writing a
     // rejection (bad path, unknown/revoked peer) or destroying the socket
     // must not crash the node with an unhandled 'error' (D3's audit). `ws`
-    // attaches its own listener once we reach `wss.handleUpgrade()` below;
-    // this covers the rejection paths that return before that point.
+    // attaches its own listener once we reach `wss.handleUpgrade()`; this
+    // covers the rejection paths that return before that point, and is
+    // attached before anything that can throw.
     socket.on('error', () => undefined);
+    try {
+      this.routeUpgrade(req, socket, head);
+    } catch {
+      this.refuseUpgrade(socket, '400 Bad Request');
+    }
+  }
+
+  /** Write a bare HTTP refusal and drop the socket. Nothing above the
+   * refused socket is affected. */
+  private refuseUpgrade(socket: Socket, refusal: string): void {
+    try {
+      socket.write(`HTTP/1.1 ${refusal}\r\n\r\n`);
+    } catch {
+      // The socket is already gone; destroying it is all that is left.
+    }
+    socket.destroy();
+  }
+
+  private routeUpgrade(
+    req: IncomingMessage,
+    socket: Socket,
+    head: Buffer
+  ): void {
     const url = new URL(req.url ?? '/', 'http://internal');
     if (url.pathname !== '/ws') {
       socket.destroy();
@@ -211,8 +251,7 @@ export class Host {
     }
     const authorized = this.authorizeUpgrade(url);
     if ('refusal' in authorized) {
-      socket.write(`HTTP/1.1 ${authorized.refusal}\r\n\r\n`);
-      socket.destroy();
+      this.refuseUpgrade(socket, authorized.refusal);
       return;
     }
     const { peerId, peer } = authorized;

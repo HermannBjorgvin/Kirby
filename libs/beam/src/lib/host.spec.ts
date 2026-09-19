@@ -2,7 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage } from 'node:http';
-import type { Socket } from 'node:net';
+import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { signNonce, verifySignature, WS_PROOF_PREFIX } from './auth.js';
 import { derivePeerId, loadOrCreateIdentity } from './identity.js';
 import { PeerTable } from './peer-table.js';
-import { Host } from './host.js';
+import { DESCRIPTOR_PATH, Host } from './host.js';
 
 let dir: string;
 let host: Host;
@@ -84,6 +84,31 @@ async function ticketFor(h: Host, client: ClientIdentity): Promise<string> {
     }),
   });
   return ((await res.json()) as { ticket: string }).ticket;
+}
+
+/** Send a raw upgrade request with an arbitrary request-target — something
+ * no WebSocket client would build — and return whatever the host wrote back
+ * before the socket closed. */
+function rawUpgrade(h: Host, target: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let response = '';
+    const socket = connect(h.port, h.hostname, () => {
+      socket.write(
+        `GET ${target} HTTP/1.1\r\n` +
+          `Host: ${h.hostname}\r\n` +
+          'Upgrade: websocket\r\n' +
+          'Connection: Upgrade\r\n' +
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          'Sec-WebSocket-Version: 13\r\n\r\n'
+      );
+    });
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => {
+      response += chunk;
+    });
+    socket.on('error', reject);
+    socket.on('close', () => resolve(response));
+  });
 }
 
 /** Whether a `/ws` upgrade to `url` completes. */
@@ -622,6 +647,42 @@ describe('Host HTTP surface', () => {
       body: JSON.stringify({ ticket: 'whatever', sdp: 'x', type: 'offer' }),
     });
     expect(res.status).toBe(501);
+  });
+
+  it('a malformed upgrade request-target is refused without taking the node down', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    // A live peer whose connection must survive the attempt: the crash this
+    // guards against is pre-auth and node-wide, not scoped to one socket.
+    const victim = new WebSocket(
+      wsUrlFor(h, client, await ticketFor(h, client))
+    );
+    await new Promise<void>((resolve, reject) => {
+      victim.once('open', () => resolve());
+      victim.once('error', reject);
+    });
+
+    // Every one of these is a request line the HTTP parser hands straight to
+    // the 'upgrade' listener and a request-target `new URL()` rejects.
+    for (const target of ['//[::1', 'http://[', '//user@[v1.x]', '//:']) {
+      expect(await rawUpgrade(h, target)).toContain('400 Bad Request');
+    }
+
+    expect(victim.readyState).toBe(WebSocket.OPEN);
+    expect(h.connections.get(client.peerId)).toBeDefined();
+    // Still serving: the process, the HTTP surface and the upgrade path all
+    // outlived the malformed requests.
+    expect((await fetch(`${h.baseUrl}${DESCRIPTOR_PATH}`)).status).toBe(200);
+    expect(
+      await upgrades(wsUrlFor(h, client, await ticketFor(h, client)))
+    ).toBe(true);
+    victim.close();
   });
 
   it('D3 audit: a raw upgrade socket that errors after a rejection does not crash the node', async () => {
