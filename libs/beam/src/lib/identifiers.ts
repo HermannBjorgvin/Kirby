@@ -1,7 +1,9 @@
 /**
  * Shape rules for the three strings that arrive from outside this machine
  * and then become filesystem path segments, or get interpolated into
- * output other tools parse: `peerId`, `label` and `topic`.
+ * output other tools parse: `peerId`, `label` and `topic`. Only `peerId`
+ * reaches a path; `label` and `topic` reach logs, terminals and the JSON
+ * lines other tools parse.
  *
  * `peerId` is derived from a public key and is always 16 lowercase hex
  * characters, so anything else is either corruption or an attempt to steer
@@ -63,10 +65,13 @@ export function assertLabel(value: string): string {
   return value;
 }
 
+/** The empty topic is the documented default of the optional `--topic`
+ * flag and means "no topic" — the same thing `msg listen` means by an
+ * absent `--topic`, namely no filter. A topic is never a path segment, so
+ * the character and length checks are the whole guard. */
 export function isTopic(value: unknown): value is string {
   return (
     typeof value === 'string' &&
-    value.length > 0 &&
     value.length <= MAX_TOPIC_LENGTH &&
     !FORBIDDEN.test(value)
   );

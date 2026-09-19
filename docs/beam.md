@@ -35,10 +35,11 @@ separate "device" concept: a paired pair of machines are peers.
 path segments or get interpolated into output other tools parse, so each is checked at the
 boundary rather than trusted. A `peerId` must be 16 lowercase hex characters — exactly what
 the derivation produces — which is what keeps `mailbox/out/<peerId>/`, `mailbox/in/<peerId>/`
-and `mailbox/seen/<peerId>.json` from ever being steered by one. A `label` (1–64 characters)
-and a `topic` (1–128) may not carry a path separator, a brace, or a control character. Both
-are rejected, never sanitised: a label silently rewritten is no longer the one the user
-compared out of band.
+and `mailbox/seen/<peerId>.json` from ever being steered by one. `peerId` is the only one of
+the three that reaches a path. A `label` (1–64 characters) and a `topic` (0–128, so the empty
+topic `msg send` defaults to is valid and means "no topic") may not carry a path separator, a
+brace, or a control character. Both are rejected, never sanitised: a label silently rewritten
+is no longer the one the user compared out of band.
 
 `$BEAM_DIR` is `$BEAM_CONFIG_DIR`, else `$XDG_CONFIG_HOME/beam`, else `~/.config/beam`.
 

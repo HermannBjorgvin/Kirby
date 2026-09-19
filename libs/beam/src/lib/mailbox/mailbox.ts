@@ -35,9 +35,10 @@ export type RejectReason =
    * so the caller was promised nothing and may retry once the queue
    * drains. */
   | 'queue-full'
-  /** The topic is empty, over-long, or carries a path separator, a brace
-   * or a control character. Topics reach logs and the JSON lines other
-   * tools parse, so they are refused rather than rewritten. */
+  /** The topic is over-long, or carries a path separator, a brace or a
+   * control character. Topics reach logs and the JSON lines other tools
+   * parse, so they are refused rather than rewritten. The empty topic is
+   * valid and means "no topic". */
   | 'invalid-topic'
   /** The envelope could not be written down: a full or read-only disk, a
    * permission problem, a seq collision. Nothing was stored, so — unlike

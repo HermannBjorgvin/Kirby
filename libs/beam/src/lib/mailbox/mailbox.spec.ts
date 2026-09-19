@@ -375,7 +375,13 @@ describe('Mailbox: rejection', () => {
     const a = makeNode('a');
     const b = makeNode('b');
     pairNodes(a, b);
-    for (const topic of ['', 'a/b', 'has{brace}', 'x'.repeat(200)]) {
+    const invalid = [
+      'a/b',
+      'has{brace}',
+      `bell${String.fromCharCode(7)}`,
+      'x'.repeat(200),
+    ];
+    for (const topic of invalid) {
       const outcome = await a.mailbox.send({
         to: b.identity.peerId,
         topic,
