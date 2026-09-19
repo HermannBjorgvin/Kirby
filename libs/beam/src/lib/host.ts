@@ -30,6 +30,7 @@ import {
 } from './host-routes.js';
 import type { Identity } from './identity.js';
 import type { PeerRecord, PeerTable } from './peer-table.js';
+import { MAX_TRANSPORT_MESSAGE_BYTES } from './protocol.js';
 import { PAIRING_TOKEN_TTL_MS, SingleUseSecrets } from './secrets.js';
 import { StreamRegistry } from './stream-registry.js';
 import { wrapWebSocket } from './transport.js';
@@ -140,7 +141,13 @@ export class Host {
         sendJson(res, 500, { error: 'internal error' })
       );
     });
-    this.wss = new WebSocketServer({ noServer: true });
+    // Without a cap, `ws` allows 100 MiB per message: a peer could make
+    // this process allocate and concatenate all of it before the frame
+    // decoder ever saw the length field it would have rejected.
+    this.wss = new WebSocketServer({
+      noServer: true,
+      maxPayload: MAX_TRANSPORT_MESSAGE_BYTES,
+    });
     this.server.on('upgrade', (req, socket, head) =>
       this.handleUpgrade(req, socket as Socket, head)
     );

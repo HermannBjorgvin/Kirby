@@ -31,6 +31,12 @@ export const MAX_PAYLOAD = 1 << 20;
  * the connection's own control channel, so a stream never uses it. */
 export const MAX_STREAM_ID = 0xffff;
 
+/** The largest a single transport message may legitimately be: one frame,
+ * header included. Transports cap themselves here so an oversized message
+ * is refused as it arrives, rather than being buffered and concatenated in
+ * full before the decoder gets a chance to reject it. */
+export const MAX_TRANSPORT_MESSAGE_BYTES = FRAME_HEADER_SIZE + MAX_PAYLOAD;
+
 export const FrameType = {
   /** Open stream `streamId`. Payload: UTF-8 stream name. */
   Open: 0,

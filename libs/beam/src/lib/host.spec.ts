@@ -569,6 +569,33 @@ describe('Host HTTP surface', () => {
     expect(await upgrades(wsUrlFor(h, client, ticket))).toBe(true);
   });
 
+  it('an oversized ws message is refused by the transport, not buffered whole', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    h.peers.upsert({
+      peerId: client.peerId,
+      label: 'laptop',
+      publicKeyPem: client.publicKeyPem,
+      endpoints: [],
+    });
+    const socket = new WebSocket(
+      wsUrlFor(h, client, await ticketFor(h, client))
+    );
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('error', reject);
+    });
+    const closed = new Promise<number>((resolve) => {
+      socket.once('close', (code) => resolve(code));
+      socket.once('error', () => undefined);
+    });
+    // `ws` defaults to 100 MiB per message, so without a cap this would be
+    // allocated and concatenated in full before the frame decoder could
+    // look at the length field it would have rejected.
+    socket.send(Buffer.alloc(2 * 1024 * 1024));
+    expect(await closed).toBe(1009); // "message too big"
+  });
+
   it('POST /rtc reports webrtc as unsupported in this phase', async () => {
     const h = await startHost();
     const res = await fetch(`${h.baseUrl}/rtc`, {

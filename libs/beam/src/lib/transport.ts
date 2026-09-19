@@ -5,6 +5,7 @@
  */
 
 import WebSocket from 'ws';
+import { MAX_TRANSPORT_MESSAGE_BYTES } from './protocol.js';
 
 export interface TransportSocket {
   send(data: Uint8Array): void;
@@ -22,7 +23,12 @@ export interface Transport {
 export class WebSocketTransport implements Transport {
   connect(url: string): Promise<TransportSocket> {
     return new Promise((resolve, reject) => {
-      const socket = new WebSocket(url);
+      // Same cap as the host's server (see host.ts): one frame, header
+      // included. `ws` otherwise buffers up to 100 MiB of a single message
+      // before anything can look at its declared length.
+      const socket = new WebSocket(url, {
+        maxPayload: MAX_TRANSPORT_MESSAGE_BYTES,
+      });
       socket.binaryType = 'nodebuffer';
 
       const onOpen = () => {
