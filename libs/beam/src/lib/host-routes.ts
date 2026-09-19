@@ -8,6 +8,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthError, type MutualAuth } from './auth.js';
 import { readJsonBody, sendJson, BodyTooLargeError } from './http-json.js';
+import { isLabel } from './identifiers.js';
 import { derivePeerId, type Identity } from './identity.js';
 import type { PeerTable } from './peer-table.js';
 import type { SingleUseSecrets } from './secrets.js';
@@ -89,6 +90,13 @@ export async function handlePair(
     sendJson(res, 400, {
       error: 'token, publicKeyPem, and label are required',
     });
+    return;
+  }
+  // The label is chosen by the caller and ends up in this machine's logs,
+  // in the JSON lines its local socket emits, and on a terminal. Refused
+  // rather than sanitised (identifiers.ts).
+  if (!isLabel(label)) {
+    sendJson(res, 400, { error: 'invalid-label' });
     return;
   }
   if (!ctx.pairingTokens.consume(token).valid) {

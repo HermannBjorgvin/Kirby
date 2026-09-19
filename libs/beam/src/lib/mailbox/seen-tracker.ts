@@ -25,6 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { assertPeerId } from '../identifiers.js';
 
 /** A seen-state file exists but cannot be trusted. Thrown rather than
  * silently treated as "nothing seen yet" — that would risk re-accepting
@@ -47,8 +48,10 @@ export class SeenTracker {
     this.dir = join(beamDir, 'mailbox', 'seen');
   }
 
+  /** The boundary where a sender-supplied id would otherwise become a file
+   * name; see identifiers.ts. */
   private path(peerId: string): string {
-    return join(this.dir, `${peerId}.json`);
+    return join(this.dir, `${assertPeerId(peerId)}.json`);
   }
 
   /** The highest seq accepted from `peerId`, or 0 if none yet. */

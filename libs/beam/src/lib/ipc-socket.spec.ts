@@ -520,12 +520,12 @@ describe('IpcSocket', () => {
       // would construct, writes directly to the same beamDir.
       const outOfProcessWrite = new PeerTable(a.dir);
       outOfProcessWrite.upsert({
-        peerId: 'freshly-paired-peer',
+        peerId: '00000000000000fe',
         label: 'fresh',
         publicKeyPem: 'fresh-key',
         endpoints: [],
       });
-      expect(a.peers.get('freshly-paired-peer')).toBeUndefined(); // not yet visible
+      expect(a.peers.get('00000000000000fe')).toBeUndefined(); // not yet visible
 
       const client = connectClient(path);
       await waitForOpen(client.conn);
@@ -533,7 +533,7 @@ describe('IpcSocket', () => {
       const response = await client.nextLine();
       expect(response['status']).toBe('ok');
 
-      expect(a.peers.get('freshly-paired-peer')?.label).toBe('fresh');
+      expect(a.peers.get('00000000000000fe')?.label).toBe('fresh');
       client.conn.destroy();
     });
 

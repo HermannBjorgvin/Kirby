@@ -9,6 +9,11 @@ import type { TransportSocket } from '../transport.js';
 import { Flusher } from './flusher.js';
 import { OutboundQueue } from './outbound-queue.js';
 
+/** A real-shaped peer id: 16 lowercase hex characters, as `derivePeerId`
+ * produces and as the queue's path boundary requires (identifiers.ts). */
+const REVOKED_PEER = '00000000000000b0';
+const PEER = '00000000000000c0';
+
 let dir: string;
 
 beforeEach(() => {
@@ -55,13 +60,13 @@ describe('Flusher', () => {
     process.once('unhandledRejection', onUnhandled);
 
     const connection = createConnection({
-      peerId: 'p',
+      peerId: PEER,
       role: 'initiator',
       socket: deadSocket(),
       registry: new StreamRegistry(),
     });
     connections.add(connection);
-    flusher.kick('p');
+    flusher.kick(PEER);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     process.removeListener('unhandledRejection', onUnhandled);
@@ -72,10 +77,10 @@ describe('Flusher', () => {
 
   it('a revoked peer is never drained, even with a live connection and a non-empty queue (D5)', async () => {
     const queue = new OutboundQueue(dir);
-    queue.enqueue('p', {
+    queue.enqueue(REVOKED_PEER, {
       id: 'x',
-      from: 'a',
-      to: 'p',
+      from: '00000000000000a0',
+      to: REVOKED_PEER,
       seq: 1,
       topic: 't',
       payload: 'x',
@@ -87,12 +92,12 @@ describe('Flusher', () => {
     const flusher = new Flusher({
       queue,
       connections,
-      isRevoked: (peerId) => peerId === 'p',
+      isRevoked: (peerId) => peerId === REVOKED_PEER,
       retryIntervalMs: 10,
     });
 
     const connection = createConnection({
-      peerId: 'p',
+      peerId: REVOKED_PEER,
       role: 'initiator',
       socket: {
         ...deadSocket(),
@@ -101,12 +106,12 @@ describe('Flusher', () => {
       registry: new StreamRegistry(),
     });
     connections.add(connection);
-    flusher.kick('p');
+    flusher.kick(REVOKED_PEER);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
     // Nothing was ever sent: the drain loop must return before it even
     // tries to open the `msg` stream.
     expect(openedStream).not.toHaveBeenCalled();
-    expect(queue.list('p')).toHaveLength(1);
+    expect(queue.list(REVOKED_PEER)).toHaveLength(1);
   });
 });

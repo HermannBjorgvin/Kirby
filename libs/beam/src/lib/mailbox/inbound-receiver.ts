@@ -6,6 +6,7 @@
  * what both implement.
  */
 
+import { isPeerId, isTopic } from '../identifiers.js';
 import type { BeamStream } from '../stream.js';
 import {
   envelopeFitsOneFrame,
@@ -38,6 +39,16 @@ export interface InboundReceiverOptions {
 
 /** Both halves of the size contract: the documented payload cap, and the
  * frame the envelope actually has to fit in once serialized. */
+/** Everything about an envelope that this node will go on to use as a path
+ * segment or print where another tool parses it (identifiers.ts). An
+ * envelope failing this is dropped rather than acked: it is not something
+ * a conforming sender can produce. */
+function wellFormed(envelope: Envelope): boolean {
+  return (
+    isPeerId(envelope.from) && isPeerId(envelope.to) && isTopic(envelope.topic)
+  );
+}
+
 function withinCap(envelope: Envelope): boolean {
   return (
     payloadByteLength(envelope) <= MAX_PAYLOAD_BYTES &&
@@ -100,6 +111,7 @@ export class InboundReceiver {
       return; // Not JSON at all — nothing sane to ack; drop.
     }
     if (!isEnvelope(parsed) || parsed.from !== stream.peer.peerId) return;
+    if (!wellFormed(parsed)) return;
     if (!withinCap(parsed)) {
       // The cap belongs to the mailbox, not only to this node's own
       // `send()`. A peer that ignores it would otherwise store here up to

@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { assertLabel, assertPeerId } from './identifiers.js';
 
 /** The filesystem calls PeerTable's atomic write goes through; overridable
  * so a test can simulate a crash between the write and the rename without
@@ -68,6 +69,12 @@ export class PeerTable {
    * resolved locally by appending `-2`, `-3`, ...; the caller's own record
    * keeps re-using its existing label across updates. */
   upsert(input: NewPeer): PeerRecord {
+    // The boundary for both: a peerId reaches the mailbox as a path
+    // segment, and a label reaches logs, JSON lines other tools parse, and
+    // the terminal. Rejected, never sanitised — a label silently rewritten
+    // is no longer the one the user compared out of band (identifiers.ts).
+    assertPeerId(input.peerId);
+    assertLabel(input.label);
     const existing = this.peers.get(input.peerId);
     const label = this.uniqueLabel(input.label, input.peerId);
     const record: PeerRecord = {
@@ -99,6 +106,7 @@ export class PeerTable {
 
   /** Renaming never changes `peerId`. */
   rename(peerId: string, label: string): PeerRecord {
+    assertLabel(label);
     const record = this.require(peerId);
     const updated: PeerRecord = {
       ...record,

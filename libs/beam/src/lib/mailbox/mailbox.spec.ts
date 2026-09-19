@@ -371,6 +371,24 @@ describe('Mailbox: rejection', () => {
     ).toEqual([1]);
   });
 
+  it('a topic that would confuse a log line or a parser is rejected', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    for (const topic of ['', 'a/b', 'has{brace}', 'x'.repeat(200)]) {
+      const outcome = await a.mailbox.send({
+        to: b.identity.peerId,
+        topic,
+        payload: 'p',
+      });
+      expect(outcome).toMatchObject({
+        outcome: 'rejected',
+        reason: 'invalid-topic',
+      });
+    }
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
+  });
+
   it('a queue at its depth bound rejects rather than growing forever', async () => {
     const a = makeNode('a', { queueLimits: { maxDepth: 2 } });
     const b = makeNode('b');

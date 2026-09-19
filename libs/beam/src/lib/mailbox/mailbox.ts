@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ConnectionRegistry } from '../connection-registry.js';
 import type { Identity } from '../identity.js';
+import { isTopic } from '../identifiers.js';
 import type { PeerRecord, PeerTable } from '../peer-table.js';
 import type { StreamRegistry } from '../stream-registry.js';
 import {
@@ -34,6 +35,10 @@ export type RejectReason =
    * so the caller was promised nothing and may retry once the queue
    * drains. */
   | 'queue-full'
+  /** The topic is empty, over-long, or carries a path separator, a brace
+   * or a control character. Topics reach logs and the JSON lines other
+   * tools parse, so they are refused rather than rewritten. */
+  | 'invalid-topic'
   /** The envelope could not be written down: a full or read-only disk, a
    * permission problem, a seq collision. Nothing was stored, so — unlike
    * `queued` — the caller has not been promised delivery and may retry. */
@@ -169,6 +174,15 @@ export class Mailbox {
       return {
         outcome: 'rejected',
         reason: 'revoked-peer',
+        to: peer.peerId,
+        label: peer.label,
+      };
+    }
+
+    if (!isTopic(input.topic)) {
+      return {
+        outcome: 'rejected',
+        reason: 'invalid-topic',
         to: peer.peerId,
         label: peer.label,
       };

@@ -264,6 +264,24 @@ describe('Host HTTP surface', () => {
     expect((await post(token, ['http://attacker:1'])).status).toBe(401);
   });
 
+  it('refuses a pairing label that would land in a log or a path', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const res = await fetch(`${h.baseUrl}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        token: h.issuePairingToken(),
+        publicKeyPem: client.publicKeyPem,
+        label: '../../etc/passwd',
+        endpoints: [],
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid-label' });
+    expect(h.peers.get(client.peerId)).toBeUndefined();
+  });
+
   it('rejects a body over the 64 KiB cap', async () => {
     const h = await startHost();
     const res = await fetch(`${h.baseUrl}/pair`, {

@@ -12,6 +12,14 @@
 export { resolveBeamDir, type BeamDirEnv } from './lib/beam-dir.js';
 
 export {
+  isLabel,
+  isPeerId,
+  isTopic,
+  MAX_LABEL_LENGTH,
+  MAX_TOPIC_LENGTH,
+} from './lib/identifiers.js';
+
+export {
   derivePeerId,
   loadOrCreateIdentity,
   renameIdentity,

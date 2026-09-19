@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { assertPeerId } from '../identifiers.js';
 import { isEnvelope, type Envelope } from './envelope.js';
 import {
   isAtLimit,
@@ -70,8 +71,10 @@ export class InboundStore {
     }
   }
 
+  /** The boundary where a sender-supplied id would otherwise become a path
+   * segment; see identifiers.ts. */
   private peerDir(peerId: string): string {
-    return join(this.root, peerId);
+    return join(this.root, assertPeerId(peerId));
   }
 
   private fileName(seq: number): string {

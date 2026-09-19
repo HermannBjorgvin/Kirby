@@ -32,6 +32,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { assertPeerId } from '../identifiers.js';
 import { MailboxCorruptionError } from './seen-tracker.js';
 
 /** Reused across every peer's counter: `seq.json` holds one shared object,
@@ -88,6 +89,9 @@ export class SeqCounter {
    * its own queue (itself a form of corruption) can never hand out a seq
    * this node has already assigned. */
   private highestQueuedSeq(peerId: string): number {
+    // The id is joined into a path here too, so it meets the same boundary
+    // check as the queue's own paths (identifiers.ts).
+    assertPeerId(peerId);
     let max = 0;
     for (const sub of ['', 'corrupt']) {
       const dir = sub

@@ -31,6 +31,15 @@ separate "device" concept: a paired pair of machines are peers.
 - **`label`**: human name, defaults to the system hostname, local to each machine. Labels are
   display and lookup only; `peerId` is identity. Renaming a peer never changes its id.
 
+`peerId`, `label` and `topic` all arrive from outside the machine and then become filesystem
+path segments or get interpolated into output other tools parse, so each is checked at the
+boundary rather than trusted. A `peerId` must be 16 lowercase hex characters — exactly what
+the derivation produces — which is what keeps `mailbox/out/<peerId>/`, `mailbox/in/<peerId>/`
+and `mailbox/seen/<peerId>.json` from ever being steered by one. A `label` (1–64 characters)
+and a `topic` (1–128) may not carry a path separator, a brace, or a control character. Both
+are rejected, never sanitised: a label silently rewritten is no longer the one the user
+compared out of band.
+
 `$BEAM_DIR` is `$BEAM_CONFIG_DIR`, else `$XDG_CONFIG_HOME/beam`, else `~/.config/beam`.
 
 ```
@@ -133,7 +142,7 @@ ticket is consumed, so a revocation inside the ticket's 30s window still takes e
 
 Failure modes are distinguishable where they can be, because the UI has to explain them: unknown
 peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch, already
-paired under a record this pairing would change.
+paired under a record this pairing would change, invalid label.
 
 One deliberate exception: a pairing token that is expired and one that has already been spent
 answer identically. Single-use secrets are built so that unknown, expired and spent all fail the
@@ -327,7 +336,7 @@ duplicates, ack them, and let the sender report `delivered` for mail that will n
 | ----------- | --------------------------------------------------------------------------- | ---------------------------- |
 | `delivered` | the recipient acked                                                         | done                         |
 | `queued`    | no live connection, or no ack before the timeout; the envelope is persisted | **success** — do not resend  |
-| `rejected`  | unknown peer, revoked peer, payload over the cap, queue full, failed write   | failure — nothing was stored |
+| `rejected`  | unknown or revoked peer, bad payload or topic, queue full, failed write      | failure — nothing was stored |
 
 `queued` is a success because the message is durable. Anything that reports to a human or an
 agent must say so in those terms, so the sender does not sit waiting for a reply that cannot
@@ -339,7 +348,8 @@ message the next time it comes online. Do not send it again.
 ```
 
 `rejected` must name which cause applied. `queue-full` means this peer's queue is at its
-depth or byte bound; like `storage-failure`, nothing was stored and the caller may retry. A queue write that fails — a full or
+depth or byte bound; like `storage-failure`, nothing was stored and the caller may retry.
+`invalid-topic` means the topic failed the boundary check above. A queue write that fails — a full or
 read-only disk, a permission problem — is `storage-failure`: nothing was stored, so
 unlike `queued` the caller was promised nothing and may retry. A sequence number is
 claimed only once the envelope is on disk, so a failed write leaves no gap behind it.
