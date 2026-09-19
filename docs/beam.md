@@ -194,7 +194,9 @@ name.
 
 `Control` `{ kind: "resize", streamId, cols, rows }` resizes, clamped to 2–500 in both axes
 because the numbers come from the far side. Closing the stream kills the process; the process
-exiting closes the stream with a reason. A cap of 32 live PTYs per connection.
+exiting closes the stream with a reason. A cap of 32 live PTYs **per peer**, not per
+connection and not across the node: a peer that opens its full allowance must not shrink
+another peer's, and one that reconnects must not find its own budget already spent.
 
 ### `exec`
 
@@ -205,6 +207,10 @@ those commands mean.
 Open parameters: `{ name: "exec", argv: string[], cwd?: string, env?: Record<string,string> }`.
 `argv[0]` is executed directly — no shell, no word splitting. Provided `env` entries are merged
 over the host's environment, not replacing it.
+
+A cap of 32 live `exec` children per peer, the same budget and the same per-peer reasoning as
+`pty`'s: `exec` spawns a real child process per stream, so an uncapped peer could run the
+machine out of processes.
 
 `cwd` must be absolute or start with `~/`, and a leading `~/` is expanded **by the accepting
 machine**, against the home directory of the user the node runs as. Because there is no shell

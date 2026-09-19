@@ -8,6 +8,7 @@ import {
   demuxExecData,
   EXEC_CHANNEL_STDERR,
   EXEC_CHANNEL_STDOUT,
+  MAX_EXEC_SESSIONS,
   prefixChannel,
 } from './exec-handler.js';
 import type { BeamStream, StreamContext } from './stream.js';
@@ -25,7 +26,8 @@ afterEach(() => {
 /** Minimal fake BeamStream, matching pty-handler.spec.ts's pattern. */
 function fakeStream(
   openParams: Record<string, unknown>,
-  peer: StreamContext = { peerId: 'caller', label: 'laptop' }
+  peer: StreamContext = { peerId: 'caller', label: 'laptop' },
+  id = 1
 ) {
   const dataHandlers: ((data: Uint8Array) => void)[] = [];
   const closeHandlers: ((reason?: string) => void)[] = [];
@@ -35,7 +37,7 @@ function fakeStream(
   const stdout: Uint8Array[] = [];
   const stderr: Uint8Array[] = [];
   const stream: BeamStream = {
-    id: 1,
+    id,
     name: 'exec',
     peer,
     openParams,
@@ -219,6 +221,32 @@ describe('createExecStreamHandler', () => {
       (dead) => dead
     );
     expect(isAlive(childPid)).toBe(false);
+  });
+
+  it("caps live exec children per peer, and one peer's cap leaves another's alone", () => {
+    const handler = createExecStreamHandler();
+    const atCap = { peerId: 'peer-a-at-cap', label: 'a' };
+    const sleeps = Array.from({ length: MAX_EXEC_SESSIONS }, (_, i) =>
+      fakeStream({ argv: ['sleep', '30'] }, atCap, 100 + i)
+    );
+    for (const fake of sleeps) handler(fake.stream);
+    // `exec` spawns a real child per stream, so an uncapped peer could run
+    // the machine out of processes.
+    const over = fakeStream({ argv: ['sleep', '30'] }, atCap, 999);
+    handler(over.stream);
+    expect(over.closedWith).toMatch(/too many live exec sessions/);
+
+    // D5: the budget is per peer, so the peer at its cap has not taken
+    // anything away from anyone else.
+    const other = fakeStream(
+      { argv: ['sleep', '30'] },
+      { peerId: 'peer-b', label: 'b' },
+      1
+    );
+    handler(other.stream);
+    expect(other.closedWith).toBeUndefined();
+
+    for (const fake of [...sleeps, over, other]) fake.stream.close();
   });
 });
 

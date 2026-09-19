@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import * as pty from 'node-pty';
 import { injectedEnv, type NodeEnvContext } from './injected-env.js';
+import { PeerSessions } from './peer-sessions.js';
 import { isString, isStringRecord } from './open-params.js';
 import { resolveCwd } from './resolve-cwd.js';
 import type { StreamOpenHandler } from './stream-registry.js';
@@ -106,20 +107,10 @@ function resolveArgv(stream: BeamStream): string[] {
 export function createPtyStreamHandler(
   node?: NodeEnvContext
 ): StreamOpenHandler {
-  const sessions = new Map<string, pty.IPty>();
-  const key = (stream: BeamStream): string =>
-    `${stream.peer.peerId}:${stream.id}`;
-  const sessionsForPeer = (peerId: string): number => {
-    const prefix = `${peerId}:`;
-    let count = 0;
-    for (const sessionKey of sessions.keys()) {
-      if (sessionKey.startsWith(prefix)) count += 1;
-    }
-    return count;
-  };
+  const sessions = new PeerSessions<pty.IPty>(MAX_PTY_SESSIONS);
 
   return (stream: BeamStream) => {
-    if (sessionsForPeer(stream.peer.peerId) >= MAX_PTY_SESSIONS) {
+    if (sessions.atLimit(stream.peer.peerId)) {
       stream.close('too many live pty sessions');
       return;
     }
@@ -150,8 +141,8 @@ export function createPtyStreamHandler(
       );
       return;
     }
-    sessions.set(key(stream), proc);
-    wireSession(stream, proc, sessions, key(stream));
+    sessions.add(sessions.key(stream), proc);
+    wireSession(stream, proc, sessions, sessions.key(stream));
     stream.control({ kind: 'opened' });
   };
 }
@@ -159,22 +150,20 @@ export function createPtyStreamHandler(
 function wireSession(
   stream: BeamStream,
   proc: pty.IPty,
-  sessions: Map<string, pty.IPty>,
+  sessions: PeerSessions<pty.IPty>,
   sessionKey: string
 ): void {
   guardPtyErrors(proc, (error) => {
     if (isPtyExitError(error)) return;
-    if (sessions.get(sessionKey) !== proc) return;
-    sessions.delete(sessionKey);
+    if (!sessions.release(sessionKey, proc)) return;
     stream.close(`pty error: ${error.message.split('\n')[0]}`);
   });
   proc.onData((data) => {
-    if (sessions.get(sessionKey) === proc)
+    if (sessions.holds(sessionKey, proc))
       stream.write(Buffer.from(data, 'utf8'));
   });
   proc.onExit(({ exitCode, signal }) => {
-    if (sessions.get(sessionKey) !== proc) return;
-    sessions.delete(sessionKey);
+    if (!sessions.release(sessionKey, proc)) return;
     const signalPart = signal ? `, signal ${signal}` : '';
     stream.close(`process exited (code ${exitCode}${signalPart})`);
   });
@@ -190,8 +179,7 @@ function wireSession(
     }
   });
   stream.onClose(() => {
-    if (sessions.get(sessionKey) !== proc) return;
-    sessions.delete(sessionKey);
+    if (!sessions.release(sessionKey, proc)) return;
     try {
       proc.kill();
     } catch {

@@ -7,6 +7,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { injectedEnv, type NodeEnvContext } from './injected-env.js';
+import { PeerSessions } from './peer-sessions.js';
 import { isStringArray, isStringRecord } from './open-params.js';
 import { resolveCwd } from './resolve-cwd.js';
 import type { StreamOpenHandler } from './stream-registry.js';
@@ -64,6 +65,13 @@ export function demuxExecData(data: Uint8Array): {
   return { channel: data[0] ?? -1, payload: data.subarray(1) };
 }
 
+/** Upper bound on live `exec` children per peer. The same budget and the
+ * same reasoning as `pty`'s MAX_PTY_SESSIONS (D5): a node's `exec` handler
+ * spawns a real child process per stream, so without one, a single peer
+ * could run the machine out of processes — and enforcing it per peer
+ * rather than globally is what stops one peer consuming another's share. */
+export const MAX_EXEC_SESSIONS = 32;
+
 const EMPTY_NODE: NodeEnvContext = {
   beamDir: '',
   inboxSocketPath: '',
@@ -76,7 +84,13 @@ const EMPTY_NODE: NodeEnvContext = {
 export function createExecStreamHandler(
   node?: NodeEnvContext
 ): StreamOpenHandler {
+  const sessions = new PeerSessions<ChildProcess>(MAX_EXEC_SESSIONS);
+
   return (stream: BeamStream) => {
+    if (sessions.atLimit(stream.peer.peerId)) {
+      stream.close('too many live exec sessions');
+      return;
+    }
     const argv = stream.openParams?.['argv'];
     if (!isStringArray(argv) || argv.length === 0) {
       stream.close('exec requires a non-empty argv');
@@ -111,7 +125,9 @@ export function createExecStreamHandler(
       );
       return;
     }
-    wireExec(stream, proc);
+    const sessionKey = sessions.key(stream);
+    sessions.add(sessionKey, proc);
+    wireExec(stream, proc, sessions, sessionKey);
   };
 }
 
@@ -152,7 +168,12 @@ function killProcessGroup(proc: ChildProcess): void {
   }
 }
 
-function wireExec(stream: BeamStream, proc: ChildProcess): void {
+function wireExec(
+  stream: BeamStream,
+  proc: ChildProcess,
+  sessions: PeerSessions<ChildProcess>,
+  sessionKey: string
+): void {
   let settled = false;
   let stdinEnded = false;
   pumpChannel(proc.stdout ?? neverReadable(), EXEC_CHANNEL_STDOUT, stream);
@@ -184,17 +205,22 @@ function wireExec(stream: BeamStream, proc: ChildProcess): void {
   });
 
   proc.on('exit', (exitCode, signal) => {
+    sessions.release(sessionKey, proc);
     if (settled) return;
     settled = true;
     stream.close(encodeExecExit({ exitCode, signal }));
   });
   proc.on('error', (error) => {
+    sessions.release(sessionKey, proc);
     if (settled) return;
     settled = true;
     stream.close(`exec failed: ${error.message.split('\n')[0]}`);
   });
 
-  stream.onClose(() => killProcessGroup(proc));
+  stream.onClose(() => {
+    sessions.release(sessionKey, proc);
+    killProcessGroup(proc);
+  });
   stream.control({ kind: 'opened' });
 }
 
