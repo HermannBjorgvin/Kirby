@@ -15,6 +15,7 @@ import {
   type Envelope,
 } from './envelope.js';
 import { InboundStore } from './inbound-store.js';
+import type { QueueLimits } from './queue-limits.js';
 import { MailboxCorruptionError, SeenTracker } from './seen-tracker.js';
 
 /** A raw inbound subscriber: called once per accepted envelope (live or
@@ -32,6 +33,7 @@ export type InboundHandler = (
 export interface InboundReceiverOptions {
   beamDir: string;
   onCorruption?: (error: MailboxCorruptionError) => void;
+  limits?: Partial<QueueLimits>;
 }
 
 /** Both halves of the size contract: the documented payload cap, and the
@@ -50,7 +52,7 @@ export class InboundReceiver {
   private readonly handlers: InboundHandler[] = [];
 
   constructor(options: InboundReceiverOptions) {
-    this.store = new InboundStore(options.beamDir);
+    this.store = new InboundStore(options.beamDir, options.limits);
     this.seen = new SeenTracker(options.beamDir);
     this.onCorruption = options.onCorruption;
   }
@@ -109,6 +111,19 @@ export class InboundReceiver {
         id: parsed.id,
         accepted: false,
         reason: 'payload over the cap',
+      });
+      return;
+    }
+    if (this.store.isFull(stream.peer.peerId)) {
+      // Refused, not stored: an envelope this node never accepted stays in
+      // the sender's own queue, where the sender is the side that can
+      // report it. Storing past the bound would instead let one peer whose
+      // subscriber never attaches fill the disk.
+      stream.control({
+        kind: 'ack',
+        id: parsed.id,
+        accepted: false,
+        reason: 'inbound queue is full',
       });
       return;
     }

@@ -6,6 +6,7 @@
 
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -15,6 +16,11 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { isEnvelope, type Envelope } from './envelope.js';
+import {
+  isAtLimit,
+  resolveQueueLimits,
+  type QueueLimits,
+} from './queue-limits.js';
 
 const REASON_SUFFIX = '.reason';
 
@@ -35,16 +41,27 @@ export interface OutboundQueueOptions {
   /** Called whenever a file is quarantined (moved aside as unreadable) —
    * the caller decides whether/how to log it. */
   onQuarantine?: (info: QuarantinedFile) => void;
+  /** Per-peer bounds; defaults in queue-limits.ts. */
+  limits?: Partial<QueueLimits>;
 }
 
 export class OutboundQueue {
   private readonly root: string;
   private readonly onQuarantine?: (info: QuarantinedFile) => void;
+  private readonly limits: QueueLimits;
 
   constructor(beamDir: string, options: OutboundQueueOptions = {}) {
     this.root = join(beamDir, 'mailbox', 'out');
     this.onQuarantine = options.onQuarantine;
+    this.limits = resolveQueueLimits(options.limits);
     this.reapStaleTemp();
+  }
+
+  /** Whether this peer's queue is at either bound. A peer that has been
+   * offline for a week, or one being sent to faster than it drains, must
+   * not be able to fill the disk this node's own mail lives on. */
+  isFull(peerId: string): boolean {
+    return isAtLimit(this.peerDir(peerId), this.limits);
   }
 
   /** Remove leftover `<seq>.json.<pid>.tmp` files at startup: `enqueue`'s
@@ -102,7 +119,23 @@ export class OutboundQueue {
     }
     const tmp = `${target}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(envelope), { mode: 0o600 });
-    renameSync(tmp, target);
+    try {
+      // `linkSync`, not `renameSync`: rename replaces an existing
+      // destination silently, and the `existsSync` above cannot close the
+      // window between the check and the write. Link fails when the target
+      // exists, so a same-seq race between two processes is always a loud
+      // error and never a queued envelope that simply disappeared. The
+      // target is the temp file's own fully-written inode, so a reader
+      // still never sees a partial envelope.
+      linkSync(tmp, target);
+    } finally {
+      try {
+        unlinkSync(tmp);
+      } catch {
+        // The link succeeded or it did not; either way the temp name is
+        // no longer needed and failing to clear it is not fatal.
+      }
+    }
   }
 
   /** Every undelivered envelope for a peer, oldest (lowest seq) first. A

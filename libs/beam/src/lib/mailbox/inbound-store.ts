@@ -21,15 +21,30 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { isEnvelope, type Envelope } from './envelope.js';
+import {
+  isAtLimit,
+  resolveQueueLimits,
+  type QueueLimits,
+} from './queue-limits.js';
 
 const SEQ_PAD = 10;
 
 export class InboundStore {
   private readonly root: string;
+  private readonly limits: QueueLimits;
 
-  constructor(beamDir: string) {
+  constructor(beamDir: string, limits: Partial<QueueLimits> = {}) {
     this.root = join(beamDir, 'mailbox', 'in');
+    this.limits = resolveQueueLimits(limits);
     this.reapStaleTemp();
+  }
+
+  /** Whether this sender's backlog is at either bound. A subscriber that
+   * never attaches, or never acks, must not let one peer fill the disk:
+   * an envelope refused here stays in that sender's own queue, where the
+   * sender can still account for it. */
+  isFull(peerId: string): boolean {
+    return isAtLimit(this.peerDir(peerId), this.limits);
   }
 
   /** Leftover `<seq>.json.<pid>.tmp` files from a crash between the write

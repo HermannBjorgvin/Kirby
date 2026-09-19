@@ -19,6 +19,7 @@ import {
 import { Flusher } from './flusher.js';
 import { InboundReceiver, type InboundHandler } from './inbound-receiver.js';
 import { OutboundQueue, type QuarantinedFile } from './outbound-queue.js';
+import type { QueueLimits } from './queue-limits.js';
 import { derivePeerState, type PeerState } from './peer-state.js';
 import type { MailboxCorruptionError } from './seen-tracker.js';
 import { SeqCounter } from './seq-counter.js';
@@ -29,6 +30,10 @@ export type RejectReason =
   | 'unknown-peer'
   | 'revoked-peer'
   | 'oversized-payload'
+  /** This peer's queue is at its depth or byte bound. Nothing was stored,
+   * so the caller was promised nothing and may retry once the queue
+   * drains. */
+  | 'queue-full'
   /** The envelope could not be written down: a full or read-only disk, a
    * permission problem, a seq collision. Nothing was stored, so — unlike
    * `queued` — the caller has not been promised delivery and may retry. */
@@ -86,6 +91,9 @@ export interface MailboxOptions {
   log?: (message: string) => void;
   onQuarantine?: (info: QuarantinedFile) => void;
   onCorruption?: (error: MailboxCorruptionError) => void;
+  /** Per-peer bounds on both durable queues; defaults in
+   * mailbox/queue-limits.ts. */
+  queueLimits?: Partial<QueueLimits>;
 }
 
 const DEFAULT_SEND_AWAIT_MS = 5_000;
@@ -116,10 +124,12 @@ export class Mailbox {
 
     this.queueStore = new OutboundQueue(options.beamDir, {
       onQuarantine: (info) => this.reportQuarantine(info, options.onQuarantine),
+      limits: options.queueLimits,
     });
     this.inbound = new InboundReceiver({
       beamDir: options.beamDir,
       onCorruption: options.onCorruption,
+      limits: options.queueLimits,
     });
     this.seqCounter = new SeqCounter(options.beamDir);
     this.flusher = new Flusher({
@@ -229,6 +239,7 @@ export class Mailbox {
     input: SendInput,
     encoding: 'utf8' | 'base64'
   ): { envelope: Envelope } | { reason: RejectReason } {
+    if (this.queueStore.isFull(peer.peerId)) return { reason: 'queue-full' };
     try {
       const seq = this.seqCounter.reserve(peer.peerId);
       const envelope: Envelope = {

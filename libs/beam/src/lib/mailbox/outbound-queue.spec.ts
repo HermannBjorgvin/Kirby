@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -61,6 +62,35 @@ describe('OutboundQueue', () => {
     expect(queue.list('peer-x').map((q) => q.envelope.payload)).toEqual([
       'first',
     ]);
+  });
+
+  it('a refused enqueue leaves neither the target nor a temp file behind', () => {
+    const queue = new OutboundQueue(dir);
+    queue.enqueue('peer-x', envelope(1, 'first'));
+    const peerDir = join(dir, 'mailbox', 'out', 'peer-x');
+    expect(() => queue.enqueue('peer-x', envelope(1, 'clobber'))).toThrow();
+    // The target is created by linking the temp file, which fails when the
+    // destination exists — a rename would have replaced it silently, and
+    // the pre-check alone cannot close the window between the check and
+    // the write. Nothing is left lying around either way.
+    expect(readdirSync(peerDir)).toEqual(['0000000001.json']);
+    expect(
+      JSON.parse(readFileSync(join(peerDir, '0000000001.json'), 'utf8'))
+    ).toMatchObject({ payload: 'first' });
+  });
+
+  it('isFull reports a peer at its depth or byte bound', () => {
+    const shallow = new OutboundQueue(dir, { limits: { maxDepth: 2 } });
+    expect(shallow.isFull('peer-x')).toBe(false);
+    shallow.enqueue('peer-x', envelope(1));
+    shallow.enqueue('peer-x', envelope(2));
+    expect(shallow.isFull('peer-x')).toBe(true);
+    // Another peer's queue is its own.
+    expect(shallow.isFull('peer-y')).toBe(false);
+
+    const small = new OutboundQueue(dir, { limits: { maxBytes: 10 } });
+    expect(small.isFull('peer-x')).toBe(true);
+    expect(small.isFull('peer-y')).toBe(false);
   });
 
   it('reaps a leftover .tmp file at startup, without touching real queue files (D5)', () => {

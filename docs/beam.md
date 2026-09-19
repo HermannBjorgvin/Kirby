@@ -261,8 +261,10 @@ quarantined like any other message that can never be sent, so it does not sit at
 the queue blocking everything behind it.
 
 **One queue per peer, not per role.** Each node keeps `mailbox/out/<peerId>/`, one file per
-undelivered message, written temp-then-rename and named by zero-padded `seq` so the directory
-sorts into send order. A message is unlinked only when the recipient acknowledges it.
+undelivered message, written to a temp file and then linked into place — an exclusive create,
+which fails rather than replacing an existing destination, so a same-seq collision is always
+a loud error and never a queued envelope that silently disappeared. The file is named by
+zero-padded `seq` so the directory sorts into send order. A message is unlinked only when the recipient acknowledges it.
 Whenever a live connection to that peer exists — **whichever side dialed** — the flusher
 drains that queue in order over a `msg` stream. This single mechanism serves both directions,
 which is why a player on a worker box can report to an orchestrator on a laptop that the
@@ -325,7 +327,7 @@ duplicates, ack them, and let the sender report `delivered` for mail that will n
 | ----------- | --------------------------------------------------------------------------- | ---------------------------- |
 | `delivered` | the recipient acked                                                         | done                         |
 | `queued`    | no live connection, or no ack before the timeout; the envelope is persisted | **success** — do not resend  |
-| `rejected`  | unknown peer, revoked peer, payload over the cap, or a failed queue write    | failure — nothing was stored |
+| `rejected`  | unknown peer, revoked peer, payload over the cap, queue full, failed write   | failure — nothing was stored |
 
 `queued` is a success because the message is durable. Anything that reports to a human or an
 agent must say so in those terms, so the sender does not sit waiting for a reply that cannot
@@ -336,7 +338,8 @@ queued for workbox — that machine is not connected right now. beam will delive
 message the next time it comes online. Do not send it again.
 ```
 
-`rejected` must name which cause applied. A queue write that fails — a full or
+`rejected` must name which cause applied. `queue-full` means this peer's queue is at its
+depth or byte bound; like `storage-failure`, nothing was stored and the caller may retry. A queue write that fails — a full or
 read-only disk, a permission problem — is `storage-failure`: nothing was stored, so
 unlike `queued` the caller was promised nothing and may retry. A sequence number is
 claimed only once the envelope is on disk, so a failed write leaves no gap behind it.
@@ -365,6 +368,20 @@ are line-delimited JSON:
 One request line is capped at 1 MiB; a client that sends more than that without a newline has
 its connection dropped, so no local process can grow the node's heap by never terminating a
 line.
+
+**Exactly one node writes a given `$BEAM_DIR` at a time.** There is no lockfile; the
+guarantee rests on the operator running one node per directory, and the queues are built so a
+violation is loud rather than silent — an exclusive create on every queue file, and a
+sequence counter reconciled against what is already on disk. Two nodes sharing a `$BEAM_DIR`
+is a misconfiguration, not a supported mode. A one-shot dial (`exec`, `connect`) that starts
+its own ephemeral node is only safe against a `$BEAM_DIR` no other node is running in.
+
+Both queues are bounded per peer: at most 10,000 envelopes and 64 MiB for any one peer,
+outbound and inbound alike. A `send()` past the bound is `rejected` with `queue-full` and
+stores nothing; an inbound envelope past it is refused rather than stored, so it stays in the
+sender's queue where the sender can still account for it. Without the bounds, one peer that
+is offline for a week — or one whose subscriber never attaches — fills the disk that this
+node's own mail lives on.
 
 One node per `$BEAM_DIR`. A CLI that needs an existing node's connections (`msg send` from a
 script, `msg listen` beside a running node) uses this socket; a one-shot dial (`exec`,

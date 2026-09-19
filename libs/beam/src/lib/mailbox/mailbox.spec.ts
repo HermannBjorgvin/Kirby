@@ -57,6 +57,7 @@ function makeRawNode(
     retryIntervalMs: number;
     sendAwaitMs: number;
     onQuarantine: (info: QuarantinedFile) => void;
+    queueLimits: { maxDepth?: number; maxBytes?: number };
   }> = {}
 ): Omit<TestNode, 'received'> {
   const dir = tmp(`beam-mbx-${hostname}-`);
@@ -74,6 +75,7 @@ function makeRawNode(
     retryIntervalMs: overrides.retryIntervalMs ?? 30,
     sendAwaitMs: overrides.sendAwaitMs ?? 400,
     onQuarantine: overrides.onQuarantine,
+    queueLimits: overrides.queueLimits,
   });
   return { dir, identity, peers, registry, connections, mailbox };
 }
@@ -85,6 +87,7 @@ function makeNode(
     retryIntervalMs: number;
     sendAwaitMs: number;
     onQuarantine: (info: QuarantinedFile) => void;
+    queueLimits: { maxDepth?: number; maxBytes?: number };
   }> = {}
 ): TestNode {
   const raw = makeRawNode(hostname, overrides);
@@ -368,6 +371,36 @@ describe('Mailbox: rejection', () => {
     ).toEqual([1]);
   });
 
+  it('a queue at its depth bound rejects rather than growing forever', async () => {
+    const a = makeNode('a', { queueLimits: { maxDepth: 2 } });
+    const b = makeNode('b');
+    pairNodes(a, b);
+    const send = (payload: string) =>
+      a.mailbox.send({ to: b.identity.peerId, topic: 't', payload });
+
+    expect((await send('one')).outcome).toBe('queued');
+    expect((await send('two')).outcome).toBe('queued');
+    // A peer offline for a week must not be able to fill the disk this
+    // node's own mail lives on.
+    expect(await send('three')).toEqual({
+      outcome: 'rejected',
+      reason: 'queue-full',
+      to: b.identity.peerId,
+      label: 'b',
+    });
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(2);
+  });
+
+  it('a queue at its byte bound rejects too', async () => {
+    const a = makeNode('a', { queueLimits: { maxBytes: 1024 } });
+    const b = makeNode('b');
+    pairNodes(a, b);
+    const send = (payload: string) =>
+      a.mailbox.send({ to: b.identity.peerId, topic: 't', payload });
+    expect((await send('x'.repeat(2000))).outcome).toBe('queued');
+    expect((await send('small')).outcome).toBe('rejected');
+  });
+
   it('a queue write that fails is a rejected outcome, and burns no seq', async () => {
     const a = makeNode('a');
     const b = makeNode('b');
@@ -559,6 +592,32 @@ describe('Mailbox: crash windows', () => {
     expect(b.received.map((e) => e.payload)).toEqual(['behind-it']);
     expect(quarantined.map((q) => q.fileName)).toEqual(['0000000001.json']);
     expect(a.mailbox.quarantined(b.identity.peerId)).toHaveLength(1);
+  });
+
+  it('an inbound store at its bound refuses rather than storing past it', async () => {
+    const a = makeNode('a');
+    // No subscriber on b: makeNode's own onMessage acks immediately, which
+    // would empty the inbound store before it could reach its bound. A
+    // subscriber that never attaches is exactly the case the bound is for.
+    const b: TestNode = {
+      ...makeRawNode('b', { queueLimits: { maxDepth: 1 } }),
+      received: [],
+    };
+    pairNodes(a, b);
+    await a.mailbox.send({ to: b.identity.peerId, topic: 't', payload: '1' });
+    await a.mailbox.send({ to: b.identity.peerId, topic: 't', payload: '2' });
+    connectNodes(a, b);
+    await waitFor(
+      () => a.mailbox.queue(b.identity.peerId).length,
+      (n) => n === 1,
+      3000
+    );
+    // The second envelope is refused, so it stays in a's queue where a can
+    // still account for it, rather than being stored past b's bound.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      a.mailbox.queue(b.identity.peerId).map((q) => q.envelope.payload)
+    ).toEqual(['2']);
   });
 
   it('an inbound envelope over the payload cap is refused, not stored', async () => {
