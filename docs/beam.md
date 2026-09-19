@@ -320,6 +320,16 @@ against a machine that already has the message.
 and a bounded retry while a connection stays up. No timers are needed for offline peers —
 there is nothing to try.
 
+**A lost counter with an empty backlog is the one hole left.** `SeqCounter` reconciles every
+`next()` against the highest seq already on that peer's own disk, so a counter file that is
+lost while messages are still queued cannot reissue a number this node already wrote down.
+A seq already delivered and unlinked leaves no such trace. If `mailbox/seq.json` is lost at a
+moment when that peer's queue happens to be empty, numbering restarts at 1 — numbers the
+receiver has already accepted. The next real message is then judged a duplicate, acked, and
+reported `delivered` without ever reaching an application. Nothing in local state can
+distinguish that case; closing it needs the receiver's own high-water mark, which nothing
+asks for today.
+
 **A queue file that cannot be read is a lost message, and is reported as one.** It is quarantined
 rather than retried forever, and the loss is surfaced — an event, an entry in the queue listing, a
 warning. This matters because `send()` already returned `queued` for that message, so the sender was
@@ -336,7 +346,7 @@ duplicates, ack them, and let the sender report `delivered` for mail that will n
 | ----------- | --------------------------------------------------------------------------- | ---------------------------- |
 | `delivered` | the recipient acked                                                         | done                         |
 | `queued`    | no live connection, or no ack before the timeout; the envelope is persisted | **success** — do not resend  |
-| `rejected`  | unknown or revoked peer, bad payload or topic, queue full, failed write      | failure — nothing was stored |
+| `rejected`  | unknown or revoked peer, bad payload or topic, queue full, failed write     | failure — nothing was stored |
 
 `queued` is a success because the message is durable. Anything that reports to a human or an
 agent must say so in those terms, so the sender does not sit waiting for a reply that cannot
@@ -479,18 +489,53 @@ the local part is whatever the receiving side understands (`tmux:<session>`,
   `--hostname`, and the node prints what it bound.
 - The pairing URL is a bearer token for its 10 minute window; anything that captures stdout
   captures it.
+- A `peerId` is the first 16 hex characters — 64 bits — of the SHA-256 of the public key PEM,
+  and everything that keys on identity rests on that truncation: the peer table, the
+  mailbox's per-peer directories and dedup state, and which stored key the `/ws` upgrade
+  verifies a proof against. 64 bits is ample against finding a second key that matches a
+  _given_ peer's id, which is the attack that would matter here. It is not collision
+  resistance: a party generating keys at will could find two of their own that share an id in
+  around 2^32 work. What that would buy them is limited by the accepting side refusing a
+  re-pair that would change a stored peer's key or endpoints without an explicit replace.
 - The mailbox stores payloads unencrypted at rest, under `0600`, and never executes them. A
   relay that delivers a message into a terminal must check what owns that terminal, exactly as
   Orchestra's `pane_owned_by_agent` does today.
 
+## Decisions
+
+Comments throughout `libs/beam` cite decisions by number (`D1`, `D5`, …). This is the
+register they point at. The numbers are beam-specific, which is why they live here and not in
+`docs/decisions.md`. Each entry states the decision and the reason it was made that way; the
+sections above are where the mechanics live.
+
+| #   | Decision                                                                                                                                              | Why                                                                                                                                                                                                                                                                              |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | An `Open` frame carries the stream name and its JSON parameters in one payload, never a name followed by a separate parameter frame.                  | A handler whose parameters are optional cannot tell an absent parameter frame from the stream's first real byte of input. The earlier form let an open payload be delivered to whatever `onData` was already wired up, as if it had been typed at the process.                   |
+| D2  | A counter or dedup file that cannot be read is refused rather than reset, and a queue file is created exclusively rather than renamed over.           | A sequence that restarts reissues a number the receiver already accepted, so the receiver acks it as the duplicate it looks like and the sender reports `delivered` for mail nobody will ever get. Silence is the failure mode this whole subsystem exists to avoid.             |
+| D3  | Every child stream and every raw socket gets an `'error'` listener, even a swallowing one, and every write or ioctl that can race a close is guarded. | An EventEmitter that emits `'error'` with nobody listening throws, and an uncaught throw out of a connection whose timing any paired peer controls is a remote kill switch.                                                                                                      |
+| D4  | A peer with a known endpoint that has not been probed reports `unknown`, never a guessed `unreachable`.                                               | No prober exists yet. A laptop that has never dialed a paired worker box is not at fault, and calling it `unreachable` reads as a live problem and invites the user to re-pair a healthy machine.                                                                                |
+| D5  | The PTY and `exec` caps, and revocation, are enforced per peer rather than globally across the node.                                                  | One handler instance is shared by every connection, so a global cap would let one peer consume another's budget. Revocation is checked on every turn of the drain loop for the same reason: it must stop queued mail even when something closed the connection without revoking. |
+| D6  | Peer reachability is a small closed set — `connected`, `reachable`, `unreachable`, `no-endpoint`, `unknown` — and `revoked` is orthogonal to it.      | `connected` and `no-endpoint` are answerable with certainty from what the library tracks; the rest are not, and folding `revoked` into the same field would hide a trust decision inside a reachability report.                                                                  |
+| D9  | A `rejected` send names who it was for as well as why, and admin ops act on the running node's live `PeerTable` rather than only on disk.             | A caller told only "rejected" cannot say which peer failed, and a `revoke` that takes effect only after a restart is not a revoke. Cited interchangeably with D11 for the first half.                                                                                            |
+| D11 | Same as D9's first half: a rejection carries `to` and, where one resolves, `label`.                                                                   | The UI has to name the peer it could not send to.                                                                                                                                                                                                                                |
+| D15 | A receiving node writes an envelope to `mailbox/in/<peerId>/` before acking it on the wire, and unlinks it only once a subscriber acks.               | Without the inbound store, `delivered` would mean only that some process had the message in memory: killing the receiver would lose it, and a resend would be refused as a duplicate because `seen/` had already advanced.                                                       |
+
+Two cited numbers have no recoverable rationale and are deliberately left unstated rather
+than guessed at: **D7**, cited once in `mailbox/mailbox.ts` as "decisions.md D7/D9" with no
+accompanying reasoning, and **D14**, cited once in this document's desktop-subscriber
+paragraph for "resolves a target against local state". D1 is also cited in the mailbox for
+two further rules — the receiver's lack of a contiguity requirement, and quarantine being
+loud rather than silent — both stated in full under "Durable mailbox" above.
+
 ## Deliberately out of scope, doors left open
 
-| Later                                     | What keeps it possible                                                                                                                                                 |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure |
-| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                            |
-| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                         |
-| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                        |
-| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`                                                                                                |
-| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                                                                                                        |
-| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts                                                                                                  |
+| Later                                     | What keeps it possible                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the WebRTC transport                      | `Transport`/`TransportSocket` is the seam; until one exists the descriptor omits the capability and `POST /rtc` answers 501, so a caller can tell absence from failure                                                                                                                                                 |
+| tailcat or relayed transports             | `Transport` is an interface; `endpoints` are opaque strings                                                                                                                                                                                                                                                            |
+| ssh executor for Orchestra                | the scripts route every tmux and git call through one executor                                                                                                                                                                                                                                                         |
+| several tmux servers or sessions per host | every tmux call carries its socket path; targets have room for a server segment                                                                                                                                                                                                                                        |
+| agent-to-agent messaging                  | envelopes carry `from`; topics are free-form; both sides can open `msg`                                                                                                                                                                                                                                                |
+| publishing `libs/beam` on its own         | no n10 imports, no assumptions about the caller                                                                                                                                                                                                                                                                        |
+| store-and-forward for other apps          | the mailbox is addressed by peer and topic, not by Orchestra concepts                                                                                                                                                                                                                                                  |
+| backpressure and flow control             | deliberately absent: nothing in the wire format or the stream API promises it, and `exec`'s pump bounds only this process's own read-side buffering, so a fast producer can still grow the transport's send queue. `Control` already carries per-stream messages, so a credit scheme fits without a wire-format change |
