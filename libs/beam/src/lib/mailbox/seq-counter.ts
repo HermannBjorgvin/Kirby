@@ -59,14 +59,28 @@ export class SeqCounter {
    * cannot interleave two synchronous calls. Reconciled against this
    * peer's own on-disk queue on every call (D2) — see the class comment. */
   next(peerId: string): number {
-    const floor = Math.max(
-      this.counts[peerId] ?? 0,
-      this.highestQueuedSeq(peerId)
+    const seq = this.reserve(peerId);
+    this.commit(peerId, seq);
+    return seq;
+  }
+
+  /** The seq `next()` would hand out, without recording the claim. Pure:
+   * nothing in memory or on disk moves. Split from `commit` so a caller
+   * that has to write the message itself can persist the claim only once
+   * the message is durably stored — a number claimed for a message that
+   * then failed to store is a permanent gap in that peer's sequence. */
+  reserve(peerId: string): number {
+    return (
+      Math.max(this.counts[peerId] ?? 0, this.highestQueuedSeq(peerId)) + 1
     );
-    const seq = floor + 1;
+  }
+
+  /** Record a reserved seq as spent. Callers keep the whole
+   * reserve-store-commit sequence synchronous, so two sends issued back to
+   * back cannot interleave and be handed the same value. */
+  commit(peerId: string, seq: number): void {
     this.counts = { ...this.counts, [peerId]: seq };
     this.save();
-    return seq;
   }
 
   /** The highest seq already written to disk for `peerId` — in its live

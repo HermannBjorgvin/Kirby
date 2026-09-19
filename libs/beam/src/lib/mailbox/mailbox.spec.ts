@@ -1,4 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -330,6 +336,39 @@ describe('Mailbox: rejection', () => {
       label: 'b',
     });
     expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
+  });
+
+  it('a queue write that fails is a rejected outcome, and burns no seq', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    // A read-only queue directory stands in for the disk-full / permission
+    // class of failure: `enqueue` throws, and that throw must become an
+    // outcome rather than a rejected promise nobody is listening for.
+    const queueDir = join(a.dir, 'mailbox', 'out', b.identity.peerId);
+    mkdirSync(queueDir, { recursive: true, mode: 0o700 });
+    chmodSync(queueDir, 0o500);
+    try {
+      const outcome = await a.mailbox.send({
+        to: b.identity.peerId,
+        topic: 't',
+        payload: 'nowhere to put this',
+      });
+      expect(outcome).toEqual({
+        outcome: 'rejected',
+        reason: 'storage-failure',
+        to: b.identity.peerId,
+        label: 'b',
+      });
+    } finally {
+      chmodSync(queueDir, 0o700);
+    }
+    // The seq was never claimed: the next message that does store gets 1,
+    // rather than leaving a hole the receiver would have to step over.
+    await a.mailbox.send({ to: b.identity.peerId, topic: 't', payload: 'ok' });
+    expect(
+      a.mailbox.queue(b.identity.peerId).map((q) => q.envelope.seq)
+    ).toEqual([1]);
   });
 });
 

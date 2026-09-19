@@ -290,7 +290,7 @@ duplicates, ack them, and let the sender report `delivered` for mail that will n
 | ----------- | --------------------------------------------------------------------------- | ---------------------------- |
 | `delivered` | the recipient acked                                                         | done                         |
 | `queued`    | no live connection, or no ack before the timeout; the envelope is persisted | **success** — do not resend  |
-| `rejected`  | unknown peer, revoked peer, or payload over the cap                         | failure — nothing was stored |
+| `rejected`  | unknown peer, revoked peer, payload over the cap, or a failed queue write    | failure — nothing was stored |
 
 `queued` is a success because the message is durable. Anything that reports to a human or an
 agent must say so in those terms, so the sender does not sit waiting for a reply that cannot
@@ -301,7 +301,10 @@ queued for workbox — that machine is not connected right now. beam will delive
 message the next time it comes online. Do not send it again.
 ```
 
-`rejected` must name which of the three causes applied.
+`rejected` must name which cause applied. A queue write that fails — a full or
+read-only disk, a permission problem — is `storage-failure`: nothing was stored, so
+unlike `queued` the caller was promised nothing and may retry. A sequence number is
+claimed only once the envelope is on disk, so a failed write leaves no gap behind it.
 
 ### Local IPC
 

@@ -536,5 +536,29 @@ describe('IpcSocket', () => {
       expect(a.peers.get('freshly-paired-peer')?.label).toBe('fresh');
       client.conn.destroy();
     });
+
+    it('an op that fails still answers, rather than leaving the caller hanging', async () => {
+      const a = makeNode('a');
+      const b = makeNode('b');
+      pairNodes(a, b);
+      const { path } = await startIpc(a);
+      // `send` is async, so anything it throws arrives as a rejected
+      // promise. A caller blocked on the response line — report.sh waiting
+      // out a full disk — waits forever unless the failure is answered.
+      vi.spyOn(a.mailbox, 'send').mockRejectedValue(
+        new Error('the disk is on fire')
+      );
+
+      const client = connectClient(path);
+      await waitForOpen(client.conn);
+      client.send({ op: 'send', to: 'b', topic: 't', payload: 'hi' });
+      const response = await client.nextLine();
+      expect(response).toEqual({
+        status: 'error',
+        op: 'send',
+        reason: 'the disk is on fire',
+      });
+      client.conn.destroy();
+    });
   });
 });

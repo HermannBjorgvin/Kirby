@@ -209,9 +209,9 @@ export class IpcSocket {
    * table keeps this small even as the protocol grows admin ops. */
   private readonly opHandlers: Record<
     string,
-    (socket: Socket, record: Record<string, unknown>) => void
+    (socket: Socket, record: Record<string, unknown>) => void | Promise<void>
   > = {
-    send: (socket, record) => void this.handleSend(socket, record),
+    send: (socket, record) => this.handleSend(socket, record),
     subscribe: (socket, record) => this.handleSubscribe(socket, record),
     status: (socket) => this.handleStatus(socket),
     ack: (socket, record) => this.handleAck(socket, record),
@@ -231,7 +231,28 @@ export class IpcSocket {
     if (typeof message !== 'object' || message === null) return;
     const record = message as Record<string, unknown>;
     const op = typeof record['op'] === 'string' ? record['op'] : '';
-    this.opHandlers[op]?.(socket, record);
+    const handler = this.opHandlers[op];
+    if (!handler) return;
+    // An op handler may be async (`send` waits on delivery). Its rejection
+    // is caught here rather than left floating: `handleLine` itself stays
+    // synchronous on purpose, so a long `send` never stalls the ops queued
+    // behind it on the same socket.
+    try {
+      const running = handler(socket, record);
+      if (running instanceof Promise)
+        running.catch((error: unknown) => this.failOp(socket, op, error));
+    } catch (error) {
+      this.failOp(socket, op, error);
+    }
+  }
+
+  /** A failed op still has to put a line on the wire. A caller blocked on a
+   * response — `report.sh` waiting on `send` while the disk is full — hangs
+   * forever on silence, which for a coding agent means a wedged session. */
+  private failOp(socket: Socket, op: string, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    this.log(`ipc op '${op}' failed: ${reason}`);
+    writeLine(socket, { status: 'error', op, reason });
   }
 
   private handleStatus(socket: Socket): void {

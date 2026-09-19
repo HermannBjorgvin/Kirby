@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ConnectionRegistry } from '../connection-registry.js';
 import type { Identity } from '../identity.js';
-import type { PeerTable } from '../peer-table.js';
+import type { PeerRecord, PeerTable } from '../peer-table.js';
 import type { StreamRegistry } from '../stream-registry.js';
 import type { BeamStream } from '../stream.js';
 import {
@@ -39,7 +39,11 @@ export type InboundHandler = (
 export type RejectReason =
   | 'unknown-peer'
   | 'revoked-peer'
-  | 'oversized-payload';
+  | 'oversized-payload'
+  /** The envelope could not be written down: a full or read-only disk, a
+   * permission problem, a seq collision. Nothing was stored, so — unlike
+   * `queued` — the caller has not been promised delivery and may retry. */
+  | 'storage-failure';
 
 export type SendOutcome =
   | { outcome: 'delivered'; to: string; label: string; queueDepth: number }
@@ -184,20 +188,15 @@ export class Mailbox {
       };
     }
 
-    // The seq is only claimed once the message is known-storable: claiming
-    // one for a message we go on to reject would burn a sequence number
-    // and leave a permanent gap the receiver could never get past.
-    const envelope: Envelope = {
-      id: randomUUID(),
-      from: this.identity.peerId,
-      to: peer.peerId,
-      seq: this.seqCounter.next(peer.peerId),
-      topic: input.topic,
-      payload: input.payload,
-      encoding,
-      createdAt: this.now(),
-    };
-    this.queueStore.enqueue(peer.peerId, envelope);
+    const envelope = this.storeOutbound(peer, input, encoding);
+    if (!envelope) {
+      return {
+        outcome: 'rejected',
+        reason: 'storage-failure',
+        to: peer.peerId,
+        label: peer.label,
+      };
+    }
 
     const delivered = await this.awaitDelivery(envelope.id, peer.peerId);
     const queueDepth = this.queueStore.depth(peer.peerId);
@@ -219,6 +218,50 @@ export class Mailbox {
       queueDepth,
       reason,
     };
+  }
+
+  /**
+   * Reserve a seq, write the envelope down, and only then record the seq as
+   * spent — the claim is made once the message is known-storable, because a
+   * number claimed for a message that never reached disk is a permanent gap
+   * in that peer's sequence. Null means nothing was stored.
+   *
+   * A storage failure is an outcome, never a rejected promise: `send()` is
+   * what `report.sh` reaches through the IPC socket, and a caller left
+   * holding a rejection it cannot see waits for a response line that never
+   * comes.
+   *
+   * Reserve, write and commit are all synchronous with no `await` between
+   * them, so two concurrent senders cannot be handed the same seq.
+   */
+  private storeOutbound(
+    peer: PeerRecord,
+    input: SendInput,
+    encoding: 'utf8' | 'base64'
+  ): Envelope | null {
+    try {
+      const seq = this.seqCounter.reserve(peer.peerId);
+      const envelope: Envelope = {
+        id: randomUUID(),
+        from: this.identity.peerId,
+        to: peer.peerId,
+        seq,
+        topic: input.topic,
+        payload: input.payload,
+        encoding,
+        createdAt: this.now(),
+      };
+      this.queueStore.enqueue(peer.peerId, envelope);
+      this.seqCounter.commit(peer.peerId, seq);
+      return envelope;
+    } catch (error) {
+      this.log(
+        `could not queue a message for ${peer.peerId}: ${
+          (error as Error).message
+        }`
+      );
+      return null;
+    }
   }
 
   /** Envelopes accepted from a peer, delivered exactly once each, in
