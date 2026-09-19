@@ -156,7 +156,9 @@ export class Muxer {
   }
 
   /** Feed one inbound chunk of transport bytes. Malformed frames end the
-   * connection's decode state but never throw into the caller. */
+   * connection's decode state but never throw into the caller, and neither
+   * does a stream handler: a throw out of `handleFrame` fails only the
+   * stream it belongs to. */
   receive(raw: Uint8Array): boolean {
     let frames: Frame[];
     try {
@@ -164,7 +166,13 @@ export class Muxer {
     } catch (error) {
       return !(error instanceof ProtocolError);
     }
-    for (const frame of frames) this.handleFrame(frame);
+    for (const frame of frames) {
+      try {
+        this.handleFrame(frame);
+      } catch (error) {
+        this.failStream(frame, error);
+      }
+    }
     return true;
   }
 
@@ -192,6 +200,58 @@ export class Muxer {
         stream.emitClose(reason);
       }
     }
+  }
+
+  /**
+   * A handler that throws fails only its own stream; the connection and
+   * every other stream on it survive. `handleOpen` calls a registered
+   * handler synchronously and `handleData`/`handleControl` run user
+   * callbacks synchronously, so any of them can throw back into `receive`,
+   * and an uncaught throw there is a kill switch any paired peer controls
+   * the timing of. The guard lives here rather than in each handler so it
+   * covers stream types added later without anyone remembering to add it.
+   */
+  private failStream(frame: Frame, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const reason = `stream handler failed: ${message.split('\n')[0]}`;
+    const streamId = this.streamIdFor(frame);
+    const stream = this.streams.get(streamId);
+    this.streams.delete(streamId);
+    try {
+      this.sendFrame(FrameType.Close, streamId, encoder.encode(reason));
+    } catch {
+      // The transport is already gone; the local teardown below still runs.
+    }
+    if (!stream) return;
+    this.clearReadyTimer(stream);
+    const reject = stream.readyReject;
+    stream.readyResolve = null;
+    stream.readyReject = null;
+    try {
+      if (reject) reject(new Error(reason));
+      else stream.emitClose(reason);
+    } catch {
+      // A close handler that throws as well has nothing left to fail.
+    }
+  }
+
+  /** Which stream a frame belongs to. A Control frame rides the
+   * connection's own id 0 and names its stream inside the payload, so that
+   * is where the id has to come from; the re-parse only ever happens on
+   * this failure path. */
+  private streamIdFor(frame: Frame): number {
+    if (frame.type !== FrameType.Control) return frame.streamId;
+    try {
+      const parsed: unknown = JSON.parse(decodeText(frame));
+      if (typeof parsed === 'object' && parsed !== null) {
+        const id = (parsed as Record<string, unknown>)['streamId'];
+        if (typeof id === 'number') return id;
+      }
+    } catch {
+      // An unparseable control frame never reaches a handler in the first
+      // place, so it cannot be the one that threw.
+    }
+    return frame.streamId;
   }
 
   private clearReadyTimer(stream: BeamStreamImpl): void {

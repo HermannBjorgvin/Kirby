@@ -139,7 +139,17 @@ function wireSession(
     const signalPart = signal ? `, signal ${signal}` : '';
     stream.close(`process exited (code ${exitCode}${signalPart})`);
   });
-  stream.onData((data) => proc.write(Buffer.from(data).toString('utf8')));
+  stream.onData((data) => {
+    try {
+      // Same hazard as the resize below: node-pty's write() goes at a
+      // native fd that a racing process exit may already have closed, and
+      // a remote peer's ordinary keystroke must never be able to throw an
+      // uncaught exception out of a data-frame handler.
+      proc.write(Buffer.from(data).toString('utf8'));
+    } catch {
+      // The pty has already exited; there is nothing left to write to.
+    }
+  });
   stream.onClose(() => {
     if (sessions.get(sessionKey) !== proc) return;
     sessions.delete(sessionKey);

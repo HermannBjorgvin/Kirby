@@ -252,6 +252,141 @@ describe('Muxer open/ack/data/close round trip', () => {
     expect(delivered).toEqual(['once']);
   });
 
+  it('a stream handler that throws on open fails only its own stream', () => {
+    const registryB = new StreamRegistry();
+    registryB.register('boom', () => {
+      throw new Error('handler exploded');
+    });
+    registryB.register('echo', (stream) => stream.control({ kind: 'opened' }));
+    const sent: Uint8Array[] = [];
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: (bytes) => sent.push(bytes),
+    });
+
+    expect(() =>
+      b.receive(
+        encodeFrame({
+          type: FrameType.Open,
+          streamId: 3,
+          seq: 0,
+          payload: new TextEncoder().encode('boom'),
+        })
+      )
+    ).not.toThrow();
+    // The peer is told which stream died and why, rather than the whole
+    // connection going down with the node.
+    expect(
+      sent.map((bytes) => new TextDecoder().decode(bytes.slice(12)))
+    ).toEqual(['stream handler failed: handler exploded']);
+    // ...and the connection still serves the next stream.
+    expect(() =>
+      b.receive(
+        encodeFrame({
+          type: FrameType.Open,
+          streamId: 5,
+          seq: 0,
+          payload: new TextEncoder().encode('echo'),
+        })
+      )
+    ).not.toThrow();
+  });
+
+  it('a throwing onData callback closes that stream and leaves the others live', () => {
+    const registryB = new StreamRegistry();
+    const otherData: string[] = [];
+    let failedReason: string | undefined;
+    registryB.register('boom', (stream) => {
+      stream.onClose((reason) => {
+        failedReason = reason;
+      });
+      stream.onData(() => {
+        throw new Error('callback exploded');
+      });
+      stream.control({ kind: 'opened' });
+    });
+    registryB.register('echo', (stream) => {
+      stream.onData((d) => otherData.push(new TextDecoder().decode(d)));
+      stream.control({ kind: 'opened' });
+    });
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: () => undefined,
+    });
+    for (const [streamId, name] of [
+      [3, 'boom'],
+      [5, 'echo'],
+    ] as const) {
+      b.receive(
+        encodeFrame({
+          type: FrameType.Open,
+          streamId,
+          seq: 0,
+          payload: new TextEncoder().encode(name),
+        })
+      );
+    }
+    expect(() =>
+      b.receive(
+        encodeFrame({
+          type: FrameType.Data,
+          streamId: 3,
+          seq: 1,
+          payload: new TextEncoder().encode('kaboom'),
+        })
+      )
+    ).not.toThrow();
+    expect(failedReason).toBe('stream handler failed: callback exploded');
+    b.receive(
+      encodeFrame({
+        type: FrameType.Data,
+        streamId: 5,
+        seq: 1,
+        payload: new TextEncoder().encode('still here'),
+      })
+    );
+    expect(otherData).toEqual(['still here']);
+  });
+
+  it('a throwing onControl callback fails the stream the control message names', () => {
+    const registryB = new StreamRegistry();
+    let failedReason: string | undefined;
+    registryB.register('pty', (stream) => {
+      stream.onClose((reason) => {
+        failedReason = reason;
+      });
+      stream.onControl(() => {
+        throw new Error('resize exploded');
+      });
+      stream.control({ kind: 'opened' });
+    });
+    const b = new Muxer(registryB, {
+      role: 'acceptor',
+      sendBytes: () => undefined,
+    });
+    b.receive(
+      encodeFrame({
+        type: FrameType.Open,
+        streamId: 4,
+        seq: 0,
+        payload: new TextEncoder().encode('pty'),
+      })
+    );
+    expect(() =>
+      b.receive(
+        encodeFrame({
+          type: FrameType.Control,
+          streamId: 0,
+          seq: 0,
+          payload: new TextEncoder().encode(
+            JSON.stringify({ kind: 'resize', streamId: 4, cols: 80, rows: 24 })
+          ),
+        })
+      )
+    ).not.toThrow();
+    expect(failedReason).toBe('stream handler failed: resize exploded');
+  });
+
   it('initiator and acceptor allocate disjoint stream ids', async () => {
     const registryA = new StreamRegistry();
     const registryB = new StreamRegistry();
