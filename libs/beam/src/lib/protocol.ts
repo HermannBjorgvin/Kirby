@@ -214,6 +214,26 @@ export function decodeControl<T>(frame: Frame): T {
   return JSON.parse(decoder.decode(frame.payload)) as T;
 }
 
+/**
+ * Which stream a frame concerns. Open, Data and Close carry it in the
+ * header; a Control frame rides the connection's own id 0 and names its
+ * stream inside the JSON payload, so that is where the id has to come
+ * from. Falls back to the header's id for a payload that names none.
+ */
+export function frameStreamId(frame: Frame): number {
+  if (frame.type !== FrameType.Control) return frame.streamId;
+  try {
+    const parsed: unknown = JSON.parse(decoder.decode(frame.payload));
+    if (typeof parsed === 'object' && parsed !== null) {
+      const id = (parsed as Record<string, unknown>)['streamId'];
+      if (typeof id === 'number') return id;
+    }
+  } catch {
+    // Not a JSON control message; the header's id is all there is.
+  }
+  return frame.streamId;
+}
+
 /** Convenience: decode a payload as UTF-8 text. */
 export function decodeText(frame: Frame): string {
   return decoder.decode(frame.payload);
@@ -258,5 +278,13 @@ export class SeqSender {
     const seq = this.next.get(streamId) ?? FIRST_SEQ;
     this.next.set(streamId, seq + 1);
     return seq;
+  }
+
+  /** The number `claim` would hand out next, without claiming it. Lets a
+   * sender encode a frame before committing to its seq: a number claimed
+   * for a frame that then fails to encode is a hole in the stream, and the
+   * receiver reads a hole as lost data and fails the stream over it. */
+  peek(streamId: number): number {
+    return this.next.get(streamId) ?? FIRST_SEQ;
   }
 }

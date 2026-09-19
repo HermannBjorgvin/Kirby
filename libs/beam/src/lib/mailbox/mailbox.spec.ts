@@ -338,6 +338,36 @@ describe('Mailbox: rejection', () => {
     expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
   });
 
+  it('a payload that JSON escaping blows past the frame cap is rejected, not queued', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+    // Well under the 256 KiB payload cap as utf8 bytes, but six bytes each
+    // once JSON-escaped (\u0001) — over 1 MiB on the wire. Queued, this
+    // would sit at the head of the peer's queue failing to encode and
+    // block every message behind it, after send() already reported the
+    // durable success `queued` promises.
+    const escapes = '\u0001'.repeat(200 * 1024);
+    expect(Buffer.byteLength(escapes, 'utf8')).toBeLessThan(256 * 1024);
+    const outcome = await a.mailbox.send({
+      to: b.identity.peerId,
+      topic: 't',
+      payload: escapes,
+    });
+    expect(outcome).toEqual({
+      outcome: 'rejected',
+      reason: 'oversized-payload',
+      to: b.identity.peerId,
+      label: 'b',
+    });
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(0);
+    // And no seq was burned on it.
+    await a.mailbox.send({ to: b.identity.peerId, topic: 't', payload: 'ok' });
+    expect(
+      a.mailbox.queue(b.identity.peerId).map((q) => q.envelope.seq)
+    ).toEqual([1]);
+  });
+
   it('a queue write that fails is a rejected outcome, and burns no seq', async () => {
     const a = makeNode('a');
     const b = makeNode('b');
@@ -486,6 +516,76 @@ describe('Mailbox: crash windows', () => {
     expect(listed[0]?.reason.length).toBeGreaterThan(0);
     expect(quarantined).toHaveLength(1);
     expect(quarantined[0]?.fileName).toBe('0000000002.json');
+  });
+
+  it('an envelope that cannot be encoded is quarantined, not left blocking the queue', async () => {
+    const quarantined: QuarantinedFile[] = [];
+    const a = makeNode('a', { onQuarantine: (info) => quarantined.push(info) });
+    const b = makeNode('b');
+    pairNodes(a, b);
+
+    // Written straight to disk, as a node running an older build with a
+    // weaker cap would have left it. The flusher always takes the head of
+    // the queue, so an envelope that throws in the frame encoder would
+    // otherwise be retried forever with everything behind it.
+    const outbound = new OutboundQueue(a.dir);
+    outbound.enqueue(b.identity.peerId, {
+      id: 'unsendable',
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq: 1,
+      topic: 't',
+      payload: '\u0001'.repeat(200 * 1024),
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+    outbound.enqueue(b.identity.peerId, {
+      id: 'behind-it',
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq: 2,
+      topic: 't',
+      payload: 'behind-it',
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+
+    connectNodes(a, b);
+    await waitFor(
+      () => b.received.length,
+      (n) => n >= 1,
+      3000
+    );
+    expect(b.received.map((e) => e.payload)).toEqual(['behind-it']);
+    expect(quarantined.map((q) => q.fileName)).toEqual(['0000000001.json']);
+    expect(a.mailbox.quarantined(b.identity.peerId)).toHaveLength(1);
+  });
+
+  it('an inbound envelope over the payload cap is refused, not stored', async () => {
+    const a = makeNode('a');
+    const b = makeNode('b');
+    pairNodes(a, b);
+
+    // Enqueued straight to disk, since this node's own send() would refuse
+    // it: the cap belongs to the mailbox, so the receiver has to enforce it
+    // against a peer that does not.
+    new OutboundQueue(a.dir).enqueue(b.identity.peerId, {
+      id: 'too-big',
+      from: a.identity.peerId,
+      to: b.identity.peerId,
+      seq: 1,
+      topic: 't',
+      payload: 'x'.repeat(300 * 1024),
+      encoding: 'utf8',
+      createdAt: Date.now(),
+    });
+
+    connectNodes(a, b);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(b.received).toHaveLength(0);
+    expect(new InboundStore(b.dir).list(a.identity.peerId)).toHaveLength(0);
+    // Unacked, so it stays where the sender can still account for it.
+    expect(a.mailbox.queue(b.identity.peerId)).toHaveLength(1);
   });
 
   it('quarantine is durable and discoverable across a restart, even with no live onQuarantine listener', async () => {

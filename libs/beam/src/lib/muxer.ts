@@ -14,6 +14,7 @@ import {
   SeqTracker,
   decodeText,
   encodeFrame,
+  frameStreamId,
   type Frame,
 } from './protocol.js';
 import { StreamIdAllocator } from './stream-ids.js';
@@ -117,9 +118,10 @@ export class Muxer {
     const bytes = encodeFrame({
       type: FrameType.Open,
       streamId: id,
-      seq: this.sender.claim(id),
+      seq: this.sender.peek(id),
       payload,
     });
+    this.sender.claim(id);
 
     const stream = new BeamStreamImpl(this.sink, id, name, this.peer, params);
     this.streams.set(id, stream);
@@ -216,7 +218,7 @@ export class Muxer {
   private failStream(frame: Frame, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     const reason = `stream handler failed: ${message.split('\n')[0]}`;
-    const streamId = this.streamIdFor(frame);
+    const streamId = frameStreamId(frame);
     const stream = this.streams.get(streamId);
     this.streams.delete(streamId);
     try {
@@ -235,25 +237,6 @@ export class Muxer {
     } catch {
       // A close handler that throws as well has nothing left to fail.
     }
-  }
-
-  /** Which stream a frame belongs to. A Control frame rides the
-   * connection's own id 0 and names its stream inside the payload, so that
-   * is where the id has to come from; the re-parse only ever happens on
-   * this failure path. */
-  private streamIdFor(frame: Frame): number {
-    if (frame.type !== FrameType.Control) return frame.streamId;
-    try {
-      const parsed: unknown = JSON.parse(decodeText(frame));
-      if (typeof parsed === 'object' && parsed !== null) {
-        const id = (parsed as Record<string, unknown>)['streamId'];
-        if (typeof id === 'number') return id;
-      }
-    } catch {
-      // An unparseable control frame never reaches a handler in the first
-      // place, so it cannot be the one that threw.
-    }
-    return frame.streamId;
   }
 
   private clearReadyTimer(stream: BeamStreamImpl): void {
@@ -384,8 +367,17 @@ export class Muxer {
     streamId: number,
     payload: Uint8Array
   ): void {
-    this.sendBytes(
-      encodeFrame({ type, streamId, seq: this.sender.claim(streamId), payload })
-    );
+    // Encode first, claim second. A seq claimed for a frame that then
+    // fails to encode (an oversized payload, say) is a hole in the
+    // stream's sequence, and the peer reads a hole as lost data and fails
+    // the stream — turning one unsendable frame into a dead stream.
+    const bytes = encodeFrame({
+      type,
+      streamId,
+      seq: this.sender.peek(streamId),
+      payload,
+    });
+    this.sender.claim(streamId);
+    this.sendBytes(bytes);
   }
 }

@@ -244,7 +244,15 @@ interface Envelope {
 }
 ```
 
-Payload cap 256 KiB, so an envelope always fits one frame.
+Payload cap 256 KiB, measured on the decoded payload. That is not on its own enough to
+guarantee the envelope fits one frame: the wire form is `JSON.stringify(envelope)` and JSON
+escaping is not size-preserving — a control character is one byte of utf8 and six of JSON
+(`\u0001`). Both caps are therefore checked, the payload's and the serialized envelope's
+against `MAX_PAYLOAD`, and on both sides: `send()` refuses an envelope that would not encode
+rather than queuing one the flusher could never drain, and a receiver refuses one over the
+cap rather than storing past it. An envelope already on disk that cannot be encoded is
+quarantined like any other message that can never be sent, so it does not sit at the head of
+the queue blocking everything behind it.
 
 **One queue per peer, not per role.** Each node keeps `mailbox/out/<peerId>/`, one file per
 undelivered message, written temp-then-rename and named by zero-padded `seq` so the directory

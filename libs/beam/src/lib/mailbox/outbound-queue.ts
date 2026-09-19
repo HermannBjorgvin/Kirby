@@ -148,6 +148,15 @@ export class OutboundQueue {
     return parsed;
   }
 
+  /** Move a queue file aside as unsendable. Quarantine is not only for a
+   * file that cannot be *read*: an envelope that cannot be encoded onto
+   * the wire is just as undeliverable, and leaving it at the head of the
+   * queue blocks every message behind it forever. Loud and durable either
+   * way — it shows up in `quarantined()` across a restart. */
+  quarantineFile(peerId: string, fileName: string, reason: string): void {
+    this.quarantine(this.peerDir(peerId), fileName, reason);
+  }
+
   remove(peerId: string, fileName: string): void {
     try {
       unlinkSync(join(this.peerDir(peerId), fileName));

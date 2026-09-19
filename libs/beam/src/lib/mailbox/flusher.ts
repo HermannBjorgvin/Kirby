@@ -144,7 +144,25 @@ export class Flusher {
     state: MsgStreamState,
     next: QueuedEnvelope
   ): Promise<boolean> {
-    const accepted = await this.sendOne(state, next.envelope);
+    let accepted: boolean;
+    try {
+      accepted = await this.sendOne(state, next.envelope);
+    } catch (error) {
+      // The envelope cannot be put on the wire at all — an oversized
+      // serialization, most likely. `drain` always takes the head of the
+      // queue, so retrying it would block every message behind it forever
+      // and re-throw out of every kick. Quarantine is what this queue
+      // already does with a message it can never send: loud, durable, and
+      // out of the way. See docs/beam.md on quarantine never being silent.
+      const reason = `cannot be sent: ${(error as Error).message}`;
+      this.log(`msg to ${peerId} ${reason}; quarantining it`);
+      this.queue.quarantineFile(peerId, next.fileName, reason);
+      // Reported as no progress on purpose. Quarantine is best-effort — if
+      // the rename aside fails, this envelope is still the head of the
+      // queue next time round, and claiming progress would spin the drain
+      // loop on it with nothing between the turns.
+      return false;
+    }
     if (accepted) {
       this.queue.remove(peerId, next.fileName);
       this.onDelivered?.(peerId, next.envelope);
@@ -193,7 +211,7 @@ export class Flusher {
     key: string,
     send: () => void
   ): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (accepted: boolean): void => {
         if (settled) return;
@@ -207,7 +225,17 @@ export class Flusher {
         clearTimeout(timer);
         finish(accepted);
       });
-      send();
+      try {
+        send();
+      } catch (error) {
+        // Nothing went out, so no ack is ever coming: drop the waiter and
+        // its timer rather than leaving them to expire, and let the caller
+        // decide what to do with an envelope that will not encode.
+        clearTimeout(timer);
+        state.pending.delete(key);
+        settled = true;
+        reject(error as Error);
+      }
     });
   }
 

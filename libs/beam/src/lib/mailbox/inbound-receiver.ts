@@ -7,7 +7,13 @@
  */
 
 import type { BeamStream } from '../stream.js';
-import { isEnvelope, type Envelope } from './envelope.js';
+import {
+  envelopeFitsOneFrame,
+  isEnvelope,
+  MAX_PAYLOAD_BYTES,
+  payloadByteLength,
+  type Envelope,
+} from './envelope.js';
 import { InboundStore } from './inbound-store.js';
 import { MailboxCorruptionError, SeenTracker } from './seen-tracker.js';
 
@@ -26,6 +32,15 @@ export type InboundHandler = (
 export interface InboundReceiverOptions {
   beamDir: string;
   onCorruption?: (error: MailboxCorruptionError) => void;
+}
+
+/** Both halves of the size contract: the documented payload cap, and the
+ * frame the envelope actually has to fit in once serialized. */
+function withinCap(envelope: Envelope): boolean {
+  return (
+    payloadByteLength(envelope) <= MAX_PAYLOAD_BYTES &&
+    envelopeFitsOneFrame(envelope)
+  );
 }
 
 export class InboundReceiver {
@@ -83,6 +98,20 @@ export class InboundReceiver {
       return; // Not JSON at all — nothing sane to ack; drop.
     }
     if (!isEnvelope(parsed) || parsed.from !== stream.peer.peerId) return;
+    if (!withinCap(parsed)) {
+      // The cap belongs to the mailbox, not only to this node's own
+      // `send()`. A peer that ignores it would otherwise store here up to
+      // the 1 MiB frame limit. Refused rather than stored, and said so:
+      // an unaccepted envelope stays in the sender's queue, where the
+      // sender is the side that can report the loss.
+      stream.control({
+        kind: 'ack',
+        id: parsed.id,
+        accepted: false,
+        reason: 'payload over the cap',
+      });
+      return;
+    }
     this.accept(stream, parsed);
   }
 

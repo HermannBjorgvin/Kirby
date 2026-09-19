@@ -11,6 +11,7 @@ import type { Identity } from '../identity.js';
 import type { PeerRecord, PeerTable } from '../peer-table.js';
 import type { StreamRegistry } from '../stream-registry.js';
 import {
+  envelopeFitsOneFrame,
   MAX_PAYLOAD_BYTES,
   payloadByteLength,
   type Envelope,
@@ -176,15 +177,16 @@ export class Mailbox {
       };
     }
 
-    const envelope = this.storeOutbound(peer, input, encoding);
-    if (!envelope) {
+    const stored = this.storeOutbound(peer, input, encoding);
+    if ('reason' in stored) {
       return {
         outcome: 'rejected',
-        reason: 'storage-failure',
+        reason: stored.reason,
         to: peer.peerId,
         label: peer.label,
       };
     }
+    const envelope = stored.envelope;
 
     const delivered = await this.awaitDelivery(envelope.id, peer.peerId);
     const queueDepth = this.queueStore.depth(peer.peerId);
@@ -226,7 +228,7 @@ export class Mailbox {
     peer: PeerRecord,
     input: SendInput,
     encoding: 'utf8' | 'base64'
-  ): Envelope | null {
+  ): { envelope: Envelope } | { reason: RejectReason } {
     try {
       const seq = this.seqCounter.reserve(peer.peerId);
       const envelope: Envelope = {
@@ -239,16 +241,24 @@ export class Mailbox {
         encoding,
         createdAt: this.now(),
       };
+      // The decoded payload cap above is not the whole story: the wire
+      // form is `JSON.stringify(envelope)`, and JSON escaping is not size
+      // preserving. Anything that will not encode has to be refused here,
+      // because once it is queued the caller has been told it is durable
+      // and the flusher has a head-of-queue message it can never send.
+      if (!envelopeFitsOneFrame(envelope)) {
+        return { reason: 'oversized-payload' };
+      }
       this.queueStore.enqueue(peer.peerId, envelope);
       this.seqCounter.commit(peer.peerId, seq);
-      return envelope;
+      return { envelope };
     } catch (error) {
       this.log(
         `could not queue a message for ${peer.peerId}: ${
           (error as Error).message
         }`
       );
-      return null;
+      return { reason: 'storage-failure' };
     }
   }
 

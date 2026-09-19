@@ -4,9 +4,29 @@
  * concerns it.
  */
 
-/** An envelope's payload, and therefore the whole envelope, must fit in one
- * frame (MAX_PAYLOAD in protocol.ts is 1 MiB) with headroom to spare. */
+import { MAX_PAYLOAD } from '../protocol.js';
+
+/** Cap on an envelope's *decoded* payload. The headroom up to the 1 MiB
+ * frame limit is not slack: the wire form is `JSON.stringify(envelope)`,
+ * and JSON escaping is not size-preserving — a control character is one
+ * byte of utf8 and six of JSON (`\u0001`). Passing this cap is therefore
+ * necessary but not sufficient; `envelopeFitsOneFrame` is what decides
+ * whether the thing can actually be sent. */
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
+
+/** The envelope's real wire size: what the flusher hands to the frame
+ * encoder. */
+export function serializedByteLength(envelope: Envelope): number {
+  return Buffer.byteLength(JSON.stringify(envelope), 'utf8');
+}
+
+/** Whether this envelope can be put on the wire at all. An envelope that
+ * cannot be encoded is not merely a failed send: the flusher always takes
+ * the head of the queue, so one sitting there blocks every message behind
+ * it for as long as it stays. */
+export function envelopeFitsOneFrame(envelope: Envelope): boolean {
+  return serializedByteLength(envelope) <= MAX_PAYLOAD;
+}
 
 export interface Envelope {
   id: string;
