@@ -50,6 +50,29 @@ function isResize(message: Record<string, unknown>): boolean {
   return message['kind'] === 'resize';
 }
 
+/**
+ * Attach an `'error'` listener to a spawned pty.
+ *
+ * node-pty's `UnixTerminal` re-emits its socket's `'error'` on the terminal
+ * itself, and an EventEmitter that emits `'error'` with nobody listening
+ * throws synchronously — so a pty whose fd dies under it (EIO on a hung-up
+ * master, a kernel refusing the read) takes the whole node down, from an
+ * event whose timing the far side chooses. `IPty`'s typed surface exposes
+ * only the `onData`/`onExit` disposables and no `on()`, so the listener has
+ * to go on the EventEmitter the implementation actually is; the cast is the
+ * narrowest shape that admits. Exported so the guard can be exercised
+ * without having to break a real pty.
+ */
+export function guardPtyErrors(
+  proc: pty.IPty,
+  onError: (error: Error) => void
+): void {
+  const emitter = proc as unknown as {
+    on?: (event: 'error', listener: (error: Error) => void) => void;
+  };
+  emitter.on?.('error', onError);
+}
+
 /** `argv[0]` runs directly — no shell, no word splitting — with the rest as
  * literal arguments. An absent or empty `argv` param falls back to the
  * stream-name form (`pty` -> login shell, `pty:<program>` -> that program). */
@@ -129,6 +152,11 @@ function wireSession(
   sessions: Map<string, pty.IPty>,
   sessionKey: string
 ): void {
+  guardPtyErrors(proc, (error) => {
+    if (sessions.get(sessionKey) !== proc) return;
+    sessions.delete(sessionKey);
+    stream.close(`pty error: ${error.message.split('\n')[0]}`);
+  });
   proc.onData((data) => {
     if (sessions.get(sessionKey) === proc)
       stream.write(Buffer.from(data, 'utf8'));

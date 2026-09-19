@@ -1,5 +1,11 @@
+import { EventEmitter } from 'node:events';
+import type { IPty } from 'node-pty';
 import { describe, expect, it } from 'vitest';
-import { createPtyStreamHandler, MAX_PTY_SESSIONS } from './pty-handler.js';
+import {
+  createPtyStreamHandler,
+  guardPtyErrors,
+  MAX_PTY_SESSIONS,
+} from './pty-handler.js';
 import type { BeamStream, StreamContext } from './stream.js';
 
 /** Minimal fake BeamStream: enough surface for the pty handler to drive,
@@ -269,5 +275,18 @@ describe('createPtyStreamHandler', () => {
     });
     handler(fake.stream);
     expect(fake.closedWith).toMatch(/cwd must be absolute or start with ~\//);
+  });
+
+  it("a pty's own 'error' is handled rather than thrown out of the node", () => {
+    // node-pty's UnixTerminal is an EventEmitter: emitting 'error' on it
+    // with no listener throws synchronously, and the throw comes from a
+    // socket whose failure the far side gets to time.
+    const proc = new EventEmitter();
+    const reported: string[] = [];
+    guardPtyErrors(proc as unknown as IPty, (error) =>
+      reported.push(error.message)
+    );
+    expect(() => proc.emit('error', new Error('read EIO'))).not.toThrow();
+    expect(reported).toEqual(['read EIO']);
   });
 });
