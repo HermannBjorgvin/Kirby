@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeFrame, FrameType } from './protocol.js';
 import { Muxer } from './muxer.js';
 import { StreamRegistry } from './stream-registry.js';
@@ -22,6 +22,10 @@ function wirePair(registryA: StreamRegistry, registryB: StreamRegistry) {
 function rewindIds(muxer: Muxer, id: number): void {
   (muxer as unknown as { ids: { next: number } }).ids.next = id;
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('Muxer open/ack/data/close round trip', () => {
   it('resolves openStream once the peer acks, and delivers data both ways', async () => {
@@ -457,6 +461,31 @@ describe('Muxer open/ack/data/close round trip', () => {
     const { a } = wirePair(new StreamRegistry(), new StreamRegistry());
     rewindIds(a, 0x10001);
     await expect(a.openStream('echo')).rejects.toThrow(/no stream ids left/);
+  });
+
+  it('an open that is never acknowledged closes the stream on the peer too', async () => {
+    vi.useFakeTimers();
+    const sent: Uint8Array[] = [];
+    const a = new Muxer(new StreamRegistry(), {
+      role: 'initiator',
+      sendBytes: (bytes) => sent.push(bytes),
+    });
+    // Settled into a value rather than asserted in place: the rejection
+    // only arrives once the fake clock is advanced, below.
+    const outcome = a.openStream('pty').then(
+      () => 'resolved',
+      (error: Error) => error.message
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await outcome).toMatch(/never acknowledged/);
+    // Without the Close, the peer keeps whatever it spawned behind that
+    // Open for the life of the connection, holding a slot in its own
+    // per-peer PTY budget that nothing will ever free.
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.[1]).toBe(FrameType.Close);
+    expect(new TextDecoder().decode(sent[1]?.slice(12))).toBe(
+      'open was never acknowledged'
+    );
   });
 
   it('initiator and acceptor allocate disjoint stream ids', async () => {

@@ -139,6 +139,15 @@ export class Muxer {
       stream.readyResolve = null;
       stream.readyReject = null;
       stream.readyTimer = null;
+      // Tell the peer too. It may well have opened the stream and spawned
+      // a process behind it; dropping only this side's state leaves that
+      // process running for the life of the connection, holding a slot in
+      // that peer's MAX_PTY_SESSIONS budget that nothing will ever free.
+      this.sendFrame(
+        FrameType.Close,
+        id,
+        encoder.encode('open was never acknowledged')
+      );
       rejectReady(new Error(`stream '${name}' was never acknowledged`));
     }, OPEN_ACK_TIMEOUT_MS);
     timer.unref?.();
