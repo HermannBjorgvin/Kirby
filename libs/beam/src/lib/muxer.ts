@@ -5,10 +5,10 @@
  * exists regardless of who opened it. See docs/beam.md.
  */
 
+import { parseOpenPayload } from './open-params.js';
 import {
   FrameDecoder,
   FrameType,
-  MAX_STREAM_ID,
   ProtocolError,
   SeqSender,
   SeqTracker,
@@ -16,6 +16,7 @@ import {
   encodeFrame,
   type Frame,
 } from './protocol.js';
+import { StreamIdAllocator } from './stream-ids.js';
 import {
   BeamStreamImpl,
   type BeamStream,
@@ -23,6 +24,9 @@ import {
   type StreamSink,
 } from './stream.js';
 import type { StreamRegistry } from './stream-registry.js';
+import type { MuxerRole } from './muxer-role.js';
+
+export type { MuxerRole };
 
 const encoder = new TextEncoder();
 
@@ -33,8 +37,6 @@ const OPEN_ACK_TIMEOUT_MS = 10_000;
 /** Used when a caller (tests, mostly) builds a Muxer without a peer
  * context — production call sites (connection.ts) always supply one. */
 const UNKNOWN_PEER: StreamContext = { peerId: 'unknown', label: 'unknown' };
-
-export type MuxerRole = 'initiator' | 'acceptor';
 
 export interface MuxerOptions {
   /** 'initiator' (the side that dialed) allocates odd stream ids, 'acceptor'
@@ -47,28 +49,6 @@ export interface MuxerOptions {
   peer?: StreamContext;
 }
 
-/** Decode an Open frame's payload per D1: a `{`-prefixed payload is a JSON
- * object whose `name` is the stream name and whose other fields are its open
- * parameters, in one frame; anything else (including malformed JSON, or JSON
- * without a string `name`) is the bare stream name, unparsed — the host-poc
- * form, which stays valid. */
-function parseOpenPayload(text: string): {
-  name: string;
-  params?: Record<string, unknown>;
-} {
-  if (!text.startsWith('{')) return { name: text };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { name: text };
-  }
-  if (typeof parsed !== 'object' || parsed === null) return { name: text };
-  const { name, ...params } = parsed as Record<string, unknown>;
-  if (typeof name !== 'string') return { name: text };
-  return { name, params };
-}
-
 export class Muxer {
   private readonly decoder = new FrameDecoder();
   private readonly sender = new SeqSender();
@@ -78,18 +58,14 @@ export class Muxer {
   private readonly registry: StreamRegistry;
   private readonly sendBytes: (bytes: Uint8Array) => void;
   private readonly peer: StreamContext;
-  /** 1 when this side allocates odd ids (it dialled), 0 when it allocates
-   * even ones (it accepted). */
-  private readonly ownParity: number;
-  private nextStreamId: number;
+  private readonly ids: StreamIdAllocator;
   private disposed = false;
 
   constructor(registry: StreamRegistry, options: MuxerOptions) {
     this.registry = registry;
     this.sendBytes = options.sendBytes;
     this.peer = options.peer ?? UNKNOWN_PEER;
-    this.ownParity = options.role === 'initiator' ? 1 : 0;
-    this.nextStreamId = options.role === 'initiator' ? 1 : 2;
+    this.ids = new StreamIdAllocator(options.role);
     this.sink = {
       sendData: (streamId, data) =>
         this.sendFrame(FrameType.Data, streamId, data),
@@ -128,7 +104,7 @@ export class Muxer {
     params?: Record<string, unknown>
   ): Promise<BeamStream> {
     if (this.disposed) throw new Error('connection is closed');
-    const id = this.allocateStreamId();
+    const id = this.ids.allocate((streamId) => this.streams.has(streamId));
     const payload = params
       ? encoder.encode(JSON.stringify({ name, ...params }))
       : encoder.encode(name);
@@ -170,23 +146,6 @@ export class Muxer {
 
     this.sendBytes(bytes);
     return ready;
-  }
-
-  /** The next free id in this side's own parity space, skipping any that
-   * is still live. `nextStreamId` alone is not enough: an id can still be
-   * occupied when the counter wraps back onto it, and `streams.set` would
-   * then overwrite a live stream's entry, detaching it from every frame
-   * that followed with nothing to say so. */
-  private allocateStreamId(): number {
-    let id = this.nextStreamId;
-    while (this.streams.has(id)) id += 2;
-    if (id > MAX_STREAM_ID) {
-      throw new RangeError(
-        `this connection has no stream ids left (the wire maximum is ${MAX_STREAM_ID})`
-      );
-    }
-    this.nextStreamId = id + 2;
-    return id;
   }
 
   /** Feed one inbound chunk of transport bytes. Malformed frames end the
@@ -312,7 +271,7 @@ export class Muxer {
   }
 
   private handleOpen(frame: Frame): void {
-    if (!this.isPeerStreamId(frame.streamId)) {
+    if (!this.ids.belongsToPeer(frame.streamId)) {
       this.sendFrame(
         FrameType.Close,
         frame.streamId,
@@ -352,18 +311,6 @@ export class Muxer {
     );
     this.streams.set(frame.streamId, stream);
     handler(stream);
-  }
-
-  /** Stream ids are partitioned by role (docs/beam.md): the side that
-   * dialled allocates odd ids, the side that accepted even ones, and id 0
-   * is the connection's own control channel rather than a stream. An
-   * inbound Open inside *our* parity space is refused — honouring it would
-   * either displace a stream we already hold or collide with one we are
-   * about to allocate, and the partition exists precisely so that cannot
-   * happen. */
-  private isPeerStreamId(streamId: number): boolean {
-    if (streamId === 0) return false;
-    return streamId % 2 !== this.ownParity;
   }
 
   private handleData(frame: Frame): void {

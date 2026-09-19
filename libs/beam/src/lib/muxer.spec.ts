@@ -17,6 +17,12 @@ function wirePair(registryA: StreamRegistry, registryB: StreamRegistry) {
   return { a, b };
 }
 
+/** Point a muxer's id allocator at `id`, as a long-lived connection's own
+ * counter eventually does by wrapping. */
+function rewindIds(muxer: Muxer, id: number): void {
+  (muxer as unknown as { ids: { next: number } }).ids.next = id;
+}
+
 describe('Muxer open/ack/data/close round trip', () => {
   it('resolves openStream once the peer acks, and delivers data both ways', async () => {
     const registryB = new StreamRegistry();
@@ -435,7 +441,7 @@ describe('Muxer open/ack/data/close round trip', () => {
     const first = await a.openStream('echo');
     // Rewind the allocator onto an id that is still open, as a long-lived
     // connection's counter eventually does by wrapping.
-    (a as unknown as { nextStreamId: number }).nextStreamId = first.id;
+    rewindIds(a, first.id);
     const second = await a.openStream('echo');
     expect(second.id).not.toBe(first.id);
     // The first stream is still the one its id resolves to: a displaced
@@ -449,7 +455,7 @@ describe('Muxer open/ack/data/close round trip', () => {
 
   it('openStream rejects, rather than throwing, when stream ids run out', async () => {
     const { a } = wirePair(new StreamRegistry(), new StreamRegistry());
-    (a as unknown as { nextStreamId: number }).nextStreamId = 0x10001;
+    rewindIds(a, 0x10001);
     await expect(a.openStream('echo')).rejects.toThrow(/no stream ids left/);
   });
 

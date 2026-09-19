@@ -13,6 +13,14 @@ import {
 } from 'node:net';
 import { dirname } from 'node:path';
 import type { ConnectionRegistry } from './connection-registry.js';
+import { writeLine } from './ipc-line.js';
+import {
+  handleForget,
+  handleReloadPeers,
+  handleRename,
+  handleRevoke,
+  type PeerOpContext,
+} from './ipc-peer-ops.js';
 import type { Envelope } from './mailbox/envelope.js';
 import type { Mailbox, SendOutcome } from './mailbox/mailbox.js';
 import type { PeerTable } from './peer-table.js';
@@ -57,10 +65,6 @@ export interface IpcSocketOptions {
    * CLI-private sidecar file. */
   bindAddress?: string;
   log?: (message: string) => void;
-}
-
-function writeLine(socket: Socket, value: unknown): void {
-  if (socket.writable) socket.write(`${JSON.stringify(value)}\n`);
 }
 
 function toWireOutcome(outcome: SendOutcome): Record<string, unknown> {
@@ -215,11 +219,17 @@ export class IpcSocket {
     subscribe: (socket, record) => this.handleSubscribe(socket, record),
     status: (socket) => this.handleStatus(socket),
     ack: (socket, record) => this.handleAck(socket, record),
-    revoke: (socket, record) => this.handleRevoke(socket, record),
-    rename: (socket, record) => this.handleRename(socket, record),
-    forget: (socket, record) => this.handleForget(socket, record),
-    'reload-peers': (socket) => this.handleReloadPeers(socket),
+    revoke: (socket, record) => handleRevoke(this.peerOps, socket, record),
+    rename: (socket, record) => handleRename(this.peerOps, socket, record),
+    forget: (socket, record) => handleForget(this.peerOps, socket, record),
+    'reload-peers': (socket) => handleReloadPeers(this.peerOps, socket),
   };
+
+  /** The live table and registry the peer-admin ops act on — this node's
+   * own instances, the ones Host and Mailbox already share. */
+  private get peerOps(): PeerOpContext {
+    return { peers: this.peers, connections: this.connections };
+  }
 
   private handleLine(socket: Socket, line: string): void {
     let message: unknown;
@@ -260,11 +270,6 @@ export class IpcSocket {
       peers: this.mailbox.status(),
       bindAddress: this.bindAddress ?? null,
     });
-  }
-
-  private handleReloadPeers(socket: Socket): void {
-    this.peers.reload();
-    writeLine(socket, { status: 'ok' });
   }
 
   private async handleSend(
@@ -309,61 +314,6 @@ export class IpcSocket {
     this.current.pending.acknowledge();
     this.current = null;
     this.pump();
-  }
-
-  private handleRevoke(socket: Socket, record: Record<string, unknown>): void {
-    const peerId = record['peer'];
-    if (typeof peerId !== 'string') {
-      writeLine(socket, {
-        status: 'error',
-        reason: 'malformed revoke request',
-      });
-      return;
-    }
-    try {
-      this.peers.revoke(peerId);
-    } catch (error) {
-      writeLine(socket, { status: 'error', reason: (error as Error).message });
-      return;
-    }
-    // A revoke that does not close an already-open connection (and, with
-    // it, every stream on it) is not really a revoke — same rule as
-    // Host.revoke, applied here so it also takes effect through the local
-    // socket, not only through a peer dialing in fresh.
-    this.connections.get(peerId)?.close();
-    writeLine(socket, { status: 'ok' });
-  }
-
-  private handleRename(socket: Socket, record: Record<string, unknown>): void {
-    const peerId = record['peer'];
-    const label = record['label'];
-    if (typeof peerId !== 'string' || typeof label !== 'string') {
-      writeLine(socket, {
-        status: 'error',
-        reason: 'malformed rename request',
-      });
-      return;
-    }
-    try {
-      const updated = this.peers.rename(peerId, label);
-      writeLine(socket, { status: 'ok', label: updated.label });
-    } catch (error) {
-      writeLine(socket, { status: 'error', reason: (error as Error).message });
-    }
-  }
-
-  private handleForget(socket: Socket, record: Record<string, unknown>): void {
-    const peerId = record['peer'];
-    if (typeof peerId !== 'string') {
-      writeLine(socket, {
-        status: 'error',
-        reason: 'malformed forget request',
-      });
-      return;
-    }
-    this.peers.remove(peerId);
-    this.connections.get(peerId)?.close();
-    writeLine(socket, { status: 'ok' });
   }
 
   private subscriberWants(subscriber: Subscriber, envelope: Envelope): boolean {
