@@ -160,6 +160,63 @@ describe('Host HTTP surface', () => {
     expect((await pair()).status).toBe(401);
   });
 
+  it('a re-pair that would change a stored peer is refused without replace', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const post = (body: Record<string, unknown>) =>
+      fetch(`${h.baseUrl}/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: h.issuePairingToken(),
+          publicKeyPem: client.publicKeyPem,
+          label: 'laptop',
+          ...body,
+        }),
+      });
+
+    expect((await post({ endpoints: ['http://real:9000'] })).status).toBe(201);
+    // A public key is not a secret. Anyone holding a live pairing token
+    // and this peer's key could otherwise point `endpoints` — where the
+    // mailbox flusher dials — anywhere they liked.
+    const hijack = await post({ endpoints: ['http://attacker:1'] });
+    expect(hijack.status).toBe(409);
+    expect(await hijack.json()).toEqual({ error: 'already-paired' });
+    expect(h.peers.get(client.peerId)?.endpoints).toEqual(['http://real:9000']);
+
+    // Re-pairing with what is already stored is not a change, so it is not
+    // a conflict; and an explicit replace still goes through.
+    expect((await post({ endpoints: ['http://real:9000'] })).status).toBe(201);
+    expect(
+      (await post({ endpoints: ['http://moved:9100'], replace: true })).status
+    ).toBe(201);
+    expect(h.peers.get(client.peerId)?.endpoints).toEqual([
+      'http://moved:9100',
+    ]);
+  });
+
+  it('a refused re-pair still spends its token, so the endpoint is no oracle', async () => {
+    const h = await startHost();
+    const client = clientKeyPair();
+    const post = (token: string, endpoints: string[]) =>
+      fetch(`${h.baseUrl}/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          publicKeyPem: client.publicKeyPem,
+          label: 'laptop',
+          endpoints,
+        }),
+      });
+    expect(
+      (await post(h.issuePairingToken(), ['http://real:9000'])).status
+    ).toBe(201);
+    const token = h.issuePairingToken();
+    expect((await post(token, ['http://attacker:1'])).status).toBe(409);
+    expect((await post(token, ['http://attacker:1'])).status).toBe(401);
+  });
+
   it('rejects a body over the 64 KiB cap', async () => {
     const h = await startHost();
     const res = await fetch(`${h.baseUrl}/pair`, {

@@ -97,14 +97,26 @@ export async function handlePair(
     });
     return;
   }
-  const peerId = ctx.peers.upsert({
+  const wanted = {
     peerId: derivePeerId(publicKeyPem),
     label,
     publicKeyPem,
     endpoints: Array.isArray(endpoints)
       ? endpoints.filter((e): e is string => typeof e === 'string')
       : [],
-  }).peerId;
+  };
+  // The accepting side gates a re-pair exactly as the dialling side does
+  // (docs/beam.md: "Re-pairing an existing peer replaces its key only with
+  // `--force`"). A public key is not a secret, so anyone holding a live
+  // pairing token and a peer's key could otherwise silently rewrite that
+  // peer's record — and `endpoints` is where the mailbox flusher later
+  // dials. The token is spent either way, which is what stops this being
+  // an oracle for whether a given peer is already known.
+  if (!replacesExisting(body) && conflictsWithStored(ctx, wanted)) {
+    sendJson(res, 409, { error: 'already-paired' });
+    return;
+  }
+  const peerId = ctx.peers.upsert(wanted).peerId;
   ctx.log(`paired with ${peerId}`);
   sendJson(res, 201, {
     peerId: ctx.identity.peerId,
@@ -113,6 +125,28 @@ export async function handlePair(
     endpoints: ctx.endpoints,
     protocol: PROTOCOL_VERSION,
   });
+}
+
+/** An explicit `replace: true` in the pair body — the wire form of the
+ * CLI's `--force`, and the only thing that lets a re-pair overwrite a
+ * record this machine already holds. */
+function replacesExisting(body: Record<string, unknown>): boolean {
+  return body['replace'] === true;
+}
+
+/** Whether storing `wanted` would change what this machine already holds
+ * for that peer. A label collision is not a conflict: labels are local
+ * display names the table already disambiguates. */
+function conflictsWithStored(
+  ctx: RouteContext,
+  wanted: { peerId: string; publicKeyPem: string; endpoints: string[] }
+): boolean {
+  const existing = ctx.peers.get(wanted.peerId);
+  if (!existing) return false;
+  return (
+    existing.publicKeyPem !== wanted.publicKeyPem ||
+    existing.endpoints.join('\u0000') !== wanted.endpoints.join('\u0000')
+  );
 }
 
 export function handleChallenge(

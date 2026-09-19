@@ -86,6 +86,13 @@ A label collision on either side is resolved locally by appending `-2`, `-3`, �
 what matters. Re-pairing an existing peer replaces its key only with `--force`, and the CLI
 says which peer it would replace — a silent key swap is indistinguishable from an attacker.
 
+Both sides gate that, not just the dialling one. `POST /pair` refuses (`already-paired`) a
+re-pair that would change the key or `endpoints` it already stores for that peer unless the
+body carries an explicit `replace`, which is what `--force` sends. A public key is not a
+secret, so a live pairing token plus a peer's key would otherwise be enough to rewrite that
+peer's record — and `endpoints` is where the mailbox flusher later dials. The token is spent
+either way, so the endpoint never answers whether a given peer is already known.
+
 ### HTTP surface
 
 Authentication only; no payload ever travels over HTTP. Bodies are capped at 64 KiB.
@@ -112,7 +119,8 @@ means neither side talks to an impostor, which matters because the WebSocket tra
 itself encrypted.
 
 Failure modes are distinguishable where they can be, because the UI has to explain them: unknown
-peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch.
+peer, revoked peer, bad signature, stale challenge, spent ticket, host key mismatch, already
+paired under a record this pairing would change.
 
 One deliberate exception: a pairing token that is expired and one that has already been spent
 answer identically. Single-use secrets are built so that unknown, expired and spent all fail the

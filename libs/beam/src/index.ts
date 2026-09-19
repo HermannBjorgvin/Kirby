@@ -158,6 +158,7 @@ export {
   pair,
   parsePairUrl,
   PeerKeyMismatchError,
+  RepairRefusedError,
   type DialOptions,
   type PairOptions,
   type PairResult,

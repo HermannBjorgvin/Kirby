@@ -60,6 +60,20 @@ export class PeerKeyMismatchError extends Error {
   }
 }
 
+/** Thrown by `pair()` when the *host* already holds a record for this
+ * machine that this pairing would change, and `force` was not passed. The
+ * mirror of PeerKeyMismatchError on the other side of the exchange: there,
+ * this machine is the one being asked to overwrite what it knows; here,
+ * the host is. */
+export class RepairRefusedError extends Error {
+  constructor(readonly baseUrl: string) {
+    super(
+      `${baseUrl} already holds a different record for this machine — pass force to replace it`
+    );
+    this.name = 'RepairRefusedError';
+  }
+}
+
 /** Parse the `#token=` fragment out of a `beam serve` pairing URL. Exported
  * so a caller can preview a host's descriptor (fetchDescriptor) before
  * spending the token via the full pair() below — the two-step confirm
@@ -107,8 +121,13 @@ export async function pair(
       publicKeyPem: options.identity.publicKeyPem,
       label: options.identity.label,
       endpoints: options.endpoints ?? [],
+      // The host gates a re-pair of its own record for this machine the
+      // same way this side gates one of the host's, so `force` has to
+      // reach it rather than only being honoured locally.
+      replace: options.force === true,
     }),
   });
+  if (response.status === 409) throw new RepairRefusedError(baseUrl);
   if (!response.ok)
     throw new Error(
       `pairing failed (${response.status}): ${await response.text()}`
